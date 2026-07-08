@@ -29,6 +29,13 @@ class InstallError(RuntimeError):
     pass
 
 
+class ManualStartRequired(RuntimeError):
+    """Non-fatal: files placed and watchdog started for this session, but no
+    boot-persistence hook could be installed (no systemd bus, no crontab). The
+    installer reports this as a warning, not a failure."""
+    pass
+
+
 @dataclass
 class InstallContext:
     """Everything the adapters need, resolved to absolute paths at install time."""

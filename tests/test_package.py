@@ -103,6 +103,12 @@ class TestLinuxUnit(unittest.TestCase):
         # user units must target default.target, not multi-user.target
         self.assertNotIn("multi-user.target", linux.render_unit(_ctx()))
 
+    def test_manual_start_required_is_nonfatal_type(self):
+        # A minimal host (no systemd bus, no crontab) must degrade to a warning,
+        # not abort the install — ManualStartRequired is caught as non-fatal.
+        self.assertTrue(issubclass(common.ManualStartRequired, Exception))
+        self.assertFalse(issubclass(common.ManualStartRequired, common.InstallError))
+
 
 class TestWindowsTask(unittest.TestCase):
     def test_task_xml_wellformed_and_key_settings(self):

@@ -96,9 +96,16 @@ def _install_cron(ctx: common.InstallContext) -> None:
         )
     os.chmod(wrapper, 0o755)
     if not shutil.which("crontab"):
-        raise common.InstallError(
-            "no systemd user bus and no crontab available; start the watchdog "
-            f"manually: {ctx.python} {ctx.watchdog_script}"
+        # No systemd user bus AND no crontab (minimal container / locked-down host).
+        # Don't abort the whole install — the files are placed and the watchdog can
+        # run. Start it now for THIS session and tell the caller boot-persistence
+        # needs a manual hook. This degrades gracefully instead of failing hard.
+        subprocess.Popen([wrapper], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+        raise common.ManualStartRequired(
+            "no systemd user bus and no crontab: started the watchdog for this "
+            f"session, but it won't survive reboot. To persist, add to your login "
+            f"shell profile or an init hook:\n    {wrapper}"
         )
     existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
     marker = f"# {common.LABEL}"
