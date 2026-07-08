@@ -178,6 +178,8 @@ def main() -> None:
     _say("[3/4] registering watchdog service ...")
     try:
         adapter.install(ctx)
+    except common.ManualStartRequired as w:
+        _say(f"  ⚠ {w}")
     except Exception as e:
         _die(f"service registration failed: {e}")
 

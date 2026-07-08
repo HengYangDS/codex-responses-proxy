@@ -2,6 +2,21 @@
 
 本项目遵循语义化版本。版本史提炼自维护者在生产环境的实际修复轮次。
 
+## [1.0.1] - 2026-07-08
+
+Linux 从"调研+单测"升级为 **Docker 真机端到端验证**,并修复真机测试暴露的一个健壮性问题。
+
+### 修复
+- **Linux minimal 环境不再 fail-hard**:无 systemd user bus 且无 crontab 时(minimal 容器 /
+  锁定主机),旧版会在文件已放置后直接 ERROR 退出整个安装。现降级为 `ManualStartRequired` 警告:
+  文件照装、看门狗本会话启动、并提示手动 boot-persistence 钩子。
+
+### 验证
+- Docker 真机(debian/python 3.14)端到端全过:install 优雅降级 → config 改写+备份 →
+  代理真转发上游(HTTP 401 证明穿透)→ **看门狗 Linux 自愈实测**(杀代理→自动重启)→ uninstall 回滚。
+- 新增降级路径单测,共 17 单测。
+- Windows 仍为"调研+单测",待首个真实用户验证。
+
 ## [1.0.0] - 2026-07-08
 
 首个可分发版本。把维护者在自己 macOS 上攻克的 dmxapi encrypted-reasoning 方案，打包成跨平台
