@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs / runtime artifacts (never commit — may contain request bodies)
+*.log
+log/
+reject-*.json
+body-*.json
+
+# Local config backups (may contain API keys)
+config.toml
+*.bak-*
+
+# OS cruft
+.DS_Store
+Thumbs.db
