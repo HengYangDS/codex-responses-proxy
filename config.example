@@ -1,0 +1,19 @@
+# codex-dmx-proxy 配置示例
+#
+# 所有配置都是环境变量，均有内置默认值——正常安装无需设置任何东西。
+# 需要覆盖时，用安装参数或在服务定义里设 env。此文件仅作参考。
+
+# 上游第三方中转地址（本包默认预置 dmxapi）
+DMX_UPSTREAM=https://www.dmxapi.cn
+
+# 代理监听端口（本机 127.0.0.1）
+DMX_PROXY_PORT=8791
+
+# /responses 并发闸——subagents 扇出需要较大值，不要调回 3
+DMX_RESPONSES_MAX_CONCURRENCY=64
+
+# 看门狗探活间隔（秒）
+DMX_WATCHDOG_INTERVAL=15
+
+# 覆盖端口/上游的推荐做法（无需手改此文件）：
+#   python3 install.py --port 8801 --upstream https://your.upstream.host
