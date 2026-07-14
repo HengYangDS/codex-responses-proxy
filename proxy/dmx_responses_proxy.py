@@ -163,11 +163,12 @@ def _next_request_id() -> int:
         return _REQUEST_SEQ
 
 
-def _is_transient_upstream(code: int, err_body: bytes) -> bool:
+def _is_transient_upstream(code: int, err_body: bytes) -> str:
     """Classify an upstream failure's retry disposition.
 
     Returns one of:
-      "full"    — genuine transient (429/5xx); retry up to the full budget.
+      "full"    — genuine transient (429/5xx or a classified upstream empty
+                  response); retry up to the full budget.
       "once"    — a transient validation failure (``invalid_payload`` or a
                   schema mismatch). The request body is preserved and retried
                   once after a bounded delay.
@@ -178,6 +179,24 @@ def _is_transient_upstream(code: int, err_body: bytes) -> bool:
     """
     if code in (429, 500, 502, 503, 504, 524):
         return "full"
+    if code == 477:
+        try:
+            payload = json.loads(err_body)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return ""
+        # DMX uses non-standard HTTP 477 when its selected upstream returns no
+        # output. It is not a client validation failure: the same preserved
+        # request may succeed when retried, so treat only the explicit
+        # ``empty_response`` contract as a bounded transient. Other unknown
+        # 477 responses remain visible to the caller unchanged.
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if (
+            isinstance(error, dict)
+            and error.get("type") == "dmx_api_error"
+            and error.get("code") == "empty_response"
+        ):
+            return "full"
+        return ""
     if code == 400:
         try:
             low = err_body.lower()

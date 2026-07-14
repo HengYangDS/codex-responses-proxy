@@ -700,6 +700,23 @@ class TestProxySanitize(unittest.TestCase):
     def test_retries_gateway_524_as_transient_upstream_failure(self):
         self.assertEqual(self.p._is_transient_upstream(524, b"gateway timeout"), "full")
 
+    def test_retries_dmx_empty_response_477_as_transient_upstream_failure(self):
+        error = (
+            b'{"error":{"message":"official provider returned an empty response",'
+            b'"type":"dmx_api_error","code":"empty_response"}}'
+        )
+        self.assertEqual(self.p._is_transient_upstream(477, error), "full")
+
+    def test_does_not_retry_unrelated_477(self):
+        self.assertEqual(self.p._is_transient_upstream(477, b'{"error":"unprocessable"}'), "")
+        self.assertEqual(
+            self.p._is_transient_upstream(
+                477,
+                b'{"error":{"type":"other_gateway","code":"empty_response"}}',
+            ),
+            "",
+        )
+
     def test_retries_upstream_response_failed_400_once(self):
         error = (
             b'{"error":{"message":"OpenAI responses stream failed: '
