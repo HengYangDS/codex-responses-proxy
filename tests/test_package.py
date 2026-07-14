@@ -342,6 +342,21 @@ class TestAIGWRouteControl(unittest.TestCase):
                         direct_url="https://www.dmxapi.cn/v1",
                     )
 
+    def test_aigw_route_rejects_a_successful_command_without_canonical_update(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._context(root)
+            config_path = self._aigw_config(root, "https://www.dmxapi.cn/v1")
+            state = common.make_aigw_install_state(
+                ctx,
+                aigw_config_path=str(config_path),
+                account="dmx",
+                direct_url="https://www.dmxapi.cn/v1",
+            )
+            with mock.patch.object(control, "_set_aigw_account_endpoint"):
+                with self.assertRaises(common.InstallError):
+                    control.set_aigw_route(ctx, state, enabled=True)
+
 
 class TestUninstallSafety(unittest.TestCase):
     def _managed_context(self, root: Path):
