@@ -12,6 +12,7 @@ import os
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 from unittest import mock
 
@@ -90,20 +91,28 @@ class TestManagedRouteState(unittest.TestCase):
             ctx = self._managed_context(root)
             config = Path(ctx.codex_config)
             config.parent.mkdir(parents=True)
-            direct = 'base_url = "https://www.dmxapi.cn/v1"\nfeature = true\n'
-            enabled = 'base_url = "http://127.0.0.1:8791/v1"\nfeature = true\n'
+            direct = (
+                'base_url = "https://www.dmxapi.cn/v1"\n'
+                'feature = true\n'
+                'api_key = "do-not-copy-into-state"\n'
+            )
+            enabled = (
+                'base_url = "http://127.0.0.1:8791/v1"\n'
+                'feature = true\n'
+                'api_key = "do-not-copy-into-state"\n'
+            )
             config.write_text(enabled, encoding="utf-8")
             backup = Path(f"{ctx.codex_config}.bak-1")
             backup.write_text(direct, encoding="utf-8")
 
             state = common.make_install_state(
-                ctx,
-                backup_path=str(backup),
-                direct_text=direct,
-                enabled_text=enabled,
-                direct_urls=["https://www.dmxapi.cn/v1"],
+                ctx, backup_path=str(backup), direct_urls=["https://www.dmxapi.cn/v1"],
+                direct_text=direct, enabled_text=enabled,
             )
             common.write_install_state(ctx, state)
+            serialized_state = Path(common.install_state_path(ctx)).read_text(encoding="utf-8")
+            self.assertNotIn("do-not-copy-into-state", serialized_state)
+            self.assertNotIn("feature = true", serialized_state)
 
             loaded = common.load_install_state(ctx)
             self.assertEqual(common.route_status(ctx, loaded), "enabled")
@@ -142,8 +151,8 @@ class TestUninstallSafety(unittest.TestCase):
             backup = Path(f"{ctx.codex_config}.bak-1")
             backup.write_text(direct, encoding="utf-8")
             state = common.make_install_state(
-                ctx, backup_path=str(backup), direct_text=direct,
-                enabled_text=enabled, direct_urls=["https://www.dmxapi.cn/v1"],
+                ctx, backup_path=str(backup), direct_urls=["https://www.dmxapi.cn/v1"],
+                direct_text=direct, enabled_text=enabled,
             )
             common.write_install_state(ctx, state)
 
