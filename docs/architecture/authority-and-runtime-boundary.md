@@ -25,9 +25,10 @@ commands.
 
 ## Runtime provenance
 
-`install.py` copies an executable subset of source into `~/.codex/dmx-proxy/`
-and writes `payload-manifest.json`. The manifest contains only release identity
-and file hashes for executable payload files: no credentials, configuration,
+`install.py` copies a declared executable subset of source into `~/.codex/dmx-proxy/`,
+removes only the known legacy `tests/` deployment residue, and writes
+`payload-manifest.json`. The manifest contains only release identity and file
+hashes for the declared executable payload: no credentials, configuration,
 backups, request bodies, or logs. `control.py status --json` verifies this
 projection. `reload` first verifies the manifest, then only replaces a listener
 whose command matches the installed proxy script.
