@@ -13,6 +13,7 @@ import sys
 import shutil
 import subprocess
 import json
+import hashlib
 from dataclasses import dataclass, field
 
 
@@ -206,13 +207,32 @@ def _atomic_write_text(path: str, content: str) -> None:
             pass
 
 
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _replace_managed_urls(config_text: str, source_urls: list[str], target_url: str) -> tuple[str, int]:
+    """Replace only exact state-recorded URLs while preserving all other config."""
+    changed = 0
+    lines = []
+    for line in config_text.splitlines(keepends=True):
+        match = _BASEURL_RE.match(line.rstrip("\r\n"))
+        if match and match.group("url") in source_urls and match.group("url") != target_url:
+            ending = "\r\n" if line.endswith("\r\n") else ("\n" if line.endswith("\n") else "")
+            lines.append(f'{match.group("indent")}base_url = {match.group("q")}{target_url}{match.group("q")}{ending}')
+            changed += 1
+        else:
+            lines.append(line)
+    return "".join(lines), changed
+
+
 def make_install_state(
     ctx: InstallContext,
     *,
     backup_path: str,
+    direct_urls: list[str],
     direct_text: str,
     enabled_text: str,
-    direct_urls: list[str],
 ) -> dict:
     """Construct the non-secret record authorizing reversible route changes."""
     return {
@@ -221,8 +241,8 @@ def make_install_state(
         "backup_path": os.path.abspath(backup_path),
         "proxy_url": proxy_base_url(ctx.port),
         "direct_urls": direct_urls,
-        "direct_text": direct_text,
-        "enabled_text": enabled_text,
+        "direct_sha256": _sha256_text(direct_text),
+        "enabled_sha256": _sha256_text(enabled_text),
     }
 
 
@@ -236,9 +256,9 @@ def _valid_install_state(ctx: InstallContext, state: object) -> bool:
     backup = state.get("backup_path")
     if not isinstance(backup, str) or not backup.startswith(os.path.abspath(ctx.codex_config) + ".bak-"):
         return False
-    if not all(isinstance(state.get(key), expected) for key, expected in (
-        ("direct_urls", list), ("direct_text", str), ("enabled_text", str),
-    )):
+    if not isinstance(state.get("direct_urls"), list) or not all(isinstance(url, str) for url in state["direct_urls"]):
+        return False
+    if not all(isinstance(state.get(key), str) and len(state[key]) == 64 for key in ("direct_sha256", "enabled_sha256")):
         return False
     return True
 
@@ -273,9 +293,13 @@ def route_status(ctx: InstallContext, state: dict | None) -> str:
             current = fh.read()
     except OSError:
         return "drifted"
-    if current == state["enabled_text"]:
+    current_sha256 = _sha256_text(current)
+    urls = read_base_urls(current)
+    proxy_url = state["proxy_url"]
+    direct_urls = state["direct_urls"]
+    if current_sha256 == state["enabled_sha256"] and proxy_url in urls and not any(url in urls for url in direct_urls):
         return "enabled"
-    if current == state["direct_text"]:
+    if current_sha256 == state["direct_sha256"] and all(url in urls for url in direct_urls) and proxy_url not in urls:
         return "disabled"
     return "drifted"
 
@@ -284,13 +308,19 @@ def set_proxy_route(ctx: InstallContext, state: dict | None, *, enabled: bool) -
     if state is None:
         raise InstallError("proxy route is unmanaged; reinstall before using control.py")
     status = route_status(ctx, state)
-    target = state["enabled_text"] if enabled else state["direct_text"]
     expected = "disabled" if enabled else "enabled"
     if status == "drifted":
         raise InstallError("config has changed outside proxy control; refusing to overwrite it")
     if status == expected:
         backup_file(ctx.codex_config)
-        _atomic_write_text(ctx.codex_config, target)
+        with open(ctx.codex_config, "r", encoding="utf-8") as fh:
+            current = fh.read()
+        source = state["direct_urls"] if enabled else [state["proxy_url"]]
+        target = state["proxy_url"] if enabled else state["direct_urls"][0]
+        rewritten, changed = _replace_managed_urls(current, source, target)
+        if changed == 0:
+            raise InstallError("managed route was not found in current config")
+        _atomic_write_text(ctx.codex_config, rewritten)
 
 
 def backup_file(path: str) -> str:
