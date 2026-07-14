@@ -13,6 +13,7 @@ without copying a larger governance system into a small transport adapter.
 | [decisions/](decisions/0001-control-plane-data-plane-boundary.md) | Durable, revisitable design rulings. |
 | [evidence/](evidence/README.md) | Verification records and proof limits. |
 | [CHANGELOG](../CHANGELOG.md) | Published release history. |
+| [history/](history/README.md) | Superseded designs, plans, and reviews retained only for provenance. |
 
 Source, tests, `VERSION`, and CI remain higher authority than prose. Generated
 runtime files and host logs are evidence only.
