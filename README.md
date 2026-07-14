@@ -1,7 +1,9 @@
 # Codex DMX Proxy
 
-**GitLab Project Name:** `Codex DMX Proxy`
-**Stable repository Path:** `codex-dmx-proxy`
+| GitLab metadata | Value |
+| --- | --- |
+| **Project Name** | `Codex DMX Proxy` |
+| **Stable repository Path** | `codex-dmx-proxy` |
 
 一个仅绑定 loopback 的本地 *Responses* 兼容适配器。它在 Codex 与任意已验证的第三方
 OpenAI Responses 端点之间，净化**可判定不可重放**的历史输入，而不改写 Codex 会话。
