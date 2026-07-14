@@ -133,7 +133,7 @@ rejections are returned unchanged.
 | --- | --- | --- |
 | Encrypted replay error | `control.py status --json` | Confirm a healthy listener and enabled route before investigating history. |
 | Upstream `response_failed` | Proxy log and request ID | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts; unrelated 400 responses remain unchanged. |
-| DMX HTTP 477 `empty_response` | Proxy log and request ID | Retry the unchanged request through the normal bounded transient-retry budget; unrelated 477 responses remain unchanged. |
+| DMX HTTP 477 `empty_response` | Proxy log and request ID | Retry the unchanged request through the normal bounded transient-retry budget. If that exact condition exhausts the budget, return standard HTTP 503 with `Retry-After`; unrelated 477 responses remain unchanged. |
 | SSE closes before completion | Proxy log | The proxy retries only before sending substantive bytes downstream. |
 | Client ignores a route change | Client configuration lifecycle | A running client may need its normal reload; the proxy does not restart it. |
 
