@@ -84,6 +84,8 @@ def copy_payload(ctx: common.InstallContext) -> None:
             if name.endswith(".py"):
                 shutil.copy2(os.path.join(src, name), os.path.join(dst, name))
     os.makedirs(ctx.log_dir, exist_ok=True)
+    for name in ("control.py", "VERSION"):
+        shutil.copy2(os.path.join(HERE, name), os.path.join(ctx.install_dir, name))
 
 
 def wire_config(ctx: common.InstallContext) -> None:
@@ -106,8 +108,19 @@ def wire_config(ctx: common.InstallContext) -> None:
              f"set base_url = \"{proxy_url}\" manually in {ctx.codex_config}.")
         return
     backup = common.backup_file(ctx.codex_config)
-    with open(ctx.codex_config, "w", encoding="utf-8") as fh:
-        fh.write(new_text)
+    state = common.make_install_state(
+        ctx,
+        backup_path=backup,
+        direct_text=text,
+        enabled_text=new_text,
+        direct_urls=[url for url in current if "dmxapi" in url],
+    )
+    common.write_install_state(ctx, state)
+    try:
+        common._atomic_write_text(ctx.codex_config, new_text)
+    except Exception:
+        common.remove_install_state(ctx)
+        raise
     _say(f"  rewrote {changed} base_url -> {proxy_url} (backup: {os.path.basename(backup)})")
 
 
