@@ -1,4 +1,7 @@
-# codex-dmx-proxy
+# Codex DMX Proxy
+
+**GitLab Project Name:** `Codex DMX Proxy`
+**Stable repository Path:** `codex-dmx-proxy`
 
 一个本地 HTTP 代理，修复通过 **dmxapi** 使用 **Codex** 时反复出现的报错：
 
