@@ -44,6 +44,7 @@ import threading
 import urllib.request
 import urllib.error
 import urllib.parse
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 UPSTREAM = os.environ.get("DMX_UPSTREAM", "https://www.dmxapi.cn").rstrip("/")
@@ -66,6 +67,22 @@ _REQUEST_SEQ = 0
 # with an EMPTY ProxyHandler, forcing a direct connection regardless of host config.
 # (Same effect on Linux, which only reads env vars — this just makes it explicit.)
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def release_version() -> str:
+    """Read the packaged release identity without making startup depend on CWD."""
+    candidates = (
+        Path(__file__).resolve().parents[1] / "VERSION",
+        Path(__file__).resolve().parents[2] / "VERSION",
+    )
+    for candidate in candidates:
+        try:
+            value = candidate.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if value:
+            return value
+    return "0+unknown"
 
 
 def _urlopen(req, timeout):
@@ -557,7 +574,7 @@ def stream_sanitized_sse(handler, resp, path, request_id, reopen=None, send_head
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server_version = "dmx-responses-proxy/1.0"
+    server_version = f"dmx-responses-proxy/{release_version()}"
 
     def log_message(self, *a):  # silence default stderr spam; we log ourselves
         pass

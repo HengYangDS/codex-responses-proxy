@@ -117,12 +117,13 @@ def main() -> None:
     args = ap.parse_args()
 
     adapter = pick_adapter()
+    codex_home = common.codex_home()
     ctx = common.InstallContext(
-        home=common.home_dir(),
-        install_dir=os.path.join(common.home_dir(), common.INSTALL_DIRNAME),
+        home=os.path.dirname(codex_home),
+        install_dir=os.path.join(codex_home, "dmx-proxy"),
         proxy_script="", watchdog_script="", python="",
-        codex_config=common.codex_config_path(),
-        log_dir=os.path.join(common.codex_home(), "log"),
+        codex_config=os.path.join(codex_home, "config.toml"),
+        log_dir=os.path.join(codex_home, "log"),
         port=args.port,
     )
 
