@@ -13,11 +13,18 @@ installation behavior, ownership, or released behavior changes.
 `VERSION` is the sole release identifier. A release candidate must satisfy:
 
 - `VERSION`, runtime version lookup, and the dated Changelog heading agree;
-- `CHANGELOG.md` begins with `Unreleased`, followed by released versions in
-  descending SemVer order;
+- `CHANGELOG.md` begins with `Unreleased`; every published heading maps exactly
+  once to a reachable `v<semver>` tag, uses that tag's creation date, and is in
+  descending SemVer order. `Unreleased` contains only work after the newest
+  reachable tag;
 - `scripts/check_release_metadata.py` and the complete CI matrix pass;
 - Git tag is exactly `v<VERSION>`;
 - claims distinguish structural tests from physical host acceptance.
+
+A source tag records a source version. It is not, on its own, proof of
+published artifacts, native-host acceptance, signing, notarization, or an
+original-conversation recovery. Those claims require their corresponding,
+current evidence and must never be inferred from a Changelog heading.
 
 ## GitLab metadata
 
