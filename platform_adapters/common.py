@@ -15,7 +15,6 @@ import subprocess
 import json
 import hashlib
 import urllib.parse
-import time
 from dataclasses import dataclass, field
 
 
@@ -29,6 +28,17 @@ PAYLOAD_MANIFEST_FILENAME = "payload-manifest.json"
 PAYLOAD_MANIFEST_SCHEMA_VERSION = 1
 AIGW_PROVIDER_BEGIN = "# >>> AIGW managed provider >>>"
 AIGW_PROVIDER_END = "# <<< AIGW managed provider <<<"
+RUNTIME_PAYLOAD_FILES = (
+    "VERSION",
+    "control.py",
+    "platform_adapters/__init__.py",
+    "platform_adapters/common.py",
+    "platform_adapters/linux.py",
+    "platform_adapters/macos.py",
+    "platform_adapters/windows.py",
+    "proxy/dmx_responses_proxy.py",
+    "watchdog/watchdog.py",
+)
 
 
 class UnsupportedPlatform(RuntimeError):
@@ -464,16 +474,11 @@ def payload_manifest_path(ctx: InstallContext) -> str:
 
 
 def _payload_relative_paths(root: str) -> list[str]:
-    """List the executable runtime projection, excluding mutable state and secrets."""
-    result: list[str] = []
-    for current_root, dirs, files in os.walk(root):
-        dirs[:] = sorted(name for name in dirs if name != "__pycache__")
-        for name in sorted(files):
-            if not name.endswith(".py") and name not in {"VERSION"}:
-                continue
-            path = os.path.join(current_root, name)
-            result.append(os.path.relpath(path, root).replace(os.sep, "/"))
-    return sorted(result)
+    """Return the declared executable payload, not arbitrary deployment residue."""
+    missing = [relative for relative in RUNTIME_PAYLOAD_FILES if not os.path.isfile(os.path.join(root, relative))]
+    if missing:
+        raise InstallError("installed payload is incomplete: " + ", ".join(missing))
+    return list(RUNTIME_PAYLOAD_FILES)
 
 
 def _sha256_file(path: str) -> str:

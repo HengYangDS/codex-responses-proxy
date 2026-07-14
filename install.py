@@ -79,7 +79,13 @@ def build_context(port: int, upstream: str) -> common.InstallContext:
 
 
 def copy_payload(ctx: common.InstallContext) -> None:
-    """Copy the self-contained runtime payload into the install dir."""
+    """Copy the declared runtime payload and remove known superseded artifacts.
+
+    Route state, logs, and config are user/runtime state and remain untouched.
+    The `tests/` tree was shipped by older deployments but is not executable
+    runtime payload; remove that exact obsolete path before writing the manifest.
+    """
+    shutil.rmtree(os.path.join(ctx.install_dir, "tests"), ignore_errors=True)
     for sub in ("proxy", "watchdog", "platform_adapters"):
         src = os.path.join(HERE, sub)
         dst = os.path.join(ctx.install_dir, sub)

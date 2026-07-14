@@ -133,6 +133,64 @@ class TestManagedRouteState(unittest.TestCase):
             self.assertTrue((Path(ctx.install_dir) / "control.py").is_file())
             self.assertTrue((Path(ctx.install_dir) / "platform_adapters" / "common.py").is_file())
 
+    def test_copied_payload_has_a_tamper_evident_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._managed_context(Path(tmp))
+            install.copy_payload(ctx)
+
+            ok, detail = common.verify_payload_manifest(ctx)
+            self.assertTrue(ok, detail)
+
+            with open(Path(ctx.install_dir) / "proxy" / "dmx_responses_proxy.py", "a", encoding="utf-8") as fh:
+                fh.write("# tampered\n")
+            ok, detail = common.verify_payload_manifest(ctx)
+            self.assertFalse(ok)
+            self.assertIn("hash mismatch", detail)
+
+    def test_copy_payload_removes_known_legacy_artifacts_but_preserves_route_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._managed_context(Path(tmp))
+            install_dir = Path(ctx.install_dir)
+            legacy_tests = install_dir / "tests"
+            legacy_tests.mkdir(parents=True)
+            (legacy_tests / "test_encrypted_replay_blocks.py").write_text("legacy", encoding="utf-8")
+            state_path = Path(common.install_state_path(ctx))
+            state_path.write_text('{"legacy": true}\n', encoding="utf-8")
+
+            install.copy_payload(ctx)
+
+            self.assertFalse(legacy_tests.exists())
+            self.assertEqual(state_path.read_text(encoding="utf-8"), '{"legacy": true}\n')
+            manifest = json.loads(Path(common.payload_manifest_path(ctx)).read_text(encoding="utf-8"))
+            self.assertEqual(sorted(manifest["files"]), sorted(common.RUNTIME_PAYLOAD_FILES))
+            self.assertTrue(all(not relative.startswith("tests/") for relative in manifest["files"]))
+
+    def test_aigw_owned_proxy_route_is_never_rewritten_or_adopted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._managed_context(Path(tmp))
+            config = Path(ctx.codex_config)
+            config.parent.mkdir(parents=True, exist_ok=True)
+            owned = (
+                'model = "gpt-5.6-terra" # managed by AIGW\n'
+                'model_provider = "aigw" # managed by AIGW\n\n'
+                '# >>> AIGW managed provider >>>\n'
+                '[model_providers.aigw]\n'
+                'name = "AIGW: GPT-5.6 Terra"\n'
+                'base_url = "http://127.0.0.1:8791/v1"\n'
+                'wire_api = "responses"\n'
+                'requires_openai_auth = true\n'
+                '# <<< AIGW managed provider <<<\n'
+            )
+            config.write_text(owned, encoding="utf-8")
+
+            self.assertEqual(common.route_authority(ctx), "aigw")
+            self.assertTrue(install.wire_config(ctx))
+            self.assertEqual(config.read_text(encoding="utf-8"), owned)
+            self.assertIsNone(common.load_install_state(ctx))
+            with self.assertRaises(common.InstallError):
+                common.set_proxy_route(ctx, None, enabled=False)
+
+
     def test_control_status_enable_disable_uses_installed_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
