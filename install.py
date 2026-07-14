@@ -111,9 +111,9 @@ def wire_config(ctx: common.InstallContext) -> None:
     state = common.make_install_state(
         ctx,
         backup_path=backup,
+        direct_urls=[url for url in current if "dmxapi" in url],
         direct_text=text,
         enabled_text=new_text,
-        direct_urls=[url for url in current if "dmxapi" in url],
     )
     common.write_install_state(ctx, state)
     try:
