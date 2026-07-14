@@ -14,8 +14,9 @@ from platform_adapters import pick_adapter, common  # noqa: E402
 
 
 def _context() -> common.InstallContext:
-    home = common.home_dir()
-    install_dir = os.path.join(home, common.INSTALL_DIRNAME)
+    codex_home = common.codex_home()
+    home = os.path.dirname(codex_home)
+    install_dir = os.path.join(codex_home, "dmx-proxy")
     state_path = os.path.join(install_dir, common.STATE_FILENAME)
     port = common.DEFAULT_PORT
     try:
@@ -32,8 +33,8 @@ def _context() -> common.InstallContext:
         proxy_script=os.path.join(install_dir, "proxy", "dmx_responses_proxy.py"),
         watchdog_script=os.path.join(install_dir, "watchdog", "watchdog.py"),
         python=sys.executable,
-        codex_config=common.codex_config_path(),
-        log_dir=os.path.join(common.codex_home(), "log"),
+        codex_config=os.path.join(codex_home, "config.toml"),
+        log_dir=os.path.join(codex_home, "log"),
         port=port,
     )
 
