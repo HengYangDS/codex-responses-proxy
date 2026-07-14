@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import json
 import hashlib
+import urllib.parse
 from dataclasses import dataclass, field
 
 
@@ -22,7 +23,7 @@ DEFAULT_PORT = 8791
 DEFAULT_UPSTREAM = "https://www.dmxapi.cn"
 INSTALL_DIRNAME = os.path.join(".codex", "dmx-proxy")   # under $HOME
 STATE_FILENAME = "install-state.json"
-STATE_SCHEMA_VERSION = 1
+STATE_SCHEMA_VERSION = 2
 
 
 class UnsupportedPlatform(RuntimeError):
@@ -189,6 +190,44 @@ def proxy_base_url(port: int) -> str:
     return f"http://127.0.0.1:{port}/v1"
 
 
+def validate_port(port: int) -> int:
+    """Accept only a real TCP port before it reaches service definitions."""
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise InstallError("port must be an integer in 1..65535")
+    return port
+
+
+def normalize_upstream_url(value: str) -> str:
+    """Validate a service-safe remote HTTP(S) upstream URL.
+
+    The value is propagated into shell-adjacent Windows and service definitions;
+    reject whitespace, control characters and quote-like metacharacters rather
+    than relying on each platform renderer to repair unsafe input.
+    """
+    if not isinstance(value, str) or not value:
+        raise InstallError("upstream must be a non-empty HTTP(S) URL")
+    if any(character.isspace() or ord(character) < 32 for character in value):
+        raise InstallError("upstream URL cannot contain whitespace or control characters")
+    if any(character in value for character in ('"', "'", "%", "!", "^", "&", "|", "<", ">", "`", "$", "\\", "(", ")", ";")):
+        raise InstallError("upstream URL contains unsafe characters")
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise InstallError("upstream must be an absolute HTTP(S) URL with a hostname")
+        if parsed.username is not None or parsed.password is not None:
+            raise InstallError("upstream URL cannot include user credentials")
+        if parsed.query or parsed.fragment:
+            raise InstallError("upstream URL cannot include a query or fragment")
+        if parsed.path and not parsed.path.startswith("/"):
+            raise InstallError("upstream URL path must be absolute")
+        port = parsed.port  # validates an explicit numeric port in range
+        if port == 0:
+            raise InstallError("upstream URL port must be in 1..65535")
+    except ValueError as exc:
+        raise InstallError("upstream URL has an invalid port") from exc
+    return value.rstrip("/")
+
+
 def install_state_path(ctx: InstallContext) -> str:
     return os.path.join(ctx.install_dir, STATE_FILENAME)
 
@@ -225,6 +264,7 @@ def make_install_state(
     """Construct the non-secret record authorizing reversible route changes."""
     return {
         "schema_version": STATE_SCHEMA_VERSION,
+        "route_mode": "codex_config",
         "config_path": os.path.abspath(ctx.codex_config),
         "backup_path": os.path.abspath(backup_path),
         "proxy_url": proxy_base_url(ctx.port),
@@ -234,21 +274,60 @@ def make_install_state(
     }
 
 
+def make_aigw_install_state(
+    ctx: InstallContext,
+    *,
+    aigw_config_path: str,
+    account: str,
+    direct_url: str,
+) -> dict:
+    """Construct an AIGW-owned endpoint route record without retaining secrets."""
+    if not isinstance(account, str) or not account:
+        raise InstallError("AIGW account must be non-empty")
+    return {
+        "schema_version": STATE_SCHEMA_VERSION,
+        "route_mode": "aigw_endpoint",
+        "aigw_config_path": os.path.abspath(aigw_config_path),
+        "aigw_account": account,
+        "proxy_url": proxy_base_url(ctx.port),
+        "direct_url": normalize_upstream_url(direct_url),
+    }
+
+
 def _valid_install_state(ctx: InstallContext, state: object) -> bool:
-    if not isinstance(state, dict) or state.get("schema_version") != STATE_SCHEMA_VERSION:
+    if not isinstance(state, dict):
         return False
-    if state.get("config_path") != os.path.abspath(ctx.codex_config):
+    schema_version = state.get("schema_version")
+    route_mode = state.get("route_mode")
+    # v1 contained only direct Codex-config state. Accept it as a read-only
+    # migration shape so an installed v1.0.2 payload can still disable/uninstall
+    # an earlier managed route; every newly written state uses schema v2.
+    if schema_version == 1 and route_mode is None:
+        route_mode = "codex_config"
+    elif schema_version != STATE_SCHEMA_VERSION:
         return False
-    if state.get("proxy_url") != proxy_base_url(ctx.port):
-        return False
-    backup = state.get("backup_path")
-    if not isinstance(backup, str) or not backup.startswith(os.path.abspath(ctx.codex_config) + ".bak-"):
-        return False
-    if not isinstance(state.get("source_host_substr"), str) or not state["source_host_substr"]:
-        return False
-    if not all(isinstance(state.get(key), str) and len(state[key]) == 64 for key in ("direct_sha256", "enabled_sha256")):
-        return False
-    return True
+    if route_mode == "codex_config":
+        if state.get("config_path") != os.path.abspath(ctx.codex_config):
+            return False
+        if state.get("proxy_url") != proxy_base_url(ctx.port):
+            return False
+        backup = state.get("backup_path")
+        if not isinstance(backup, str) or not backup.startswith(os.path.abspath(ctx.codex_config) + ".bak-"):
+            return False
+        if not isinstance(state.get("source_host_substr"), str) or not state["source_host_substr"]:
+            return False
+        return all(isinstance(state.get(key), str) and len(state[key]) == 64 for key in ("direct_sha256", "enabled_sha256"))
+    if route_mode == "aigw_endpoint":
+        return (
+            isinstance(state.get("aigw_config_path"), str)
+            and os.path.isabs(state["aigw_config_path"])
+            and isinstance(state.get("aigw_account"), str)
+            and bool(state["aigw_account"])
+            and state.get("proxy_url") == proxy_base_url(ctx.port)
+            and isinstance(state.get("direct_url"), str)
+            and _is_valid_upstream_url(state["direct_url"])
+        )
+    return False
 
 
 def write_install_state(ctx: InstallContext, state: dict) -> None:
@@ -276,6 +355,8 @@ def remove_install_state(ctx: InstallContext) -> None:
 def route_status(ctx: InstallContext, state: dict | None) -> str:
     if state is None:
         return "unmanaged"
+    if state.get("route_mode") == "aigw_endpoint":
+        return aigw_route_status(ctx, state, state["aigw_config_path"])
     try:
         with open(ctx.codex_config, "r", encoding="utf-8") as fh:
             current = fh.read()
@@ -289,9 +370,52 @@ def route_status(ctx: InstallContext, state: dict | None) -> str:
     return "drifted"
 
 
+def _is_valid_upstream_url(value: object) -> bool:
+    try:
+        normalize_upstream_url(value)  # type: ignore[arg-type]
+    except InstallError:
+        return False
+    return True
+
+
+def aigw_endpoint(config_text: str, account: str) -> str | None:
+    """Read the account's responses endpoint from canonical AIGW TOML text."""
+    section = f"[accounts.{account}.endpoints]"
+    in_section = False
+    for line in config_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_section = stripped == section
+            continue
+        if not in_section:
+            continue
+        match = re.match(r'^\s*openai_responses\s*=\s*(["\'])(.*?)\1\s*(?:#.*)?$', line)
+        if match:
+            return match.group(2)
+    return None
+
+
+def aigw_route_status(ctx: InstallContext, state: dict, config_path: str) -> str:
+    try:
+        with open(config_path, "r", encoding="utf-8") as fh:
+            endpoint = aigw_endpoint(fh.read(), state["aigw_account"])
+    except OSError:
+        return "drifted"
+    if endpoint == state["proxy_url"]:
+        return "enabled"
+    if endpoint == state["direct_url"]:
+        return "disabled"
+    return "drifted"
+
+
 def set_proxy_route(ctx: InstallContext, state: dict | None, *, enabled: bool) -> None:
     if state is None:
         raise InstallError("proxy route is unmanaged; reinstall before using control.py")
+    route_mode = state.get("route_mode")
+    if route_mode is None and state.get("schema_version") == 1:
+        route_mode = "codex_config"
+    if route_mode != "codex_config":
+        raise InstallError("route is AIGW-managed; use control.py with its AIGW route mode")
     status = route_status(ctx, state)
     expected = "disabled" if enabled else "enabled"
     if status == "drifted":
