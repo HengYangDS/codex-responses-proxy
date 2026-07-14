@@ -178,6 +178,45 @@ def _strip_encrypted(obj):
     return removed
 
 
+def _is_replayable_remote_image_url(value):
+    """True only for URL schemes the third-party Responses endpoint accepts."""
+    return isinstance(value, str) and value.startswith(("https://", "http://"))
+
+
+def _strip_unreplayable_images(obj):
+    """Drop historical input images that cannot be replayed to the provider.
+
+    Codex preserves local tool-output images in history. Third-party Responses
+    endpoints validate image_url as a remotely fetchable URL, so local paths and
+    data URLs reject the whole next turn. Keep only http(s) images and retain all
+    neighboring text/tool output.
+    """
+    dropped = 0
+    if isinstance(obj, dict):
+        for field in ("output", "content"):
+            items = obj.get(field)
+            if not isinstance(items, list):
+                continue
+            kept = []
+            for item in items:
+                if (
+                    isinstance(item, dict)
+                    and item.get("type") == "input_image"
+                    and not _is_replayable_remote_image_url(item.get("image_url"))
+                ):
+                    dropped += 1
+                    continue
+                kept.append(item)
+            if len(kept) != len(items):
+                obj[field] = kept
+        for value in obj.values():
+            dropped += _strip_unreplayable_images(value)
+    elif isinstance(obj, list):
+        for value in obj:
+            dropped += _strip_unreplayable_images(value)
+    return dropped
+
+
 def sanitize_responses_body(raw: bytes) -> tuple[bytes, str]:
     """Return (possibly-rewritten body, note). Fail-open: on any error return raw."""
     try:
@@ -189,6 +228,7 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes, str]:
         return raw, "passthrough (json not object)"
 
     dropped_items = 0
+    dropped_images = 0
     stripped_keys = 0
 
     # (a) Drop replayed reasoning items from the model-visible input history.
@@ -203,10 +243,14 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes, str]:
         if dropped_items:
             payload["input"] = kept
 
-    # (b) Belt-and-suspenders: remove any encrypted_content still nested anywhere.
+    # (b) Drop local-path / data-URL image replay items that this third-party
+    # endpoint rejects. Valid remote http(s) images stay intact.
+    dropped_images = _strip_unreplayable_images(payload)
+
+    # (c) Belt-and-suspenders: remove any encrypted_content still nested anywhere.
     stripped_keys = _strip_encrypted(payload)
 
-    # (c) Stop asking the API to return new encrypted reasoning.
+    # (d) Stop asking the API to return new encrypted reasoning.
     include = payload.get("include")
     include_trimmed = False
     if isinstance(include, list):
@@ -215,7 +259,7 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes, str]:
             payload["include"] = new_inc
             include_trimmed = True
 
-    if not (dropped_items or stripped_keys or include_trimmed):
+    if not (dropped_items or dropped_images or stripped_keys or include_trimmed):
         return raw, "clean (nothing to strip)"
 
     try:
@@ -224,8 +268,8 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes, str]:
         return raw, f"passthrough (reserialize failed: {exc.__class__.__name__})"
 
     return new_raw, (
-        f"stripped reasoning_items={dropped_items} encrypted_keys={stripped_keys} "
-        f"include_trimmed={include_trimmed}"
+        f"stripped reasoning_items={dropped_items} local_image_items={dropped_images} "
+        f"encrypted_keys={stripped_keys} include_trimmed={include_trimmed}"
     )
 
 
