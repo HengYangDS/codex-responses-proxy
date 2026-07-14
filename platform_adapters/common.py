@@ -12,6 +12,7 @@ import re
 import sys
 import shutil
 import subprocess
+import json
 from dataclasses import dataclass, field
 
 
@@ -19,6 +20,8 @@ LABEL = "com.user.codex-dmx-watchdog"   # launchd/systemd/task identifier
 DEFAULT_PORT = 8791
 DEFAULT_UPSTREAM = "https://www.dmxapi.cn"
 INSTALL_DIRNAME = os.path.join(".codex", "dmx-proxy")   # under $HOME
+STATE_FILENAME = "install-state.json"
+STATE_SCHEMA_VERSION = 1
 
 
 class UnsupportedPlatform(RuntimeError):
@@ -180,6 +183,114 @@ def rewrite_base_url(config_text: str, old_host_substr: str, new_base_url: str) 
 
 def proxy_base_url(port: int) -> str:
     return f"http://127.0.0.1:{port}/v1"
+
+
+def install_state_path(ctx: InstallContext) -> str:
+    return os.path.join(ctx.install_dir, STATE_FILENAME)
+
+
+def _atomic_write_text(path: str, content: str) -> None:
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    temporary = f"{path}.tmp-{os.getpid()}"
+    try:
+        with open(temporary, "w", encoding="utf-8", newline="") as fh:
+            fh.write(content)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.remove(temporary)
+        except FileNotFoundError:
+            pass
+
+
+def make_install_state(
+    ctx: InstallContext,
+    *,
+    backup_path: str,
+    direct_text: str,
+    enabled_text: str,
+    direct_urls: list[str],
+) -> dict:
+    """Construct the non-secret record authorizing reversible route changes."""
+    return {
+        "schema_version": STATE_SCHEMA_VERSION,
+        "config_path": os.path.abspath(ctx.codex_config),
+        "backup_path": os.path.abspath(backup_path),
+        "proxy_url": proxy_base_url(ctx.port),
+        "direct_urls": direct_urls,
+        "direct_text": direct_text,
+        "enabled_text": enabled_text,
+    }
+
+
+def _valid_install_state(ctx: InstallContext, state: object) -> bool:
+    if not isinstance(state, dict) or state.get("schema_version") != STATE_SCHEMA_VERSION:
+        return False
+    if state.get("config_path") != os.path.abspath(ctx.codex_config):
+        return False
+    if state.get("proxy_url") != proxy_base_url(ctx.port):
+        return False
+    backup = state.get("backup_path")
+    if not isinstance(backup, str) or not backup.startswith(os.path.abspath(ctx.codex_config) + ".bak-"):
+        return False
+    if not all(isinstance(state.get(key), expected) for key, expected in (
+        ("direct_urls", list), ("direct_text", str), ("enabled_text", str),
+    )):
+        return False
+    return True
+
+
+def write_install_state(ctx: InstallContext, state: dict) -> None:
+    if not _valid_install_state(ctx, state):
+        raise InstallError("refusing to write invalid proxy install state")
+    _atomic_write_text(install_state_path(ctx), json.dumps(state, sort_keys=True) + "\n")
+
+
+def load_install_state(ctx: InstallContext) -> dict | None:
+    try:
+        with open(install_state_path(ctx), "r", encoding="utf-8") as fh:
+            state = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return state if _valid_install_state(ctx, state) else None
+
+
+def remove_install_state(ctx: InstallContext) -> None:
+    try:
+        os.remove(install_state_path(ctx))
+    except FileNotFoundError:
+        pass
+
+
+def route_status(ctx: InstallContext, state: dict | None) -> str:
+    if state is None:
+        return "unmanaged"
+    try:
+        with open(ctx.codex_config, "r", encoding="utf-8") as fh:
+            current = fh.read()
+    except OSError:
+        return "drifted"
+    if current == state["enabled_text"]:
+        return "enabled"
+    if current == state["direct_text"]:
+        return "disabled"
+    return "drifted"
+
+
+def set_proxy_route(ctx: InstallContext, state: dict | None, *, enabled: bool) -> None:
+    if state is None:
+        raise InstallError("proxy route is unmanaged; reinstall before using control.py")
+    status = route_status(ctx, state)
+    target = state["enabled_text"] if enabled else state["direct_text"]
+    expected = "disabled" if enabled else "enabled"
+    if status == "drifted":
+        raise InstallError("config has changed outside proxy control; refusing to overwrite it")
+    if status == expected:
+        backup_file(ctx.codex_config)
+        _atomic_write_text(ctx.codex_config, target)
 
 
 def backup_file(path: str) -> str:
