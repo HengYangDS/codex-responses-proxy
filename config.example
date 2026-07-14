@@ -1,19 +1,23 @@
-# codex-dmx-proxy 配置示例
+# Codex DMX Proxy configuration example
 #
-# 所有配置都是环境变量，均有内置默认值——正常安装无需设置任何东西。
-# 需要覆盖时，用安装参数或在服务定义里设 env。此文件仅作参考。
+# Every setting has a built-in default. Most installations should use install.py
+# arguments and leave the generated service definition unchanged.
 
-# 上游第三方中转地址（本包默认预置 dmxapi）
+# Verified third-party upstream base URL.
 DMX_UPSTREAM=https://www.dmxapi.cn
 
-# 代理监听端口（本机 127.0.0.1）
+# Loopback listener port.
 DMX_PROXY_PORT=8791
 
-# /responses 并发闸——subagents 扇出需要较大值，不要调回 3
+# Maximum concurrent /responses requests.
 DMX_RESPONSES_MAX_CONCURRENCY=64
 
-# 看门狗探活间隔（秒）
+# Full-request byte budget for the one pair-safe fallback after an explicit
+# upstream HTTP 400 `response_failed`. This is intentionally conservative.
+DMX_RESPONSE_FAILED_COMPACTION_BUDGET=524288
+
+# Watchdog TCP health-check interval, in seconds.
 DMX_WATCHDOG_INTERVAL=15
 
-# 覆盖端口/上游的推荐做法（无需手改此文件）：
-#   python3 install.py --port 8801 --upstream https://your.upstream.host
+# Recommended override method:
+#   python3 install.py --port 8801 --upstream https://your.responses.endpoint
