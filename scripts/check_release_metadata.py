@@ -99,10 +99,14 @@ def check_governance_contract() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     if not readme.startswith("# Codex DMX Proxy\n"):
         raise ValueError("README.md must use the formal Project Name as its title")
-    if "**GitLab Project Name:** `Codex DMX Proxy`" not in readme:
-        raise ValueError("README.md must declare the formal GitLab Project Name")
-    if "**Stable repository Path:** `codex-dmx-proxy`" not in readme:
-        raise ValueError("README.md must declare the stable GitLab Path separately")
+    gitlab_identity = (
+        "| GitLab metadata | Value |\n"
+        "| --- | --- |\n"
+        "| **Project Name** | `Codex DMX Proxy` |\n"
+        "| **Stable repository Path** | `codex-dmx-proxy` |"
+    )
+    if gitlab_identity not in readme:
+        raise ValueError("README.md must declare formal GitLab Project Name and stable Path in its metadata table")
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     if "python scripts/check_release_metadata.py" not in ci:
         raise ValueError("GitLab CI must execute the release and governance checker")
