@@ -27,6 +27,7 @@ import shutil
 import socket
 import argparse
 import subprocess
+import glob
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -59,16 +60,17 @@ def _codex_running() -> bool:
 
 
 def build_context(port: int, upstream: str) -> common.InstallContext:
-    home = common.home_dir()
-    install_dir = os.path.join(home, common.INSTALL_DIRNAME)
+    codex_home = common.codex_home()
+    home = os.path.dirname(codex_home)
+    install_dir = os.path.join(codex_home, "dmx-proxy")
     return common.InstallContext(
         home=home,
         install_dir=install_dir,
         proxy_script=os.path.join(install_dir, "proxy", "dmx_responses_proxy.py"),
         watchdog_script=os.path.join(install_dir, "watchdog", "watchdog.py"),
         python=common.resolve_python(),
-        codex_config=common.codex_config_path(),
-        log_dir=os.path.join(common.codex_home(), "log"),
+        codex_config=os.path.join(codex_home, "config.toml"),
+        log_dir=os.path.join(codex_home, "log"),
         port=port,
         upstream=upstream,
     )
@@ -88,7 +90,7 @@ def copy_payload(ctx: common.InstallContext) -> None:
         shutil.copy2(os.path.join(HERE, name), os.path.join(ctx.install_dir, name))
 
 
-def wire_config(ctx: common.InstallContext) -> None:
+def wire_config(ctx: common.InstallContext) -> bool:
     """Point the Codex provider base_url at the local proxy (backup + rewrite)."""
     if not os.path.exists(ctx.codex_config):
         _die(f"Codex config not found at {ctx.codex_config}. "
@@ -98,15 +100,39 @@ def wire_config(ctx: common.InstallContext) -> None:
 
     proxy_url = common.proxy_base_url(ctx.port)
     current = common.read_base_urls(text)
+    state = common.load_install_state(ctx)
+    if state is not None and common.route_status(ctx, state) == "enabled":
+        _say(f"  managed base_url already points at proxy ({proxy_url}); leaving config as-is.")
+        return True
+
     if proxy_url in current and not any("dmxapi" in u for u in current):
-        _say(f"  base_url already points at proxy ({proxy_url}); leaving config as-is.")
-        return
+        # Upgrade from pre-state releases without guessing: accept only a backup
+        # that deterministically reconstructs the exact current proxy config.
+        backups = sorted(glob.glob(f"{ctx.codex_config}.bak-*"), key=os.path.getmtime, reverse=True)
+        for backup in backups:
+            try:
+                with open(backup, "r", encoding="utf-8") as fh:
+                    direct_text = fh.read()
+            except OSError:
+                continue
+            enabled_text, changed = common.rewrite_base_url(direct_text, "dmxapi", proxy_url)
+            if changed and enabled_text == text:
+                common.write_install_state(
+                    ctx,
+                    common.make_install_state(
+                        ctx, backup_path=backup, direct_text=direct_text, enabled_text=enabled_text,
+                    ),
+                )
+                _say(f"  adopted existing proxy route using {os.path.basename(backup)}.")
+                return True
+        _say("  base_url already points at proxy but no exact managed backup was found; leaving config as-is.")
+        return False
 
     new_text, changed = common.rewrite_base_url(text, "dmxapi", proxy_url)
     if changed == 0:
         _say("  no dmxapi base_url found to rewrite. If your provider host differs, "
              f"set base_url = \"{proxy_url}\" manually in {ctx.codex_config}.")
-        return
+        return False
     backup = common.backup_file(ctx.codex_config)
     state = common.make_install_state(
         ctx,
@@ -121,6 +147,7 @@ def wire_config(ctx: common.InstallContext) -> None:
         common.remove_install_state(ctx)
         raise
     _say(f"  rewrote {changed} base_url -> {proxy_url} (backup: {os.path.basename(backup)})")
+    return True
 
 
 def verify(ctx: common.InstallContext, timeout: float = 20.0) -> bool:

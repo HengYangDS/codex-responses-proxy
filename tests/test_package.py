@@ -165,6 +165,30 @@ class TestManagedRouteState(unittest.TestCase):
             self.assertEqual(reenabled.returncode, 0, reenabled.stderr)
             self.assertEqual(config.read_text(encoding="utf-8"), enabled)
 
+    def test_build_context_honors_codex_home(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"CODEX_HOME": str(Path(tmp) / "codex-home")}, clear=False):
+            ctx = install.build_context(8791, "https://www.dmxapi.cn")
+            self.assertEqual(ctx.codex_config, str(Path(tmp) / "codex-home" / "config.toml"))
+            self.assertEqual(ctx.install_dir, str(Path(tmp) / "codex-home" / "dmx-proxy"))
+
+    def test_adopts_existing_proxy_route_only_when_backup_reconstructs_exactly(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"CODEX_HOME": str(Path(tmp) / "codex-home")}, clear=False):
+            ctx = install.build_context(8791, "https://www.dmxapi.cn")
+            config = Path(ctx.codex_config)
+            config.parent.mkdir(parents=True, exist_ok=True)
+            direct = 'base_url = "https://www.dmxapi.cn/v1"\n'
+            enabled = 'base_url = "http://127.0.0.1:8791/v1"\n'
+            config.write_text(enabled, encoding="utf-8")
+            Path(f"{ctx.codex_config}.bak-1").write_text(direct, encoding="utf-8")
+
+            self.assertTrue(install.wire_config(ctx))
+            self.assertEqual(common.route_status(ctx, common.load_install_state(ctx)), "enabled")
+
+            common.remove_install_state(ctx)
+            config.write_text(enabled + "unmanaged = true\n", encoding="utf-8")
+            self.assertFalse(install.wire_config(ctx))
+            self.assertIsNone(common.load_install_state(ctx))
+
     def test_route_round_trip_preserves_comments_and_each_direct_url(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -326,6 +350,9 @@ class TestProxySanitize(unittest.TestCase):
         self.assertNotIn("reasoning.encrypted_content", obj["include"])
         self.assertNotIn("encrypted_content", json.dumps(obj))    # fully stripped
 
+    def test_runtime_server_version_uses_version_file(self):
+        self.assertEqual(self.p.release_version(), Path(ROOT, "VERSION").read_text(encoding="utf-8").strip())
+
     def test_fail_open_on_non_json(self):
         raw = b"not json at all"
         out, note = self.p.sanitize_responses_body(raw)
@@ -405,6 +432,12 @@ class TestProxySanitize(unittest.TestCase):
             obj["input"][0]["output"],
             [{"type": "input_image", "image_url": "https://example.test/valid.png"}],
         )
+
+
+class TestReleaseMetadata(unittest.TestCase):
+    def test_release_version_matches_changelog(self):
+        version = Path(ROOT, "VERSION").read_text(encoding="utf-8").strip()
+        self.assertIn(f"## [{version}]", Path(ROOT, "CHANGELOG.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

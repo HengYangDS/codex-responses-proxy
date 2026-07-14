@@ -2,7 +2,7 @@
 
 - 日期: 2026-07-08
 - 状态: 设计已批准, 待 review → writing-plans
-- 发布目标: `http://192.168.64.101:18086/dig/misc/agentic-third-party-api/codex-dmx-proxy` (private)
+- 发布目标: `http://192.168.64.101:18086/dig/misc/llm-third-party-api/codex-dmx-proxy` (private)
 
 ## 1. 问题与目标
 
@@ -111,7 +111,7 @@ retry 1x+3s backoff、并发 64、fail-open)。**唯一新增**:用
 
 ## 6. 分发与发布
 
-**目标**:`dig/misc/agentic-third-party-api`(id=657, private)下新建 project `codex-dmx-proxy`。
+**目标**:`dig/misc/llm-third-party-api` 下 project `codex-dmx-proxy`。
 维护者 `glab` 已鉴权为 hengyang,ssh 协议已配。
 
 ```
@@ -121,7 +121,7 @@ retry 1x+3s backoff、并发 64、fail-open)。**唯一新增**:用
   3. git push 到新 project SSH remote
   4. (可选) glab release create v1.0.0 + 传 zip 附件
 同事获取(README 双通道):
-  主:git clone git@192.168.64.101:dig/misc/agentic-third-party-api/codex-dmx-proxy.git
+  主:git clone ssh://git@192.168.64.101:1122/dig/misc/llm-third-party-api/codex-dmx-proxy.git
      → python3 install.py
   备:GitLab Releases → 下载 zip → 解压 → python3 install.py
 ```
