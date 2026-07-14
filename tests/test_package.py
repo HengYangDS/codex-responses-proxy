@@ -160,6 +160,44 @@ class TestProxySanitize(unittest.TestCase):
         out, note = self.p.sanitize_responses_body(body)
         self.assertIn("clean", note)
 
+    def test_drops_unreplayable_images_and_keeps_text_and_https(self):
+        import json
+        body = json.dumps({
+            "input": [
+                {
+                    "type": "custom_tool_call_output",
+                    "output": [
+                        {"type": "input_text", "text": "before"},
+                        {"type": "input_image", "image_url": "/tmp/example.png"},
+                        {"type": "input_text", "text": "after"},
+                    ],
+                },
+                {
+                    "type": "message",
+                    "content": [
+                        {"type": "input_image", "image_url": "https://example.test/valid.png"},
+                        {"type": "input_image", "image_url": "data:image/png;base64,not-supported"},
+                    ],
+                },
+            ]
+        }).encode()
+
+        out, note = self.p.sanitize_responses_body(body)
+        obj = json.loads(out)
+
+        self.assertIn("local_image_items=2", note)
+        self.assertEqual(
+            obj["input"][0]["output"],
+            [
+                {"type": "input_text", "text": "before"},
+                {"type": "input_text", "text": "after"},
+            ],
+        )
+        self.assertEqual(
+            obj["input"][1]["content"],
+            [{"type": "input_image", "image_url": "https://example.test/valid.png"}],
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
