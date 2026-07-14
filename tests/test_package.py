@@ -198,6 +198,36 @@ class TestProxySanitize(unittest.TestCase):
             [{"type": "input_image", "image_url": "https://example.test/valid.png"}],
         )
 
+    def test_drops_malformed_http_like_image_urls(self):
+        import json
+        bad_urls = [
+            "https://",
+            "https://bad host/example.png",
+            "http:///missing-host",
+            "https://example.test:not-a-port/image.png",
+            "https://example.test/has space.png",
+        ]
+        body = json.dumps({
+            "input": [{
+                "type": "custom_tool_call_output",
+                "output": [
+                    {"type": "input_image", "image_url": url}
+                    for url in bad_urls
+                ] + [
+                    {"type": "input_image", "image_url": "https://example.test/valid.png"},
+                ],
+            }],
+        }).encode()
+
+        out, note = self.p.sanitize_responses_body(body)
+        obj = json.loads(out)
+
+        self.assertIn(f"local_image_items={len(bad_urls)}", note)
+        self.assertEqual(
+            obj["input"][0]["output"],
+            [{"type": "input_image", "image_url": "https://example.test/valid.png"}],
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
