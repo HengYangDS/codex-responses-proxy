@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import os
 import sys
-import glob
-import shutil
 import argparse
 import subprocess
 
@@ -25,31 +23,83 @@ def _say(msg: str) -> None:
     print(msg, flush=True)
 
 
-def _stop_proxy(port: int) -> None:
-    """Best-effort: kill any running proxy so the port is freed."""
+def _listener_pids(port: int) -> list[int]:
+    """Return only PIDs listening on the requested loopback TCP port."""
     try:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/f", "/im", "pythonw.exe"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
-            subprocess.run(["pkill", "-f", "dmx_responses_proxy.py"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            output = subprocess.run(
+                ["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True,
+            ).stdout
+            pids = []
+            for line in output.splitlines():
+                fields = line.split()
+                if len(fields) >= 5 and fields[1].endswith(f":{port}") and fields[3].upper() == "LISTENING":
+                    try:
+                        pids.append(int(fields[-1]))
+                    except ValueError:
+                        pass
+            return pids
+        output = subprocess.run(
+            ["lsof", "-tiTCP:" + str(port), "-sTCP:LISTEN"],
+            capture_output=True, text=True,
+        ).stdout
+        return [int(value) for value in output.split() if value.isdigit()]
     except Exception:
-        pass
+        return []
 
 
-def restore_config(ctx: common.InstallContext) -> None:
-    backups = sorted(
-        glob.glob(f"{ctx.codex_config}.bak-*"),
-        key=lambda p: os.path.getmtime(p),
-    )
-    if not backups:
-        _say("  no config backup found; leaving config.toml as-is. If needed, set "
-             "base_url back to your upstream manually.")
-        return
-    latest = backups[-1]
-    shutil.copy2(latest, ctx.codex_config)
-    _say(f"  restored config from {os.path.basename(latest)}")
+def _process_command(pid: int) -> str:
+    try:
+        if os.name == "nt":
+            command = (
+                "$p=Get-CimInstance Win32_Process -Filter \"ProcessId=" + str(pid) + "\";"
+                "if ($p) {$p.CommandLine}"
+            )
+            return subprocess.run(
+                ["powershell", "-NoProfile", "-Command", command],
+                capture_output=True, text=True,
+            ).stdout.strip()
+        return subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="], capture_output=True, text=True,
+        ).stdout.strip()
+    except Exception:
+        return ""
+
+
+def _terminate_pid(pid: int) -> None:
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/pid", str(pid), "/f"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        subprocess.run(["kill", "-TERM", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _stop_proxy(port: int) -> int:
+    """Terminate only a port listener proven to be this proxy. Returns count."""
+    stopped = 0
+    for pid in _listener_pids(port):
+        if "dmx_responses_proxy.py" not in _process_command(pid):
+            continue
+        _terminate_pid(pid)
+        stopped += 1
+    return stopped
+
+
+def restore_config(ctx: common.InstallContext) -> bool:
+    state = common.load_install_state(ctx)
+    if state is None:
+        _say("  no valid managed route state found; leaving config.toml as-is.")
+        return False
+    if common.route_status(ctx, state) != "enabled":
+        _say("  config is disabled or drifted; leaving it unchanged.")
+        return False
+    backup = state["backup_path"]
+    if not os.path.isfile(backup):
+        _say("  recorded config backup is unavailable; leaving config.toml as-is.")
+        return False
+    common._atomic_write_text(ctx.codex_config, state["direct_text"])
+    common.remove_install_state(ctx)
+    _say(f"  restored config from {os.path.basename(backup)}")
+    return True
 
 
 def main() -> None:
