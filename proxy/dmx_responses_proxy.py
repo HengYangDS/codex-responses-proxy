@@ -58,6 +58,12 @@ RESPONSES_MAX_CONCURRENCY = int(os.environ.get("DMX_RESPONSES_MAX_CONCURRENCY", 
 RESPONSES_QUEUE_TIMEOUT = float(os.environ.get("DMX_RESPONSES_QUEUE_TIMEOUT", "120"))
 UPSTREAM_TIMEOUT = float(os.environ.get("DMX_UPSTREAM_TIMEOUT", "900"))
 UPSTREAM_READ_TIMEOUT = float(os.environ.get("DMX_UPSTREAM_READ_TIMEOUT", "240"))
+# DMX rejects deterministic large replay payloads with an HTTP 400
+# ``response_failed`` result. This limit is deliberately conservative: live probes
+# on 2026-07-14 accepted pair-valid payloads in the 482--513 KiB range.
+RESPONSE_FAILED_COMPACTION_BUDGET = int(
+    os.environ.get("DMX_RESPONSE_FAILED_COMPACTION_BUDGET", str(512 * 1024))
+)
 _RESPONSES_SEM = threading.BoundedSemaphore(max(1, RESPONSES_MAX_CONCURRENCY))
 _ACTIVE_LOCK = threading.Lock()
 _ACTIVE_RESPONSES = 0
@@ -158,16 +164,12 @@ def _is_transient_upstream(code: int, err_body: bytes) -> bool:
 
     Returns one of:
       "full"    — genuine transient (429/5xx); retry up to the full budget.
-      "once"    — 400 invalid_payload / "does not match the expected schema".
-                  This is dmxapi SERVER-SIDE flakiness, NOT a malformed body:
-                  all 11 locally-captured reject-400 bodies, replayed verbatim
-                  hours later, returned 200 (11/11) — including with the exact
-                  custom_tool_call / web_search_call / encrypted_content items
-                  intact. Empirically ~18% of /responses hit this. A single,
-                  patient retry recovers most of them (observed gaveup 28 vs the
-                  58 a purely-independent model predicts). We retry ONCE (never
-                  the storm-amplifying 3x) and rely on the caller's longer backoff
-                  to clear the transient window.
+      "once"    — a transient validation failure (``invalid_payload`` or a
+                  schema mismatch). The request body is preserved and retried
+                  once after a bounded delay.
+      "full"    — an explicit upstream Responses ``response_failed`` execution
+                  error. HTTP 400 proves that this request was not accepted as a
+                  response; it can use the ordinary bounded retry budget.
       ""        — not retryable (encrypted-content complaint or other genuine 4xx).
     """
     if code in (429, 500, 502, 503, 504, 524):
@@ -179,6 +181,13 @@ def _is_transient_upstream(code: int, err_body: bytes) -> bool:
             return ""
         if b"invalid_encrypted_content" in low or b"could not be verified" in low:
             return ""
+        # Some upstream gateways collapse a failed Responses execution into
+        # HTTP 400 even when the request has passed validation. The exact
+        # ``response_failed`` payload was observed on 2026-07-14. HTTP 400 means
+        # the request was rejected before a response was accepted, so it may use
+        # the same bounded retry budget as other upstream execution failures.
+        if b"response_failed" in low or b"openai responses stream failed" in low:
+            return "full"
         if b"invalid_payload" in low or b"does not match the expected schema" in low:
             return "once"
     return ""
@@ -278,6 +287,109 @@ def _strip_replayed_reasoning_items(payload):
     if dropped_items:
         payload["input"] = kept
     return dropped_items, preserved_agent_blocks
+
+
+_TOOL_CALL_TYPES = frozenset(("custom_tool_call", "function_call"))
+_TOOL_OUTPUT_TYPES = frozenset(("custom_tool_call_output", "function_call_output"))
+
+
+def _tool_pair_boundary_is_safe(items, start):
+    """True if a retained input suffix has no orphaned tool-call relationship.
+
+    Responses inputs encode custom/function tool calls and their outputs as
+    separate adjacent history items. A raw byte or item-count suffix can retain an
+    output whose call was discarded, which the upstream correctly rejects. We only
+    remove a contiguous oldest prefix, and admit a suffix when every retained
+    call/output pair is internally complete. A call with no output is allowed: it
+    may be the live continuation of a pending call, but a retained output without
+    its call is never valid.
+    """
+    calls = set()
+    for item in items[start:]:
+        if not isinstance(item, dict):
+            continue
+        call_id = item.get("call_id")
+        if not isinstance(call_id, str) or not call_id:
+            continue
+        item_type = item.get("type")
+        if item_type in _TOOL_CALL_TYPES:
+            calls.add(call_id)
+        elif item_type in _TOOL_OUTPUT_TYPES:
+            # A Responses replay output is meaningful only after its matching
+            # call. Checking ordering, not just set membership, also rules out a
+            # malformed retained suffix that happens to repeat a call id later.
+            if call_id not in calls:
+                return False
+    return True
+
+
+def _compact_response_failed_request(raw: bytes):
+    """Build one safe compact fallback after an explicit upstream failure.
+
+    This is intentionally not a general context-window implementation. It runs
+    only in the HTTP-400 ``response_failed`` branch, keeps the newest contiguous
+    input suffix, and removes *only* the oldest prefix. The compact copy removes
+    ``prompt_cache_key`` because it refers to the full historical prompt. The
+    original request bytes remain untouched for the primary attempt and for every
+    other error type.
+
+    Return ``(compact_bytes, metrics)`` only when a pair-valid suffix including
+    the final input item fits the conservative full-request budget. Otherwise
+    return ``(None, None)`` and let the original upstream response pass through.
+    """
+    if len(raw) <= RESPONSE_FAILED_COMPACTION_BUDGET:
+        return None, None
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    original_items = payload.get("input")
+    if not isinstance(original_items, list) or len(original_items) < 2:
+        return None, None
+
+    # The fallback must retain the latest user context, even when later tool
+    # plumbing consumes most of the budget. If it cannot, the safe answer is no
+    # fallback rather than silently changing the user's current request.
+    latest_user_index = max(
+        (
+            index
+            for index, item in enumerate(original_items)
+            if (
+                isinstance(item, dict)
+                and item.get("type") == "message"
+                and item.get("role") == "user"
+            )
+        ),
+        default=-1,
+    )
+    if latest_user_index < 0:
+        return None, None
+
+    # Begin with the oldest safe boundary that meets the full JSON-byte budget.
+    # Moving the boundary right removes more *oldest* state and is the only allowed
+    # recovery action. A copied dict is used so the original payload object/bytes
+    # cannot be mutated by the failed fallback construction.
+    for start in range(1, latest_user_index + 1):
+        if not _tool_pair_boundary_is_safe(original_items, start):
+            continue
+        candidate = dict(payload)
+        candidate["input"] = original_items[start:]
+        candidate.pop("prompt_cache_key", None)
+        try:
+            compact = json.dumps(candidate, separators=(",", ":")).encode("utf-8")
+        except Exception:
+            return None, None
+        if len(compact) <= RESPONSE_FAILED_COMPACTION_BUDGET:
+            return compact, {
+                "original_bytes": len(raw),
+                "compact_bytes": len(compact),
+                "removed_inputs": start,
+                "retained_inputs": len(original_items) - start,
+                "prompt_cache_key_removed": "prompt_cache_key" in payload,
+            }
+    return None, None
 
 
 def _is_replayable_remote_image_url(value):
@@ -704,8 +816,10 @@ class Handler(BaseHTTPRequestHandler):
         # dmxapi intermittently returns 400 invalid_payload / 5xx / 429 for
         # provably-valid requests (~6% observed; identical replay succeeds).
         # Transparently retry the identical request a few times before giving up,
-        # so this server-side flakiness never reaches Codex. Safe because we
-        # re-send the exact same bytes; non-retryable 4xx are relayed immediately.
+        # so this server-side flakiness never reaches Codex. An explicit 400
+        # ``response_failed`` receives one *additional*, pair-safe compact
+        # fallback: some large replay contexts are deterministically rejected.
+        # Non-retryable 4xx are relayed immediately.
         is_responses = method == "POST" and "/responses" in self.path
         max_attempts = 4 if is_responses else 1
         backoffs = [0.4, 1.0, 2.0]
@@ -738,16 +852,51 @@ class Handler(BaseHTTPRequestHandler):
         try:
             resp = None
             last_err = None
+            compact_response_failed_body = None
+            compact_response_failed_metrics = None
+            used_response_failed_compaction = False
             for attempt in range(max_attempts):
-                req = urllib.request.Request(url, data=body if body else None, method=method)
+                attempt_body = compact_response_failed_body if compact_response_failed_body is not None else body
+                req = urllib.request.Request(url, data=attempt_body if attempt_body else None, method=method)
                 for k, v in out_headers.items():
                     req.add_header(k, v)
                 try:
                     resp = _urlopen(req, timeout=UPSTREAM_TIMEOUT)
+                    if used_response_failed_compaction and compact_response_failed_metrics:
+                        m = compact_response_failed_metrics
+                        _log(
+                            f"  req#{request_id} response_failed compact fallback accepted "
+                            f"bytes={m['original_bytes']}->{m['compact_bytes']} "
+                            f"inputs={m['removed_inputs']} removed/{m['retained_inputs']} retained"
+                        )
                     break
                 except urllib.error.HTTPError as e:
                     err_body = e.read()
                     disp = _is_transient_upstream(e.code, err_body)
+                    # A deterministic large replay failure cannot be fixed by
+                    # retrying the same bytes. After the upstream has *explicitly*
+                    # named ``response_failed``, make exactly one fallback request
+                    # that drops only the oldest pair-valid input prefix. This is
+                    # deliberately before ordinary retries so the user's turn does
+                    # not wait through several known-identical rejections.
+                    if (
+                        is_responses
+                        and e.code == 400
+                        and disp == "full"
+                        and compact_response_failed_body is None
+                    ):
+                        compact, metrics = _compact_response_failed_request(body)
+                        if compact is not None and metrics is not None:
+                            compact_response_failed_body = compact
+                            compact_response_failed_metrics = metrics
+                            used_response_failed_compaction = True
+                            _log(
+                                f"  req#{request_id} upstream response_failed — compact fallback "
+                                f"bytes={metrics['original_bytes']}->{metrics['compact_bytes']} "
+                                f"inputs={metrics['removed_inputs']} removed/{metrics['retained_inputs']} retained "
+                                f"cache_key_removed={metrics['prompt_cache_key_removed']} for {self.path}"
+                            )
+                            continue
                     # invalid_payload is dmxapi SERVER-SIDE transient flakiness, NOT a
                     # bad body: replaying all 11 captured reject-400 bodies verbatim
                     # later returned 200 (11/11). Empirically ~18% of /responses fail
@@ -766,7 +915,7 @@ class Handler(BaseHTTPRequestHandler):
                             dump = os.path.join(os.path.dirname(LOG_PATH), f"reject-{e.code}-{int(time.time())}.json")
                             with open(dump, "wb") as fh:
                                 fh.write(b"=== SENT BODY ===\n")
-                                fh.write(body or b"(empty)")
+                                fh.write(attempt_body or b"(empty)")
                                 fh.write(b"\n=== UPSTREAM ERROR ===\n")
                                 fh.write(err_body)
                             _log(f"  req#{request_id} dumped rejected request to {dump}")
