@@ -63,15 +63,16 @@ def check_changelog_provenance(releases: list[tuple[str, str]]) -> None:
     if not expected_versions:
         raise ValueError("cannot find a release SemVer tag")
     shallow = _git("rev-parse", "--is-shallow-repository") == "true"
-    locally_available_versions = [version for version in actual_versions if version in expected_versions]
     missing = [version for version in actual_versions if version not in expected_versions]
     if missing and not shallow:
         raise ValueError("release heading has no matching Git tag: " + ", ".join(missing))
-    expected_available_versions = [version for version in expected_versions if version in locally_available_versions]
-    if locally_available_versions != expected_available_versions:
+    if len(actual_versions) != len(set(actual_versions)):
+        raise ValueError("released CHANGELOG headings must not duplicate a version")
+    missing_headings = [version for version in expected_versions if version not in actual_versions]
+    if missing_headings:
         raise ValueError(
-            "locally available release tags must appear once "
-            "in descending SemVer order"
+            "locally available release tags must appear once in CHANGELOG.md: "
+            + ", ".join(missing_headings)
         )
     for version, date in releases:
         if version not in expected_versions:
