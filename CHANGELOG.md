@@ -6,6 +6,18 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+### Fixed
+
+- Treat the classified DMX HTTP 477 `empty_response` contract as a bounded
+  upstream transient. The proxy retries the unchanged request; other 477
+  responses remain visible to the client unchanged.
+
+### Verified
+
+- Added transport-level regression coverage that proves a 477 `empty_response`
+  is retried once with byte-identical request data before a successful response
+  is relayed.
+
 ## [1.0.8] - 2026-07-14
 
 ### Fixed
