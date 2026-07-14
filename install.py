@@ -75,8 +75,8 @@ def build_context(port: int, upstream: str) -> common.InstallContext:
 
 
 def copy_payload(ctx: common.InstallContext) -> None:
-    """Copy proxy/ and watchdog/ into the install dir (overwrite = idempotent)."""
-    for sub in ("proxy", "watchdog"):
+    """Copy the self-contained runtime payload into the install dir."""
+    for sub in ("proxy", "watchdog", "platform_adapters"):
         src = os.path.join(HERE, sub)
         dst = os.path.join(ctx.install_dir, sub)
         os.makedirs(dst, exist_ok=True)
