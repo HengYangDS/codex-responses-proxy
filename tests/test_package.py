@@ -11,9 +11,13 @@ Run: python3 tests/test_package.py
 import os
 import sys
 import tempfile
+import threading
 import unittest
 import json
 import subprocess
+import urllib.error
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -924,6 +928,126 @@ class TestProxySanitize(unittest.TestCase):
         body = json.dumps({"input": [{"type": "message", "content": "hi"}]}).encode()
         out, note = self.p.sanitize_responses_body(body)
         self.assertIn("clean", note)
+
+
+class TestProxyTransport(unittest.TestCase):
+    """Exercise retry behavior through real local HTTP hops."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(ROOT, "proxy"))
+        import dmx_responses_proxy as p
+        self.p = p
+
+    def _serve_proxy(self, responses, log_dir):
+        """Start a scripted upstream and the proxy, returning cleanup state."""
+        received = []
+
+        class UpstreamHandler(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                received.append(self.rfile.read(length))
+                status, payload = responses.pop(0)
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+        upstream = ThreadingHTTPServer(("127.0.0.1", 0), UpstreamHandler)
+        upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        upstream_thread.start()
+
+        old_upstream = self.p.UPSTREAM
+        old_log_path = self.p.LOG_PATH
+        self.p.UPSTREAM = f"http://127.0.0.1:{upstream.server_address[1]}"
+        self.p.LOG_PATH = str(Path(log_dir) / "proxy.log")
+        proxy = self.p._ResilientProxyServer(("127.0.0.1", 0), self.p.Handler)
+        proxy_thread = threading.Thread(target=proxy.serve_forever, daemon=True)
+        proxy_thread.start()
+
+        def cleanup():
+            proxy.shutdown()
+            proxy.server_close()
+            proxy_thread.join(timeout=2)
+            upstream.shutdown()
+            upstream.server_close()
+            upstream_thread.join(timeout=2)
+            self.p.UPSTREAM = old_upstream
+            self.p.LOG_PATH = old_log_path
+
+        return proxy.server_address[1], received, cleanup
+
+    @staticmethod
+    def _request(proxy_port, body):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{proxy_port}/v1/responses",
+            data=body,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request)
+
+    def test_retries_classified_empty_response_with_byte_identical_request(self):
+        empty_response = (
+            b'{"error":{"message":"official provider returned an empty response",'
+            b'"type":"dmx_api_error","code":"empty_response"}}'
+        )
+        success = b'{"id":"resp_recovered","status":"completed"}'
+        body = json.dumps({
+            "model": "gpt-5.6-terra",
+            "stream": False,
+            "input": [{"type": "message", "role": "user", "content": "hello"}],
+        }, separators=(",", ":")).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy(
+                [(477, empty_response), (200, success)], tmp,
+            )
+            try:
+                with mock.patch.object(self.p.time, "sleep", return_value=None):
+                    response = self._request(port, body)
+                    with response:
+                        self.assertEqual(response.status, 200)
+                        self.assertEqual(response.read(), success)
+            finally:
+                cleanup()
+
+        self.assertEqual(received, [body, body])
+
+    def test_normalizes_exhausted_classified_empty_response_to_retryable_503(self):
+        empty_response = (
+            b'{"error":{"message":"official provider returned an empty response",'
+            b'"type":"dmx_api_error","code":"empty_response"}}'
+        )
+        body = json.dumps({
+            "model": "gpt-5.6-terra",
+            "stream": False,
+            "input": [{"type": "message", "role": "user", "content": "hello"}],
+        }, separators=(",", ":")).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy(
+                [(477, empty_response)] * 4, tmp,
+            )
+            try:
+                with mock.patch.object(self.p.time, "sleep", return_value=None):
+                    with self.assertRaises(urllib.error.HTTPError) as raised:
+                        self._request(port, body)
+                error = raised.exception
+                with error:
+                    self.assertEqual(error.code, 503)
+                    self.assertEqual(error.headers["Retry-After"], "3")
+                    payload = json.loads(error.read())
+            finally:
+                cleanup()
+
+        self.assertEqual(received, [body] * 4)
+        self.assertEqual(payload["error"]["type"], "upstream_unavailable")
+        self.assertEqual(payload["error"]["code"], "dmx_empty_response_exhausted")
+        self.assertEqual(payload["error"]["attempts"], 4)
 
     def test_drops_unreplayable_images_and_keeps_text_and_https(self):
         body = json.dumps({
