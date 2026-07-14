@@ -6,8 +6,8 @@ Idempotent, fail-loud, cross-platform (macOS / Linux / Windows). Steps:
   1. Resolve platform + an ABSOLUTE python interpreter (service contexts have no
      shell PATH; a bare "python3" won't resolve).
   2. Locate ~/.codex/config.toml (same path on all three OSes).
-  3. Warn if the Codex desktop app is running (mac/win) — it caches config and
-     will roll back our edit; the user must quit it first.
+  3. Detect a running Codex desktop client (mac/win). An AIGW-owned route is
+     left unchanged; a direct-route edit is reported as pending client reload.
   4. Copy proxy + watchdog into ~/.codex/dmx-proxy/.
   5. Point the Codex provider's base_url at the local proxy (backup first;
      TOML-line-aware rewrite, not a fixed-string sed).
@@ -213,9 +213,10 @@ def main() -> None:
     _say(f"  upstream:    {ctx.upstream}  port: {ctx.port}")
 
     if _codex_running():
-        _say("\n  ⚠ Codex desktop app appears to be RUNNING. It caches config.toml and\n"
-             "    will roll back the base_url edit. Quit Codex fully (⌘Q / close), then\n"
-             "    re-run this installer, and start a NEW Codex thread afterward.\n")
+        _say("\n  ℹ Codex desktop appears to be running. AIGW-owned routes are left\n"
+             "    unchanged. For a proxy-managed direct-route edit, allow the client\n"
+             "    to reload its configuration through its normal lifecycle; existing\n"
+             "    conversations remain unchanged.\n")
 
     _say("[1/4] copying proxy + watchdog ...")
     copy_payload(ctx)
@@ -238,7 +239,8 @@ def main() -> None:
     ok = verify(ctx)
 
     _say("\nDone." if ok else "\nInstalled, but verification did not confirm a 2xx/4xx from the proxy.")
-    _say("Next: fully quit & reopen the Codex app (mac/win), then start a NEW thread.")
+    _say("Next: inspect `control.py status --json`. Existing conversations remain unchanged; "
+         "validate the original conversation separately when the client has reloaded its configuration.")
 
 
 if __name__ == "__main__":
