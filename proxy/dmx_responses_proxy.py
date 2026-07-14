@@ -43,6 +43,7 @@ import socket
 import threading
 import urllib.request
 import urllib.error
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 UPSTREAM = os.environ.get("DMX_UPSTREAM", "https://www.dmxapi.cn").rstrip("/")
@@ -180,7 +181,20 @@ def _strip_encrypted(obj):
 
 def _is_replayable_remote_image_url(value):
     """True only for URL schemes the third-party Responses endpoint accepts."""
-    return isinstance(value, str) and value.startswith(("https://", "http://"))
+    if not isinstance(value, str) or not value:
+        return False
+    if any(character.isspace() or ord(character) < 32 for character in value):
+        return False
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        # Accessing .port validates an explicit port and raises ValueError when
+        # it is non-numeric or outside the valid TCP range.
+        _ = parsed.port
+    except ValueError:
+        return False
+    return True
 
 
 def _strip_unreplayable_images(obj):
