@@ -6,15 +6,32 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-07-14
+
+### Fixed
+
+- Apply staged, strictly shrinking pair-safe fallback attempts after an explicit
+  upstream `response_failed`, including failures whose original request is
+  already below the ordinary compaction ceiling. Each fallback retains the
+  latest user context and complete tool call/output pairs.
+- Preserve a compacted request during a pre-content SSE reconnect instead of
+  reopening the original rejected replay body.
+
+### Verified
+
+- Added regression coverage for sub-budget failures, impossible target budgets,
+  staged reduction, pair integrity, latest-user retention, and fallback-only
+  cache-key removal.
+
 ## [1.0.7] - 2026-07-14
 
 ### Fixed
 
 - When an upstream gateway explicitly returns HTTP 400 with a Responses
-  `response_failed` execution error, make one adaptive fallback for oversized
-  replay context: remove only the oldest contiguous input prefix, preserve the
-  latest user context and complete tool call/output pairs, and remove the stale
-  `prompt_cache_key` only from the fallback. Ordinary client-side 400 errors
+  `response_failed` execution error, make up to three strictly shrinking adaptive fallbacks for replay context: remove
+  only the oldest contiguous input prefix, preserve the latest user context and
+  complete tool call/output pairs, and remove the stale `prompt_cache_key` only
+  from fallback requests. Ordinary client-side 400 errors
   remain non-retryable.
 
 ### Verified

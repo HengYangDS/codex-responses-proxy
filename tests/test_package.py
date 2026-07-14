@@ -748,16 +748,23 @@ class TestProxySanitize(unittest.TestCase):
 
         self.assertIsNotNone(compact)
         self.assertIsNotNone(detail)
-        self.assertEqual(detail["removed_inputs"], 1)
+        self.assertGreaterEqual(detail["removed_inputs"], 1)
         self.assertLessEqual(len(compact), self.p.RESPONSE_FAILED_COMPACTION_BUDGET)
         obj = json.loads(compact)
         self.assertNotIn("prompt_cache_key", obj)
         self.assertEqual(obj["input"][-1]["content"], "latest user context must survive")
-        retained = {(item["type"], item.get("call_id")) for item in obj["input"]}
-        self.assertIn(("custom_tool_call", "custom-1"), retained)
-        self.assertIn(("custom_tool_call_output", "custom-1"), retained)
-        self.assertIn(("function_call", "function-1"), retained)
-        self.assertIn(("function_call_output", "function-1"), retained)
+        calls = {
+            item["call_id"]
+            for item in obj["input"]
+            if item.get("type") in ("custom_tool_call", "function_call")
+        }
+        outputs = {
+            item["call_id"]
+            for item in obj["input"]
+            if item.get("type") in ("custom_tool_call_output", "function_call_output")
+        }
+        self.assertTrue(outputs.issubset(calls))
+        self.assertIn("function-1", calls)
 
     def test_response_failed_compaction_never_starts_at_an_orphaned_tool_output(self):
         body = json.dumps({
@@ -812,6 +819,62 @@ class TestProxySanitize(unittest.TestCase):
         self.assertEqual(detail["removed_inputs"], 1)
         obj = json.loads(compact)
         self.assertEqual(obj["input"][0]["content"], "latest user context")
+
+    def test_response_failed_compaction_reduces_an_already_sub_budget_failure(self):
+        body = json.dumps({
+            "prompt_cache_key": "stale-full-history-key",
+            "input": [
+                {"type": "message", "role": "user", "content": "old" + "x" * 280_000},
+                {"type": "message", "role": "user", "content": "latest user context"},
+                {
+                    "type": "custom_tool_call",
+                    "call_id": "latest-call",
+                    "name": "exec",
+                    "input": "{}",
+                },
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": "latest-call",
+                    "output": "y" * 180_000,
+                },
+            ],
+        }).encode()
+        self.assertLess(len(body), self.p.RESPONSE_FAILED_COMPACTION_BUDGET)
+
+        compact, detail = self.p._compact_response_failed_request(body)
+
+        self.assertIsNotNone(compact)
+        self.assertLessEqual(len(compact), len(body) // 2)
+        self.assertEqual(detail["removed_inputs"], 1)
+        self.assertNotIn("prompt_cache_key", json.loads(compact))
+
+    def test_response_failed_compaction_uses_smallest_safe_suffix_when_budget_is_impossible(self):
+        body = json.dumps({
+            "input": [
+                {"type": "message", "role": "user", "content": "old context"},
+                {"type": "message", "role": "user", "content": "latest user context"},
+                {
+                    "type": "custom_tool_call",
+                    "call_id": "latest-call",
+                    "name": "exec",
+                    "input": "{}",
+                },
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": "latest-call",
+                    "output": "y" * 220_000,
+                },
+            ],
+        }).encode()
+
+        compact, detail = self.p._compact_response_failed_request(body, budget=20_000)
+
+        self.assertIsNotNone(compact)
+        self.assertFalse(detail["budget_met"])
+        self.assertLess(len(compact), len(body))
+        obj = json.loads(compact)
+        self.assertEqual(obj["input"][0]["content"], "latest user context")
+        self.assertTrue(self.p._tool_pair_boundary_is_safe(obj["input"], 0))
 
     def test_response_failed_compaction_is_a_noop_when_no_safe_suffix_fits(self):
         body = json.dumps({

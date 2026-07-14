@@ -32,9 +32,9 @@ replayed Codex state, for example:
 
 The adapter removes only deterministically incompatible outbound replay state.
 For an explicit upstream `response_failed` rejection of a large request, it makes
-one fallback that removes only the oldest contiguous, tool-pair-safe input prefix,
-retains the latest user context, and drops the stale `prompt_cache_key` from that
-fallback only. It preserves valid typed encrypted-content blocks, complete tool
+up to three strictly smaller fallbacks that each remove only the oldest contiguous,
+tool-pair-safe input prefix, retain the latest user context, and drop the stale
+`prompt_cache_key` from fallback requests only. It preserves valid typed encrypted-content blocks, complete tool
 calls and outputs, text, and remote image URLs. It is not a general request
 transformer or a replacement for an upstream service with persistent failures.
 
@@ -131,7 +131,7 @@ rejections are returned unchanged.
 | Symptom | First check | Boundary |
 | --- | --- | --- |
 | Encrypted replay error | `control.py status --json` | Confirm a healthy listener and enabled route before investigating history. |
-| Upstream `response_failed` | Proxy log and request ID | After the explicit 400, the proxy makes one pair-safe compact fallback for an oversized replay; unrelated 400 responses remain unchanged. |
+| Upstream `response_failed` | Proxy log and request ID | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts; unrelated 400 responses remain unchanged. |
 | SSE closes before completion | Proxy log | The proxy retries only before sending substantive bytes downstream. |
 | Client ignores a route change | Client configuration lifecycle | A running client may need its normal reload; the proxy does not restart it. |
 
