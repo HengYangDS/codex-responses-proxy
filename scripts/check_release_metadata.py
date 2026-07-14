@@ -52,19 +52,19 @@ def _git(*args: str) -> str:
 
 
 def check_changelog_provenance(releases: list[tuple[str, str]]) -> None:
-    """Require exact, dated Changelog coverage for every reachable release tag."""
+    """Require exact, dated Changelog coverage for every locally known release tag."""
 
     actual_versions = [version for version, _ in releases]
     expected_versions = [
         tag.removeprefix("v")
-        for tag in _git("tag", "--merged", "HEAD", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
+        for tag in _git("tag", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
         if re.fullmatch(r"v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", tag)
     ]
     if not expected_versions:
-        raise ValueError("cannot find a reachable release SemVer tag")
+        raise ValueError("cannot find a release SemVer tag")
     if actual_versions != expected_versions:
         raise ValueError(
-            "published CHANGELOG headings must list each reachable release tag once "
+            "published CHANGELOG headings must list each known release tag once "
             "in descending SemVer order"
         )
     for version, date in releases:
