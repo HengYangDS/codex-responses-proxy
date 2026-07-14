@@ -1,0 +1,286 @@
+# codex-dmx-proxy v1.0.2 Hardening Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Publish a verified `v1.0.2` hardening release that fixes image replay,
+Windows launcher propagation, safe uninstall behavior, release metadata, and CI.
+
+**Architecture:** The Python stdlib proxy remains the sole outbound payload
+transformer. Platform adapters generate service definitions, while installer
+state supplies safe reversible configuration management. `VERSION` defines the
+release identity for runtime, validation, tag, and GitLab Release.
+
+**Tech Stack:** Python 3.12–3.14 standard library, GitLab CI, Git tags/releases,
+macOS launchd, Linux user systemd/cron, Windows Task Scheduler.
+
+## Global Constraints
+
+- Keep the proxy independent from AIGW; AIGW must not own proxy process lifecycle.
+- Mutate only outbound `/responses` bodies; never rewrite Codex sessions or state.
+- Support Python 3.12, 3.13, and 3.14; add no third-party dependency.
+- Treat `VERSION` as the release single source of truth.
+- Keep secrets and request bodies out of version control and default logs.
+
+---
+
+### Task 1: Strict replay-image URL validation
+
+**Files:**
+- Modify: `proxy/dmx_responses_proxy.py:38-46,181-273`
+- Modify: `tests/test_package.py:128-204`
+
+**Interfaces:**
+- Produces: `_is_replayable_remote_image_url(value: object) -> bool`
+- Produces: `sanitize_responses_body(raw: bytes) -> tuple[bytes, str]`
+
+- [ ] **Step 1: Write failing cases for malformed remote-looking URLs**
+
+```python
+for bad in ("https://", "https://bad host/a.png", "http:///missing-host",
+            "https://example.test:not-a-port/a.png", "data:image/png;base64,x"):
+    # sanitizer removes the image item
+```
+
+- [ ] **Step 2: Run package tests and confirm the old prefix-only predicate fails**
+
+Run: `python3.14 tests/test_package.py`
+Expected: the new test fails because one or more malformed `https://` strings remain.
+
+- [ ] **Step 3: Implement deterministic URL validation**
+
+```python
+parts = urllib.parse.urlsplit(value)
+return (
+    parts.scheme in {"http", "https"}
+    and bool(parts.hostname)
+    and not any(char.isspace() or ord(char) < 32 for char in value)
+    and _valid_optional_port(parts)
+)
+```
+
+Catch `ValueError` from port parsing and return `False`; retain valid HTTP(S)
+URLs without DNS/network checks.
+
+- [ ] **Step 4: Re-run full tests on Python 3.12, 3.13, and 3.14**
+
+Run: `for py in python3.12 python3.13 python3.14; do $py -m unittest -v tests/test_package.py; done`
+Expected: all test cases pass on each interpreter.
+
+- [ ] **Step 5: Commit the isolated sanitizer change**
+
+```bash
+git add proxy/dmx_responses_proxy.py tests/test_package.py
+git commit -m "fix: validate replayed image URLs"
+```
+
+### Task 2: Make Windows scheduled restarts use the generated launcher
+
+**Files:**
+- Modify: `platform_adapters/windows.py:20-124`
+- Modify: `tests/test_package.py:103-204`
+
+**Interfaces:**
+- Produces: `render_launcher(ctx: InstallContext) -> str`
+- Produces: `render_task_xml(ctx: InstallContext) -> str`
+
+- [ ] **Step 1: Write a failing generated-artifact test**
+
+```python
+xml = windows.render_task_xml(_ctx(port=8801, upstream="https://alternate.example"))
+launcher = windows.render_launcher(_ctx(port=8801, upstream="https://alternate.example"))
+assert "run-watchdog.cmd" in xml
+assert "DMX_PROXY_PORT=8801" in launcher
+assert "DMX_UPSTREAM=https://alternate.example" in launcher
+```
+
+- [ ] **Step 2: Run the test and confirm the XML currently invokes watchdog.py directly**
+
+Run: `python3.14 tests/test_package.py`
+Expected: failure because the generated Task XML omits `run-watchdog.cmd`.
+
+- [ ] **Step 3: Implement launcher-first Task XML with XML escaping**
+
+Generate the command launcher before XML import. Have Task Scheduler execute
+`%ComSpec% /d /c ""<launcher>""`; put all dynamic XML fields through
+`xml.sax.saxutils.escape`. Generate launcher `set "NAME=value"` lines before
+the absolute `pythonw.exe watchdog.py` invocation.
+
+- [ ] **Step 4: Re-run package tests and compile check**
+
+Run: `python3.14 tests/test_package.py && python3.14 -m compileall -q platform_adapters`
+Expected: all package tests pass and no compile errors.
+
+- [ ] **Step 5: Commit the Windows service fix**
+
+```bash
+git add platform_adapters/windows.py tests/test_package.py
+git commit -m "fix: preserve Windows proxy launcher environment"
+```
+
+### Task 3: Harden installation state, route activation, and targeted uninstall
+
+**Files:**
+- Modify: `platform_adapters/common.py:18-193`
+- Modify: `install.py:77-141`
+- Modify: `uninstall.py:28-52`
+- Create: `control.py`
+- Modify: `tests/test_package.py:1-204`
+
+**Interfaces:**
+- Produces: `write_install_state(ctx, backup_path) -> None`
+- Produces: `load_install_state(ctx) -> dict | None`
+- Produces: `remove_install_state(ctx) -> None`
+- Produces: `control.py enable|disable|status`
+- Produces: `_stop_proxy(port: int) -> None`
+
+- [ ] **Step 1: Write failing tests for managed-state restore eligibility**
+
+```python
+state = {"config_path": str(config), "backup_path": str(backup), "proxy_url": proxy_url}
+# Restore only when config currently contains proxy_url and backup is a sibling .bak-N file.
+# Missing state or changed config preserves current bytes.
+```
+
+- [ ] **Step 2: Write failing tests for the reversible activation switch**
+
+```python
+# A state-recorded direct URL changes to proxy URL on enable and back on disable.
+# status is enabled, disabled, or drifted; a manual unrelated config change is never overwritten.
+```
+
+- [ ] **Step 3: Write a failing test that deployed payload includes VERSION and control.py**
+
+```python
+install.copy_payload(ctx)
+assert (Path(ctx.install_dir) / "VERSION").read_text().strip() == "1.0.2"
+assert (Path(ctx.install_dir) / "control.py").is_file()
+```
+
+- [ ] **Step 4: Implement atomic, non-secret state handling and control.py**
+
+Write JSON through a temporary file and `os.replace`; validate state before a
+restore. Record direct and loopback URLs for each managed config field. Create
+state before the config write and remove it if the config write fails. Retain
+legacy `.bak-*` files but never select them without managed state. `control.py`
+uses that state to implement `enable`, `disable`, and read-only `status`; it
+backs up configuration before each route change and fails closed on drift.
+
+- [ ] **Step 5: Replace broad process killing with port-scoped identification**
+
+On POSIX find the port listener, confirm its command contains
+`dmx_responses_proxy.py`, then terminate only that PID. On Windows discover the
+listening PID through `netstat -ano`, verify the command line through PowerShell
+`Get-CimInstance`, and terminate only a matching proxy PID. When proof is not
+available, log a warning and do not kill a process.
+
+- [ ] **Step 6: Run package tests and isolated installer-state tests**
+
+Run: `python3.14 tests/test_package.py`
+Expected: all tests pass; no test permits broad `pythonw.exe` process termination.
+
+- [ ] **Step 7: Commit safe lifecycle management**
+
+```bash
+git add platform_adapters/common.py install.py uninstall.py control.py tests/test_package.py VERSION
+git commit -m "feat: add reversible proxy route control"
+```
+
+### Task 4: Version, CI, and canonical documentation
+
+**Files:**
+- Create: `VERSION`
+- Create: `scripts/check_release_metadata.py`
+- Create: `.gitlab-ci.yml`
+- Create: `docs/reviews/2026-07-14-v1.0.2-hardening-review.md`
+- Modify: `proxy/dmx_responses_proxy.py:544-547,773-787`
+- Modify: `README.md`
+- Modify: `CHANGELOG.md`
+- Modify: `docs/specs/2026-07-08-codex-dmx-proxy-design.md`
+- Modify: `tests/test_package.py`
+
+**Interfaces:**
+- Produces: `release_version() -> str` from deployed `VERSION`
+- Produces: `python scripts/check_release_metadata.py [--tag v1.0.2]`
+
+- [ ] **Step 1: Add a failing metadata test/check for mismatched version data**
+
+```python
+assert Path("VERSION").read_text().strip() == "1.0.2"
+assert "## [1.0.2]" in Path("CHANGELOG.md").read_text()
+```
+
+- [ ] **Step 2: Implement the release single source of truth**
+
+Add `VERSION` with `1.0.2`; copy it into installation payload; derive proxy
+`server_version` from it; add metadata validation for SemVer, changelog match,
+and optional exact tag match.
+
+- [ ] **Step 3: Add GitLab CI matrix and release rule**
+
+Use Python 3.12/3.13/3.14 jobs for `compileall` and package tests. Add a
+metadata job for all changes and a tag-only job that requires `CI_COMMIT_TAG`
+to be exactly `v<VERSION>`.
+
+- [ ] **Step 4: Refresh canonical docs and review record**
+
+Update all clone/repository links to `dig/misc/llm-third-party-api`; describe
+image URL constraints, Windows launcher behavior, safe uninstall state, and a
+reproducible `VERSION → CI → tag → GitLab Release` process. Record every review
+finding, disposition, evidence, and environmental limitation.
+
+- [ ] **Step 5: Run metadata checker and full interpreter matrix**
+
+Run:
+```bash
+python3.14 scripts/check_release_metadata.py
+for py in python3.12 python3.13 python3.14; do $py -m compileall -q . && $py tests/test_package.py; done
+```
+Expected: zero failures.
+
+- [ ] **Step 6: Commit release infrastructure and documentation**
+
+```bash
+git add VERSION scripts/check_release_metadata.py .gitlab-ci.yml README.md CHANGELOG.md docs tests proxy
+git commit -m "chore: prepare v1.0.2 hardening release"
+```
+
+### Task 5: Release proof and publication
+
+**Files:**
+- Verify: all tracked files and deployment payload
+
+- [ ] **Step 1: Perform final repository review and integrity checks**
+
+Run:
+```bash
+git diff --check
+git fsck --full --no-reflogs
+python3.14 scripts/check_release_metadata.py --tag v1.0.2
+```
+Expected: clean output and successful tag metadata validation after tagging.
+
+- [ ] **Step 2: Run the full local verification matrix**
+
+Run all Python 3.12–3.14 compile and unit-test jobs, inspect the active loopback
+proxy process, compare installed and repository payload checksums, replay the
+captured invalid-image request through a controlled local upstream, and run
+`aigw doctor`, `aigw check`, and authenticated Codex verification.
+
+- [ ] **Step 3: Push commit and verify GitLab CI**
+
+Push `main`; inspect the GitLab pipeline for the exact commit and require green
+matrix and metadata jobs before release.
+
+- [ ] **Step 4: Tag and publish**
+
+```bash
+git tag -a v1.0.2 -m "codex-dmx-proxy v1.0.2"
+git push origin v1.0.2
+glab release create v1.0.2 --name "v1.0.2" --notes-file CHANGELOG.md
+```
+
+- [ ] **Step 5: Verify remote release identity**
+
+Confirm GitLab `main`, annotated tag, release object, `VERSION`, changelog,
+and deployment payload agree on `1.0.2`; record exact commands and results in
+the review record.
