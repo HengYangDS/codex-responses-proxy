@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import subprocess
 import getpass
+from xml.sax.saxutils import escape as xml_escape
 
 from . import common
 
@@ -50,8 +51,8 @@ TASK_XML_TEMPLATE = """<?xml version="1.0" encoding="UTF-16"?>
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>{pythonw}</Command>
-      <Arguments>"{watchdog}"</Arguments>
+      <Command>{comspec}</Command>
+      <Arguments>/d /c ""{launcher}""</Arguments>
       <WorkingDirectory>{workdir}</WorkingDirectory>
     </Exec>
   </Actions>
@@ -69,34 +70,43 @@ def _xml_path(ctx: common.InstallContext) -> str:
     return os.path.join(ctx.install_dir, f"{TASK_NAME}.xml")
 
 
+def _launcher_path(ctx: common.InstallContext) -> str:
+    return os.path.join(ctx.install_dir, "run-watchdog.cmd")
+
+
+def render_launcher(ctx: common.InstallContext) -> str:
+    """Render the only process entry point that carries watchdog configuration."""
+    pythonw = common.windows_pythonw(ctx.python)
+    return (
+        "@echo off\r\n"
+        "setlocal\r\n"
+        f'set "DMX_PROXY_PORT={ctx.port}"\r\n'
+        f'set "DMX_UPSTREAM={ctx.upstream}"\r\n'
+        f'set "DMX_PROXY_PYTHON={ctx.python}"\r\n'
+        f'set "DMX_PROXY_SCRIPT={ctx.proxy_script}"\r\n'
+        f'"{pythonw}" "{ctx.watchdog_script}"\r\n'
+    )
+
+
 def render_task_xml(ctx: common.InstallContext) -> str:
     return TASK_XML_TEMPLATE.format(
-        user=_current_user(),
-        pythonw=common.windows_pythonw(ctx.python),
-        watchdog=ctx.watchdog_script,
-        workdir=ctx.install_dir,
+        user=xml_escape(_current_user()),
+        comspec=xml_escape(os.environ.get("ComSpec", r"C:\\Windows\\System32\\cmd.exe")),
+        launcher=xml_escape(_launcher_path(ctx)),
+        workdir=xml_escape(ctx.install_dir),
     )
 
 
 def install(ctx: common.InstallContext) -> None:
     xml_path = _xml_path(ctx)
+    launcher = _launcher_path(ctx)
+    # The Task executes this launcher, so every future scheduled restart retains
+    # the installer-selected port, upstream, interpreter, and proxy path.
+    with open(launcher, "w", encoding="utf-8", newline="") as fh:
+        fh.write(render_launcher(ctx))
     # Task Scheduler is happiest importing UTF-16 XML.
     with open(xml_path, "w", encoding="utf-16") as fh:
         fh.write(render_task_xml(ctx))
-
-    # Persist the watchdog env for the proxy the task will spawn. The task runs the
-    # watchdog which reads these from its own process env; since the task XML can't
-    # easily carry env, we write a tiny launcher .cmd that sets them then runs python.
-    launcher = os.path.join(ctx.install_dir, "run-watchdog.cmd")
-    with open(launcher, "w", encoding="utf-8") as fh:
-        fh.write(
-            "@echo off\r\n"
-            f'set DMX_PROXY_PORT={ctx.port}\r\n'
-            f'set DMX_UPSTREAM={ctx.upstream}\r\n'
-            f'set DMX_PROXY_PYTHON={ctx.python}\r\n'
-            f'set DMX_PROXY_SCRIPT={ctx.proxy_script}\r\n'
-            f'"{common.windows_pythonw(ctx.python)}" "{ctx.watchdog_script}"\r\n'
-        )
 
     subprocess.run(["schtasks", "/delete", "/tn", TASK_NAME, "/f"],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
