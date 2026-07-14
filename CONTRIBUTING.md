@@ -1,0 +1,38 @@
+# Contributing to Codex DMX Proxy
+
+## Scope and boundaries
+
+Keep changes within the proxy's data-plane and lifecycle responsibilities. Do
+not make AIGW manage the proxy process. Do not make the proxy rewrite AIGW-owned
+marked configuration. Do not alter Codex sessions, archives, SQLite, or model
+metadata as a workaround for upstream replay incompatibility.
+
+## Local workflow
+
+Use an isolated Git worktree. Keep user-owned dirty checkouts untouched. This
+repository has no third-party runtime dependency; ordinary reading and editing
+requires no local installer beyond a supported Python interpreter.
+
+```bash
+python scripts/check_release_metadata.py
+for py in python3.12 python3.13 python3.14; do
+  "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py tests scripts
+  "$py" tests/test_package.py
+done
+```
+
+Add a failing regression before production behavior changes. Tests must not
+require real user credentials, a live third-party endpoint, or a mutation of
+`~/.codex`.
+
+## Change and release discipline
+
+Use focused Conventional Commits (`fix:`, `feat:`, `docs:`, `ci:`). `VERSION`
+is the release source of truth. Keep `CHANGELOG.md` in this order:
+
+1. `## [Unreleased]` immediately below the introduction;
+2. released SemVer headings in descending order, each dated;
+3. no release claims without executable evidence.
+
+GitLab **Project Name** is the human-facing `Codex DMX Proxy`; its stable clone
+**Path** remains `codex-dmx-proxy`. Never change the Path as a cosmetic rename.

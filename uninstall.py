@@ -26,64 +26,29 @@ def _say(msg: str) -> None:
 
 
 def _listener_pids(port: int) -> list[int]:
-    """Return only PIDs listening on the requested loopback TCP port."""
-    try:
-        if os.name == "nt":
-            output = subprocess.run(
-                ["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True,
-            ).stdout
-            pids = []
-            for line in output.splitlines():
-                fields = line.split()
-                if len(fields) >= 5 and fields[1].endswith(f":{port}") and fields[3].upper() == "LISTENING":
-                    try:
-                        pids.append(int(fields[-1]))
-                    except ValueError:
-                        pass
-            return pids
-        output = subprocess.run(
-            ["lsof", "-tiTCP:" + str(port), "-sTCP:LISTEN"],
-            capture_output=True, text=True,
-        ).stdout
-        return [int(value) for value in output.split() if value.isdigit()]
-    except Exception:
-        return []
+    """Compatibility wrapper for the shared listener probe."""
+    return common.listener_pids(port)
 
 
 def _process_command(pid: int) -> str:
-    try:
-        if os.name == "nt":
-            command = (
-                "$p=Get-CimInstance Win32_Process -Filter \"ProcessId=" + str(pid) + "\";"
-                "if ($p) {$p.CommandLine}"
-            )
-            return subprocess.run(
-                ["powershell", "-NoProfile", "-Command", command],
-                capture_output=True, text=True,
-            ).stdout.strip()
-        return subprocess.run(
-            ["ps", "-p", str(pid), "-o", "command="], capture_output=True, text=True,
-        ).stdout.strip()
-    except Exception:
-        return ""
+    """Compatibility wrapper for the shared command probe."""
+    return common.process_command(pid)
 
 
 def _terminate_pid(pid: int) -> None:
-    if os.name == "nt":
-        subprocess.run(["taskkill", "/pid", str(pid), "/f"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    """Compatibility wrapper for precise termination."""
+    common.terminate_pid(pid)
+
+
+def _stop_proxy(port: int, *, ctx: common.InstallContext | None = None) -> int:
+    """Terminate only listeners verified against this installed proxy script."""
+    if ctx is not None:
+        pids = common.verified_proxy_listener_pids(ctx)
     else:
-        subprocess.run(["kill", "-TERM", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
-def _stop_proxy(port: int) -> int:
-    """Terminate only a port listener proven to be this proxy. Returns count."""
-    stopped = 0
-    for pid in _listener_pids(port):
-        if "dmx_responses_proxy.py" not in _process_command(pid):
-            continue
+        pids = [pid for pid in _listener_pids(port) if "dmx_responses_proxy.py" in _process_command(pid)]
+    for pid in pids:
         _terminate_pid(pid)
-        stopped += 1
-    return stopped
+    return len(pids)
 
 
 def restore_config(ctx: common.InstallContext) -> bool:
@@ -139,16 +104,22 @@ def main() -> None:
     except common.InstallError as exc:
         ap.error(str(exc))
 
-    adapter = pick_adapter()
     codex_home = common.codex_home()
+    install_dir = os.path.join(codex_home, "dmx-proxy")
     ctx = common.InstallContext(
         home=os.path.dirname(codex_home),
-        install_dir=os.path.join(codex_home, "dmx-proxy"),
-        proxy_script="", watchdog_script="", python="",
+        install_dir=install_dir,
+        proxy_script=os.path.join(install_dir, "proxy", "dmx_responses_proxy.py"),
+        watchdog_script=os.path.join(install_dir, "watchdog", "watchdog.py"),
+        python=sys.executable,
         codex_config=os.path.join(codex_home, "config.toml"),
         log_dir=os.path.join(codex_home, "log"),
         port=args.port,
     )
+
+    if common.route_authority(ctx) == "aigw":
+        raise SystemExit("ERROR: AIGW owns the active route; change the route with AIGW before uninstalling the proxy.")
+    adapter = pick_adapter()
 
     _say("Uninstalling codex-dmx-proxy ...")
     if not args.keep_config:
@@ -162,7 +133,7 @@ def main() -> None:
         adapter.uninstall(ctx)
     except Exception as e:
         _say(f"  (service removal note: {e})")
-    _stop_proxy(args.port)
+    _stop_proxy(args.port, ctx=ctx)
 
     if args.purge:
         _say("[3/3] removing install dir ...")

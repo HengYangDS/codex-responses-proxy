@@ -90,6 +90,7 @@ def copy_payload(ctx: common.InstallContext) -> None:
     os.makedirs(ctx.log_dir, exist_ok=True)
     for name in ("control.py", "VERSION"):
         shutil.copy2(os.path.join(HERE, name), os.path.join(ctx.install_dir, name))
+    common.write_payload_manifest(ctx)
 
 
 def wire_config(ctx: common.InstallContext) -> bool:
@@ -101,6 +102,9 @@ def wire_config(ctx: common.InstallContext) -> bool:
         text = fh.read()
 
     proxy_url = common.proxy_base_url(ctx.port)
+    if common.route_authority(ctx) == "aigw":
+        _say("  AIGW owns the marked provider projection; leaving config as-is.")
+        return True
     current = common.read_base_urls(text)
     state = common.load_install_state(ctx)
     if state is not None and common.route_status(ctx, state) == "enabled":

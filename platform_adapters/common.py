@@ -15,6 +15,7 @@ import subprocess
 import json
 import hashlib
 import urllib.parse
+import time
 from dataclasses import dataclass, field
 
 
@@ -24,6 +25,10 @@ DEFAULT_UPSTREAM = "https://www.dmxapi.cn"
 INSTALL_DIRNAME = os.path.join(".codex", "dmx-proxy")   # under $HOME
 STATE_FILENAME = "install-state.json"
 STATE_SCHEMA_VERSION = 2
+PAYLOAD_MANIFEST_FILENAME = "payload-manifest.json"
+PAYLOAD_MANIFEST_SCHEMA_VERSION = 1
+AIGW_PROVIDER_BEGIN = "# >>> AIGW managed provider >>>"
+AIGW_PROVIDER_END = "# <<< AIGW managed provider <<<"
 
 
 class UnsupportedPlatform(RuntimeError):
@@ -448,3 +453,180 @@ def backup_file(path: str) -> str:
             shutil.copy2(path, cand)
             return cand
         n += 1
+def _read_text(path: str) -> str:
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def payload_manifest_path(ctx: InstallContext) -> str:
+    """Return the installed runtime payload manifest path."""
+    return os.path.join(ctx.install_dir, PAYLOAD_MANIFEST_FILENAME)
+
+
+def _payload_relative_paths(root: str) -> list[str]:
+    """List the executable runtime projection, excluding mutable state and secrets."""
+    result: list[str] = []
+    for current_root, dirs, files in os.walk(root):
+        dirs[:] = sorted(name for name in dirs if name != "__pycache__")
+        for name in sorted(files):
+            if not name.endswith(".py") and name not in {"VERSION"}:
+                continue
+            path = os.path.join(current_root, name)
+            result.append(os.path.relpath(path, root).replace(os.sep, "/"))
+    return sorted(result)
+
+
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        while True:
+            chunk = fh.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_payload_manifest(ctx: InstallContext) -> str:
+    """Write a deterministic manifest for the installed executable payload.
+
+    The manifest deliberately excludes configuration, backups, logs, request data,
+    tokens, and installation state.  It is provenance for the re-creatable runtime
+    projection, not a snapshot of user state.
+    """
+    files = _payload_relative_paths(ctx.install_dir)
+    if not files:
+        raise InstallError("installed payload is empty; refusing to write manifest")
+    manifest = {
+        "schema_version": PAYLOAD_MANIFEST_SCHEMA_VERSION,
+        "release": _read_text(os.path.join(ctx.install_dir, "VERSION")).strip(),
+        "files": {
+            relative: _sha256_file(os.path.join(ctx.install_dir, relative))
+            for relative in files
+        },
+    }
+    _atomic_write_text(
+        payload_manifest_path(ctx),
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+    )
+    return payload_manifest_path(ctx)
+
+
+def verify_payload_manifest(ctx: InstallContext) -> tuple[bool, str]:
+    """Verify the installed executable projection without reading user config."""
+    path = payload_manifest_path(ctx)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            manifest = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, f"manifest unavailable: {exc}"
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != PAYLOAD_MANIFEST_SCHEMA_VERSION:
+        return False, "manifest schema is unsupported"
+    release = manifest.get("release")
+    files = manifest.get("files")
+    if not isinstance(release, str) or not release or not isinstance(files, dict) or not files:
+        return False, "manifest is incomplete"
+    version_path = os.path.join(ctx.install_dir, "VERSION")
+    try:
+        installed_release = _read_text(version_path).strip()
+    except OSError as exc:
+        return False, f"installed VERSION unavailable: {exc}"
+    if installed_release != release:
+        return False, f"release mismatch: manifest={release} installed={installed_release}"
+    expected_files = _payload_relative_paths(ctx.install_dir)
+    if sorted(files) != expected_files:
+        return False, "manifest file set mismatch"
+    for relative, expected in files.items():
+        if not isinstance(expected, str) or len(expected) != 64:
+            return False, f"invalid digest: {relative}"
+        path = os.path.join(ctx.install_dir, *relative.split("/"))
+        try:
+            actual = _sha256_file(path)
+        except OSError as exc:
+            return False, f"payload unavailable: {relative}: {exc}"
+        if actual != expected:
+            return False, f"hash mismatch: {relative}"
+    return True, f"release {release}; {len(files)} files verified"
+
+
+def route_authority(ctx: InstallContext) -> str:
+    """Return the configuration authority visible at the Codex target.
+
+    A marked AIGW provider projection remains AIGW-owned whether it is currently
+    direct or loopback.  A proxy may operate an explicit ``aigw_endpoint`` mode,
+    but it still delegates mutations to AIGW rather than treating that projection
+    as proxy-owned configuration.
+    """
+    try:
+        text = _read_text(ctx.codex_config)
+    except OSError:
+        return "unmanaged"
+    start = text.find(AIGW_PROVIDER_BEGIN)
+    end = text.find(AIGW_PROVIDER_END)
+    if start >= 0 and end > start:
+        block = text[start:end + len(AIGW_PROVIDER_END)]
+        if "[model_providers.aigw]" in block and "base_url" in block:
+            return "aigw"
+    if load_install_state(ctx) is not None:
+        return "proxy"
+    return "unmanaged"
+
+
+def listener_pids(port: int) -> list[int]:
+    """Return PIDs listening on ``port``; identity verification is separate."""
+    try:
+        if os.name == "nt":
+            output = subprocess.run(
+                ["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True, check=False,
+            ).stdout
+            pids = []
+            for line in output.splitlines():
+                fields = line.split()
+                if len(fields) >= 5 and fields[1].endswith(f":{port}") and fields[3].upper() == "LISTENING":
+                    try:
+                        pids.append(int(fields[-1]))
+                    except ValueError:
+                        pass
+            return pids
+        output = subprocess.run(
+            ["lsof", "-tiTCP:" + str(port), "-sTCP:LISTEN"], capture_output=True, text=True, check=False,
+        ).stdout
+        return [int(value) for value in output.split() if value.isdigit()]
+    except Exception:
+        return []
+
+
+def process_command(pid: int) -> str:
+    """Return a process command line for identity proof, or an empty string."""
+    try:
+        if os.name == "nt":
+            command = (
+                "$p=Get-CimInstance Win32_Process -Filter \"ProcessId=" + str(pid) + "\";"
+                "if ($p) {$p.CommandLine}"
+            )
+            return subprocess.run(
+                ["powershell", "-NoProfile", "-Command", command],
+                capture_output=True, text=True, check=False,
+            ).stdout.strip()
+        return subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="], capture_output=True, text=True, check=False,
+        ).stdout.strip()
+    except Exception:
+        return ""
+
+
+def verified_proxy_listener_pids(ctx: InstallContext) -> list[int]:
+    """Return only listeners whose command line names this installed proxy script."""
+    expected = os.path.abspath(ctx.proxy_script)
+    return [
+        pid for pid in listener_pids(ctx.port)
+        if expected in os.path.abspath(process_command(pid))
+    ]
+
+
+def terminate_pid(pid: int) -> None:
+    """Request termination of one already-verified listener PID."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/pid", str(pid), "/f"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    else:
+        subprocess.run(["kill", "-TERM", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
