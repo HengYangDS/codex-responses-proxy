@@ -27,6 +27,7 @@ verify-release-metadata:
   image: python:3.14-slim
   script:
     - python scripts/check_release_metadata.py
+    - python scripts/test_release_metadata.py
 
 verify-release-tag:
   stage: release
