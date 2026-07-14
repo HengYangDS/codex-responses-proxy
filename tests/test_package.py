@@ -24,6 +24,7 @@ sys.path.insert(0, ROOT)
 from platform_adapters import common, macos, linux, windows  # noqa: E402
 import install  # noqa: E402
 import uninstall  # noqa: E402
+import control  # noqa: E402
 
 
 def _ctx(port=8791, upstream="https://www.dmxapi.cn"):
@@ -211,6 +212,136 @@ class TestManagedRouteState(unittest.TestCase):
             common.set_proxy_route(ctx, state, enabled=False)
             self.assertEqual(config.read_text(encoding="utf-8"), direct)
 
+    def test_loads_v1_direct_route_state_for_in_place_upgrade(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._managed_context(root)
+            config = Path(ctx.codex_config)
+            config.parent.mkdir(parents=True, exist_ok=True)
+            direct = 'base_url = "https://www.dmxapi.cn/v1"\n'
+            enabled = 'base_url = "http://127.0.0.1:8791/v1"\n'
+            config.write_text(enabled, encoding="utf-8")
+            backup = Path(f"{ctx.codex_config}.bak-1")
+            backup.write_text(direct, encoding="utf-8")
+            legacy = common.make_install_state(
+                ctx, backup_path=str(backup), direct_text=direct, enabled_text=enabled,
+            )
+            legacy["schema_version"] = 1
+            legacy.pop("route_mode")
+            Path(common.install_state_path(ctx)).parent.mkdir(parents=True, exist_ok=True)
+            Path(common.install_state_path(ctx)).write_text(json.dumps(legacy), encoding="utf-8")
+
+            state = common.load_install_state(ctx)
+            self.assertIsNotNone(state)
+            common.set_proxy_route(ctx, state, enabled=False)
+            self.assertEqual(config.read_text(encoding="utf-8"), direct)
+
+
+class TestInstallationInputValidation(unittest.TestCase):
+    def test_build_context_rejects_out_of_range_ports(self):
+        for port in (0, -1, 65536):
+            with self.subTest(port=port):
+                with self.assertRaises(common.InstallError):
+                    install.build_context(port, "https://www.dmxapi.cn")
+
+    def test_build_context_rejects_unsafe_upstream_urls(self):
+        for upstream in (
+            "https://",
+            "ftp://example.test",
+            "https://bad host.example",
+            "https://example.test:99999",
+            "https://example.test:0",
+            "https://example.test/has space",
+            'https://example.test/\" & whoami',
+            "https://example.test/%25expanded",
+            "https://example.test/(batch-group)",
+            "https://example.test/v1?query=not-a-base-url",
+            "https://example.test/v1;command",
+        ):
+            with self.subTest(upstream=upstream):
+                with self.assertRaises(common.InstallError):
+                    install.build_context(8791, upstream)
+
+    def test_build_context_normalizes_a_safe_upstream_url(self):
+        ctx = install.build_context(8791, "https://example.test/v1/")
+        self.assertEqual(ctx.upstream, "https://example.test/v1")
+
+
+class TestAIGWRouteControl(unittest.TestCase):
+    def _context(self, root: Path):
+        install_dir = root / ".codex" / "dmx-proxy"
+        return common.InstallContext(
+            home=str(root),
+            install_dir=str(install_dir),
+            proxy_script=str(install_dir / "proxy" / "dmx_responses_proxy.py"),
+            watchdog_script=str(install_dir / "watchdog" / "watchdog.py"),
+            python=sys.executable,
+            codex_config=str(root / ".codex" / "config.toml"),
+            log_dir=str(root / ".codex" / "log"),
+            port=8791,
+            upstream="https://www.dmxapi.cn",
+        )
+
+    def _aigw_config(self, root: Path, endpoint: str) -> Path:
+        path = root / "aigw.toml"
+        path.write_text(
+            "[accounts.dmx.endpoints]\n"
+            f"openai_responses = {endpoint!r}\n",
+            encoding="utf-8",
+        )
+        return path
+
+    def test_adopt_then_switches_aigw_managed_endpoint_via_aigw_cli(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._context(root)
+            config_path = self._aigw_config(root, common.proxy_base_url(ctx.port))
+
+            with mock.patch.object(control, "_aigw_config_path", return_value=str(config_path)):
+                state = control.adopt_aigw_route(
+                    ctx,
+                    account="dmx",
+                    direct_url="https://www.dmxapi.cn/v1",
+                )
+            self.assertEqual(common.aigw_route_status(ctx, state, str(config_path)), "enabled")
+
+            calls = []
+            def update_endpoint(account, endpoint):
+                calls.append((account, endpoint))
+                config_path.write_text(
+                    "[accounts.dmx.endpoints]\n"
+                    f"openai_responses = {endpoint!r}\n",
+                    encoding="utf-8",
+                )
+
+            with (
+                mock.patch.object(control, "_aigw_config_path", return_value=str(config_path)),
+                mock.patch.object(control, "_set_aigw_account_endpoint", side_effect=update_endpoint),
+            ):
+                control.set_aigw_route(ctx, state, enabled=False)
+                control.set_aigw_route(ctx, state, enabled=True)
+
+            self.assertEqual(
+                calls,
+                [
+                    ("dmx", "https://www.dmxapi.cn/v1"),
+                    ("dmx", common.proxy_base_url(ctx.port)),
+                ],
+            )
+
+    def test_adopt_refuses_an_unrelated_aigw_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._context(root)
+            config_path = self._aigw_config(root, "https://other.example/v1")
+            with mock.patch.object(control, "_aigw_config_path", return_value=str(config_path)):
+                with self.assertRaises(common.InstallError):
+                    control.adopt_aigw_route(
+                        ctx,
+                        account="dmx",
+                        direct_url="https://www.dmxapi.cn/v1",
+                    )
+
 
 class TestUninstallSafety(unittest.TestCase):
     def _managed_context(self, root: Path):
@@ -240,6 +371,37 @@ class TestUninstallSafety(unittest.TestCase):
             self.assertEqual(config.read_text(encoding="utf-8"), 'base_url = "https://custom.example/v1"\n')
             self.assertIsNotNone(common.load_install_state(ctx))
 
+    def test_restore_aigw_route_before_uninstalling_proxy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._managed_context(root)
+            aigw_config = root / "aigw.toml"
+            aigw_config.write_text(
+                "[accounts.dmx.endpoints]\n"
+                f"openai_responses = {common.proxy_base_url(ctx.port)!r}\n",
+                encoding="utf-8",
+            )
+            state = common.make_aigw_install_state(
+                ctx,
+                aigw_config_path=str(aigw_config),
+                account="dmx",
+                direct_url="https://www.dmxapi.cn/v1",
+            )
+            common.write_install_state(ctx, state)
+
+            def disable_aigw(_ctx, _state, *, enabled):
+                self.assertFalse(enabled)
+                aigw_config.write_text(
+                    "[accounts.dmx.endpoints]\n"
+                    "openai_responses = 'https://www.dmxapi.cn/v1'\n",
+                    encoding="utf-8",
+                )
+
+            with mock.patch.object(control, "set_aigw_route", side_effect=disable_aigw):
+                self.assertTrue(uninstall.restore_config(ctx))
+            self.assertIsNone(common.load_install_state(ctx))
+            self.assertEqual(common.aigw_route_status(ctx, state, str(aigw_config)), "disabled")
+
     def test_stop_proxy_terminates_only_verified_listener(self):
         with (
             mock.patch.object(uninstall, "_listener_pids", return_value=[100, 101]),
@@ -252,6 +414,22 @@ class TestUninstallSafety(unittest.TestCase):
         ):
             self.assertEqual(uninstall._stop_proxy(8791), 1)
         terminate.assert_called_once_with(101)
+
+    def test_purge_removes_only_the_proxy_install_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            install_dir = codex_home / "dmx-proxy"
+            install_dir.mkdir(parents=True)
+            (install_dir / "marker").write_text("owned payload", encoding="utf-8")
+            adapter = mock.Mock()
+            with (
+                mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home)}, clear=False),
+                mock.patch.object(uninstall, "pick_adapter", return_value=adapter),
+                mock.patch.object(uninstall, "_stop_proxy", return_value=0),
+                mock.patch.object(sys, "argv", ["uninstall.py", "--purge", "--keep-config"]),
+            ):
+                uninstall.main()
+            self.assertFalse(install_dir.exists())
 
 
 class TestPythonResolution(unittest.TestCase):
@@ -335,7 +513,6 @@ class TestProxySanitize(unittest.TestCase):
         self.p = p
 
     def test_strips_reasoning_and_encrypted(self):
-        import json
         body = json.dumps({
             "input": [
                 {"type": "reasoning", "encrypted_content": "gAAAA_secret"},
@@ -360,13 +537,11 @@ class TestProxySanitize(unittest.TestCase):
         self.assertIn("passthrough", note)
 
     def test_clean_body_untouched(self):
-        import json
         body = json.dumps({"input": [{"type": "message", "content": "hi"}]}).encode()
         out, note = self.p.sanitize_responses_body(body)
         self.assertIn("clean", note)
 
     def test_drops_unreplayable_images_and_keeps_text_and_https(self):
-        import json
         body = json.dumps({
             "input": [
                 {
@@ -404,7 +579,6 @@ class TestProxySanitize(unittest.TestCase):
         )
 
     def test_drops_malformed_http_like_image_urls(self):
-        import json
         bad_urls = [
             "https://",
             "https://bad host/example.png",

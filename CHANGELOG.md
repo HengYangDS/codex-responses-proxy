@@ -14,6 +14,9 @@
 - **可逆开关与卸载收敛**：安装后可执行 `control.py enable|disable|status` 切换受管路由，保留 Proxy
   文件与守护进程；状态记录不保存配置正文或密钥，配置/备份漂移时拒绝覆盖。卸载仅终止经端口和命令行双重确认的
   Proxy 进程，避免宽杀 Python 进程。
+- **AIGW 路由权威与输入边界**：当 Codex endpoint 由 AIGW 投影时，`control.py adopt-aigw` 将开关收敛为
+  AIGW canonical endpoint 的受控切换与复核，避免被 `aigw sync` 覆盖；安装/卸载同时拒绝无效端口与不安全
+  upstream URL；AIGW 管理路由的卸载先安全恢复 canonical direct endpoint，再停止并清理 Proxy，`--purge` 路径已纳入回归测试。
 
 ### 发布与验证
 - `VERSION` 为发布单一事实源；代理响应头、Changelog、tag 检查及 GitLab CI 共用该版本。
