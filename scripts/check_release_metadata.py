@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify release identity and the repository's minimal governance contract."""
+"""Verify release identity, changelog provenance, and governance contracts."""
 
 from __future__ import annotations
 
@@ -27,9 +27,10 @@ def _version_key(version: str) -> tuple[int, int, int]:
     return tuple(map(int, version.split(".")))
 
 
-def changelog_releases() -> list[str]:
+def changelog_releases(path: Path | None = None) -> list[tuple[str, str]]:
     headings: list[tuple[str, str | None]] = []
-    for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines():
+    changelog = path or ROOT / "CHANGELOG.md"
+    for line in changelog.read_text(encoding="utf-8").splitlines():
         match = CHANGELOG_HEADING.match(line)
         if match:
             headings.append((match.group("version"), match.group("date")))
@@ -43,7 +44,35 @@ def changelog_releases() -> list[str]:
     versions = [version for version, _ in released]
     if versions != sorted(versions, key=_version_key, reverse=True):
         raise ValueError("released CHANGELOG headings must be in descending SemVer order")
-    return versions
+    return [(version, date) for version, date in released if date is not None]
+
+
+def _git(*args: str) -> str:
+    return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
+
+
+def check_changelog_provenance(releases: list[tuple[str, str]]) -> None:
+    """Require exact, dated Changelog coverage for every reachable release tag."""
+
+    actual_versions = [version for version, _ in releases]
+    expected_versions = [
+        tag.removeprefix("v")
+        for tag in _git("tag", "--merged", "HEAD", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
+        if re.fullmatch(r"v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", tag)
+    ]
+    if not expected_versions:
+        raise ValueError("cannot find a reachable release SemVer tag")
+    if actual_versions != expected_versions:
+        raise ValueError(
+            "published CHANGELOG headings must list each reachable release tag once "
+            "in descending SemVer order"
+        )
+    for version, date in releases:
+        tag_date = _git("for-each-ref", f"refs/tags/v{version}", "--format=%(creatordate:short)")
+        if date != tag_date:
+            raise ValueError(
+                f"CHANGELOG release {version} is dated {date}, but tag v{version} was created on {tag_date}"
+            )
 
 
 def check_governance_contract() -> None:
@@ -69,15 +98,21 @@ def check_governance_contract() -> None:
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     if "python scripts/check_release_metadata.py" not in ci:
         raise ValueError("GitLab CI must execute the release and governance checker")
+    retired_paths = ("docs/reviews", "docs/specs", "docs/superpowers", "docs/design")
+    present = [path for path in retired_paths if (ROOT / path).exists()]
+    if present:
+        raise ValueError("retired execution-document paths must be moved under docs/history: " + ", ".join(present))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tag", help="require an exact v<version> tag")
+    parser.add_argument("--changelog", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     version = read_version()
-    releases = changelog_releases()
-    if version not in releases:
+    releases = changelog_releases(args.changelog)
+    check_changelog_provenance(releases)
+    if version not in {released for released, _ in releases}:
         raise SystemExit(f"CHANGELOG.md lacks dated release heading ## [{version}]")
     proxy = (ROOT / "proxy" / "dmx_responses_proxy.py").read_text(encoding="utf-8")
     if "release_version()" not in proxy:

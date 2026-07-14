@@ -1,7 +1,10 @@
-# codex-dmx-proxy — 跨平台分发包设计
+# Initial Cross-Platform Distribution Design
 
+> Historical record — retained for provenance only. It predates the current
+> architecture, release, and portability contracts; do not use it as an
+> installation or operational instruction.
 - 日期: 2026-07-08
-- 状态: 设计已批准, 待 review → writing-plans
+- 原始状态: 设计已批准，后续工作已被当前架构和治理文档取代
 - 发布目标: `http://192.168.64.101:18086/dig/misc/llm-third-party-api/codex-dmx-proxy` (private)
 
 ## 1. 问题与目标
