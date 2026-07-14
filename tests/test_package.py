@@ -121,8 +121,19 @@ class TestWindowsTask(unittest.TestCase):
         self.assertIn("<LogonType>InteractiveToken</LogonType>", xml)   # no admin
         self.assertIn("<RunLevel>LeastPrivilege</RunLevel>", xml)
 
-    def test_task_references_watchdog(self):
-        self.assertIn("watchdog.py", windows.render_task_xml(_ctx()))
+    def test_task_references_generated_launcher(self):
+        self.assertIn("run-watchdog.cmd", windows.render_task_xml(_ctx()))
+
+    def test_task_runs_generated_launcher_with_proxy_environment(self):
+        ctx = _ctx(port=8801, upstream="https://alternate.example")
+        xml = windows.render_task_xml(ctx)
+        launcher = windows.render_launcher(ctx)
+        self.assertIn("run-watchdog.cmd", xml)
+        self.assertNotIn('Arguments>"/home/tester/.codex/dmx-proxy/watchdog/watchdog.py"', xml)
+        self.assertIn('set "DMX_PROXY_PORT=8801"', launcher)
+        self.assertIn('set "DMX_UPSTREAM=https://alternate.example"', launcher)
+        self.assertIn('set "DMX_PROXY_PYTHON=/usr/bin/python3.12"', launcher)
+        self.assertIn('set "DMX_PROXY_SCRIPT=/home/tester/.codex/dmx-proxy/proxy/dmx_responses_proxy.py"', launcher)
 
 
 class TestProxySanitize(unittest.TestCase):
