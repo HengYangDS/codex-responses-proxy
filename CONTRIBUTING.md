@@ -3,8 +3,9 @@
 ## Scope and boundaries
 
 Keep changes within the proxy's data-plane and lifecycle responsibilities. Do
-not make AIGW manage the proxy process. Do not make the proxy rewrite AIGW-owned
-marked configuration. Do not alter Codex sessions, archives, SQLite, or model
+not make AIGW manage the proxy process. Do not make the proxy directly rewrite AIGW-owned
+marked configuration. Any explicit compatibility bridge must invoke AIGW's public
+command and verify its resulting canonical state. Do not alter Codex sessions, archives, SQLite, or model
 metadata as a workaround for upstream replay incompatibility.
 
 ## Local workflow
