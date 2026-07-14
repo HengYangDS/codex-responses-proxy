@@ -60,6 +60,8 @@ def _codex_running() -> bool:
 
 
 def build_context(port: int, upstream: str) -> common.InstallContext:
+    port = common.validate_port(port)
+    upstream = common.normalize_upstream_url(upstream)
     codex_home = common.codex_home()
     home = os.path.dirname(codex_home)
     install_dir = os.path.join(codex_home, "dmx-proxy")

@@ -12,11 +12,13 @@ import os
 import sys
 import argparse
 import subprocess
+import shutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from platform_adapters import pick_adapter, common  # noqa: E402
+import control  # noqa: E402
 
 
 def _say(msg: str) -> None:
@@ -89,6 +91,23 @@ def restore_config(ctx: common.InstallContext) -> bool:
     if state is None:
         _say("  no valid managed route state found; leaving config.toml as-is.")
         return False
+    if state.get("route_mode") == "aigw_endpoint":
+        status = common.route_status(ctx, state)
+        if status == "drifted":
+            _say("  canonical AIGW endpoint has drifted; leaving it unchanged.")
+            return False
+        if status == "enabled":
+            try:
+                control.set_aigw_route(ctx, state, enabled=False)
+            except common.InstallError as exc:
+                _say(f"  AIGW route restore failed; leaving proxy active: {exc}")
+                return False
+        if common.route_status(ctx, state) != "disabled":
+            _say("  canonical AIGW endpoint did not reach the recorded direct route; leaving it unchanged.")
+            return False
+        common.remove_install_state(ctx)
+        _say("  restored canonical AIGW endpoint to the recorded direct route")
+        return True
     if common.route_status(ctx, state) != "enabled":
         _say("  config is disabled or drifted; leaving it unchanged.")
         return False
@@ -115,6 +134,10 @@ def main() -> None:
     ap.add_argument("--keep-config", action="store_true",
                     help="do not restore config.toml backup")
     args = ap.parse_args()
+    try:
+        args.port = common.validate_port(args.port)
+    except common.InstallError as exc:
+        ap.error(str(exc))
 
     adapter = pick_adapter()
     codex_home = common.codex_home()
@@ -128,18 +151,18 @@ def main() -> None:
     )
 
     _say("Uninstalling codex-dmx-proxy ...")
-    _say("[1/3] deregistering watchdog service ...")
+    if not args.keep_config:
+        _say("[1/3] restoring route ...")
+        restore_config(ctx)
+    else:
+        _say("[1/3] keeping route (per --keep-config)")
+
+    _say("[2/3] deregistering watchdog service ...")
     try:
         adapter.uninstall(ctx)
     except Exception as e:
         _say(f"  (service removal note: {e})")
     _stop_proxy(args.port)
-
-    if not args.keep_config:
-        _say("[2/3] restoring config.toml ...")
-        restore_config(ctx)
-    else:
-        _say("[2/3] keeping config (per --keep-config)")
 
     if args.purge:
         _say("[3/3] removing install dir ...")
