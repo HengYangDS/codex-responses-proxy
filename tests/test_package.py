@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -20,6 +21,7 @@ sys.path.insert(0, ROOT)
 
 from platform_adapters import common, macos, linux, windows  # noqa: E402
 import install  # noqa: E402
+import uninstall  # noqa: E402
 
 
 def _ctx(port=8791, upstream="https://www.dmxapi.cn"):
@@ -121,6 +123,52 @@ class TestManagedRouteState(unittest.TestCase):
             ctx = self._managed_context(Path(tmp))
             install.copy_payload(ctx)
             self.assertTrue((Path(ctx.install_dir) / "control.py").is_file())
+            self.assertTrue((Path(ctx.install_dir) / "platform_adapters" / "common.py").is_file())
+
+
+class TestUninstallSafety(unittest.TestCase):
+    def _managed_context(self, root: Path):
+        return TestManagedRouteState()._managed_context(root)
+
+    def test_restore_config_only_when_managed_route_is_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._managed_context(root)
+            config = Path(ctx.codex_config)
+            config.parent.mkdir(parents=True)
+            direct = 'base_url = "https://www.dmxapi.cn/v1"\n'
+            enabled = 'base_url = "http://127.0.0.1:8791/v1"\n'
+            config.write_text(enabled, encoding="utf-8")
+            backup = Path(f"{ctx.codex_config}.bak-1")
+            backup.write_text(direct, encoding="utf-8")
+            state = common.make_install_state(
+                ctx, backup_path=str(backup), direct_text=direct,
+                enabled_text=enabled, direct_urls=["https://www.dmxapi.cn/v1"],
+            )
+            common.write_install_state(ctx, state)
+
+            self.assertTrue(uninstall.restore_config(ctx))
+            self.assertEqual(config.read_text(encoding="utf-8"), direct)
+            self.assertIsNone(common.load_install_state(ctx))
+
+            config.write_text('base_url = "https://custom.example/v1"\n', encoding="utf-8")
+            common.write_install_state(ctx, state)
+            self.assertFalse(uninstall.restore_config(ctx))
+            self.assertEqual(config.read_text(encoding="utf-8"), 'base_url = "https://custom.example/v1"\n')
+            self.assertIsNotNone(common.load_install_state(ctx))
+
+    def test_stop_proxy_terminates_only_verified_listener(self):
+        with (
+            mock.patch.object(uninstall, "_listener_pids", return_value=[100, 101]),
+            mock.patch.object(
+                uninstall,
+                "_process_command",
+                side_effect=["python unrelated.py", "python dmx_responses_proxy.py"],
+            ),
+            mock.patch.object(uninstall, "_terminate_pid") as terminate,
+        ):
+            self.assertEqual(uninstall._stop_proxy(8791), 1)
+        terminate.assert_called_once_with(101)
 
 
 class TestPythonResolution(unittest.TestCase):
