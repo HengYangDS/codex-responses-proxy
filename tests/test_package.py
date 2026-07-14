@@ -106,10 +106,7 @@ class TestManagedRouteState(unittest.TestCase):
             backup = Path(f"{ctx.codex_config}.bak-1")
             backup.write_text(direct, encoding="utf-8")
 
-            state = common.make_install_state(
-                ctx, backup_path=str(backup), direct_urls=["https://www.dmxapi.cn/v1"],
-                direct_text=direct, enabled_text=enabled,
-            )
+            state = common.make_install_state(ctx, backup_path=str(backup), direct_text=direct, enabled_text=enabled)
             common.write_install_state(ctx, state)
             serialized_state = Path(common.install_state_path(ctx)).read_text(encoding="utf-8")
             self.assertNotIn("do-not-copy-into-state", serialized_state)
@@ -147,10 +144,7 @@ class TestManagedRouteState(unittest.TestCase):
             config.write_text(enabled, encoding="utf-8")
             backup = Path(f"{ctx.codex_config}.bak-1")
             backup.write_text(direct, encoding="utf-8")
-            state = common.make_install_state(
-                ctx, backup_path=str(backup), direct_urls=["https://www.dmxapi.cn/v1"],
-                direct_text=direct, enabled_text=enabled,
-            )
+            state = common.make_install_state(ctx, backup_path=str(backup), direct_text=direct, enabled_text=enabled)
             common.write_install_state(ctx, state)
 
             control = Path(ctx.install_dir) / "control.py"
@@ -171,6 +165,28 @@ class TestManagedRouteState(unittest.TestCase):
             self.assertEqual(reenabled.returncode, 0, reenabled.stderr)
             self.assertEqual(config.read_text(encoding="utf-8"), enabled)
 
+    def test_route_round_trip_preserves_comments_and_each_direct_url(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._managed_context(root)
+            config = Path(ctx.codex_config)
+            config.parent.mkdir(parents=True, exist_ok=True)
+            direct = (
+                'base_url = "https://one.dmxapi.example/v1" # first\n'
+                'base_url = "https://two.dmxapi.example/v1" # second\n'
+            )
+            enabled = (
+                'base_url = "http://127.0.0.1:8791/v1" # first\n'
+                'base_url = "http://127.0.0.1:8791/v1" # second\n'
+            )
+            config.write_text(enabled, encoding="utf-8")
+            backup = Path(f"{ctx.codex_config}.bak-1")
+            backup.write_text(direct, encoding="utf-8")
+            state = common.make_install_state(ctx, backup_path=str(backup), direct_text=direct, enabled_text=enabled)
+            common.write_install_state(ctx, state)
+            common.set_proxy_route(ctx, state, enabled=False)
+            self.assertEqual(config.read_text(encoding="utf-8"), direct)
+
 
 class TestUninstallSafety(unittest.TestCase):
     def _managed_context(self, root: Path):
@@ -187,10 +203,7 @@ class TestUninstallSafety(unittest.TestCase):
             config.write_text(enabled, encoding="utf-8")
             backup = Path(f"{ctx.codex_config}.bak-1")
             backup.write_text(direct, encoding="utf-8")
-            state = common.make_install_state(
-                ctx, backup_path=str(backup), direct_urls=["https://www.dmxapi.cn/v1"],
-                direct_text=direct, enabled_text=enabled,
-            )
+            state = common.make_install_state(ctx, backup_path=str(backup), direct_text=direct, enabled_text=enabled)
             common.write_install_state(ctx, state)
 
             self.assertTrue(uninstall.restore_config(ctx))

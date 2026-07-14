@@ -168,18 +168,21 @@ def rewrite_base_url(config_text: str, old_host_substr: str, new_base_url: str) 
     """
     changed = 0
     out_lines = []
-    for line in config_text.splitlines():
-        m = _BASEURL_RE.match(line)
+    for line in config_text.splitlines(keepends=True):
+        ending = "\r\n" if line.endswith("\r\n") else ("\n" if line.endswith("\n") else "")
+        body = line[:-len(ending)] if ending else line
+        m = _BASEURL_RE.match(body)
         if m and old_host_substr in m.group("url") and m.group("url") != new_base_url:
             q = m.group("q")
-            out_lines.append(f'{m.group("indent")}base_url = {q}{new_base_url}{q}')
+            comment = m.group("comment") or ""
+            out_lines.append(
+                f'{m.group("indent")}base_url = {q}{new_base_url}{q}'
+                + (f" {comment}" if comment else "") + ending
+            )
             changed += 1
         else:
             out_lines.append(line)
-    text = "\n".join(out_lines)
-    if config_text.endswith("\n"):
-        text += "\n"
-    return text, changed
+    return "".join(out_lines), changed
 
 
 def proxy_base_url(port: int) -> str:
@@ -211,28 +214,13 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _replace_managed_urls(config_text: str, source_urls: list[str], target_url: str) -> tuple[str, int]:
-    """Replace only exact state-recorded URLs while preserving all other config."""
-    changed = 0
-    lines = []
-    for line in config_text.splitlines(keepends=True):
-        match = _BASEURL_RE.match(line.rstrip("\r\n"))
-        if match and match.group("url") in source_urls and match.group("url") != target_url:
-            ending = "\r\n" if line.endswith("\r\n") else ("\n" if line.endswith("\n") else "")
-            lines.append(f'{match.group("indent")}base_url = {match.group("q")}{target_url}{match.group("q")}{ending}')
-            changed += 1
-        else:
-            lines.append(line)
-    return "".join(lines), changed
-
-
 def make_install_state(
     ctx: InstallContext,
     *,
     backup_path: str,
-    direct_urls: list[str],
     direct_text: str,
     enabled_text: str,
+    source_host_substr: str = "dmxapi",
 ) -> dict:
     """Construct the non-secret record authorizing reversible route changes."""
     return {
@@ -240,7 +228,7 @@ def make_install_state(
         "config_path": os.path.abspath(ctx.codex_config),
         "backup_path": os.path.abspath(backup_path),
         "proxy_url": proxy_base_url(ctx.port),
-        "direct_urls": direct_urls,
+        "source_host_substr": source_host_substr,
         "direct_sha256": _sha256_text(direct_text),
         "enabled_sha256": _sha256_text(enabled_text),
     }
@@ -256,7 +244,7 @@ def _valid_install_state(ctx: InstallContext, state: object) -> bool:
     backup = state.get("backup_path")
     if not isinstance(backup, str) or not backup.startswith(os.path.abspath(ctx.codex_config) + ".bak-"):
         return False
-    if not isinstance(state.get("direct_urls"), list) or not all(isinstance(url, str) for url in state["direct_urls"]):
+    if not isinstance(state.get("source_host_substr"), str) or not state["source_host_substr"]:
         return False
     if not all(isinstance(state.get(key), str) and len(state[key]) == 64 for key in ("direct_sha256", "enabled_sha256")):
         return False
@@ -294,12 +282,9 @@ def route_status(ctx: InstallContext, state: dict | None) -> str:
     except OSError:
         return "drifted"
     current_sha256 = _sha256_text(current)
-    urls = read_base_urls(current)
-    proxy_url = state["proxy_url"]
-    direct_urls = state["direct_urls"]
-    if current_sha256 == state["enabled_sha256"] and proxy_url in urls and not any(url in urls for url in direct_urls):
+    if current_sha256 == state["enabled_sha256"]:
         return "enabled"
-    if current_sha256 == state["direct_sha256"] and all(url in urls for url in direct_urls) and proxy_url not in urls:
+    if current_sha256 == state["direct_sha256"]:
         return "disabled"
     return "drifted"
 
@@ -315,11 +300,18 @@ def set_proxy_route(ctx: InstallContext, state: dict | None, *, enabled: bool) -
         backup_file(ctx.codex_config)
         with open(ctx.codex_config, "r", encoding="utf-8") as fh:
             current = fh.read()
-        source = state["direct_urls"] if enabled else [state["proxy_url"]]
-        target = state["proxy_url"] if enabled else state["direct_urls"][0]
-        rewritten, changed = _replace_managed_urls(current, source, target)
-        if changed == 0:
-            raise InstallError("managed route was not found in current config")
+        if enabled:
+            rewritten, changed = rewrite_base_url(current, state["source_host_substr"], state["proxy_url"])
+            if changed == 0 or _sha256_text(rewritten) != state["enabled_sha256"]:
+                raise InstallError("managed direct route no longer matches recorded install state")
+        else:
+            try:
+                with open(state["backup_path"], "r", encoding="utf-8") as fh:
+                    rewritten = fh.read()
+            except OSError as exc:
+                raise InstallError("recorded config backup is unavailable") from exc
+            if _sha256_text(rewritten) != state["direct_sha256"]:
+                raise InstallError("recorded config backup has changed; refusing to restore it")
         _atomic_write_text(ctx.codex_config, rewritten)
 
 

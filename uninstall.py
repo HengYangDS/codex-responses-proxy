@@ -96,12 +96,10 @@ def restore_config(ctx: common.InstallContext) -> bool:
     if not os.path.isfile(backup):
         _say("  recorded config backup is unavailable; leaving config.toml as-is.")
         return False
-    with open(ctx.codex_config, "r", encoding="utf-8") as fh:
-        current = fh.read()
-    direct = state["direct_urls"][0]
-    restored, changed = common._replace_managed_urls(current, [state["proxy_url"]], direct)
-    if changed == 0:
-        _say("  managed proxy route was not found; leaving config.toml as-is.")
+    with open(backup, "r", encoding="utf-8") as fh:
+        restored = fh.read()
+    if common._sha256_text(restored) != state["direct_sha256"]:
+        _say("  recorded config backup has changed; leaving config.toml as-is.")
         return False
     common._atomic_write_text(ctx.codex_config, restored)
     common.remove_install_state(ctx)
