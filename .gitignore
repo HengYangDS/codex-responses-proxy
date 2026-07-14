@@ -16,3 +16,6 @@ config.toml
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# Local linked worktrees
+.worktrees/
