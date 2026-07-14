@@ -697,6 +697,9 @@ class TestProxySanitize(unittest.TestCase):
         self.assertNotIn("encrypted_content", output[0])
         self.assertEqual(output[1]["content"][0]["encrypted_content"], "required")
 
+    def test_retries_gateway_524_as_transient_upstream_failure(self):
+        self.assertEqual(self.p._is_transient_upstream(524, b"gateway timeout"), "full")
+
     def test_runtime_server_version_uses_version_file(self):
         self.assertEqual(self.p.release_version(), Path(ROOT, "VERSION").read_text(encoding="utf-8").strip())
 
