@@ -170,7 +170,7 @@ def _is_transient_upstream(code: int, err_body: bytes) -> bool:
                   to clear the transient window.
       ""        — not retryable (encrypted-content complaint or other genuine 4xx).
     """
-    if code in (429, 500, 502, 503, 504):
+    if code in (429, 500, 502, 503, 504, 524):
         return "full"
     if code == 400:
         try:
