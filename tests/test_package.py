@@ -10,13 +10,16 @@ Run: python3 tests/test_package.py
 
 import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
 from platform_adapters import common, macos, linux, windows  # noqa: E402
+import install  # noqa: E402
 
 
 def _ctx(port=8791, upstream="https://www.dmxapi.cn"):
@@ -61,6 +64,63 @@ class TestConfigRewrite(unittest.TestCase):
         cfg = 'base_url = "https://www.dmxapi.cn/v1"\n'
         new, _ = common.rewrite_base_url(cfg, "dmxapi", "http://127.0.0.1:8791/v1")
         self.assertTrue(new.endswith("\n"))
+
+
+class TestManagedRouteState(unittest.TestCase):
+    def _managed_context(self, root: Path):
+        install_dir = root / ".codex" / "dmx-proxy"
+        config = root / ".codex" / "config.toml"
+        return common.InstallContext(
+            home=str(root),
+            install_dir=str(install_dir),
+            proxy_script=str(install_dir / "proxy" / "dmx_responses_proxy.py"),
+            watchdog_script=str(install_dir / "watchdog" / "watchdog.py"),
+            python=sys.executable,
+            codex_config=str(config),
+            log_dir=str(root / ".codex" / "log"),
+            port=8791,
+            upstream="https://www.dmxapi.cn",
+        )
+
+    def test_switches_only_recorded_route_and_refuses_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._managed_context(root)
+            config = Path(ctx.codex_config)
+            config.parent.mkdir(parents=True)
+            direct = 'base_url = "https://www.dmxapi.cn/v1"\nfeature = true\n'
+            enabled = 'base_url = "http://127.0.0.1:8791/v1"\nfeature = true\n'
+            config.write_text(enabled, encoding="utf-8")
+            backup = Path(f"{ctx.codex_config}.bak-1")
+            backup.write_text(direct, encoding="utf-8")
+
+            state = common.make_install_state(
+                ctx,
+                backup_path=str(backup),
+                direct_text=direct,
+                enabled_text=enabled,
+                direct_urls=["https://www.dmxapi.cn/v1"],
+            )
+            common.write_install_state(ctx, state)
+
+            loaded = common.load_install_state(ctx)
+            self.assertEqual(common.route_status(ctx, loaded), "enabled")
+            common.set_proxy_route(ctx, loaded, enabled=False)
+            self.assertEqual(config.read_text(encoding="utf-8"), direct)
+            self.assertEqual(common.route_status(ctx, loaded), "disabled")
+            common.set_proxy_route(ctx, loaded, enabled=True)
+            self.assertEqual(config.read_text(encoding="utf-8"), enabled)
+
+            config.write_text(enabled + "user_change = true\n", encoding="utf-8")
+            self.assertEqual(common.route_status(ctx, loaded), "drifted")
+            with self.assertRaises(common.InstallError):
+                common.set_proxy_route(ctx, loaded, enabled=False)
+
+    def test_copy_payload_includes_control_program(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._managed_context(Path(tmp))
+            install.copy_payload(ctx)
+            self.assertTrue((Path(ctx.install_dir) / "control.py").is_file())
 
 
 class TestPythonResolution(unittest.TestCase):
