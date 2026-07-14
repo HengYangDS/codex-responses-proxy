@@ -2,6 +2,14 @@
 
 本项目遵循语义化版本。版本史提炼自维护者在生产环境的实际修复轮次。
 
+## [1.0.3] - 2026-07-14
+
+### 修复
+- **保留 Agent Message 的必填加密块**：`encrypted_content` 在 Responses schema 中语义并不单一。旧的递归剥离会把 `agent_message.content` 内类型为 `encrypted_content` 的必填 payload 一并删除，导致 `Missing required parameter: input[…].content[…].encrypted_content`。现仅移除顶层重放的 `reasoning` 项及请求的 `reasoning.encrypted_content` include，保留所有其他有类型的加密内容；SSE 也仅净化 reasoning 输出。对旧版本已经遗留在本地历史中的无 payload 空壳块，仅在请求边界剔除该坏块。
+
+### 验证
+- 新增真实拒绝 payload 结构的回归测试：保留 Agent Message 加密 payload，同时继续剔除顶层 replayed reasoning；另覆盖 SSE 输出净化。
+
 ## [1.0.2] - 2026-07-14
 
 ### 修复

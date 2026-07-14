@@ -102,8 +102,10 @@ Codex ──HTTP──> 本地代理 :8791 ──剥离 encrypted_content──>
 ```
 
 - **代理**（`proxy/dmx_responses_proxy.py`）：透传 method/path/headers（含 Bearer token）；
-  只改 `/responses` 的 JSON body——丢弃 `input[]` 里的 reasoning 项、递归删所有 `encrypted_content`、
-  从 `include[]` 移除 `reasoning.encrypted_content`；并剔除历史回放中无法被第三方端点远程获取的
+  只改 `/responses` 的 JSON body——丢弃 `input[]` 里的顶层 replayed reasoning 项、
+  从 `include[]` 移除 `reasoning.encrypted_content`；**不会递归删除**其他带类型的
+  `encrypted_content` 块（agent message 的该字段是必填）；对早期本地 Proxy 留下的无 payload 空壳块，
+  仅在请求边界剔除该坏块；并剔除历史回放中无法被第三方端点远程获取的
   `input_image`（本地路径、Data URL、无 host 或格式非法的 HTTP(S) URL），保留相邻文本和合法 `http(s)` 图片。**fail-open**：任何解析错误
   → 原样转发。
   另含：SSE 断流透明重连（prelude 缓冲，客户端永不见重复 `response.created`）、上游瞬时故障
