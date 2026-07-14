@@ -35,7 +35,9 @@ repair a replay issue.
 - **This proxy** owns local outbound Responses compatibility and its own
   process lifecycle only.
 - A complete AIGW marked provider block is authoritative. Proxy install may
-  place payload and service artifacts, but must not rewrite or adopt that route.
+  place payload and service artifacts, but must not directly rewrite that route. An explicit
+compatibility bridge may delegate a requested endpoint change to AIGW's public CLI; it
+must never edit the AIGW config itself.
 
 ## Required Verification
 
