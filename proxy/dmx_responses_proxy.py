@@ -64,6 +64,10 @@ UPSTREAM_READ_TIMEOUT = float(os.environ.get("DMX_UPSTREAM_READ_TIMEOUT", "240")
 RESPONSE_FAILED_COMPACTION_BUDGET = int(
     os.environ.get("DMX_RESPONSE_FAILED_COMPACTION_BUDGET", str(512 * 1024))
 )
+# Each fallback stage must make a material reduction. A small replay trim often
+# remains inside the upstream failure regime, while a half-window suffix was
+# accepted by live probes.
+RESPONSE_FAILED_COMPACTION_RATIO_DENOMINATOR = 2
 _RESPONSES_SEM = threading.BoundedSemaphore(max(1, RESPONSES_MAX_CONCURRENCY))
 _ACTIVE_LOCK = threading.Lock()
 _ACTIVE_RESPONSES = 0
@@ -323,8 +327,8 @@ def _tool_pair_boundary_is_safe(items, start):
     return True
 
 
-def _compact_response_failed_request(raw: bytes):
-    """Build one safe compact fallback after an explicit upstream failure.
+def _compact_response_failed_request(raw: bytes, budget: int | None = None):
+    """Build one pair-safe compact fallback after an explicit upstream failure.
 
     This is intentionally not a general context-window implementation. It runs
     only in the HTTP-400 ``response_failed`` branch, keeps the newest contiguous
@@ -333,12 +337,22 @@ def _compact_response_failed_request(raw: bytes):
     original request bytes remain untouched for the primary attempt and for every
     other error type.
 
+    ``budget`` is an internal retry-stage ceiling. Each successive stage must be
+    no larger than half the preceding request, preventing no-op fallbacks such as
+    a one-item trim of an already sub-512-KiB failed replay.
+
     Return ``(compact_bytes, metrics)`` only when a pair-valid suffix including
-    the final input item fits the conservative full-request budget. Otherwise
-    return ``(None, None)`` and let the original upstream response pass through.
+    the final input item fits the requested full-request budget. Otherwise return
+    ``(None, None)`` and let the original upstream response pass through.
     """
-    if len(raw) <= RESPONSE_FAILED_COMPACTION_BUDGET:
+    if budget is None:
+        budget = RESPONSE_FAILED_COMPACTION_BUDGET
+    if not isinstance(budget, int) or budget <= 0:
         return None, None
+    # A fallback must reduce the request materially even when it is already below
+    # the normal ceiling. Without this gate an explicit response_failed at 485 KiB
+    # would only drop one ancient item and reproduce the same upstream failure.
+    budget = min(budget, max(1, len(raw) // RESPONSE_FAILED_COMPACTION_RATIO_DENOMINATOR))
     try:
         payload = json.loads(raw)
     except Exception:
@@ -371,6 +385,7 @@ def _compact_response_failed_request(raw: bytes):
     # Moving the boundary right removes more *oldest* state and is the only allowed
     # recovery action. A copied dict is used so the original payload object/bytes
     # cannot be mutated by the failed fallback construction.
+    smallest = None
     for start in range(1, latest_user_index + 1):
         if not _tool_pair_boundary_is_safe(original_items, start):
             continue
@@ -381,16 +396,27 @@ def _compact_response_failed_request(raw: bytes):
             compact = json.dumps(candidate, separators=(",", ":")).encode("utf-8")
         except Exception:
             return None, None
-        if len(compact) <= RESPONSE_FAILED_COMPACTION_BUDGET:
-            return compact, {
+        metrics = {
                 "original_bytes": len(raw),
+                "budget_bytes": budget,
                 "compact_bytes": len(compact),
                 "removed_inputs": start,
                 "retained_inputs": len(original_items) - start,
                 "prompt_cache_key_removed": "prompt_cache_key" in payload,
-            }
+        }
+        if len(compact) <= budget:
+            return compact, metrics
+        # A trailing sequence of complete tool outputs can itself exceed the
+        # desired byte target. It is still safer and more useful to send the
+        # smallest pair-valid suffix than to repeat a known rejected request.
+        # We retain the candidate only after confirming it is an actual reduction.
+        if len(compact) < len(raw) and (smallest is None or len(compact) < len(smallest[0])):
+            smallest = (compact, metrics)
+    if smallest is not None:
+        compact, metrics = smallest
+        metrics["budget_met"] = False
+        return compact, metrics
     return None, None
-
 
 def _is_replayable_remote_image_url(value):
     """True only for URL schemes the third-party Responses endpoint accepts."""
@@ -852,11 +878,15 @@ class Handler(BaseHTTPRequestHandler):
         try:
             resp = None
             last_err = None
-            compact_response_failed_body = None
             compact_response_failed_metrics = None
             used_response_failed_compaction = False
-            for attempt in range(max_attempts):
-                attempt_body = compact_response_failed_body if compact_response_failed_body is not None else body
+            response_failed_stages = 0
+            max_response_failed_stages = 3 if is_responses else 0
+            attempt_body = body
+            # Ordinary transient retries retain their previous bounded policy.
+            # Explicit ``response_failed`` has its own staged, pair-safe
+            # compaction path and must never loop the same bytes.
+            for attempt in range(max_attempts + max_response_failed_stages):
                 req = urllib.request.Request(url, data=attempt_body if attempt_body else None, method=method)
                 for k, v in out_headers.items():
                     req.add_header(k, v)
@@ -873,28 +903,34 @@ class Handler(BaseHTTPRequestHandler):
                 except urllib.error.HTTPError as e:
                     err_body = e.read()
                     disp = _is_transient_upstream(e.code, err_body)
-                    # A deterministic large replay failure cannot be fixed by
-                    # retrying the same bytes. After the upstream has *explicitly*
-                    # named ``response_failed``, make exactly one fallback request
-                    # that drops only the oldest pair-valid input prefix. This is
-                    # deliberately before ordinary retries so the user's turn does
-                    # not wait through several known-identical rejections.
+                    # A deterministic replay failure cannot be fixed by retrying
+                    # the same bytes. After the upstream has *explicitly* named
+                    # ``response_failed``, make up to three strictly smaller,
+                    # pair-safe suffix attempts. Each retains the latest user
+                    # context and complete call/output pairs. This precedes
+                    # ordinary retries so users do not wait through known-identical
+                    # rejections.
                     if (
                         is_responses
                         and e.code == 400
                         and disp == "full"
-                        and compact_response_failed_body is None
+                        and response_failed_stages < max_response_failed_stages
                     ):
-                        compact, metrics = _compact_response_failed_request(body)
-                        if compact is not None and metrics is not None:
-                            compact_response_failed_body = compact
+                        compact, metrics = _compact_response_failed_request(attempt_body)
+                        if compact is not None and metrics is not None and len(compact) < len(attempt_body):
+                            response_failed_stages += 1
+                            metrics["stage"] = response_failed_stages
                             compact_response_failed_metrics = metrics
                             used_response_failed_compaction = True
+                            previous_bytes = len(attempt_body)
+                            attempt_body = compact
                             _log(
                                 f"  req#{request_id} upstream response_failed — compact fallback "
-                                f"bytes={metrics['original_bytes']}->{metrics['compact_bytes']} "
+                                f"stage={response_failed_stages}/{max_response_failed_stages} "
+                                f"bytes={previous_bytes}->{metrics['compact_bytes']} budget={metrics['budget_bytes']} "
                                 f"inputs={metrics['removed_inputs']} removed/{metrics['retained_inputs']} retained "
-                                f"cache_key_removed={metrics['prompt_cache_key_removed']} for {self.path}"
+                                f"cache_key_removed={metrics['prompt_cache_key_removed']} "
+                                f"budget_met={metrics.get('budget_met', True)} for {self.path}"
                             )
                             continue
                     # invalid_payload is dmxapi SERVER-SIDE transient flakiness, NOT a
@@ -904,8 +940,26 @@ class Handler(BaseHTTPRequestHandler):
                     # predicted if independent). So retry ONCE, but wait long enough to
                     # clear the transient window (0.4s was too eager and re-hit the same
                     # blip). Genuine 429/5xx keep the full escalating-backoff budget.
+                    # ``response_failed`` has already consumed this response in
+                    # the staged compaction branch above. Never let it fall
+                    # through to the ordinary transient retry policy.
+                    if is_responses and e.code == 400 and disp == "full":
+                        self.send_response(e.code)
+                        for k, v in e.headers.items():
+                            if k.lower() not in _HOP_BY_HOP:
+                                self.send_header(k, v)
+                        self.send_header("Content-Length", str(len(err_body)))
+                        self.end_headers()
+                        self.wfile.write(err_body)
+                        _log(f"  req#{request_id} upstream HTTP {e.code} ({len(err_body)}b) for {self.path} [response_failed compaction exhausted after {response_failed_stages} stages]")
+                        return
                     retry_ceiling = 1 if disp == "once" else max_attempts - 1
-                    if disp and attempt < retry_ceiling:
+                    transient_retries_used = attempt - response_failed_stages
+                    if (
+                        disp
+                        and transient_retries_used < retry_ceiling
+                        and not (e.code == 400 and disp == "full")
+                    ):
                         delay = 3.0 if disp == "once" else backoffs[min(attempt, len(backoffs) - 1)]
                         _log(f"  req#{request_id} upstream HTTP {e.code} ({disp}) — retry {attempt+1}/{retry_ceiling} in {delay}s for {self.path}")
                         time.sleep(delay)
@@ -971,7 +1025,11 @@ class Handler(BaseHTTPRequestHandler):
                 # SSE: send headers lazily (on first downstream byte) so a stream
                 # that dies before producing content can be transparently retried.
                 def _reopen():
-                    req2 = urllib.request.Request(url, data=body if body else None, method=method)
+                    # Preserve the exact request that produced this upstream SSE.
+                    # A recovered ``response_failed`` may be using a compact
+                    # suffix; reopening the original oversized history would
+                    # regress the repair during a pre-content reconnect.
+                    req2 = urllib.request.Request(url, data=attempt_body if attempt_body else None, method=method)
                     for k, v in out_headers.items():
                         req2.add_header(k, v)
                     return _urlopen(req2, timeout=UPSTREAM_TIMEOUT)
