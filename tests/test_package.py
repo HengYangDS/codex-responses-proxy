@@ -778,6 +778,17 @@ class TestProxySanitize(unittest.TestCase):
         )
 
 
+class TestGovernanceMetadata(unittest.TestCase):
+    def test_lifecycle_scripts_do_not_prescribe_client_restart_or_new_thread(self):
+        text = "\n".join(
+            Path(ROOT, relative).read_text(encoding="utf-8").lower()
+            for relative in ("install.py", "uninstall.py")
+        )
+        self.assertNotIn("fully " + "quit & reopen", text)
+        self.assertNotIn("start a " + "new codex thread", text)
+        self.assertIn("existing conversations remain unchanged", text)
+
+
 class TestReleaseMetadata(unittest.TestCase):
     def test_release_version_matches_changelog(self):
         version = Path(ROOT, "VERSION").read_text(encoding="utf-8").strip()
