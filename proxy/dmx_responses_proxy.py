@@ -216,6 +216,24 @@ def _is_transient_upstream(code: int, err_body: bytes) -> str:
     return ""
 
 
+def _dmx_empty_response_exhausted(attempts: int) -> bytes:
+    """Return a stable local 503 after DMX exhausts empty-response retries.
+
+    HTTP 477 is an upstream-specific extension. Once the proxy has classified
+    it and exhausted its bounded recovery budget, preserve the retryable
+    semantics with standard HTTP 503 rather than exposing an unknown status to
+    the client. The response contains no upstream payload or request content.
+    """
+    return json.dumps({
+        "error": {
+            "message": "DMX upstream returned empty responses after bounded retries",
+            "type": "upstream_unavailable",
+            "code": "dmx_empty_response_exhausted",
+            "attempts": attempts,
+        },
+    }, separators=(",", ":")).encode()
+
+
 def _strip_reasoning_encrypted_content_from_sse_event(obj):
     """Remove only reasoning replay state from a streamed provider response.
 
@@ -920,8 +938,13 @@ class Handler(BaseHTTPRequestHandler):
                         )
                     break
                 except urllib.error.HTTPError as e:
-                    err_body = e.read()
-                    disp = _is_transient_upstream(e.code, err_body)
+                    try:
+                        err_body = e.read()
+                        status_code = e.code
+                        error_headers = e.headers
+                    finally:
+                        e.close()
+                    disp = _is_transient_upstream(status_code, err_body)
                     # A deterministic replay failure cannot be fixed by retrying
                     # the same bytes. After the upstream has *explicitly* named
                     # ``response_failed``, make up to three strictly smaller,
@@ -931,7 +954,7 @@ class Handler(BaseHTTPRequestHandler):
                     # rejections.
                     if (
                         is_responses
-                        and e.code == 400
+                        and status_code == 400
                         and disp == "full"
                         and response_failed_stages < max_response_failed_stages
                     ):
@@ -962,30 +985,44 @@ class Handler(BaseHTTPRequestHandler):
                     # ``response_failed`` has already consumed this response in
                     # the staged compaction branch above. Never let it fall
                     # through to the ordinary transient retry policy.
-                    if is_responses and e.code == 400 and disp == "full":
-                        self.send_response(e.code)
-                        for k, v in e.headers.items():
+                    if is_responses and status_code == 400 and disp == "full":
+                        self.send_response(status_code)
+                        for k, v in error_headers.items():
                             if k.lower() not in _HOP_BY_HOP:
                                 self.send_header(k, v)
                         self.send_header("Content-Length", str(len(err_body)))
                         self.end_headers()
                         self.wfile.write(err_body)
-                        _log(f"  req#{request_id} upstream HTTP {e.code} ({len(err_body)}b) for {self.path} [response_failed compaction exhausted after {response_failed_stages} stages]")
+                        _log(f"  req#{request_id} upstream HTTP {status_code} ({len(err_body)}b) for {self.path} [response_failed compaction exhausted after {response_failed_stages} stages]")
                         return
                     retry_ceiling = 1 if disp == "once" else max_attempts - 1
                     transient_retries_used = attempt - response_failed_stages
                     if (
                         disp
                         and transient_retries_used < retry_ceiling
-                        and not (e.code == 400 and disp == "full")
+                        and not (status_code == 400 and disp == "full")
                     ):
                         delay = 3.0 if disp == "once" else backoffs[min(attempt, len(backoffs) - 1)]
-                        _log(f"  req#{request_id} upstream HTTP {e.code} ({disp}) — retry {attempt+1}/{retry_ceiling} in {delay}s for {self.path}")
+                        _log(f"  req#{request_id} upstream HTTP {status_code} ({disp}) — retry {attempt+1}/{retry_ceiling} in {delay}s for {self.path}")
                         time.sleep(delay)
                         continue
-                    if 400 <= e.code < 500:
+                    if status_code == 477 and disp == "full":
+                        msg = _dmx_empty_response_exhausted(attempt + 1)
+                        self.send_response(503)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Retry-After", "3")
+                        self.send_header("Content-Length", str(len(msg)))
+                        self.end_headers()
+                        self.wfile.write(msg)
+                        _log(
+                            f"  req#{request_id} DMX empty_response exhausted after "
+                            f"{attempt + 1} attempts; normalized upstream HTTP 477 to 503 "
+                            f"for {self.path}"
+                        )
+                        return
+                    if 400 <= status_code < 500:
                         try:
-                            dump = os.path.join(os.path.dirname(LOG_PATH), f"reject-{e.code}-{int(time.time())}.json")
+                            dump = os.path.join(os.path.dirname(LOG_PATH), f"reject-{status_code}-{int(time.time())}.json")
                             with open(dump, "wb") as fh:
                                 fh.write(b"=== SENT BODY ===\n")
                                 fh.write(attempt_body or b"(empty)")
@@ -994,14 +1031,14 @@ class Handler(BaseHTTPRequestHandler):
                             _log(f"  req#{request_id} dumped rejected request to {dump}")
                         except Exception:
                             pass
-                    self.send_response(e.code)
-                    for k, v in e.headers.items():
+                    self.send_response(status_code)
+                    for k, v in error_headers.items():
                         if k.lower() not in _HOP_BY_HOP:
                             self.send_header(k, v)
                     self.send_header("Content-Length", str(len(err_body)))
                     self.end_headers()
                     self.wfile.write(err_body)
-                    _log(f"  req#{request_id} upstream HTTP {e.code} ({len(err_body)}b) for {self.path} [gave up after {attempt+1}]")
+                    _log(f"  req#{request_id} upstream HTTP {status_code} ({len(err_body)}b) for {self.path} [gave up after {attempt+1}]")
                     return
                 except Exception as e:
                     last_err = e
