@@ -37,7 +37,10 @@ def main() -> None:
     current_heading = f"## [{version}] - 2026-07-14"
     subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT, check=True)
     expect_rejection(source.replace(current_heading, f"## [{version}] - 2000-01-01", 1), "the current tag/date mismatch")
-    expect_rejection(source.replace(current_heading + "\n", "", 1), "the current reachable tag missing from the Changelog")
+    expect_rejection(
+        source.replace(current_heading + "\n", "", 1),
+        "the current reachable tag missing from the Changelog",
+    )
     expect_rejection(source.replace("## [1.0.4] - 2026-07-14", "## [1.0.4] - 2000-01-01", 1), "a tag/date mismatch")
     expect_rejection(source.replace("## [1.0.4] - 2026-07-14\n", "", 1), "a missing reachable tag")
     print("release metadata chronology contract: OK")
