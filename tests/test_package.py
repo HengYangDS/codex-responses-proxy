@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 import json
+import subprocess
 from pathlib import Path
 from unittest import mock
 
@@ -90,7 +91,7 @@ class TestManagedRouteState(unittest.TestCase):
             root = Path(tmp)
             ctx = self._managed_context(root)
             config = Path(ctx.codex_config)
-            config.parent.mkdir(parents=True)
+            config.parent.mkdir(parents=True, exist_ok=True)
             direct = (
                 'base_url = "https://www.dmxapi.cn/v1"\n'
                 'feature = true\n'
@@ -134,6 +135,42 @@ class TestManagedRouteState(unittest.TestCase):
             self.assertTrue((Path(ctx.install_dir) / "control.py").is_file())
             self.assertTrue((Path(ctx.install_dir) / "platform_adapters" / "common.py").is_file())
 
+    def test_control_status_enable_disable_uses_installed_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._managed_context(root)
+            install.copy_payload(ctx)
+            config = Path(ctx.codex_config)
+            config.parent.mkdir(parents=True, exist_ok=True)
+            direct = 'base_url = "https://www.dmxapi.cn/v1"\n'
+            enabled = 'base_url = "http://127.0.0.1:8791/v1"\n'
+            config.write_text(enabled, encoding="utf-8")
+            backup = Path(f"{ctx.codex_config}.bak-1")
+            backup.write_text(direct, encoding="utf-8")
+            state = common.make_install_state(
+                ctx, backup_path=str(backup), direct_urls=["https://www.dmxapi.cn/v1"],
+                direct_text=direct, enabled_text=enabled,
+            )
+            common.write_install_state(ctx, state)
+
+            control = Path(ctx.install_dir) / "control.py"
+            env = dict(os.environ, CODEX_HOME=str(root / ".codex"))
+            status = subprocess.run(
+                [sys.executable, str(control), "status"], capture_output=True, text=True, env=env,
+            )
+            self.assertEqual(status.returncode, 0, status.stderr)
+            self.assertIn("route: enabled", status.stdout)
+            disabled = subprocess.run(
+                [sys.executable, str(control), "disable"], capture_output=True, text=True, env=env,
+            )
+            self.assertEqual(disabled.returncode, 0, disabled.stderr)
+            self.assertEqual(config.read_text(encoding="utf-8"), direct)
+            reenabled = subprocess.run(
+                [sys.executable, str(control), "enable"], capture_output=True, text=True, env=env,
+            )
+            self.assertEqual(reenabled.returncode, 0, reenabled.stderr)
+            self.assertEqual(config.read_text(encoding="utf-8"), enabled)
+
 
 class TestUninstallSafety(unittest.TestCase):
     def _managed_context(self, root: Path):
@@ -144,7 +181,7 @@ class TestUninstallSafety(unittest.TestCase):
             root = Path(tmp)
             ctx = self._managed_context(root)
             config = Path(ctx.codex_config)
-            config.parent.mkdir(parents=True)
+            config.parent.mkdir(parents=True, exist_ok=True)
             direct = 'base_url = "https://www.dmxapi.cn/v1"\n'
             enabled = 'base_url = "http://127.0.0.1:8791/v1"\n'
             config.write_text(enabled, encoding="utf-8")
