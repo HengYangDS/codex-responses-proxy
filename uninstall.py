@@ -140,7 +140,8 @@ def main() -> None:
     else:
         _say(f"[3/3] leaving install dir {ctx.install_dir} (use --purge to delete)")
 
-    _say("\nDone. Fully quit & reopen Codex to apply the reverted config.")
+    _say("\nDone. Existing conversations remain unchanged; verify the reverted route through "
+         "the client's normal configuration-reload lifecycle before treating it as active.")
 
 
 if __name__ == "__main__":
