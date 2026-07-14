@@ -15,18 +15,21 @@ key rotation / backend routing, can no longer decrypt a blob it is handed back �
 Codex has no config switch to stop the replay (verified against the v0.142.5 config
 schema), and it is a compiled binary we cannot patch. So we sit a tiny local proxy
 between Codex and dmxapi and remove the replayed blobs from each outbound request.
-The model still reasons every turn; it just isn't handed a stale encrypted blob it
-(or rather the proxy) can't verify. This mirrors the fix the Codex maintainers
-recommend (strip encrypted_content before sending) — done at the network edge.
+The model still reasons every turn; it just isn't handed stale replayed reasoning
+items that the third-party endpoint cannot verify. Typed encrypted-content blocks in
+agent messages are preserved because their schema requires the payload. This mirrors
+the compatible network-edge approach without rewriting local conversation history.
 
 Design guarantees
 -----------------
 * Transparent: forwards method, path, query, headers (incl. ``Authorization``) and
   body to the real upstream. Codex's keychain Bearer token passes through untouched.
 * Surgical: only mutates JSON bodies of POSTs whose path contains ``/responses``.
-  For those it drops (a) any ``input[]`` item of type ``reasoning``, (b) any residual
-  ``encrypted_content`` keys anywhere in the payload, and (c) ``reasoning.encrypted_content``
-  from the ``include[]`` list so the API stops returning new blobs.
+  For those it drops (a) top-level replayed ``reasoning`` input items, (b) historical
+  ``input_image`` items whose URL cannot be fetched remotely, and (c)
+  ``reasoning.encrypted_content`` from the ``include[]`` list. Other typed
+  ``encrypted_content`` blocks stay intact because their schema requires the payload.
+  SSE output is still stripped before Codex persists it as later history.
 * Fail-open: any parse/transform error → the *original* bytes are forwarded unchanged.
   Worst case equals today's behavior; it can never harden into a new failure mode.
 * Streaming: the upstream SSE response is streamed back chunk-by-chunk unbuffered.
@@ -181,19 +184,100 @@ def _is_transient_upstream(code: int, err_body: bytes) -> bool:
     return ""
 
 
-def _strip_encrypted(obj):
-    """Recursively delete every ``encrypted_content`` key. Returns count removed."""
+def _strip_reasoning_encrypted_content_from_sse_event(obj):
+    """Remove only reasoning replay state from a streamed provider response.
+
+    The Responses schema uses ``encrypted_content`` in more than one typed item.
+    It is safe to remove from a ``reasoning`` output item because the next request
+    drops that top-level item. It is *not* safe to remove from a typed
+    ``encrypted_content`` block inside an agent message: that field is required
+    when the block is replayed. Traverse the event but mutate only reasoning items.
+    """
     removed = 0
     if isinstance(obj, dict):
-        if "encrypted_content" in obj:
+        if obj.get("type") == "reasoning" and "encrypted_content" in obj:
             del obj["encrypted_content"]
             removed += 1
-        for v in obj.values():
-            removed += _strip_encrypted(v)
+        for value in obj.values():
+            removed += _strip_reasoning_encrypted_content_from_sse_event(value)
     elif isinstance(obj, list):
-        for v in obj:
-            removed += _strip_encrypted(v)
+        for value in obj:
+            removed += _strip_reasoning_encrypted_content_from_sse_event(value)
     return removed
+
+
+def _drop_malformed_encrypted_content_blocks(obj):
+    """Drop only legacy typed blocks missing their required payload.
+
+    Earlier proxy builds recursively erased encrypted payloads from streamed agent
+    messages, leaving ``{"type": "encrypted_content"}`` in local history. The
+    upstream rightfully rejects that invalid schema. Repair the replay at the
+    network boundary by removing just blocks *without* an ``encrypted_content``
+    field; valid typed blocks remain byte-for-byte represented in the JSON object.
+    """
+    dropped = 0
+    if isinstance(obj, dict):
+        for field in ("content", "output"):
+            items = obj.get(field)
+            if not isinstance(items, list):
+                continue
+            kept = []
+            for item in items:
+                if (
+                    isinstance(item, dict)
+                    and item.get("type") == "encrypted_content"
+                    and "encrypted_content" not in item
+                ):
+                    dropped += 1
+                    continue
+                kept.append(item)
+            if len(kept) != len(items):
+                obj[field] = kept
+        for value in obj.values():
+            dropped += _drop_malformed_encrypted_content_blocks(value)
+    elif isinstance(obj, list):
+        for value in obj:
+            dropped += _drop_malformed_encrypted_content_blocks(value)
+    return dropped
+
+
+def _strip_replayed_reasoning_items(payload):
+    """Remove replayable reasoning items without touching typed message content.
+
+    ``encrypted_content`` is overloaded in the Responses schema. It is stale
+    provider-owned replay state on a top-level ``reasoning`` input item, but it is
+    a *required payload field* for ``{"type": "encrypted_content"}`` blocks in
+    ``agent_message.content``. A generic recursive deletion destroys the latter
+    and turns a valid agent message into an invalid one. Drop the whole top-level
+    reasoning item instead; retain every other encrypted-content block verbatim.
+    """
+    dropped_items = 0
+    preserved_agent_blocks = 0
+    inp = payload.get("input")
+    if not isinstance(inp, list):
+        return dropped_items, preserved_agent_blocks
+
+    kept = []
+    for item in inp:
+        if isinstance(item, dict) and item.get("type") == "reasoning":
+            dropped_items += 1
+            continue
+        if isinstance(item, dict) and item.get("type") == "agent_message":
+            content = item.get("content")
+            if isinstance(content, list):
+                preserved_agent_blocks += sum(
+                    1
+                    for block in content
+                    if (
+                        isinstance(block, dict)
+                        and block.get("type") == "encrypted_content"
+                        and "encrypted_content" in block
+                    )
+                )
+        kept.append(item)
+    if dropped_items:
+        payload["input"] = kept
+    return dropped_items, preserved_agent_blocks
 
 
 def _is_replayable_remote_image_url(value):
@@ -258,30 +342,19 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes, str]:
     if not isinstance(payload, dict):
         return raw, "passthrough (json not object)"
 
-    dropped_items = 0
-    dropped_images = 0
-    stripped_keys = 0
+    # (a) Drop replayed top-level reasoning items. Do not recursively delete
+    # encrypted_content: agent_message encrypted-content blocks require it.
+    dropped_items, preserved_agent_blocks = _strip_replayed_reasoning_items(payload)
 
-    # (a) Drop replayed reasoning items from the model-visible input history.
-    inp = payload.get("input")
-    if isinstance(inp, list):
-        kept = []
-        for item in inp:
-            if isinstance(item, dict) and item.get("type") == "reasoning":
-                dropped_items += 1
-                continue
-            kept.append(item)
-        if dropped_items:
-            payload["input"] = kept
+    # (b) Repair only malformed typed encrypted-content blocks created by old
+    # local proxy versions. Valid agent-message blocks remain intact.
+    dropped_malformed_encrypted_blocks = _drop_malformed_encrypted_content_blocks(payload)
 
-    # (b) Drop local-path / data-URL image replay items that this third-party
+    # (c) Drop local-path / data-URL image replay items that this third-party
     # endpoint rejects. Valid remote http(s) images stay intact.
     dropped_images = _strip_unreplayable_images(payload)
 
-    # (c) Belt-and-suspenders: remove any encrypted_content still nested anywhere.
-    stripped_keys = _strip_encrypted(payload)
-
-    # (d) Stop asking the API to return new encrypted reasoning.
+    # (d) Stop asking the API to return new replayed reasoning state.
     include = payload.get("include")
     include_trimmed = False
     if isinstance(include, list):
@@ -290,7 +363,12 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes, str]:
             payload["include"] = new_inc
             include_trimmed = True
 
-    if not (dropped_items or dropped_images or stripped_keys or include_trimmed):
+    if not (
+        dropped_items
+        or dropped_malformed_encrypted_blocks
+        or dropped_images
+        or include_trimmed
+    ):
         return raw, "clean (nothing to strip)"
 
     try:
@@ -299,8 +377,11 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes, str]:
         return raw, f"passthrough (reserialize failed: {exc.__class__.__name__})"
 
     return new_raw, (
-        f"stripped reasoning_items={dropped_items} local_image_items={dropped_images} "
-        f"encrypted_keys={stripped_keys} include_trimmed={include_trimmed}"
+        f"stripped reasoning_items={dropped_items} "
+        f"malformed_encrypted_blocks={dropped_malformed_encrypted_blocks} "
+        f"local_image_items={dropped_images} "
+        f"agent_message_encrypted={preserved_agent_blocks} "
+        f"include_trimmed={include_trimmed}"
     )
 
 
@@ -324,7 +405,7 @@ def sanitize_sse_event(raw_event: bytes) -> tuple[bytes, int]:
                 continue
             try:
                 obj = json.loads(data)
-                removed = _strip_encrypted(obj)
+                removed = _strip_reasoning_encrypted_content_from_sse_event(obj)
                 if removed:
                     data = json.dumps(obj, separators=(",", ":")).encode("utf-8")
                     line = prefix + data + suffix

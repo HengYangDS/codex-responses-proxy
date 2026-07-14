@@ -540,7 +540,104 @@ class TestProxySanitize(unittest.TestCase):
         self.assertEqual(len(obj["input"]), 1)                    # reasoning dropped
         self.assertEqual(obj["input"][0]["type"], "message")
         self.assertNotIn("reasoning.encrypted_content", obj["include"])
-        self.assertNotIn("encrypted_content", json.dumps(obj))    # fully stripped
+        self.assertEqual(obj["input"], [{"type": "message", "content": "hello"}])
+
+    def test_preserves_required_agent_message_encrypted_content(self):
+        body = json.dumps({
+            "input": [
+                {
+                    "type": "reasoning",
+                    "encrypted_content": "gAAAA_replay_only",
+                },
+                {
+                    "type": "agent_message",
+                    "author": "agent",
+                    "recipient": "user",
+                    "content": [
+                        {"type": "input_text", "text": "reply"},
+                        {
+                            "type": "encrypted_content",
+                            "encrypted_content": "required_agent_message_payload",
+                        },
+                    ],
+                },
+            ],
+            "include": ["reasoning.encrypted_content", "other"],
+        }).encode()
+
+        out, note = self.p.sanitize_responses_body(body)
+        obj = json.loads(out)
+
+        self.assertEqual(len(obj["input"]), 1)  # replayed reasoning still dropped
+        encrypted = obj["input"][0]["content"][1]
+        self.assertEqual(encrypted["type"], "encrypted_content")
+        self.assertEqual(
+            encrypted["encrypted_content"], "required_agent_message_payload",
+        )
+        self.assertIn("agent_message_encrypted=1", note)
+        self.assertIn("malformed_encrypted_blocks=0", note)
+        self.assertNotIn("reasoning.encrypted_content", obj["include"])
+
+    def test_drops_only_legacy_encrypted_content_blocks_missing_payload(self):
+        body = json.dumps({
+            "input": [{
+                "type": "agent_message",
+                "content": [
+                    {"type": "input_text", "text": "before"},
+                    {"type": "encrypted_content"},
+                    {
+                        "type": "encrypted_content",
+                        "encrypted_content": "valid_required_payload",
+                    },
+                    {"type": "input_text", "text": "after"},
+                ],
+            }],
+        }).encode()
+
+        out, note = self.p.sanitize_responses_body(body)
+        obj = json.loads(out)
+
+        self.assertIn("malformed_encrypted_blocks=1", note)
+        self.assertEqual(
+            obj["input"][0]["content"],
+            [
+                {"type": "input_text", "text": "before"},
+                {
+                    "type": "encrypted_content",
+                    "encrypted_content": "valid_required_payload",
+                },
+                {"type": "input_text", "text": "after"},
+            ],
+        )
+
+    def test_keeps_unrelated_encrypted_content_shape_outside_legacy_content_lists(self):
+        body = json.dumps({
+            "input": [{
+                "type": "custom_tool_call",
+                "payload": {"type": "encrypted_content"},
+            }],
+        }).encode()
+
+        out, note = self.p.sanitize_responses_body(body)
+
+        self.assertEqual(out, body)
+        self.assertIn("clean", note)
+
+    def test_sanitize_sse_event_strips_reasoning_but_keeps_agent_message_payload(self):
+        raw = (
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"output":['
+            b'{"type":"reasoning","encrypted_content":"replay","id":"r"},'
+            b'{"type":"agent_message","content":[{"type":"encrypted_content",'
+            b'"encrypted_content":"required"}]}'
+            b']}}\n\n'
+        )
+        out, removed = self.p.sanitize_sse_event(raw)
+        event = json.loads(out.split(b"data: ", 1)[1])
+        output = event["response"]["output"]
+        self.assertEqual(removed, 1)
+        self.assertNotIn("encrypted_content", output[0])
+        self.assertEqual(output[1]["content"][0]["encrypted_content"], "required")
 
     def test_runtime_server_version_uses_version_file(self):
         self.assertEqual(self.p.release_version(), Path(ROOT, "VERSION").read_text(encoding="utf-8").strip())
