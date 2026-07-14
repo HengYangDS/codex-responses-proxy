@@ -111,10 +111,16 @@ def check_governance_contract() -> None:
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     if "python scripts/check_release_metadata.py" not in ci:
         raise ValueError("GitLab CI must execute the release and governance checker")
-    retired_paths = ("docs/reviews", "docs/specs", "docs/superpowers", "docs/design")
+    retired_paths = (
+        "docs/history",
+        "docs/reviews",
+        "docs/specs",
+        "docs/superpowers",
+        "docs/design",
+    )
     present = [path for path in retired_paths if (ROOT / path).exists()]
     if present:
-        raise ValueError("retired execution-document paths must be moved under docs/history: " + ", ".join(present))
+        raise ValueError("retired execution-document paths must not remain in the canonical tree: " + ", ".join(present))
 
 
 def main() -> None:

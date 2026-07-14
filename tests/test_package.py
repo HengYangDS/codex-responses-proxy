@@ -700,6 +700,137 @@ class TestProxySanitize(unittest.TestCase):
     def test_retries_gateway_524_as_transient_upstream_failure(self):
         self.assertEqual(self.p._is_transient_upstream(524, b"gateway timeout"), "full")
 
+    def test_retries_upstream_response_failed_400_once(self):
+        error = (
+            b'{"error":{"message":"OpenAI responses stream failed: '
+            b'response_failed - Response failed",'
+            b'"type":"new_api_error","code":"response_failed"}}'
+        )
+        self.assertEqual(self.p._is_transient_upstream(400, error), "full")
+
+    def test_response_failed_compaction_keeps_complete_tool_pairs_and_latest_user(self):
+        """Fallback removes only an old prefix; no retained output is orphaned."""
+        body = json.dumps({
+            "prompt_cache_key": "cache-key-must-not-reach-the-fallback",
+            "input": [
+                {"type": "message", "role": "user", "content": "old" + "x" * 300_000},
+                {
+                    "type": "custom_tool_call",
+                    "call_id": "custom-1",
+                    "name": "exec",
+                    "input": "{}",
+                },
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": "custom-1",
+                    "output": "y" * 300_000,
+                },
+                {
+                    "type": "function_call",
+                    "call_id": "function-1",
+                    "name": "wait",
+                    "arguments": "{}",
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "function-1",
+                    "output": "done",
+                },
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": "latest user context must survive",
+                },
+            ],
+        }).encode()
+
+        compact, detail = self.p._compact_response_failed_request(body)
+
+        self.assertIsNotNone(compact)
+        self.assertIsNotNone(detail)
+        self.assertEqual(detail["removed_inputs"], 1)
+        self.assertLessEqual(len(compact), self.p.RESPONSE_FAILED_COMPACTION_BUDGET)
+        obj = json.loads(compact)
+        self.assertNotIn("prompt_cache_key", obj)
+        self.assertEqual(obj["input"][-1]["content"], "latest user context must survive")
+        retained = {(item["type"], item.get("call_id")) for item in obj["input"]}
+        self.assertIn(("custom_tool_call", "custom-1"), retained)
+        self.assertIn(("custom_tool_call_output", "custom-1"), retained)
+        self.assertIn(("function_call", "function-1"), retained)
+        self.assertIn(("function_call_output", "function-1"), retained)
+
+    def test_response_failed_compaction_never_starts_at_an_orphaned_tool_output(self):
+        body = json.dumps({
+            "input": [
+                {"type": "message", "role": "user", "content": "old" + "x" * 10_000},
+                {
+                    "type": "custom_tool_call",
+                    "call_id": "custom-oversize",
+                    "name": "exec",
+                    "input": "{}",
+                },
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": "custom-oversize",
+                    "output": "y" * 600_000,
+                },
+                {"type": "message", "role": "user", "content": "newest user context"},
+            ],
+        }).encode()
+
+        compact, detail = self.p._compact_response_failed_request(body)
+
+        self.assertIsNotNone(compact)
+        self.assertEqual(detail["removed_inputs"], 3)
+        obj = json.loads(compact)
+        self.assertEqual(obj["input"], [
+            {"type": "message", "role": "user", "content": "newest user context"},
+        ])
+
+    def test_response_failed_compaction_keeps_latest_user_when_tool_work_follows_it(self):
+        body = json.dumps({
+            "input": [
+                {"type": "message", "role": "user", "content": "old" + "x" * 300_000},
+                {"type": "message", "role": "user", "content": "latest user context"},
+                {
+                    "type": "custom_tool_call",
+                    "call_id": "latest-call",
+                    "name": "exec",
+                    "input": "{}",
+                },
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": "latest-call",
+                    "output": "y" * 300_000,
+                },
+            ],
+        }).encode()
+
+        compact, detail = self.p._compact_response_failed_request(body)
+
+        self.assertIsNotNone(compact)
+        self.assertEqual(detail["removed_inputs"], 1)
+        obj = json.loads(compact)
+        self.assertEqual(obj["input"][0]["content"], "latest user context")
+
+    def test_response_failed_compaction_is_a_noop_when_no_safe_suffix_fits(self):
+        body = json.dumps({
+            "tools": [{"type": "function", "name": "huge", "parameters": "x" * 600_000}],
+            "prompt_cache_key": "must-remain-on-original-request",
+            "input": [
+                {"type": "message", "role": "user", "content": "newest user context"},
+            ],
+        }).encode()
+
+        compact, detail = self.p._compact_response_failed_request(body)
+
+        self.assertIsNone(compact)
+        self.assertIsNone(detail)
+        self.assertEqual(json.loads(body)["prompt_cache_key"], "must-remain-on-original-request")
+
+    def test_does_not_retry_unrelated_400(self):
+        self.assertEqual(self.p._is_transient_upstream(400, b'{"error":"bad request"}'), "")
+
     def test_runtime_server_version_uses_version_file(self):
         self.assertEqual(self.p.release_version(), Path(ROOT, "VERSION").read_text(encoding="utf-8").strip())
 
