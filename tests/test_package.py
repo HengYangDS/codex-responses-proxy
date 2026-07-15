@@ -990,6 +990,47 @@ class TestProxyTransport(unittest.TestCase):
         )
         return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request)
 
+    def test_recovers_response_failed_with_pair_safe_compact_request(self):
+        response_failed = (
+            b'{"error":{"message":"OpenAI responses stream failed: '
+            b'response_failed - Response failed",'
+            b'"type":"new_api_error","code":"response_failed"}}'
+        )
+        success = b'{"id":"resp_recovered","status":"completed"}'
+        body = json.dumps({
+            "model": "gpt-5.6-terra",
+            "stream": False,
+            "prompt_cache_key": "full-history-cache-key",
+            "input": [
+                {"type": "message", "role": "user", "content": "old" + "x" * 100_000},
+                {"type": "function_call", "call_id": "call_old", "name": "tool", "arguments": "{}"},
+                {"type": "function_call_output", "call_id": "call_old", "output": "old result"},
+                {"type": "message", "role": "user", "content": "latest user context"},
+            ],
+        }, separators=(",", ":")).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy(
+                [(400, response_failed), (200, success)], tmp,
+            )
+            try:
+                response = self._request(port, body)
+                with response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.read(), success)
+            finally:
+                cleanup()
+
+        self.assertEqual(received[0], body)
+        self.assertEqual(len(received), 2)
+        compact = json.loads(received[1])
+        self.assertLess(len(received[1]), len(body))
+        self.assertNotIn("prompt_cache_key", compact)
+        self.assertEqual(compact["input"][-1]["content"], "latest user context")
+        calls = {item["call_id"] for item in compact["input"] if item.get("type") in self.p._TOOL_CALL_TYPES}
+        outputs = {item["call_id"] for item in compact["input"] if item.get("type") in self.p._TOOL_OUTPUT_TYPES}
+        self.assertTrue(outputs.issubset(calls))
+
     def test_retries_classified_empty_response_with_byte_identical_request(self):
         empty_response = (
             b'{"error":{"message":"official provider returned an empty response",'
