@@ -68,6 +68,7 @@ RESPONSE_FAILED_COMPACTION_BUDGET = int(
 # remains inside the upstream failure regime, while a half-window suffix was
 # accepted by live probes.
 RESPONSE_FAILED_COMPACTION_RATIO_DENOMINATOR = 2
+RESPONSE_FAILED_MAX_STAGES = max(0, int(os.environ.get("DMX_RESPONSE_FAILED_MAX_STAGES", "3")))
 _RESPONSES_SEM = threading.BoundedSemaphore(max(1, RESPONSES_MAX_CONCURRENCY))
 _ACTIVE_LOCK = threading.Lock()
 _ACTIVE_RESPONSES = 0
@@ -229,6 +230,26 @@ def _dmx_empty_response_exhausted(attempts: int) -> bytes:
             "message": "DMX upstream returned empty responses after bounded retries",
             "type": "upstream_unavailable",
             "code": "dmx_empty_response_exhausted",
+            "attempts": attempts,
+        },
+    }, separators=(",", ":")).encode()
+
+
+def _response_failed_recovery_exhausted(attempts: int) -> bytes:
+    """Return a retryable local failure after bounded response recovery.
+
+    An upstream ``response_failed`` is an execution failure, not a client-side
+    schema rejection.  Returning the original HTTP 400 teaches Codex to treat
+    the failed turn as an invalid request and prevents its own retry loop from
+    taking over.  Once the proxy has exhausted its deliberately bounded,
+    semantics-preserving recovery options, expose a standard retryable status
+    instead.  Do not include the upstream body or request content.
+    """
+    return json.dumps({
+        "error": {
+            "message": "DMX upstream rejected bounded Responses recovery; retry the turn",
+            "type": "upstream_unavailable",
+            "code": "response_failed_recovery_exhausted",
             "attempts": attempts,
         },
     }, separators=(",", ":")).encode()
@@ -454,6 +475,92 @@ def _compact_response_failed_request(raw: bytes, budget: int | None = None):
         metrics["budget_met"] = False
         return compact, metrics
     return None, None
+
+
+def _recover_response_failed_dialogue(raw: bytes, budget: int | None = None):
+    """Build the final, text-only recovery request for ``response_failed``.
+
+    This is intentionally narrower than general context compaction.  It runs
+    only after the pair-safe suffix fallback has itself been explicitly rejected
+    by the upstream.  It preserves the newest developer/system instruction and
+    the latest user request while omitting replayed assistant and tool state.
+    The stored Codex history is never changed; this is a one-request network
+    fallback for an upstream that rejected both the original and pair-safe
+    replay forms.
+    """
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    original_items = payload.get("input")
+    if not isinstance(original_items, list) or not original_items:
+        return None, None
+
+    latest_user_index = max(
+        (
+            index
+            for index, item in enumerate(original_items)
+            if (
+                isinstance(item, dict)
+                and item.get("type") == "message"
+                and item.get("role") == "user"
+            )
+        ),
+        default=-1,
+    )
+    if latest_user_index < 0:
+        return None, None
+
+    # Keep only the most recent instruction anchor before the active user
+    # request.  Older instructions and all replay/tool state were already
+    # rejected by the upstream; retaining them would turn this into an
+    # unbounded history rewrite rather than a bounded recovery attempt.
+    start = latest_user_index
+    for index in range(latest_user_index, -1, -1):
+        item = original_items[index]
+        if (
+            isinstance(item, dict)
+            and item.get("type") == "message"
+            and item.get("role") in ("developer", "system")
+        ):
+            start = index
+            break
+
+    # This final fallback is intentionally a two-message envelope, not a
+    # shortened transcript.  Keeping intervening user messages would recreate
+    # a history replay by another name and would make its semantics harder to
+    # reason about.  The instruction anchor is optional because a valid
+    # Responses request can consist of the user's current request alone.
+    dialogue = []
+    if start != latest_user_index:
+        dialogue.append(original_items[start])
+    dialogue.append(original_items[latest_user_index])
+
+    candidate = dict(payload)
+    candidate["input"] = dialogue
+    candidate.pop("prompt_cache_key", None)
+    try:
+        recovery = json.dumps(candidate, separators=(",", ":")).encode("utf-8")
+    except Exception:
+        return None, None
+
+    if budget is None:
+        budget = RESPONSE_FAILED_COMPACTION_BUDGET
+    if not isinstance(budget, int) or budget <= 0:
+        return None, None
+    budget = min(budget, max(1, len(raw) // RESPONSE_FAILED_COMPACTION_RATIO_DENOMINATOR))
+    if len(recovery) > budget or len(recovery) >= len(raw):
+        return None, None
+    return recovery, {
+        "original_bytes": len(raw),
+        "recovery_bytes": len(recovery),
+        "budget_bytes": budget,
+        "retained_messages": len(dialogue),
+        "dropped_input_items": len(original_items) - len(dialogue),
+        "prompt_cache_key_removed": "prompt_cache_key" in payload,
+    }
 
 def _is_replayable_remote_image_url(value):
     """True only for URL schemes the third-party Responses endpoint accepts."""
@@ -918,8 +1025,10 @@ class Handler(BaseHTTPRequestHandler):
             compact_response_failed_metrics = None
             used_response_failed_compaction = False
             response_failed_stages = 0
-            max_response_failed_stages = 3 if is_responses else 0
+            max_response_failed_stages = RESPONSE_FAILED_MAX_STAGES if is_responses else 0
             attempt_body = body
+            used_response_failed_dialogue_recovery = False
+            dialogue_recovery_metrics = None
             # Ordinary transient retries retain their previous bounded policy.
             # Explicit ``response_failed`` has its own staged, pair-safe
             # compaction path and must never loop the same bytes.
@@ -929,7 +1038,16 @@ class Handler(BaseHTTPRequestHandler):
                     req.add_header(k, v)
                 try:
                     resp = _urlopen(req, timeout=UPSTREAM_TIMEOUT)
-                    if used_response_failed_compaction and compact_response_failed_metrics:
+                    if used_response_failed_dialogue_recovery and dialogue_recovery_metrics:
+                        m = dialogue_recovery_metrics
+                        _log(
+                            f"  req#{request_id} response_failed dialogue recovery accepted "
+                            f"bytes={m['original_bytes']}->{m['recovery_bytes']} "
+                            f"messages={m['retained_messages']} retained/"
+                            f"{m['dropped_input_items']} input items dropped "
+                            f"after={response_failed_stages} pair-safe stages"
+                        )
+                    elif used_response_failed_compaction and compact_response_failed_metrics:
                         m = compact_response_failed_metrics
                         _log(
                             f"  req#{request_id} response_failed compact fallback accepted "
@@ -975,6 +1093,36 @@ class Handler(BaseHTTPRequestHandler):
                                 f"budget_met={metrics.get('budget_met', True)} for {self.path}"
                             )
                             continue
+                    # If pair-safe suffixes have exhausted their useful range, make
+                    # one final dialogue-only recovery attempt.  This is deliberately
+                    # after pair-safe compaction: tool call/output replay is retained
+                    # whenever it is accepted, and only an explicitly rejected replay
+                    # can reach this bounded last resort.
+                    if (
+                        is_responses
+                        and status_code == 400
+                        and disp == "full"
+                        and not used_response_failed_dialogue_recovery
+                    ):
+                        # Recover from the original request rather than the latest
+                        # pair-safe suffix: a suffix may already have discarded the
+                        # newest developer instruction to preserve a later tool pair.
+                        # The dialogue-only recovery can safely retain that current
+                        # instruction because it omits the rejected tool replay.
+                        recovery, metrics = _recover_response_failed_dialogue(body)
+                        if recovery is not None and metrics is not None and len(recovery) < len(attempt_body):
+                            used_response_failed_dialogue_recovery = True
+                            dialogue_recovery_metrics = metrics
+                            previous_bytes = len(attempt_body)
+                            attempt_body = recovery
+                            _log(
+                                f"  req#{request_id} upstream response_failed — dialogue recovery "
+                                f"bytes={previous_bytes}->{metrics['recovery_bytes']} "
+                                f"messages={metrics['retained_messages']} retained/"
+                                f"{metrics['dropped_input_items']} input items dropped "
+                                f"cache_key_removed={metrics['prompt_cache_key_removed']} for {self.path}"
+                            )
+                            continue
                     # invalid_payload is dmxapi SERVER-SIDE transient flakiness, NOT a
                     # bad body: replaying all 11 captured reject-400 bodies verbatim
                     # later returned 200 (11/11). Empirically ~18% of /responses fail
@@ -986,14 +1134,20 @@ class Handler(BaseHTTPRequestHandler):
                     # the staged compaction branch above. Never let it fall
                     # through to the ordinary transient retry policy.
                     if is_responses and status_code == 400 and disp == "full":
-                        self.send_response(status_code)
-                        for k, v in error_headers.items():
-                            if k.lower() not in _HOP_BY_HOP:
-                                self.send_header(k, v)
-                        self.send_header("Content-Length", str(len(err_body)))
+                        attempts = response_failed_stages + int(used_response_failed_dialogue_recovery) + 1
+                        msg = _response_failed_recovery_exhausted(attempts)
+                        self.send_response(503)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Retry-After", "3")
+                        self.send_header("Content-Length", str(len(msg)))
                         self.end_headers()
-                        self.wfile.write(err_body)
-                        _log(f"  req#{request_id} upstream HTTP {status_code} ({len(err_body)}b) for {self.path} [response_failed compaction exhausted after {response_failed_stages} stages]")
+                        self.wfile.write(msg)
+                        detail = "with dialogue recovery" if used_response_failed_dialogue_recovery else "without dialogue recovery"
+                        _log(
+                            f"  req#{request_id} response_failed recovery exhausted after {attempts} attempts "
+                            f"({response_failed_stages} pair-safe stages, {detail}); normalized upstream HTTP "
+                            f"{status_code} to 503 for {self.path}"
+                        )
                         return
                     retry_ceiling = 1 if disp == "once" else max_attempts - 1
                     transient_retries_used = attempt - response_failed_stages
