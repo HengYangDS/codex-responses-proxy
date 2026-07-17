@@ -17,7 +17,7 @@ required = [
     "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
     "python-version: [\"3.12\", \"3.13\", \"3.14\"]",
     "python tests/test_package.py", "check_release_metadata.py --allow-unpublished-history",
-    "test-github-provider-projection.sh", "test-github-tagging.sh",
+    "test-github-provider-projection.sh", "test-github-tagging.sh", "test-publish-gitlab-release.sh",
 ]
 for token in required:
     if token not in text:

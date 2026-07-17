@@ -43,6 +43,7 @@ verify-release-metadata:
     - python scripts/check_release_metadata.py
     - python scripts/check_markdown_presentation.py
     - python scripts/test_release_metadata.py
+    - sh scripts/test-publish-gitlab-release.sh
     - sh scripts/test-github-actions-contract.sh
     - sh scripts/test-github-release-workflow.sh
     - sh scripts/test-github-provider-projection.sh
@@ -66,9 +67,9 @@ publish-gitlab-release:
   needs: [verify-release-tag]
   rules:
     - if: '$CI_COMMIT_TAG'
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y --no-install-recommends curl
   script:
     - python scripts/check_release_metadata.py --tag "$CI_COMMIT_TAG"
-  release:
-    tag_name: $CI_COMMIT_TAG
-    name: "Codex DMX Proxy $CI_COMMIT_TAG"
-    description: "Provider-native release record for $CI_COMMIT_TAG. See CHANGELOG.md for user-relevant changes."
+    - sh scripts/publish-gitlab-release.sh
