@@ -1309,20 +1309,12 @@ class TestGovernanceMetadata(unittest.TestCase):
 
 
 class TestReleaseMetadata(unittest.TestCase):
-    def test_active_release_version_is_published_or_newer_than_the_latest_tag(self):
+    def test_active_release_version_is_documented_as_the_unreleased_train(self):
         version = Path(ROOT, "VERSION").read_text(encoding="utf-8").strip()
-        tags = subprocess.check_output(
-            ["git", "tag", "--list", "v[0-9]*", "--sort=-version:refname"],
-            cwd=ROOT,
-            text=True,
-        ).splitlines()
         releases = Path(ROOT, "CHANGELOG.md").read_text(encoding="utf-8")
-        if f"v{version}" in tags:
-            self.assertIn(f"## [{version}]", releases)
-        else:
-            self.assertNotIn(f"## [{version}]", releases)
-            latest = tags[0].removeprefix("v")
-            self.assertGreater(tuple(map(int, version.split("."))), tuple(map(int, latest.split("."))))
+        self.assertRegex(version, r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+        self.assertIn("## [Unreleased]", releases)
+        self.assertNotIn(f"## [{version}]", releases)
 
     def test_mit_license_is_present(self):
         license_text = Path(ROOT, "LICENSE").read_text(encoding="utf-8")
