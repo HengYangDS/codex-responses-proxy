@@ -6,7 +6,7 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
-## [1.0.9] - 2026-07-17
+## [1.0.10] - 2026-07-17
 
 ### Fixed
 
