@@ -13,6 +13,8 @@ home="$tmp/home"
 global_config="$tmp/global.gitconfig"
 key="$tmp/signing"
 mock_ssh="$tmp/mock-ssh"
+signing_wrapper="$tmp/signing-wrapper"
+signing_log="$tmp/signing.log"
 mkdir -p "$home" "$tmp/allowed"
 : > "$global_config"
 ssh-keygen -q -t ed25519 -N '' -f "$key"
@@ -30,9 +32,19 @@ exit 0
 EOF
 chmod +x "$mock_ssh"
 
+cat > "$signing_wrapper" <<'EOF'
+#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "${DMX_TEST_SIGNING_LOG:?}"
+exec ssh-keygen "$@"
+EOF
+chmod +x "$signing_wrapper"
+
 export HOME="$home"
 export GIT_CONFIG_NOSYSTEM=1
 export GIT_CONFIG_GLOBAL="$global_config"
+export DMX_TEST_SIGNING_LOG="$signing_log"
+git config --file "$global_config" gpg.ssh.program "$signing_wrapper"
 git init -q --bare "$remote"
 git init -q -b main "$source"
 git -C "$source" config user.name 'Yang HENG'
@@ -63,7 +75,7 @@ git -C "$projection" push -q origin main
 git -C "$source" remote add github git@github.com:test/codex-dmx-proxy.git
 (
   cd "$source"
-  DMX_GITHUB_ALLOWED_SIGNERS="$tmp/allowed/github" \
+    DMX_GITHUB_ALLOWED_SIGNERS="$tmp/allowed/github" \
     DMX_GITLAB_ALLOWED_SIGNERS="$tmp/allowed/gitlab" \
     DMX_GITHUB_SIGNING_KEY="$key" \
     DMX_TEST_GITHUB_REMOTE="$remote" \
@@ -72,6 +84,10 @@ git -C "$source" remote add github git@github.com:test/codex-dmx-proxy.git
     sh "$script" v1.0.0
 ) >/dev/null
 
+grep -F -- '-Y sign' "$signing_log" >/dev/null || {
+  echo 'GitHub tag creation bypassed the configured SSH signing program' >&2
+  exit 1
+}
 git -C "$remote" rev-parse --verify refs/tags/v1.0.0 >/dev/null
 git -C "$remote" -c gpg.format=ssh -c gpg.ssh.program=ssh-keygen \
   -c gpg.ssh.allowedSignersFile="$tmp/allowed/github" verify-tag v1.0.0 >/dev/null

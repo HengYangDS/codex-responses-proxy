@@ -39,3 +39,11 @@ GitLab provenance uses `heng.yang.ds@hotmail.com`. GitHub provenance uses
 `hengyang.2003@tsinghua.org.cn`. The same signing key may be bound to distinct
 provider identities, but each provider verifies against its own committed
 allowed-signers file.
+
+## Local signing bridge
+
+`scripts/tag-github-release.sh` uses `DMX_GITHUB_SSH_SIGNING_PROGRAM` when it
+is explicitly set; otherwise it uses Git's configured `gpg.ssh.program`. On
+this workstation that setting is a Keychain-aware bridge, so an isolated tag
+clone can sign without assuming its parent shell inherited `SSH_AUTH_SOCK`.
+The command fails closed if no executable signing program is configured.
