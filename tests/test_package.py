@@ -912,6 +912,59 @@ class TestProxySanitize(unittest.TestCase):
         self.assertIsNone(detail)
         self.assertEqual(json.loads(body)["prompt_cache_key"], "must-remain-on-original-request")
 
+    def test_response_failed_dialogue_recovery_keeps_latest_context_without_tool_replay(self):
+        body = json.dumps({
+            "prompt_cache_key": "stale-full-history-key",
+            "input": [
+                {"type": "message", "role": "developer", "content": "old policy"},
+                {"type": "message", "role": "user", "content": "old request"},
+                {"type": "custom_tool_call", "call_id": "old", "name": "tool", "input": "{}"},
+                {"type": "custom_tool_call_output", "call_id": "old", "output": "old result"},
+                {"type": "message", "role": "developer", "content": "current policy"},
+                {"type": "message", "role": "user", "content": "intermediate request"},
+                {"type": "message", "role": "user", "content": "latest user request"},
+                {"type": "custom_tool_call", "call_id": "new", "name": "tool", "input": "{}"},
+                {"type": "custom_tool_call_output", "call_id": "new", "output": "large" + "x" * 100_000},
+            ],
+        }, separators=(",", ":")).encode()
+
+        recovery, detail = self.p._recover_response_failed_dialogue(body)
+
+        self.assertIsNotNone(recovery)
+        self.assertIsNotNone(detail)
+        recovered = json.loads(recovery)
+        self.assertNotIn("prompt_cache_key", recovered)
+        self.assertEqual(
+            recovered["input"],
+            [
+                {"type": "message", "role": "developer", "content": "current policy"},
+                {"type": "message", "role": "user", "content": "latest user request"},
+            ],
+        )
+        self.assertEqual(detail["dropped_input_items"], 7)
+        self.assertLess(len(recovery), len(body))
+
+    def test_response_failed_dialogue_recovery_allows_current_user_without_instruction(self):
+        body = json.dumps({
+            "input": [
+                {"type": "message", "role": "user", "content": "old request"},
+                {"type": "message", "role": "assistant", "content": "old response"},
+                {"type": "message", "role": "user", "content": "latest user request"},
+                {"type": "custom_tool_call", "call_id": "new", "name": "tool", "input": "{}"},
+                {"type": "custom_tool_call_output", "call_id": "new", "output": "large" + "x" * 100_000},
+            ],
+        }, separators=(",", ":")).encode()
+
+        recovery, detail = self.p._recover_response_failed_dialogue(body)
+
+        self.assertIsNotNone(recovery)
+        self.assertIsNotNone(detail)
+        self.assertEqual(
+            json.loads(recovery)["input"],
+            [{"type": "message", "role": "user", "content": "latest user request"}],
+        )
+        self.assertEqual(detail["retained_messages"], 1)
+
     def test_does_not_retry_unrelated_400(self):
         self.assertEqual(self.p._is_transient_upstream(400, b'{"error":"bad request"}'), "")
 
@@ -1030,6 +1083,93 @@ class TestProxyTransport(unittest.TestCase):
         calls = {item["call_id"] for item in compact["input"] if item.get("type") in self.p._TOOL_CALL_TYPES}
         outputs = {item["call_id"] for item in compact["input"] if item.get("type") in self.p._TOOL_OUTPUT_TYPES}
         self.assertTrue(outputs.issubset(calls))
+
+    def test_recovers_response_failed_with_dialogue_only_last_resort(self):
+        response_failed = (
+            b'{"error":{"message":"OpenAI responses stream failed: '
+            b'response_failed - Response failed",'
+            b'"type":"new_api_error","code":"response_failed"}}'
+        )
+        success = b'{"id":"resp_recovered","status":"completed"}'
+        body = json.dumps({
+            "model": "gpt-5.6-terra",
+            "stream": False,
+            "prompt_cache_key": "full-history-cache-key",
+            "input": [
+                {"type": "message", "role": "developer", "content": "old" + "x" * 100_000},
+                {"type": "message", "role": "developer", "content": "current policy"},
+                {"type": "message", "role": "user", "content": "latest user context"},
+                {"type": "custom_tool_call", "call_id": "call_new", "name": "tool", "input": "{}"},
+                {"type": "custom_tool_call_output", "call_id": "call_new", "output": "tool result"},
+            ],
+        }, separators=(",", ":")).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy(
+                [(400, response_failed), (400, response_failed), (200, success)], tmp,
+            )
+            try:
+                with (
+                    mock.patch.object(self.p, "RESPONSE_FAILED_MAX_STAGES", 1),
+                    mock.patch.object(self.p, "_log") as log,
+                ):
+                    response = self._request(port, body)
+                    with response:
+                        self.assertEqual(response.status, 200)
+                        self.assertEqual(response.read(), success)
+                logs = "\n".join(call.args[0] for call in log.call_args_list)
+            finally:
+                cleanup()
+
+        self.assertEqual(received[0], body)
+        self.assertEqual(len(received), 3)
+        recovery = json.loads(received[2])
+        self.assertNotIn("prompt_cache_key", recovery)
+        self.assertEqual(
+            recovery["input"],
+            [
+                {"type": "message", "role": "developer", "content": "current policy"},
+                {"type": "message", "role": "user", "content": "latest user context"},
+            ],
+        )
+        self.assertIn("response_failed dialogue recovery accepted", logs)
+        self.assertNotIn("response_failed compact fallback accepted", logs)
+
+    def test_normalizes_exhausted_response_failed_recovery_to_retryable_503(self):
+        response_failed = (
+            b'{"error":{"message":"OpenAI responses stream failed: '
+            b'response_failed - Response failed",'
+            b'"type":"new_api_error","code":"response_failed"}}'
+        )
+        body = json.dumps({
+            "model": "gpt-5.6-terra",
+            "stream": False,
+            "input": [
+                {"type": "message", "role": "developer", "content": "current policy"},
+                {"type": "message", "role": "user", "content": "latest user context"},
+                {"type": "custom_tool_call", "call_id": "call_new", "name": "tool", "input": "{}"},
+                {"type": "custom_tool_call_output", "call_id": "call_new", "output": "tool result"},
+            ],
+        }, separators=(",", ":")).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy(
+                [(400, response_failed), (400, response_failed)], tmp,
+            )
+            try:
+                with mock.patch.object(self.p, "RESPONSE_FAILED_MAX_STAGES", 0):
+                    with self.assertRaises(urllib.error.HTTPError) as raised:
+                        self._request(port, body)
+                error = raised.exception
+                with error:
+                    self.assertEqual(error.code, 503)
+                    self.assertEqual(error.headers["Retry-After"], "3")
+                    payload = json.loads(error.read())
+            finally:
+                cleanup()
+
+        self.assertEqual(len(received), 1)
+        self.assertEqual(payload["error"]["code"], "response_failed_recovery_exhausted")
 
     def test_retries_classified_empty_response_with_byte_identical_request(self):
         empty_response = (

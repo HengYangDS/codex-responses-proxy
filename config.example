@@ -12,9 +12,14 @@ DMX_PROXY_PORT=8791
 # Maximum concurrent /responses requests.
 DMX_RESPONSES_MAX_CONCURRENCY=64
 
-# Full-request byte budget for the one pair-safe fallback after an explicit
+# Full-request byte budget for each pair-safe fallback after an explicit
 # upstream HTTP 400 `response_failed`. This is intentionally conservative.
 DMX_RESPONSE_FAILED_COMPACTION_BUDGET=524288
+
+# Maximum number of pair-safe fallback stages before the one dialogue-only
+# recovery attempt. Set to 0 to skip pair-safe compaction, not the final
+# dialogue-only recovery. The default is deliberately conservative.
+DMX_RESPONSE_FAILED_MAX_STAGES=3
 
 # Watchdog TCP health-check interval, in seconds.
 DMX_WATCHDOG_INTERVAL=15
