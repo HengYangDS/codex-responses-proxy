@@ -6,6 +6,18 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-07-17
+
+### Fixed
+
+- Make the GitHub-native tag command use the workstation's configured SSH
+  signing program rather than bypassing its Keychain-aware signing bridge.
+
+### Verified
+
+- Added regression coverage that proves GitHub tag creation invokes the
+  configured SSH signing program instead of calling `ssh-keygen` directly.
+
 ## [1.0.12] - 2026-07-17
 
 ### Fixed
