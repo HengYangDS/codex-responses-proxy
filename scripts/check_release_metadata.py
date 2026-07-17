@@ -92,7 +92,9 @@ def check_changelog_provenance(
             )
 
 
-def check_active_release_train(version: str, releases: list[tuple[str, str]]) -> None:
+def check_active_release_train(
+    version: str, releases: list[tuple[str, str]], *, allow_unpublished_history: bool = False,
+) -> None:
     """Accept an untagged next version without treating it as published.
 
     A deployed source tree may contain several ordinary commits between releases.
@@ -106,6 +108,8 @@ def check_active_release_train(version: str, releases: list[tuple[str, str]]) ->
             raise ValueError(f"CHANGELOG.md lacks dated release heading ## [{version}]")
         return
     if version in published:
+        if allow_unpublished_history:
+            return
         raise ValueError(f"CHANGELOG release {version} exists before its Git tag")
     comparison_set = known + [released for released, _ in releases]
     if not comparison_set:
@@ -183,7 +187,9 @@ def main() -> None:
         releases, allow_unpublished_history=args.allow_unpublished_history,
     )
     try:
-        check_active_release_train(version, releases)
+        check_active_release_train(
+            version, releases, allow_unpublished_history=args.allow_unpublished_history,
+        )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     proxy = (ROOT / "proxy" / "dmx_responses_proxy.py").read_text(encoding="utf-8")
