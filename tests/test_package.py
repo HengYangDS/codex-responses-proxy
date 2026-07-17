@@ -1309,12 +1309,13 @@ class TestGovernanceMetadata(unittest.TestCase):
 
 
 class TestReleaseMetadata(unittest.TestCase):
-    def test_active_release_version_is_documented_as_the_unreleased_train(self):
+    def test_active_release_version_is_unreleased_or_the_first_pending_release(self):
         version = Path(ROOT, "VERSION").read_text(encoding="utf-8").strip()
         releases = Path(ROOT, "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertRegex(version, r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
         self.assertIn("## [Unreleased]", releases)
-        self.assertNotIn(f"## [{version}]", releases)
+        if f"## [{version}]" in releases:
+            self.assertIn(f"## [Unreleased]\n\n## [{version}]", releases)
 
     def test_mit_license_is_present(self):
         license_text = Path(ROOT, "LICENSE").read_text(encoding="utf-8")

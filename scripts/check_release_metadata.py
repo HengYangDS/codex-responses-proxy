@@ -60,7 +60,10 @@ def _git(*args: str) -> str:
 
 
 def check_changelog_provenance(
-    releases: list[tuple[str, str]], *, allow_unpublished_history: bool = False,
+    releases: list[tuple[str, str]],
+    *,
+    allow_unpublished_history: bool = False,
+    pending_version: str | None = None,
 ) -> None:
     """Require exact, dated Changelog coverage for every locally known release tag."""
 
@@ -71,7 +74,11 @@ def check_changelog_provenance(
             return
         raise ValueError("cannot find a release SemVer tag")
     shallow = _git("rev-parse", "--is-shallow-repository") == "true"
-    missing = [version for version in actual_versions if version not in expected_versions]
+    missing = [
+        version
+        for version in actual_versions
+        if version not in expected_versions and version != pending_version
+    ]
     if missing and not shallow and not allow_unpublished_history:
         raise ValueError("release heading has no matching Git tag: " + ", ".join(missing))
     if len(actual_versions) != len(set(actual_versions)):
@@ -93,7 +100,11 @@ def check_changelog_provenance(
 
 
 def check_active_release_train(
-    version: str, releases: list[tuple[str, str]], *, allow_unpublished_history: bool = False,
+    version: str,
+    releases: list[tuple[str, str]],
+    *,
+    allow_unpublished_history: bool = False,
+    pending_release: bool = False,
 ) -> None:
     """Accept an untagged next version without treating it as published.
 
@@ -108,7 +119,7 @@ def check_active_release_train(
             raise ValueError(f"CHANGELOG.md lacks dated release heading ## [{version}]")
         return
     if version in published:
-        if allow_unpublished_history:
+        if allow_unpublished_history or pending_release:
             return
         raise ValueError(f"CHANGELOG release {version} exists before its Git tag")
     comparison_set = known + [released for released, _ in releases]
@@ -159,6 +170,8 @@ def check_governance_contract() -> None:
         raise ValueError("GitLab CI must execute the release and governance checker")
     if "publish-gitlab-release:" not in ci or "tag_name: $CI_COMMIT_TAG" not in ci:
         raise ValueError("GitLab CI must publish a formal provider-native release record")
+    if "CI_COMMIT_BRANCH =~ /^release\\/" not in ci:
+        raise ValueError("GitLab CI must suppress untagged release-preparation branches")
     retired_paths = (
         "docs/history",
         "docs/reviews",
@@ -179,16 +192,38 @@ def main() -> None:
         action="store_true",
         help="allow a provider bootstrap branch with no locally native historical tags",
     )
+    parser.add_argument(
+        "--prepare-release",
+        action="store_true",
+        help="validate a signed-release commit before its provider-native tag exists",
+    )
     parser.add_argument("--changelog", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.prepare_release and args.tag:
+        raise SystemExit("--prepare-release cannot be combined with --tag")
     version = read_version()
     releases = changelog_releases(args.changelog)
     check_changelog_provenance(
-        releases, allow_unpublished_history=args.allow_unpublished_history,
+        releases,
+        allow_unpublished_history=args.allow_unpublished_history,
+        pending_version=version if args.prepare_release else None,
     )
+    if args.prepare_release:
+        if version in known_release_versions():
+            raise SystemExit(f"release tag v{version} already exists; use --tag validation instead")
+        current_heading = f"## [{version}] - "
+        heading = next((f"## [{item}] - {date}" for item, date in releases if item == version), "")
+        if not heading.startswith(current_heading):
+            raise SystemExit(f"CHANGELOG.md lacks pending release heading ## [{version}] - YYYY-MM-DD")
+        first_published = releases[0][0] if releases else ""
+        if first_published != version:
+            raise SystemExit(f"pending release {version} must be the first published CHANGELOG section")
     try:
         check_active_release_train(
-            version, releases, allow_unpublished_history=args.allow_unpublished_history,
+            version,
+            releases,
+            allow_unpublished_history=args.allow_unpublished_history,
+            pending_release=args.prepare_release,
         )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
