@@ -6,7 +6,7 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
-## [1.0.11] - 2026-07-17
+## [1.0.12] - 2026-07-17
 
 ### Fixed
 
@@ -49,6 +49,9 @@ work that has not yet been tagged.
   shared runner's deleted local tag from creating a false Changelog failure.
 - Added an isolated regression fixture that proves `git fetch --tags --force
   --prune --prune-tags origin` removes a tag deleted from the remote.
+- Require the GitLab release-metadata gate to use complete history before it
+  tests an intentionally untagged release fixture, preventing shallow-clone
+  history from masking the fixture's historical-release premise.
 
 ## [1.0.8] - 2026-07-14
 
