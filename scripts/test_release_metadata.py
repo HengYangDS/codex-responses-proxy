@@ -34,15 +34,18 @@ def expect_rejection(text: str, description: str) -> None:
 def main() -> None:
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-    current_heading = f"## [{version}] - 2026-07-14"
     subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT, check=True)
-    expect_rejection(source.replace(current_heading, f"## [{version}] - 2000-01-01", 1), "the current tag/date mismatch")
+    if f"## [{version}]" in source:
+        raise SystemExit("untagged active VERSION must not have a dated release heading")
     expect_rejection(
-        source.replace(current_heading + "\n", "", 1),
-        "the current reachable tag missing from the Changelog",
+        source.replace("## [1.0.8] - 2026-07-14", "## [1.0.8] - 2000-01-01", 1),
+        "a tag/date mismatch",
     )
-    expect_rejection(source.replace("## [1.0.4] - 2026-07-14", "## [1.0.4] - 2000-01-01", 1), "a tag/date mismatch")
     expect_rejection(source.replace("## [1.0.4] - 2026-07-14\n", "", 1), "a missing reachable tag")
+    expect_rejection(
+        source.replace("## [1.0.8] - 2026-07-14", "## [1.0.9] - 2026-07-17\n\n## [1.0.8] - 2026-07-14", 1),
+        "an untagged published release",
+    )
     print("release metadata chronology contract: OK")
 
 

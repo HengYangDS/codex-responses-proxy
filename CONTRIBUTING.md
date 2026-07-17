@@ -43,3 +43,12 @@ write an inferred or planned release into `CHANGELOG.md`.
 
 GitLab **Project Name** is the human-facing `Codex DMX Proxy`; its stable clone
 **Path** remains `codex-dmx-proxy`. Never change the Path as a cosmetic rename.
+
+## Forge discipline
+
+GitLab and GitHub are independent release planes. GitLab provenance uses
+`heng.yang.ds@hotmail.com`; the GitHub projection uses
+`hengyang.2003@tsinghua.org.cn`. Do not copy provider-native tags between
+forges. Use `sh scripts/project-github-forge.sh` only from a clean canonical
+GitLab checkout; it rewrites an isolated clone, preserves provider-specific
+tags, and updates GitHub `main` under a lease.
