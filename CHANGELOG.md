@@ -39,6 +39,9 @@ work that has not yet been tagged.
 - Added regression coverage for sub-budget failures, impossible target budgets,
   staged reduction, pair integrity, latest-user retention, and fallback-only
   cache-key removal.
+- Added independent GitLab and GitHub CI/CD contracts, provider-specific source
+  projection, and formal release records. The project is now distributed under
+  the MIT License.
 
 ## [1.0.8] - 2026-07-14
 

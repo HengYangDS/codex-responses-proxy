@@ -13,6 +13,7 @@ of Codex conversation history or AIGW configuration.
 - Change and release policy: [governance](docs/governance/release-and-change-policy.md)
 - Durable boundary decision: [ADR-0001](docs/decisions/0001-control-plane-data-plane-boundary.md)
 - Evidence policy: [evidence](docs/evidence/README.md)
+- Independent forge operations: [operations](docs/operations/forge-operations.md)
 - Release history: [CHANGELOG](CHANGELOG.md)
 
 ## Authority Order

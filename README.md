@@ -1,9 +1,14 @@
 # Codex DMX Proxy
 
-| GitLab metadata | Value |
+[![GitLab pipeline](http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-dmx-proxy/badges/main/pipeline.svg)](http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-dmx-proxy/-/pipelines)
+[![GitHub verification](https://github.com/HengYangDS/codex-dmx-proxy/actions/workflows/verify.yml/badge.svg)](https://github.com/HengYangDS/codex-dmx-proxy/actions/workflows/verify.yml)
+
+| Project identity | Value |
 | --- | --- |
-| **Project Name** | `Codex DMX Proxy` |
-| **Stable repository Path** | `codex-dmx-proxy` |
+| **GitLab Project Name** | `Codex DMX Proxy` |
+| **GitLab repository path** | `codex-dmx-proxy` |
+| **GitHub repository** | `HengYangDS/codex-dmx-proxy` |
+| **License** | [MIT](LICENSE) |
 
 Codex DMX Proxy is a local, loopback-only compatibility adapter for third-party
 OpenAI Responses endpoints. It repairs replay incompatibilities at the network
@@ -181,4 +186,5 @@ done
 - [Release and change policy](docs/governance/release-and-change-policy.md)
 - [Decision record](docs/decisions/0001-control-plane-data-plane-boundary.md)
 - [Evidence policy](docs/evidence/README.md)
+- [Independent forge operations](docs/operations/forge-operations.md)
 - [Release history](CHANGELOG.md)
