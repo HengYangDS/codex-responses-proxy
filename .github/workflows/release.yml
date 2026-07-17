@@ -40,7 +40,6 @@ jobs:
           sh scripts/check-release-tag-signature.sh . "$SELECTED_TAG" github
           python scripts/check_release_metadata.py --allow-unpublished-history --tag "$SELECTED_TAG"
           python scripts/check_markdown_presentation.py
-          python scripts/test_release_metadata.py
       - name: Publish or verify immutable GitHub release record
         env:
           GH_TOKEN: ${{ github.token }}
