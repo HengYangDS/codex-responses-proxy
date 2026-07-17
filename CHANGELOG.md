@@ -6,7 +6,7 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
-## [1.0.10] - 2026-07-17
+## [1.0.11] - 2026-07-17
 
 ### Fixed
 
@@ -44,6 +44,11 @@ work that has not yet been tagged.
 - Added independent GitLab and GitHub CI/CD contracts, provider-specific source
   projection, and formal release records. The project is now distributed under
   the MIT License.
+- Make every GitLab release-metadata and tag gate force-refresh and prune the
+  provider tag namespace before checking release chronology. This prevents a
+  shared runner's deleted local tag from creating a false Changelog failure.
+- Added an isolated regression fixture that proves `git fetch --tags --force
+  --prune --prune-tags origin` removes a tag deleted from the remote.
 
 ## [1.0.8] - 2026-07-14
 
