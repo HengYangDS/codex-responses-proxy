@@ -59,16 +59,20 @@ def _git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
 
 
-def check_changelog_provenance(releases: list[tuple[str, str]]) -> None:
+def check_changelog_provenance(
+    releases: list[tuple[str, str]], *, allow_unpublished_history: bool = False,
+) -> None:
     """Require exact, dated Changelog coverage for every locally known release tag."""
 
     actual_versions = [version for version, _ in releases]
     expected_versions = known_release_versions()
     if not expected_versions:
+        if allow_unpublished_history:
+            return
         raise ValueError("cannot find a release SemVer tag")
     shallow = _git("rev-parse", "--is-shallow-repository") == "true"
     missing = [version for version in actual_versions if version not in expected_versions]
-    if missing and not shallow:
+    if missing and not shallow and not allow_unpublished_history:
         raise ValueError("release heading has no matching Git tag: " + ", ".join(missing))
     if len(actual_versions) != len(set(actual_versions)):
         raise ValueError("released CHANGELOG headings must not duplicate a version")
@@ -103,7 +107,10 @@ def check_active_release_train(version: str, releases: list[tuple[str, str]]) ->
         return
     if version in published:
         raise ValueError(f"CHANGELOG release {version} exists before its Git tag")
-    if _version_key(version) <= max(map(_version_key, known)):
+    comparison_set = known + [released for released, _ in releases]
+    if not comparison_set:
+        raise ValueError("cannot identify an existing release version")
+    if _version_key(version) <= max(map(_version_key, comparison_set)):
         raise ValueError(
             f"untagged VERSION {version} must be newer than the latest released version"
         )
@@ -163,11 +170,18 @@ def check_governance_contract() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tag", help="require an exact v<version> tag")
+    parser.add_argument(
+        "--allow-unpublished-history",
+        action="store_true",
+        help="allow a provider bootstrap branch with no locally native historical tags",
+    )
     parser.add_argument("--changelog", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     version = read_version()
     releases = changelog_releases(args.changelog)
-    check_changelog_provenance(releases)
+    check_changelog_provenance(
+        releases, allow_unpublished_history=args.allow_unpublished_history,
+    )
     try:
         check_active_release_train(version, releases)
     except ValueError as exc:
