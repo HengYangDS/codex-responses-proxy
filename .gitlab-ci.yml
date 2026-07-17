@@ -36,6 +36,10 @@ verify-python-3.14:
 verify-release-metadata:
   stage: verify
   image: python:3.14-slim
+  variables:
+    # Release chronology compares the whole provider tag namespace. A shallow
+    # checkout cannot establish that history, so this job must receive it.
+    GIT_DEPTH: "0"
   before_script:
     - apt-get update -qq
     - apt-get install -y --no-install-recommends git openssh-client
