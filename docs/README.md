@@ -12,6 +12,7 @@ without copying a larger governance system into a small transport adapter.
 | [governance/](governance/release-and-change-policy.md) | Change, release, and contributor rules. |
 | [decisions/](decisions/0001-control-plane-data-plane-boundary.md) | Durable, revisitable design rulings. |
 | [evidence/](evidence/README.md) | Verification records and proof limits. |
+| [operations/](operations/forge-operations.md) | Independent GitLab and GitHub forge operation. |
 | [CHANGELOG](../CHANGELOG.md) | Published release history. |
 
 Source, tests, `VERSION`, and CI remain higher authority than prose. Generated

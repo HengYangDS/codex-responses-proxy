@@ -20,19 +20,21 @@ def fail(message: str) -> None:
 def main() -> None:
     text = ROOT_README.read_text(encoding="utf-8")
     table = (
-        "| GitLab metadata | Value |\n"
+        "| Project identity | Value |\n"
         "| --- | --- |\n"
-        f"| **Project Name** | `{PROJECT_NAME}` |\n"
-        f"| **Stable repository Path** | `{PROJECT_PATH}` |"
+        f"| **GitLab Project Name** | `{PROJECT_NAME}` |\n"
+        f"| **GitLab repository path** | `{PROJECT_PATH}` |\n"
+        "| **GitHub repository** | `HengYangDS/codex-dmx-proxy` |\n"
+        "| **License** | [MIT](LICENSE) |"
     )
     if table not in text:
-        fail("README GitLab Project Name/Path must use one semantic table")
+        fail("README dual-forge project identity must use one semantic table")
     if re.search(
-        r"^\*\*GitLab Project Name:\*\*[^\n]*(?<!  )\n\*\*Stable repository Path:\*\*",
+        r"^\*\*GitLab Project Name:\*\*[^\n]*(?<!  )\n\*\*GitLab repository path:\*\*",
         text,
         flags=re.MULTILINE,
     ):
-        fail("adjacent metadata rows would collapse without an explicit structure")
+        fail("adjacent project metadata rows would collapse without an explicit structure")
     print("Markdown presentation contract: OK")
 
 

@@ -1,0 +1,59 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile and test
+        run: |
+          set -euo pipefail
+          python -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py tests scripts
+          python tests/test_package.py
+
+  governance:
+    name: Governance and presentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.14"
+      - name: Verify release and source contracts
+        run: |
+          set -euo pipefail
+          python scripts/check_release_metadata.py
+          python scripts/check_markdown_presentation.py
+          python scripts/test_release_metadata.py
+          sh scripts/test-github-actions-contract.sh
+          sh scripts/test-github-release-workflow.sh
+          sh scripts/test-github-provider-projection.sh
+          sh scripts/test-github-tagging.sh

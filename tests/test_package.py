@@ -1309,9 +1309,24 @@ class TestGovernanceMetadata(unittest.TestCase):
 
 
 class TestReleaseMetadata(unittest.TestCase):
-    def test_release_version_matches_changelog(self):
+    def test_active_release_version_is_published_or_newer_than_the_latest_tag(self):
         version = Path(ROOT, "VERSION").read_text(encoding="utf-8").strip()
-        self.assertIn(f"## [{version}]", Path(ROOT, "CHANGELOG.md").read_text(encoding="utf-8"))
+        tags = subprocess.check_output(
+            ["git", "tag", "--list", "v[0-9]*", "--sort=-version:refname"],
+            cwd=ROOT,
+            text=True,
+        ).splitlines()
+        releases = Path(ROOT, "CHANGELOG.md").read_text(encoding="utf-8")
+        if f"v{version}" in tags:
+            self.assertIn(f"## [{version}]", releases)
+        else:
+            self.assertNotIn(f"## [{version}]", releases)
+            latest = tags[0].removeprefix("v")
+            self.assertGreater(tuple(map(int, version.split("."))), tuple(map(int, latest.split("."))))
+
+    def test_mit_license_is_present(self):
+        license_text = Path(ROOT, "LICENSE").read_text(encoding="utf-8")
+        self.assertTrue(license_text.startswith("MIT License\n"))
 
 
 if __name__ == "__main__":

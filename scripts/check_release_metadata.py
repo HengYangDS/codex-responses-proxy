@@ -27,6 +27,14 @@ def _version_key(version: str) -> tuple[int, int, int]:
     return tuple(map(int, version.split(".")))
 
 
+def known_release_versions() -> list[str]:
+    return [
+        tag.removeprefix("v")
+        for tag in _git("tag", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
+        if re.fullmatch(r"v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", tag)
+    ]
+
+
 def changelog_releases(path: Path | None = None) -> list[tuple[str, str]]:
     headings: list[tuple[str, str | None]] = []
     changelog = path or ROOT / "CHANGELOG.md"
@@ -55,11 +63,7 @@ def check_changelog_provenance(releases: list[tuple[str, str]]) -> None:
     """Require exact, dated Changelog coverage for every locally known release tag."""
 
     actual_versions = [version for version, _ in releases]
-    expected_versions = [
-        tag.removeprefix("v")
-        for tag in _git("tag", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
-        if re.fullmatch(r"v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", tag)
-    ]
+    expected_versions = known_release_versions()
     if not expected_versions:
         raise ValueError("cannot find a release SemVer tag")
     shallow = _git("rev-parse", "--is-shallow-repository") == "true"
@@ -84,6 +88,27 @@ def check_changelog_provenance(releases: list[tuple[str, str]]) -> None:
             )
 
 
+def check_active_release_train(version: str, releases: list[tuple[str, str]]) -> None:
+    """Accept an untagged next version without treating it as published.
+
+    A deployed source tree may contain several ordinary commits between releases.
+    The active ``VERSION`` names that next release train, while the dated
+    Changelog headings remain an immutable record of tags that already exist.
+    """
+    known = known_release_versions()
+    published = {released for released, _ in releases}
+    if version in known:
+        if version not in published:
+            raise ValueError(f"CHANGELOG.md lacks dated release heading ## [{version}]")
+        return
+    if version in published:
+        raise ValueError(f"CHANGELOG release {version} exists before its Git tag")
+    if _version_key(version) <= max(map(_version_key, known)):
+        raise ValueError(
+            f"untagged VERSION {version} must be newer than the latest released version"
+        )
+
+
 def check_governance_contract() -> None:
     required = (
         "AGENTS.md",
@@ -93,6 +118,14 @@ def check_governance_contract() -> None:
         "docs/governance/release-and-change-policy.md",
         "docs/decisions/0001-control-plane-data-plane-boundary.md",
         "docs/evidence/README.md",
+        "docs/operations/forge-operations.md",
+        "LICENSE",
+        "scripts/project-github-forge.sh",
+        "scripts/check-release-tag-signature.sh",
+        "packaging/release/gitlab-allowed-signers",
+        "packaging/release/github-allowed-signers",
+        ".github/workflows/verify.yml",
+        ".github/workflows/release.yml",
     )
     missing = [relative for relative in required if not (ROOT / relative).is_file()]
     if missing:
@@ -100,17 +133,21 @@ def check_governance_contract() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     if not readme.startswith("# Codex DMX Proxy\n"):
         raise ValueError("README.md must use the formal Project Name as its title")
-    gitlab_identity = (
-        "| GitLab metadata | Value |\n"
+    project_identity = (
+        "| Project identity | Value |\n"
         "| --- | --- |\n"
-        "| **Project Name** | `Codex DMX Proxy` |\n"
-        "| **Stable repository Path** | `codex-dmx-proxy` |"
+        "| **GitLab Project Name** | `Codex DMX Proxy` |\n"
+        "| **GitLab repository path** | `codex-dmx-proxy` |\n"
+        "| **GitHub repository** | `HengYangDS/codex-dmx-proxy` |\n"
+        "| **License** | [MIT](LICENSE) |"
     )
-    if gitlab_identity not in readme:
-        raise ValueError("README.md must declare formal GitLab Project Name and stable Path in its metadata table")
+    if project_identity not in readme:
+        raise ValueError("README.md must declare formal dual-forge identity and MIT license in its metadata table")
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     if "python scripts/check_release_metadata.py" not in ci:
         raise ValueError("GitLab CI must execute the release and governance checker")
+    if "publish-gitlab-release:" not in ci or "tag_name: $CI_COMMIT_TAG" not in ci:
+        raise ValueError("GitLab CI must publish a formal provider-native release record")
     retired_paths = (
         "docs/history",
         "docs/reviews",
@@ -131,8 +168,10 @@ def main() -> None:
     version = read_version()
     releases = changelog_releases(args.changelog)
     check_changelog_provenance(releases)
-    if version not in {released for released, _ in releases}:
-        raise SystemExit(f"CHANGELOG.md lacks dated release heading ## [{version}]")
+    try:
+        check_active_release_train(version, releases)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     proxy = (ROOT / "proxy" / "dmx_responses_proxy.py").read_text(encoding="utf-8")
     if "release_version()" not in proxy:
         raise SystemExit("proxy runtime header does not read VERSION")
@@ -145,6 +184,8 @@ def main() -> None:
         if args.tag != expected:
             raise SystemExit(f"tag {args.tag!r} does not match expected {expected!r}")
         subprocess.run(["git", "rev-parse", "--verify", f"refs/tags/{args.tag}"], cwd=ROOT, check=True)
+        if version not in {released for released, _ in releases}:
+            raise SystemExit(f"CHANGELOG.md lacks dated release heading ## [{version}]")
     print(f"release and governance metadata: {version} OK")
 
 
