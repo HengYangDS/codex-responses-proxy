@@ -25,15 +25,39 @@ verify-python-3.14:
 verify-release-metadata:
   stage: verify
   image: python:3.14-slim
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y --no-install-recommends git openssh-client
   script:
     - python scripts/check_release_metadata.py
     - python scripts/check_markdown_presentation.py
     - python scripts/test_release_metadata.py
+    - sh scripts/test-github-actions-contract.sh
+    - sh scripts/test-github-release-workflow.sh
+    - sh scripts/test-github-provider-projection.sh
+    - sh scripts/test-github-tagging.sh
 
 verify-release-tag:
   stage: release
   image: python:3.14-slim
   rules:
     - if: '$CI_COMMIT_TAG'
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y --no-install-recommends openssh-client
   script:
     - python scripts/check_release_metadata.py --tag "$CI_COMMIT_TAG"
+    - sh scripts/check-release-tag-signature.sh . "$CI_COMMIT_TAG" gitlab
+
+publish-gitlab-release:
+  stage: release
+  image: python:3.14-slim
+  needs: [verify-release-tag]
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  script:
+    - python scripts/check_release_metadata.py --tag "$CI_COMMIT_TAG"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "Codex DMX Proxy $CI_COMMIT_TAG"
+    description: "Provider-native release record for $CI_COMMIT_TAG. See CHANGELOG.md for user-relevant changes."
