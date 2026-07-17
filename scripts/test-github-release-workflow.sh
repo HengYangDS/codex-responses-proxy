@@ -14,7 +14,7 @@ required = [
     "name: Release", 'tags: ["v*"]', "permissions:\n  contents: write",
     "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
     "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
-    "check-release-tag-signature.sh", "check_release_metadata.py --tag",
+    "check-release-tag-signature.sh", "check_release_metadata.py --allow-unpublished-history --tag",
     "gh release create", "--verify-tag", "--generate-notes",
 ]
 for token in required:
