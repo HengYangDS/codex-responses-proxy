@@ -13,13 +13,13 @@ ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "scripts" / "check_release_metadata.py"
 
 
-def expect_rejection(text: str, description: str) -> None:
+def expect_rejection(text: str, description: str, *args: str) -> None:
     with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8", delete=False) as handle:
         path = Path(handle.name)
         handle.write(text)
     try:
         completed = subprocess.run(
-            [sys.executable, str(CHECKER), "--changelog", str(path)],
+            [sys.executable, str(CHECKER), *args, "--changelog", str(path)],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -34,9 +34,22 @@ def expect_rejection(text: str, description: str) -> None:
 def main() -> None:
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-    subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT, check=True)
-    if f"## [{version}]" in source:
-        raise SystemExit("untagged active VERSION must not have a dated release heading")
+    heading = f"## [{version}]"
+    tag_exists = subprocess.run(
+        ["git", "rev-parse", "--verify", f"refs/tags/v{version}"],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    ).returncode == 0
+    if heading in source and not tag_exists:
+        expect_rejection(source, "an untagged pending release in ordinary verification")
+        subprocess.run([sys.executable, str(CHECKER), "--prepare-release"], cwd=ROOT, check=True)
+    else:
+        subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT, check=True)
+        if tag_exists:
+            expect_rejection(source, "a tagged release checked as a pending release", "--prepare-release")
+        else:
+            expect_rejection(source, "an absent pending release heading", "--prepare-release")
     expect_rejection(
         source.replace("## [1.0.8] - 2026-07-14", "## [1.0.8] - 2000-01-01", 1),
         "a tag/date mismatch",
