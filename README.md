@@ -29,15 +29,23 @@ replayed Codex state, for example:
 - a local image reference that the upstream endpoint cannot fetch;
 - a transient `invalid_payload`, gateway timeout, or pre-content SSE interruption;
 - a classified DMX HTTP 477 `empty_response` from its selected upstream;
-- an explicit upstream `response_failed` rejection of a large replay context.
+- an explicit upstream `response_failed` execution rejection of replay context.
 
 The adapter removes only deterministically incompatible outbound replay state.
-For an explicit upstream `response_failed` rejection of a large request, it makes
-up to three strictly smaller fallbacks that each remove only the oldest contiguous,
+For an explicit upstream `response_failed` rejection, it first makes up to three
+strictly smaller fallbacks that each remove only the oldest contiguous,
 tool-pair-safe input prefix, retain the latest user context, and drop the stale
-`prompt_cache_key` from fallback requests only. It preserves valid typed encrypted-content blocks, complete tool
-calls and outputs, text, and remote image URLs. It is not a general request
-transformer or a replacement for an upstream service with persistent failures.
+`prompt_cache_key` from fallback requests only. If the upstream explicitly rejects
+those pair-safe fallbacks as well, the proxy may make one final dialogue-only
+request: the latest developer or system instruction before the active request,
+where present, plus the latest user request, without assistant or tool replay. It
+only sends that final request when it is safely smaller than the rejected replay.
+Exhaustion is returned as retryable HTTP 503 with `Retry-After: 3`, so the client
+may apply its own retry policy.
+It preserves valid typed encrypted-content blocks, complete tool calls and outputs,
+text, and remote image URLs whenever they remain in the pair-safe path. It is not a
+general request transformer or a replacement for an upstream service with persistent
+failures.
 
 ## Requirements
 
@@ -132,7 +140,7 @@ rejections are returned unchanged.
 | Symptom | First check | Boundary |
 | --- | --- | --- |
 | Encrypted replay error | `control.py status --json` | Confirm a healthy listener and enabled route before investigating history. |
-| Upstream `response_failed` | Proxy log and request ID | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts; unrelated 400 responses remain unchanged. |
+| Upstream `response_failed` | Proxy log and request ID | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
 | DMX HTTP 477 `empty_response` | Proxy log and request ID | Retry the unchanged request through the normal bounded transient-retry budget. If that exact condition exhausts the budget, return standard HTTP 503 with `Retry-After`; unrelated 477 responses remain unchanged. |
 | SSE closes before completion | Proxy log | The proxy retries only before sending substantive bytes downstream. |
 | Client ignores a route change | Client configuration lifecycle | A running client may need its normal reload; the proxy does not restart it. |

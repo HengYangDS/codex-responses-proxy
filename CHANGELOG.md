@@ -8,18 +8,37 @@ work that has not yet been tagged.
 
 ### Fixed
 
+- After an explicit upstream `response_failed` rejects the bounded pair-safe
+  fallbacks, make one final dialogue-only recovery request. It contains only the
+  latest developer or system instruction before the active request, where one is
+  present, and the latest user request; assistant and tool replay are omitted
+  without changing stored Codex history.
+- Return retryable HTTP 503 with `Retry-After: 3` after bounded
+  `response_failed` recovery is exhausted, rather than returning the upstream
+  HTTP 400 as a terminal client validation error.
 - Treat the classified DMX HTTP 477 `empty_response` contract as a bounded
   upstream transient. The proxy retries the unchanged request and, only after
   that retry budget is exhausted, normalizes the condition to retryable HTTP
   503 with `Retry-After`; other 477 responses remain visible to the client
   unchanged.
+- Apply staged, strictly shrinking pair-safe fallback attempts after an explicit
+  upstream `response_failed`, including failures whose original request is
+  already below the ordinary compaction ceiling. Each fallback retains the
+  latest user context and complete tool call/output pairs.
+- Preserve a compacted request during a pre-content SSE reconnect instead of
+  reopening the original rejected replay body.
 
 ### Verified
 
+- Added transport regression coverage for dialogue-only recovery, its exact
+  retained-message boundary, response telemetry, and retryable exhaustion.
 - Added transport-level regression coverage that proves a 477 `empty_response`
   is retried with byte-identical request data before a successful response is
   relayed, and is normalized to 503 only when the bounded retry budget is
   exhausted.
+- Added regression coverage for sub-budget failures, impossible target budgets,
+  staged reduction, pair integrity, latest-user retention, and fallback-only
+  cache-key removal.
 
 ## [1.0.8] - 2026-07-14
 
