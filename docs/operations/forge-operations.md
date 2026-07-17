@@ -20,9 +20,10 @@ sh scripts/project-github-forge.sh
 
 The command builds a fresh isolated clone, rewrites only that clone to the
 GitHub identity, checks tree parity, and updates `main` under a lease. It never
-rewrites canonical refs or overwrites provider-native tags. A first projection
-creates GitHub-native signed counterparts for the canonical release tags; later
-runs verify existing GitHub tags before advancing the branch.
+rewrites canonical refs or overwrites provider-native tags. Historical GitLab
+tags are retained as their own evidence; the first post-bootstrap release
+starts GitHub-native tag provenance. Later runs verify every overlapping tag
+pair before advancing the branch.
 
 ## Release behavior
 

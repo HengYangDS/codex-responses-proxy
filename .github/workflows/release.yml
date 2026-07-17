@@ -38,7 +38,7 @@ jobs:
           case "$SELECTED_TAG" in v*) ;; *) echo "release requires a v* tag" >&2; exit 2 ;; esac
           test "$SELECTED_TAG" = "$(git describe --tags --exact-match HEAD)"
           sh scripts/check-release-tag-signature.sh . "$SELECTED_TAG" github
-          python scripts/check_release_metadata.py --tag "$SELECTED_TAG"
+          python scripts/check_release_metadata.py --allow-unpublished-history --tag "$SELECTED_TAG"
           python scripts/check_markdown_presentation.py
           python scripts/test_release_metadata.py
       - name: Publish or verify immutable GitHub release record
