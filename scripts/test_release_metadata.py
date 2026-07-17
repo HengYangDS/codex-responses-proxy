@@ -102,9 +102,19 @@ def test_gitlab_ci_refreshes_tags_before_every_release_gate() -> None:
             raise SystemExit(f"{job} does not refresh and prune origin tags")
 
 
+def test_gitlab_release_metadata_gate_has_complete_history() -> None:
+    ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    start = ci.index("verify-release-metadata:")
+    end = ci.index("\n\nverify-release-tag:", start)
+    block = ci[start:end]
+    if 'GIT_DEPTH: "0"' not in block:
+        raise SystemExit("verify-release-metadata must fetch complete Git history")
+
+
 def main() -> None:
     test_prune_tags_removes_deleted_remote_tag()
     test_gitlab_ci_refreshes_tags_before_every_release_gate()
+    test_gitlab_release_metadata_gate_has_complete_history()
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     heading = f"## [{version}]"
