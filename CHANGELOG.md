@@ -20,6 +20,9 @@ work that has not yet been tagged.
 
 - Remove request-body, header, and rejected-payload capture paths so local
   diagnostics retain only bounded classifications, identifiers, and byte counts.
+- Pin GitLab release-tag identity and signer in a provider-native tag command,
+  preventing a GitHub conditional Git identity from creating unverifiable
+  GitLab provenance.
 
 ### Verified
 

@@ -39,6 +39,12 @@ When a version is released on both planes, the two same-named tags are separate
 provider provenance objects and must verify against their respective trust
 anchors.
 
+The canonical release sequence is explicit: `tag-gitlab-release.sh` creates and
+verifies the GitLab-native tag with the GitLab identity and signer; after its
+pipeline evidence, `tag-github-release.sh` creates and verifies the GitHub-native
+tag in the projected identity history. No ambient Git configuration may select a
+provider signer implicitly.
+
 ## GitLab metadata
 
 The display **Project Name** is `Codex DMX Proxy`. The stable repository

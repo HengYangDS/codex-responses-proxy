@@ -52,3 +52,9 @@ GitLab and GitHub are independent release planes. GitLab provenance uses
 forges. Use `sh scripts/project-github-forge.sh` only from a clean canonical
 GitLab checkout; it rewrites an isolated clone, preserves provider-specific
 tags, and updates GitHub `main` under a lease.
+
+Create a GitLab release tag only through `sh scripts/tag-gitlab-release.sh
+v<VERSION>`. It pins the GitLab identity and its tracked signing key explicitly,
+so a GitHub conditional Git identity cannot sign a GitLab tag by mistake. After
+GitLab tag publication and its CI evidence, run `sh scripts/tag-github-release.sh
+v<VERSION>` to create the separate GitHub provenance tag.

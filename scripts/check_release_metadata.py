@@ -144,6 +144,8 @@ def check_governance_contract() -> None:
         "LICENSE",
         "scripts/project-github-forge.sh",
         "scripts/audit-dual-forge-parity.py",
+        "scripts/tag-gitlab-release.sh",
+        "scripts/tag-github-release.sh",
         "scripts/check-release-tag-signature.sh",
         "scripts/publish-gitlab-release.sh",
         "packaging/release/gitlab-allowed-signers",
