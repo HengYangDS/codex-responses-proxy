@@ -17,7 +17,13 @@ response=$(mktemp "${TMPDIR:-/tmp}/codex-dmx-proxy-release-response.XXXXXX")
 cleanup() { rm -f "$payload" "$response"; }
 trap cleanup EXIT HUP INT TERM
 
-CI_COMMIT_TAG="$CI_COMMIT_TAG" python - "$payload" <<'PYTHON'
+python_bin=${PYTHON:-}
+if [ -z "$python_bin" ]; then
+  python_bin=$(command -v python3 || true)
+fi
+[ -n "$python_bin" ] || { echo "python3 is required for GitLab release metadata" >&2; exit 2; }
+
+CI_COMMIT_TAG="$CI_COMMIT_TAG" "$python_bin" - "$payload" <<'PYTHON'
 import json
 import os
 import sys
@@ -48,7 +54,7 @@ case "$status" in
       --header "JOB-TOKEN: $CI_JOB_TOKEN" "$endpoint/$CI_COMMIT_TAG" || true)
     case "$status" in
       200)
-        CI_COMMIT_TAG="$CI_COMMIT_TAG" python - "$response" <<'PYTHON'
+        CI_COMMIT_TAG="$CI_COMMIT_TAG" "$python_bin" - "$response" <<'PYTHON'
 import json
 import os
 import sys

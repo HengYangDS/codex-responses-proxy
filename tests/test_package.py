@@ -228,6 +228,18 @@ class TestManagedRouteState(unittest.TestCase):
             self.assertEqual(reenabled.returncode, 0, reenabled.stderr)
             self.assertEqual(config.read_text(encoding="utf-8"), enabled)
 
+    def test_control_status_includes_secret_free_runtime_metrics_when_listener_is_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._managed_context(root)
+            install.copy_payload(ctx)
+            runtime = {"uptime_seconds": 12, "active_responses": 0, "counters": {},
+                       "upstream_classifications": {}, "last_failure": None}
+            with mock.patch.object(control, "_runtime_metrics", return_value=runtime):
+                evidence = control.status(ctx)
+            self.assertEqual(evidence["runtime"], runtime)
+            self.assertNotIn("authorization", json.dumps(evidence).lower())
+
     def test_build_context_honors_codex_home(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"CODEX_HOME": str(Path(tmp) / "codex-home")}, clear=False):
             ctx = install.build_context(8791, "https://www.dmxapi.cn")
@@ -588,6 +600,7 @@ class TestProxySanitize(unittest.TestCase):
         sys.path.insert(0, os.path.join(ROOT, "proxy"))
         import dmx_responses_proxy as p
         self.p = p
+        self.p._reset_runtime_metrics_for_test()
 
     def test_strips_reasoning_and_encrypted(self):
         body = json.dumps({
@@ -990,6 +1003,7 @@ class TestProxyTransport(unittest.TestCase):
         sys.path.insert(0, os.path.join(ROOT, "proxy"))
         import dmx_responses_proxy as p
         self.p = p
+        self.p._reset_runtime_metrics_for_test()
 
     def _serve_proxy(self, responses, log_dir):
         """Start a scripted upstream and the proxy, returning cleanup state."""
@@ -1002,7 +1016,20 @@ class TestProxyTransport(unittest.TestCase):
             def do_POST(self):
                 length = int(self.headers.get("Content-Length", "0"))
                 received.append(self.rfile.read(length))
-                status, payload = responses.pop(0)
+                response = responses.pop(0)
+                if isinstance(response, dict):
+                    status = response.get("status", 200)
+                    chunks = response.get("chunks", [])
+                    self.send_response(status)
+                    self.send_header("Content-Type", response.get("content_type", "text/event-stream"))
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    for chunk in chunks:
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+                    self.close_connection = True
+                    return
+                status, payload = response
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
@@ -1198,6 +1225,141 @@ class TestProxyTransport(unittest.TestCase):
 
         self.assertEqual(received, [body, body])
 
+    def test_runtime_metrics_classify_recovery_without_retaining_request_content(self):
+        response_failed = b'{"error":{"code":"response_failed"}}'
+        success = b'{"id":"resp_recovered","status":"completed"}'
+        body = json.dumps({
+            "stream": False,
+            "input": [
+                {"type": "reasoning", "encrypted_content": "secret-replay"},
+                {"type": "message", "role": "user", "content": "old context"},
+                {"type": "message", "role": "user", "content": "x" * 100_000},
+                {"type": "message", "role": "user", "content": "private prompt"},
+            ],
+        }, separators=(",", ":")).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, _received, cleanup = self._serve_proxy(
+                [(400, response_failed), (200, success)], tmp,
+            )
+            try:
+                response = self._request(port, body)
+                with response:
+                    self.assertEqual(response.read(), success)
+            finally:
+                cleanup()
+
+        status = self.p.runtime_status()
+        self.assertEqual(status["counters"]["responses_received"], 1)
+        self.assertEqual(status["counters"]["encrypted_replayed_reasoning_items_stripped"], 1)
+        self.assertEqual(status["counters"]["response_failed_compaction_attempts"], 1)
+        self.assertEqual(status["counters"]["response_failed_compaction_accepted"], 1)
+        self.assertEqual(status["upstream_classifications"]["response_failed"], 1)
+        self.assertNotIn("private prompt", json.dumps(status))
+        self.assertNotIn("secret-replay", json.dumps(status))
+
+    def test_loopback_healthz_returns_machine_readable_metrics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            port, _received, cleanup = self._serve_proxy([], tmp)
+            try:
+                with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
+                    f"http://127.0.0.1:{port}/healthz",
+                ) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.headers["Content-Type"], "application/json")
+                    status = json.loads(response.read())
+            finally:
+                cleanup()
+
+        self.assertIn("counters", status)
+        self.assertIn("upstream_classifications", status)
+        self.assertIsNone(status["last_failure"])
+
+    def test_reconnects_a_pre_content_response_failed_stream(self):
+        failed = {
+            "chunks": [
+                b'data: {"type":"response.created"}\n\n',
+                b'data: {"type":"response.failed"}\n\n',
+            ],
+        }
+        recovered = {
+            "chunks": [
+                b'data: {"type":"response.created"}\n\n',
+                b'data: {"type":"response.output_text.delta","delta":"recovered"}\n\n',
+                b'data: {"type":"response.completed"}\n\n',
+            ],
+        }
+        body = json.dumps({"stream": True, "input": []}).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy([failed, recovered], tmp)
+            try:
+                with mock.patch.object(self.p.time, "sleep", return_value=None):
+                    response = self._request(port, body)
+                    with response:
+                        payload = response.read()
+            finally:
+                cleanup()
+
+        self.assertEqual(len(received), 2)
+        self.assertIn(b"recovered", payload)
+        self.assertEqual(payload.count(b'response.created'), 1)
+        status = self.p.runtime_status()
+        self.assertEqual(status["counters"]["streams_pre_content_reconnect_attempts"], 1)
+        self.assertEqual(status["counters"]["streams_completed"], 1)
+
+    def test_reconnects_a_pre_content_premature_eof(self):
+        premature_eof = {"chunks": [b'data: {"type":"response.created"}\n\n']}
+        recovered = {
+            "chunks": [
+                b'data: {"type":"response.created"}\n\n',
+                b'data: {"type":"response.output_text.delta","delta":"ok"}\n\n',
+                b'data: {"type":"response.completed"}\n\n',
+            ],
+        }
+        body = json.dumps({"stream": True, "input": []}).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy([premature_eof, recovered], tmp)
+            try:
+                with mock.patch.object(self.p.time, "sleep", return_value=None):
+                    response = self._request(port, body)
+                    with response:
+                        payload = response.read()
+            finally:
+                cleanup()
+
+        self.assertEqual(len(received), 2)
+        self.assertIn(b'"delta":"ok"', payload)
+        self.assertEqual(self.p.runtime_status()["counters"]["streams_pre_content_reconnect_attempts"], 1)
+
+    def test_does_not_reconnect_after_downstream_stream_bytes_are_committed(self):
+        partial = {
+            "chunks": [
+                b'data: {"type":"response.created"}\n\n',
+                b'data: {"type":"response.output_text.delta","delta":"partial"}\n\n',
+            ],
+        }
+        unexpected_retry = {
+            "chunks": [b'data: {"type":"response.completed"}\n\n'],
+        }
+        body = json.dumps({"stream": True, "input": []}).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy([partial, unexpected_retry], tmp)
+            try:
+                response = self._request(port, body)
+                with response:
+                    payload = response.read()
+            finally:
+                cleanup()
+
+        self.assertEqual(len(received), 1)
+        self.assertIn(b"partial", payload)
+        status = self.p.runtime_status()
+        self.assertEqual(status["counters"]["streams_pre_content_reconnect_attempts"], 0)
+        self.assertEqual(status["counters"]["streams_failed"], 1)
+
     def test_normalizes_exhausted_classified_empty_response_to_retryable_503(self):
         empty_response = (
             b'{"error":{"message":"official provider returned an empty response",'
@@ -1316,6 +1478,11 @@ class TestReleaseMetadata(unittest.TestCase):
         self.assertIn("## [Unreleased]", releases)
         if f"## [{version}]" in releases:
             self.assertIn(f"## [Unreleased]\n\n## [{version}]", releases)
+
+    def test_proxy_has_no_payload_or_header_dump_escape_hatch(self):
+        source = Path(ROOT, "proxy", "dmx_responses_proxy.py").read_text(encoding="utf-8")
+        for forbidden in ("DMX_DUMP_BODIES", "DMX_DUMP_HEADERS", "reject-"):
+            self.assertNotIn(forbidden, source)
 
     def test_mit_license_is_present(self):
         license_text = Path(ROOT, "LICENSE").read_text(encoding="utf-8")
