@@ -25,6 +25,26 @@ tags are retained as their own evidence; the first post-bootstrap release
 starts GitHub-native tag provenance. Later runs verify every overlapping tag
 pair before advancing the branch.
 
+## Parity audit
+
+Run the read-only audit from the canonical checkout whenever a release is
+considered or housekeeping is performed:
+
+```bash
+python3 scripts/audit-dual-forge-parity.py --json
+```
+
+It uses isolated temporary clones to inspect provider-native tags and verifies:
+
+- GitLab/GitHub `main` tree equality;
+- provider-specific commit-identity domains;
+- overlapping provider-native tag signatures and trees; and
+- absence of non-`main` local or remote branches, plus the current worktree
+  inventory.
+
+It never pushes, deletes, rewrites, or creates refs. A failed audit is evidence
+of divergence or incomplete housekeeping, not permission to force convergence.
+
 ## Release behavior
 
 The GitLab tag pipeline and GitHub tag workflow independently verify the

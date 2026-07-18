@@ -6,6 +6,26 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+## [1.0.14] - 2026-07-18
+
+### Added
+
+- Expose a loopback-only, secret-free runtime reliability snapshot through
+  `control.py status --json` and `GET /healthz`, with counters for stream
+  outcomes, bounded recovery, replay sanitization, and upstream classes.
+- Add a read-only dual-forge parity auditor that verifies tree parity,
+  provider-specific identities and signatures, and branch/worktree hygiene.
+
+### Fixed
+
+- Remove request-body, header, and rejected-payload capture paths so local
+  diagnostics retain only bounded classifications, identifiers, and byte counts.
+
+### Verified
+
+- Add bounded local-hop coverage for pre-content `response.failed` recovery,
+  premature EOF recovery, and the no-retry-after-commit boundary.
+
 ## [1.0.13] - 2026-07-17
 
 ### Fixed
