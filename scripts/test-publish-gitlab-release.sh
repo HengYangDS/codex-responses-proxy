@@ -48,7 +48,7 @@ chmod +x "$mock_curl"
 
 run() {
   mode=$1
-  PATH="$tmp:$PATH" DMX_TEST_CURL_LOG="$log" DMX_TEST_CURL_MODE="$mode" \
+  PATH="$tmp:$PATH" PYTHON="$(command -v python3)" DMX_TEST_CURL_LOG="$log" DMX_TEST_CURL_MODE="$mode" \
     CI_API_V4_URL=https://gitlab.example.test/api/v4 CI_PROJECT_ID=453 \
     CI_COMMIT_TAG=v1.0.9 CI_JOB_TOKEN=redacted \
     sh "$script"

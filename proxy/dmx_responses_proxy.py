@@ -73,6 +73,28 @@ _RESPONSES_SEM = threading.BoundedSemaphore(max(1, RESPONSES_MAX_CONCURRENCY))
 _ACTIVE_LOCK = threading.Lock()
 _ACTIVE_RESPONSES = 0
 _REQUEST_SEQ = 0
+_STARTED_AT = time.time()
+_METRICS_LOCK = threading.Lock()
+_COUNTERS = {
+    "responses_received": 0,
+    "responses_completed": 0,
+    "responses_local_queue_timeouts": 0,
+    "streams_completed": 0,
+    "streams_incomplete": 0,
+    "streams_failed": 0,
+    "streams_pre_content_reconnect_attempts": 0,
+    "response_failed_compaction_attempts": 0,
+    "response_failed_compaction_accepted": 0,
+    "response_failed_dialogue_recovery_attempts": 0,
+    "response_failed_dialogue_recovery_accepted": 0,
+    "response_failed_recovery_exhausted": 0,
+    "encrypted_replayed_reasoning_items_stripped": 0,
+    "encrypted_malformed_blocks_stripped": 0,
+    "encrypted_sse_keys_stripped": 0,
+    "unreplayable_images_stripped": 0,
+}
+_UPSTREAM_CLASSIFICATIONS = {}
+_LAST_FAILURE = None
 
 # Cross-platform hardening: never route upstream calls through a system/registry/env
 # HTTP proxy. On macOS and Windows, urllib.request.getproxies() consults the OS proxy
@@ -162,6 +184,88 @@ def _next_request_id() -> int:
     with _ACTIVE_LOCK:
         _REQUEST_SEQ += 1
         return _REQUEST_SEQ
+
+
+def _record_counter(name: str, amount: int = 1) -> None:
+    """Record one secret-free runtime counter."""
+    if amount <= 0:
+        return
+    with _METRICS_LOCK:
+        _COUNTERS[name] = _COUNTERS.get(name, 0) + amount
+
+
+def _record_upstream_classification(name: str) -> None:
+    """Record a bounded upstream outcome class, never an upstream payload."""
+    with _METRICS_LOCK:
+        _UPSTREAM_CLASSIFICATIONS[name] = _UPSTREAM_CLASSIFICATIONS.get(name, 0) + 1
+
+
+def _record_failure(classification: str) -> None:
+    """Retain only the latest failure class and time, never request data."""
+    global _LAST_FAILURE
+    with _METRICS_LOCK:
+        _LAST_FAILURE = {
+            "classification": classification,
+            "at_unix": int(time.time()),
+        }
+
+
+def runtime_status() -> dict:
+    """Return a machine-readable, secret-free local reliability snapshot."""
+    with _ACTIVE_LOCK:
+        active_responses = _ACTIVE_RESPONSES
+    with _METRICS_LOCK:
+        counters = dict(sorted(_COUNTERS.items()))
+        upstream = dict(sorted(_UPSTREAM_CLASSIFICATIONS.items()))
+        last_failure = dict(_LAST_FAILURE) if _LAST_FAILURE else None
+    return {
+        "release": release_version(),
+        "uptime_seconds": max(0, int(time.time() - _STARTED_AT)),
+        "active_responses": active_responses,
+        "counters": counters,
+        "upstream_classifications": upstream,
+        "last_failure": last_failure,
+    }
+
+
+def _reset_runtime_metrics_for_test() -> None:
+    """Reset process-local observability state for deterministic unit tests."""
+    global _ACTIVE_RESPONSES, _LAST_FAILURE
+    with _ACTIVE_LOCK:
+        _ACTIVE_RESPONSES = 0
+    with _METRICS_LOCK:
+        for name in _COUNTERS:
+            _COUNTERS[name] = 0
+        _UPSTREAM_CLASSIFICATIONS.clear()
+        _LAST_FAILURE = None
+
+
+def _sanitization_count(note: str, field: str) -> int:
+    marker = f"{field}="
+    start = note.find(marker)
+    if start < 0:
+        return 0
+    value = note[start + len(marker):].split(" ", 1)[0]
+    try:
+        return max(0, int(value))
+    except ValueError:
+        return 0
+
+
+def _record_sanitization(note: str) -> None:
+    """Account for sanitized request fields without retaining their contents."""
+    _record_counter(
+        "encrypted_replayed_reasoning_items_stripped",
+        _sanitization_count(note, "reasoning_items"),
+    )
+    _record_counter(
+        "encrypted_malformed_blocks_stripped",
+        _sanitization_count(note, "malformed_encrypted_blocks"),
+    )
+    _record_counter(
+        "unreplayable_images_stripped",
+        _sanitization_count(note, "local_image_items"),
+    )
 
 
 def _is_transient_upstream(code: int, err_body: bytes) -> str:
@@ -839,6 +943,7 @@ def _read_one_sse_stream(handler, resp, path, request_id, on_first_write):
         _flush_prelude()
 
     if stripped_keys:
+        _record_counter("encrypted_sse_keys_stripped", stripped_keys)
         _log(f"  req#{request_id} inbound SSE stripped encrypted_content events={stripped_events} keys={stripped_keys} for {path}")
 
     detail = (terminal_event.split(".")[-1] if terminal_event
@@ -905,6 +1010,7 @@ def stream_sanitized_sse(handler, resp, path, request_id, reopen=None, send_head
             break
         # Premature/failed end with zero client bytes written → safe to retry fresh.
         if attempt < max_stream_attempts - 1 and reopen is not None:
+            _record_counter("streams_pre_content_reconnect_attempts")
             why = term if term else result["detail"]
             _log(f"  req#{request_id} SSE died pre-content ({why}) events={result['events']} — reconnect {attempt+1}/{max_stream_attempts-1} for {path}")
             time.sleep(stream_backoffs[min(attempt, len(stream_backoffs) - 1)])
@@ -926,6 +1032,17 @@ def stream_sanitized_sse(handler, resp, path, request_id, reopen=None, send_head
         send_headers()
         headers_sent["done"] = True
     handler.wfile.write(b"0\r\n\r\n")
+
+    if result and result["terminal"] == "response.completed":
+        _record_counter("streams_completed")
+        _record_counter("responses_completed")
+    elif result and result["terminal"] == "response.incomplete":
+        _record_counter("streams_incomplete")
+        _record_failure("stream_response_incomplete")
+    else:
+        _record_counter("streams_failed")
+        detail = result["detail"] if result else "eof"
+        _record_failure(f"stream_{detail}")
 
     if result and result["terminal"]:
         _log(f"  req#{request_id} SSE terminal={result['terminal']} events={result['events']} for {path}")
@@ -950,24 +1067,11 @@ class Handler(BaseHTTPRequestHandler):
         note = ""
         if body and method == "POST" and "/responses" in self.path:
             body, note = sanitize_responses_body(body)
-            # Diagnostic (opt-in via DMX_DUMP_BODIES=1): record post-sanitize body
-            # size and, optionally, the full body — so we can capture a SUCCESSFUL
-            # large request as a counter-example when hunting the invalid_payload
-            # trigger. Outcome (200 vs 400) is logged later, so pairing size+result
-            # is enough to falsify the "size limit" hypothesis. Zero effect when off.
-            if os.environ.get("DMX_DUMP_BODIES") == "1":
-                try:
-                    dump = os.path.join(os.path.dirname(LOG_PATH), f"body-{request_id}-{int(time.time())}.json")
-                    with open(dump, "wb") as fh:
-                        fh.write(body)
-                    _log(f"req#{request_id} body dumped ({len(body)}b) -> {os.path.basename(dump)}")
-                except Exception:
-                    pass
-            else:
-                # Log size only for large bodies (the invalid_payload regime is
-                # all 600KB+); avoids a noisy line on every small request.
-                if len(body) >= 400_000:
-                    _log(f"req#{request_id} outgoing body {len(body)}b (large) for {self.path}")
+            _record_sanitization(note)
+            # Payloads may contain conversation data and credentials. Keep runtime
+            # evidence aggregate-only: this proxy never persists request bodies.
+            if len(body) >= 400_000:
+                _log(f"req#{request_id} outgoing body {len(body)}b (large) for {self.path}")
 
         url = UPSTREAM + self.path
         out_headers = {
@@ -978,10 +1082,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if note:
             _log(f"req#{request_id} {method} {self.path} -> {note}")
-        if os.environ.get("DMX_DUMP_HEADERS") == "1" and "/responses" in self.path:
-            hdrs = {k: v for k, v in self.headers.items()
-                    if k.lower() not in ("authorization", "content-length", "host")}
-            _log(f"req#{request_id} HEADERS {json.dumps(hdrs, ensure_ascii=False)}")
+
 
         # dmxapi intermittently returns 400 invalid_payload / 5xx / 429 for
         # provably-valid requests (~6% observed; identical replay succeeds).
@@ -991,6 +1092,8 @@ class Handler(BaseHTTPRequestHandler):
         # fallback: some large replay contexts are deterministically rejected.
         # Non-retryable 4xx are relayed immediately.
         is_responses = method == "POST" and "/responses" in self.path
+        if is_responses:
+            _record_counter("responses_received")
         max_attempts = 4 if is_responses else 1
         backoffs = [0.4, 1.0, 2.0]
 
@@ -999,6 +1102,8 @@ class Handler(BaseHTTPRequestHandler):
         if is_responses:
             acquired = _RESPONSES_SEM.acquire(timeout=RESPONSES_QUEUE_TIMEOUT)
             if not acquired:
+                _record_counter("responses_local_queue_timeouts")
+                _record_failure("local_queue_timeout")
                 msg = json.dumps({
                     "error": {
                         "message": (
@@ -1039,6 +1144,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     resp = _urlopen(req, timeout=UPSTREAM_TIMEOUT)
                     if used_response_failed_dialogue_recovery and dialogue_recovery_metrics:
+                        _record_counter("response_failed_dialogue_recovery_accepted")
                         m = dialogue_recovery_metrics
                         _log(
                             f"  req#{request_id} response_failed dialogue recovery accepted "
@@ -1048,6 +1154,7 @@ class Handler(BaseHTTPRequestHandler):
                             f"after={response_failed_stages} pair-safe stages"
                         )
                     elif used_response_failed_compaction and compact_response_failed_metrics:
+                        _record_counter("response_failed_compaction_accepted")
                         m = compact_response_failed_metrics
                         _log(
                             f"  req#{request_id} response_failed compact fallback accepted "
@@ -1063,6 +1170,12 @@ class Handler(BaseHTTPRequestHandler):
                     finally:
                         e.close()
                     disp = _is_transient_upstream(status_code, err_body)
+                    classification = (
+                        "response_failed" if status_code == 400 and disp == "full"
+                        else ("empty_response" if status_code == 477 and disp == "full"
+                              else (f"http_{status_code}_{disp}" if disp else f"http_{status_code}"))
+                    )
+                    _record_upstream_classification(classification)
                     # A deterministic replay failure cannot be fixed by retrying
                     # the same bytes. After the upstream has *explicitly* named
                     # ``response_failed``, make up to three strictly smaller,
@@ -1078,6 +1191,7 @@ class Handler(BaseHTTPRequestHandler):
                     ):
                         compact, metrics = _compact_response_failed_request(attempt_body)
                         if compact is not None and metrics is not None and len(compact) < len(attempt_body):
+                            _record_counter("response_failed_compaction_attempts")
                             response_failed_stages += 1
                             metrics["stage"] = response_failed_stages
                             compact_response_failed_metrics = metrics
@@ -1111,6 +1225,7 @@ class Handler(BaseHTTPRequestHandler):
                         # instruction because it omits the rejected tool replay.
                         recovery, metrics = _recover_response_failed_dialogue(body)
                         if recovery is not None and metrics is not None and len(recovery) < len(attempt_body):
+                            _record_counter("response_failed_dialogue_recovery_attempts")
                             used_response_failed_dialogue_recovery = True
                             dialogue_recovery_metrics = metrics
                             previous_bytes = len(attempt_body)
@@ -1123,17 +1238,15 @@ class Handler(BaseHTTPRequestHandler):
                                 f"cache_key_removed={metrics['prompt_cache_key_removed']} for {self.path}"
                             )
                             continue
-                    # invalid_payload is dmxapi SERVER-SIDE transient flakiness, NOT a
-                    # bad body: replaying all 11 captured reject-400 bodies verbatim
-                    # later returned 200 (11/11). Empirically ~18% of /responses fail
-                    # this way; a single retry recovers most (observed gaveup 28 vs 58
-                    # predicted if independent). So retry ONCE, but wait long enough to
-                    # clear the transient window (0.4s was too eager and re-hit the same
-                    # blip). Genuine 429/5xx keep the full escalating-backoff budget.
+                    # ``invalid_payload`` is a classified upstream transient, not a
+                    # body rewrite signal. Retry the exact sanitized bytes once with a
+                    # bounded delay; 429 and 5xx retain the full retry budget.
                     # ``response_failed`` has already consumed this response in
                     # the staged compaction branch above. Never let it fall
                     # through to the ordinary transient retry policy.
                     if is_responses and status_code == 400 and disp == "full":
+                        _record_counter("response_failed_recovery_exhausted")
+                        _record_failure("response_failed_recovery_exhausted")
                         attempts = response_failed_stages + int(used_response_failed_dialogue_recovery) + 1
                         msg = _response_failed_recovery_exhausted(attempts)
                         self.send_response(503)
@@ -1161,6 +1274,7 @@ class Handler(BaseHTTPRequestHandler):
                         time.sleep(delay)
                         continue
                     if status_code == 477 and disp == "full":
+                        _record_failure("upstream_empty_response_exhausted")
                         msg = _dmx_empty_response_exhausted(attempt + 1)
                         self.send_response(503)
                         self.send_header("Content-Type", "application/json")
@@ -1174,17 +1288,6 @@ class Handler(BaseHTTPRequestHandler):
                             f"for {self.path}"
                         )
                         return
-                    if 400 <= status_code < 500:
-                        try:
-                            dump = os.path.join(os.path.dirname(LOG_PATH), f"reject-{status_code}-{int(time.time())}.json")
-                            with open(dump, "wb") as fh:
-                                fh.write(b"=== SENT BODY ===\n")
-                                fh.write(attempt_body or b"(empty)")
-                                fh.write(b"\n=== UPSTREAM ERROR ===\n")
-                                fh.write(err_body)
-                            _log(f"  req#{request_id} dumped rejected request to {dump}")
-                        except Exception:
-                            pass
                     self.send_response(status_code)
                     for k, v in error_headers.items():
                         if k.lower() not in _HOP_BY_HOP:
@@ -1192,6 +1295,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_header("Content-Length", str(len(err_body)))
                     self.end_headers()
                     self.wfile.write(err_body)
+                    _record_failure(classification)
                     _log(f"  req#{request_id} upstream HTTP {status_code} ({len(err_body)}b) for {self.path} [gave up after {attempt+1}]")
                     return
                 except Exception as e:
@@ -1201,6 +1305,7 @@ class Handler(BaseHTTPRequestHandler):
                         time.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                         continue
                     msg = json.dumps({"error": {"message": f"proxy upstream error: {e}"}}).encode()
+                    _record_failure("upstream_transport_error")
                     self.send_response(502)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", str(len(msg)))
@@ -1211,6 +1316,7 @@ class Handler(BaseHTTPRequestHandler):
 
             if resp is None:
                 msg = json.dumps({"error": {"message": f"proxy upstream error: {last_err}"}}).encode()
+                _record_failure("upstream_transport_error")
                 self.send_response(502)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(msg)))
@@ -1270,6 +1376,8 @@ class Handler(BaseHTTPRequestHandler):
                             break
                         self.wfile.write(b"%X\r\n%s\r\n" % (len(chunk), chunk))
                     self.wfile.write(b"0\r\n\r\n")
+                    if is_responses:
+                        _record_counter("responses_completed")
                 except (BrokenPipeError, ConnectionResetError):
                     # Client (Codex) closed the stream early — normal at turn end.
                     _log(f"  req#{request_id} downstream client closed stream for {self.path}")
@@ -1283,10 +1391,22 @@ class Handler(BaseHTTPRequestHandler):
                 _RESPONSES_SEM.release()
                 _log(f"  req#{request_id} responses slot released active={active_now}/{RESPONSES_MAX_CONCURRENCY}")
 
+    def _runtime_status(self):
+        payload = json.dumps(runtime_status(), separators=(",", ":")).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_POST(self):
         self._relay("POST")
 
     def do_GET(self):
+        if self.path == "/healthz":
+            self._runtime_status()
+            return
         self._relay("GET")
 
     def do_DELETE(self):
