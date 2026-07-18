@@ -122,6 +122,17 @@ python3 uninstall.py --purge
 and requires the watchdog to prove replacement with a new process ID. It never
 touches Codex session files.
 
+### Reliability evidence
+
+`status --json` also reports the listener's loopback-only, process-local
+`runtime` snapshot when the verified service is reachable. It includes counters
+for completed and incomplete streams, pre-content reconnects, bounded
+`response_failed` recovery, encrypted-replay stripping, and classified upstream
+outcomes. `last_failure` records only a stable class and Unix timestamp. It
+never includes request bodies, tokens, credentials, headers, prompts, or
+upstream error payloads. The endpoint is read-only and is available only at
+`GET /healthz` on the loopback listener; it is not a remote monitoring API.
+
 ## Design
 
 ```text
@@ -148,11 +159,12 @@ rejections are returned unchanged.
 | Upstream `response_failed` | Proxy log and request ID | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
 | DMX HTTP 477 `empty_response` | Proxy log and request ID | Retry the unchanged request through the normal bounded transient-retry budget. If that exact condition exhausts the budget, return standard HTTP 503 with `Retry-After`; unrelated 477 responses remain unchanged. |
 | SSE closes before completion | Proxy log | The proxy retries only before sending substantive bytes downstream. |
+| Need current reliability evidence | `control.py status --json` | Inspect the secret-free `runtime` snapshot; it proves listener-local counters, not recovery of a historical conversation. |
 | Client ignores a route change | Client configuration lifecycle | A running client may need its normal reload; the proxy does not restart it. |
 
-Logs are written under `~/.codex/log/`. Request captures can contain sensitive
-conversation material; treat them as local diagnostic evidence, never as source
-files or release artifacts.
+Logs are written under `~/.codex/log/`. They record bounded classifications,
+request identifiers, and byte counts only; the proxy does not persist request
+bodies, credentials, headers, prompts, or raw upstream failures.
 
 ## Configure
 
@@ -187,4 +199,5 @@ done
 - [Decision record](docs/decisions/0001-control-plane-data-plane-boundary.md)
 - [Evidence policy](docs/evidence/README.md)
 - [Independent forge operations](docs/operations/forge-operations.md)
+- [Read-only parity audit](docs/operations/forge-operations.md#parity-audit)
 - [Release history](CHANGELOG.md)

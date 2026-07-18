@@ -9,6 +9,8 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -109,6 +111,24 @@ def _installed_release(ctx: common.InstallContext) -> str | None:
         return None
 
 
+def _runtime_metrics(ctx: common.InstallContext) -> dict | None:
+    """Read the proxy's secret-free health snapshot from loopback only."""
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{ctx.port}/healthz",
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=2) as response:
+            if response.status != 200:
+                return None
+            payload = json.loads(response.read())
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def status(ctx: common.InstallContext) -> dict:
     """Return non-secret runtime evidence for the installed projection."""
     integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
@@ -126,6 +146,7 @@ def status(ctx: common.InstallContext) -> dict:
         "route": common.route_status(ctx, state),
         "service": service,
         "listener_pids": listeners,
+        "runtime": _runtime_metrics(ctx),
     }
 
 
@@ -183,6 +204,12 @@ def main() -> None:
             print(f"route: {evidence['route']}")
             print(f"service: {evidence['service']}")
             print(f"verified listener pids: {', '.join(map(str, evidence['listener_pids'])) or 'none'}")
+            runtime = evidence["runtime"]
+            if runtime is None:
+                print("runtime metrics: unavailable")
+            else:
+                print(f"runtime metrics: {runtime['uptime_seconds']}s uptime; "
+                      f"{runtime['active_responses']} active Responses request(s)")
         return
 
     if args.command == "reload":

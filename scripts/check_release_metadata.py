@@ -143,6 +143,7 @@ def check_governance_contract() -> None:
         "docs/operations/forge-operations.md",
         "LICENSE",
         "scripts/project-github-forge.sh",
+        "scripts/audit-dual-forge-parity.py",
         "scripts/check-release-tag-signature.sh",
         "scripts/publish-gitlab-release.sh",
         "packaging/release/gitlab-allowed-signers",
@@ -173,6 +174,9 @@ def check_governance_contract() -> None:
         raise ValueError("GitLab CI must publish a formal provider-native release record")
     if "CI_COMMIT_BRANCH =~ /^release\\/" not in ci:
         raise ValueError("GitLab CI must suppress untagged release-preparation branches")
+    operations = (ROOT / "docs" / "operations" / "forge-operations.md").read_text(encoding="utf-8")
+    if "audit-dual-forge-parity.py --json" not in operations:
+        raise ValueError("forge operations must document the read-only parity audit")
     retired_paths = (
         "docs/history",
         "docs/reviews",

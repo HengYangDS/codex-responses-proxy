@@ -7,7 +7,6 @@ __pycache__/
 # Logs / runtime artifacts (never commit — may contain request bodies)
 *.log
 log/
-reject-*.json
 body-*.json
 
 # Local config backups (may contain API keys)
