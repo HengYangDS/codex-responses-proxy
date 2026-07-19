@@ -4,7 +4,11 @@ __pycache__/
 *.pyo
 .ruff_cache/
 
-# Logs / runtime artifacts (never commit — may contain request bodies)
+# Logs / runtime artifacts (never commit)
+#
+# Current proxy and watchdog logs are structured and secret-safe by contract.
+# Historical files and unrelated runtime artifacts are still untrusted local data,
+# so neither logs nor rejected-payload captures belong in source control.
 *.log
 log/
 body-*.json
