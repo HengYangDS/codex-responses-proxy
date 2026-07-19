@@ -40,6 +40,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import stat
 import sys
 import time
 import socket
@@ -54,6 +56,24 @@ UPSTREAM = os.environ.get("DMX_UPSTREAM", "https://www.dmxapi.cn").rstrip("/")
 HOST = os.environ.get("DMX_PROXY_HOST", "127.0.0.1")
 PORT = int(os.environ.get("DMX_PROXY_PORT", "8791"))
 LOG_PATH = os.environ.get("DMX_PROXY_LOG", os.path.expanduser("~/.codex/log/dmx-responses-proxy.log"))
+
+
+def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    """Read one bounded integer setting without making startup fragile."""
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return min(maximum, max(minimum, value))
+
+
+# Logs are operational breadcrumbs, not a transcript store. Retain a small bounded
+# ring so an outage cannot consume the host's disk or preserve historical request
+# material indefinitely. The max includes one timestamped diagnostic line.
+LOG_MAX_BYTES = _bounded_env_int("DMX_PROXY_LOG_MAX_BYTES", 4 * 1024 * 1024, 4 * 1024, 64 * 1024 * 1024)
+LOG_BACKUP_COUNT = _bounded_env_int("DMX_PROXY_LOG_BACKUP_COUNT", 3, 0, 10)
+_LOG_LINE_MAX_BYTES = 1024
+_LOG_LOCK = threading.Lock()
 RESPONSES_MAX_CONCURRENCY = int(os.environ.get("DMX_RESPONSES_MAX_CONCURRENCY", "64"))
 RESPONSES_QUEUE_TIMEOUT = float(os.environ.get("DMX_RESPONSES_QUEUE_TIMEOUT", "120"))
 UPSTREAM_TIMEOUT = float(os.environ.get("DMX_UPSTREAM_TIMEOUT", "900"))
@@ -83,6 +103,7 @@ _COUNTERS = {
     "streams_incomplete": 0,
     "streams_failed": 0,
     "streams_pre_content_reconnect_attempts": 0,
+    "streams_pre_content_exhausted": 0,
     "response_failed_compaction_attempts": 0,
     "response_failed_compaction_accepted": 0,
     "response_failed_dialogue_recovery_attempts": 0,
@@ -163,20 +184,117 @@ class _ResilientProxyServer(ThreadingHTTPServer):
         import sys as _sys
         exc = _sys.exc_info()[1]
         if isinstance(exc, (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)):
-            _log(f"  client {client_address} reset/closed mid-request ({exc.__class__.__name__})")
+            _log(f"client_closed_mid_request exception={_safe_exception_label(exc)}")
             return
         super().handle_error(request, client_address)
 
 
-def _log(msg: str) -> None:
-    line = f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {msg}\n"
+_LOG_SECRET_PATTERNS = (
+    re.compile(r"(?i)\b(?:authorization|api[_-]?key|bearer)\s*[:=]?\s*(?:bearer\s+)?[^\s,;]+"),
+    re.compile(r"\bgAAAA[A-Za-z0-9_-]+"),
+)
+
+
+def _safe_request_path(value: str) -> str:
+    """Return a bounded request path without query values or client-provided text."""
     try:
-        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
-        with open(LOG_PATH, "a") as fh:
-            fh.write(line)
+        path = urllib.parse.urlsplit(value).path
+    except (TypeError, ValueError):
+        return "/invalid-path"
+    if not isinstance(path, str) or not path.startswith("/"):
+        return "/invalid-path"
+    normalized = re.sub(r"[^A-Za-z0-9._~/-]", "_", path)
+    return normalized[:192] or "/"
+
+
+def _safe_exception_label(exc: BaseException | None) -> str:
+    """Expose only the stable exception class, never an upstream message."""
+    return exc.__class__.__name__ if exc is not None else "UnknownError"
+
+
+def _redact_log_message(msg: str) -> str:
+    """Provide a defensive last line of protection for operational log messages."""
+    value = str(msg).replace("\r", " ").replace("\n", " ")
+    for pattern in _LOG_SECRET_PATTERNS:
+        value = pattern.sub("[redacted]", value)
+    encoded = value.encode("utf-8", "replace")
+    if len(encoded) > _LOG_LINE_MAX_BYTES:
+        value = encoded[:_LOG_LINE_MAX_BYTES].decode("utf-8", "ignore") + " [truncated]"
+    return value
+
+
+def _rotate_log_if_needed(path: Path, incoming_bytes: int) -> int:
+    """Enforce bounded local retention and return discarded oversized bytes."""
+    try:
+        metadata = path.lstat()
+    except OSError:
+        return 0
+    if not stat.S_ISREG(metadata.st_mode):
+        raise OSError("proxy log path is not a regular file")
+    current_size = metadata.st_size
+    if current_size + incoming_bytes <= LOG_MAX_BYTES:
+        return 0
+
+    discarded = 0
+    if current_size > LOG_MAX_BYTES:
+        # An oversized legacy segment cannot be retained without violating the
+        # configured cap. Delete it without reading or copying its content.
+        path.unlink(missing_ok=True)
+        discarded += current_size
+    elif LOG_BACKUP_COUNT <= 0:
+        path.unlink(missing_ok=True)
+    else:
+        oldest = path.with_name(f"{path.name}.{LOG_BACKUP_COUNT}")
+        oldest.unlink(missing_ok=True)
+        for index in range(LOG_BACKUP_COUNT - 1, 0, -1):
+            source = path.with_name(f"{path.name}.{index}")
+            if source.exists():
+                if source.stat().st_size > LOG_MAX_BYTES:
+                    discarded += source.stat().st_size
+                    source.unlink(missing_ok=True)
+                else:
+                    source.replace(path.with_name(f"{path.name}.{index + 1}"))
+        path.replace(path.with_name(f"{path.name}.1"))
+
+    # Older deployments predate the cap. Prune any such segment immediately
+    # rather than preserving an unbounded legacy file for a full rotation cycle.
+    for index in range(1, LOG_BACKUP_COUNT + 1):
+        segment = path.with_name(f"{path.name}.{index}")
+        try:
+            if segment.stat().st_size > LOG_MAX_BYTES:
+                discarded += segment.stat().st_size
+                segment.unlink()
+        except OSError:
+            continue
+    return discarded
+
+
+def _log(msg: str) -> None:
+    message = _redact_log_message(msg)
+    line = f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {message}\n"
+    encoded_line = line.encode("utf-8", "replace")
+    try:
+        path = Path(LOG_PATH)
+        with _LOG_LOCK:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            discarded = _rotate_log_if_needed(path, len(encoded_line))
+            if discarded:
+                line = (
+                    f"{time.strftime('%Y-%m-%dT%H:%M:%S')} "
+                    f"log_retention_discarded_oversized_bytes={discarded} {message}\n"
+                )
+            with path.open("a", encoding="utf-8") as handle:
+                try:
+                    os.chmod(path, 0o600)
+                except OSError:
+                    pass
+                handle.write(line)
+    except OSError:
+        pass
+    try:
+        sys.stderr.write(line)
     except Exception:
         pass
-    sys.stderr.write(line)
 
 
 def _next_request_id() -> int:
@@ -334,6 +452,18 @@ def _dmx_empty_response_exhausted(attempts: int) -> bytes:
             "message": "DMX upstream returned empty responses after bounded retries",
             "type": "upstream_unavailable",
             "code": "dmx_empty_response_exhausted",
+            "attempts": attempts,
+        },
+    }, separators=(",", ":")).encode()
+
+
+def _stream_pre_content_exhausted(attempts: int) -> bytes:
+    """Return a retryable local failure when an SSE stream never reaches content."""
+    return json.dumps({
+        "error": {
+            "message": "DMX upstream stream ended before content after bounded reconnects; retry the turn",
+            "type": "upstream_unavailable",
+            "code": "stream_pre_content_exhausted",
             "attempts": attempts,
         },
     }, separators=(",", ":")).encode()
@@ -936,15 +1066,17 @@ def _read_one_sse_stream(handler, resp, path, request_id, on_first_write):
 
     # A legitimate terminal (completed/incomplete) means the prelude belongs to the
     # client — flush it so a created→completed stream isn't dropped. A bare
-    # response.failed is left UNFLUSHED on purpose: with zero bytes committed the
-    # caller can still retry it as a transient turn-start failure; only if retries
-    # are exhausted does the caller flush+relay it.
+    # response.failed is left unflushed while the caller retries. If every attempt
+    # fails before content, the handler returns a retryable local 503 instead.
     if terminal_event in ("response.completed", "response.incomplete") and not prelude_flushed:
         _flush_prelude()
 
     if stripped_keys:
         _record_counter("encrypted_sse_keys_stripped", stripped_keys)
-        _log(f"  req#{request_id} inbound SSE stripped encrypted_content events={stripped_events} keys={stripped_keys} for {path}")
+        _log(
+            f"req={request_id} event=sse_sanitized encrypted_events={stripped_events} "
+            f"encrypted_keys={stripped_keys} path={_safe_request_path(path)}"
+        )
 
     detail = (terminal_event.split(".")[-1] if terminal_event
               else ("timeout" if upstream_timeout
@@ -1012,26 +1144,31 @@ def stream_sanitized_sse(handler, resp, path, request_id, reopen=None, send_head
         if attempt < max_stream_attempts - 1 and reopen is not None:
             _record_counter("streams_pre_content_reconnect_attempts")
             why = term if term else result["detail"]
-            _log(f"  req#{request_id} SSE died pre-content ({why}) events={result['events']} — reconnect {attempt+1}/{max_stream_attempts-1} for {path}")
+            _log(
+                f"req={request_id} event=sse_pre_content_reconnect reason={why} "
+                f"events={result['events']} attempt={attempt + 1}/{max_stream_attempts - 1} "
+                f"path={_safe_request_path(path)}"
+            )
             time.sleep(stream_backoffs[min(attempt, len(stream_backoffs) - 1)])
             try:
                 current = reopen()
             except Exception as exc:
-                _log(f"  req#{request_id} SSE reconnect failed: {exc}")
+                _log(
+                    f"req={request_id} event=sse_reconnect_failed "
+                    f"exception={_safe_exception_label(exc)} path={_safe_request_path(path)}"
+                )
                 current = None
             if current is None:
                 break
             continue
         break
 
-    # If nothing was ever written (all attempts died pre-content), we still must
-    # send headers + close the chunked body so the client gets a clean empty 200
-    # rather than a hang. Codex will surface its own "no completion" but at least
-    # the proxy didn't leak a half-open socket.
-    if not headers_sent["done"] and send_headers is not None:
-        send_headers()
-        headers_sent["done"] = True
-    handler.wfile.write(b"0\r\n\r\n")
+    # Nothing has been committed downstream when every attempt ends in the prelude.
+    # Do not fabricate an empty HTTP 200: Codex correctly reports that as a broken
+    # stream. Return control to the handler so it can send a retryable 503 instead.
+    pre_content_exhausted = not headers_sent["done"]
+    if headers_sent["done"]:
+        handler.wfile.write(b"0\r\n\r\n")
 
     if result and result["terminal"] == "response.completed":
         _record_counter("streams_completed")
@@ -1042,15 +1179,31 @@ def stream_sanitized_sse(handler, resp, path, request_id, reopen=None, send_head
     else:
         _record_counter("streams_failed")
         detail = result["detail"] if result else "eof"
-        _record_failure(f"stream_{detail}")
+        if pre_content_exhausted:
+            _record_counter("streams_pre_content_exhausted")
+            _record_failure("stream_pre_content_exhausted")
+        else:
+            _record_failure(f"stream_{detail}")
 
+    safe_path = _safe_request_path(path)
     if result and result["terminal"]:
-        _log(f"  req#{request_id} SSE terminal={result['terminal']} events={result['events']} for {path}")
+        _log(
+            f"req={request_id} event=sse_terminal terminal={result['terminal']} "
+            f"events={result['events']} path={safe_path}"
+        )
     else:
         detail = result["detail"] if result else "eof"
         err = result["error"] if result else None
-        suffix = f": {err}" if err else ""
-        _log(f"  req#{request_id} SSE ended without terminal event ({detail}{suffix}) events={result['events'] if result else 0} for {path}")
+        _log(
+            f"req={request_id} event=sse_end_without_terminal detail={detail} "
+            f"exception={_safe_exception_label(err) if err else 'none'} "
+            f"events={result['events'] if result else 0} path={safe_path}"
+        )
+    return {
+        "pre_content_exhausted": pre_content_exhausted,
+        "attempts": attempt + 1,
+        "result": result,
+    }
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -1071,7 +1224,10 @@ class Handler(BaseHTTPRequestHandler):
             # Payloads may contain conversation data and credentials. Keep runtime
             # evidence aggregate-only: this proxy never persists request bodies.
             if len(body) >= 400_000:
-                _log(f"req#{request_id} outgoing body {len(body)}b (large) for {self.path}")
+                _log(
+                    f"req={request_id} event=large_request bytes={len(body)} "
+                    f"path={_safe_request_path(self.path)}"
+                )
 
         url = UPSTREAM + self.path
         out_headers = {
@@ -1081,7 +1237,10 @@ class Handler(BaseHTTPRequestHandler):
         out_headers["Accept-Encoding"] = "identity"
 
         if note:
-            _log(f"req#{request_id} {method} {self.path} -> {note}")
+            _log(
+                f"req={request_id} event=request_sanitized method={method} "
+                f"path={_safe_request_path(self.path)} {note}"
+            )
 
 
         # dmxapi intermittently returns 400 invalid_payload / 5xx / 429 for
@@ -1117,12 +1276,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(msg)))
                 self.end_headers()
                 self.wfile.write(msg)
-                _log(f"  req#{request_id} local queue timeout for {self.path}")
+                _log(f"req={request_id} event=local_queue_timeout path={_safe_request_path(self.path)}")
                 return
             with _ACTIVE_LOCK:
                 _ACTIVE_RESPONSES += 1
                 active_now = _ACTIVE_RESPONSES
-            _log(f"  req#{request_id} responses slot acquired active={active_now}/{RESPONSES_MAX_CONCURRENCY}")
+            _log(
+                f"req={request_id} event=responses_slot_acquired "
+                f"active={active_now}/{RESPONSES_MAX_CONCURRENCY} path={_safe_request_path(self.path)}"
+            )
 
         try:
             resp = None
@@ -1147,19 +1309,22 @@ class Handler(BaseHTTPRequestHandler):
                         _record_counter("response_failed_dialogue_recovery_accepted")
                         m = dialogue_recovery_metrics
                         _log(
-                            f"  req#{request_id} response_failed dialogue recovery accepted "
+                            f"req={request_id} event=response_failed_dialogue_recovery_accepted "
                             f"bytes={m['original_bytes']}->{m['recovery_bytes']} "
-                            f"messages={m['retained_messages']} retained/"
-                            f"{m['dropped_input_items']} input items dropped "
-                            f"after={response_failed_stages} pair-safe stages"
+                            f"retained_messages={m['retained_messages']} "
+                            f"dropped_input_items={m['dropped_input_items']} "
+                            f"pair_safe_stages={response_failed_stages} "
+                            f"path={_safe_request_path(self.path)}"
                         )
                     elif used_response_failed_compaction and compact_response_failed_metrics:
                         _record_counter("response_failed_compaction_accepted")
                         m = compact_response_failed_metrics
                         _log(
-                            f"  req#{request_id} response_failed compact fallback accepted "
+                            f"req={request_id} event=response_failed_compact_recovery_accepted "
                             f"bytes={m['original_bytes']}->{m['compact_bytes']} "
-                            f"inputs={m['removed_inputs']} removed/{m['retained_inputs']} retained"
+                            f"removed_inputs={m['removed_inputs']} "
+                            f"retained_inputs={m['retained_inputs']} "
+                            f"path={_safe_request_path(self.path)}"
                         )
                     break
                 except urllib.error.HTTPError as e:
@@ -1199,12 +1364,14 @@ class Handler(BaseHTTPRequestHandler):
                             previous_bytes = len(attempt_body)
                             attempt_body = compact
                             _log(
-                                f"  req#{request_id} upstream response_failed — compact fallback "
+                                f"req={request_id} event=response_failed_compact_recovery "
                                 f"stage={response_failed_stages}/{max_response_failed_stages} "
                                 f"bytes={previous_bytes}->{metrics['compact_bytes']} budget={metrics['budget_bytes']} "
-                                f"inputs={metrics['removed_inputs']} removed/{metrics['retained_inputs']} retained "
+                                f"removed_inputs={metrics['removed_inputs']} "
+                                f"retained_inputs={metrics['retained_inputs']} "
                                 f"cache_key_removed={metrics['prompt_cache_key_removed']} "
-                                f"budget_met={metrics.get('budget_met', True)} for {self.path}"
+                                f"budget_met={metrics.get('budget_met', True)} "
+                                f"path={_safe_request_path(self.path)}"
                             )
                             continue
                     # If pair-safe suffixes have exhausted their useful range, make
@@ -1231,11 +1398,12 @@ class Handler(BaseHTTPRequestHandler):
                             previous_bytes = len(attempt_body)
                             attempt_body = recovery
                             _log(
-                                f"  req#{request_id} upstream response_failed — dialogue recovery "
+                                f"req={request_id} event=response_failed_dialogue_recovery "
                                 f"bytes={previous_bytes}->{metrics['recovery_bytes']} "
-                                f"messages={metrics['retained_messages']} retained/"
-                                f"{metrics['dropped_input_items']} input items dropped "
-                                f"cache_key_removed={metrics['prompt_cache_key_removed']} for {self.path}"
+                                f"retained_messages={metrics['retained_messages']} "
+                                f"dropped_input_items={metrics['dropped_input_items']} "
+                                f"cache_key_removed={metrics['prompt_cache_key_removed']} "
+                                f"path={_safe_request_path(self.path)}"
                             )
                             continue
                     # ``invalid_payload`` is a classified upstream transient, not a
@@ -1255,11 +1423,11 @@ class Handler(BaseHTTPRequestHandler):
                         self.send_header("Content-Length", str(len(msg)))
                         self.end_headers()
                         self.wfile.write(msg)
-                        detail = "with dialogue recovery" if used_response_failed_dialogue_recovery else "without dialogue recovery"
                         _log(
-                            f"  req#{request_id} response_failed recovery exhausted after {attempts} attempts "
-                            f"({response_failed_stages} pair-safe stages, {detail}); normalized upstream HTTP "
-                            f"{status_code} to 503 for {self.path}"
+                            f"req={request_id} event=response_failed_recovery_exhausted "
+                            f"attempts={attempts} pair_safe_stages={response_failed_stages} "
+                            f"dialogue_recovery={used_response_failed_dialogue_recovery} "
+                            f"upstream_status={status_code} path={_safe_request_path(self.path)}"
                         )
                         return
                     retry_ceiling = 1 if disp == "once" else max_attempts - 1
@@ -1270,7 +1438,11 @@ class Handler(BaseHTTPRequestHandler):
                         and not (status_code == 400 and disp == "full")
                     ):
                         delay = 3.0 if disp == "once" else backoffs[min(attempt, len(backoffs) - 1)]
-                        _log(f"  req#{request_id} upstream HTTP {status_code} ({disp}) — retry {attempt+1}/{retry_ceiling} in {delay}s for {self.path}")
+                        _log(
+                            f"req={request_id} event=upstream_retry status={status_code} "
+                            f"disposition={disp} attempt={attempt + 1}/{retry_ceiling} "
+                            f"delay_seconds={delay} path={_safe_request_path(self.path)}"
+                        )
                         time.sleep(delay)
                         continue
                     if status_code == 477 and disp == "full":
@@ -1283,9 +1455,9 @@ class Handler(BaseHTTPRequestHandler):
                         self.end_headers()
                         self.wfile.write(msg)
                         _log(
-                            f"  req#{request_id} DMX empty_response exhausted after "
-                            f"{attempt + 1} attempts; normalized upstream HTTP 477 to 503 "
-                            f"for {self.path}"
+                            f"req={request_id} event=empty_response_exhausted "
+                            f"attempts={attempt + 1} upstream_status=477 "
+                            f"path={_safe_request_path(self.path)}"
                         )
                         return
                     self.send_response(status_code)
@@ -1296,26 +1468,45 @@ class Handler(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(err_body)
                     _record_failure(classification)
-                    _log(f"  req#{request_id} upstream HTTP {status_code} ({len(err_body)}b) for {self.path} [gave up after {attempt+1}]")
+                    _log(
+                        f"req={request_id} event=upstream_http_terminal status={status_code} "
+                        f"response_bytes={len(err_body)} attempts={attempt + 1} "
+                        f"path={_safe_request_path(self.path)}"
+                    )
                     return
                 except Exception as e:
                     last_err = e
                     if attempt < max_attempts - 1:
-                        _log(f"  req#{request_id} upstream transport error (retry {attempt+1}): {e}")
+                        _log(
+                            f"req={request_id} event=upstream_transport_retry "
+                            f"attempt={attempt + 1} exception={_safe_exception_label(e)} "
+                            f"path={_safe_request_path(self.path)}"
+                        )
                         time.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                         continue
-                    msg = json.dumps({"error": {"message": f"proxy upstream error: {e}"}}).encode()
+                    msg = json.dumps({"error": {
+                        "message": "DMX upstream transport failed after bounded retries; retry the turn",
+                        "type": "upstream_unavailable",
+                        "code": "upstream_transport_error",
+                    }}, separators=(",", ":")).encode()
                     _record_failure("upstream_transport_error")
                     self.send_response(502)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", str(len(msg)))
                     self.end_headers()
                     self.wfile.write(msg)
-                    _log(f"  req#{request_id} proxy 502 for {self.path}: {e}")
+                    _log(
+                        f"req={request_id} event=upstream_transport_exhausted "
+                        f"exception={_safe_exception_label(e)} path={_safe_request_path(self.path)}"
+                    )
                     return
 
             if resp is None:
-                msg = json.dumps({"error": {"message": f"proxy upstream error: {last_err}"}}).encode()
+                msg = json.dumps({"error": {
+                    "message": "DMX upstream transport failed after bounded retries; retry the turn",
+                    "type": "upstream_unavailable",
+                    "code": "upstream_transport_error",
+                }}, separators=(",", ":")).encode()
                 _record_failure("upstream_transport_error")
                 self.send_response(502)
                 self.send_header("Content-Type", "application/json")
@@ -1351,15 +1542,30 @@ class Handler(BaseHTTPRequestHandler):
                     return _urlopen(req2, timeout=UPSTREAM_TIMEOUT)
 
                 try:
-                    stream_sanitized_sse(
+                    stream_result = stream_sanitized_sse(
                         self, resp, self.path, request_id,
                         reopen=_reopen,
                         send_headers=lambda: _send_stream_headers(resp),
                     )
+                    if stream_result["pre_content_exhausted"]:
+                        msg = _stream_pre_content_exhausted(stream_result["attempts"])
+                        self.send_response(503)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Retry-After", "3")
+                        self.send_header("Content-Length", str(len(msg)))
+                        self.end_headers()
+                        self.wfile.write(msg)
+                        _log(
+                            f"req={request_id} event=sse_pre_content_exhausted "
+                            f"attempts={stream_result['attempts']} path={_safe_request_path(self.path)}"
+                        )
                 except (BrokenPipeError, ConnectionResetError):
-                    _log(f"  req#{request_id} downstream client closed stream for {self.path}")
+                    _log(f"req={request_id} event=downstream_client_closed path={_safe_request_path(self.path)}")
                 except Exception as e:
-                    _log(f"  req#{request_id} stream note for {self.path}: {e}")
+                    _log(
+                        f"req={request_id} event=stream_handler_exception "
+                        f"exception={_safe_exception_label(e)} path={_safe_request_path(self.path)}"
+                    )
             else:
                 _send_stream_headers(resp)
                 try:
@@ -1380,16 +1586,22 @@ class Handler(BaseHTTPRequestHandler):
                         _record_counter("responses_completed")
                 except (BrokenPipeError, ConnectionResetError):
                     # Client (Codex) closed the stream early — normal at turn end.
-                    _log(f"  req#{request_id} downstream client closed stream for {self.path}")
+                    _log(f"req={request_id} event=downstream_client_closed path={_safe_request_path(self.path)}")
                 except Exception as e:
-                    _log(f"  req#{request_id} stream note for {self.path}: {e}")
+                    _log(
+                        f"req={request_id} event=stream_handler_exception "
+                        f"exception={_safe_exception_label(e)} path={_safe_request_path(self.path)}"
+                    )
         finally:
             if acquired:
                 with _ACTIVE_LOCK:
                     _ACTIVE_RESPONSES -= 1
                     active_now = _ACTIVE_RESPONSES
                 _RESPONSES_SEM.release()
-                _log(f"  req#{request_id} responses slot released active={active_now}/{RESPONSES_MAX_CONCURRENCY}")
+                _log(
+                    f"req={request_id} event=responses_slot_released "
+                    f"active={active_now}/{RESPONSES_MAX_CONCURRENCY} path={_safe_request_path(self.path)}"
+                )
 
     def _runtime_status(self):
         payload = json.dumps(runtime_status(), separators=(",", ":")).encode()
@@ -1421,9 +1633,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     _log(
-        f"starting dmx-responses-proxy on http://{HOST}:{PORT} -> {UPSTREAM} "
-        f"(responses_max_concurrency={RESPONSES_MAX_CONCURRENCY}, "
-        f"upstream_timeout={UPSTREAM_TIMEOUT}, read_timeout={UPSTREAM_READ_TIMEOUT})"
+        f"starting dmx-responses-proxy listener={HOST}:{PORT} "
+        f"responses_max_concurrency={RESPONSES_MAX_CONCURRENCY} "
+        f"upstream_timeout={UPSTREAM_TIMEOUT} read_timeout={UPSTREAM_READ_TIMEOUT} "
+        f"log_max_bytes={LOG_MAX_BYTES} log_backup_count={LOG_BACKUP_COUNT}"
     )
     httpd = _ResilientProxyServer((HOST, PORT), Handler)
     try:
