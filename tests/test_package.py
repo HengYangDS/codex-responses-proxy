@@ -169,6 +169,22 @@ class TestManagedRouteState(unittest.TestCase):
             self.assertEqual(sorted(manifest["files"]), sorted(common.RUNTIME_PAYLOAD_FILES))
             self.assertTrue(all(not relative.startswith("tests/") for relative in manifest["files"]))
 
+    def test_copy_payload_removes_only_superseded_launchd_debug_sinks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._managed_context(Path(tmp))
+            log_dir = Path(ctx.log_dir)
+            log_dir.mkdir(parents=True)
+            for filename in ("dmx-watchdog.out.log", "dmx-watchdog.err.log"):
+                (log_dir / filename).write_text("legacy raw output", encoding="utf-8")
+            retained = log_dir / "dmx-watchdog.log"
+            retained.write_text("structured retained log", encoding="utf-8")
+
+            install.copy_payload(ctx)
+
+            self.assertFalse((log_dir / "dmx-watchdog.out.log").exists())
+            self.assertFalse((log_dir / "dmx-watchdog.err.log").exists())
+            self.assertEqual(retained.read_text(encoding="utf-8"), "structured retained log")
+
     def test_aigw_owned_proxy_route_is_never_rewritten_or_adopted(self):
         with tempfile.TemporaryDirectory() as tmp:
             ctx = self._managed_context(Path(tmp))
@@ -339,6 +355,18 @@ class TestInstallationInputValidation(unittest.TestCase):
     def test_build_context_normalizes_a_safe_upstream_url(self):
         ctx = install.build_context(8791, "https://example.test/v1/")
         self.assertEqual(ctx.upstream, "https://example.test/v1")
+
+    def test_build_context_rejects_out_of_bounds_log_retention(self):
+        invalid = (
+            {"proxy_log_max_bytes": 4095},
+            {"proxy_log_backup_count": -1},
+            {"watchdog_log_max_bytes": 64 * 1024 * 1024 + 1},
+            {"watchdog_log_backup_count": 11},
+        )
+        for kwargs in invalid:
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(common.InstallError):
+                    install.build_context(8791, "https://example.test", **kwargs)
 
 
 class TestAIGWRouteControl(unittest.TestCase):
@@ -542,6 +570,12 @@ class TestMacosPlist(unittest.TestCase):
         self.assertIn("com.user.codex-dmx-watchdog", xml)
         self.assertIn("DMX_PROXY_PORT", xml)
         self.assertIn("8791", xml)
+        self.assertIn("DMX_PROXY_LOG_MAX_BYTES", xml)
+        self.assertIn(str(common.DEFAULT_PROXY_LOG_MAX_BYTES), xml)
+        self.assertIn("DMX_WATCHDOG_LOG_BACKUP_COUNT", xml)
+        self.assertIn("<string>/dev/null</string>", xml)
+        self.assertNotIn("dmx-watchdog.out.log", xml)
+        self.assertNotIn("dmx-watchdog.err.log", xml)
 
     def test_plist_is_wellformed_xml(self):
         import xml.dom.minidom as minidom
@@ -556,6 +590,14 @@ class TestLinuxUnit(unittest.TestCase):
         self.assertIn("WantedBy=default.target", unit)
         self.assertIn("ExecStart=/usr/bin/python3.12", unit)
         self.assertIn("Environment=DMX_PROXY_PORT=8791", unit)
+        self.assertIn(
+            f"Environment=DMX_PROXY_LOG_MAX_BYTES={common.DEFAULT_PROXY_LOG_MAX_BYTES}",
+            unit,
+        )
+        self.assertIn(
+            f"Environment=DMX_WATCHDOG_LOG_BACKUP_COUNT={common.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT}",
+            unit,
+        )
 
     def test_unit_no_multiuser_target(self):
         # user units must target default.target, not multi-user.target
@@ -592,6 +634,54 @@ class TestWindowsTask(unittest.TestCase):
         self.assertIn('set "DMX_UPSTREAM=https://alternate.example"', launcher)
         self.assertIn('set "DMX_PROXY_PYTHON=/usr/bin/python3.12"', launcher)
         self.assertIn('set "DMX_PROXY_SCRIPT=/home/tester/.codex/dmx-proxy/proxy/dmx_responses_proxy.py"', launcher)
+        self.assertIn(
+            f'set "DMX_PROXY_LOG_MAX_BYTES={common.DEFAULT_PROXY_LOG_MAX_BYTES}"',
+            launcher,
+        )
+        self.assertIn(
+            f'set "DMX_WATCHDOG_LOG_BACKUP_COUNT={common.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT}"',
+            launcher,
+        )
+
+
+class TestWatchdogLogging(unittest.TestCase):
+    def _watchdog_module(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "dmx_watchdog_for_test",
+            Path(ROOT, "watchdog", "watchdog.py"),
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_watchdog_log_is_bounded_and_redacts_secret_shaped_values(self):
+        watchdog = self._watchdog_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "watchdog.log"
+            old_path = watchdog.LOG_PATH
+            old_max = watchdog.LOG_MAX_BYTES
+            old_backups = watchdog.LOG_BACKUP_COUNT
+            watchdog.LOG_PATH = str(log_path)
+            watchdog.LOG_MAX_BYTES = 4096
+            watchdog.LOG_BACKUP_COUNT = 0
+            try:
+                watchdog._log("authorization: Bearer super-secret-token encrypted=gAAAA_replay_secret")
+                log_path.write_bytes(b"x" * 8192)
+                watchdog._log("event=rotation_probe")
+            finally:
+                watchdog.LOG_PATH = old_path
+                watchdog.LOG_MAX_BYTES = old_max
+                watchdog.LOG_BACKUP_COUNT = old_backups
+
+            text = log_path.read_text(encoding="utf-8")
+            size = log_path.stat().st_size
+            mode = log_path.stat().st_mode & 0o777
+        self.assertNotIn("super-secret-token", text)
+        self.assertNotIn("gAAAA_replay_secret", text)
+        self.assertIn("log_retention_discarded_oversized_bytes=8192", text)
+        self.assertLessEqual(size, 4096)
+        self.assertEqual(mode, 0o600)
 
 
 class TestProxySanitize(unittest.TestCase):
@@ -984,6 +1074,53 @@ class TestProxySanitize(unittest.TestCase):
     def test_runtime_server_version_uses_version_file(self):
         self.assertEqual(self.p.release_version(), Path(ROOT, "VERSION").read_text(encoding="utf-8").strip())
 
+    def test_log_redacts_secrets_limits_line_length_and_removes_query_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "proxy.log"
+            old_log_path = self.p.LOG_PATH
+            self.p.LOG_PATH = str(log_path)
+            try:
+                self.p._log(
+                    "authorization: Bearer super-secret-token "
+                    "encrypted=gAAAA_replay_secret "
+                    "x" * 2048
+                )
+                self.p._log(f"path={self.p._safe_request_path('/v1/responses?prompt=private')}")
+            finally:
+                self.p.LOG_PATH = old_log_path
+
+            text = log_path.read_text(encoding="utf-8")
+            mode = log_path.stat().st_mode & 0o777
+        self.assertNotIn("super-secret-token", text)
+        self.assertNotIn("gAAAA_replay_secret", text)
+        self.assertNotIn("prompt=private", text)
+        self.assertIn("[redacted]", text)
+        self.assertIn("path=/v1/responses", text)
+        self.assertEqual(mode, 0o600)
+        self.assertLessEqual(max(len(line.encode("utf-8")) for line in text.splitlines()), self.p._LOG_LINE_MAX_BYTES + 96)
+
+    def test_log_rotation_discards_an_oversized_legacy_segment_without_reading_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "proxy.log"
+            log_path.write_bytes(b"x" * 8192)
+            old_log_path = self.p.LOG_PATH
+            old_max = self.p.LOG_MAX_BYTES
+            old_backups = self.p.LOG_BACKUP_COUNT
+            self.p.LOG_PATH = str(log_path)
+            self.p.LOG_MAX_BYTES = 4096
+            self.p.LOG_BACKUP_COUNT = 1
+            try:
+                self.p._log("event=rotation_probe")
+            finally:
+                self.p.LOG_PATH = old_log_path
+                self.p.LOG_MAX_BYTES = old_max
+                self.p.LOG_BACKUP_COUNT = old_backups
+
+            self.assertTrue(log_path.exists())
+            self.assertLessEqual(log_path.stat().st_size, 4096)
+            self.assertFalse((Path(tmp) / "proxy.log.1").exists())
+            self.assertIn("log_retention_discarded_oversized_bytes=8192", log_path.read_text(encoding="utf-8"))
+
     def test_fail_open_on_non_json(self):
         raw = b"not json at all"
         out, note = self.p.sanitize_responses_body(raw)
@@ -1159,8 +1296,8 @@ class TestProxyTransport(unittest.TestCase):
                 {"type": "message", "role": "user", "content": "latest user context"},
             ],
         )
-        self.assertIn("response_failed dialogue recovery accepted", logs)
-        self.assertNotIn("response_failed compact fallback accepted", logs)
+        self.assertIn("event=response_failed_dialogue_recovery_accepted", logs)
+        self.assertNotIn("event=response_failed_compact_recovery_accepted", logs)
 
     def test_normalizes_exhausted_response_failed_recovery_to_retryable_503(self):
         response_failed = (
@@ -1307,6 +1444,34 @@ class TestProxyTransport(unittest.TestCase):
         status = self.p.runtime_status()
         self.assertEqual(status["counters"]["streams_pre_content_reconnect_attempts"], 1)
         self.assertEqual(status["counters"]["streams_completed"], 1)
+
+    def test_normalizes_exhausted_pre_content_sse_failures_to_retryable_503(self):
+        premature_eof = {"chunks": [b'data: {"type":"response.created"}\n\n']}
+        body = json.dumps({"stream": True, "input": []}).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy([premature_eof] * 6, tmp)
+            try:
+                with mock.patch.object(self.p.time, "sleep", return_value=None):
+                    with self.assertRaises(urllib.error.HTTPError) as raised:
+                        self._request(port, body)
+                error = raised.exception
+                with error:
+                    self.assertEqual(error.code, 503)
+                    self.assertEqual(error.headers["Retry-After"], "3")
+                    payload = json.loads(error.read())
+            finally:
+                cleanup()
+
+        self.assertEqual(received, [body] * 6)
+        self.assertEqual(payload["error"]["type"], "upstream_unavailable")
+        self.assertEqual(payload["error"]["code"], "stream_pre_content_exhausted")
+        self.assertEqual(payload["error"]["attempts"], 6)
+        status = self.p.runtime_status()
+        self.assertEqual(status["counters"]["streams_pre_content_reconnect_attempts"], 5)
+        self.assertEqual(status["counters"]["streams_pre_content_exhausted"], 1)
+        self.assertEqual(status["counters"]["streams_failed"], 1)
+        self.assertEqual(status["last_failure"]["classification"], "stream_pre_content_exhausted")
 
     def test_reconnects_a_pre_content_premature_eof(self):
         premature_eof = {"chunks": [b'data: {"type":"response.created"}\n\n']}
@@ -1471,18 +1636,37 @@ class TestGovernanceMetadata(unittest.TestCase):
 
 
 class TestReleaseMetadata(unittest.TestCase):
-    def test_active_release_version_is_unreleased_or_the_first_pending_release(self):
+    def test_active_release_version_has_one_leading_unreleased_section(self):
         version = Path(ROOT, "VERSION").read_text(encoding="utf-8").strip()
         releases = Path(ROOT, "CHANGELOG.md").read_text(encoding="utf-8")
+        unreleased = "## [Unreleased]"
         self.assertRegex(version, r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
-        self.assertIn("## [Unreleased]", releases)
-        if f"## [{version}]" in releases:
-            self.assertIn(f"## [Unreleased]\n\n## [{version}]", releases)
+        self.assertEqual(releases.count(unreleased), 1)
+        version_heading = f"## [{version}]"
+        if version_heading in releases:
+            self.assertLess(releases.index(unreleased), releases.index(version_heading))
+        else:
+            self.assertGreater(version, "0.0.0")
 
     def test_proxy_has_no_payload_or_header_dump_escape_hatch(self):
         source = Path(ROOT, "proxy", "dmx_responses_proxy.py").read_text(encoding="utf-8")
         for forbidden in ("DMX_DUMP_BODIES", "DMX_DUMP_HEADERS", "reject-"):
             self.assertNotIn(forbidden, source)
+
+    def test_proxy_declares_bounded_secret_safe_log_contract(self):
+        proxy_source = Path(ROOT, "proxy", "dmx_responses_proxy.py").read_text(encoding="utf-8")
+        watchdog_source = Path(ROOT, "watchdog", "watchdog.py").read_text(encoding="utf-8")
+        for required in (
+            "DMX_PROXY_LOG_MAX_BYTES",
+            "DMX_PROXY_LOG_BACKUP_COUNT",
+            "_redact_log_message",
+            "_safe_request_path",
+            "streams_pre_content_exhausted",
+            "stream_pre_content_exhausted",
+        ):
+            self.assertIn(required, proxy_source)
+        for required in ("DMX_WATCHDOG_LOG_MAX_BYTES", "DMX_WATCHDOG_LOG_BACKUP_COUNT", "_redact_log_message"):
+            self.assertIn(required, watchdog_source)
 
     def test_mit_license_is_present(self):
         license_text = Path(ROOT, "LICENSE").read_text(encoding="utf-8")

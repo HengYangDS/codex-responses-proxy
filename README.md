@@ -133,6 +133,30 @@ never includes request bodies, tokens, credentials, headers, prompts, or
 upstream error payloads. The endpoint is read-only and is available only at
 `GET /healthz` on the loopback listener; it is not a remote monitoring API.
 
+### Log retention and diagnostic safety
+
+The proxy and watchdog write structured operational events only. They do not
+persist request bodies, credentials, headers, prompts, query values, or raw
+upstream payloads. Each log has a bounded rotating retention window; the default
+is four 4 MiB proxy segments and three 512 KiB watchdog segments, including the
+active segment. Oversized legacy segments are discarded without being copied or
+read into evidence. Native macOS service stdout and stderr are deliberately
+discarded so they cannot become an unbounded second logging channel.
+
+Set a durable retention policy at installation time:
+
+```bash
+python3 install.py \
+  --proxy-log-max-bytes 4194304 \
+  --proxy-log-backup-count 3 \
+  --watchdog-log-max-bytes 524288 \
+  --watchdog-log-backup-count 2
+```
+
+The selected bounds are rendered into the native user service. Updating an
+installed service requires the normal installation or reload lifecycle and can
+briefly interrupt proxy traffic.
+
 ## Design
 
 ```text
@@ -156,15 +180,15 @@ rejections are returned unchanged.
 | Symptom | First check | Boundary |
 | --- | --- | --- |
 | Encrypted replay error | `control.py status --json` | Confirm a healthy listener and enabled route before investigating history. |
-| Upstream `response_failed` | Proxy log and request ID | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
-| DMX HTTP 477 `empty_response` | Proxy log and request ID | Retry the unchanged request through the normal bounded transient-retry budget. If that exact condition exhausts the budget, return standard HTTP 503 with `Retry-After`; unrelated 477 responses remain unchanged. |
-| SSE closes before completion | Proxy log | The proxy retries only before sending substantive bytes downstream. |
+| Upstream `response_failed` | `control.py status --json` | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
+| DMX HTTP 477 `empty_response` | `control.py status --json` | Retry the unchanged request through the normal bounded transient-retry budget. If that exact condition exhausts the budget, return standard HTTP 503 with `Retry-After`; unrelated 477 responses remain unchanged. |
+| SSE closes before completion | `control.py status --json` | The proxy retries only before sending substantive bytes downstream. If that bounded pre-content budget is exhausted, it returns retryable HTTP 503 with `Retry-After: 3` rather than an empty successful stream. |
 | Need current reliability evidence | `control.py status --json` | Inspect the secret-free `runtime` snapshot; it proves listener-local counters, not recovery of a historical conversation. |
 | Client ignores a route change | Client configuration lifecycle | A running client may need its normal reload; the proxy does not restart it. |
 
 Logs are written under `~/.codex/log/`. They record bounded classifications,
 request identifiers, and byte counts only; the proxy does not persist request
-bodies, credentials, headers, prompts, or raw upstream failures.
+bodies, credentials, headers, prompts, query values, or raw upstream failures.
 
 ## Configure
 

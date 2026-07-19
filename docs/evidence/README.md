@@ -15,6 +15,13 @@ Do not treat a green local process, a new clean conversation, or a generic log
 grep as proof that an historical conversation recovered. Keep transient 429,
 477, and upstream SSE failures separately classified from payload-schema fixes.
 
+For operational diagnosis, prefer the loopback `control.py status --json`
+snapshot and its stable counters, classifications, and failure timestamp. Logs
+are bounded secondary evidence; do not archive raw logs by default, and never
+use them to extract or preserve request, response, prompt, credential, header,
+query, or upstream error content. A status snapshot proves only the current
+listener process and cannot establish recovery of an earlier conversation.
+
 The runtime counter snapshot is process-local and resets when the listener is
 replaced. It contains only bounded classifications, counts, and a failure time;
 it must never contain request bodies, prompts, credentials, headers, tokens, or

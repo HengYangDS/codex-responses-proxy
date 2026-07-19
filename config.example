@@ -21,6 +21,19 @@ DMX_RESPONSE_FAILED_COMPACTION_BUDGET=524288
 # dialogue-only recovery. The default is deliberately conservative.
 DMX_RESPONSE_FAILED_MAX_STAGES=3
 
+# Maximum bytes in each structured proxy log segment and the number of rotated
+# segments retained. The proxy never logs request bodies, credentials, headers,
+# prompts, or raw upstream payloads. Values outside their supported bounds are
+# clamped by the runtime; use install.py arguments to persist a new service value.
+DMX_PROXY_LOG_MAX_BYTES=4194304
+DMX_PROXY_LOG_BACKUP_COUNT=3
+
+# Maximum bytes in each structured watchdog log segment and the number of rotated
+# segments retained. Native service stdout and stderr are discarded deliberately;
+# use this bounded log for watchdog lifecycle evidence.
+DMX_WATCHDOG_LOG_MAX_BYTES=524288
+DMX_WATCHDOG_LOG_BACKUP_COUNT=2
+
 # Watchdog TCP health-check interval, in seconds.
 DMX_WATCHDOG_INTERVAL=15
 

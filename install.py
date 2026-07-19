@@ -24,6 +24,7 @@ import os
 import sys
 import time
 import shutil
+from pathlib import Path
 import socket
 import argparse
 import subprocess
@@ -59,9 +60,41 @@ def _codex_running() -> bool:
     return False
 
 
-def build_context(port: int, upstream: str) -> common.InstallContext:
+def build_context(
+    port: int,
+    upstream: str,
+    *,
+    proxy_log_max_bytes: int = common.DEFAULT_PROXY_LOG_MAX_BYTES,
+    proxy_log_backup_count: int = common.DEFAULT_PROXY_LOG_BACKUP_COUNT,
+    watchdog_log_max_bytes: int = common.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
+    watchdog_log_backup_count: int = common.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
+) -> common.InstallContext:
     port = common.validate_port(port)
     upstream = common.normalize_upstream_url(upstream)
+    proxy_log_max_bytes = common.validate_log_retention(
+        proxy_log_max_bytes,
+        name="proxy log max bytes",
+        minimum=4 * 1024,
+        maximum=64 * 1024 * 1024,
+    )
+    proxy_log_backup_count = common.validate_log_retention(
+        proxy_log_backup_count,
+        name="proxy log backup count",
+        minimum=0,
+        maximum=10,
+    )
+    watchdog_log_max_bytes = common.validate_log_retention(
+        watchdog_log_max_bytes,
+        name="watchdog log max bytes",
+        minimum=4 * 1024,
+        maximum=64 * 1024 * 1024,
+    )
+    watchdog_log_backup_count = common.validate_log_retention(
+        watchdog_log_backup_count,
+        name="watchdog log backup count",
+        minimum=0,
+        maximum=10,
+    )
     codex_home = common.codex_home()
     home = os.path.dirname(codex_home)
     install_dir = os.path.join(codex_home, "dmx-proxy")
@@ -75,17 +108,30 @@ def build_context(port: int, upstream: str) -> common.InstallContext:
         log_dir=os.path.join(codex_home, "log"),
         port=port,
         upstream=upstream,
+        proxy_log_max_bytes=proxy_log_max_bytes,
+        proxy_log_backup_count=proxy_log_backup_count,
+        watchdog_log_max_bytes=watchdog_log_max_bytes,
+        watchdog_log_backup_count=watchdog_log_backup_count,
     )
 
 
 def copy_payload(ctx: common.InstallContext) -> None:
     """Copy the declared runtime payload and remove known superseded artifacts.
 
-    Route state, logs, and config are user/runtime state and remain untouched.
-    The `tests/` tree was shipped by older deployments but is not executable
-    runtime payload; remove that exact obsolete path before writing the manifest.
+    Route state and config are user/runtime state and remain untouched. Retained
+    structured logs remain untouched. The two former macOS launchd stdout/stderr
+    sinks are exact superseded artifacts: current service definitions route those
+    channels to ``/dev/null`` and use the bounded watchdog log instead, so remove
+    them without reading or copying their potentially sensitive contents. The
+    `tests/` tree was shipped by older deployments but is not executable runtime
+    payload; remove that exact obsolete path before writing the manifest.
     """
     shutil.rmtree(os.path.join(ctx.install_dir, "tests"), ignore_errors=True)
+    for filename in ("dmx-watchdog.out.log", "dmx-watchdog.err.log"):
+        try:
+            Path(ctx.log_dir, filename).unlink(missing_ok=True)
+        except OSError:
+            pass
     for sub in ("proxy", "watchdog", "platform_adapters"):
         src = os.path.join(HERE, sub)
         dst = os.path.join(ctx.install_dir, sub)
@@ -196,6 +242,30 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Install the Codex dmx-responses-proxy.")
     ap.add_argument("--port", type=int, default=common.DEFAULT_PORT)
     ap.add_argument("--upstream", default=common.DEFAULT_UPSTREAM)
+    ap.add_argument(
+        "--proxy-log-max-bytes",
+        type=int,
+        default=common.DEFAULT_PROXY_LOG_MAX_BYTES,
+        help="maximum bytes retained in each proxy log segment",
+    )
+    ap.add_argument(
+        "--proxy-log-backup-count",
+        type=int,
+        default=common.DEFAULT_PROXY_LOG_BACKUP_COUNT,
+        help="number of rotated proxy log segments to retain",
+    )
+    ap.add_argument(
+        "--watchdog-log-max-bytes",
+        type=int,
+        default=common.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
+        help="maximum bytes retained in each watchdog log segment",
+    )
+    ap.add_argument(
+        "--watchdog-log-backup-count",
+        type=int,
+        default=common.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
+        help="number of rotated watchdog log segments to retain",
+    )
     ap.add_argument("--skip-config", action="store_true",
                     help="don't touch config.toml (only place files + service)")
     args = ap.parse_args()
@@ -205,12 +275,27 @@ def main() -> None:
     except common.UnsupportedPlatform as e:
         _die(str(e))
 
-    ctx = build_context(args.port, args.upstream)
+    try:
+        ctx = build_context(
+            args.port,
+            args.upstream,
+            proxy_log_max_bytes=args.proxy_log_max_bytes,
+            proxy_log_backup_count=args.proxy_log_backup_count,
+            watchdog_log_max_bytes=args.watchdog_log_max_bytes,
+            watchdog_log_backup_count=args.watchdog_log_backup_count,
+        )
+    except common.InstallError as exc:
+        _die(str(exc))
     _say(f"Installing codex-dmx-proxy on {sys.platform}")
     _say(f"  python:      {ctx.python}")
     _say(f"  install dir: {ctx.install_dir}")
     _say(f"  codex cfg:   {ctx.codex_config}")
     _say(f"  upstream:    {ctx.upstream}  port: {ctx.port}")
+    _say(
+        "  log retention: "
+        f"proxy={ctx.proxy_log_max_bytes}B x {ctx.proxy_log_backup_count}, "
+        f"watchdog={ctx.watchdog_log_max_bytes}B x {ctx.watchdog_log_backup_count}"
+    )
 
     if _codex_running():
         _say("\n  ℹ Codex desktop appears to be running. AIGW-owned routes are left\n"

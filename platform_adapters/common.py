@@ -21,6 +21,10 @@ from dataclasses import dataclass, field
 LABEL = "com.user.codex-dmx-watchdog"   # launchd/systemd/task identifier
 DEFAULT_PORT = 8791
 DEFAULT_UPSTREAM = "https://www.dmxapi.cn"
+DEFAULT_PROXY_LOG_MAX_BYTES = 4 * 1024 * 1024
+DEFAULT_PROXY_LOG_BACKUP_COUNT = 3
+DEFAULT_WATCHDOG_LOG_MAX_BYTES = 512 * 1024
+DEFAULT_WATCHDOG_LOG_BACKUP_COUNT = 2
 INSTALL_DIRNAME = os.path.join(".codex", "dmx-proxy")   # under $HOME
 STATE_FILENAME = "install-state.json"
 STATE_SCHEMA_VERSION = 2
@@ -68,6 +72,10 @@ class InstallContext:
     log_dir: str              # ~/.codex/log
     port: int = DEFAULT_PORT
     upstream: str = DEFAULT_UPSTREAM
+    proxy_log_max_bytes: int = DEFAULT_PROXY_LOG_MAX_BYTES
+    proxy_log_backup_count: int = DEFAULT_PROXY_LOG_BACKUP_COUNT
+    watchdog_log_max_bytes: int = DEFAULT_WATCHDOG_LOG_MAX_BYTES
+    watchdog_log_backup_count: int = DEFAULT_WATCHDOG_LOG_BACKUP_COUNT
     env: dict = field(default_factory=dict)
 
 
@@ -210,6 +218,13 @@ def validate_port(port: int) -> int:
     if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
         raise InstallError("port must be an integer in 1..65535")
     return port
+
+
+def validate_log_retention(value: int, *, name: str, minimum: int, maximum: int) -> int:
+    """Accept one bounded runtime-log retention setting for service rendering."""
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise InstallError(f"{name} must be an integer in {minimum}..{maximum}")
+    return value
 
 
 def normalize_upstream_url(value: str) -> str:

@@ -31,9 +31,9 @@ PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
   <key>ThrottleInterval</key>
   <integer>5</integer>
   <key>StandardOutPath</key>
-  <string>{log_dir}/dmx-watchdog.out.log</string>
+  <string>/dev/null</string>
   <key>StandardErrorPath</key>
-  <string>{log_dir}/dmx-watchdog.err.log</string>
+  <string>/dev/null</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
@@ -46,6 +46,14 @@ PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
     <string>{python}</string>
     <key>DMX_PROXY_SCRIPT</key>
     <string>{proxy}</string>
+    <key>DMX_PROXY_LOG_MAX_BYTES</key>
+    <string>{proxy_log_max_bytes}</string>
+    <key>DMX_PROXY_LOG_BACKUP_COUNT</key>
+    <string>{proxy_log_backup_count}</string>
+    <key>DMX_WATCHDOG_LOG_MAX_BYTES</key>
+    <string>{watchdog_log_max_bytes}</string>
+    <key>DMX_WATCHDOG_LOG_BACKUP_COUNT</key>
+    <string>{watchdog_log_backup_count}</string>
   </dict>
 </dict>
 </plist>
@@ -65,6 +73,10 @@ def render_plist(ctx: common.InstallContext) -> str:
         log_dir=ctx.log_dir,
         port=ctx.port,
         upstream=ctx.upstream,
+        proxy_log_max_bytes=ctx.proxy_log_max_bytes,
+        proxy_log_backup_count=ctx.proxy_log_backup_count,
+        watchdog_log_max_bytes=ctx.watchdog_log_max_bytes,
+        watchdog_log_backup_count=ctx.watchdog_log_backup_count,
     )
 
 

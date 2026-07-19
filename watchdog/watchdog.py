@@ -41,6 +41,8 @@ Config (env, with install-time defaults baked into the service definition):
   DMX_WATCHDOG_INTERVAL     healthy-probe interval seconds (default 15)
   DMX_WATCHDOG_MAX_BACKOFF  max backoff after repeated failures (default 120)
   DMX_WATCHDOG_LOG          log file (default ~/.codex/log/dmx-watchdog.log)
+  DMX_WATCHDOG_LOG_MAX_BYTES (default 524288; each retained segment)
+  DMX_WATCHDOG_LOG_BACKUP_COUNT (default 2)
 
 Stdlib only. Runs on any Python 3.8+.
 """
@@ -48,10 +50,14 @@ Stdlib only. Runs on any Python 3.8+.
 from __future__ import annotations
 
 import os
+import re
+import stat
 import sys
 import time
 import socket
 import subprocess
+import threading
+from pathlib import Path
 
 HOST = os.environ.get("DMX_PROXY_HOST", "127.0.0.1")
 PORT = int(os.environ.get("DMX_PROXY_PORT", "8791"))
@@ -68,17 +74,84 @@ LOG_PATH = os.environ.get(
 )
 
 
+def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    """Read one bounded integer setting without making service startup fragile."""
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return min(maximum, max(minimum, value))
+
+
+LOG_MAX_BYTES = _bounded_env_int("DMX_WATCHDOG_LOG_MAX_BYTES", 512 * 1024, 4 * 1024, 64 * 1024 * 1024)
+LOG_BACKUP_COUNT = _bounded_env_int("DMX_WATCHDOG_LOG_BACKUP_COUNT", 2, 0, 10)
+_LOG_LINE_MAX_BYTES = 1024
+_LOG_LOCK = threading.Lock()
+_LOG_SECRET_PATTERNS = (
+    re.compile(r"(?i)\b(?:authorization|api[_-]?key|bearer)\s*[:=]?\s*(?:bearer\s+)?[^\s,;]+"),
+    re.compile(r"\bgAAAA[A-Za-z0-9_-]+"),
+)
+
+
+def _redact_log_message(msg: str) -> str:
+    """Bound watchdog diagnostics without retaining secret-shaped values."""
+    value = str(msg).replace("\r", " ").replace("\n", " ")
+    for pattern in _LOG_SECRET_PATTERNS:
+        value = pattern.sub("[redacted]", value)
+    encoded = value.encode("utf-8", "replace")
+    if len(encoded) > _LOG_LINE_MAX_BYTES:
+        value = encoded[:_LOG_LINE_MAX_BYTES].decode("utf-8", "ignore") + " [truncated]"
+    return value
+
+
+def _rotate_log_if_needed(path: Path, incoming_bytes: int) -> int:
+    """Keep the watchdog log within its configured local retention window."""
+    try:
+        metadata = path.lstat()
+    except OSError:
+        return 0
+    if not stat.S_ISREG(metadata.st_mode):
+        raise OSError("watchdog log path is not a regular file")
+    current_size = metadata.st_size
+    if current_size + incoming_bytes <= LOG_MAX_BYTES:
+        return 0
+
+    discarded = 0
+    if current_size > LOG_MAX_BYTES:
+        path.unlink(missing_ok=True)
+        discarded += current_size
+    elif LOG_BACKUP_COUNT <= 0:
+        path.unlink(missing_ok=True)
+    else:
+        path.with_name(f"{path.name}.{LOG_BACKUP_COUNT}").unlink(missing_ok=True)
+        for index in range(LOG_BACKUP_COUNT - 1, 0, -1):
+            source = path.with_name(f"{path.name}.{index}")
+            if source.exists():
+                source.replace(path.with_name(f"{path.name}.{index + 1}"))
+        path.replace(path.with_name(f"{path.name}.1"))
+    return discarded
+
+
 def _log(msg: str) -> None:
-    line = f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {msg}\n"
+    message = _redact_log_message(msg)
+    line = f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {message}\n"
     try:
-        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
-        with open(LOG_PATH, "a", encoding="utf-8") as fh:
-            fh.write(line)
-    except Exception:
-        pass
-    try:
-        sys.stderr.write(line)
-    except Exception:
+        path = Path(LOG_PATH)
+        with _LOG_LOCK:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            discarded = _rotate_log_if_needed(path, len(line.encode("utf-8", "replace")))
+            if discarded:
+                line = (
+                    f"{time.strftime('%Y-%m-%dT%H:%M:%S')} "
+                    f"log_retention_discarded_oversized_bytes={discarded} {message}\n"
+                )
+            with path.open("a", encoding="utf-8") as handle:
+                try:
+                    os.chmod(path, 0o600)
+                except OSError:
+                    pass
+                handle.write(line)
+    except OSError:
         pass
 
 
@@ -119,7 +192,7 @@ def spawn_proxy() -> "subprocess.Popen | None":
         _log(f"spawned proxy pid={proc.pid} ({PYTHON} {SCRIPT})")
         return proc
     except Exception as exc:
-        _log(f"ERROR failed to spawn proxy: {exc}")
+        _log(f"ERROR failed to spawn proxy: {exc.__class__.__name__}")
         return None
 
 
