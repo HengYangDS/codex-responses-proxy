@@ -28,6 +28,10 @@ Environment=DMX_PROXY_PORT={port}
 Environment=DMX_UPSTREAM={upstream}
 Environment=DMX_PROXY_PYTHON={python}
 Environment=DMX_PROXY_SCRIPT={proxy}
+Environment=DMX_PROXY_LOG_MAX_BYTES={proxy_log_max_bytes}
+Environment=DMX_PROXY_LOG_BACKUP_COUNT={proxy_log_backup_count}
+Environment=DMX_WATCHDOG_LOG_MAX_BYTES={watchdog_log_max_bytes}
+Environment=DMX_WATCHDOG_LOG_BACKUP_COUNT={watchdog_log_backup_count}
 
 [Install]
 WantedBy=default.target
@@ -58,6 +62,10 @@ def render_unit(ctx: common.InstallContext) -> str:
         proxy=ctx.proxy_script,
         port=ctx.port,
         upstream=ctx.upstream,
+        proxy_log_max_bytes=ctx.proxy_log_max_bytes,
+        proxy_log_backup_count=ctx.proxy_log_backup_count,
+        watchdog_log_max_bytes=ctx.watchdog_log_max_bytes,
+        watchdog_log_backup_count=ctx.watchdog_log_backup_count,
     )
 
 
@@ -89,6 +97,10 @@ def _install_cron(ctx: common.InstallContext) -> None:
             f'export DMX_UPSTREAM="{ctx.upstream}"\n'
             f'export DMX_PROXY_PYTHON="{ctx.python}"\n'
             f'export DMX_PROXY_SCRIPT="{ctx.proxy_script}"\n'
+            f'export DMX_PROXY_LOG_MAX_BYTES="{ctx.proxy_log_max_bytes}"\n'
+            f'export DMX_PROXY_LOG_BACKUP_COUNT="{ctx.proxy_log_backup_count}"\n'
+            f'export DMX_WATCHDOG_LOG_MAX_BYTES="{ctx.watchdog_log_max_bytes}"\n'
+            f'export DMX_WATCHDOG_LOG_BACKUP_COUNT="{ctx.watchdog_log_backup_count}"\n'
             "while true; do\n"
             f'  "{ctx.python}" "{ctx.watchdog_script}"\n'
             "  sleep 3\n"

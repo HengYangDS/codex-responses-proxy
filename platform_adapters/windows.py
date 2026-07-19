@@ -84,6 +84,10 @@ def render_launcher(ctx: common.InstallContext) -> str:
         f'set "DMX_UPSTREAM={ctx.upstream}"\r\n'
         f'set "DMX_PROXY_PYTHON={ctx.python}"\r\n'
         f'set "DMX_PROXY_SCRIPT={ctx.proxy_script}"\r\n'
+        f'set "DMX_PROXY_LOG_MAX_BYTES={ctx.proxy_log_max_bytes}"\r\n'
+        f'set "DMX_PROXY_LOG_BACKUP_COUNT={ctx.proxy_log_backup_count}"\r\n'
+        f'set "DMX_WATCHDOG_LOG_MAX_BYTES={ctx.watchdog_log_max_bytes}"\r\n'
+        f'set "DMX_WATCHDOG_LOG_BACKUP_COUNT={ctx.watchdog_log_backup_count}"\r\n'
         f'"{pythonw}" "{ctx.watchdog_script}"\r\n'
     )
 
