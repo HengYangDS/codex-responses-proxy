@@ -32,3 +32,14 @@ hashes for the declared executable payload: no credentials, configuration,
 backups, request bodies, or logs. `control.py status --json` verifies this
 projection. `reload` first verifies the manifest, then only replaces a listener
 whose command matches the installed proxy script.
+
+## Diagnostic boundary
+
+The runtime status endpoint is the primary operational evidence surface. It
+contains only bounded counters, classifications, and a failure timestamp. Logs
+are a secondary local diagnostic surface: structured events are bounded by a
+rotating retention policy and redact secret-shaped values as a defensive control.
+No raw request, response, header, prompt, query value, credential, or upstream
+error payload is retained. An oversized legacy segment is discarded rather than
+copied into a record. Native service stdout and stderr must not form an
+unbounded parallel log channel.

@@ -6,6 +6,20 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+### Fixed
+
+- Return retryable HTTP 503 with `Retry-After: 3` when all pre-content SSE
+  reconnect attempts are exhausted, rather than returning an empty successful
+  stream that the client must classify as a disconnection.
+- Bound and rotate proxy and watchdog logs, redact secret-shaped diagnostic
+  values, remove query values from logged request paths, and retire macOS
+  launchd stdout/stderr sinks that created unbounded parallel logs.
+
+### Verified
+
+- Add deterministic offline transport coverage for exhausted pre-content SSE
+  recovery and for bounded, redacted proxy and watchdog logging.
+
 ## [1.0.15] - 2026-07-18
 
 ### Fixed
