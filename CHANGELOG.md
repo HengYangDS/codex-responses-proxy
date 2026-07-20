@@ -15,6 +15,8 @@ work that has not yet been tagged.
 
 ### Fixed
 
+- Remove pre-retention `reject-*.json` raw request captures during installation
+  and payload refresh, while preserving the bounded, redacted operational logs.
 - Add a narrow, transactional controller-only lifecycle apply path for an
   already-running, drain-capable listener. It refuses any source change outside
   `control.py`, verifies and updates the manifest while the existing listener
