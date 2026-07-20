@@ -65,6 +65,12 @@ Route changes are owned by AIGW whenever its marked provider block is
 present.
 
 For a one-time upgrade from a listener that predates drain control, lifecycle
-control may use only its verified-PID, two-sample one-second idle-window
-compatibility gate. It must refuse on any activity, health loss, timeout, or PID
-change, and it is not an alternative for listeners that support atomic drain.
+control requires explicit operator authorization and may use only its
+verified-PID, two-sample five-second idle-window compatibility gate. It must
+refuse on any activity, health loss, timeout, or PID change, and it is not an
+alternative for listeners that support atomic drain.
+
+An emergency forced legacy bootstrap is an interruption, not a drain. It needs
+separate operator authorization, manifest integrity, and exactly one verified
+listener; it is unavailable to ordinary reload and must disappear from use after
+the first drain-capable listener has started.
