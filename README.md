@@ -108,8 +108,14 @@ python3 ~/.codex/dmx-proxy/control.py status --json
 python3 ~/.codex/dmx-proxy/control.py enable
 python3 ~/.codex/dmx-proxy/control.py disable
 
-# Replace one verified local listener; this briefly interrupts proxy traffic
+# Replace one drained, verified local listener; this briefly interrupts proxy traffic
 python3 ~/.codex/dmx-proxy/control.py reload --json
+
+# Only after explicit authorization: interrupt active local Responses
+python3 ~/.codex/dmx-proxy/control.py reload --force-active-responses --json
+
+# Read-only payload and loaded-listener provenance evidence
+python3 ~/.codex/dmx-proxy/governance.py --json
 
 # Remove the service and restore a proxy-managed direct route
 python3 uninstall.py
@@ -118,9 +124,16 @@ python3 uninstall.py
 python3 uninstall.py --purge
 ```
 
-`reload` validates the installed payload, terminates only the verified listener,
-and requires the watchdog to prove replacement with a new process ID. It never
-touches Codex session files.
+`reload` validates the installed payload and refuses unless loopback health proves
+that no Responses request is active. It terminates only the verified listener and
+requires the watchdog to prove replacement with a new process ID. Use
+`--force-active-responses` only after explicit authorization to interrupt active
+local traffic. It never touches Codex session files.
+
+`governance.py --json` is read-only. It reports manifest integrity, route
+authority, verified listener identity, and the loaded proxy source SHA-256 when
+the loopback listener is reachable. It does not inspect or change AIGW settings,
+Codex conversation state, credentials, or the proxy lifecycle.
 
 ### Reliability evidence
 
@@ -181,7 +194,7 @@ rejections are returned unchanged.
 | --- | --- | --- |
 | Encrypted replay error | `control.py status --json` | Confirm a healthy listener and enabled route before investigating history. |
 | Upstream `response_failed` | `control.py status --json` | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
-| DMX HTTP 477 `empty_response` | `control.py status --json` | Retry the unchanged request through the normal bounded transient-retry budget. If that exact condition exhausts the budget, return standard HTTP 503 with `Retry-After`; unrelated 477 responses remain unchanged. |
+| DMX HTTP 477 `empty_response` | `control.py status --json` | Retry the unchanged request through the normal bounded transient-retry budget. On exhaustion, a streaming request receives a terminal SSE `error`; a non-streaming request receives standard HTTP 503 with `Retry-After`. Unrelated 477 responses remain unchanged. |
 | SSE closes before completion | `control.py status --json` | The proxy retries only before sending substantive bytes downstream. If that bounded pre-content budget is exhausted, it returns retryable HTTP 503 with `Retry-After: 3` rather than an empty successful stream. |
 | Need current reliability evidence | `control.py status --json` | Inspect the secret-free `runtime` snapshot; it proves listener-local counters, not recovery of a historical conversation. |
 | Client ignores a route change | Client configuration lifecycle | A running client may need its normal reload; the proxy does not restart it. |
@@ -208,7 +221,7 @@ python3 scripts/check_release_metadata.py
 python3 scripts/check_markdown_presentation.py
 python3 scripts/test_release_metadata.py
 for py in python3.12 python3.13 python3.14; do
-  "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py tests scripts
+  "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
   "$py" tests/test_package.py
 done
 ```

@@ -150,8 +150,18 @@ def status(ctx: common.InstallContext) -> dict:
     }
 
 
-def reload(ctx: common.InstallContext, timeout_seconds: float = 30.0) -> dict[str, int]:
-    """Replace exactly one verified listener and prove its watchdog replacement."""
+def reload(
+    ctx: common.InstallContext,
+    timeout_seconds: float = 30.0,
+    *,
+    force_active_responses: bool = False,
+) -> dict[str, int]:
+    """Replace exactly one drained verified listener via its watchdog.
+
+    A reload interrupts active SSE Responses.  When loopback health cannot prove
+    zero active requests, refuse by default; ``force_active_responses`` exists
+    only for an explicitly authorized, controlled interruption.
+    """
     integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
     if not integrity_ok:
         raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
@@ -159,6 +169,13 @@ def reload(ctx: common.InstallContext, timeout_seconds: float = 30.0) -> dict[st
     if len(listeners) != 1:
         raise common.InstallError(
             f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
+        )
+    runtime = _runtime_metrics(ctx)
+    active = runtime.get("active_responses") if isinstance(runtime, dict) else None
+    if not force_active_responses and (isinstance(active, bool) or not isinstance(active, int) or active != 0):
+        observed = "unavailable" if active is None else str(active)
+        raise common.InstallError(
+            f"refusing reload while active Responses are not proven drained (active_responses={observed})"
         )
     old_pid = listeners[0]
     common.terminate_pid(old_pid)
@@ -180,6 +197,11 @@ def main() -> None:
     parser.add_argument("--direct-url", default=common.DEFAULT_UPSTREAM + "/v1", help="direct Responses endpoint for adopt-aigw")
     parser.add_argument("--json", action="store_true", dest="as_json")
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
+    parser.add_argument(
+        "--force-active-responses",
+        action="store_true",
+        help="interrupt active local Responses after explicit operator authorization",
+    )
     args = parser.parse_args()
     ctx = _context()
     state = common.load_install_state(ctx)
@@ -214,7 +236,11 @@ def main() -> None:
 
     if args.command == "reload":
         try:
-            evidence = reload(ctx, timeout_seconds=args.timeout_seconds)
+            evidence = reload(
+                ctx,
+                timeout_seconds=args.timeout_seconds,
+                force_active_responses=args.force_active_responses,
+            )
         except common.InstallError as exc:
             raise SystemExit(f"ERROR: {exc}") from exc
         print(json.dumps(evidence, sort_keys=True) if args.as_json else f"reloaded verified proxy listener: {evidence['old_pid']} -> {evidence['new_pid']}")

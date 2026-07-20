@@ -142,6 +142,7 @@ def check_governance_contract() -> None:
         "docs/evidence/README.md",
         "docs/operations/forge-operations.md",
         "LICENSE",
+        "governance.py",
         "scripts/project-github-forge.sh",
         "scripts/audit-dual-forge-parity.py",
         "scripts/tag-gitlab-release.sh",

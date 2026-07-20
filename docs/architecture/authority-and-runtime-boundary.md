@@ -30,8 +30,13 @@ removes only the known legacy `tests/` deployment residue, and writes
 `payload-manifest.json`. The manifest contains only release identity and file
 hashes for the declared executable payload: no credentials, configuration,
 backups, request bodies, or logs. `control.py status --json` verifies this
-projection. `reload` first verifies the manifest, then only replaces a listener
-whose command matches the installed proxy script.
+projection. The portable `governance.py --json` command is a read-only view of
+that same evidence. Runtime health also reports the source SHA-256 captured when
+the listener loaded the proxy payload, so a new file on disk cannot be mistaken
+for a reloaded process. `reload` first verifies the manifest and requires
+loopback health to prove zero active Responses requests; it then replaces only a
+listener whose command matches the installed proxy script. An operator may bypass
+only the drain gate with `--force-active-responses` after explicit authorization.
 
 ## Diagnostic boundary
 
