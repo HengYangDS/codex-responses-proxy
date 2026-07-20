@@ -211,6 +211,58 @@ def _drain_listener(ctx: common.InstallContext, timeout_seconds: float) -> dict:
     )
 
 
+def _legacy_drain_listener(ctx: common.InstallContext, timeout_seconds: float) -> dict:
+    """Quiesce a pre-drain listener with two consecutive zero snapshots.
+
+    This compatibility path is intentionally narrower than the current atomic
+    drain protocol.  It exists only to replace an older installed listener that
+    predates ``/control/drain``.  Two zero samples separated by a short quiet
+    interval reduce the handoff window; the new 1.0.22 listener then supplies
+    the durable atomic admission barrier for every subsequent lifecycle action.
+    """
+    if timeout_seconds <= 0:
+        raise common.InstallError("drain timeout must be positive")
+    integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
+    if not integrity_ok:
+        raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
+    listeners = common.verified_proxy_listener_pids(ctx)
+    if len(listeners) != 1:
+        raise common.InstallError(
+            f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
+        )
+    old_pid = listeners[0]
+    deadline = time.monotonic() + timeout_seconds
+    previous_zero_at: float | None = None
+    quiet_seconds = 1.0
+    while time.monotonic() < deadline:
+        if common.verified_proxy_listener_pids(ctx) != [old_pid]:
+            raise common.InstallError("verified listener changed during legacy drain; refusing lifecycle mutation")
+        runtime = _runtime_metrics(ctx)
+        active = runtime.get("active_responses") if isinstance(runtime, dict) else None
+        if isinstance(active, int) and not isinstance(active, bool) and active == 0:
+            now = time.monotonic()
+            if previous_zero_at is not None and now - previous_zero_at >= quiet_seconds:
+                return {"listener": old_pid, "runtime": runtime, "legacy": True}
+            previous_zero_at = now
+        else:
+            previous_zero_at = None
+        time.sleep(0.1)
+    raise common.InstallError(
+        f"legacy listener did not remain idle for {quiet_seconds:g}s within {timeout_seconds:g}s; "
+        "payload was not changed"
+    )
+
+
+def _drain_listener_with_legacy_bootstrap(ctx: common.InstallContext, timeout_seconds: float) -> dict:
+    """Use atomic drain when available; bootstrap exactly one legacy listener otherwise."""
+    try:
+        return _drain_listener(ctx, timeout_seconds)
+    except common.InstallError as exc:
+        if str(exc) != "listener drain control is unavailable":
+            raise
+    return _legacy_drain_listener(ctx, timeout_seconds)
+
+
 def status(ctx: common.InstallContext) -> dict:
     """Return non-secret runtime evidence for the installed projection."""
     integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
@@ -237,7 +289,7 @@ def reload(
     timeout_seconds: float = 30.0,
 ) -> dict[str, int]:
     """Drain then replace exactly one verified listener via its watchdog."""
-    old_pid = _drain_listener(ctx, timeout_seconds)["listener"]
+    old_pid = _drain_listener_with_legacy_bootstrap(ctx, timeout_seconds)["listener"]
     try:
         common.terminate_pid(old_pid)
         deadline = time.monotonic() + timeout_seconds
@@ -267,7 +319,7 @@ def upgrade_from_stage(ctx: common.InstallContext, stage: str, timeout_seconds: 
     staged_version = Path(stage, "VERSION").read_text(encoding="utf-8").strip()
     if not staged_version:
         raise common.InstallError("staged payload has no release version")
-    old_pid = _drain_listener(ctx, timeout_seconds)["listener"]
+    old_pid = _drain_listener_with_legacy_bootstrap(ctx, timeout_seconds)["listener"]
     try:
         common.commit_payload_transaction(ctx, stage)
         common.terminate_pid(old_pid)

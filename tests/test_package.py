@@ -331,9 +331,10 @@ class TestManagedRouteState(unittest.TestCase):
             mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
             mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
             mock.patch.object(control, "_set_listener_drain", side_effect=common.InstallError("listener drain control is unavailable")),
+            mock.patch.object(control, "_legacy_drain_listener", side_effect=common.InstallError("legacy listener did not remain idle")),
             mock.patch.object(common, "terminate_pid") as terminate,
         ):
-            with self.assertRaisesRegex(common.InstallError, "drain control is unavailable"):
+            with self.assertRaisesRegex(common.InstallError, "legacy listener did not remain idle"):
                 control.reload(ctx)
         terminate.assert_not_called()
 
@@ -430,6 +431,57 @@ class TestManagedRouteState(unittest.TestCase):
             with self.assertRaisesRegex(common.InstallError, "service restored to admission"):
                 control._drain_listener(ctx, 0.5)
         self.assertEqual(set_drain.call_args_list[-1], mock.call(ctx, enabled=False))
+
+    def test_legacy_bootstrap_requires_two_idle_samples_before_payload_mutation(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        snapshots = [
+            {"active_responses": 0},
+            {"active_responses": 1},
+            {"active_responses": 0},
+            {"active_responses": 0},
+        ]
+        with (
+            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", side_effect=snapshots),
+            mock.patch.object(control.time, "monotonic", side_effect=[0.0, 0.0, 0.1, 0.1, 0.2, 0.2, 1.2, 1.2]),
+            mock.patch.object(control.time, "sleep"),
+        ):
+            drained = control._legacy_drain_listener(ctx, 2.0)
+        self.assertTrue(drained["legacy"])
+        self.assertEqual(drained["listener"], 12345)
+        self.assertEqual(drained["runtime"]["active_responses"], 0)
+
+    def test_legacy_bootstrap_refuses_when_idle_window_does_not_hold(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", return_value={"active_responses": 1}),
+            mock.patch.object(control.time, "monotonic", side_effect=[0.0, 1.0]),
+        ):
+            with self.assertRaisesRegex(common.InstallError, "payload was not changed"):
+                control._legacy_drain_listener(ctx, 0.5)
+
+    def test_bootstrap_uses_legacy_path_only_when_atomic_control_is_unavailable(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(control, "_drain_listener", side_effect=common.InstallError("listener drain control is unavailable")),
+            mock.patch.object(control, "_legacy_drain_listener", return_value={"listener": 12345, "legacy": True}) as legacy,
+        ):
+            result = control._drain_listener_with_legacy_bootstrap(ctx, 1.0)
+        self.assertTrue(result["legacy"])
+        legacy.assert_called_once_with(ctx, 1.0)
+
+    def test_bootstrap_does_not_downgrade_an_atomic_drain_failure(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(control, "_drain_listener", side_effect=common.InstallError("listener did not drain active Responses")),
+            mock.patch.object(control, "_legacy_drain_listener") as legacy,
+        ):
+            with self.assertRaisesRegex(common.InstallError, "did not drain"):
+                control._drain_listener_with_legacy_bootstrap(ctx, 1.0)
+        legacy.assert_not_called()
 
     def test_build_context_honors_codex_home(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"CODEX_HOME": str(Path(tmp) / "codex-home")}, clear=False):
