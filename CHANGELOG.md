@@ -15,6 +15,10 @@ work that has not yet been tagged.
 
 ### Fixed
 
+- Converge CI to one repository-scoped GitHub runner and one separate
+  project-scoped GitLab runner. GitHub verification and release now share the
+  `codex-dmx-proxy-github-macos-arm64` registration, while GitLab jobs require
+  the dedicated `codex-dmx-proxy-gitlab-ci` tag.
 - Start the formal `1.0.22` source train instead of adopting the previously
   installed `1.0.21` candidate as a release: its payload was recoverable, but
   it lacked source-repository provenance and was therefore not publishable.
