@@ -63,3 +63,8 @@ only after its loopback health reports `draining=true` with
 payload; a bounded listener lease also fails open if the controller disappears.
 Route changes are owned by AIGW whenever its marked provider block is
 present.
+
+For a one-time upgrade from a listener that predates drain control, lifecycle
+control may use only its verified-PID, two-sample one-second idle-window
+compatibility gate. It must refuse on any activity, health loss, timeout, or PID
+change, and it is not an alternative for listeners that support atomic drain.
