@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -20,6 +22,11 @@ from platform_adapters import pick_adapter, common  # noqa: E402
 
 
 QUIESCENCE_SECONDS = 5.0
+
+
+def _source_root() -> str:
+    """Return the immutable source payload root for this control invocation."""
+    return HERE
 
 
 def _context() -> common.InstallContext:
@@ -227,6 +234,145 @@ def _wait_for_quiescent_listener(
     )
 
 
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        while chunk := fh.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _atomic_write_bytes(path: str, value: bytes) -> None:
+    temporary = f"{path}.tmp-{os.getpid()}"
+    try:
+        with open(temporary, "wb") as fh:
+            fh.write(value)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.remove(temporary)
+        except FileNotFoundError:
+            pass
+
+
+def _verified_source_revision() -> str:
+    """Require a clean, committed source worktree for a live controller apply."""
+    source = _source_root()
+    inside = subprocess.run(
+        ["git", "-C", source, "rev-parse", "--is-inside-work-tree"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        raise common.InstallError("controller-only apply requires a Git source worktree")
+    state = subprocess.run(
+        ["git", "-C", source, "status", "--porcelain=v1"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if state.returncode != 0:
+        raise common.InstallError("could not verify source worktree cleanliness")
+    if state.stdout.strip():
+        raise common.InstallError("controller-only apply requires a clean source worktree")
+    revision = subprocess.run(
+        ["git", "-C", source, "rev-parse", "--verify", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    value = revision.stdout.strip()
+    if revision.returncode != 0 or len(value) != 40:
+        raise common.InstallError("could not resolve source revision for controller-only apply")
+    return value
+
+
+def _validate_control_plane_source(ctx: common.InstallContext) -> bool:
+    """Prove this source changes only the installed lifecycle controller.
+
+    ``apply-control-plane`` is not a partial payload upgrade.  Every declared
+    listener, watchdog, version, and support file must exactly match the verified
+    live payload.  Only ``control.py`` may differ; otherwise the caller must use
+    the ordinary staged upgrade path.
+    """
+    source = os.path.abspath(_source_root())
+    live = os.path.abspath(ctx.install_dir)
+    if source == live:
+        return False
+    integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
+    if not integrity_ok:
+        raise common.InstallError(f"live payload integrity check failed: {integrity_detail}")
+    missing = [
+        relative
+        for relative in common.RUNTIME_PAYLOAD_FILES
+        if not os.path.isfile(os.path.join(source, relative))
+    ]
+    if missing:
+        raise common.InstallError("source payload is incomplete: " + ", ".join(missing))
+    changed = [
+        relative
+        for relative in common.RUNTIME_PAYLOAD_FILES
+        if relative != "control.py"
+        and _sha256_file(os.path.join(source, relative))
+        != _sha256_file(os.path.join(ctx.install_dir, relative))
+    ]
+    if changed:
+        raise common.InstallError(
+            "source payload changes outside the lifecycle control plane; use a staged upgrade: "
+            + ", ".join(changed)
+        )
+    return (
+        _sha256_file(os.path.join(source, "control.py"))
+        != _sha256_file(os.path.join(ctx.install_dir, "control.py"))
+    )
+
+
+def _commit_current_control_plane(ctx: common.InstallContext) -> bool:
+    """Transactionally install a verified controller-only source change.
+
+    The proxy listener does not import this controller while serving a request.
+    The operation writes one controller file, updates its manifest, and restores
+    the exact prior controller and manifest if either verification fails.
+    """
+    if not _validate_control_plane_source(ctx):
+        return False
+    source_control = os.path.join(_source_root(), "control.py")
+    live_control = os.path.join(ctx.install_dir, "control.py")
+    manifest_path = common.payload_manifest_path(ctx)
+    previous_control = Path(live_control).read_bytes()
+    previous_manifest = Path(manifest_path).read_bytes()
+    temporary = f"{live_control}.next-{os.getpid()}"
+    try:
+        shutil.copy2(source_control, temporary)
+        if _sha256_file(temporary) != _sha256_file(source_control):
+            raise common.InstallError("source controller digest changed during apply")
+        os.replace(temporary, live_control)
+        common.write_payload_manifest(ctx)
+        integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
+        if not integrity_ok:
+            raise common.InstallError(
+                f"controller-only manifest verification failed: {integrity_detail}"
+            )
+    except Exception as exc:
+        _atomic_write_bytes(live_control, previous_control)
+        _atomic_write_bytes(manifest_path, previous_manifest)
+        restored, restored_detail = common.verify_payload_manifest(ctx)
+        if not restored:
+            raise common.InstallError(
+                f"controller-only apply failed and restoration verification failed: {restored_detail}"
+            ) from exc
+        raise
+    finally:
+        try:
+            os.remove(temporary)
+        except FileNotFoundError:
+            pass
+    return True
+
+
 def _drain_listener(ctx: common.InstallContext, timeout_seconds: float) -> dict:
     """Quiesce first, then close admission and prove the same listener drained.
 
@@ -394,6 +540,42 @@ def reload(
     )
 
 
+def apply_control_plane(ctx: common.InstallContext) -> dict[str, object]:
+    """Apply a verified controller-only fix without touching Responses admission.
+
+    The listener and watchdog never import ``control.py`` while serving traffic.
+    After proving their entire payload is byte-identical to the candidate source,
+    this transaction may update only the lifecycle controller and manifest. It
+    therefore does not drain, terminate, restart, or otherwise interrupt an
+    active Responses stream.
+    """
+    listeners = common.verified_proxy_listener_pids(ctx)
+    if len(listeners) != 1:
+        raise common.InstallError(
+            f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
+        )
+    runtime = _runtime_metrics(ctx)
+    if not isinstance(runtime, dict) or runtime.get("draining") is not False:
+        raise common.InstallError(
+            "verified listener is not serving normal admission; refusing controller-only apply"
+        )
+    source_revision = _verified_source_revision()
+    changed = _commit_current_control_plane(ctx)
+    current_runtime = _runtime_metrics(ctx)
+    if common.verified_proxy_listener_pids(ctx) != listeners:
+        raise common.InstallError("verified listener changed during controller-only apply")
+    if not isinstance(current_runtime, dict) or current_runtime.get("draining") is not False:
+        raise common.InstallError("listener admission changed during controller-only apply")
+    return {
+        "listener": listeners[0],
+        "release": _installed_release(ctx),
+        "draining": False,
+        "changed": changed,
+        "control_sha256": _sha256_file(os.path.join(ctx.install_dir, "control.py")),
+        "source_revision": source_revision,
+    }
+
+
 def upgrade_from_stage(
     ctx: common.InstallContext,
     stage: str,
@@ -460,7 +642,7 @@ def upgrade_from_stage(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Control the installed Codex DMX Proxy.")
-    parser.add_argument("command", choices=("status", "enable", "disable", "reload", "adopt-aigw", "upgrade"))
+    parser.add_argument("command", choices=("status", "enable", "disable", "reload", "adopt-aigw", "apply-control-plane", "upgrade"))
     parser.add_argument("--stage", help="validated payload stage created by install.py --stage-only")
     parser.add_argument("--aigw-account", default="dmx", help="AIGW account ID for adopt-aigw")
     parser.add_argument("--direct-url", default=common.DEFAULT_UPSTREAM + "/v1", help="direct Responses endpoint for adopt-aigw")
@@ -517,6 +699,16 @@ def main() -> None:
         except common.InstallError as exc:
             raise SystemExit(f"ERROR: {exc}") from exc
         print(json.dumps(evidence, sort_keys=True) if args.as_json else f"reloaded verified proxy listener: {evidence['old_pid']} -> {evidence['new_pid']}")
+        return
+
+    if args.command == "apply-control-plane":
+        try:
+            evidence = apply_control_plane(ctx)
+        except common.InstallError as exc:
+            raise SystemExit(f"ERROR: {exc}") from exc
+        print(json.dumps(evidence, sort_keys=True) if args.as_json else (
+            f"applied lifecycle control to verified proxy listener {evidence['listener']}"
+        ))
         return
 
     if args.command == "upgrade":

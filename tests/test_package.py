@@ -10,6 +10,7 @@ Run: python3 tests/test_package.py
 
 import hashlib
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -252,6 +253,131 @@ class TestManagedRouteState(unittest.TestCase):
             with self.assertRaises(common.InstallError):
                 common.set_proxy_route(ctx, None, enabled=False)
 
+
+    def _control_plane_source(self, root: Path) -> Path:
+        source = root / "source"
+        for relative in common.RUNTIME_PAYLOAD_FILES:
+            origin = Path(ROOT) / relative
+            target = source / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(origin, target)
+        return source
+
+    def test_control_plane_commit_swaps_only_control_and_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._managed_context(root)
+            install.copy_payload(ctx)
+            source = self._control_plane_source(root)
+            source_control = source / "control.py"
+            source_control.write_text("replacement-control\n", encoding="utf-8")
+            before_proxy = (Path(ctx.install_dir) / "proxy" / "dmx_responses_proxy.py").read_bytes()
+            before_state = Path(common.install_state_path(ctx)).read_bytes() if Path(common.install_state_path(ctx)).exists() else None
+            with mock.patch.object(control, "_source_root", return_value=str(source)):
+                control._commit_current_control_plane(ctx)
+            self.assertEqual((Path(ctx.install_dir) / "control.py").read_text(encoding="utf-8"), "replacement-control\n")
+            self.assertEqual((Path(ctx.install_dir) / "proxy" / "dmx_responses_proxy.py").read_bytes(), before_proxy)
+            if before_state is not None:
+                self.assertEqual(Path(common.install_state_path(ctx)).read_bytes(), before_state)
+            ok, detail = common.verify_payload_manifest(ctx)
+            self.assertTrue(ok, detail)
+
+    def test_control_plane_commit_restores_live_payload_after_manifest_write_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._managed_context(root)
+            install.copy_payload(ctx)
+            source = self._control_plane_source(root)
+            (source / "control.py").write_text("replacement-control\n", encoding="utf-8")
+            live_control = Path(ctx.install_dir) / "control.py"
+            manifest = Path(common.payload_manifest_path(ctx))
+            before_control = live_control.read_bytes()
+            before_manifest = manifest.read_bytes()
+            with mock.patch.object(common, "write_payload_manifest", side_effect=OSError("write blocked")):
+                with self.assertRaisesRegex(OSError, "write blocked"):
+                    with mock.patch.object(control, "_source_root", return_value=str(source)):
+                        control._commit_current_control_plane(ctx)
+            self.assertEqual(live_control.read_bytes(), before_control)
+            self.assertEqual(manifest.read_bytes(), before_manifest)
+            ok, detail = common.verify_payload_manifest(ctx)
+            self.assertTrue(ok, detail)
+
+    def test_apply_control_plane_commits_without_draining_or_restarting_listener(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        runtime = {"draining": False, "active_responses": 7}
+        with (
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", side_effect=[runtime, runtime]),
+            mock.patch.object(control, "_verified_source_revision", return_value="c" * 40),
+            mock.patch.object(control, "_commit_current_control_plane", return_value=True) as commit,
+            mock.patch.object(control, "_installed_release", return_value="1.0.22"),
+            mock.patch.object(control, "_sha256_file", return_value="a" * 64),
+            mock.patch.object(control, "_drain_listener") as drain,
+            mock.patch.object(control, "_set_listener_drain") as set_drain,
+        ):
+            result = control.apply_control_plane(ctx)
+        self.assertEqual(result, {"listener": 12345, "release": "1.0.22", "draining": False, "changed": True, "control_sha256": "a" * 64, "source_revision": "c" * 40})
+        commit.assert_called_once_with(ctx)
+        drain.assert_not_called()
+        set_drain.assert_not_called()
+
+    def test_apply_control_plane_refuses_when_listener_is_not_serving_normal_admission(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", return_value={"draining": True, "active_responses": 0}),
+            mock.patch.object(control, "_commit_current_control_plane") as commit,
+        ):
+            with self.assertRaisesRegex(common.InstallError, "not serving normal admission"):
+                control.apply_control_plane(ctx)
+        commit.assert_not_called()
+
+    def test_apply_control_plane_avoids_write_when_controller_is_current(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        runtime = {"draining": False, "active_responses": 3}
+        with (
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", side_effect=[runtime, runtime]),
+            mock.patch.object(control, "_verified_source_revision", return_value="d" * 40),
+            mock.patch.object(control, "_commit_current_control_plane", return_value=False) as commit,
+            mock.patch.object(control, "_installed_release", return_value="1.0.22"),
+            mock.patch.object(control, "_sha256_file", return_value="b" * 64),
+            mock.patch.object(control, "_drain_listener") as drain,
+        ):
+            result = control.apply_control_plane(ctx)
+        self.assertEqual(result, {"listener": 12345, "release": "1.0.22", "draining": False, "changed": False, "control_sha256": "b" * 64, "source_revision": "d" * 40})
+        commit.assert_called_once_with(ctx)
+        drain.assert_not_called()
+
+    def test_apply_control_plane_requires_one_verified_listener_when_current(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with mock.patch.object(common, "verified_proxy_listener_pids", return_value=[]):
+            with self.assertRaisesRegex(common.InstallError, "exactly one verified proxy listener"):
+                control.apply_control_plane(ctx)
+
+    def test_controller_only_apply_rejects_a_dirty_source_worktree(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        runtime = {"draining": False, "active_responses": 0}
+        with (
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", return_value=runtime),
+            mock.patch.object(control, "_verified_source_revision", side_effect=common.InstallError("controller-only apply requires a clean source worktree")),
+            mock.patch.object(control, "_commit_current_control_plane") as commit,
+        ):
+            with self.assertRaisesRegex(common.InstallError, "clean source worktree"):
+                control.apply_control_plane(ctx)
+        commit.assert_not_called()
+
+    def test_control_plane_commit_refuses_a_listener_payload_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._managed_context(root)
+            install.copy_payload(ctx)
+            source = self._control_plane_source(root)
+            (source / "proxy" / "dmx_responses_proxy.py").write_text("changed listener\n", encoding="utf-8")
+            with self.assertRaisesRegex(common.InstallError, "outside the lifecycle control plane"):
+                with mock.patch.object(control, "_source_root", return_value=str(source)):
+                    control._commit_current_control_plane(ctx)
 
     def test_control_status_enable_disable_uses_installed_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
