@@ -18,7 +18,7 @@ stages:
   image: python:${PYTHON_VERSION}-slim
   script:
     - python --version
-    - python -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py tests scripts
+    - python -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
     - python tests/test_package.py
 
 verify-python-3.12:

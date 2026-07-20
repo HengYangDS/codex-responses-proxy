@@ -34,7 +34,7 @@ jobs:
       - name: Compile and test
         run: |
           set -euo pipefail
-          python -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py tests scripts
+          python -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
           python tests/test_package.py
 
   governance:

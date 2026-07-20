@@ -35,6 +35,7 @@ AIGW_PROVIDER_END = "# <<< AIGW managed provider <<<"
 RUNTIME_PAYLOAD_FILES = (
     "VERSION",
     "control.py",
+    "governance.py",
     "platform_adapters/__init__.py",
     "platform_adapters/common.py",
     "platform_adapters/linux.py",

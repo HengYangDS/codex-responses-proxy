@@ -38,6 +38,7 @@ Design guarantees
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -56,6 +57,22 @@ UPSTREAM = os.environ.get("DMX_UPSTREAM", "https://www.dmxapi.cn").rstrip("/")
 HOST = os.environ.get("DMX_PROXY_HOST", "127.0.0.1")
 PORT = int(os.environ.get("DMX_PROXY_PORT", "8791"))
 LOG_PATH = os.environ.get("DMX_PROXY_LOG", os.path.expanduser("~/.codex/log/dmx-responses-proxy.log"))
+
+
+def _loaded_source_sha256() -> str | None:
+    """Capture the proxy payload identity once at import time."""
+    try:
+        return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+LOADED_SOURCE_SHA256 = _loaded_source_sha256()
+
+
+def source_sha256() -> str | None:
+    """Return the payload hash captured when this process loaded the proxy."""
+    return LOADED_SOURCE_SHA256
 
 
 def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -338,6 +355,7 @@ def runtime_status() -> dict:
         last_failure = dict(_LAST_FAILURE) if _LAST_FAILURE else None
     return {
         "release": release_version(),
+        "source_sha256": source_sha256(),
         "uptime_seconds": max(0, int(time.time() - _STARTED_AT)),
         "active_responses": active_responses,
         "counters": counters,
@@ -455,6 +473,45 @@ def _dmx_empty_response_exhausted(attempts: int) -> bytes:
             "attempts": attempts,
         },
     }, separators=(",", ":")).encode()
+
+
+def send_terminal_failure(handler, request_body: bytes, *, code: str, message: str, attempts: int) -> str:
+    """Emit a bounded terminal failure in the response mode selected by the caller.
+
+    A streaming Responses request receives a terminal SSE error instead of an
+    HTTP JSON error after stream selection, preventing clients from retaining a
+    permanently in-progress turn.  The synthetic event is secret-free and never
+    exposes upstream bytes or request contents.
+    """
+    try:
+        decoded = json.loads(request_body)
+        streaming = isinstance(decoded, dict) and decoded.get("stream") is True
+    except (TypeError, ValueError, json.JSONDecodeError):
+        streaming = False
+    payload = json.dumps({
+        "error": {
+            "message": message,
+            "type": "upstream_unavailable",
+            "code": code,
+            "attempts": attempts,
+        },
+    }, separators=(",", ":")).encode()
+    if streaming:
+        event = b"event: error\n" + b"data: " + payload + b"\n\n"
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.send_header("Cache-Control", "no-cache")
+        handler.send_header("Content-Length", str(len(event)))
+        handler.end_headers()
+        handler.wfile.write(event)
+        return "sse_error"
+    handler.send_response(503)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Retry-After", "3")
+    handler.send_header("Content-Length", str(len(payload)))
+    handler.end_headers()
+    handler.wfile.write(payload)
+    return "json_error"
 
 
 def _stream_pre_content_exhausted(attempts: int) -> bytes:
@@ -1447,16 +1504,16 @@ class Handler(BaseHTTPRequestHandler):
                         continue
                     if status_code == 477 and disp == "full":
                         _record_failure("upstream_empty_response_exhausted")
-                        msg = _dmx_empty_response_exhausted(attempt + 1)
-                        self.send_response(503)
-                        self.send_header("Content-Type", "application/json")
-                        self.send_header("Retry-After", "3")
-                        self.send_header("Content-Length", str(len(msg)))
-                        self.end_headers()
-                        self.wfile.write(msg)
+                        terminal_mode = send_terminal_failure(
+                            self,
+                            body,
+                            code="dmx_empty_response_exhausted",
+                            message="DMX upstream returned empty responses after bounded retries",
+                            attempts=attempt + 1,
+                        )
                         _log(
                             f"req={request_id} event=empty_response_exhausted "
-                            f"attempts={attempt + 1} upstream_status=477 "
+                            f"attempts={attempt + 1} upstream_status=477 terminal={terminal_mode} "
                             f"path={_safe_request_path(self.path)}"
                         )
                         return
