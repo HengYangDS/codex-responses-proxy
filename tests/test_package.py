@@ -334,7 +334,7 @@ class TestManagedRouteState(unittest.TestCase):
             mock.patch.object(control, "_legacy_drain_listener", side_effect=common.InstallError("legacy listener did not remain idle")),
             mock.patch.object(common, "terminate_pid") as terminate,
         ):
-            with self.assertRaisesRegex(common.InstallError, "legacy listener did not remain idle"):
+            with self.assertRaisesRegex(common.InstallError, "operator-approved maintenance window"):
                 control.reload(ctx)
         terminate.assert_not_called()
 
@@ -447,7 +447,7 @@ class TestManagedRouteState(unittest.TestCase):
             mock.patch.object(control.time, "monotonic", side_effect=[0.0, 0.0, 0.1, 0.1, 0.2, 0.2, 1.2, 1.2]),
             mock.patch.object(control.time, "sleep"),
         ):
-            drained = control._legacy_drain_listener(ctx, 2.0)
+            drained = control._legacy_drain_listener(ctx, 2.0, required_idle_seconds=1.0)
         self.assertTrue(drained["legacy"])
         self.assertEqual(drained["listener"], 12345)
         self.assertEqual(drained["runtime"]["active_responses"], 0)
@@ -469,9 +469,52 @@ class TestManagedRouteState(unittest.TestCase):
             mock.patch.object(control, "_drain_listener", side_effect=common.InstallError("listener drain control is unavailable")),
             mock.patch.object(control, "_legacy_drain_listener", return_value={"listener": 12345, "legacy": True}) as legacy,
         ):
-            result = control._drain_listener_with_legacy_bootstrap(ctx, 1.0)
+            result = control._drain_listener_with_legacy_bootstrap(ctx, 1.0, allow_legacy_bootstrap=True)
         self.assertTrue(result["legacy"])
-        legacy.assert_called_once_with(ctx, 1.0)
+        legacy.assert_called_once_with(ctx, 1.0, required_idle_seconds=5.0)
+
+    def test_bootstrap_requires_explicit_operator_approval_for_a_legacy_listener(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(control, "_drain_listener", side_effect=common.InstallError("listener drain control is unavailable")),
+            mock.patch.object(control, "_legacy_drain_listener") as legacy,
+        ):
+            with self.assertRaisesRegex(common.InstallError, "operator-approved maintenance window"):
+                control._drain_listener_with_legacy_bootstrap(ctx, 1.0)
+        legacy.assert_not_called()
+
+    def test_forced_legacy_bootstrap_requires_approval_and_a_verified_listener(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(control, "_drain_listener", side_effect=common.InstallError("listener drain control is unavailable")),
+            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_legacy_drain_listener") as legacy,
+        ):
+            result = control._drain_listener_with_legacy_bootstrap(
+                ctx,
+                1.0,
+                allow_legacy_bootstrap=True,
+                force_legacy_bootstrap=True,
+            )
+        self.assertEqual(result, {"listener": 12345, "legacy": True, "forced": True})
+        legacy.assert_not_called()
+
+    def test_forced_legacy_bootstrap_still_refuses_payload_integrity_failure(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(control, "_drain_listener", side_effect=common.InstallError("listener drain control is unavailable")),
+            mock.patch.object(common, "verify_payload_manifest", return_value=(False, "hash mismatch")),
+            mock.patch.object(common, "verified_proxy_listener_pids") as listeners,
+        ):
+            with self.assertRaisesRegex(common.InstallError, "payload integrity check failed"):
+                control._drain_listener_with_legacy_bootstrap(
+                    ctx,
+                    1.0,
+                    allow_legacy_bootstrap=True,
+                    force_legacy_bootstrap=True,
+                )
+        listeners.assert_not_called()
 
     def test_bootstrap_does_not_downgrade_an_atomic_drain_failure(self):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))

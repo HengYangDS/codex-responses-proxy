@@ -30,10 +30,13 @@ work that has not yet been tagged.
   same listener to report `draining=true` and `active_responses=0` before
   replacement, and fails open through a bounded lease if lifecycle control
   disappears.
-- Bootstrap the first upgrade from a pre-drain listener through a narrowly
-  scoped two-sample, one-second idle window from the same verified PID. It
-  refuses on new activity, health loss, timeout, or PID change; all subsequent
-  lifecycle actions use atomic drain.
+- Bootstrap the first upgrade from a pre-drain listener only after explicit
+  operator authorization and a narrowly scoped two-sample, five-second idle
+  window from the same verified PID. It refuses on new activity, health loss,
+  timeout, or PID change; all subsequent lifecycle actions use atomic drain.
+- Restrict an emergency forced legacy bootstrap to separately authorized
+  upgrade-only use after manifest integrity and single-listener verification;
+  ordinary reload never receives this interruption path.
 - Emit a terminal SSE `error` event when a streaming request exhausts classified
   DMX HTTP 477 empty-response retries; non-streaming callers retain retryable
   HTTP 503 with `Retry-After: 3`.
@@ -51,6 +54,8 @@ work that has not yet been tagged.
   timeout rollback, and fail-open drain-lease expiry.
 - Add regression coverage for legacy bootstrap admission and its no-downgrade
   boundary when a current listener's atomic drain fails.
+- Add regression coverage that the emergency compatibility path still refuses
+  unverified payloads.
 
 ## [1.0.15] - 2026-07-18
 

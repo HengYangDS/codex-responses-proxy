@@ -41,11 +41,17 @@ replace it. If that proof cannot be obtained, the listener remains serving and
 the payload is not changed.
 
 The sole compatibility exception is the first replacement of a listener that
-predates the drain-control endpoint. It is admitted only after two zero-active
-health samples separated by a one-second quiet window, from the same verified
-PID. Any new activity, identity change, timeout, or unavailable health refuses
-the mutation. The replacement itself carries the atomic admission barrier, so
-the compatibility rule is retired immediately after that bootstrap.
+predates the drain-control endpoint. It requires an explicit operator flag and
+is admitted only after two zero-active health samples separated by a five-second
+quiet window, from the same verified PID. Any new activity, identity change,
+timeout, or unavailable health refuses the mutation. The replacement itself
+carries the atomic admission barrier, so the compatibility rule is retired
+immediately after that bootstrap.
+
+An emergency force path exists only for this one-time legacy bootstrap and only
+after separate operator authorization. It proves manifest integrity and exactly
+one verified listener before interrupting traffic. It is excluded from ordinary
+reload and never weakens the atomic protocol for drain-capable listeners.
 
 ## Diagnostic boundary
 

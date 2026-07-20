@@ -158,12 +158,20 @@ endpoints are lifecycle internals used by `control.py`, not general APIs.
 ### One-time legacy bootstrap
 
 The first upgrade from a listener released before the drain protocol has no
-admission latch to invoke. In that narrow case, `upgrade` requires the verified
-legacy listener to report zero active Responses twice across a one-second quiet
-window before it changes any payload. If a request arrives or the window does
-not complete, the upgrade refuses without mutation. Once the replacement
-listener starts, all later reloads and upgrades use the atomic drain barrier;
-the compatibility check is not a normal operating mode.
+admission latch to invoke. In that narrow case, `upgrade` refuses by default.
+Only an explicitly authorized `--allow-legacy-bootstrap` operation may proceed,
+and it then requires the verified legacy listener to report zero active
+Responses twice across a five-second quiet window before it changes any payload.
+If a request arrives or the window does not complete, the upgrade refuses
+without mutation. Once the replacement listener starts, all later reloads and
+upgrades use the atomic drain barrier; the compatibility check is not a normal
+operating mode.
+
+If an urgent, separately authorized maintenance interruption is unavoidable,
+`--force-legacy-bootstrap` may be combined with
+`--allow-legacy-bootstrap`. It interrupts active Responses only after manifest
+integrity and exactly one verified listener are proven; it is rejected for all
+current drain-capable listeners and is not available to `reload`.
 
 ### Log retention and diagnostic safety
 
