@@ -12,7 +12,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding="utf-8")
 required = [
     "name: Release", 'tags: ["v*"]', "permissions:\n  contents: write",
-    "runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-release-macos-arm64]",
+    "runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]",
     "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
     'python=/opt/homebrew/bin/python3.14',
     '"$python" scripts/check_release_metadata.py --allow-unpublished-history --tag',
@@ -22,7 +22,7 @@ required = [
 for token in required:
     if token not in text:
         raise SystemExit(f"GitHub Actions release contract is missing {token!r}")
-if "ubuntu-24.04" in text or "codex-dmx-proxy-github-verify-macos-arm64" in text:
+if "ubuntu-24.04" in text or "codex-dmx-proxy-github-verify-macos-arm64" in text or "codex-dmx-proxy-github-release-macos-arm64" in text:
     raise SystemExit("GitHub release workflow must use only its dedicated trusted runner")
 if "actions/setup-python@" in text:
     raise SystemExit("self-hosted release must use the declared Homebrew Python")

@@ -47,13 +47,12 @@ of divergence or incomplete housekeeping, not permission to force convergence.
 
 ## Release behavior
 
-GitHub verification and release run on separate repository-scoped local
-registrations. Verification uses only trusted `main`, tag, and manual workflow
-revisions on `codex-dmx-proxy-github-verify-macos-arm64`; pull-request workflow
-code does not run on that host. Tag publication runs only on
-`codex-dmx-proxy-github-release-macos-arm64`. Each registration has its own
-LaunchAgent, work directory, cache, and credential; neither may serve another
-repository or GitLab job.
+GitHub verification and release share one repository-scoped local registration:
+`codex-dmx-proxy-github-macos-arm64`. It accepts only trusted `main`, tag, and
+manual workflow revisions; pull-request workflow code does not run on that
+host. Its LaunchAgent, work directory, cache, and registration may not serve
+another repository or any GitLab job. GitLab uses its separate project-scoped
+Docker runner selected by `codex-dmx-proxy-gitlab-ci`.
 
 The GitLab tag pipeline and GitHub tag workflow independently verify the
 provider-specific tag signature and create a formal release record. Existing
