@@ -211,7 +211,12 @@ def _drain_listener(ctx: common.InstallContext, timeout_seconds: float) -> dict:
     )
 
 
-def _legacy_drain_listener(ctx: common.InstallContext, timeout_seconds: float) -> dict:
+def _legacy_drain_listener(
+    ctx: common.InstallContext,
+    timeout_seconds: float,
+    *,
+    required_idle_seconds: float = 1.0,
+) -> dict:
     """Quiesce a pre-drain listener with two consecutive zero snapshots.
 
     This compatibility path is intentionally narrower than the current atomic
@@ -232,8 +237,9 @@ def _legacy_drain_listener(ctx: common.InstallContext, timeout_seconds: float) -
         )
     old_pid = listeners[0]
     deadline = time.monotonic() + timeout_seconds
+    if required_idle_seconds <= 0:
+        raise common.InstallError("legacy idle window must be positive")
     previous_zero_at: float | None = None
-    quiet_seconds = 1.0
     while time.monotonic() < deadline:
         if common.verified_proxy_listener_pids(ctx) != [old_pid]:
             raise common.InstallError("verified listener changed during legacy drain; refusing lifecycle mutation")
@@ -241,26 +247,46 @@ def _legacy_drain_listener(ctx: common.InstallContext, timeout_seconds: float) -
         active = runtime.get("active_responses") if isinstance(runtime, dict) else None
         if isinstance(active, int) and not isinstance(active, bool) and active == 0:
             now = time.monotonic()
-            if previous_zero_at is not None and now - previous_zero_at >= quiet_seconds:
+            if previous_zero_at is not None and now - previous_zero_at >= required_idle_seconds:
                 return {"listener": old_pid, "runtime": runtime, "legacy": True}
             previous_zero_at = now
         else:
             previous_zero_at = None
         time.sleep(0.1)
     raise common.InstallError(
-        f"legacy listener did not remain idle for {quiet_seconds:g}s within {timeout_seconds:g}s; "
+        f"legacy listener did not remain idle for {required_idle_seconds:g}s within {timeout_seconds:g}s; "
         "payload was not changed"
     )
 
 
-def _drain_listener_with_legacy_bootstrap(ctx: common.InstallContext, timeout_seconds: float) -> dict:
+def _drain_listener_with_legacy_bootstrap(
+    ctx: common.InstallContext,
+    timeout_seconds: float,
+    *,
+    allow_legacy_bootstrap: bool = False,
+    force_legacy_bootstrap: bool = False,
+) -> dict:
     """Use atomic drain when available; bootstrap exactly one legacy listener otherwise."""
     try:
         return _drain_listener(ctx, timeout_seconds)
     except common.InstallError as exc:
         if str(exc) != "listener drain control is unavailable":
             raise
-    return _legacy_drain_listener(ctx, timeout_seconds)
+    if not allow_legacy_bootstrap:
+        raise common.InstallError(
+            "listener predates atomic drain control; retry after an operator-approved maintenance window"
+        )
+    if force_legacy_bootstrap:
+        integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
+        if not integrity_ok:
+            raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
+        listeners = common.verified_proxy_listener_pids(ctx)
+        if len(listeners) != 1:
+            raise common.InstallError(
+                f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
+            )
+        return {"listener": listeners[0], "legacy": True, "forced": True}
+    return _legacy_drain_listener(ctx, timeout_seconds, required_idle_seconds=5.0)
 
 
 def status(ctx: common.InstallContext) -> dict:
@@ -314,12 +340,24 @@ def reload(
     )
 
 
-def upgrade_from_stage(ctx: common.InstallContext, stage: str, timeout_seconds: float = 30.0) -> dict[str, int | str]:
+def upgrade_from_stage(
+    ctx: common.InstallContext,
+    stage: str,
+    timeout_seconds: float = 30.0,
+    *,
+    allow_legacy_bootstrap: bool = False,
+    force_legacy_bootstrap: bool = False,
+) -> dict[str, int | str]:
     """Drain, commit a pre-verified stage, then replace the verified listener."""
     staged_version = Path(stage, "VERSION").read_text(encoding="utf-8").strip()
     if not staged_version:
         raise common.InstallError("staged payload has no release version")
-    old_pid = _drain_listener_with_legacy_bootstrap(ctx, timeout_seconds)["listener"]
+    old_pid = _drain_listener_with_legacy_bootstrap(
+        ctx,
+        timeout_seconds,
+        allow_legacy_bootstrap=allow_legacy_bootstrap,
+        force_legacy_bootstrap=force_legacy_bootstrap,
+    )["listener"]
     try:
         common.commit_payload_transaction(ctx, stage)
         common.terminate_pid(old_pid)
@@ -374,6 +412,16 @@ def main() -> None:
     parser.add_argument("--direct-url", default=common.DEFAULT_UPSTREAM + "/v1", help="direct Responses endpoint for adopt-aigw")
     parser.add_argument("--json", action="store_true", dest="as_json")
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
+    parser.add_argument(
+        "--allow-legacy-bootstrap",
+        action="store_true",
+        help="allow the one-time pre-drain listener upgrade after its five-second quiet window",
+    )
+    parser.add_argument(
+        "--force-legacy-bootstrap",
+        action="store_true",
+        help="interrupt active Responses only for an explicitly authorized one-time pre-drain listener upgrade",
+    )
     args = parser.parse_args()
     ctx = _context()
     state = common.load_install_state(ctx)
@@ -420,8 +468,16 @@ def main() -> None:
     if args.command == "upgrade":
         if not args.stage:
             raise SystemExit("ERROR: upgrade requires --stage")
+        if args.force_legacy_bootstrap and not args.allow_legacy_bootstrap:
+            raise SystemExit("ERROR: --force-legacy-bootstrap requires --allow-legacy-bootstrap")
         try:
-            evidence = upgrade_from_stage(ctx, args.stage, timeout_seconds=args.timeout_seconds)
+            evidence = upgrade_from_stage(
+                ctx,
+                args.stage,
+                timeout_seconds=args.timeout_seconds,
+                allow_legacy_bootstrap=args.allow_legacy_bootstrap,
+                force_legacy_bootstrap=args.force_legacy_bootstrap,
+            )
         except (common.InstallError, OSError) as exc:
             raise SystemExit(f"ERROR: {exc}") from exc
         print(json.dumps(evidence, sort_keys=True) if args.as_json else (
