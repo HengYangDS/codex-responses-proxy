@@ -9,6 +9,7 @@ Run: python3 tests/test_package.py
 """
 
 import hashlib
+import importlib.util
 import os
 import shutil
 import sys
@@ -2270,6 +2271,161 @@ class TestReleaseMetadata(unittest.TestCase):
     def test_mit_license_is_present(self):
         license_text = Path(ROOT, "LICENSE").read_text(encoding="utf-8")
         self.assertTrue(license_text.startswith("MIT License\n"))
+
+
+class TestReliabilityObserver(unittest.TestCase):
+    """Keep the source-side incident policy deterministic and privacy-bounded."""
+
+    @staticmethod
+    def _observer():
+        spec = importlib.util.spec_from_file_location(
+            "dmx_reliability_observer_for_test",
+            Path(ROOT, "scripts", "observe-reliability.py"),
+        )
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _status(
+        *,
+        release="1.0.22",
+        digest="a" * 64,
+        uptime=100,
+        integrity=True,
+        service="running",
+        listeners=None,
+        draining=False,
+        counters=None,
+        upstream=None,
+        last_failure=None,
+    ):
+        runtime = {
+            "release": release,
+            "source_sha256": digest,
+            "uptime_seconds": uptime,
+            "active_responses": 0,
+            "draining": draining,
+            "counters": counters or {},
+            "upstream_classifications": upstream or {},
+        }
+        if last_failure is not None:
+            runtime["last_failure"] = {"classification": last_failure, "at_unix": 1}
+        return {
+            "payload_integrity": {"ok": integrity, "detail": "redacted"},
+            "service": service,
+            "listener_pids": listeners if listeners is not None else [123],
+            "runtime": runtime,
+        }
+
+    def test_first_snapshot_does_not_reclassify_lifetime_counts_as_an_incident(self):
+        observer = self._observer()
+        report, baseline = observer.evaluate(
+            self._status(
+                counters={"streams_failed": 7},
+                upstream={"empty_response": 23},
+                last_failure="upstream_empty_response_exhausted",
+            ),
+            observed_at_unix=1000,
+        )
+        self.assertEqual(report["state"], "observe")
+        self.assertEqual(report["window"]["comparison"], "baseline_absent")
+        self.assertEqual(report["deltas"], {"counters": {}, "upstream_classifications": {}})
+        self.assertEqual(baseline["upstream_classifications"]["empty_response"], 23)
+
+    def test_upstream_empty_response_threshold_is_windowed_and_explicit(self):
+        observer = self._observer()
+        _, baseline = observer.evaluate(
+            self._status(upstream={"empty_response": 10}), observed_at_unix=10
+        )
+        observe, _ = observer.evaluate(
+            self._status(uptime=110, upstream={"empty_response": 11}), baseline, observed_at_unix=20
+        )
+        incident, _ = observer.evaluate(
+            self._status(uptime=120, upstream={"empty_response": 13}), baseline, observed_at_unix=30
+        )
+        self.assertEqual(observe["state"], "observe")
+        self.assertEqual(incident["state"], "incident")
+        self.assertEqual(incident["deltas"]["upstream_classifications"], {"empty_response": 3})
+        self.assertIn("upstream_empty_response_burst", [item["code"] for item in incident["reasons"]])
+
+    def test_upstream_5xx_and_response_failed_have_separate_thresholds(self):
+        observer = self._observer()
+        _, baseline = observer.evaluate(
+            self._status(
+                upstream={"http_503_full": 2, "response_failed": 8}
+            ),
+            observed_at_unix=10,
+        )
+        report, _ = observer.evaluate(
+            self._status(
+                uptime=110,
+                upstream={"http_503_full": 5, "response_failed": 11},
+            ),
+            baseline,
+            observed_at_unix=20,
+        )
+        codes = {item["code"] for item in report["reasons"]}
+        self.assertEqual(report["state"], "incident")
+        self.assertEqual(
+            report["deltas"]["upstream_classifications"],
+            {"http_503_full": 3, "response_failed": 3},
+        )
+        self.assertIn("upstream_5xx_burst", codes)
+        self.assertIn("upstream_response_failed_burst", codes)
+
+    def test_proxy_drain_is_not_conflated_with_upstream_failure(self):
+        observer = self._observer()
+        _, baseline = observer.evaluate(
+            self._status(counters={"responses_rejected_while_draining": 4}), observed_at_unix=10
+        )
+        incident, _ = observer.evaluate(
+            self._status(uptime=110, counters={"responses_rejected_while_draining": 5}),
+            baseline,
+            observed_at_unix=20,
+        )
+        maintenance, _ = observer.evaluate(
+            self._status(uptime=110, counters={"responses_rejected_while_draining": 5}),
+            baseline,
+            allow_drain=True,
+            observed_at_unix=20,
+        )
+        self.assertEqual(incident["state"], "incident")
+        self.assertEqual(maintenance["state"], "observe")
+        self.assertNotIn("upstream_empty_response_burst", [item["code"] for item in incident["reasons"]])
+
+    def test_local_stream_failure_and_payload_integrity_are_incidents(self):
+        observer = self._observer()
+        _, baseline = observer.evaluate(self._status(counters={"streams_failed": 2}), observed_at_unix=10)
+        stream_report, _ = observer.evaluate(
+            self._status(uptime=111, counters={"streams_failed": 3}), baseline, observed_at_unix=20
+        )
+        integrity_report, _ = observer.evaluate(
+            self._status(integrity=False, listeners=[]), observed_at_unix=10
+        )
+        self.assertEqual(stream_report["state"], "incident")
+        self.assertIn("local_stream_failed", [item["code"] for item in stream_report["reasons"]])
+        self.assertEqual(integrity_report["state"], "incident")
+        self.assertIn("payload_integrity_failed", [item["code"] for item in integrity_report["reasons"]])
+        self.assertIn("listener_cardinality", [item["code"] for item in integrity_report["reasons"]])
+
+    def test_changed_runtime_starts_new_window_and_state_has_no_payload_snapshot(self):
+        observer = self._observer()
+        _, baseline = observer.evaluate(
+            self._status(digest="a" * 64, upstream={"empty_response": 10}), observed_at_unix=10
+        )
+        report, next_baseline = observer.evaluate(
+            self._status(digest="b" * 64, uptime=1, upstream={"empty_response": 40}),
+            baseline,
+            observed_at_unix=20,
+        )
+        self.assertEqual(report["state"], "observe")
+        self.assertEqual(report["window"]["comparison"], "runtime_identity_changed")
+        self.assertEqual(report["deltas"]["upstream_classifications"], {})
+        self.assertNotIn("payload_integrity", next_baseline)
+        self.assertNotIn("last_failure", next_baseline)
 
 
 if __name__ == "__main__":
