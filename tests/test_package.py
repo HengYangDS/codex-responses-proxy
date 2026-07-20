@@ -325,41 +325,53 @@ class TestManagedRouteState(unittest.TestCase):
                 {"release": "fixture", "runtime": {"source_sha256": "a" * 64}},
             )
 
-    def test_reload_refuses_active_responses_without_explicit_force(self):
+    def test_reload_refuses_when_the_listener_cannot_acknowledge_drain(self):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))
         with (
             mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
             mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
-            mock.patch.object(control, "_runtime_metrics", return_value={"active_responses": 1}),
+            mock.patch.object(control, "_set_listener_drain", side_effect=common.InstallError("listener drain control is unavailable")),
             mock.patch.object(common, "terminate_pid") as terminate,
         ):
-            with self.assertRaisesRegex(common.InstallError, "not proven drained"):
+            with self.assertRaisesRegex(common.InstallError, "drain control is unavailable"):
                 control.reload(ctx)
         terminate.assert_not_called()
 
-    def test_reload_force_flag_bypasses_only_the_drain_gate(self):
+    def test_reload_drains_before_terminating_the_verified_listener(self):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))
         with (
             mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
-            mock.patch.object(common, "verified_proxy_listener_pids", side_effect=[[12345], [54321]]),
-            mock.patch.object(control, "_runtime_metrics", return_value={"active_responses": 1}),
+            mock.patch.object(control, "_drain_listener", return_value={"listener": 12345, "runtime": {"draining": True, "active_responses": 0}}),
+            mock.patch.object(common, "verified_proxy_listener_pids", side_effect=[[54321]]),
             mock.patch.object(common, "terminate_pid") as terminate,
         ):
-            result = control.reload(ctx, timeout_seconds=0.1, force_active_responses=True)
+            result = control.reload(ctx, timeout_seconds=0.1)
         self.assertEqual(result, {"old_pid": 12345, "new_pid": 54321})
         terminate.assert_called_once_with(12345)
 
-    def test_upgrade_refuses_active_responses_before_payload_commit(self):
+    def test_reload_reopens_admission_when_watchdog_replacement_times_out(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(control, "_drain_listener", return_value={"listener": 12345, "runtime": {"draining": True, "active_responses": 0}}),
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(common, "terminate_pid"),
+            mock.patch.object(control, "_set_listener_drain") as reopen,
+            mock.patch.object(control.time, "monotonic", side_effect=[0.0, 1.0]),
+        ):
+            with self.assertRaisesRegex(common.InstallError, "service restored to admission"):
+                control.reload(ctx, timeout_seconds=0.1)
+        reopen.assert_called_once_with(ctx, enabled=False)
+
+    def test_upgrade_refuses_before_payload_commit_when_drain_does_not_complete(self):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))
         stage = Path(tempfile.mkdtemp())
         (stage / "VERSION").write_text("9.9.9\n", encoding="utf-8")
         with (
             mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
-            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
-            mock.patch.object(control, "_runtime_metrics", return_value={"active_responses": 1}),
+            mock.patch.object(control, "_drain_listener", side_effect=common.InstallError("listener did not drain active Responses")),
             mock.patch.object(common, "commit_payload_transaction") as commit,
         ):
-            with self.assertRaisesRegex(common.InstallError, "not proven drained"):
+            with self.assertRaisesRegex(common.InstallError, "did not drain"):
                 control.upgrade_from_stage(ctx, str(stage))
         commit.assert_not_called()
 
@@ -367,14 +379,15 @@ class TestManagedRouteState(unittest.TestCase):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))
         stage = Path(tempfile.mkdtemp())
         (stage / "VERSION").write_text("9.9.9\n", encoding="utf-8")
-        runtime = {"active_responses": 0}
         with (
             mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(control, "_drain_listener", return_value={"listener": 12345, "runtime": {"draining": True, "active_responses": 0}}),
             mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
-            mock.patch.object(control, "_runtime_metrics", return_value=runtime),
+            mock.patch.object(control, "_runtime_metrics", return_value={"release": "old"}),
             mock.patch.object(common, "commit_payload_transaction") as commit,
             mock.patch.object(common, "restore_payload_transaction") as restore,
             mock.patch.object(common, "finalize_payload_transaction") as finalize,
+            mock.patch.object(control, "_set_listener_drain"),
             mock.patch.object(common, "terminate_pid"),
             mock.patch.object(control.time, "monotonic", side_effect=[0.0, 1.0]),
         ):
@@ -383,6 +396,40 @@ class TestManagedRouteState(unittest.TestCase):
         commit.assert_called_once_with(ctx, str(stage))
         restore.assert_called_once_with(ctx)
         finalize.assert_called_once_with(ctx)
+
+    def test_drain_listener_waits_for_zero_after_admission_is_closed(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        states = [
+            {"draining": True, "active_responses": 1},
+            {"draining": True, "active_responses": 0},
+        ]
+        with (
+            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(control, "_set_listener_drain", return_value={"listener": 12345, "runtime": states[0]}),
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", side_effect=states),
+            mock.patch.object(control.time, "monotonic", side_effect=[0.0, 0.0, 0.1]),
+            mock.patch.object(control.time, "sleep"),
+        ):
+            drained = control._drain_listener(ctx, 1.0)
+        self.assertEqual(drained["listener"], 12345)
+        self.assertEqual(drained["runtime"]["active_responses"], 0)
+
+    def test_drain_listener_reopens_admission_after_timeout(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(control, "_set_listener_drain", side_effect=[
+                {"listener": 12345, "runtime": {"draining": True, "active_responses": 1}},
+                {"listener": 12345, "runtime": {"draining": False, "active_responses": 1}},
+            ]) as set_drain,
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", return_value={"draining": True, "active_responses": 1}),
+            mock.patch.object(control.time, "monotonic", side_effect=[0.0, 1.0]),
+        ):
+            with self.assertRaisesRegex(common.InstallError, "service restored to admission"):
+                control._drain_listener(ctx, 0.5)
+        self.assertEqual(set_drain.call_args_list[-1], mock.call(ctx, enabled=False))
 
     def test_build_context_honors_codex_home(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"CODEX_HOME": str(Path(tmp) / "codex-home")}, clear=False):
@@ -1290,6 +1337,12 @@ class TestProxyTransport(unittest.TestCase):
                 if isinstance(response, dict):
                     status = response.get("status", 200)
                     chunks = response.get("chunks", [])
+                    started = response.get("started_event")
+                    if started is not None:
+                        started.set()
+                    release = response.get("release_event")
+                    if release is not None:
+                        release.wait(timeout=5)
                     self.send_response(status)
                     self.send_header("Content-Type", response.get("content_type", "text/event-stream"))
                     self.send_header("Connection", "close")
@@ -1544,6 +1597,114 @@ class TestProxyTransport(unittest.TestCase):
         self.assertIn("counters", status)
         self.assertIn("upstream_classifications", status)
         self.assertIsNone(status["last_failure"])
+
+    def test_loopback_drain_rejects_new_responses_and_can_be_reopened(self):
+        success = b'{"id":"resp_served","status":"completed"}'
+        body = json.dumps({"stream": False, "input": []}).encode()
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy([(200, success)], tmp)
+            try:
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                drain = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/control/drain", method="POST",
+                )
+                with opener.open(drain) as response:
+                    snapshot = json.loads(response.read())
+                self.assertTrue(snapshot["draining"])
+                self.assertEqual(snapshot["active_responses"], 0)
+
+                with self.assertRaises(urllib.error.HTTPError) as raised:
+                    self._request(port, body)
+                with raised.exception:
+                    self.assertEqual(raised.exception.code, 503)
+                    self.assertEqual(raised.exception.headers["Retry-After"], "1")
+                    payload = json.loads(raised.exception.read())
+                self.assertEqual(payload["error"]["code"], "proxy_draining")
+                self.assertEqual(received, [])
+
+                reopen = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/control/drain", method="DELETE",
+                )
+                with opener.open(reopen) as response:
+                    self.assertFalse(json.loads(response.read())["draining"])
+                response = self._request(port, body)
+                with response:
+                    self.assertEqual(response.read(), success)
+            finally:
+                cleanup()
+
+        status = self.p.runtime_status()
+        self.assertEqual(status["counters"]["responses_rejected_while_draining"], 1)
+        self.assertFalse(status["draining"])
+
+    def test_drain_lease_expires_without_a_controller_rollback_request(self):
+        self.p._reset_runtime_metrics_for_test()
+        with mock.patch.object(self.p.time, "monotonic", side_effect=[10.0, 10.0, 12.1, 12.1, 12.1]):
+            started = self.p._set_draining(True, lease_seconds=2)
+            expired = self.p.runtime_status()
+        self.assertTrue(started["draining"])
+        self.assertFalse(expired["draining"])
+        self.assertIsNone(expired["drain_lease_remaining_seconds"])
+        self.assertEqual(expired["counters"]["drain_leases_expired"], 1)
+
+    def test_drain_closes_admission_while_an_existing_response_finishes(self):
+        success = b'{"id":"resp_served","status":"completed"}'
+        body = json.dumps({"stream": False, "input": []}).encode()
+        started = threading.Event()
+        release = threading.Event()
+        worker_result = {}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy([
+                {
+                    "status": 200,
+                    "content_type": "application/json",
+                    "chunks": [success],
+                    "started_event": started,
+                    "release_event": release,
+                },
+            ], tmp)
+            try:
+                def request_in_flight():
+                    try:
+                        with self._request(port, body) as response:
+                            worker_result["body"] = response.read()
+                    except BaseException as exc:  # asserted below; never hide a worker failure
+                        worker_result["error"] = exc
+
+                worker = threading.Thread(target=request_in_flight)
+                worker.start()
+                self.assertTrue(started.wait(timeout=2), "upstream never received the first Responses request")
+
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                drain = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/control/drain", method="POST",
+                )
+                with opener.open(drain) as response:
+                    snapshot = json.loads(response.read())
+                self.assertTrue(snapshot["draining"])
+                self.assertEqual(snapshot["active_responses"], 1)
+
+                with self.assertRaises(urllib.error.HTTPError) as raised:
+                    self._request(port, body)
+                with raised.exception:
+                    self.assertEqual(raised.exception.code, 503)
+                    self.assertEqual(json.loads(raised.exception.read())["error"]["code"], "proxy_draining")
+                self.assertEqual(received, [body])
+
+                release.set()
+                worker.join(timeout=3)
+                self.assertFalse(worker.is_alive(), "in-flight request did not complete after drain")
+                self.assertNotIn("error", worker_result)
+                self.assertEqual(worker_result["body"], success)
+
+                with opener.open(f"http://127.0.0.1:{port}/healthz") as response:
+                    drained = json.loads(response.read())
+                self.assertTrue(drained["draining"])
+                self.assertEqual(drained["active_responses"], 0)
+            finally:
+                release.set()
+                cleanup()
 
     def test_reconnects_a_pre_content_response_failed_stream(self):
         failed = {
