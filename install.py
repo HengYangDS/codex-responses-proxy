@@ -145,6 +145,16 @@ def copy_payload(ctx: common.InstallContext) -> None:
     common.write_payload_manifest(ctx)
 
 
+def stage_payload(ctx: common.InstallContext) -> str:
+    """Build and verify a complete runtime payload beside the live deployment."""
+    return common.stage_payload_transaction(ctx, HERE)
+
+
+def commit_staged_payload(ctx: common.InstallContext, stage: str) -> None:
+    """Commit one pre-verified runtime payload without touching route state."""
+    common.commit_payload_transaction(ctx, stage)
+
+
 def wire_config(ctx: common.InstallContext) -> bool:
     """Point the Codex provider base_url at the local proxy (backup + rewrite)."""
     if not os.path.exists(ctx.codex_config):
@@ -268,6 +278,11 @@ def main() -> None:
     )
     ap.add_argument("--skip-config", action="store_true",
                     help="don't touch config.toml (only place files + service)")
+    ap.add_argument(
+        "--stage-only",
+        action="store_true",
+        help="prepare and verify a payload transaction without changing the live service",
+    )
     args = ap.parse_args()
 
     try:
@@ -296,6 +311,11 @@ def main() -> None:
         f"proxy={ctx.proxy_log_max_bytes}B x {ctx.proxy_log_backup_count}, "
         f"watchdog={ctx.watchdog_log_max_bytes}B x {ctx.watchdog_log_backup_count}"
     )
+
+    if args.stage_only:
+        stage = stage_payload(ctx)
+        _say(f"Staged verified payload: {stage}")
+        return
 
     if _codex_running():
         _say("\n  ℹ Codex desktop appears to be running. AIGW-owned routes are left\n"
