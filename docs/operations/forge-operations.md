@@ -47,6 +47,14 @@ of divergence or incomplete housekeeping, not permission to force convergence.
 
 ## Release behavior
 
+GitHub verification and release run on separate repository-scoped local
+registrations. Verification uses only trusted `main`, tag, and manual workflow
+revisions on `codex-dmx-proxy-github-verify-macos-arm64`; pull-request workflow
+code does not run on that host. Tag publication runs only on
+`codex-dmx-proxy-github-release-macos-arm64`. Each registration has its own
+LaunchAgent, work directory, cache, and credential; neither may serve another
+repository or GitLab job.
+
 The GitLab tag pipeline and GitHub tag workflow independently verify the
 provider-specific tag signature and create a formal release record. Existing
 legacy tags are retained as historical evidence; no release claim for them is
