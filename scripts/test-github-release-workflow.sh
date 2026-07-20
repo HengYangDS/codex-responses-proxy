@@ -14,8 +14,9 @@ required = [
     "name: Release", 'tags: ["v*"]', "permissions:\n  contents: write",
     "runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-release-macos-arm64]",
     "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
-    "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
-    "check-release-tag-signature.sh", "check_release_metadata.py --allow-unpublished-history --tag",
+    'python=/opt/homebrew/bin/python3.14',
+    '"$python" scripts/check_release_metadata.py --allow-unpublished-history --tag',
+    "check-release-tag-signature.sh",
     "gh release create", "--verify-tag", "--generate-notes",
 ]
 for token in required:
@@ -23,6 +24,8 @@ for token in required:
         raise SystemExit(f"GitHub Actions release contract is missing {token!r}")
 if "ubuntu-24.04" in text or "codex-dmx-proxy-github-verify-macos-arm64" in text:
     raise SystemExit("GitHub release workflow must use only its dedicated trusted runner")
+if "actions/setup-python@" in text:
+    raise SystemExit("self-hosted release must use the declared Homebrew Python")
 if "@main" in text or "@master" in text:
     raise SystemExit("GitHub release workflow must use immutable action revisions")
 print("GitHub Actions release contract: OK")
