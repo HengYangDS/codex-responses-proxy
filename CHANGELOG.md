@@ -15,6 +15,11 @@ work that has not yet been tagged.
 
 ### Fixed
 
+- Add a narrow, transactional controller-only lifecycle apply path for an
+  already-running, drain-capable listener. It refuses any source change outside
+  `control.py`, verifies and updates the manifest while the existing listener
+  remains in normal admission, leaves active Responses streams untouched, and
+  reports the installed controller SHA-256.
 - Converge CI to one repository-scoped GitHub runner and one separate
   project-scoped GitLab runner. GitHub verification and release now share the
   `codex-dmx-proxy-github-macos-arm64` registration, while GitLab jobs require

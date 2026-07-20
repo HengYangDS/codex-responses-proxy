@@ -36,10 +36,15 @@ the listener loaded the proxy payload, so a new file on disk cannot be mistaken
 for a reloaded process. `reload` first verifies the manifest; it then replaces
 only a listener whose command matches the installed proxy script. The control
 plane first waits for a bounded zero-active quiet window without changing
-admission. It then closes the listener's admission barrier, observes
-`draining=true` and `active_responses=0` from the same verified listener, then
-replace it. If that proof cannot be obtained, the listener remains serving and
-the payload is not changed.
+admission. It then closes the listener's admission barrier and observes
+`draining=true` with `active_responses=0` from the same verified listener before
+replacement. A controller-only lifecycle change is separate: after proving all
+listener, watchdog, version, and support payload files byte-identical, it may
+transactionally replace only `control.py` and the matching manifest while one
+verified listener remains serving normal admission. It does not drain or restart
+that listener. A listener payload change requires replacement. If the applicable
+proof cannot be obtained, the listener remains serving and the payload is not
+changed.
 
 The sole compatibility exception is the first replacement of a listener that
 predates the drain-control endpoint. It requires an explicit operator flag and
