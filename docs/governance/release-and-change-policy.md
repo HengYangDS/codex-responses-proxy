@@ -55,13 +55,20 @@ URLs, namespace, project ID, default branch, or release history.
 ## Operational changes
 
 `control.py status` and `governance.py` are read-only. `reload` and staged
-upgrade require a user-visible warning plus post-replacement identity proof.
-They first wait for a bounded zero-active quiet window without closing
-Responses admission. They then close admission, allow already admitted work to
-finish, and may be replaced only after loopback health reports `draining=true` with
-`active_responses=0`. A timeout restores admission without committing a staged
-payload; failure to find the quiet window starts no drain; a bounded listener
-lease also fails open if the controller disappears.
+upgrade require a user-visible warning and a post-operation identity proof.
+They first wait for a bounded zero-active quiet window without closing Responses
+admission. They then close admission, allow already admitted work to finish, and
+may proceed only after loopback health reports `draining=true` with
+`active_responses=0`.
+
+A timeout restores admission without committing a staged payload; failure to
+find the quiet window starts no drain; a bounded listener lease also fails open
+if the controller disappears. A controller-only apply is not a reload or
+upgrade: it requires exactly one verified listener serving normal admission and
+proves every listener, watchdog, version, and support file byte-identical to the
+verified live payload. It transactionally swaps only `control.py` and the
+manifest, preserves route state and logs, and does not drain, restart, or
+interrupt Responses traffic.
 Route changes are owned by AIGW whenever its marked provider block is
 present.
 
