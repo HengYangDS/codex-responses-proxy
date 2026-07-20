@@ -30,6 +30,10 @@ work that has not yet been tagged.
   same listener to report `draining=true` and `active_responses=0` before
   replacement, and fails open through a bounded lease if lifecycle control
   disappears.
+- Bootstrap the first upgrade from a pre-drain listener through a narrowly
+  scoped two-sample, one-second idle window from the same verified PID. It
+  refuses on new activity, health loss, timeout, or PID change; all subsequent
+  lifecycle actions use atomic drain.
 - Emit a terminal SSE `error` event when a streaming request exhausts classified
   DMX HTTP 477 empty-response retries; non-streaming callers retain retryable
   HTTP 503 with `Retry-After: 3`.
@@ -45,6 +49,8 @@ work that has not yet been tagged.
 - Add deterministic offline transport coverage for exhausted pre-content SSE,
   bounded/redacted logging, drain admission rejection, in-flight completion,
   timeout rollback, and fail-open drain-lease expiry.
+- Add regression coverage for legacy bootstrap admission and its no-downgrade
+  boundary when a current listener's atomic drain fails.
 
 ## [1.0.15] - 2026-07-18
 

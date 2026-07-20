@@ -155,6 +155,16 @@ set. `runtime.drain_lease_remaining_seconds` makes the fail-open lease visible.
 The loopback-only `POST /control/drain` and `DELETE /control/drain`
 endpoints are lifecycle internals used by `control.py`, not general APIs.
 
+### One-time legacy bootstrap
+
+The first upgrade from a listener released before the drain protocol has no
+admission latch to invoke. In that narrow case, `upgrade` requires the verified
+legacy listener to report zero active Responses twice across a one-second quiet
+window before it changes any payload. If a request arrives or the window does
+not complete, the upgrade refuses without mutation. Once the replacement
+listener starts, all later reloads and upgrades use the atomic drain barrier;
+the compatibility check is not a normal operating mode.
+
 ### Log retention and diagnostic safety
 
 The proxy and watchdog write structured operational events only. They do not
