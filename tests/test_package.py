@@ -328,8 +328,7 @@ class TestManagedRouteState(unittest.TestCase):
     def test_reload_refuses_when_the_listener_cannot_acknowledge_drain(self):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))
         with (
-            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
-            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_wait_for_quiescent_listener", return_value={"listener": 12345, "runtime": {"draining": False, "active_responses": 0}}),
             mock.patch.object(control, "_set_listener_drain", side_effect=common.InstallError("listener drain control is unavailable")),
             mock.patch.object(control, "_legacy_drain_listener", side_effect=common.InstallError("legacy listener did not remain idle")),
             mock.patch.object(common, "terminate_pid") as terminate,
@@ -400,16 +399,12 @@ class TestManagedRouteState(unittest.TestCase):
 
     def test_drain_listener_waits_for_zero_after_admission_is_closed(self):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))
-        states = [
-            {"draining": True, "active_responses": 1},
-            {"draining": True, "active_responses": 0},
-        ]
         with (
-            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
-            mock.patch.object(control, "_set_listener_drain", return_value={"listener": 12345, "runtime": states[0]}),
+            mock.patch.object(control, "_wait_for_quiescent_listener", return_value={"listener": 12345, "runtime": {"draining": False, "active_responses": 0}}),
+            mock.patch.object(control, "_set_listener_drain", return_value={"listener": 12345, "runtime": {"draining": True, "active_responses": 0}}),
             mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
-            mock.patch.object(control, "_runtime_metrics", side_effect=states),
-            mock.patch.object(control.time, "monotonic", side_effect=[0.0, 0.0, 0.1]),
+            mock.patch.object(control, "_runtime_metrics", return_value={"draining": True, "active_responses": 0}),
+            mock.patch.object(control.time, "monotonic", side_effect=[0.0, 0.1]),
             mock.patch.object(control.time, "sleep"),
         ):
             drained = control._drain_listener(ctx, 1.0)
@@ -419,7 +414,7 @@ class TestManagedRouteState(unittest.TestCase):
     def test_drain_listener_reopens_admission_after_timeout(self):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))
         with (
-            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(control, "_wait_for_quiescent_listener", return_value={"listener": 12345, "runtime": {"draining": False, "active_responses": 0}}),
             mock.patch.object(control, "_set_listener_drain", side_effect=[
                 {"listener": 12345, "runtime": {"draining": True, "active_responses": 1}},
                 {"listener": 12345, "runtime": {"draining": False, "active_responses": 1}},
@@ -430,6 +425,50 @@ class TestManagedRouteState(unittest.TestCase):
         ):
             with self.assertRaisesRegex(common.InstallError, "service restored to admission"):
                 control._drain_listener(ctx, 0.5)
+        self.assertEqual(set_drain.call_args_list[-1], mock.call(ctx, enabled=False))
+
+    def test_quiescence_preflight_keeps_admission_open_until_idle_window_is_proven(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        snapshots = [
+            {"draining": False, "active_responses": 1},
+            {"draining": False, "active_responses": 0},
+            {"draining": False, "active_responses": 1},
+            {"draining": False, "active_responses": 0},
+            {"draining": False, "active_responses": 0},
+        ]
+        with (
+            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", side_effect=snapshots),
+            mock.patch.object(control.time, "monotonic", side_effect=[0.0, 0.0, 0.1, 0.1, 0.2, 0.2, 0.3, 0.3, 5.3, 5.3]),
+            mock.patch.object(control.time, "sleep"),
+        ):
+            result = control._wait_for_quiescent_listener(ctx, 10.0, quiet_seconds=5.0)
+        self.assertEqual(result["listener"], 12345)
+        self.assertEqual(result["runtime"]["active_responses"], 0)
+
+    def test_quiescence_preflight_refuses_without_closing_admission_when_busy(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", return_value={"draining": False, "active_responses": 1}),
+            mock.patch.object(control.time, "monotonic", side_effect=[0.0, 1.0]),
+        ):
+            with self.assertRaisesRegex(common.InstallError, "no drain was started"):
+                control._wait_for_quiescent_listener(ctx, 0.5)
+
+    def test_drain_refuses_if_listener_changes_between_quiescence_and_admission_close(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(control, "_wait_for_quiescent_listener", return_value={"listener": 12345, "runtime": {"draining": False, "active_responses": 0}}),
+            mock.patch.object(control, "_set_listener_drain", side_effect=[
+                {"listener": 54321, "runtime": {"draining": True, "active_responses": 0}},
+                {"listener": 54321, "runtime": {"draining": False, "active_responses": 0}},
+            ]) as set_drain,
+        ):
+            with self.assertRaisesRegex(common.InstallError, "changed while admission was closing"):
+                control._drain_listener(ctx, 1.0)
         self.assertEqual(set_drain.call_args_list[-1], mock.call(ctx, enabled=False))
 
     def test_legacy_bootstrap_requires_two_idle_samples_before_payload_mutation(self):

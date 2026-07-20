@@ -35,7 +35,8 @@ that same evidence. Runtime health also reports the source SHA-256 captured when
 the listener loaded the proxy payload, so a new file on disk cannot be mistaken
 for a reloaded process. `reload` first verifies the manifest; it then replaces
 only a listener whose command matches the installed proxy script. The control
-plane must close the listener's admission barrier, observe
+plane first waits for a bounded zero-active quiet window without changing
+admission. It then closes the listener's admission barrier, observes
 `draining=true` and `active_responses=0` from the same verified listener, then
 replace it. If that proof cannot be obtained, the listener remains serving and
 the payload is not changed.
