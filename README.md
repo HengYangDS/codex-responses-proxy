@@ -196,8 +196,10 @@ persist request bodies, credentials, headers, prompts, query values, or raw
 upstream payloads. Each log has a bounded rotating retention window; the default
 is four 4 MiB proxy segments and three 512 KiB watchdog segments, including the
 active segment. Oversized legacy segments are discarded without being copied or
-read into evidence. Native macOS service stdout and stderr are deliberately
-discarded so they cannot become an unbounded second logging channel.
+read into evidence. Installation and payload refresh also remove the retired
+`reject-*.json` raw request-capture files without reading or preserving them.
+Native macOS service stdout and stderr are deliberately discarded so they cannot
+become an unbounded second logging channel.
 
 Set a durable retention policy at installation time:
 

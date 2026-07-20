@@ -120,11 +120,12 @@ def copy_payload(ctx: common.InstallContext) -> None:
 
     Route state and config are user/runtime state and remain untouched. Retained
     structured logs remain untouched. The two former macOS launchd stdout/stderr
-    sinks are exact superseded artifacts: current service definitions route those
-    channels to ``/dev/null`` and use the bounded watchdog log instead, so remove
-    them without reading or copying their potentially sensitive contents. The
-    `tests/` tree was shipped by older deployments but is not executable runtime
-    payload; remove that exact obsolete path before writing the manifest.
+    sinks and the retired raw ``reject-*.json`` request captures are exact
+    superseded artifacts: current service definitions route those channels to
+    ``/dev/null`` and use bounded, redacted logs instead, so remove them without
+    reading or copying their potentially sensitive contents. The `tests/` tree
+    was shipped by older deployments but is not executable runtime payload;
+    remove that exact obsolete path before writing the manifest.
     """
     shutil.rmtree(os.path.join(ctx.install_dir, "tests"), ignore_errors=True)
     for filename in ("dmx-watchdog.out.log", "dmx-watchdog.err.log"):
@@ -132,6 +133,12 @@ def copy_payload(ctx: common.InstallContext) -> None:
             Path(ctx.log_dir, filename).unlink(missing_ok=True)
         except OSError:
             pass
+    try:
+        for capture in Path(ctx.log_dir).glob("reject-*.json"):
+            if capture.is_file():
+                capture.unlink()
+    except OSError:
+        pass
     for sub in ("proxy", "watchdog", "platform_adapters"):
         src = os.path.join(HERE, sub)
         dst = os.path.join(ctx.install_dir, sub)
