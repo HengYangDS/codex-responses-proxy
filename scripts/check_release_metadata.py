@@ -149,6 +149,7 @@ def check_governance_contract() -> None:
         "scripts/tag-github-release.sh",
         "scripts/check-release-tag-signature.sh",
         "scripts/publish-gitlab-release.sh",
+        "scripts/observe-reliability.py",
         "packaging/release/gitlab-allowed-signers",
         "packaging/release/github-allowed-signers",
         ".github/workflows/verify.yml",

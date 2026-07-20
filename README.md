@@ -171,6 +171,29 @@ set. `runtime.drain_lease_remaining_seconds` makes the fail-open lease visible.
 The loopback-only `POST /control/drain` and `DELETE /control/drain`
 endpoints are lifecycle internals used by `control.py`, not general APIs.
 
+For a repeatable, privacy-bounded trend decision, use the source-side observer
+with two or more comparable snapshots. It consumes the JSON that `status`
+already emits; it neither contacts the listener nor changes its lifecycle:
+
+```bash
+python3 control.py status --json > /tmp/dmx-status.json
+python3 scripts/observe-reliability.py \
+  --status-file /tmp/dmx-status.json \
+  --state /secure-local/dmx-reliability-baseline.json
+```
+
+The first snapshot establishes a baseline and returns `observe`, not an
+inferred incident. A changed release, loaded-source digest, or listener restart
+starts a new window. In a comparable window, local payload/listener faults and
+new local stream failures are incidents; upstream `empty_response`, retryable
+5xx, and `response_failed` are observations below three events and incidents
+at three or more. New `proxy_draining` rejections are distinct from upstream
+failures; when an operator has deliberately initiated maintenance, pass
+`--allow-drain` to classify that delta as `observe`. The optional state file
+contains only normalized counters, runtime identity, uptime, and observation
+time. It never stores request bodies, responses, tokens, headers, prompts,
+paths from the status payload, or upstream error payloads.
+
 ### One-time legacy bootstrap
 
 The first upgrade from a listener released before the drain protocol has no
@@ -242,6 +265,7 @@ rejections are returned unchanged.
 | DMX HTTP 477 `empty_response` | `control.py status --json` | Retry the unchanged request through the normal bounded transient-retry budget. On exhaustion, a streaming request receives a terminal SSE `error`; a non-streaming request receives standard HTTP 503 with `Retry-After`. Unrelated 477 responses remain unchanged. |
 | SSE closes before completion | `control.py status --json` | The proxy retries only before sending substantive bytes downstream. If that bounded pre-content budget is exhausted, it returns retryable HTTP 503 with `Retry-After: 3` rather than an empty successful stream. |
 | Need current reliability evidence | `control.py status --json` | Inspect the secret-free `runtime` snapshot; it proves listener-local counters, not recovery of a historical conversation. |
+| Need a windowed incident decision | `scripts/observe-reliability.py --status-file <snapshot> --state <baseline>` | Compare only the same running payload; the tool is read-only and never reloads the listener. |
 | Client ignores a route change | Client configuration lifecycle | A running client may need its normal reload; the proxy does not restart it. |
 
 Logs are written under `~/.codex/log/`. They record bounded classifications,

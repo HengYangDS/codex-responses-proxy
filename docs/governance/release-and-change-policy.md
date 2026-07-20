@@ -72,6 +72,27 @@ interrupt Responses traffic.
 Route changes are owned by AIGW whenever its marked provider block is
 present.
 
+## Reliability observation and incident boundary
+
+`control.py status --json` is the listener-local, secret-free source of raw
+runtime counters. `scripts/observe-reliability.py` is the corresponding
+source-side evaluator: it accepts a supplied snapshot and an optional explicit
+baseline state file, but does not call the listener, mutate configuration,
+retain request/response material, or perform lifecycle control.
+
+The evaluator compares counters only when release, loaded source digest, and
+monotonic uptime prove the same running payload. A first snapshot, a restart,
+or a payload change begins a new observation window; lifetime counters and
+`last_failure` must not be reclassified as a new incident. Payload-integrity
+failure, missing/multiple verified listeners, local stream failures,
+pre-content stream exhaustion, and local queue timeouts are immediate local
+incidents. Drain rejections remain a separate local class: an approved
+maintenance observation may classify them as `observe`, never as an upstream
+failure. Upstream `empty_response`, retryable 5xx, and `response_failed` are
+classified independently; one or two events in a comparable window require
+observation, while three or more require an upstream incident. The policy is
+deliberately bounded and must remain covered by deterministic tests.
+
 For a one-time upgrade from a listener that predates drain control, lifecycle
 control requires explicit operator authorization and may use only its
 verified-PID, two-sample five-second idle-window compatibility gate. It must

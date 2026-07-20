@@ -12,6 +12,11 @@ work that has not yet been tagged.
   payload. It reports only the existing manifest, listener, route, and runtime
   evidence; it does not inspect or modify AIGW, Codex history, credentials, or
   the proxy listener.
+- Add `scripts/observe-reliability.py`, a source-side, secret-free observer for
+  comparable `control.py status --json` snapshots. It separates upstream
+  empty-response, upstream 5xx, and `response_failed` bursts from local stream
+  failures, drain rejections, listener integrity, and restart boundaries;
+  thresholds are explicit, bounded, and tested.
 
 ### Fixed
 
