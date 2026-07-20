@@ -140,7 +140,7 @@ def copy_payload(ctx: common.InstallContext) -> None:
             if name.endswith(".py"):
                 shutil.copy2(os.path.join(src, name), os.path.join(dst, name))
     os.makedirs(ctx.log_dir, exist_ok=True)
-    for name in ("control.py", "VERSION"):
+    for name in ("control.py", "governance.py", "VERSION"):
         shutil.copy2(os.path.join(HERE, name), os.path.join(ctx.install_dir, name))
     common.write_payload_manifest(ctx)
 

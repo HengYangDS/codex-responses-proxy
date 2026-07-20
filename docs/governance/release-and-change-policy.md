@@ -54,6 +54,9 @@ URLs, namespace, project ID, default branch, or release history.
 
 ## Operational changes
 
-`control.py status` is read-only. `reload` interrupts the local listener and
-requires a user-visible warning plus post-replacement identity proof. Route
-changes are owned by AIGW whenever its marked provider block is present.
+`control.py status` and `governance.py` are read-only. `reload` interrupts the
+local listener only after loopback health proves it is drained, and requires a
+user-visible warning plus post-replacement identity proof. An explicit
+`--force-active-responses` bypasses only the drain gate and requires separate
+operator authorization. Route changes are owned by AIGW whenever its marked
+provider block is present.
