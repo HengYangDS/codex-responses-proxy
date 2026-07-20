@@ -14,6 +14,8 @@ import shutil
 import subprocess
 import json
 import hashlib
+import shutil
+import tempfile
 import urllib.parse
 from dataclasses import dataclass, field
 
@@ -30,6 +32,7 @@ STATE_FILENAME = "install-state.json"
 STATE_SCHEMA_VERSION = 2
 PAYLOAD_MANIFEST_FILENAME = "payload-manifest.json"
 PAYLOAD_MANIFEST_SCHEMA_VERSION = 1
+AUXILIARY_STATE_FILES = (STATE_FILENAME,)
 AIGW_PROVIDER_BEGIN = "# >>> AIGW managed provider >>>"
 AIGW_PROVIDER_END = "# <<< AIGW managed provider <<<"
 RUNTIME_PAYLOAD_FILES = (
@@ -278,6 +281,145 @@ def _atomic_write_text(path: str, content: str) -> None:
             os.remove(temporary)
         except FileNotFoundError:
             pass
+
+
+def payload_transaction_dir(ctx: InstallContext) -> str:
+    """Return the sibling directory used for short-lived payload transactions."""
+    return f"{ctx.install_dir}.transaction"
+
+
+def _payload_source_paths(root: str) -> list[str]:
+    missing = [relative for relative in RUNTIME_PAYLOAD_FILES if not os.path.isfile(os.path.join(root, relative))]
+    if missing:
+        raise InstallError("source payload is incomplete: " + ", ".join(missing))
+    return list(RUNTIME_PAYLOAD_FILES)
+
+
+def stage_payload_transaction(ctx: InstallContext, source_root: str) -> str:
+    """Prepare a complete payload beside the live install without changing it.
+
+    Only the declared re-creatable runtime files enter the stage.  User/runtime
+    state stays in the live directory until commit, so a failed staging check
+    cannot destroy route ownership, logs, or install state.
+    """
+    stage_parent = payload_transaction_dir(ctx)
+    if os.path.lexists(stage_parent):
+        raise InstallError(f"payload transaction path already exists: {stage_parent}")
+    os.makedirs(os.path.dirname(stage_parent), exist_ok=True)
+    try:
+        os.makedirs(stage_parent, mode=0o700)
+        stage = tempfile.mkdtemp(prefix="payload-", dir=stage_parent)
+        for relative in _payload_source_paths(source_root):
+            source = os.path.join(source_root, relative)
+            target = os.path.join(stage, relative)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copy2(source, target)
+        staged = InstallContext(
+            home=ctx.home,
+            install_dir=stage,
+            proxy_script=os.path.join(stage, "proxy", "dmx_responses_proxy.py"),
+            watchdog_script=os.path.join(stage, "watchdog", "watchdog.py"),
+            python=ctx.python,
+            codex_config=ctx.codex_config,
+            log_dir=ctx.log_dir,
+            port=ctx.port,
+            upstream=ctx.upstream,
+            proxy_log_max_bytes=ctx.proxy_log_max_bytes,
+            proxy_log_backup_count=ctx.proxy_log_backup_count,
+            watchdog_log_max_bytes=ctx.watchdog_log_max_bytes,
+            watchdog_log_backup_count=ctx.watchdog_log_backup_count,
+            env=dict(ctx.env),
+        )
+        write_payload_manifest(staged)
+        ok, detail = verify_payload_manifest(staged)
+        if not ok:
+            raise InstallError(f"staged payload integrity check failed: {detail}")
+        return stage
+    except Exception:
+        shutil.rmtree(stage_parent, ignore_errors=True)
+        raise
+
+
+def commit_payload_transaction(ctx: InstallContext, stage: str) -> None:
+    """Atomically replace declared payload files while preserving user state.
+
+    A complete validated stage is copied into a sibling rollback directory first.
+    The live directory's route state, logs, and unknown files are untouched.
+    If any declared payload write or final manifest verification fails, the
+    previous declared payload is restored before the failure is returned.
+    """
+    transaction_root = payload_transaction_dir(ctx)
+    stage = os.path.abspath(stage)
+    transaction_root = os.path.abspath(transaction_root)
+    if not stage.startswith(transaction_root + os.sep) or not os.path.isdir(stage):
+        raise InstallError("payload stage is outside the controlled transaction directory")
+    staged = InstallContext(
+        home=ctx.home,
+        install_dir=stage,
+        proxy_script=os.path.join(stage, "proxy", "dmx_responses_proxy.py"),
+        watchdog_script=os.path.join(stage, "watchdog", "watchdog.py"),
+        python=ctx.python,
+        codex_config=ctx.codex_config,
+        log_dir=ctx.log_dir,
+        port=ctx.port,
+        upstream=ctx.upstream,
+        proxy_log_max_bytes=ctx.proxy_log_max_bytes,
+        proxy_log_backup_count=ctx.proxy_log_backup_count,
+        watchdog_log_max_bytes=ctx.watchdog_log_max_bytes,
+        watchdog_log_backup_count=ctx.watchdog_log_backup_count,
+        env=dict(ctx.env),
+    )
+    ok, detail = verify_payload_manifest(staged)
+    if not ok:
+        raise InstallError(f"refusing unverified staged payload: {detail}")
+    rollback = os.path.join(transaction_root, "rollback")
+    if os.path.lexists(rollback):
+        raise InstallError(f"payload rollback path already exists: {rollback}")
+    try:
+        os.makedirs(rollback, mode=0o700)
+        for relative in RUNTIME_PAYLOAD_FILES + (PAYLOAD_MANIFEST_FILENAME,):
+            source = os.path.join(ctx.install_dir, relative)
+            if not os.path.isfile(source):
+                raise InstallError(f"live payload is incomplete before commit: {relative}")
+            target = os.path.join(rollback, relative)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copy2(source, target)
+        for relative in RUNTIME_PAYLOAD_FILES + (PAYLOAD_MANIFEST_FILENAME,):
+            source = os.path.join(stage, relative)
+            target = os.path.join(ctx.install_dir, relative)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copy2(source, target)
+        ok, detail = verify_payload_manifest(ctx)
+        if not ok:
+            raise InstallError(f"committed payload integrity check failed: {detail}")
+    except Exception as exc:
+        try:
+            restore_payload_transaction(ctx)
+        except Exception as rollback_exc:
+            raise InstallError(f"payload commit failed and rollback failed: {rollback_exc}") from exc
+        raise
+
+
+def restore_payload_transaction(ctx: InstallContext) -> None:
+    """Restore the declared payload held by the active transaction rollback."""
+    rollback = os.path.join(payload_transaction_dir(ctx), "rollback")
+    if not os.path.isdir(rollback):
+        raise InstallError("payload rollback is unavailable")
+    for relative in RUNTIME_PAYLOAD_FILES + (PAYLOAD_MANIFEST_FILENAME,):
+        source = os.path.join(rollback, relative)
+        target = os.path.join(ctx.install_dir, relative)
+        if not os.path.isfile(source):
+            raise InstallError(f"payload rollback is incomplete: {relative}")
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        shutil.copy2(source, target)
+    ok, detail = verify_payload_manifest(ctx)
+    if not ok:
+        raise InstallError(f"restored payload integrity check failed: {detail}")
+
+
+def finalize_payload_transaction(ctx: InstallContext) -> None:
+    """Remove the short-lived staged payload and rollback only after success."""
+    shutil.rmtree(payload_transaction_dir(ctx), ignore_errors=True)
 
 
 def _sha256_text(value: str) -> str:
