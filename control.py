@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -150,6 +151,26 @@ def status(ctx: common.InstallContext) -> dict:
     }
 
 
+def _drained_runtime(ctx: common.InstallContext) -> dict:
+    """Require a live, integral listener with no active Responses before mutation."""
+    integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
+    if not integrity_ok:
+        raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
+    listeners = common.verified_proxy_listener_pids(ctx)
+    if len(listeners) != 1:
+        raise common.InstallError(
+            f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
+        )
+    runtime = _runtime_metrics(ctx)
+    active = runtime.get("active_responses") if isinstance(runtime, dict) else None
+    if isinstance(active, bool) or not isinstance(active, int) or active != 0:
+        observed = "unavailable" if active is None else str(active)
+        raise common.InstallError(
+            f"refusing mutation while active Responses are not proven drained (active_responses={observed})"
+        )
+    return {"listener": listeners[0], "runtime": runtime}
+
+
 def reload(
     ctx: common.InstallContext,
     timeout_seconds: float = 30.0,
@@ -162,22 +183,18 @@ def reload(
     zero active requests, refuse by default; ``force_active_responses`` exists
     only for an explicitly authorized, controlled interruption.
     """
-    integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
-    if not integrity_ok:
-        raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
-    listeners = common.verified_proxy_listener_pids(ctx)
-    if len(listeners) != 1:
-        raise common.InstallError(
-            f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
-        )
-    runtime = _runtime_metrics(ctx)
-    active = runtime.get("active_responses") if isinstance(runtime, dict) else None
-    if not force_active_responses and (isinstance(active, bool) or not isinstance(active, int) or active != 0):
-        observed = "unavailable" if active is None else str(active)
-        raise common.InstallError(
-            f"refusing reload while active Responses are not proven drained (active_responses={observed})"
-        )
-    old_pid = listeners[0]
+    if force_active_responses:
+        integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
+        if not integrity_ok:
+            raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
+        listeners = common.verified_proxy_listener_pids(ctx)
+        if len(listeners) != 1:
+            raise common.InstallError(
+                f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
+            )
+        old_pid = listeners[0]
+    else:
+        old_pid = _drained_runtime(ctx)["listener"]
     common.terminate_pid(old_pid)
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
@@ -190,9 +207,58 @@ def reload(
     )
 
 
+def upgrade_from_stage(ctx: common.InstallContext, stage: str, timeout_seconds: float = 30.0) -> dict[str, int | str]:
+    """Commit a pre-verified staged payload only during a proven drain window.
+
+    The old listener remains active until the new payload is fully staged.  The
+    final drain proof immediately precedes the atomic payload commit; then the
+    watchdog replaces exactly that verified listener.  A failed replacement rolls
+    the declared payload back before surfacing an error.
+    """
+    staged_version = Path(stage, "VERSION").read_text(encoding="utf-8").strip()
+    if not staged_version:
+        raise common.InstallError("staged payload has no release version")
+    old_pid = _drained_runtime(ctx)["listener"]
+    common.commit_payload_transaction(ctx, stage)
+    try:
+        common.terminate_pid(old_pid)
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            listeners = common.verified_proxy_listener_pids(ctx)
+            for pid in listeners:
+                if pid == old_pid:
+                    continue
+                runtime = _runtime_metrics(ctx)
+                if isinstance(runtime, dict) and runtime.get("release") == staged_version:
+                    common.finalize_payload_transaction(ctx)
+                    return {"old_pid": old_pid, "new_pid": pid, "release": staged_version}
+            time.sleep(0.1)
+    except Exception as exc:
+        try:
+            common.restore_payload_transaction(ctx)
+        except Exception as rollback_exc:
+            raise common.InstallError(
+                f"upgrade replacement failed and payload rollback failed: {rollback_exc}"
+            ) from exc
+        common.finalize_payload_transaction(ctx)
+        raise common.InstallError(f"upgrade replacement failed; payload restored: {exc}") from exc
+    try:
+        common.restore_payload_transaction(ctx)
+    except Exception as rollback_exc:
+        raise common.InstallError(
+            f"watchdog replacement timed out and payload rollback failed: {rollback_exc}"
+        ) from rollback_exc
+    common.finalize_payload_transaction(ctx)
+    raise common.InstallError(
+        f"watchdog did not replace verified proxy listener {old_pid} with release {staged_version} "
+        f"within {timeout_seconds:g}s; payload restored"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Control the installed Codex DMX Proxy.")
-    parser.add_argument("command", choices=("status", "enable", "disable", "reload", "adopt-aigw"))
+    parser.add_argument("command", choices=("status", "enable", "disable", "reload", "adopt-aigw", "upgrade"))
+    parser.add_argument("--stage", help="validated payload stage created by install.py --stage-only")
     parser.add_argument("--aigw-account", default="dmx", help="AIGW account ID for adopt-aigw")
     parser.add_argument("--direct-url", default=common.DEFAULT_UPSTREAM + "/v1", help="direct Responses endpoint for adopt-aigw")
     parser.add_argument("--json", action="store_true", dest="as_json")
@@ -244,6 +310,19 @@ def main() -> None:
         except common.InstallError as exc:
             raise SystemExit(f"ERROR: {exc}") from exc
         print(json.dumps(evidence, sort_keys=True) if args.as_json else f"reloaded verified proxy listener: {evidence['old_pid']} -> {evidence['new_pid']}")
+        return
+
+    if args.command == "upgrade":
+        if not args.stage:
+            raise SystemExit("ERROR: upgrade requires --stage")
+        try:
+            evidence = upgrade_from_stage(ctx, args.stage, timeout_seconds=args.timeout_seconds)
+        except (common.InstallError, OSError) as exc:
+            raise SystemExit(f"ERROR: {exc}") from exc
+        print(json.dumps(evidence, sort_keys=True) if args.as_json else (
+            f"upgraded verified proxy listener: {evidence['old_pid']} -> {evidence['new_pid']} "
+            f"(release {evidence['release']})"
+        ))
         return
 
     try:
