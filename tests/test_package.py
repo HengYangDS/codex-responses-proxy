@@ -187,6 +187,46 @@ class TestManagedRouteState(unittest.TestCase):
             self.assertFalse((log_dir / "dmx-watchdog.err.log").exists())
             self.assertEqual(retained.read_text(encoding="utf-8"), "structured retained log")
 
+    def test_staged_payload_commit_preserves_aigw_route_state_and_swaps_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._managed_context(Path(tmp))
+            install.copy_payload(ctx)
+            state = common.make_aigw_install_state(
+                ctx,
+                aigw_config_path=str(Path(tmp) / "aigw.toml"),
+                account="dmx",
+                direct_url="https://www.dmxapi.cn/v1",
+            )
+            common.write_install_state(ctx, state)
+            before_state = Path(common.install_state_path(ctx)).read_text(encoding="utf-8")
+            before_manifest = Path(common.payload_manifest_path(ctx)).read_text(encoding="utf-8")
+
+            stage = common.stage_payload_transaction(ctx, ROOT)
+            Path(stage, "VERSION").write_text("9.9.9\n", encoding="utf-8")
+            common.write_payload_manifest(
+                common.InstallContext(
+                    home=ctx.home,
+                    install_dir=stage,
+                    proxy_script=str(Path(stage) / "proxy" / "dmx_responses_proxy.py"),
+                    watchdog_script=str(Path(stage) / "watchdog" / "watchdog.py"),
+                    python=ctx.python,
+                    codex_config=ctx.codex_config,
+                    log_dir=ctx.log_dir,
+                )
+            )
+
+            common.commit_payload_transaction(ctx, stage)
+
+            self.assertEqual(Path(ctx.install_dir, "VERSION").read_text(encoding="utf-8"), "9.9.9\n")
+            self.assertEqual(Path(common.install_state_path(ctx)).read_text(encoding="utf-8"), before_state)
+            self.assertNotEqual(Path(common.payload_manifest_path(ctx)).read_text(encoding="utf-8"), before_manifest)
+            ok, detail = common.verify_payload_manifest(ctx)
+            self.assertTrue(ok, detail)
+            common.restore_payload_transaction(ctx)
+            self.assertEqual(Path(ctx.install_dir, "VERSION").read_text(encoding="utf-8"), Path(ROOT, "VERSION").read_text(encoding="utf-8"))
+            common.finalize_payload_transaction(ctx)
+            self.assertFalse(Path(common.payload_transaction_dir(ctx)).exists())
+
     def test_aigw_owned_proxy_route_is_never_rewritten_or_adopted(self):
         with tempfile.TemporaryDirectory() as tmp:
             ctx = self._managed_context(Path(tmp))
@@ -308,6 +348,41 @@ class TestManagedRouteState(unittest.TestCase):
             result = control.reload(ctx, timeout_seconds=0.1, force_active_responses=True)
         self.assertEqual(result, {"old_pid": 12345, "new_pid": 54321})
         terminate.assert_called_once_with(12345)
+
+    def test_upgrade_refuses_active_responses_before_payload_commit(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        stage = Path(tempfile.mkdtemp())
+        (stage / "VERSION").write_text("9.9.9\n", encoding="utf-8")
+        with (
+            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", return_value={"active_responses": 1}),
+            mock.patch.object(common, "commit_payload_transaction") as commit,
+        ):
+            with self.assertRaisesRegex(common.InstallError, "not proven drained"):
+                control.upgrade_from_stage(ctx, str(stage))
+        commit.assert_not_called()
+
+    def test_upgrade_rolls_back_when_watchdog_does_not_replace_listener(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        stage = Path(tempfile.mkdtemp())
+        (stage / "VERSION").write_text("9.9.9\n", encoding="utf-8")
+        runtime = {"active_responses": 0}
+        with (
+            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", return_value=runtime),
+            mock.patch.object(common, "commit_payload_transaction") as commit,
+            mock.patch.object(common, "restore_payload_transaction") as restore,
+            mock.patch.object(common, "finalize_payload_transaction") as finalize,
+            mock.patch.object(common, "terminate_pid"),
+            mock.patch.object(control.time, "monotonic", side_effect=[0.0, 1.0]),
+        ):
+            with self.assertRaisesRegex(common.InstallError, "payload restored"):
+                control.upgrade_from_stage(ctx, str(stage), timeout_seconds=0.1)
+        commit.assert_called_once_with(ctx, str(stage))
+        restore.assert_called_once_with(ctx)
+        finalize.assert_called_once_with(ctx)
 
     def test_build_context_honors_codex_home(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"CODEX_HOME": str(Path(tmp) / "codex-home")}, clear=False):
