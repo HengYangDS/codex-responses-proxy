@@ -25,9 +25,11 @@ work that has not yet been tagged.
 - Record the proxy source SHA-256 captured when the listener loaded the payload,
   so loopback health distinguishes a new on-disk deployment from a running old
   process.
-- Refuse `control.py reload` unless loopback health proves zero active Responses
-  requests. An explicit `--force-active-responses` flag is required for an
-  authorized interruption.
+- Replace the single-sample reload gate with an atomic loopback drain barrier.
+  It rejects new Responses requests while admitted work finishes, requires the
+  same listener to report `draining=true` and `active_responses=0` before
+  replacement, and fails open through a bounded lease if lifecycle control
+  disappears.
 - Emit a terminal SSE `error` event when a streaming request exhausts classified
   DMX HTTP 477 empty-response retries; non-streaming callers retain retryable
   HTTP 503 with `Retry-After: 3`.
@@ -40,8 +42,9 @@ work that has not yet been tagged.
 
 ### Verified
 
-- Add deterministic offline transport coverage for exhausted pre-content SSE
-  recovery and for bounded, redacted proxy and watchdog logging.
+- Add deterministic offline transport coverage for exhausted pre-content SSE,
+  bounded/redacted logging, drain admission rejection, in-flight completion,
+  timeout rollback, and fail-open drain-lease expiry.
 
 ## [1.0.15] - 2026-07-18
 
