@@ -188,6 +188,21 @@ class TestManagedRouteState(unittest.TestCase):
             self.assertFalse((log_dir / "dmx-watchdog.err.log").exists())
             self.assertEqual(retained.read_text(encoding="utf-8"), "structured retained log")
 
+    def test_copy_payload_removes_legacy_raw_request_captures_but_preserves_bounded_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._managed_context(Path(tmp))
+            log_dir = Path(ctx.log_dir)
+            log_dir.mkdir(parents=True)
+            capture = log_dir / "reject-400-1700000000.json"
+            capture.write_text('{"input":"legacy raw request"}\n', encoding="utf-8")
+            retained = log_dir / "dmx-responses-proxy.log"
+            retained.write_text("structured retained log", encoding="utf-8")
+
+            install.copy_payload(ctx)
+
+            self.assertFalse(capture.exists())
+            self.assertEqual(retained.read_text(encoding="utf-8"), "structured retained log")
+
     def test_staged_payload_commit_preserves_aigw_route_state_and_swaps_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             ctx = self._managed_context(Path(tmp))
