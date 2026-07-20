@@ -15,9 +15,12 @@ required = [
     "permissions:\n  contents: read",
     "runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-verify-macos-arm64]",
     "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
-    "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
     "python-version: [\"3.12\", \"3.13\", \"3.14\"]",
-    "python tests/test_package.py", "check_release_metadata.py --allow-unpublished-history",
+    'python="/opt/homebrew/bin/python${{ matrix.python-version }}"',
+    '"$python" -m compileall -q',
+    '"$python" tests/test_package.py',
+    'python=/opt/homebrew/bin/python3.14',
+    '"$python" scripts/check_release_metadata.py --allow-unpublished-history',
     "test-github-provider-projection.sh", "test-gitlab-tagging.sh", "test-github-tagging.sh", "test-publish-gitlab-release.sh",
 ]
 for token in required:
@@ -29,6 +32,8 @@ if "pull_request:" in text or "pull_request_target:" in text:
     raise SystemExit("verification workflow must not execute pull-request workflow code")
 if "ubuntu-24.04" in text or "codex-dmx-proxy-github-release-macos-arm64" in text:
     raise SystemExit("verification workflow must use only its dedicated trusted runner")
+if "actions/setup-python@" in text:
+    raise SystemExit("self-hosted verification must use the declared Homebrew Python matrix")
 if "@main" in text or "@master" in text:
     raise SystemExit("GitHub Actions must use immutable action revisions")
 print("GitHub Actions verification contract: OK")
