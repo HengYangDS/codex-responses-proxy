@@ -111,8 +111,9 @@ python3 ~/.codex/dmx-proxy/control.py disable
 # Replace one drained, verified local listener; this briefly interrupts proxy traffic
 python3 ~/.codex/dmx-proxy/control.py reload --json
 
-# Only after explicit authorization: interrupt active local Responses
-python3 ~/.codex/dmx-proxy/control.py reload --force-active-responses --json
+# Stage a verified payload, then perform the same drain-protected replacement
+python3 install.py --stage-only
+python3 ~/.codex/dmx-proxy/control.py upgrade --stage <reported-stage> --json
 
 # Read-only payload and loaded-listener provenance evidence
 python3 ~/.codex/dmx-proxy/governance.py --json
@@ -124,11 +125,14 @@ python3 uninstall.py
 python3 uninstall.py --purge
 ```
 
-`reload` validates the installed payload and refuses unless loopback health proves
-that no Responses request is active. It terminates only the verified listener and
-requires the watchdog to prove replacement with a new process ID. Use
-`--force-active-responses` only after explicit authorization to interrupt active
-local traffic. It never touches Codex session files.
+`reload` and `upgrade` first place the loopback listener into drain mode. The
+listener then rejects new `/v1/responses` requests with retryable HTTP 503 while
+already admitted requests finish. Only after the same listener reports
+`draining=true` and `active_responses=0` does lifecycle control replace it. A
+bounded drain lease reopens admission if a controller crashes or disconnects;
+an ordinary drain timeout likewise changes no payload. The commands
+terminate only a verified listener, require the watchdog to prove a new process
+ID, and never touch Codex session files.
 
 `governance.py --json` is read-only. It reports manifest integrity, route
 authority, verified listener identity, and the loaded proxy source SHA-256 when
@@ -145,6 +149,11 @@ outcomes. `last_failure` records only a stable class and Unix timestamp. It
 never includes request bodies, tokens, credentials, headers, prompts, or
 upstream error payloads. The endpoint is read-only and is available only at
 `GET /healthz` on the loopback listener; it is not a remote monitoring API.
+`runtime.draining` and `runtime.active_responses` together expose the lifecycle
+barrier: while draining is true, no new Responses request may enter the active
+set. `runtime.drain_lease_remaining_seconds` makes the fail-open lease visible.
+The loopback-only `POST /control/drain` and `DELETE /control/drain`
+endpoints are lifecycle internals used by `control.py`, not general APIs.
 
 ### Log retention and diagnostic safety
 
