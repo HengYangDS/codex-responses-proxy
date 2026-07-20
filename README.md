@@ -126,11 +126,14 @@ python3 uninstall.py --purge
 ```
 
 `reload` and `upgrade` first place the loopback listener into drain mode. The
-listener then rejects new `/v1/responses` requests with retryable HTTP 503 while
-already admitted requests finish. Only after the same listener reports
+controller first waits for a five-second zero-active quiet window **without
+closing admission**. It then places the listener into drain mode, which rejects
+new `/v1/responses` requests with retryable HTTP 503 while already admitted
+requests finish. Only after the same listener reports
 `draining=true` and `active_responses=0` does lifecycle control replace it. A
 bounded drain lease reopens admission if a controller crashes or disconnects;
-an ordinary drain timeout likewise changes no payload. The commands
+if the quiet window does not appear, lifecycle control refuses without starting
+drain; an ordinary drain timeout likewise changes no payload. The commands
 terminate only a verified listener, require the watchdog to prove a new process
 ID, and never touch Codex session files.
 

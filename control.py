@@ -19,6 +19,9 @@ sys.path.insert(0, HERE)
 from platform_adapters import pick_adapter, common  # noqa: E402
 
 
+QUIESCENCE_SECONDS = 5.0
+
+
 def _context() -> common.InstallContext:
     codex_home = common.codex_home()
     home = os.path.dirname(codex_home)
@@ -175,20 +178,71 @@ def _set_listener_drain(
     return {"listener": listeners[0], "runtime": payload}
 
 
+def _wait_for_quiescent_listener(
+    ctx: common.InstallContext,
+    timeout_seconds: float,
+    *,
+    quiet_seconds: float = QUIESCENCE_SECONDS,
+) -> dict:
+    """Wait for a stable idle window without closing Responses admission.
+
+    This is deliberately a *preflight*, not a weak substitute for atomic drain.
+    Waiting until the listener is quiet keeps normal user traffic fully serving.
+    Only after the quiet window is proven do we close admission atomically; that
+    reduces maintenance-visible 503s from a busy listener to the unavoidable
+    final handoff race.
+    """
+    if timeout_seconds <= 0:
+        raise common.InstallError("drain timeout must be positive")
+    if quiet_seconds <= 0:
+        raise common.InstallError("quiescence window must be positive")
+    integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
+    if not integrity_ok:
+        raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
+    listeners = common.verified_proxy_listener_pids(ctx)
+    if len(listeners) != 1:
+        raise common.InstallError(
+            f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
+        )
+    old_pid = listeners[0]
+    deadline = time.monotonic() + timeout_seconds
+    quiet_started_at: float | None = None
+    while time.monotonic() < deadline:
+        if common.verified_proxy_listener_pids(ctx) != [old_pid]:
+            raise common.InstallError("verified listener changed during quiescence preflight; refusing lifecycle mutation")
+        runtime = _runtime_metrics(ctx)
+        active = runtime.get("active_responses") if isinstance(runtime, dict) else None
+        draining = runtime.get("draining") if isinstance(runtime, dict) else None
+        if draining is False and isinstance(active, int) and not isinstance(active, bool) and active == 0:
+            now = time.monotonic()
+            if quiet_started_at is not None and now - quiet_started_at >= quiet_seconds:
+                return {"listener": old_pid, "runtime": runtime}
+            quiet_started_at = now
+        else:
+            quiet_started_at = None
+        time.sleep(0.1)
+    raise common.InstallError(
+        f"listener did not remain quiescent for {quiet_seconds:g}s within {timeout_seconds:g}s; "
+        "no drain was started"
+    )
+
+
 def _drain_listener(ctx: common.InstallContext, timeout_seconds: float) -> dict:
-    """Close admission then wait for the same verified listener to reach zero.
+    """Quiesce first, then close admission and prove the same listener drained.
 
     The listener owns the latch and counter under one lock.  Thus an acknowledged
     snapshot with ``draining=true`` and ``active_responses=0`` proves that no new
     Responses request can enter before the listener is terminated.
     """
-    if timeout_seconds <= 0:
-        raise common.InstallError("drain timeout must be positive")
-    integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
-    if not integrity_ok:
-        raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
+    quiescent = _wait_for_quiescent_listener(ctx, timeout_seconds)
+    old_pid = quiescent["listener"]
     baseline = _set_listener_drain(ctx, enabled=True, lease_seconds=timeout_seconds + 5)
-    old_pid = baseline["listener"]
+    if baseline["listener"] != old_pid:
+        try:
+            _set_listener_drain(ctx, enabled=False)
+        except common.InstallError:
+            pass
+        raise common.InstallError("verified listener changed while admission was closing; service restored to admission")
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         listeners = common.verified_proxy_listener_pids(ctx)

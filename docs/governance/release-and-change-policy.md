@@ -56,11 +56,12 @@ URLs, namespace, project ID, default branch, or release history.
 
 `control.py status` and `governance.py` are read-only. `reload` and staged
 upgrade require a user-visible warning plus post-replacement identity proof.
-They are drain-first operations: the listener closes
-Responses admission, allows already admitted work to finish, and may be replaced
-only after its loopback health reports `draining=true` with
+They first wait for a bounded zero-active quiet window without closing
+Responses admission. They then close admission, allow already admitted work to
+finish, and may be replaced only after loopback health reports `draining=true` with
 `active_responses=0`. A timeout restores admission without committing a staged
-payload; a bounded listener lease also fails open if the controller disappears.
+payload; failure to find the quiet window starts no drain; a bounded listener
+lease also fails open if the controller disappears.
 Route changes are owned by AIGW whenever its marked provider block is
 present.
 
