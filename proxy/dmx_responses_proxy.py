@@ -39,6 +39,7 @@ Design guarantees
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -107,14 +108,25 @@ RESPONSE_FAILED_COMPACTION_BUDGET = int(
 RESPONSE_FAILED_COMPACTION_RATIO_DENOMINATOR = 2
 RESPONSE_FAILED_MAX_STAGES = max(0, int(os.environ.get("DMX_RESPONSE_FAILED_MAX_STAGES", "3")))
 _RESPONSES_SEM = threading.BoundedSemaphore(max(1, RESPONSES_MAX_CONCURRENCY))
-_ACTIVE_LOCK = threading.Lock()
+# The admission gate and active counter deliberately share one lock.  A drain
+# transition must be atomic with admission: after ``draining`` becomes true,
+# no later request may increment ``active_responses``.  Merely sampling an
+# active counter before a reload leaves a window for a new SSE request to enter.
+_RESPONSE_GATE_LOCK = threading.Lock()
 _ACTIVE_RESPONSES = 0
+_DRAINING = False
+_DRAIN_GENERATION = 0
+_DRAIN_DEADLINE = None
+_MIN_DRAIN_LEASE_SECONDS = 1
+_MAX_DRAIN_LEASE_SECONDS = 900
 _REQUEST_SEQ = 0
 _STARTED_AT = time.time()
 _METRICS_LOCK = threading.Lock()
 _COUNTERS = {
     "responses_received": 0,
     "responses_completed": 0,
+    "responses_rejected_while_draining": 0,
+    "drain_leases_expired": 0,
     "responses_local_queue_timeouts": 0,
     "streams_completed": 0,
     "streams_incomplete": 0,
@@ -316,7 +328,7 @@ def _log(msg: str) -> None:
 
 def _next_request_id() -> int:
     global _REQUEST_SEQ
-    with _ACTIVE_LOCK:
+    with _RESPONSE_GATE_LOCK:
         _REQUEST_SEQ += 1
         return _REQUEST_SEQ
 
@@ -347,8 +359,12 @@ def _record_failure(classification: str) -> None:
 
 def runtime_status() -> dict:
     """Return a machine-readable, secret-free local reliability snapshot."""
-    with _ACTIVE_LOCK:
+    with _RESPONSE_GATE_LOCK:
+        _expire_drain_locked()
         active_responses = _ACTIVE_RESPONSES
+        draining = _DRAINING
+        drain_generation = _DRAIN_GENERATION
+        drain_lease_remaining_seconds = _drain_lease_remaining_locked()
     with _METRICS_LOCK:
         counters = dict(sorted(_COUNTERS.items()))
         upstream = dict(sorted(_UPSTREAM_CLASSIFICATIONS.items()))
@@ -358,6 +374,9 @@ def runtime_status() -> dict:
         "source_sha256": source_sha256(),
         "uptime_seconds": max(0, int(time.time() - _STARTED_AT)),
         "active_responses": active_responses,
+        "draining": draining,
+        "drain_generation": drain_generation,
+        "drain_lease_remaining_seconds": drain_lease_remaining_seconds,
         "counters": counters,
         "upstream_classifications": upstream,
         "last_failure": last_failure,
@@ -366,14 +385,86 @@ def runtime_status() -> dict:
 
 def _reset_runtime_metrics_for_test() -> None:
     """Reset process-local observability state for deterministic unit tests."""
-    global _ACTIVE_RESPONSES, _LAST_FAILURE
-    with _ACTIVE_LOCK:
+    global _ACTIVE_RESPONSES, _DRAINING, _DRAIN_GENERATION, _DRAIN_DEADLINE, _LAST_FAILURE
+    with _RESPONSE_GATE_LOCK:
         _ACTIVE_RESPONSES = 0
+        _DRAINING = False
+        _DRAIN_GENERATION = 0
+        _DRAIN_DEADLINE = None
     with _METRICS_LOCK:
         for name in _COUNTERS:
             _COUNTERS[name] = 0
         _UPSTREAM_CLASSIFICATIONS.clear()
         _LAST_FAILURE = None
+
+
+def _bounded_drain_lease_seconds(value: object | None) -> int:
+    """Return a bounded admission lease without making control startup fragile."""
+    try:
+        seconds = int(value) if value is not None else 30
+    except (TypeError, ValueError):
+        return 30
+    return min(_MAX_DRAIN_LEASE_SECONDS, max(_MIN_DRAIN_LEASE_SECONDS, seconds))
+
+
+def _expire_drain_locked() -> None:
+    """Fail open after an abandoned lifecycle operation's bounded lease."""
+    global _DRAINING, _DRAIN_GENERATION, _DRAIN_DEADLINE
+    if _DRAINING and _DRAIN_DEADLINE is not None and time.monotonic() >= _DRAIN_DEADLINE:
+        _DRAINING = False
+        _DRAIN_DEADLINE = None
+        _DRAIN_GENERATION += 1
+        _record_counter("drain_leases_expired")
+        _record_failure("drain_lease_expired")
+
+
+def _drain_lease_remaining_locked() -> int | None:
+    """Return a rounded-up lease horizon for operational inspection."""
+    if not _DRAINING or _DRAIN_DEADLINE is None:
+        return None
+    return max(0, int(_DRAIN_DEADLINE - time.monotonic() + 0.999))
+
+
+def _set_draining(enabled: bool, *, lease_seconds: object | None = None) -> dict:
+    """Atomically change local Responses admission and return its snapshot.
+
+    This is intentionally process-local.  A replacement listener starts in the
+    serving state, so a successful reload cannot accidentally retain a stale
+    drain latch from the prior process.
+    """
+    global _DRAINING, _DRAIN_GENERATION, _DRAIN_DEADLINE
+    with _RESPONSE_GATE_LOCK:
+        _expire_drain_locked()
+        if enabled:
+            if not _DRAINING:
+                _DRAIN_GENERATION += 1
+            _DRAINING = True
+            _DRAIN_DEADLINE = time.monotonic() + _bounded_drain_lease_seconds(lease_seconds)
+        elif _DRAINING:
+            _DRAINING = enabled
+            _DRAIN_DEADLINE = None
+            _DRAIN_GENERATION += 1
+        return {
+            "draining": _DRAINING,
+            "drain_generation": _DRAIN_GENERATION,
+            "active_responses": _ACTIVE_RESPONSES,
+            "drain_lease_remaining_seconds": _drain_lease_remaining_locked(),
+        }
+
+
+def _drain_snapshot() -> tuple[bool, int, int]:
+    """Return an admission-consistent drain/active snapshot."""
+    with _RESPONSE_GATE_LOCK:
+        _expire_drain_locked()
+        return _DRAINING, _DRAIN_GENERATION, _ACTIVE_RESPONSES
+
+
+def _is_loopback_client(address: str) -> bool:
+    """Require the lifecycle control surface to remain local even if hosted wider."""
+    try:
+        return ipaddress.ip_address(address).is_loopback
+    except ValueError:
+        return False
 
 
 def _sanitization_count(note: str, field: str) -> int:
@@ -1316,6 +1407,30 @@ class Handler(BaseHTTPRequestHandler):
         acquired = False
         global _ACTIVE_RESPONSES
         if is_responses:
+            # Admission is guarded before semaphore acquisition.  Once drain is
+            # enabled this closes the race against a lifecycle controller that
+            # has observed zero active requests and is about to replace us.
+            with _RESPONSE_GATE_LOCK:
+                _expire_drain_locked()
+                draining = _DRAINING
+            if draining:
+                _record_counter("responses_rejected_while_draining")
+                _record_failure("draining")
+                msg = json.dumps({
+                    "error": {
+                        "message": "DMX proxy is draining active Responses; retry the turn shortly",
+                        "type": "server_busy",
+                        "code": "proxy_draining",
+                    }
+                }, separators=(",", ":")).encode()
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Retry-After", "1")
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                self.wfile.write(msg)
+                _log(f"req={request_id} event=responses_rejected_while_draining path={_safe_request_path(self.path)}")
+                return
             acquired = _RESPONSES_SEM.acquire(timeout=RESPONSES_QUEUE_TIMEOUT)
             if not acquired:
                 _record_counter("responses_local_queue_timeouts")
@@ -1335,7 +1450,30 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(msg)
                 _log(f"req={request_id} event=local_queue_timeout path={_safe_request_path(self.path)}")
                 return
-            with _ACTIVE_LOCK:
+            # The drain latch may have changed while waiting for a concurrency
+            # slot.  Re-check and increment under the same lock; this makes the
+            # controller's observed drained snapshot an admission barrier.
+            with _RESPONSE_GATE_LOCK:
+                _expire_drain_locked()
+                if _DRAINING:
+                    _RESPONSES_SEM.release()
+                    _record_counter("responses_rejected_while_draining")
+                    _record_failure("draining")
+                    msg = json.dumps({
+                        "error": {
+                            "message": "DMX proxy is draining active Responses; retry the turn shortly",
+                            "type": "server_busy",
+                            "code": "proxy_draining",
+                        }
+                    }, separators=(",", ":")).encode()
+                    self.send_response(503)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Retry-After", "1")
+                    self.send_header("Content-Length", str(len(msg)))
+                    self.end_headers()
+                    self.wfile.write(msg)
+                    _log(f"req={request_id} event=responses_rejected_while_draining path={_safe_request_path(self.path)}")
+                    return
                 _ACTIVE_RESPONSES += 1
                 active_now = _ACTIVE_RESPONSES
             _log(
@@ -1651,7 +1789,7 @@ class Handler(BaseHTTPRequestHandler):
                     )
         finally:
             if acquired:
-                with _ACTIVE_LOCK:
+                with _RESPONSE_GATE_LOCK:
                     _ACTIVE_RESPONSES -= 1
                     active_now = _ACTIVE_RESPONSES
                 _RESPONSES_SEM.release()
@@ -1669,7 +1807,24 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _drain_control(self, enabled: bool):
+        """Toggle local admission only for a loopback lifecycle controller."""
+        if not _is_loopback_client(self.client_address[0]):
+            self.send_error(403, "drain control is available only from loopback")
+            return
+        lease = self.headers.get("X-DMX-Drain-Lease-Seconds") if enabled else None
+        payload = json.dumps(_set_draining(enabled, lease_seconds=lease), separators=(",", ":")).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_POST(self):
+        if self.path == "/control/drain":
+            self._drain_control(True)
+            return
         self._relay("POST")
 
     def do_GET(self):
@@ -1679,6 +1834,9 @@ class Handler(BaseHTTPRequestHandler):
         self._relay("GET")
 
     def do_DELETE(self):
+        if self.path == "/control/drain":
+            self._drain_control(False)
+            return
         self._relay("DELETE")
 
     def do_PATCH(self):

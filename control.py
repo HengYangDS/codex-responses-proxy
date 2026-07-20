@@ -130,6 +130,87 @@ def _runtime_metrics(ctx: common.InstallContext) -> dict | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _drain_request(ctx: common.InstallContext, *, enabled: bool, lease_seconds: float | None = None) -> dict:
+    """Set the listener's local admission latch through its loopback control API."""
+    method = "POST" if enabled else "DELETE"
+    headers = {"Accept": "application/json"}
+    if enabled and lease_seconds is not None:
+        headers["X-DMX-Drain-Lease-Seconds"] = str(max(1, int(lease_seconds)))
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{ctx.port}/control/drain",
+        headers=headers,
+        method=method,
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=2) as response:
+            if response.status != 200:
+                raise common.InstallError(f"listener drain control returned HTTP {response.status}")
+            payload = json.loads(response.read())
+    except common.InstallError:
+        raise
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
+        raise common.InstallError("listener drain control is unavailable") from exc
+    if not isinstance(payload, dict):
+        raise common.InstallError("listener drain control returned an invalid response")
+    return payload
+
+
+def _set_listener_drain(
+    ctx: common.InstallContext,
+    *,
+    enabled: bool,
+    lease_seconds: float | None = None,
+) -> dict:
+    """Require the current verified listener to acknowledge an admission change."""
+    listeners = common.verified_proxy_listener_pids(ctx)
+    if len(listeners) != 1:
+        raise common.InstallError(
+            f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
+        )
+    payload = _drain_request(ctx, enabled=enabled, lease_seconds=lease_seconds)
+    observed = payload.get("draining")
+    if observed is not enabled:
+        raise common.InstallError("listener drain control did not reach the requested state")
+    return {"listener": listeners[0], "runtime": payload}
+
+
+def _drain_listener(ctx: common.InstallContext, timeout_seconds: float) -> dict:
+    """Close admission then wait for the same verified listener to reach zero.
+
+    The listener owns the latch and counter under one lock.  Thus an acknowledged
+    snapshot with ``draining=true`` and ``active_responses=0`` proves that no new
+    Responses request can enter before the listener is terminated.
+    """
+    if timeout_seconds <= 0:
+        raise common.InstallError("drain timeout must be positive")
+    integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
+    if not integrity_ok:
+        raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
+    baseline = _set_listener_drain(ctx, enabled=True, lease_seconds=timeout_seconds + 5)
+    old_pid = baseline["listener"]
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        listeners = common.verified_proxy_listener_pids(ctx)
+        if listeners != [old_pid]:
+            raise common.InstallError("verified listener changed during drain; refusing lifecycle mutation")
+        runtime = _runtime_metrics(ctx)
+        if not isinstance(runtime, dict):
+            time.sleep(0.1)
+            continue
+        active = runtime.get("active_responses")
+        if runtime.get("draining") is True and isinstance(active, int) and not isinstance(active, bool) and active == 0:
+            return {"listener": old_pid, "runtime": runtime}
+        time.sleep(0.1)
+    try:
+        _set_listener_drain(ctx, enabled=False)
+    except common.InstallError:
+        pass
+    raise common.InstallError(
+        f"listener did not drain active Responses within {timeout_seconds:g}s; service restored to admission"
+    )
+
+
 def status(ctx: common.InstallContext) -> dict:
     """Return non-secret runtime evidence for the installed projection."""
     integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
@@ -151,76 +232,44 @@ def status(ctx: common.InstallContext) -> dict:
     }
 
 
-def _drained_runtime(ctx: common.InstallContext) -> dict:
-    """Require a live, integral listener with no active Responses before mutation."""
-    integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
-    if not integrity_ok:
-        raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
-    listeners = common.verified_proxy_listener_pids(ctx)
-    if len(listeners) != 1:
-        raise common.InstallError(
-            f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
-        )
-    runtime = _runtime_metrics(ctx)
-    active = runtime.get("active_responses") if isinstance(runtime, dict) else None
-    if isinstance(active, bool) or not isinstance(active, int) or active != 0:
-        observed = "unavailable" if active is None else str(active)
-        raise common.InstallError(
-            f"refusing mutation while active Responses are not proven drained (active_responses={observed})"
-        )
-    return {"listener": listeners[0], "runtime": runtime}
-
-
 def reload(
     ctx: common.InstallContext,
     timeout_seconds: float = 30.0,
-    *,
-    force_active_responses: bool = False,
 ) -> dict[str, int]:
-    """Replace exactly one drained verified listener via its watchdog.
-
-    A reload interrupts active SSE Responses.  When loopback health cannot prove
-    zero active requests, refuse by default; ``force_active_responses`` exists
-    only for an explicitly authorized, controlled interruption.
-    """
-    if force_active_responses:
-        integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
-        if not integrity_ok:
-            raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
-        listeners = common.verified_proxy_listener_pids(ctx)
-        if len(listeners) != 1:
-            raise common.InstallError(
-                f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
-            )
-        old_pid = listeners[0]
-    else:
-        old_pid = _drained_runtime(ctx)["listener"]
-    common.terminate_pid(old_pid)
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline:
-        for pid in common.verified_proxy_listener_pids(ctx):
-            if pid != old_pid:
-                return {"old_pid": old_pid, "new_pid": pid}
-        time.sleep(0.1)
+    """Drain then replace exactly one verified listener via its watchdog."""
+    old_pid = _drain_listener(ctx, timeout_seconds)["listener"]
+    try:
+        common.terminate_pid(old_pid)
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            for pid in common.verified_proxy_listener_pids(ctx):
+                if pid != old_pid:
+                    return {"old_pid": old_pid, "new_pid": pid}
+            time.sleep(0.1)
+    except Exception:
+        try:
+            _set_listener_drain(ctx, enabled=False)
+        except common.InstallError:
+            pass
+        raise
+    try:
+        _set_listener_drain(ctx, enabled=False)
+    except common.InstallError:
+        pass
     raise common.InstallError(
-        f"watchdog did not replace verified proxy listener {old_pid} within {timeout_seconds:g}s"
+        f"watchdog did not replace verified proxy listener {old_pid} within {timeout_seconds:g}s; "
+        "service restored to admission"
     )
 
 
 def upgrade_from_stage(ctx: common.InstallContext, stage: str, timeout_seconds: float = 30.0) -> dict[str, int | str]:
-    """Commit a pre-verified staged payload only during a proven drain window.
-
-    The old listener remains active until the new payload is fully staged.  The
-    final drain proof immediately precedes the atomic payload commit; then the
-    watchdog replaces exactly that verified listener.  A failed replacement rolls
-    the declared payload back before surfacing an error.
-    """
+    """Drain, commit a pre-verified stage, then replace the verified listener."""
     staged_version = Path(stage, "VERSION").read_text(encoding="utf-8").strip()
     if not staged_version:
         raise common.InstallError("staged payload has no release version")
-    old_pid = _drained_runtime(ctx)["listener"]
-    common.commit_payload_transaction(ctx, stage)
+    old_pid = _drain_listener(ctx, timeout_seconds)["listener"]
     try:
+        common.commit_payload_transaction(ctx, stage)
         common.terminate_pid(old_pid)
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
@@ -235,12 +284,18 @@ def upgrade_from_stage(ctx: common.InstallContext, stage: str, timeout_seconds: 
             time.sleep(0.1)
     except Exception as exc:
         try:
-            common.restore_payload_transaction(ctx)
+            transaction = common.payload_transaction_dir(ctx)
+            if os.path.isdir(os.path.join(transaction, "rollback")):
+                common.restore_payload_transaction(ctx)
         except Exception as rollback_exc:
             raise common.InstallError(
                 f"upgrade replacement failed and payload rollback failed: {rollback_exc}"
             ) from exc
         common.finalize_payload_transaction(ctx)
+        try:
+            _set_listener_drain(ctx, enabled=False)
+        except common.InstallError:
+            pass
         raise common.InstallError(f"upgrade replacement failed; payload restored: {exc}") from exc
     try:
         common.restore_payload_transaction(ctx)
@@ -249,6 +304,10 @@ def upgrade_from_stage(ctx: common.InstallContext, stage: str, timeout_seconds: 
             f"watchdog replacement timed out and payload rollback failed: {rollback_exc}"
         ) from rollback_exc
     common.finalize_payload_transaction(ctx)
+    try:
+        _set_listener_drain(ctx, enabled=False)
+    except common.InstallError:
+        pass
     raise common.InstallError(
         f"watchdog did not replace verified proxy listener {old_pid} with release {staged_version} "
         f"within {timeout_seconds:g}s; payload restored"
@@ -263,11 +322,6 @@ def main() -> None:
     parser.add_argument("--direct-url", default=common.DEFAULT_UPSTREAM + "/v1", help="direct Responses endpoint for adopt-aigw")
     parser.add_argument("--json", action="store_true", dest="as_json")
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
-    parser.add_argument(
-        "--force-active-responses",
-        action="store_true",
-        help="interrupt active local Responses after explicit operator authorization",
-    )
     args = parser.parse_args()
     ctx = _context()
     state = common.load_install_state(ctx)
@@ -305,7 +359,6 @@ def main() -> None:
             evidence = reload(
                 ctx,
                 timeout_seconds=args.timeout_seconds,
-                force_active_responses=args.force_active_responses,
             )
         except common.InstallError as exc:
             raise SystemExit(f"ERROR: {exc}") from exc

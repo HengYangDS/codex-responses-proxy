@@ -54,9 +54,12 @@ URLs, namespace, project ID, default branch, or release history.
 
 ## Operational changes
 
-`control.py status` and `governance.py` are read-only. `reload` interrupts the
-local listener only after loopback health proves it is drained, and requires a
-user-visible warning plus post-replacement identity proof. An explicit
-`--force-active-responses` bypasses only the drain gate and requires separate
-operator authorization. Route changes are owned by AIGW whenever its marked
-provider block is present.
+`control.py status` and `governance.py` are read-only. `reload` and staged
+upgrade require a user-visible warning plus post-replacement identity proof.
+They are drain-first operations: the listener closes
+Responses admission, allows already admitted work to finish, and may be replaced
+only after its loopback health reports `draining=true` with
+`active_responses=0`. A timeout restores admission without committing a staged
+payload; a bounded listener lease also fails open if the controller disappears.
+Route changes are owned by AIGW whenever its marked provider block is
+present.
