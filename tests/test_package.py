@@ -8,6 +8,7 @@ of each platform's generated service definition (plist / systemd unit / task XML
 Run: python3 tests/test_package.py
 """
 
+import hashlib
 import os
 import sys
 import tempfile
@@ -135,6 +136,7 @@ class TestManagedRouteState(unittest.TestCase):
             ctx = self._managed_context(Path(tmp))
             install.copy_payload(ctx)
             self.assertTrue((Path(ctx.install_dir) / "control.py").is_file())
+            self.assertTrue((Path(ctx.install_dir) / "governance.py").is_file())
             self.assertTrue((Path(ctx.install_dir) / "platform_adapters" / "common.py").is_file())
 
     def test_copied_payload_has_a_tamper_evident_manifest(self):
@@ -255,6 +257,57 @@ class TestManagedRouteState(unittest.TestCase):
                 evidence = control.status(ctx)
             self.assertEqual(evidence["runtime"], runtime)
             self.assertNotIn("authorization", json.dumps(evidence).lower())
+
+    def test_installed_governance_reports_only_control_status_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._managed_context(root)
+            install.copy_payload(ctx)
+            governance = Path(ctx.install_dir) / "governance.py"
+            installed_control = Path(ctx.install_dir) / "control.py"
+            original = installed_control.read_text(encoding="utf-8")
+            installed_control.write_text(
+                original
+                + "\n\ndef status(ctx):\n"
+                + "    return {\"release\": \"fixture\", \"runtime\": {\"source_sha256\": \"a\" * 64}}\n",
+                encoding="utf-8",
+            )
+            env = dict(os.environ, CODEX_HOME=str(root / ".codex"))
+            result = subprocess.run(
+                [sys.executable, str(governance), "--json"],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                json.loads(result.stdout),
+                {"release": "fixture", "runtime": {"source_sha256": "a" * 64}},
+            )
+
+    def test_reload_refuses_active_responses_without_explicit_force(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
+            mock.patch.object(control, "_runtime_metrics", return_value={"active_responses": 1}),
+            mock.patch.object(common, "terminate_pid") as terminate,
+        ):
+            with self.assertRaisesRegex(common.InstallError, "not proven drained"):
+                control.reload(ctx)
+        terminate.assert_not_called()
+
+    def test_reload_force_flag_bypasses_only_the_drain_gate(self):
+        ctx = self._managed_context(Path(tempfile.mkdtemp()))
+        with (
+            mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
+            mock.patch.object(common, "verified_proxy_listener_pids", side_effect=[[12345], [54321]]),
+            mock.patch.object(control, "_runtime_metrics", return_value={"active_responses": 1}),
+            mock.patch.object(common, "terminate_pid") as terminate,
+        ):
+            result = control.reload(ctx, timeout_seconds=0.1, force_active_responses=True)
+        self.assertEqual(result, {"old_pid": 12345, "new_pid": 54321})
+        terminate.assert_called_once_with(12345)
 
     def test_build_context_honors_codex_home(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"CODEX_HOME": str(Path(tmp) / "codex-home")}, clear=False):
@@ -1074,6 +1127,11 @@ class TestProxySanitize(unittest.TestCase):
     def test_runtime_server_version_uses_version_file(self):
         self.assertEqual(self.p.release_version(), Path(ROOT, "VERSION").read_text(encoding="utf-8").strip())
 
+    def test_runtime_status_reports_loaded_source_sha256(self):
+        source = Path(ROOT, "proxy", "dmx_responses_proxy.py")
+        expected = hashlib.sha256(source.read_bytes()).hexdigest()
+        self.assertEqual(self.p.runtime_status()["source_sha256"], expected)
+
     def test_log_redacts_secrets_limits_line_length_and_removes_query_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "proxy.log"
@@ -1557,6 +1615,30 @@ class TestProxyTransport(unittest.TestCase):
         self.assertEqual(payload["error"]["code"], "dmx_empty_response_exhausted")
         self.assertEqual(payload["error"]["attempts"], 4)
 
+    def test_streaming_empty_response_exhaustion_emits_terminal_sse_error(self):
+        empty_response = (
+            b'{"error":{"message":"official provider returned an empty response",'
+            b'"type":"dmx_api_error","code":"empty_response"}}'
+        )
+        body = json.dumps({"stream": True, "input": []}, separators=(",", ":")).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy([(477, empty_response)] * 4, tmp)
+            try:
+                with mock.patch.object(self.p.time, "sleep", return_value=None):
+                    response = self._request(port, body)
+                    with response:
+                        payload = response.read()
+            finally:
+                cleanup()
+
+        self.assertEqual(received, [body] * 4)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.headers["Content-Type"], "text/event-stream")
+        self.assertNotIn("Retry-After", response.headers)
+        self.assertIn(b"event: error", payload)
+        self.assertIn(b'"code":"dmx_empty_response_exhausted"', payload)
+
     def test_drops_unreplayable_images_and_keeps_text_and_https(self):
         body = json.dumps({
             "input": [
@@ -1647,6 +1729,12 @@ class TestReleaseMetadata(unittest.TestCase):
             self.assertLess(releases.index(unreleased), releases.index(version_heading))
         else:
             self.assertGreater(version, "0.0.0")
+
+    def test_governance_surface_is_portable_and_read_only(self):
+        source = Path(ROOT, "governance.py").read_text(encoding="utf-8")
+        for forbidden in ("AIGW", "ChatGPT", "JetBrains", "subprocess", "write_text", "unlink", "sys.path.insert"):
+            self.assertNotIn(forbidden, source)
+        self.assertIn("control.status", source)
 
     def test_proxy_has_no_payload_or_header_dump_escape_hatch(self):
         source = Path(ROOT, "proxy", "dmx_responses_proxy.py").read_text(encoding="utf-8")

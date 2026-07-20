@@ -6,8 +6,27 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Add the portable, read-only `governance.py` evidence command to the installed
+  payload. It reports only the existing manifest, listener, route, and runtime
+  evidence; it does not inspect or modify AIGW, Codex history, credentials, or
+  the proxy listener.
+
 ### Fixed
 
+- Start the formal `1.0.22` source train instead of adopting the previously
+  installed `1.0.21` candidate as a release: its payload was recoverable, but
+  it lacked source-repository provenance and was therefore not publishable.
+- Record the proxy source SHA-256 captured when the listener loaded the payload,
+  so loopback health distinguishes a new on-disk deployment from a running old
+  process.
+- Refuse `control.py reload` unless loopback health proves zero active Responses
+  requests. An explicit `--force-active-responses` flag is required for an
+  authorized interruption.
+- Emit a terminal SSE `error` event when a streaming request exhausts classified
+  DMX HTTP 477 empty-response retries; non-streaming callers retain retryable
+  HTTP 503 with `Retry-After: 3`.
 - Return retryable HTTP 503 with `Retry-After: 3` when all pre-content SSE
   reconnect attempts are exhausted, rather than returning an empty successful
   stream that the client must classify as a disconnection.
