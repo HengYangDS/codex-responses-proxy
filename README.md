@@ -115,6 +115,9 @@ python3 ~/.codex/dmx-proxy/control.py reload --json
 python3 install.py --stage-only
 python3 ~/.codex/dmx-proxy/control.py upgrade --stage <reported-stage> --json
 
+# Apply a controller-only lifecycle fix without replacing an unchanged listener
+python3 /path/to/source/control.py apply-control-plane --json
+
 # Read-only payload and loaded-listener provenance evidence
 python3 ~/.codex/dmx-proxy/governance.py --json
 
@@ -125,17 +128,27 @@ python3 uninstall.py
 python3 uninstall.py --purge
 ```
 
-`reload` and `upgrade` first place the loopback listener into drain mode. The
-controller first waits for a five-second zero-active quiet window **without
-closing admission**. It then places the listener into drain mode, which rejects
-new `/v1/responses` requests with retryable HTTP 503 while already admitted
-requests finish. Only after the same listener reports
-`draining=true` and `active_responses=0` does lifecycle control replace it. A
-bounded drain lease reopens admission if a controller crashes or disconnects;
-if the quiet window does not appear, lifecycle control refuses without starting
-drain; an ordinary drain timeout likewise changes no payload. The commands
-terminate only a verified listener, require the watchdog to prove a new process
-ID, and never touch Codex session files.
+`reload` and `upgrade` first wait for a five-second zero-active quiet window
+**without closing admission**.
+
+`apply-control-plane` is intentionally different: it is a source-side
+controller repair, not a listener operation. Run it only from a committed,
+fully verified source checkout. It first proves every listener, watchdog,
+version, and support file is byte-identical to the verified live payload. It
+then transactionally updates only `control.py` and the manifest, reports the
+installed controller SHA-256, and leaves the verified listener and every active
+Responses stream undisturbed. Any listener-payload change must use `reload` or
+staged `upgrade` instead.
+
+The listener rejects new `/v1/responses` requests with retryable HTTP 503 only
+while drain is active, while already admitted requests finish. Only after the
+same listener reports `draining=true` and `active_responses=0` may lifecycle
+control make a replacement. A bounded drain lease reopens admission if a
+controller crashes or disconnects; if the quiet window does not appear,
+lifecycle control refuses without starting drain; an ordinary drain timeout
+likewise changes no payload. The commands terminate only a verified listener,
+require the watchdog to prove a new process ID when replacement is required,
+and never touch Codex session files.
 
 `governance.py --json` is read-only. It reports manifest integrity, route
 authority, verified listener identity, and the loaded proxy source SHA-256 when
