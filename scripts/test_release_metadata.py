@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "scripts" / "check_release_metadata.py"
 TAG_REFRESH = "git fetch --tags --force --prune --prune-tags origin"
+GITLAB_RUNNER_TAG = "tags: [codex-dmx-proxy-gitlab-ci]"
 
 
 def _run(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
@@ -111,10 +112,23 @@ def test_gitlab_release_metadata_gate_has_complete_history() -> None:
         raise SystemExit("verify-release-metadata must fetch complete Git history")
 
 
+def test_gitlab_ci_uses_only_the_project_runner_tag() -> None:
+    ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    if ci.count(GITLAB_RUNNER_TAG) != 4:
+        raise SystemExit("every Codex DMX Proxy GitLab job family must select its project runner tag")
+    for job in (".python-verify:", "verify-release-metadata:", "verify-release-tag:", "publish-gitlab-release:"):
+        start = ci.index(job)
+        next_job = ci.find("\n\n", start)
+        block = ci[start:next_job if next_job >= 0 else None]
+        if GITLAB_RUNNER_TAG not in block:
+            raise SystemExit(f"{job} must select the Codex DMX Proxy GitLab runner tag")
+
+
 def main() -> None:
     test_prune_tags_removes_deleted_remote_tag()
     test_gitlab_ci_refreshes_tags_before_every_release_gate()
     test_gitlab_release_metadata_gate_has_complete_history()
+    test_gitlab_ci_uses_only_the_project_runner_tag()
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     heading = f"## [{version}]"
