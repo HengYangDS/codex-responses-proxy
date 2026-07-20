@@ -13,7 +13,7 @@ text = Path(sys.argv[1]).read_text(encoding="utf-8")
 required = [
     "name: Verify", "push:", "workflow_dispatch:", "branches: [main]", 'tags: ["v*"]',
     "permissions:\n  contents: read",
-    "runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-verify-macos-arm64]",
+    "runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]",
     "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
     "python-version: [\"3.12\", \"3.13\", \"3.14\"]",
     'python="/opt/homebrew/bin/python${{ matrix.python-version }}"',
@@ -30,7 +30,7 @@ if "contents: write" in text:
     raise SystemExit("verification workflow must use read-only repository permissions")
 if "pull_request:" in text or "pull_request_target:" in text:
     raise SystemExit("verification workflow must not execute pull-request workflow code")
-if "ubuntu-24.04" in text or "codex-dmx-proxy-github-release-macos-arm64" in text:
+if "ubuntu-24.04" in text or "codex-dmx-proxy-github-verify-macos-arm64" in text or "codex-dmx-proxy-github-release-macos-arm64" in text:
     raise SystemExit("verification workflow must use only its dedicated trusted runner")
 if "actions/setup-python@" in text:
     raise SystemExit("self-hosted verification must use the declared Homebrew Python matrix")
