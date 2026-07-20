@@ -19,7 +19,7 @@ python scripts/check_release_metadata.py
 python scripts/check_markdown_presentation.py
 python scripts/test_release_metadata.py
 for py in python3.12 python3.13 python3.14; do
-  "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py tests scripts
+  "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
   "$py" tests/test_package.py
 done
 ```
