@@ -43,7 +43,9 @@ import ipaddress
 import json
 import os
 import re
+import select
 import stat
+import subprocess
 import sys
 import time
 import socket
@@ -107,6 +109,21 @@ RESPONSE_FAILED_COMPACTION_BUDGET = int(
 # accepted by live probes.
 RESPONSE_FAILED_COMPACTION_RATIO_DENOMINATOR = 2
 RESPONSE_FAILED_MAX_STAGES = max(0, int(os.environ.get("DMX_RESPONSE_FAILED_MAX_STAGES", "3")))
+# DMX's 477 ``empty_response`` is not a client validation error.  Repeating an
+# identical opaque-history replay is both slow and harmful: Codex retries the
+# same turn, and every proxy retry repeats the provider's known-bad input.  Keep
+# a short process-local negative cache keyed only by a SHA-256 digest; no request
+# body or secret-bearing header is retained.
+EMPTY_RESPONSE_COOLDOWN_SECONDS = _bounded_env_int(
+    "DMX_EMPTY_RESPONSE_COOLDOWN_SECONDS", 30, 1, 300,
+)
+EMPTY_RESPONSE_RETRY_ATTEMPTS = _bounded_env_int(
+    "DMX_EMPTY_RESPONSE_RETRY_ATTEMPTS", 2, 1, 4,
+)
+COMPAT_PROJECTION_BUDGET = _bounded_env_int(
+    "DMX_COMPAT_PROJECTION_BUDGET", 4 * 1024 * 1024, 4 * 1024, 4 * 1024 * 1024,
+)
+ROLLING_HANDOFF_READY_TIMEOUT = float(os.environ.get("DMX_ROLLING_HANDOFF_READY_TIMEOUT", "10"))
 _RESPONSES_SEM = threading.BoundedSemaphore(max(1, RESPONSES_MAX_CONCURRENCY))
 # The admission gate and active counter deliberately share one lock.  A drain
 # transition must be atomic with admission: after ``draining`` becomes true,
@@ -145,6 +162,12 @@ _COUNTERS = {
 }
 _UPSTREAM_CLASSIFICATIONS = {}
 _LAST_FAILURE = None
+_EMPTY_RESPONSE_FAILURES_LOCK = threading.Lock()
+_EMPTY_RESPONSE_FAILURES: dict[str, float] = {}
+_SERVER_INSTANCE = None
+_RETIRING = False
+_HANDOFF_IN_PROGRESS = False
+_HANDOFF_LOCK = threading.Lock()
 
 # Cross-platform hardening: never route upstream calls through a system/registry/env
 # HTTP proxy. On macOS and Windows, urllib.request.getproxies() consults the OS proxy
@@ -377,6 +400,7 @@ def runtime_status() -> dict:
         "draining": draining,
         "drain_generation": drain_generation,
         "drain_lease_remaining_seconds": drain_lease_remaining_seconds,
+        "retiring": _is_retiring(),
         "counters": counters,
         "upstream_classifications": upstream,
         "last_failure": last_failure,
@@ -396,6 +420,32 @@ def _reset_runtime_metrics_for_test() -> None:
             _COUNTERS[name] = 0
         _UPSTREAM_CLASSIFICATIONS.clear()
         _LAST_FAILURE = None
+    with _EMPTY_RESPONSE_FAILURES_LOCK:
+        _EMPTY_RESPONSE_FAILURES.clear()
+
+
+def _request_fingerprint(body: bytes) -> str:
+    """Return a secret-free digest for duplicate-request suppression."""
+    return hashlib.sha256(body).hexdigest()
+
+
+def _empty_response_cooldown_remaining(fingerprint: str) -> int:
+    """Return whole seconds remaining for a previous empty-response failure."""
+    now = time.monotonic()
+    with _EMPTY_RESPONSE_FAILURES_LOCK:
+        expired = [key for key, deadline in _EMPTY_RESPONSE_FAILURES.items() if deadline <= now]
+        for key in expired:
+            _EMPTY_RESPONSE_FAILURES.pop(key, None)
+        deadline = _EMPTY_RESPONSE_FAILURES.get(fingerprint)
+    if deadline is None:
+        return 0
+    return max(1, int(deadline - now + 0.999))
+
+
+def _remember_empty_response_failure(fingerprint: str) -> None:
+    """Record one opaque request failure without retaining its contents."""
+    with _EMPTY_RESPONSE_FAILURES_LOCK:
+        _EMPTY_RESPONSE_FAILURES[fingerprint] = time.monotonic() + EMPTY_RESPONSE_COOLDOWN_SECONDS
 
 
 def _bounded_drain_lease_seconds(value: object | None) -> int:
@@ -450,6 +500,122 @@ def _set_draining(enabled: bool, *, lease_seconds: object | None = None) -> dict
             "active_responses": _ACTIVE_RESPONSES,
             "drain_lease_remaining_seconds": _drain_lease_remaining_locked(),
         }
+
+
+def _set_retiring(enabled: bool) -> None:
+    """Change only this worker's admission state for a rolling replacement."""
+    global _RETIRING
+    with _HANDOFF_LOCK:
+        _RETIRING = enabled
+
+
+def _is_retiring() -> bool:
+    with _HANDOFF_LOCK:
+        return _RETIRING
+
+
+def _pid_is_alive(pid: object) -> bool:
+    try:
+        value = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if value <= 0:
+        return False
+    try:
+        os.kill(value, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _verify_child_listener_ready(process: subprocess.Popen, expected_source_sha256: str | None) -> bool:
+    """Read one child readiness record from a private pipe without request data."""
+    if process.stdout is None:
+        return False
+    deadline = time.monotonic() + max(0.1, ROLLING_HANDOFF_READY_TIMEOUT)
+    while time.monotonic() < deadline:
+        remaining = max(0.0, deadline - time.monotonic())
+        ready, _, _ = select.select([process.stdout], [], [], remaining)
+        if not ready:
+            break
+        line = process.stdout.readline()
+        if not line:
+            break
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if (
+            payload.get("event") == "ready"
+            and payload.get("pid") == process.pid
+            and payload.get("source_sha256") == expected_source_sha256
+        ):
+            return True
+    return False
+
+
+def _spawn_replacement_listener() -> subprocess.Popen | None:
+    """Start a verified child listener with inherited socket ownership."""
+    if _SERVER_INSTANCE is None or not hasattr(_SERVER_INSTANCE, "fileno"):
+        return None
+    try:
+        listener_fd = _SERVER_INSTANCE.fileno()
+        env = dict(os.environ)
+        env["DMX_INHERITED_LISTENER_FD"] = str(listener_fd)
+        env["DMX_HANDOFF_CHILD"] = "1"
+        process = subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+            pass_fds=(listener_fd,),
+            env=env,
+            close_fds=True,
+        )
+    except Exception:
+        return None
+    if _verify_child_listener_ready(process, source_sha256()):
+        return process
+    try:
+        process.terminate()
+    except OSError:
+        pass
+    return None
+
+
+def _retire_after_handoff() -> None:
+    """Stop accepting new connections, then finish only pre-existing streams."""
+    if _SERVER_INSTANCE is not None:
+        _SERVER_INSTANCE.shutdown()
+    while True:
+        with _RESPONSE_GATE_LOCK:
+            active = _ACTIVE_RESPONSES
+        if active == 0:
+            break
+        time.sleep(0.05)
+
+
+def _start_rolling_handoff() -> dict:
+    """Admit a child worker before retiring this one; never use global drain."""
+    global _HANDOFF_IN_PROGRESS
+    if _SERVER_INSTANCE is None:
+        return {"accepted": False, "reason": "listener_unavailable"}
+    with _HANDOFF_LOCK:
+        if _HANDOFF_IN_PROGRESS or _RETIRING:
+            return {"accepted": False, "reason": "handoff_in_progress"}
+        _HANDOFF_IN_PROGRESS = True
+    try:
+        child = _spawn_replacement_listener()
+        if child is None:
+            return {"accepted": False, "reason": "replacement_not_ready"}
+        _set_retiring(True)
+        threading.Thread(target=_retire_after_handoff, daemon=True).start()
+        return {"accepted": True, "replacement_pid": child.pid}
+    finally:
+        with _HANDOFF_LOCK:
+            _HANDOFF_IN_PROGRESS = False
 
 
 def _drain_snapshot() -> tuple[bool, int, int]:
@@ -567,18 +733,14 @@ def _dmx_empty_response_exhausted(attempts: int) -> bytes:
 
 
 def send_terminal_failure(handler, request_body: bytes, *, code: str, message: str, attempts: int) -> str:
-    """Emit a bounded terminal failure in the response mode selected by the caller.
+    """Return a retryable HTTP error before an upstream stream has started.
 
-    A streaming Responses request receives a terminal SSE error instead of an
-    HTTP JSON error after stream selection, preventing clients from retaining a
-    permanently in-progress turn.  The synthetic event is secret-free and never
-    exposes upstream bytes or request contents.
+    This helper is only called when all upstream attempts failed before the
+    proxy wrote any client-visible SSE bytes.  A synthetic ``event: error``
+    with HTTP 200 is not a Responses terminal lifecycle event and leaves Codex
+    waiting for ``response.completed``/``response.failed``.  Use standard HTTP
+    503 JSON so the client can close the turn and retry safely.
     """
-    try:
-        decoded = json.loads(request_body)
-        streaming = isinstance(decoded, dict) and decoded.get("stream") is True
-    except (TypeError, ValueError, json.JSONDecodeError):
-        streaming = False
     payload = json.dumps({
         "error": {
             "message": message,
@@ -587,15 +749,6 @@ def send_terminal_failure(handler, request_body: bytes, *, code: str, message: s
             "attempts": attempts,
         },
     }, separators=(",", ":")).encode()
-    if streaming:
-        event = b"event: error\n" + b"data: " + payload + b"\n\n"
-        handler.send_response(200)
-        handler.send_header("Content-Type", "text/event-stream")
-        handler.send_header("Cache-Control", "no-cache")
-        handler.send_header("Content-Length", str(len(event)))
-        handler.end_headers()
-        handler.wfile.write(event)
-        return "sse_error"
     handler.send_response(503)
     handler.send_header("Content-Type", "application/json")
     handler.send_header("Retry-After", "3")
@@ -731,6 +884,117 @@ def _strip_replayed_reasoning_items(payload):
     if dropped_items:
         payload["input"] = kept
     return dropped_items, preserved_agent_blocks
+
+
+def _opaque_agent_message_count(payload) -> int:
+    """Count provider-owned agent messages without retaining their payloads."""
+    items = payload.get("input") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return 0
+    return sum(
+        1
+        for item in items
+        if isinstance(item, dict) and item.get("type") == "agent_message"
+    )
+
+
+def _project_opaque_agent_history(raw: bytes, budget: int | None = None):
+    """Build a bounded DMX-compatible request without opaque agent replay state.
+
+    DMX accepts standard Responses messages but has repeatedly returned HTTP 477
+    for the same replay containing encrypted ``agent_message`` blocks.  This
+    projection preserves the local thread untouched and sends only portable
+    developer/system/user messages.  It never turns an agent/tool item into
+    synthetic text: opaque state is omitted rather than guessed at.
+
+    The current user message is mandatory.  Older portable messages are retained
+    from newest to oldest until the complete serialized request fits ``budget``.
+    State-coupled fields are removed because they identify the omitted response
+    history.  Return ``(None, None)`` if no safe current-user projection exists.
+    """
+    if budget is None:
+        budget = COMPAT_PROJECTION_BUDGET
+    if not isinstance(budget, int) or budget <= 0:
+        return None, None
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    original = payload.get("input")
+    if not isinstance(original, list) or not original:
+        return None, None
+
+    portable: list[object] = []
+    for item in original:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") != "message" or item.get("role") not in ("developer", "system", "user"):
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        # Keep only ordinary text input.  Images and encrypted blocks are not
+        # portable to this DMX compatibility route.
+        text_content = [
+            block for block in content
+            if isinstance(block, dict)
+            and block.get("type") in ("input_text", "output_text")
+            and isinstance(block.get("text"), str)
+        ]
+        if not text_content:
+            continue
+        portable.append({"type": "message", "role": item["role"], "content": text_content})
+
+    latest_user = max(
+        (index for index, item in enumerate(portable) if item.get("role") == "user"),
+        default=-1,
+    )
+    if latest_user < 0:
+        return None, None
+
+    candidate = dict(payload)
+    for key in ("prompt_cache_key", "previous_response_id", "conversation"):
+        candidate.pop(key, None)
+    include = candidate.get("include")
+    if isinstance(include, list):
+        candidate["include"] = [item for item in include if item != "reasoning.encrypted_content"]
+
+    # Preserve original chronological order.  Start from the newest portable
+    # suffix and widen it leftward while it remains within the full request
+    # budget; this keeps the current user request and never reorders messages.
+    selected: list[dict] = [portable[latest_user]]
+    for start in range(latest_user - 1, -1, -1):
+        proposed = portable[start:latest_user + 1]
+        candidate["input"] = proposed
+        try:
+            encoded = json.dumps(candidate, separators=(",", ":")).encode("utf-8")
+        except Exception:
+            return None, None
+        if len(encoded) > budget:
+            break
+        selected = proposed
+    candidate["input"] = selected
+    try:
+        projected = json.dumps(candidate, separators=(",", ":")).encode("utf-8")
+    except Exception:
+        return None, None
+    # A configured budget bounds normal retention.  If the current user message
+    # itself is larger than that budget, still prefer the smallest valid portable
+    # request over forwarding opaque provider state.  The caller can then receive
+    # a real upstream size/error response rather than the known 477 replay loop.
+    budget_met = len(projected) <= budget
+    if len(projected) >= len(raw):
+        return None, None
+    return projected, {
+        "original_bytes": len(raw),
+        "projected_bytes": len(projected),
+        "portable_messages": len(selected),
+        "dropped_input_items": len(original) - len(selected),
+        "opaque_agent_messages": _opaque_agent_message_count(payload),
+        "budget_met": budget_met,
+    }
 
 
 _TOOL_CALL_TYPES = frozenset(("custom_tool_call", "function_call"))
@@ -1005,6 +1269,18 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes, str]:
 
     if not isinstance(payload, dict):
         return raw, "passthrough (json not object)"
+
+    opaque_agent_messages = _opaque_agent_message_count(payload)
+    if opaque_agent_messages:
+        projected, metrics = _project_opaque_agent_history(raw)
+        if projected is not None and metrics is not None:
+            return projected, (
+                "compat_projection=True "
+                f"opaque_agent_messages={metrics['opaque_agent_messages']} "
+                f"portable_messages={metrics['portable_messages']} "
+                f"dropped_input_items={metrics['dropped_input_items']} "
+                f"bytes={metrics['original_bytes']}->{metrics['projected_bytes']}"
+            )
 
     # (a) Drop replayed top-level reasoning items. Do not recursively delete
     # encrypted_content: agent_message encrypted-content blocks require it.
@@ -1401,6 +1677,7 @@ class Handler(BaseHTTPRequestHandler):
         is_responses = method == "POST" and "/responses" in self.path
         if is_responses:
             _record_counter("responses_received")
+        empty_response_attempts = EMPTY_RESPONSE_RETRY_ATTEMPTS if is_responses else 1
         max_attempts = 4 if is_responses else 1
         backoffs = [0.4, 1.0, 2.0]
 
@@ -1482,6 +1759,29 @@ class Handler(BaseHTTPRequestHandler):
             )
 
         try:
+            request_fingerprint = _request_fingerprint(body) if is_responses else ""
+            cooldown_remaining = (
+                _empty_response_cooldown_remaining(request_fingerprint)
+                if request_fingerprint else 0
+            )
+            if cooldown_remaining:
+                msg = json.dumps({"error": {
+                    "message": "DMX upstream recently returned empty responses for this unchanged request; wait before retrying",
+                    "type": "upstream_unavailable",
+                    "code": "dmx_empty_response_cooldown",
+                }}, separators=(",", ":")).encode()
+                _record_failure("upstream_empty_response_cooldown")
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Retry-After", str(cooldown_remaining))
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                self.wfile.write(msg)
+                _log(
+                    f"req={request_id} event=empty_response_cooldown "
+                    f"retry_after_seconds={cooldown_remaining} path={_safe_request_path(self.path)}"
+                )
+                return
             resp = None
             last_err = None
             compact_response_failed_metrics = None
@@ -1625,7 +1925,10 @@ class Handler(BaseHTTPRequestHandler):
                             f"upstream_status={status_code} path={_safe_request_path(self.path)}"
                         )
                         return
-                    retry_ceiling = 1 if disp == "once" else max_attempts - 1
+                    retry_ceiling = (
+                        1 if disp == "once"
+                        else (empty_response_attempts - 1 if status_code == 477 and disp == "full" else max_attempts - 1)
+                    )
                     transient_retries_used = attempt - response_failed_stages
                     if (
                         disp
@@ -1641,6 +1944,7 @@ class Handler(BaseHTTPRequestHandler):
                         time.sleep(delay)
                         continue
                     if status_code == 477 and disp == "full":
+                        _remember_empty_response_failure(request_fingerprint)
                         _record_failure("upstream_empty_response_exhausted")
                         terminal_mode = send_terminal_failure(
                             self,
@@ -1825,6 +2129,18 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/control/drain":
             self._drain_control(True)
             return
+        if self.path == "/control/rolling-handoff":
+            if not _is_loopback_client(self.client_address[0]):
+                self.send_error(403, "rolling handoff is available only from loopback")
+                return
+            payload = json.dumps(_start_rolling_handoff(), separators=(",", ":")).encode()
+            self.send_response(202)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         self._relay("POST")
 
     def do_GET(self):
@@ -1846,18 +2162,48 @@ class Handler(BaseHTTPRequestHandler):
         self._relay("PUT")
 
 
+def _listener_from_inherited_fd():
+    """Construct a server around the parent's listener during a rolling handoff."""
+    raw = os.environ.get("DMX_INHERITED_LISTENER_FD")
+    if raw is None:
+        return None
+    try:
+        fd = int(raw)
+        listener = socket.socket(fileno=fd)
+    except (TypeError, ValueError, OSError):
+        return None
+    server = _ResilientProxyServer((HOST, PORT), Handler, bind_and_activate=False)
+    server.socket = listener
+    server.server_address = listener.getsockname()
+    return server
+
+
 def main():
+    global _SERVER_INSTANCE
     _log(
         f"starting dmx-responses-proxy listener={HOST}:{PORT} "
         f"responses_max_concurrency={RESPONSES_MAX_CONCURRENCY} "
         f"upstream_timeout={UPSTREAM_TIMEOUT} read_timeout={UPSTREAM_READ_TIMEOUT} "
         f"log_max_bytes={LOG_MAX_BYTES} log_backup_count={LOG_BACKUP_COUNT}"
     )
-    httpd = _ResilientProxyServer((HOST, PORT), Handler)
+    inherited = _listener_from_inherited_fd()
+    if inherited is not None:
+        httpd = inherited
+    else:
+        httpd = _ResilientProxyServer((HOST, PORT), Handler)
+    _SERVER_INSTANCE = httpd
+    if os.environ.get("DMX_HANDOFF_CHILD") == "1":
+        print(json.dumps({
+            "event": "ready",
+            "pid": os.getpid(),
+            "source_sha256": source_sha256(),
+        }, separators=(",", ":")), flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        httpd.server_close()
 
 
 if __name__ == "__main__":

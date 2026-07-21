@@ -19,6 +19,7 @@ required = [
     'python="/opt/homebrew/bin/python${{ matrix.python-version }}"',
     '"$python" -m compileall -q',
     '"$python" tests/test_package.py',
+    '"$python" tests/test_encrypted_replay_contract.py',
     'python=/opt/homebrew/bin/python3.14',
     '"$python" scripts/check_release_metadata.py --allow-unpublished-history',
     "test-github-provider-projection.sh", "test-gitlab-tagging.sh", "test-github-tagging.sh", "test-publish-gitlab-release.sh",

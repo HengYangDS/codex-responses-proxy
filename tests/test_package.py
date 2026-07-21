@@ -2108,7 +2108,7 @@ class TestProxyTransport(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             port, received, cleanup = self._serve_proxy(
-                [(477, empty_response)] * 4, tmp,
+                [(477, empty_response)] * 2, tmp,
             )
             try:
                 with mock.patch.object(self.p.time, "sleep", return_value=None):
@@ -2122,12 +2122,12 @@ class TestProxyTransport(unittest.TestCase):
             finally:
                 cleanup()
 
-        self.assertEqual(received, [body] * 4)
+        self.assertEqual(received, [body] * 2)
         self.assertEqual(payload["error"]["type"], "upstream_unavailable")
         self.assertEqual(payload["error"]["code"], "dmx_empty_response_exhausted")
-        self.assertEqual(payload["error"]["attempts"], 4)
+        self.assertEqual(payload["error"]["attempts"], 2)
 
-    def test_streaming_empty_response_exhaustion_emits_terminal_sse_error(self):
+    def test_streaming_empty_response_exhaustion_returns_retryable_json_before_stream_starts(self):
         empty_response = (
             b'{"error":{"message":"official provider returned an empty response",'
             b'"type":"dmx_api_error","code":"empty_response"}}'
@@ -2135,21 +2135,24 @@ class TestProxyTransport(unittest.TestCase):
         body = json.dumps({"stream": True, "input": []}, separators=(",", ":")).encode()
 
         with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy([(477, empty_response)] * 4, tmp)
+            port, received, cleanup = self._serve_proxy([(477, empty_response)] * 2, tmp)
             try:
                 with mock.patch.object(self.p.time, "sleep", return_value=None):
-                    response = self._request(port, body)
-                    with response:
-                        payload = response.read()
+                    with self.assertRaises(urllib.error.HTTPError) as raised:
+                        self._request(port, body)
+                error = raised.exception
+                with error:
+                    self.assertEqual(error.code, 503)
+                    self.assertEqual(error.headers["Retry-After"], "3")
+                    self.assertEqual(error.headers["Content-Type"], "application/json")
+                    payload = json.loads(error.read())
             finally:
                 cleanup()
 
-        self.assertEqual(received, [body] * 4)
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response.headers["Content-Type"], "text/event-stream")
-        self.assertNotIn("Retry-After", response.headers)
-        self.assertIn(b"event: error", payload)
-        self.assertIn(b'"code":"dmx_empty_response_exhausted"', payload)
+        self.assertEqual(received, [body] * 2)
+        self.assertEqual(payload["error"]["type"], "upstream_unavailable")
+        self.assertEqual(payload["error"]["code"], "dmx_empty_response_exhausted")
+        self.assertEqual(payload["error"]["attempts"], 2)
 
     def test_drops_unreplayable_images_and_keeps_text_and_https(self):
         body = json.dumps({

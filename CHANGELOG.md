@@ -6,6 +6,25 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+### Fixed
+
+- Reconcile the installed `1.0.24` Responses compatibility repair into the
+  source release train: opaque encrypted `agent_message` history is projected
+  only at the outbound boundary to portable developer/system/user messages;
+  local Codex history is never modified.
+- Reduce classified DMX `477 empty_response` handling to two total upstream
+  attempts, cache only a short-lived SHA-256 request fingerprint for a repeat
+  cooldown, and return a retryable HTTP 503 JSON response before any SSE bytes
+  are committed.
+- Replace listener-wide maintenance rejection during an upgrade with
+  replacement-first rolling handoff: the successor binds before the old worker
+  retires, while already accepted streams finish.
+
+### Verified
+
+- Add synthetic, secret-free regression coverage for compatibility projection,
+  477 retry/cooldown/normalization, and replacement-readiness handoff guards.
+
 ### Added
 
 - Add the portable, read-only `governance.py` evidence command to the installed
@@ -52,9 +71,10 @@ work that has not yet been tagged.
 - Restrict an emergency forced legacy bootstrap to separately authorized
   upgrade-only use after manifest integrity and single-listener verification;
   ordinary reload never receives this interruption path.
-- Emit a terminal SSE `error` event when a streaming request exhausts classified
-  DMX HTTP 477 empty-response retries; non-streaming callers retain retryable
-  HTTP 503 with `Retry-After: 3`.
+- Normalize classified DMX HTTP 477 empty-response exhaustion to retryable
+  HTTP 503 JSON with `Retry-After: 3` before any streaming response bytes are
+  committed; the proxy never fabricates a successful SSE envelope for this
+  upstream failure.
 - Return retryable HTTP 503 with `Retry-After: 3` when all pre-content SSE
   reconnect attempts are exhausted, rather than returning an empty successful
   stream that the client must classify as a disconnection.

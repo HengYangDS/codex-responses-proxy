@@ -262,7 +262,7 @@ rejections are returned unchanged.
 | --- | --- | --- |
 | Encrypted replay error | `control.py status --json` | Confirm a healthy listener and enabled route before investigating history. |
 | Upstream `response_failed` | `control.py status --json` | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
-| DMX HTTP 477 `empty_response` | `control.py status --json` | Retry the unchanged request through the normal bounded transient-retry budget. On exhaustion, a streaming request receives a terminal SSE `error`; a non-streaming request receives standard HTTP 503 with `Retry-After`. Unrelated 477 responses remain unchanged. |
+| DMX HTTP 477 `empty_response` | `control.py status --json` | Retry the unchanged request through the normal bounded transient-retry budget. On exhaustion before any downstream stream bytes, return standard HTTP 503 JSON with `Retry-After`; do not fabricate a successful SSE error envelope. Unrelated 477 responses remain unchanged. |
 | SSE closes before completion | `control.py status --json` | The proxy retries only before sending substantive bytes downstream. If that bounded pre-content budget is exhausted, it returns retryable HTTP 503 with `Retry-After: 3` rather than an empty successful stream. |
 | Need current reliability evidence | `control.py status --json` | Inspect the secret-free `runtime` snapshot; it proves listener-local counters, not recovery of a historical conversation. |
 | Need a windowed incident decision | `scripts/observe-reliability.py --status-file <snapshot> --state <baseline>` | Compare only the same running payload; the tool is read-only and never reloads the listener. |
@@ -292,6 +292,7 @@ python3 scripts/test_release_metadata.py
 for py in python3.12 python3.13 python3.14; do
   "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
   "$py" tests/test_package.py
+  "$py" tests/test_encrypted_replay_contract.py
 done
 ```
 
