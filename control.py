@@ -540,6 +540,54 @@ def reload(
     )
 
 
+def rolling_handoff(ctx: common.InstallContext, timeout_seconds: float = 30.0) -> dict[str, int]:
+    """Replace one worker without global drain or forced stream interruption.
+
+    The listener itself first starts and verifies a child sharing the bound
+    loopback socket.  Only after that acknowledgement does the old worker stop
+    admitting new Responses and wait for its already-established streams to end.
+    A failed child start leaves the serving worker unchanged.
+    """
+    integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
+    if not integrity_ok:
+        raise common.InstallError(f"payload integrity check failed: {integrity_detail}")
+    listeners = common.verified_proxy_listener_pids(ctx)
+    if len(listeners) != 1:
+        raise common.InstallError(
+            f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
+        )
+    old_pid = listeners[0]
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{ctx.port}/control/rolling-handoff",
+        headers={"Accept": "application/json"},
+        method="POST",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=2) as response:
+            if response.status != 202:
+                raise common.InstallError(f"rolling handoff returned HTTP {response.status}")
+            payload = json.loads(response.read())
+    except common.InstallError:
+        raise
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
+        raise common.InstallError("rolling handoff control is unavailable") from exc
+    replacement_pid = payload.get("replacement_pid") if isinstance(payload, dict) else None
+    if payload.get("accepted") is not True or not isinstance(replacement_pid, int) or replacement_pid <= 0:
+        reason = payload.get("reason") if isinstance(payload, dict) else "invalid response"
+        raise common.InstallError(f"rolling handoff was not accepted: {reason}")
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        current = common.verified_proxy_listener_pids(ctx)
+        runtime = _runtime_metrics(ctx)
+        if current == [replacement_pid] and isinstance(runtime, dict) and runtime.get("draining") is False:
+            return {"old_pid": old_pid, "new_pid": replacement_pid}
+        time.sleep(0.1)
+    raise common.InstallError(
+        f"rolling handoff did not converge from verified proxy listener {old_pid} within {timeout_seconds:g}s"
+    )
+
+
 def apply_control_plane(ctx: common.InstallContext) -> dict[str, object]:
     """Apply a verified controller-only fix without touching Responses admission.
 
@@ -642,7 +690,7 @@ def upgrade_from_stage(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Control the installed Codex DMX Proxy.")
-    parser.add_argument("command", choices=("status", "enable", "disable", "reload", "adopt-aigw", "apply-control-plane", "upgrade"))
+    parser.add_argument("command", choices=("status", "enable", "disable", "reload", "rolling-handoff", "adopt-aigw", "apply-control-plane", "upgrade"))
     parser.add_argument("--stage", help="validated payload stage created by install.py --stage-only")
     parser.add_argument("--aigw-account", default="dmx", help="AIGW account ID for adopt-aigw")
     parser.add_argument("--direct-url", default=common.DEFAULT_UPSTREAM + "/v1", help="direct Responses endpoint for adopt-aigw")
@@ -699,6 +747,16 @@ def main() -> None:
         except common.InstallError as exc:
             raise SystemExit(f"ERROR: {exc}") from exc
         print(json.dumps(evidence, sort_keys=True) if args.as_json else f"reloaded verified proxy listener: {evidence['old_pid']} -> {evidence['new_pid']}")
+        return
+
+    if args.command == "rolling-handoff":
+        try:
+            evidence = rolling_handoff(ctx, timeout_seconds=args.timeout_seconds)
+        except common.InstallError as exc:
+            raise SystemExit(f"ERROR: {exc}") from exc
+        print(json.dumps(evidence, sort_keys=True) if args.as_json else (
+            f"rolling handoff verified proxy listener: {evidence['old_pid']} -> {evidence['new_pid']}"
+        ))
         return
 
     if args.command == "apply-control-plane":
