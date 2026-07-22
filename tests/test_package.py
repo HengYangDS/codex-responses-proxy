@@ -1072,27 +1072,89 @@ class TestWindowsTask(unittest.TestCase):
         self.assertIn("<LogonType>InteractiveToken</LogonType>", xml)   # no admin
         self.assertIn("<RunLevel>LeastPrivilege</RunLevel>", xml)
 
+    def test_logon_trigger_repeats_so_a_dead_watchdog_is_relaunched(self):
+        # RestartOnFailure only reacts to a failed task *launch*, not to the
+        # launched watchdog being killed later (confirmed absent after 3x the
+        # interval on a real host). A LogonTrigger <Repetition> is not enough
+        # either: its repetition only arms at an actual logon, so a mid-session
+        # death is not healed (also confirmed on a real host). A repeating
+        # TimeTrigger with a past StartBoundary fires regardless of logon; paired
+        # with IgnoreNew it re-launches the watchdog when the process itself dies.
+        xml = windows.render_task_xml(_ctx())
+        self.assertIn("<TimeTrigger>", xml)
+        self.assertIn(f"<StartBoundary>{windows._SELF_HEAL_START_BOUNDARY}</StartBoundary>", xml)
+        self.assertIn("<Repetition>", xml)
+        self.assertIn("<Interval>PT1M</Interval>", xml)
+        self.assertIn("<StopAtDurationEnd>false</StopAtDurationEnd>", xml)
+        self.assertIn("<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>", xml)
+
+    def test_task_launches_windowless_pythonw_without_a_console_wrapper(self):
+        # A cmd.exe /c wrapper keeps a visible console for the whole watchdog
+        # lifetime; run the .pyw bootstrap directly with the windowless
+        # interpreter (pythonw.exe when present) instead.
+        ctx = _ctx()
+        xml = windows.render_task_xml(ctx)
+        expected_command = windows.common.windows_pythonw(ctx.python)
+        self.assertIn(f"<Command>{expected_command}</Command>", xml)
+        self.assertNotIn("cmd.exe", xml.lower())
+        self.assertNotIn("comspec", xml.lower())
+        self.assertNotIn("run-watchdog.cmd", xml)
+
     def test_task_references_generated_launcher(self):
-        self.assertIn("run-watchdog.cmd", windows.render_task_xml(_ctx()))
+        self.assertIn("run-watchdog.pyw", windows.render_task_xml(_ctx()))
 
     def test_task_runs_generated_launcher_with_proxy_environment(self):
         ctx = _ctx(port=8801, upstream="https://alternate.example")
         xml = windows.render_task_xml(ctx)
         launcher = windows.render_launcher(ctx)
-        self.assertIn("run-watchdog.cmd", xml)
+        self.assertIn("run-watchdog.pyw", xml)
         self.assertNotIn('Arguments>"/home/tester/.codex/dmx-proxy/watchdog/watchdog.py"', xml)
-        self.assertIn('set "DMX_PROXY_PORT=8801"', launcher)
-        self.assertIn('set "DMX_UPSTREAM=https://alternate.example"', launcher)
-        self.assertIn('set "DMX_PROXY_PYTHON=/usr/bin/python3.12"', launcher)
-        self.assertIn('set "DMX_PROXY_SCRIPT=/home/tester/.codex/dmx-proxy/proxy/dmx_responses_proxy.py"', launcher)
+        self.assertIn("'DMX_PROXY_PORT'] = '8801'", launcher)
+        self.assertIn("'DMX_UPSTREAM'] = 'https://alternate.example'", launcher)
+        self.assertIn("'DMX_PROXY_PYTHON'] = '/usr/bin/python3.12'", launcher)
         self.assertIn(
-            f'set "DMX_PROXY_LOG_MAX_BYTES={common.DEFAULT_PROXY_LOG_MAX_BYTES}"',
+            "'DMX_PROXY_SCRIPT'] = '/home/tester/.codex/dmx-proxy/proxy/dmx_responses_proxy.py'",
             launcher,
         )
         self.assertIn(
-            f'set "DMX_WATCHDOG_LOG_BACKUP_COUNT={common.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT}"',
+            f"'DMX_PROXY_LOG_MAX_BYTES'] = '{common.DEFAULT_PROXY_LOG_MAX_BYTES}'",
             launcher,
         )
+        self.assertIn(
+            f"'DMX_WATCHDOG_LOG_BACKUP_COUNT'] = '{common.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT}'",
+            launcher,
+        )
+        # The bootstrap runs the installed watchdog as __main__.
+        self.assertIn(
+            "runpy.run_path('/home/tester/.codex/dmx-proxy/watchdog/watchdog.py', run_name='__main__')",
+            launcher,
+        )
+
+    def test_uninstall_terminates_only_this_installs_watchdog(self):
+        # schtasks /delete removes the task definition but not a running instance;
+        # uninstall must end this install's watchdog (matched by its own paths) so
+        # it cannot immediately respawn the proxy after the caller stops it.
+        ctx = _ctx()
+        seen = {}
+        list_cmd = subprocess.run  # capture the real symbol for the fake
+
+        def fake_run(cmd, *args, **kwargs):
+            if cmd[:2] == ["schtasks", "/delete"]:
+                seen["deleted"] = True
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if cmd[:1] == ["powershell"]:
+                launcher = os.path.abspath(windows._launcher_path(ctx))
+                unrelated = "/usr/bin/python3.12 /some/other/script.py"
+                out = f"4242\t{windows.common.windows_pythonw(ctx.python)} {launcher}\n9\t{unrelated}\n"
+                return subprocess.CompletedProcess(cmd, 0, out, "")
+            raise AssertionError(f"unexpected subprocess call: {cmd}")
+
+        terminated = []
+        with mock.patch.object(windows.subprocess, "run", side_effect=fake_run), \
+             mock.patch.object(windows.common, "terminate_pid", side_effect=terminated.append):
+            windows.uninstall(ctx)
+        self.assertTrue(seen.get("deleted"))
+        self.assertEqual(terminated, [4242])  # only the matched watchdog, not pid 9
 
 
 class TestWatchdogLogging(unittest.TestCase):
