@@ -1072,7 +1072,7 @@ class TestWindowsTask(unittest.TestCase):
         self.assertIn("<LogonType>InteractiveToken</LogonType>", xml)   # no admin
         self.assertIn("<RunLevel>LeastPrivilege</RunLevel>", xml)
 
-    def test_logon_trigger_repeats_so_a_dead_watchdog_is_relaunched(self):
+    def test_time_trigger_repeats_so_a_dead_watchdog_is_relaunched(self):
         # RestartOnFailure only reacts to a failed task *launch*, not to the
         # launched watchdog being killed later (confirmed absent after 3x the
         # interval on a real host). A LogonTrigger <Repetition> is not enough
