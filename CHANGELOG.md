@@ -20,6 +20,21 @@ work that has not yet been tagged.
 
 ### Fixed
 
+- Relaunch the Windows watchdog when the watchdog process itself is killed. The
+  scheduled task's `RestartOnFailure` only reacts to a failed task launch, not to
+  the launched watchdog being terminated later, so on a real host a killed
+  watchdog was never brought back until the next logon. The logon trigger now
+  repeats every minute; paired with `IgnoreNew`, a re-fire is a no-op while the
+  watchdog is alive and relaunches it when it has died.
+- Stop the running Windows watchdog during `uninstall`. `schtasks /delete` removes
+  only the task definition, not an already-running instance, so the surviving
+  watchdog immediately respawned the proxy after uninstall stopped it. Uninstall
+  now terminates the watchdog matched to this install's own launcher and script
+  paths before removing the task.
+- Run the Windows watchdog windowless. The former `cmd.exe /c` launcher kept a
+  visible console window for the whole watchdog lifetime because it waits on the
+  windowless child; the task now runs a generated `.pyw` bootstrap directly with
+  `pythonw.exe`, so no console is allocated.
 - Remove pre-retention `reject-*.json` raw request captures during installation
   and payload refresh, while preserving the bounded, redacted operational logs.
 - Add a narrow, transactional controller-only lifecycle apply path for an
