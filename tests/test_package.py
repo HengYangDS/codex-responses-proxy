@@ -1592,6 +1592,15 @@ class TestProxySanitize(unittest.TestCase):
         expected = hashlib.sha256(source.read_bytes()).hexdigest()
         self.assertEqual(self.p.runtime_status()["source_sha256"], expected)
 
+    def test_runtime_status_reports_protocol_v2_process_identity(self):
+        status = self.p.runtime_status()
+        self.assertEqual(status["handoff_protocol_version"], 2)
+        self.assertEqual(status["pid"], os.getpid())
+        self.assertEqual(status["handoff_state"], "idle")
+        self.assertIsNone(status["handoff_transaction_id"])
+        self.assertIs(status["accepting"], True)
+        self.assertIs(status["draining"], False)
+
     def test_log_redacts_secrets_limits_line_length_and_removes_query_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "proxy.log"
@@ -1859,7 +1868,7 @@ class TestProxyTransport(unittest.TestCase):
         self.assertEqual(len(received), 1)
         self.assertEqual(payload["error"]["code"], "response_failed_recovery_exhausted")
 
-    def test_retries_classified_empty_response_with_byte_identical_request(self):
+    def test_retries_classified_empty_response_at_most_once_with_unchanged_body(self):
         empty_response = (
             b'{"error":{"message":"official provider returned an empty response",'
             b'"type":"dmx_api_error","code":"empty_response"}}'
@@ -2184,12 +2193,12 @@ class TestProxyTransport(unittest.TestCase):
             finally:
                 cleanup()
 
-        self.assertEqual(received, [body] * 4)
+        self.assertEqual(received, [body] * 2)
         self.assertEqual(payload["error"]["type"], "upstream_unavailable")
         self.assertEqual(payload["error"]["code"], "dmx_empty_response_exhausted")
-        self.assertEqual(payload["error"]["attempts"], 4)
+        self.assertEqual(payload["error"]["attempts"], 2)
 
-    def test_streaming_empty_response_exhaustion_emits_terminal_sse_error(self):
+    def test_streaming_empty_response_exhaustion_returns_standard_http_503(self):
         empty_response = (
             b'{"error":{"message":"official provider returned an empty response",'
             b'"type":"dmx_api_error","code":"empty_response"}}'
@@ -2200,18 +2209,20 @@ class TestProxyTransport(unittest.TestCase):
             port, received, cleanup = self._serve_proxy([(477, empty_response)] * 4, tmp)
             try:
                 with mock.patch.object(self.p.time, "sleep", return_value=None):
-                    response = self._request(port, body)
-                    with response:
-                        payload = response.read()
+                    with self.assertRaises(urllib.error.HTTPError) as raised:
+                        self._request(port, body)
+                error = raised.exception
+                with error:
+                    self.assertEqual(error.code, 503)
+                    self.assertEqual(error.headers["Content-Type"], "application/json")
+                    self.assertEqual(error.headers["Retry-After"], "3")
+                    payload = json.loads(error.read())
             finally:
                 cleanup()
 
-        self.assertEqual(received, [body] * 4)
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response.headers["Content-Type"], "text/event-stream")
-        self.assertNotIn("Retry-After", response.headers)
-        self.assertIn(b"event: error", payload)
-        self.assertIn(b'"code":"dmx_empty_response_exhausted"', payload)
+        self.assertEqual(received, [body] * 2)
+        self.assertEqual(payload["error"]["code"], "dmx_empty_response_exhausted")
+        self.assertEqual(payload["error"]["attempts"], 2)
 
     def test_drops_unreplayable_images_and_keeps_text_and_https(self):
         body = json.dumps({

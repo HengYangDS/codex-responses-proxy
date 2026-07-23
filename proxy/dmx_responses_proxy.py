@@ -38,11 +38,14 @@ Design guarantees
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import ipaddress
 import json
 import os
+import queue
 import re
+import subprocess
 import stat
 import sys
 import time
@@ -107,6 +110,37 @@ RESPONSE_FAILED_COMPACTION_BUDGET = int(
 # accepted by live probes.
 RESPONSE_FAILED_COMPACTION_RATIO_DENOMINATOR = 2
 RESPONSE_FAILED_MAX_STAGES = max(0, int(os.environ.get("DMX_RESPONSE_FAILED_MAX_STAGES", "3")))
+# HTTP 477 ``empty_response`` gets exactly one dedicated, semantics-preserving
+# fallback slot instead of the ordinary identical-bytes retry budget. The
+# compat policy version is folded into the cooldown key so a future change to
+# the projection rules below cannot collide with an older cached cooldown.
+EMPTY_RESPONSE_COMPAT_POLICY_VERSION = "empty-response-fallback-v1"
+EMPTY_RESPONSE_OPAQUE_REASONING_MARKER = (
+    "[reasoning omitted: opaque provider state cannot be replayed]"
+)
+EMPTY_RESPONSE_FALLBACK_BUDGET = _bounded_env_int(
+    "DMX_EMPTY_RESPONSE_FALLBACK_BUDGET", 4 * 1024 * 1024, 4 * 1024, 4 * 1024 * 1024,
+)
+EMPTY_RESPONSE_COOLDOWN_SECONDS = _bounded_env_int(
+    "DMX_EMPTY_RESPONSE_COOLDOWN_SECONDS", 30, 1, 300,
+)
+# Fixed, not env-configurable: this is a bounded local safety cap, not a tunable.
+EMPTY_RESPONSE_COOLDOWN_CAPACITY = 1024
+# Fixed, not env-configurable: the classified-477 fallback is dispatched as
+# its own immediate, nested upstream request (see the 477 branch below), not
+# as another iteration of the outer retry loop. It therefore never consumes
+# or depends on a slot in that loop's range and fires exactly once whenever a
+# 477 is classified -- even when that classification arrives on the outer
+# loop's very last iteration. This constant documents that dedicated,
+# always-available attempt.
+EMPTY_RESPONSE_DEDICATED_SLOTS = 1
+# One dedicated outer-loop slot for the ``response_failed`` dialogue-only
+# recovery continuation below. This is distinct from, and must not borrow
+# capacity from, the (separately bounded, independently disable-able)
+# ``response_failed`` pair-safe compaction stage budget: setting
+# ``DMX_RESPONSE_FAILED_MAX_STAGES=0`` must not silently remove the one spare
+# loop iteration the dialogue-only recovery needs to make its own attempt.
+RESPONSE_FAILED_DIALOGUE_SLOTS = 1
 _RESPONSES_SEM = threading.BoundedSemaphore(max(1, RESPONSES_MAX_CONCURRENCY))
 # The admission gate and active counter deliberately share one lock.  A drain
 # transition must be atomic with admission: after ``draining`` becomes true,
@@ -114,6 +148,7 @@ _RESPONSES_SEM = threading.BoundedSemaphore(max(1, RESPONSES_MAX_CONCURRENCY))
 # active counter before a reload leaves a window for a new SSE request to enter.
 _RESPONSE_GATE_LOCK = threading.Lock()
 _ACTIVE_RESPONSES = 0
+_ACTIVE_HANDLERS = 0
 _DRAINING = False
 _DRAIN_GENERATION = 0
 _DRAIN_DEADLINE = None
@@ -142,9 +177,508 @@ _COUNTERS = {
     "encrypted_malformed_blocks_stripped": 0,
     "encrypted_sse_keys_stripped": 0,
     "unreplayable_images_stripped": 0,
+    "empty_response_fallback_attempts": 0,
+    "empty_response_fallback_accepted": 0,
+    "empty_response_fallback_rejected": 0,
+    "empty_response_recovery_exhausted": 0,
+    "empty_response_cooldown_hits": 0,
 }
 _UPSTREAM_CLASSIFICATIONS = {}
 _LAST_FAILURE = None
+# Bounded local cooldown for classified empty-response exhaustion: keyed by
+# ``_empty_response_policy_fingerprint``, capped at EMPTY_RESPONSE_COOLDOWN_CAPACITY
+# entries so a hostile or buggy client fan-out cannot grow this without bound.
+_EMPTY_RESPONSE_FAILURES_LOCK = threading.Lock()
+_EMPTY_RESPONSE_FAILURES: dict[str, float] = {}
+
+# Rolling handoff is a process-local transaction.  The listener socket remains
+# open throughout; only the process allowed to call ``accept()`` changes at the
+# COMMIT barrier.  Keep this state independent from the Responses drain gate:
+# a prepared child is not yet accepting even though it is not draining.
+HANDOFF_PROTOCOL_VERSION = 2
+HANDOFF_CONTROL_MAX_BYTES = 32 * 1024
+HANDOFF_READY_TIMEOUT_SECONDS = 10.0
+HANDOFF_SERVING_TIMEOUT_SECONDS = 10.0
+HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS = 5.0
+HANDOFF_DEFAULT_LEASE_SECONDS = 30.0
+
+
+class HandoffError(RuntimeError):
+    """A bounded rolling-handoff transaction could not be completed safely."""
+
+
+class HandoffConflict(HandoffError):
+    """Another process-local handoff already owns the single-flight session."""
+
+
+_HANDOFF_TRANSITIONS = {
+    "idle": frozenset(("preparing",)),
+    "preparing": frozenset(("ready", "aborting")),
+    "ready": frozenset(("committing", "aborting")),
+    "committing": frozenset(("serving", "aborting")),
+    "serving": frozenset(("finalizing", "aborting")),
+    "finalizing": frozenset(("finalized", "aborting")),
+    "finalized": frozenset(("idle",)),
+    "aborting": frozenset(("rolled_back",)),
+    "rolled_back": frozenset(("idle",)),
+}
+_HANDOFF_LOCK = threading.RLock()
+_HANDOFF_SESSION: dict[str, object] = {}
+_SERVER_INSTANCE = None
+
+
+def _validate_handoff_transition(current_state: str, target_state: str) -> bool:
+    """Return whether one explicit protocol-v2 state transition is legal."""
+    return target_state in _HANDOFF_TRANSITIONS.get(current_state, frozenset())
+
+
+def _reset_handoff_session_to_idle() -> None:
+    """Reset the process-local transaction only after child cleanup is complete."""
+    with _HANDOFF_LOCK:
+        _HANDOFF_SESSION.clear()
+        _HANDOFF_SESSION.update({
+            "state": "idle",
+            "transaction_id": None,
+            "child_pid": None,
+            "outcome": None,
+            "outcome_ready": threading.Event(),
+            "lease_seconds": HANDOFF_DEFAULT_LEASE_SECONDS,
+            "drain_deadline": None,
+        })
+
+
+def _transition_handoff(target_state: str) -> None:
+    """Advance the locked session through the declared transition table."""
+    with _HANDOFF_LOCK:
+        current = str(_HANDOFF_SESSION.get("state", "idle"))
+        if not _validate_handoff_transition(current, target_state):
+            raise HandoffError(f"illegal handoff transition {current}->{target_state}")
+        _HANDOFF_SESSION["state"] = target_state
+
+
+def _payload_manifest_sha256() -> str | None:
+    """Hash the current payload manifest without exposing its contents."""
+    candidate = Path(__file__).resolve().parents[1] / "payload-manifest.json"
+    try:
+        return hashlib.sha256(candidate.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _disk_payload_matches_handoff_expected(expected: dict) -> bool:
+    """Verify the payload that a replacement child would load from disk."""
+    try:
+        proxy_path = Path(__file__).resolve()
+        disk_source = hashlib.sha256(proxy_path.read_bytes()).hexdigest()
+    except OSError:
+        return False
+    return (
+        expected.get("release") == release_version()
+        and expected.get("source_sha256") == disk_source
+        and expected.get("manifest_sha256") == _payload_manifest_sha256()
+    )
+
+
+def _handoff_runtime_identity() -> dict[str, object]:
+    """Return secret-free process and transaction identity for health proofs."""
+    with _HANDOFF_LOCK, _RESPONSE_GATE_LOCK:
+        state = str(_HANDOFF_SESSION.get("state", "idle"))
+        accepting = not _DRAINING and state in {"idle", "serving", "finalized"}
+        return {
+            "pid": os.getpid(),
+            "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
+            "handoff_transaction_id": _HANDOFF_SESSION.get("transaction_id"),
+            "handoff_state": state,
+            "payload_manifest_sha256": _payload_manifest_sha256(),
+            "accepting": accepting,
+            "active_handlers": _ACTIVE_HANDLERS,
+        }
+
+
+def _handoff_popen_kwargs(listener_fd: int | None, *, is_windows: bool) -> dict:
+    """Return platform-specific, pipe-only child process settings."""
+    kwargs = {
+        "stdin": subprocess.PIPE,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    if is_windows:
+        kwargs["creationflags"] = (
+            getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+        )
+    else:
+        if listener_fd is None:
+            raise HandoffError("POSIX handoff requires a listener fd")
+        kwargs["pass_fds"] = (listener_fd,)
+        kwargs["start_new_session"] = True
+    return kwargs
+
+
+class _HandoffChild:
+    """One bounded structured control channel to a prepared replacement."""
+
+    def __init__(self, process: subprocess.Popen):
+        if process.stdin is None or process.stdout is None:
+            raise HandoffError("handoff child pipes are unavailable")
+        self.process = process
+        self._send_lock = threading.Lock()
+        self._events: queue.Queue = queue.Queue()
+        self._reader_started = False
+        self._reader_lock = threading.Lock()
+
+    def send_message(self, message: dict) -> None:
+        if not isinstance(message, dict):
+            raise HandoffError("handoff message must be an object")
+        encoded = json.dumps(
+            message, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+        ).encode("ascii") + b"\n"
+        if len(encoded) > HANDOFF_CONTROL_MAX_BYTES:
+            raise HandoffError("handoff message exceeds the control limit")
+        with self._send_lock:
+            try:
+                self.process.stdin.write(encoded)
+                self.process.stdin.flush()
+            except (BrokenPipeError, OSError, ValueError) as exc:
+                raise HandoffError("handoff control pipe write failed") from exc
+
+    def _start_reader(self) -> None:
+        with self._reader_lock:
+            if self._reader_started:
+                return
+            self._reader_started = True
+
+            def read_events() -> None:
+                try:
+                    while True:
+                        line = self.process.stdout.readline(HANDOFF_CONTROL_MAX_BYTES + 1)
+                        if not line:
+                            self._events.put(HandoffError("handoff child control pipe closed"))
+                            return
+                        if len(line) > HANDOFF_CONTROL_MAX_BYTES or not line.endswith(b"\n"):
+                            self._events.put(HandoffError("handoff child message exceeds the control limit"))
+                            return
+                        try:
+                            message = json.loads(line)
+                        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                            self._events.put(HandoffError("handoff child emitted invalid JSON"))
+                            return
+                        if not isinstance(message, dict):
+                            self._events.put(HandoffError("handoff child message must be an object"))
+                            return
+                        self._events.put(message)
+                except (OSError, ValueError) as exc:
+                    self._events.put(HandoffError("handoff child control pipe read failed"))
+
+            threading.Thread(target=read_events, daemon=True, name="dmx-handoff-reader").start()
+
+    def recv_message(self, timeout: float) -> dict:
+        self._start_reader()
+        try:
+            item = self._events.get(timeout=max(0.01, float(timeout)))
+        except queue.Empty as exc:
+            raise HandoffError("handoff child response timed out") from exc
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    def terminate_bounded(self, timeout: float) -> bool:
+        if self.process.poll() is not None:
+            return True
+        try:
+            self.process.terminate()
+            self.process.wait(timeout=max(0.01, float(timeout)))
+            return True
+        except (OSError, subprocess.TimeoutExpired):
+            return self.process.poll() is not None
+
+    def kill_bounded(self, timeout: float) -> bool:
+        if self.process.poll() is not None:
+            return True
+        try:
+            self.process.kill()
+            self.process.wait(timeout=max(0.01, float(timeout)))
+            return True
+        except (OSError, subprocess.TimeoutExpired):
+            return self.process.poll() is not None
+
+
+def _spawn_handoff_child(
+    listener: socket.socket, expected: dict, *, is_windows: bool | None = None
+) -> _HandoffChild:
+    """Spawn a non-accepting replacement and send its bounded PREPARE message."""
+    windows = os.name == "nt" if is_windows is None else bool(is_windows)
+    listener_fd = None if windows else listener.fileno()
+    kwargs = _handoff_popen_kwargs(listener_fd, is_windows=windows)
+    env = os.environ.copy()
+    env["DMX_HANDOFF_CHILD"] = "1"
+    kwargs["env"] = env
+    process = subprocess.Popen(
+        [sys.executable, str(Path(__file__).resolve()), "--handoff-child"],
+        **kwargs,
+    )
+    child = _HandoffChild(process)
+    message = {
+        "type": "prepare",
+        "protocol_version": HANDOFF_PROTOCOL_VERSION,
+        "transaction_id": expected["transaction_id"],
+        "release": expected["release"],
+        "source_sha256": expected["source_sha256"],
+        "manifest_sha256": expected["manifest_sha256"],
+    }
+    if windows:
+        try:
+            shared = listener.share(process.pid)
+        except Exception as exc:
+            child.terminate_bounded(HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS)
+            raise HandoffError("Windows listener sharing failed") from exc
+        message["listener_share_b64"] = base64.b64encode(shared).decode("ascii")
+    else:
+        message["listener_fd"] = listener_fd
+    try:
+        child.send_message(message)
+    except Exception:
+        if not child.terminate_bounded(HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS):
+            child.kill_bounded(HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS)
+        raise
+    return child
+
+
+def _listener_from_handoff_prepare(message: dict) -> socket.socket:
+    """Reconstruct the already-listening socket from a validated PREPARE."""
+    if "listener_share_b64" in message:
+        encoded = message.get("listener_share_b64")
+        if not isinstance(encoded, str) or len(encoded) > HANDOFF_CONTROL_MAX_BYTES:
+            raise HandoffError("invalid Windows listener share")
+        try:
+            shared = base64.b64decode(encoded.encode("ascii"), validate=True)
+            return socket.fromshare(shared)
+        except Exception as exc:
+            raise HandoffError("Windows listener reconstruction failed") from exc
+    listener_fd = message.get("listener_fd")
+    if not isinstance(listener_fd, int) or listener_fd < 0:
+        raise HandoffError("invalid inherited listener fd")
+    return socket.socket(fileno=listener_fd)
+
+
+def _handoff_message_matches(message: object, expected: dict, message_type: str) -> bool:
+    """Validate one child event against the complete transaction identity."""
+    if not isinstance(message, dict) or message.get("type") != message_type:
+        return False
+    common = {
+        "type": message_type,
+        "pid": expected["pid"],
+        "transaction_id": expected["transaction_id"],
+    }
+    if message_type == "ready":
+        common.update({
+            "protocol_version": HANDOFF_PROTOCOL_VERSION,
+            "release": expected["release"],
+            "source_sha256": expected["source_sha256"],
+            "manifest_sha256": expected["manifest_sha256"],
+        })
+    return set(message) == set(common) and all(message.get(key) == value for key, value in common.items())
+
+
+def _health_matches_handoff(health: object, expected: dict) -> bool:
+    """Require the exact serving proof before FINALIZE."""
+    if not isinstance(health, dict):
+        return False
+    required = {
+        "pid": expected["pid"],
+        "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
+        "handoff_transaction_id": expected["transaction_id"],
+        "release": expected["release"],
+        "source_sha256": expected["source_sha256"],
+        "payload_manifest_sha256": expected["manifest_sha256"],
+        "handoff_state": "serving",
+        "accepting": True,
+    }
+    return all(health.get(key) == value for key, value in required.items())
+
+
+def _probe_handoff_health(port: int, *, timeout_seconds: float) -> dict:
+    """Read one loopback-only child health proof through the shared listener."""
+    url = f"http://127.0.0.1:{int(port)}/healthz"
+    request = urllib.request.Request(url, method="GET")
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=max(0.1, float(timeout_seconds))) as response:
+        payload = response.read(HANDOFF_CONTROL_MAX_BYTES + 1)
+    if len(payload) > HANDOFF_CONTROL_MAX_BYTES:
+        raise HandoffError("handoff health response exceeds the control limit")
+    try:
+        decoded = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HandoffError("handoff health response is invalid") from exc
+    if not isinstance(decoded, dict):
+        raise HandoffError("handoff health response must be an object")
+    return decoded
+
+
+def _rollback_handoff_without_child() -> None:
+    """Return a failed PREPARE to idle when no process survived creation."""
+    with _HANDOFF_LOCK:
+        state = str(_HANDOFF_SESSION.get("state", "idle"))
+        if state in {"preparing", "ready", "committing", "serving", "finalizing"}:
+            _transition_handoff("aborting")
+            _transition_handoff("rolled_back")
+        if _HANDOFF_SESSION.get("state") == "rolled_back":
+            _transition_handoff("idle")
+        _HANDOFF_SESSION["transaction_id"] = None
+        _HANDOFF_SESSION["child_pid"] = None
+
+
+def _abort_handoff(child: _HandoffChild) -> None:
+    """Abort one child and confirm its exit before exposing rollback."""
+    with _HANDOFF_LOCK:
+        state = str(_HANDOFF_SESSION.get("state", "idle"))
+        if state not in {"aborting", "rolled_back", "idle"}:
+            _transition_handoff("aborting")
+    try:
+        child.send_message({"type": "abort"})
+    except Exception:
+        pass
+    terminated = False
+    try:
+        terminated = bool(child.terminate_bounded(HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS))
+    except Exception:
+        terminated = False
+    if not terminated:
+        try:
+            terminated = bool(child.kill_bounded(HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS))
+        except Exception:
+            terminated = False
+    if not terminated:
+        raise HandoffError("handoff child could not be confirmed exited")
+    with _HANDOFF_LOCK:
+        if _HANDOFF_SESSION.get("state") == "aborting":
+            _transition_handoff("rolled_back")
+
+
+def _prepare_handoff(
+    server: ThreadingHTTPServer,
+    expected: dict,
+    *,
+    timeout_seconds: float = HANDOFF_READY_TIMEOUT_SECONDS,
+    lease_seconds: float = HANDOFF_DEFAULT_LEASE_SECONDS,
+) -> dict:
+    """Prepare and validate a non-accepting replacement without closing admission."""
+    required = ("transaction_id", "release", "source_sha256", "manifest_sha256")
+    if not isinstance(expected, dict) or any(
+        not isinstance(expected.get(key), str) or not expected.get(key) for key in required
+    ):
+        raise HandoffError("handoff request identity is incomplete")
+    with _HANDOFF_LOCK:
+        if _HANDOFF_SESSION.get("state") == "finalized":
+            _reset_handoff_session_to_idle()
+        if _HANDOFF_SESSION.get("state") != "idle":
+            raise HandoffConflict("handoff is already in progress")
+        _transition_handoff("preparing")
+        _HANDOFF_SESSION.update({
+            "transaction_id": expected["transaction_id"],
+            "child_pid": None,
+            "outcome": None,
+            "outcome_ready": threading.Event(),
+            "lease_seconds": _bounded_drain_lease_seconds(lease_seconds),
+            "timeout_seconds": max(0.1, float(timeout_seconds)),
+        })
+    child = None
+    try:
+        child = _spawn_handoff_child(server.socket, expected)
+        child_expected = {**expected, "pid": child.process.pid}
+        ready = child.recv_message(max(0.1, float(timeout_seconds)))
+        if not _handoff_message_matches(ready, child_expected, "ready"):
+            raise HandoffError("handoff child READY identity mismatch")
+        with _HANDOFF_LOCK:
+            _HANDOFF_SESSION.update({
+                "child_pid": child.process.pid,
+                "child": child,
+                "expected": dict(expected),
+            })
+            _transition_handoff("ready")
+        return {
+            "child": child,
+            "expected": dict(expected),
+            "timeout_seconds": max(0.1, float(timeout_seconds)),
+            "lease_seconds": _bounded_drain_lease_seconds(lease_seconds),
+        }
+    except Exception as exc:
+        if child is not None:
+            try:
+                _abort_handoff(child)
+            finally:
+                with _HANDOFF_LOCK:
+                    if _HANDOFF_SESSION.get("state") == "rolled_back":
+                        _transition_handoff("idle")
+                    _HANDOFF_SESSION["transaction_id"] = None
+                    _HANDOFF_SESSION["child_pid"] = None
+        else:
+            _rollback_handoff_without_child()
+        if isinstance(exc, HandoffError):
+            raise
+        raise HandoffError("handoff child preparation failed") from exc
+
+
+def _set_handoff_outcome(outcome: str) -> None:
+    with _HANDOFF_LOCK:
+        _HANDOFF_SESSION["outcome"] = outcome
+        event = _HANDOFF_SESSION.get("outcome_ready")
+        if isinstance(event, threading.Event):
+            event.set()
+
+
+def _commit_prepared_handoff(server: ThreadingHTTPServer, prepared: dict) -> str:
+    """Cross the accept barrier and either finalize or expose a resumable rollback."""
+    child = prepared["child"]
+    expected = prepared["expected"]
+    child_expected = {**expected, "pid": child.process.pid}
+    timeout_seconds = prepared["timeout_seconds"]
+    accept_stopped = False
+    try:
+        _transition_handoff("committing")
+        drain = _set_draining(True, lease_seconds=prepared["lease_seconds"])
+        with _HANDOFF_LOCK:
+            _HANDOFF_SESSION["drain_deadline"] = time.monotonic() + prepared["lease_seconds"]
+            _HANDOFF_SESSION["drain_generation"] = drain["drain_generation"]
+        server.shutdown()
+        accept_stopped = True
+        child.send_message({"type": "commit"})
+        serving = child.recv_message(timeout_seconds)
+        if not _handoff_message_matches(serving, child_expected, "serving"):
+            raise HandoffError("handoff child SERVING identity mismatch")
+        _transition_handoff("serving")
+        address = getattr(server, "server_address", None)
+        health_port = address[1] if isinstance(address, (tuple, list)) and len(address) > 1 else PORT
+        health = _probe_handoff_health(health_port, timeout_seconds=timeout_seconds)
+        if not _health_matches_handoff(health, child_expected):
+            raise HandoffError("handoff child health identity mismatch")
+        _transition_handoff("finalizing")
+        child.send_message({"type": "finalize"})
+        finalized = child.recv_message(timeout_seconds)
+        if not _handoff_message_matches(finalized, child_expected, "finalized"):
+            raise HandoffError("handoff child FINALIZED identity mismatch")
+        _transition_handoff("finalized")
+        _set_handoff_outcome("finalized")
+        return "finalized"
+    except Exception:
+        abort_confirmed = False
+        try:
+            _abort_handoff(child)
+            abort_confirmed = True
+        except Exception:
+            _set_handoff_outcome("abort_unconfirmed")
+        if abort_confirmed:
+            _set_handoff_outcome("rolled_back")
+        if not accept_stopped:
+            try:
+                server.shutdown()
+            except Exception:
+                pass
+        return "rolled_back" if abort_confirmed else "abort_unconfirmed"
+
+
+_reset_handoff_session_to_idle()
 
 # Cross-platform hardening: never route upstream calls through a system/registry/env
 # HTTP proxy. On macOS and Windows, urllib.request.getproxies() consults the OS proxy
@@ -206,6 +740,24 @@ class _ResilientProxyServer(ThreadingHTTPServer):
             self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except Exception:
             pass
+
+    def get_request(self):
+        request, address = super().get_request()
+        try:
+            request.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except Exception:
+            pass
+        return request, address
+
+    def process_request_thread(self, request, client_address):
+        global _ACTIVE_HANDLERS
+        with _RESPONSE_GATE_LOCK:
+            _ACTIVE_HANDLERS += 1
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            with _RESPONSE_GATE_LOCK:
+                _ACTIVE_HANDLERS = max(0, _ACTIVE_HANDLERS - 1)
 
     def handle_error(self, request, client_address):
         # A client that resets/closes mid-stream is normal at subagent turn end;
@@ -369,7 +921,7 @@ def runtime_status() -> dict:
         counters = dict(sorted(_COUNTERS.items()))
         upstream = dict(sorted(_UPSTREAM_CLASSIFICATIONS.items()))
         last_failure = dict(_LAST_FAILURE) if _LAST_FAILURE else None
-    return {
+    status = {
         "release": release_version(),
         "source_sha256": source_sha256(),
         "uptime_seconds": max(0, int(time.time() - _STARTED_AT)),
@@ -381,6 +933,8 @@ def runtime_status() -> dict:
         "upstream_classifications": upstream,
         "last_failure": last_failure,
     }
+    status.update(_handoff_runtime_identity())
+    return status
 
 
 def _reset_runtime_metrics_for_test() -> None:
@@ -396,6 +950,8 @@ def _reset_runtime_metrics_for_test() -> None:
             _COUNTERS[name] = 0
         _UPSTREAM_CLASSIFICATIONS.clear()
         _LAST_FAILURE = None
+    with _EMPTY_RESPONSE_FAILURES_LOCK:
+        _EMPTY_RESPONSE_FAILURES.clear()
 
 
 def _bounded_drain_lease_seconds(value: object | None) -> int:
@@ -564,6 +1120,390 @@ def _dmx_empty_response_exhausted(attempts: int) -> bytes:
             "attempts": attempts,
         },
     }, separators=(",", ":")).encode()
+
+
+def _send_empty_response_exhausted(handler, attempts: int) -> None:
+    """Emit the bounded classified-empty-response failure as standard HTTP JSON.
+
+    Unlike other bounded recoveries, this path always answers with a standard
+    HTTP 503 even for a streaming request. The one dedicated fallback attempt
+    (if any) never reached upstream SSE bytes, so there is no in-progress
+    downstream stream that needs a synthetic terminal SSE event; sending a
+    plain JSON error here keeps this failure mode uniform and easy for a
+    client to retry regardless of ``stream``.
+    """
+    msg = _dmx_empty_response_exhausted(attempts)
+    handler.send_response(503)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Retry-After", "3")
+    handler.send_header("Content-Length", str(len(msg)))
+    handler.end_headers()
+    handler.wfile.write(msg)
+
+
+def _empty_response_policy_fingerprint(raw: bytes) -> str:
+    """Bind a cooldown key to both the compat policy and the exact request bytes.
+
+    Two requests that differ only in top-level provider state (for example a
+    different ``previous_response_id``) must cool down independently even when
+    the fallback bodies they would build turn out identical, so the key is
+    derived from the caller's own bytes rather than from the projected
+    fallback. Folding in the policy version means a future change to the
+    projection rules cannot collide with an older cached cooldown entry.
+    """
+    return hashlib.sha256(EMPTY_RESPONSE_COMPAT_POLICY_VERSION.encode("utf-8") + raw).hexdigest()
+
+
+def _purge_expired_empty_response_failures_locked(now: float) -> None:
+    """Drop every cooldown entry whose TTL has elapsed. Caller holds the lock.
+
+    This makes the TTL an actual eviction, not merely an ``is it still within
+    its window`` read-time check: an expired entry is removed from the dict
+    itself, so it neither lingers in memory nor counts against the fixed
+    ``EMPTY_RESPONSE_COOLDOWN_CAPACITY`` for unrelated later keys.
+    """
+    expired = [
+        recorded_key
+        for recorded_key, recorded_at in _EMPTY_RESPONSE_FAILURES.items()
+        if recorded_at + EMPTY_RESPONSE_COOLDOWN_SECONDS <= now
+    ]
+    for recorded_key in expired:
+        del _EMPTY_RESPONSE_FAILURES[recorded_key]
+
+
+def _remember_empty_response_failure(key: str, now: float | None = None) -> None:
+    """Record one classified empty-response exhaustion for bounded local cooldown.
+
+    Uses ``time.monotonic()`` by default so the cooldown cannot be perturbed by
+    a wall-clock adjustment. Expired entries are purged before insertion, then
+    the cache is capped at ``EMPTY_RESPONSE_COOLDOWN_CAPACITY`` entries; when
+    still full after that purge, the single oldest-recorded entry is evicted so
+    an unbounded stream of distinct requests can never grow this beyond its
+    fixed capacity.
+    """
+    moment = time.monotonic() if now is None else now
+    with _EMPTY_RESPONSE_FAILURES_LOCK:
+        _purge_expired_empty_response_failures_locked(moment)
+        _EMPTY_RESPONSE_FAILURES[key] = moment
+        while len(_EMPTY_RESPONSE_FAILURES) > EMPTY_RESPONSE_COOLDOWN_CAPACITY:
+            oldest_key = min(_EMPTY_RESPONSE_FAILURES, key=_EMPTY_RESPONSE_FAILURES.get)
+            del _EMPTY_RESPONSE_FAILURES[oldest_key]
+
+
+def _empty_response_cooldown_remaining(key: str, now: float | None = None) -> float:
+    """Return the remaining cooldown seconds for ``key``, or ``0`` when clear.
+
+    Uses ``time.monotonic()`` by default, matching ``_remember_empty_response_failure``.
+    Purges expired entries before the read so a stale entry can never report a
+    false-positive remaining cooldown, and never exposes any recorded key.
+    """
+    moment = time.monotonic() if now is None else now
+    with _EMPTY_RESPONSE_FAILURES_LOCK:
+        _purge_expired_empty_response_failures_locked(moment)
+        recorded = _EMPTY_RESPONSE_FAILURES.get(key)
+    if recorded is None:
+        return 0
+    remaining = recorded + EMPTY_RESPONSE_COOLDOWN_SECONDS - moment
+    return remaining if remaining > 0 else 0
+
+
+_EMPTY_RESPONSE_VALID_ROLES = frozenset(("user", "assistant", "developer", "system"))
+# Fixed, closed enum: any phase this proxy has not itself observed and vetted
+# is rejected rather than passed through, since an unknown phase value cannot
+# be shown to be safe to replay.
+_EMPTY_RESPONSE_VALID_PHASES = frozenset(("commentary", "final_answer"))
+_EMPTY_RESPONSE_MESSAGE_FIELDS = frozenset(("type", "id", "status", "role", "content", "phase"))
+_EMPTY_RESPONSE_AGENT_MESSAGE_FIELDS = frozenset(
+    ("type", "id", "status", "author", "recipient", "phase", "content")
+)
+_EMPTY_RESPONSE_CALL_ARG_FIELD = {"function_call": "arguments", "custom_tool_call": "input"}
+_EMPTY_RESPONSE_CALL_TYPE_FOR_OUTPUT = {
+    "function_call_output": "function_call",
+    "custom_tool_call_output": "custom_tool_call",
+}
+_EMPTY_RESPONSE_CALL_FIELDS = {
+    call_type: frozenset(("type", "id", "status", "call_id", "name", arg_field, "namespace", "caller"))
+    for call_type, arg_field in _EMPTY_RESPONSE_CALL_ARG_FIELD.items()
+}
+_EMPTY_RESPONSE_OUTPUT_FIELDS = frozenset(("type", "id", "status", "call_id", "output", "caller"))
+_EMPTY_RESPONSE_REASONING_FIELDS = frozenset(("type", "id", "status", "encrypted_content", "summary", "content"))
+
+
+def _is_empty_response_text_only(value) -> bool:
+    """True for a plain string or a list of only well-formed ``input_text`` blocks.
+
+    Each block must carry *exactly* ``type`` and ``text`` -- any additional
+    block field is unrepresentable in this projection and rejects the block,
+    rather than being silently dropped.
+    """
+    if isinstance(value, str):
+        return True
+    if isinstance(value, list):
+        for block in value:
+            if not isinstance(block, dict):
+                return False
+            if set(block.keys()) != {"type", "text"}:
+                return False
+            if block.get("type") != "input_text" or not isinstance(block.get("text"), str):
+                return False
+        return True
+    return False
+
+
+def _empty_response_valid_caller(caller) -> bool:
+    """A caller marker must be omitted, ``{"type":"direct"}``, or a well-formed program caller.
+
+    Only these two closed shapes can be shown to be losslessly representable:
+    ``{"type": "direct"}`` with no other keys, or
+    ``{"type": "program", "caller_id": <non-empty str>}`` with no other keys.
+    Any other ``type`` value, a ``program`` caller missing or with an empty
+    ``caller_id``, or any extra key is rejected rather than copied through
+    unexamined.
+    """
+    if caller is None:
+        return True
+    if not isinstance(caller, dict):
+        return False
+    caller_type = caller.get("type")
+    if caller_type == "direct":
+        return set(caller.keys()) == {"type"}
+    if caller_type == "program":
+        return (
+            set(caller.keys()) == {"type", "caller_id"}
+            and isinstance(caller.get("caller_id"), str)
+            and caller["caller_id"] != ""
+        )
+    return False
+
+
+def _empty_response_valid_namespace(namespace) -> bool:
+    """A namespace marker must be omitted or a non-empty string."""
+    return namespace is None or (isinstance(namespace, str) and namespace != "")
+
+
+def _build_empty_response_fallback(raw: bytes, budget: int | None = None):
+    """Build the single bounded, text-only fallback for a classified 477.
+
+    This is a fail-closed projector, not a general history rewriter: every
+    item type is matched against an explicit allow-list of semantic fields --
+    never copied through with an exclude-list -- so an unknown or additional
+    field on an otherwise-known item rejects the whole fallback instead of
+    being silently forwarded or silently dropped. The same applies to any
+    unknown item, invalid role/phase, malformed call/output/caller/namespace,
+    non-text content, orphaned/mismatched/duplicate tool output, or otherwise
+    unrepresentable shape: the caller stays free to expose the original
+    upstream response rather than receive a guessed projection. Only known
+    provider-owned state is removed: top-level ``previous_response_id`` /
+    ``conversation`` / ``prompt_cache_key``, the ``reasoning.encrypted_content``
+    include hint, and each known item's own ``id`` and ``status``. A string
+    ``input`` (rather than a list of items) is preserved losslessly since it
+    carries no items to project. A ``reasoning`` item maps to a fixed opaque
+    marker only when its own visible ``summary``/``content`` is empty -- a
+    reasoning item that also carries visible summary or content text cannot
+    be losslessly represented by the fixed marker and is rejected instead of
+    silently discarding that text. An ``agent_message`` maps to a plain
+    assistant message with a deterministic, JSON-escaped author/recipient
+    header so that quoted or newline-bearing values can never break the fixed
+    envelope; both keep their position in ``input``. Returns ``(raw, detail)``
+    unchanged when no projection is needed at all, so a caller can retry the
+    identical bytes exactly once. Returns ``(None, detail)`` when the request
+    cannot be safely projected, with ``detail["status"] == "rejected"``.
+    """
+    if budget is None:
+        budget = EMPTY_RESPONSE_FALLBACK_BUDGET
+    if not isinstance(budget, int) or isinstance(budget, bool) or budget <= 0:
+        return None, {"status": "rejected", "reason": "invalid_budget"}
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return None, {"status": "rejected", "reason": "invalid_json"}
+    if not isinstance(payload, dict):
+        return None, {"status": "rejected", "reason": "not_object"}
+
+    original_input = payload.get("input", [])
+    if isinstance(original_input, str):
+        original_items = None
+    elif isinstance(original_input, list):
+        original_items = original_input
+    else:
+        return None, {"status": "rejected", "reason": "invalid_input"}
+
+    changed = False
+    new_payload = dict(payload)
+    for field in ("previous_response_id", "conversation", "prompt_cache_key"):
+        if field in new_payload:
+            del new_payload[field]
+            changed = True
+
+    if "include" in new_payload:
+        include = new_payload["include"]
+        if not isinstance(include, list) or any(not isinstance(value, str) for value in include):
+            return None, {"status": "rejected", "reason": "invalid_include"}
+        trimmed_include = [value for value in include if value != "reasoning.encrypted_content"]
+        if len(trimmed_include) != len(include):
+            new_payload["include"] = trimmed_include
+            changed = True
+
+    if original_items is None:
+        # A string ``input`` carries no items to project; only the top-level
+        # provider bindings stripped above could have required any change.
+        projected_input = original_input
+    else:
+        calls: dict[str, str] = {}
+        outputs_seen: set[str] = set()
+        projected_items = []
+
+        for item in original_items:
+            if not isinstance(item, dict):
+                return None, {"status": "rejected", "reason": "invalid_item"}
+            item_type = item.get("type")
+
+            if item_type == "reasoning":
+                if set(item.keys()) - _EMPTY_RESPONSE_REASONING_FIELDS:
+                    return None, {"status": "rejected", "reason": "unknown_reasoning_field"}
+                if item.get("summary") not in (None, []):
+                    return None, {"status": "rejected", "reason": "malformed_reasoning"}
+                if item.get("content") not in (None, []):
+                    return None, {"status": "rejected", "reason": "malformed_reasoning"}
+                projected_items.append({
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": "commentary",
+                    "content": [
+                        {"type": "input_text", "text": EMPTY_RESPONSE_OPAQUE_REASONING_MARKER},
+                    ],
+                })
+                changed = True
+                continue
+
+            if item_type == "agent_message":
+                if set(item.keys()) - _EMPTY_RESPONSE_AGENT_MESSAGE_FIELDS:
+                    return None, {"status": "rejected", "reason": "unknown_agent_message_field"}
+                author = item.get("author")
+                recipient = item.get("recipient")
+                content = item.get("content")
+                phase = item.get("phase", "commentary")
+                if not isinstance(author, str) or author == "":
+                    return None, {"status": "rejected", "reason": "malformed_agent_message"}
+                if not isinstance(recipient, str) or recipient == "":
+                    return None, {"status": "rejected", "reason": "malformed_agent_message"}
+                if phase not in _EMPTY_RESPONSE_VALID_PHASES:
+                    return None, {"status": "rejected", "reason": "invalid_phase"}
+                if not isinstance(content, list):
+                    return None, {"status": "rejected", "reason": "malformed_agent_message"}
+                if not _is_empty_response_text_only(content):
+                    return None, {"status": "rejected", "reason": "non_text_agent_content"}
+                header_text = json.dumps(
+                    {"type": "agent_message", "author": author, "recipient": recipient},
+                    ensure_ascii=False, separators=(",", ":"),
+                )
+                header = {"type": "input_text", "text": header_text}
+                projected_items.append({
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": phase,
+                    "content": [header, *content],
+                })
+                changed = True
+                continue
+
+            if item_type == "message":
+                if set(item.keys()) - _EMPTY_RESPONSE_MESSAGE_FIELDS:
+                    return None, {"status": "rejected", "reason": "unknown_message_field"}
+                role = item.get("role")
+                if role not in _EMPTY_RESPONSE_VALID_ROLES:
+                    return None, {"status": "rejected", "reason": "invalid_role"}
+                phase = item.get("phase")
+                if phase is not None and (role != "assistant" or phase not in _EMPTY_RESPONSE_VALID_PHASES):
+                    return None, {"status": "rejected", "reason": "invalid_phase"}
+                content = item.get("content")
+                if not _is_empty_response_text_only(content):
+                    return None, {"status": "rejected", "reason": "non_text_message_content"}
+                kept = {"type": "message", "role": role, "content": content}
+                if phase is not None:
+                    kept["phase"] = phase
+                if kept != item:
+                    changed = True
+                projected_items.append(kept)
+                continue
+
+            if item_type in _EMPTY_RESPONSE_CALL_ARG_FIELD:
+                if set(item.keys()) - _EMPTY_RESPONSE_CALL_FIELDS[item_type]:
+                    return None, {"status": "rejected", "reason": "unknown_call_field"}
+                call_id = item.get("call_id")
+                name = item.get("name")
+                arg_field = _EMPTY_RESPONSE_CALL_ARG_FIELD[item_type]
+                arguments = item.get(arg_field)
+                namespace = item.get("namespace")
+                caller = item.get("caller")
+                if not isinstance(call_id, str) or call_id == "" or call_id in calls:
+                    return None, {"status": "rejected", "reason": "malformed_call"}
+                if not isinstance(name, str) or name == "":
+                    return None, {"status": "rejected", "reason": "malformed_call"}
+                if not isinstance(arguments, str):
+                    return None, {"status": "rejected", "reason": "malformed_call"}
+                if not _empty_response_valid_namespace(namespace):
+                    return None, {"status": "rejected", "reason": "malformed_namespace"}
+                if not _empty_response_valid_caller(caller):
+                    return None, {"status": "rejected", "reason": "malformed_caller"}
+                calls[call_id] = item_type
+                kept = {"type": item_type, "call_id": call_id, "name": name, arg_field: arguments}
+                if namespace is not None:
+                    kept["namespace"] = namespace
+                if caller is not None:
+                    kept["caller"] = caller
+                if kept != item:
+                    changed = True
+                projected_items.append(kept)
+                continue
+
+            if item_type in _EMPTY_RESPONSE_CALL_TYPE_FOR_OUTPUT:
+                if set(item.keys()) - _EMPTY_RESPONSE_OUTPUT_FIELDS:
+                    return None, {"status": "rejected", "reason": "unknown_output_field"}
+                call_id = item.get("call_id")
+                output = item.get("output")
+                caller = item.get("caller")
+                if not isinstance(call_id, str) or call_id == "" or call_id not in calls:
+                    return None, {"status": "rejected", "reason": "orphan_output"}
+                if calls[call_id] != _EMPTY_RESPONSE_CALL_TYPE_FOR_OUTPUT[item_type]:
+                    return None, {"status": "rejected", "reason": "mismatched_output"}
+                if call_id in outputs_seen:
+                    return None, {"status": "rejected", "reason": "duplicate_output"}
+                if not _is_empty_response_text_only(output):
+                    return None, {"status": "rejected", "reason": "non_text_output"}
+                if not _empty_response_valid_caller(caller):
+                    return None, {"status": "rejected", "reason": "malformed_caller"}
+                outputs_seen.add(call_id)
+                kept = {"type": item_type, "call_id": call_id, "output": output}
+                if caller is not None:
+                    kept["caller"] = caller
+                if kept != item:
+                    changed = True
+                projected_items.append(kept)
+                continue
+
+            return None, {"status": "rejected", "reason": "unknown_item_type"}
+
+        projected_input = projected_items
+
+    if not changed:
+        return raw, {"projected": False, "status": "accepted"}
+
+    new_payload["input"] = projected_input
+    try:
+        fallback = json.dumps(new_payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    except Exception:
+        return None, {"status": "rejected", "reason": "serialize_failed"}
+
+    if len(fallback) > budget:
+        return None, {"status": "rejected", "reason": "budget_exceeded"}
+
+    return fallback, {
+        "projected": True,
+        "status": "accepted",
+        "original_bytes": len(raw),
+        "fallback_bytes": len(fallback),
+    }
 
 
 def send_terminal_failure(handler, request_body: bytes, *, code: str, message: str, attempts: int) -> str:
@@ -1488,18 +2428,47 @@ class Handler(BaseHTTPRequestHandler):
             used_response_failed_compaction = False
             response_failed_stages = 0
             max_response_failed_stages = RESPONSE_FAILED_MAX_STAGES if is_responses else 0
+            # Reserved independently of ``max_response_failed_stages`` so the
+            # dialogue-only recovery continuation still gets its one bounded
+            # attempt even when ``DMX_RESPONSE_FAILED_MAX_STAGES=0``. It never
+            # widens the ordinary retry ceiling below, which is computed from
+            # ``max_attempts`` alone. The classified-477 fallback itself is
+            # dispatched immediately, as an independent nested request (see
+            # below), and deliberately does *not* add to this range.
+            dialogue_slots = RESPONSE_FAILED_DIALOGUE_SLOTS if is_responses else 0
             attempt_body = body
             used_response_failed_dialogue_recovery = False
             dialogue_recovery_metrics = None
+            # A classified 477 gets exactly one dedicated fallback slot per
+            # request. Before spending any upstream attempt, honor a bounded
+            # local cooldown recorded by a prior exhausted recovery for this
+            # exact (policy-versioned) request, so a client that retries an
+            # unrecoverable request in a tight loop cannot hammer upstream.
+            if is_responses:
+                cooldown_fingerprint = _empty_response_policy_fingerprint(body)
+                cooldown_remaining = _empty_response_cooldown_remaining(cooldown_fingerprint)
+                if cooldown_remaining > 0:
+                    _record_counter("empty_response_cooldown_hits")
+                    _record_failure("empty_response_cooldown_hit")
+                    _send_empty_response_exhausted(self, 0)
+                    _log(
+                        f"req={request_id} event=empty_response_cooldown_hit "
+                        f"remaining_seconds={cooldown_remaining:.1f} path={_safe_request_path(self.path)}"
+                    )
+                    return
             # Ordinary transient retries retain their previous bounded policy.
             # Explicit ``response_failed`` has its own staged, pair-safe
             # compaction path and must never loop the same bytes.
-            for attempt in range(max_attempts + max_response_failed_stages):
+            for attempt in range(max_attempts + max_response_failed_stages + dialogue_slots):
                 req = urllib.request.Request(url, data=attempt_body if attempt_body else None, method=method)
                 for k, v in out_headers.items():
                     req.add_header(k, v)
                 try:
                     resp = _urlopen(req, timeout=UPSTREAM_TIMEOUT)
+                    # The dedicated classified-477 fallback is dispatched as its
+                    # own immediate nested request below and never reaches this
+                    # normal loop success path, so only the ordinary
+                    # ``response_failed`` recovery branches need crediting here.
                     if used_response_failed_dialogue_recovery and dialogue_recovery_metrics:
                         _record_counter("response_failed_dialogue_recovery_accepted")
                         m = dialogue_recovery_metrics
@@ -1631,6 +2600,7 @@ class Handler(BaseHTTPRequestHandler):
                         disp
                         and transient_retries_used < retry_ceiling
                         and not (status_code == 400 and disp == "full")
+                        and not (status_code == 477 and disp == "full")
                     ):
                         delay = 3.0 if disp == "once" else backoffs[min(attempt, len(backoffs) - 1)]
                         _log(
@@ -1641,20 +2611,81 @@ class Handler(BaseHTTPRequestHandler):
                         time.sleep(delay)
                         continue
                     if status_code == 477 and disp == "full":
-                        _record_failure("upstream_empty_response_exhausted")
-                        terminal_mode = send_terminal_failure(
-                            self,
-                            body,
-                            code="dmx_empty_response_exhausted",
-                            message="DMX upstream returned empty responses after bounded retries",
-                            attempts=attempt + 1,
-                        )
+                        # DMX's empty-response extension gets exactly one bounded,
+                        # semantics-preserving fallback attempt instead of the
+                        # ordinary identical-bytes retry budget. An unsafe
+                        # projection rejects immediately without spending a
+                        # second upstream attempt. A safe projection is
+                        # dispatched right here as its own immediate, nested
+                        # upstream request -- the same URL/method/headers/timeout
+                        # -- independent of the outer attempt/iteration budget
+                        # above, so it always fires exactly once even when this
+                        # classified 477 arrives on the outer loop's very last
+                        # iteration.
+                        fingerprint = _empty_response_policy_fingerprint(body)
+                        fallback, detail = _build_empty_response_fallback(body)
+                        if fallback is None:
+                            _record_counter("empty_response_fallback_rejected")
+                            _record_counter("empty_response_recovery_exhausted")
+                            _record_failure("empty_response_fallback_rejected")
+                            _remember_empty_response_failure(fingerprint)
+                            _send_empty_response_exhausted(self, 1)
+                            _log(
+                                f"req={request_id} event=empty_response_fallback_rejected "
+                                f"reason={detail.get('reason', 'unknown')} attempts=1 "
+                                f"path={_safe_request_path(self.path)}"
+                            )
+                            return
+                        _record_counter("empty_response_fallback_attempts")
+                        previous_bytes = len(attempt_body)
+                        attempt_body = fallback
                         _log(
-                            f"req={request_id} event=empty_response_exhausted "
-                            f"attempts={attempt + 1} upstream_status=477 terminal={terminal_mode} "
+                            f"req={request_id} event=empty_response_fallback "
+                            f"projected={detail.get('projected', False)} "
+                            f"bytes={previous_bytes}->{len(fallback)} "
+                            f"policy={EMPTY_RESPONSE_COMPAT_POLICY_VERSION} "
                             f"path={_safe_request_path(self.path)}"
                         )
-                        return
+                        fallback_req = urllib.request.Request(
+                            url, data=attempt_body if attempt_body else None, method=method
+                        )
+                        for k, v in out_headers.items():
+                            fallback_req.add_header(k, v)
+                        try:
+                            resp = _urlopen(fallback_req, timeout=UPSTREAM_TIMEOUT)
+                        except urllib.error.HTTPError as fallback_error:
+                            try:
+                                fallback_error.read()
+                                fallback_status = fallback_error.code
+                            finally:
+                                fallback_error.close()
+                            _record_counter("empty_response_recovery_exhausted")
+                            _record_failure("empty_response_recovery_exhausted")
+                            _remember_empty_response_failure(fingerprint)
+                            _send_empty_response_exhausted(self, 2)
+                            _log(
+                                f"req={request_id} event=empty_response_fallback_failed "
+                                f"upstream_status={fallback_status} attempts=2 "
+                                f"path={_safe_request_path(self.path)}"
+                            )
+                            return
+                        except Exception as fallback_exc:
+                            _record_counter("empty_response_recovery_exhausted")
+                            _record_failure("empty_response_recovery_exhausted")
+                            _remember_empty_response_failure(fingerprint)
+                            _send_empty_response_exhausted(self, 2)
+                            _log(
+                                f"req={request_id} event=empty_response_fallback_failed "
+                                f"exception={_safe_exception_label(fallback_exc)} attempts=2 "
+                                f"path={_safe_request_path(self.path)}"
+                            )
+                            return
+                        _record_counter("empty_response_fallback_accepted")
+                        _log(
+                            f"req={request_id} event=empty_response_fallback_accepted "
+                            f"path={_safe_request_path(self.path)}"
+                        )
+                        break
                     self.send_response(status_code)
                     for k, v in error_headers.items():
                         if k.lower() not in _HOP_BY_HOP:
@@ -1670,6 +2701,10 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     return
                 except Exception as e:
+                    # The classified-477 fallback is dispatched as its own
+                    # immediate nested request above, with its own HTTPError
+                    # and transport-exception handling; a transport failure
+                    # there never reaches this ordinary per-iteration handler.
                     last_err = e
                     if attempt < max_attempts - 1:
                         _log(
@@ -1821,9 +2856,93 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _handoff_control(self):
+        """Prepare one replacement and acknowledge READY before crossing COMMIT."""
+        if not _is_loopback_client(self.client_address[0]):
+            self.send_error(403, "handoff control is available only from loopback")
+            return
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except (TypeError, ValueError):
+            self.send_error(400, "invalid handoff content length")
+            return
+        if content_length <= 0 or content_length > HANDOFF_CONTROL_MAX_BYTES:
+            self.send_error(413, "handoff request exceeds the control limit")
+            return
+        raw = self.rfile.read(content_length)
+        if len(raw) != content_length:
+            self.send_error(400, "incomplete handoff request")
+            return
+        try:
+            request = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self.send_error(400, "invalid handoff JSON")
+            return
+        if not isinstance(request, dict):
+            self.send_error(400, "handoff request must be an object")
+            return
+        allowed = {
+            "transaction_id", "release", "source_sha256", "manifest_sha256",
+            "timeout_seconds", "lease_seconds",
+        }
+        if set(request) - allowed:
+            self.send_error(400, "handoff request contains unknown fields")
+            return
+        expected = {key: request.get(key) for key in (
+            "transaction_id", "release", "source_sha256", "manifest_sha256",
+        )}
+        if not _disk_payload_matches_handoff_expected(expected):
+            self.send_error(409, "handoff request does not match the current disk payload")
+            return
+        try:
+            timeout_seconds = min(120.0, max(0.1, float(request.get("timeout_seconds", 30.0))))
+            lease_seconds = _bounded_drain_lease_seconds(request.get("lease_seconds"))
+            prepared = _prepare_handoff(
+                self.server,
+                expected,
+                timeout_seconds=timeout_seconds,
+                lease_seconds=lease_seconds,
+            )
+        except HandoffError as exc:
+            status = 409 if isinstance(exc, HandoffConflict) else 503
+            payload = json.dumps({
+                "ok": False,
+                "error": "handoff_in_progress" if status == 409 else "handoff_prepare_failed",
+            }, separators=(",", ":")).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        payload = json.dumps({
+            "ok": True,
+            "state": "ready",
+            "protocol_version": HANDOFF_PROTOCOL_VERSION,
+            "child_pid": prepared["child"].process.pid,
+            "transaction_id": expected["transaction_id"],
+        }, separators=(",", ":")).encode()
+        self.send_response(202)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+        self.wfile.flush()
+        threading.Thread(
+            target=_commit_prepared_handoff,
+            args=(self.server, prepared),
+            daemon=True,
+            name="dmx-handoff-commit",
+        ).start()
+
     def do_POST(self):
         if self.path == "/control/drain":
             self._drain_control(True)
+            return
+        if self.path == "/control/handoff":
+            self._handoff_control()
             return
         self._relay("POST")
 
@@ -1846,7 +2965,201 @@ class Handler(BaseHTTPRequestHandler):
         self._relay("PUT")
 
 
+def _serve_with_handoff_resume(
+    server: ThreadingHTTPServer,
+    *,
+    initial_serving_thread: threading.Thread | None = None,
+) -> None:
+    """Serve until ordinary stop, finalized replacement, or a resumable rollback."""
+    first_serving_thread = initial_serving_thread
+    while True:
+        if first_serving_thread is not None:
+            first_serving_thread.join()
+            first_serving_thread = None
+        else:
+            server.serve_forever()
+        with _HANDOFF_LOCK:
+            state = str(_HANDOFF_SESSION.get("state", "idle"))
+            outcome = _HANDOFF_SESSION.get("outcome")
+            outcome_ready = _HANDOFF_SESSION.get("outcome_ready")
+            timeout_seconds = float(_HANDOFF_SESSION.get("timeout_seconds", 1.0))
+        if outcome is None and state == "idle":
+            with _RESPONSE_GATE_LOCK:
+                draining = _DRAINING
+            if not draining:
+                return
+        if isinstance(outcome_ready, threading.Event) and not outcome_ready.is_set():
+            outcome_ready.wait(
+                timeout=max(1.0, timeout_seconds * 3 + HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS)
+            )
+        with _HANDOFF_LOCK:
+            outcome = _HANDOFF_SESSION.get("outcome")
+            deadline = _HANDOFF_SESSION.get("drain_deadline")
+        if outcome == "rolled_back":
+            _set_draining(False)
+            _reset_handoff_session_to_idle()
+            continue
+        if outcome == "finalized":
+            if not isinstance(deadline, (int, float)):
+                deadline = time.monotonic()
+            while True:
+                with _RESPONSE_GATE_LOCK:
+                    active = max(_ACTIVE_RESPONSES, _ACTIVE_HANDLERS)
+                if active <= 0 or time.monotonic() >= deadline:
+                    break
+                time.sleep(0.05)
+            if active > 0:
+                _log(f"event=handoff_old_drain_expired remaining_active={active}")
+            return
+        if outcome == "abort_unconfirmed":
+            _log("event=handoff_abort_unconfirmed action=old_listener_exit")
+            return
+        _log("event=handoff_outcome_unconfirmed action=old_listener_exit")
+        return
+
+
+def _read_child_control_message(stream) -> dict:
+    line = stream.readline(HANDOFF_CONTROL_MAX_BYTES + 1)
+    if not line:
+        raise EOFError("handoff control pipe closed")
+    if len(line) > HANDOFF_CONTROL_MAX_BYTES or not line.endswith(b"\n"):
+        raise HandoffError("handoff control message exceeds the limit")
+    try:
+        message = json.loads(line)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HandoffError("handoff control message is invalid") from exc
+    if not isinstance(message, dict):
+        raise HandoffError("handoff control message must be an object")
+    return message
+
+
+def _write_child_control_message(stream, message: dict) -> None:
+    encoded = json.dumps(
+        message, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+    ).encode("ascii") + b"\n"
+    if len(encoded) > HANDOFF_CONTROL_MAX_BYTES:
+        raise HandoffError("handoff control message exceeds the limit")
+    stream.write(encoded)
+    stream.flush()
+
+
+def _server_from_handoff_listener(listener: socket.socket) -> _ResilientProxyServer:
+    address = listener.getsockname()
+    server = _ResilientProxyServer(address, Handler, bind_and_activate=False)
+    try:
+        server.socket.close()
+    except OSError:
+        pass
+    server.socket = listener
+    server.server_address = address
+    return server
+
+
+def _valid_prepare_for_this_child(message: object) -> bool:
+    if not isinstance(message, dict) or message.get("type") != "prepare":
+        return False
+    listener_fields = {"listener_share_b64"} if "listener_share_b64" in message else {"listener_fd"}
+    expected_fields = {
+        "type", "protocol_version", "transaction_id", "release",
+        "source_sha256", "manifest_sha256",
+    } | listener_fields
+    if set(message) != expected_fields:
+        return False
+    return (
+        message.get("protocol_version") == HANDOFF_PROTOCOL_VERSION
+        and isinstance(message.get("transaction_id"), str)
+        and bool(message.get("transaction_id"))
+        and message.get("release") == release_version()
+        and message.get("source_sha256") == source_sha256()
+        and message.get("manifest_sha256") == _payload_manifest_sha256()
+    )
+
+
+def _run_handoff_child() -> int:
+    """Hold the inherited listener dormant until the parent crosses COMMIT."""
+    input_stream = sys.stdin.buffer
+    output_stream = sys.stdout.buffer
+    server = None
+    serving_thread = None
+    try:
+        prepare = _read_child_control_message(input_stream)
+        if not _valid_prepare_for_this_child(prepare):
+            raise HandoffError("handoff PREPARE identity mismatch")
+        _transition_handoff("preparing")
+        with _HANDOFF_LOCK:
+            _HANDOFF_SESSION.update({
+                "transaction_id": prepare["transaction_id"],
+                "child_pid": os.getpid(),
+                "expected": {
+                    "transaction_id": prepare["transaction_id"],
+                    "release": prepare["release"],
+                    "source_sha256": prepare["source_sha256"],
+                    "manifest_sha256": prepare["manifest_sha256"],
+                },
+            })
+        listener = _listener_from_handoff_prepare(prepare)
+        server = _server_from_handoff_listener(listener)
+        global _SERVER_INSTANCE
+        _SERVER_INSTANCE = server
+        _transition_handoff("ready")
+        _write_child_control_message(output_stream, {
+            "type": "ready",
+            "protocol_version": HANDOFF_PROTOCOL_VERSION,
+            "pid": os.getpid(),
+            "transaction_id": prepare["transaction_id"],
+            "release": release_version(),
+            "source_sha256": source_sha256(),
+            "manifest_sha256": _payload_manifest_sha256(),
+        })
+        command = _read_child_control_message(input_stream)
+        if command != {"type": "commit"}:
+            raise HandoffError("handoff child did not receive COMMIT")
+        _transition_handoff("committing")
+        _transition_handoff("serving")
+        serving_thread = threading.Thread(
+            target=server.serve_forever,
+            daemon=True,
+            name="dmx-handoff-serving",
+        )
+        serving_thread.start()
+        _write_child_control_message(output_stream, {
+            "type": "serving",
+            "pid": os.getpid(),
+            "transaction_id": prepare["transaction_id"],
+        })
+        command = _read_child_control_message(input_stream)
+        if command == {"type": "abort"}:
+            raise HandoffError("handoff parent aborted before FINALIZE")
+        if command != {"type": "finalize"}:
+            raise HandoffError("handoff child did not receive FINALIZE")
+        _transition_handoff("finalizing")
+        _transition_handoff("finalized")
+        _write_child_control_message(output_stream, {
+            "type": "finalized",
+            "pid": os.getpid(),
+            "transaction_id": prepare["transaction_id"],
+        })
+        _serve_with_handoff_resume(server, initial_serving_thread=serving_thread)
+        return 0
+    except Exception:
+        if server is not None:
+            if serving_thread is not None:
+                try:
+                    server.shutdown()
+                except Exception:
+                    pass
+                serving_thread.join(timeout=2)
+            try:
+                server.server_close()
+            except Exception:
+                pass
+        return 1
+
+
 def main():
+    if os.environ.get("DMX_HANDOFF_CHILD") == "1" or "--handoff-child" in sys.argv[1:]:
+        raise SystemExit(_run_handoff_child())
+    global _SERVER_INSTANCE
     _log(
         f"starting dmx-responses-proxy listener={HOST}:{PORT} "
         f"responses_max_concurrency={RESPONSES_MAX_CONCURRENCY} "
@@ -1854,10 +3167,13 @@ def main():
         f"log_max_bytes={LOG_MAX_BYTES} log_backup_count={LOG_BACKUP_COUNT}"
     )
     httpd = _ResilientProxyServer((HOST, PORT), Handler)
+    _SERVER_INSTANCE = httpd
     try:
-        httpd.serve_forever()
+        _serve_with_handoff_resume(httpd)
     except KeyboardInterrupt:
         pass
+    finally:
+        httpd.server_close()
 
 
 if __name__ == "__main__":

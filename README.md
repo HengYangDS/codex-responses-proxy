@@ -33,7 +33,8 @@ replayed Codex state, for example:
   replay block;
 - a local image reference that the upstream endpoint cannot fetch;
 - a transient `invalid_payload`, gateway timeout, or pre-content SSE interruption;
-- a classified DMX HTTP 477 `empty_response` from its selected upstream;
+- a classified DMX HTTP 477 `empty_response` (one precise,
+  semantic-preserving recovery);
 - an explicit upstream `response_failed` execution rejection of replay context.
 
 The adapter removes only deterministically incompatible outbound replay state.
@@ -45,8 +46,8 @@ those pair-safe fallbacks as well, the proxy may make one final dialogue-only
 request: the latest developer or system instruction before the active request,
 where present, plus the latest user request, without assistant or tool replay. It
 only sends that final request when it is safely smaller than the rejected replay.
-Exhaustion is returned as retryable HTTP 503 with `Retry-After: 3`, so the client
-may apply its own retry policy.
+Exhaustion, loops, or unsafe failures are returned as standard retryable HTTP
+503 with `Retry-After: 3`, so the client may apply its own retry policy.
 It preserves valid typed encrypted-content blocks, complete tool calls and outputs,
 text, and remote image URLs whenever they remain in the pair-safe path. It is not a
 general request transformer or a replacement for an upstream service with persistent
@@ -108,10 +109,10 @@ python3 ~/.codex/dmx-proxy/control.py status --json
 python3 ~/.codex/dmx-proxy/control.py enable
 python3 ~/.codex/dmx-proxy/control.py disable
 
-# Replace one drained, verified local listener; this briefly interrupts proxy traffic
+# Hand off one verified protocol-v2 listener without closing its socket
 python3 ~/.codex/dmx-proxy/control.py reload --json
 
-# Stage a verified payload, then perform the same drain-protected replacement
+# Stage a verified payload, then hand it off transactionally
 python3 install.py --stage-only
 python3 ~/.codex/dmx-proxy/control.py upgrade --stage <reported-stage> --json
 
@@ -128,8 +129,13 @@ python3 uninstall.py
 python3 uninstall.py --purge
 ```
 
-`reload` and `upgrade` first wait for a five-second zero-active quiet window
-**without closing admission**.
+For a protocol-v2 listener, `reload` and staged `upgrade` prepare and verify a
+non-accepting child first. The old process stops accepting before `COMMIT`; the
+child then proves its PID, transaction, release, source, and manifest before
+`FINALIZE`. The listening socket remains open throughout. Already accepted
+handlers drain to zero or a bounded lease, and a pre-finalize failure resumes
+the old process only after the child is confirmed exited. An unconfirmed abort
+fails closed rather than risking two accepting processes.
 
 `apply-control-plane` is intentionally different: it is a source-side
 controller repair, not a listener operation. Run it only from a committed,
@@ -140,15 +146,11 @@ installed controller SHA-256, and leaves the verified listener and every active
 Responses stream undisturbed. Any listener-payload change must use `reload` or
 staged `upgrade` instead.
 
-The listener rejects new `/v1/responses` requests with retryable HTTP 503 only
-while drain is active, while already admitted requests finish. Only after the
-same listener reports `draining=true` and `active_responses=0` may lifecycle
-control make a replacement. A bounded drain lease reopens admission if a
-controller crashes or disconnects; if the quiet window does not appear,
-lifecycle control refuses without starting drain; an ordinary drain timeout
-likewise changes no payload. The commands terminate only a verified listener,
-require the watchdog to prove a new process ID when replacement is required,
-and never touch Codex session files.
+The existing bounded drain/terminate/watchdog path remains only for the first
+migration from a listener that does not advertise protocol v2. It verifies
+payload integrity and listener identity, requires its authorized quiet-window
+gate, and never touches Codex session files. Subsequent protocol-v2 operations
+use the transactional handoff above.
 
 `governance.py --json` is read-only. It reports manifest integrity, route
 authority, verified listener identity, and the loaded proxy source SHA-256 when
@@ -168,6 +170,10 @@ upstream error payloads. The endpoint is read-only and is available only at
 `runtime.draining` and `runtime.active_responses` together expose the lifecycle
 barrier: while draining is true, no new Responses request may enter the active
 set. `runtime.drain_lease_remaining_seconds` makes the fail-open lease visible.
+The `handoff_*`, `pid`, `payload_manifest_sha256`, and `accepting` fields bind a
+protocol-v2 transition to one process and transaction. The loopback-only
+`POST /control/handoff` endpoint and its child pipe protocol are lifecycle
+internals, not general APIs.
 The loopback-only `POST /control/drain` and `DELETE /control/drain`
 endpoints are lifecycle internals used by `control.py`, not general APIs.
 
@@ -203,7 +209,7 @@ and it then requires the verified legacy listener to report zero active
 Responses twice across a five-second quiet window before it changes any payload.
 If a request arrives or the window does not complete, the upgrade refuses
 without mutation. Once the replacement listener starts, all later reloads and
-upgrades use the atomic drain barrier; the compatibility check is not a normal
+upgrades use protocol-v2 handoff; the compatibility check is not a normal
 operating mode.
 
 If an urgent, separately authorized maintenance interruption is unavoidable,
@@ -292,6 +298,8 @@ python3 scripts/test_release_metadata.py
 for py in python3.12 python3.13 python3.14; do
   "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
   "$py" tests/test_package.py
+  "$py" tests/test_empty_response_recovery.py
+  "$py" tests/test_rolling_handoff.py
 done
 ```
 

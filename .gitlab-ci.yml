@@ -21,6 +21,8 @@ stages:
     - python --version
     - python -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
     - python tests/test_package.py
+    - python tests/test_empty_response_recovery.py
+    - python tests/test_rolling_handoff.py
 
 verify-python-3.12:
   extends: .python-verify

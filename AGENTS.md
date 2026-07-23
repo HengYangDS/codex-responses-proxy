@@ -24,7 +24,8 @@ of Codex conversation history or AIGW configuration.
 4. Generated runtime deployment under `~/.codex/dmx-proxy/`.
 5. Logs, request captures, and host-local caches.
 
-The installed runtime is a re-creatable projection, never a source of truth.
+The installed runtime is a re-creatable post-release projection, never a source
+of truth. Pre-release deployment is an invalid state.
 Do not modify Codex session JSONL, SQLite state, archives, or model metadata to
 repair a replay issue.
 
@@ -49,8 +50,12 @@ python scripts/test_release_metadata.py
 for py in python3.12 python3.13 python3.14; do
   "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
   "$py" tests/test_package.py
+  "$py" tests/test_empty_response_recovery.py
+  "$py" tests/test_rolling_handoff.py
 done
 ```
 
-Use `control.py status --json` for read-only runtime evidence. A reload is a
-service interruption and must be communicated before it is performed.
+Use `control.py status --json` for read-only runtime evidence. A protocol-v2
+reload is transactional but remains a lifecycle mutation and must be
+communicated before it is performed. A legacy first migration may interrupt
+traffic and requires its separate authorization.
