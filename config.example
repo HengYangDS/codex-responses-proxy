@@ -21,6 +21,17 @@ DMX_RESPONSE_FAILED_COMPACTION_BUDGET=524288
 # dialogue-only recovery. The default is deliberately conservative.
 DMX_RESPONSE_FAILED_MAX_STAGES=3
 
+# Byte budget for the single dedicated fallback built after a classified
+# upstream HTTP 477 `empty_response`. This projection is text-only. Bounded
+# between 4096 (4 KiB) and 4194304 (4 MiB, also the default).
+DMX_EMPTY_RESPONSE_FALLBACK_BUDGET=4194304
+
+# Local cooldown, in seconds, applied to an identical request after its
+# classified empty-response recovery is exhausted. Prevents a tight client
+# retry loop from repeating a known-unrecoverable request against upstream.
+# Bounded between 1 and 300 seconds.
+DMX_EMPTY_RESPONSE_COOLDOWN_SECONDS=30
+
 # Maximum bytes in each structured proxy log segment and the number of rotated
 # segments retained. The proxy never logs request bodies, credentials, headers,
 # prompts, or raw upstream payloads. Values outside their supported bounds are
