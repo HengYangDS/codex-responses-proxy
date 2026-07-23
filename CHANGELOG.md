@@ -6,6 +6,8 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+## [1.0.25] - 2026-07-23
+
 ### Added
 
 - Add one semantic-preserving compatibility attempt after an exact DMX HTTP 477
