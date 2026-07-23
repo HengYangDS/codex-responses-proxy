@@ -580,18 +580,27 @@ class TestManagedRouteState(unittest.TestCase):
 
     def test_quiescence_preflight_keeps_admission_open_until_idle_window_is_proven(self):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))
-        snapshots = [
-            {"draining": False, "active_responses": 1},
-            {"draining": False, "active_responses": 0},
-            {"draining": False, "active_responses": 1},
-            {"draining": False, "active_responses": 0},
-            {"draining": False, "active_responses": 0},
-        ]
         with (
             mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
             mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
-            mock.patch.object(control, "_runtime_metrics", side_effect=snapshots),
-            mock.patch.object(control.time, "monotonic", side_effect=[0.0, 0.0, 0.1, 0.1, 0.2, 0.2, 0.3, 0.3, 5.3, 5.3]),
+            mock.patch.object(
+                control,
+                "_runtime_metrics",
+                return_value={"draining": False, "active_responses": 0},
+            ),
+            mock.patch.object(
+                control.time,
+                "monotonic",
+                side_effect=[
+                    0.0,
+                    0.0, 0.0,
+                    1.0, 1.0,
+                    2.0, 2.0,
+                    3.0, 3.0,
+                    4.0, 4.0,
+                    5.0, 5.0,
+                ],
+            ),
             mock.patch.object(control.time, "sleep"),
         ):
             result = control._wait_for_quiescent_listener(ctx, 10.0, quiet_seconds=5.0)
