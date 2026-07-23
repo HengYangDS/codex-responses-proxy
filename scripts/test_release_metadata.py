@@ -124,11 +124,26 @@ def test_gitlab_ci_uses_only_the_project_runner_tag() -> None:
             raise SystemExit(f"{job} must select the Codex DMX Proxy GitLab runner tag")
 
 
+def test_gitlab_ci_runs_full_regression_matrix() -> None:
+    ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    start = ci.index(".python-verify:")
+    end = ci.index("\n\nverify-python-3.12:", start)
+    block = ci[start:end]
+    for test in (
+        "python tests/test_package.py",
+        "python tests/test_empty_response_recovery.py",
+        "python tests/test_rolling_handoff.py",
+    ):
+        if test not in block:
+            raise SystemExit(f".python-verify template must run {test}")
+
+
 def main() -> None:
     test_prune_tags_removes_deleted_remote_tag()
     test_gitlab_ci_refreshes_tags_before_every_release_gate()
     test_gitlab_release_metadata_gate_has_complete_history()
     test_gitlab_ci_uses_only_the_project_runner_tag()
+    test_gitlab_ci_runs_full_regression_matrix()
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     heading = f"## [{version}]"
