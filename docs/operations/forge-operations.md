@@ -50,9 +50,13 @@ of divergence or incomplete housekeeping, not permission to force convergence.
 GitHub verification and release share one repository-scoped local registration:
 `codex-dmx-proxy-github-macos-arm64`. It accepts only trusted `main`, tag, and
 manual workflow revisions; pull-request workflow code does not run on that
-host. Its LaunchAgent, work directory, cache, and registration may not serve
-another repository or any GitLab job. GitLab uses its separate project-scoped
-Docker runner selected by `codex-dmx-proxy-gitlab-ci`.
+host. Its LaunchAgent, work directory, cache, and registration are a
+repository-scoped evidence boundary and may not serve another repository or
+any GitLab job. A successful separate GitHub-hosted `windows-2025` matrix
+proves the Python `socket.share()`/`socket.fromshare()` process contract for this
+repository; it does not prove an actual user's Windows Scheduled Task host or
+system-wide configuration. GitLab uses its separate project-scoped Docker
+runner selected by `codex-dmx-proxy-gitlab-ci`.
 
 The GitLab tag pipeline and GitHub tag workflow independently verify the
 provider-specific tag signature and create a formal release record. Existing
