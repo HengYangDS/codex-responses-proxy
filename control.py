@@ -225,9 +225,10 @@ def _wait_for_quiescent_listener(
         draining = runtime.get("draining") if isinstance(runtime, dict) else None
         if draining is False and isinstance(active, int) and not isinstance(active, bool) and active == 0:
             now = time.monotonic()
-            if quiet_started_at is not None and now - quiet_started_at >= quiet_seconds:
+            if quiet_started_at is None:
+                quiet_started_at = now
+            elif now - quiet_started_at >= quiet_seconds:
                 return {"listener": old_pid, "runtime": runtime}
-            quiet_started_at = now
         else:
             quiet_started_at = None
         time.sleep(0.1)
