@@ -21,6 +21,8 @@ python scripts/test_release_metadata.py
 for py in python3.12 python3.13 python3.14; do
   "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
   "$py" tests/test_package.py
+  "$py" tests/test_empty_response_recovery.py
+  "$py" tests/test_rolling_handoff.py
 done
 ```
 

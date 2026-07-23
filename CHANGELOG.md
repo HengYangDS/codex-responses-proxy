@@ -8,6 +8,20 @@ work that has not yet been tagged.
 
 ### Added
 
+- Add one semantic-preserving compatibility attempt after an exact DMX HTTP 477
+  `empty_response`. The original sanitized request remains the first upstream
+  body; the fallback preserves message phases and ordered function/custom-tool
+  calls and outputs, and fails closed on unknown or unrepresentable history.
+- Add a policy-versioned, TTL- and capacity-bounded cooldown keyed by the
+  sanitized original request, without retaining request content or exposing
+  fingerprints in runtime evidence.
+- Add protocol-v2 listener handoff with explicit `PREPARE`, `READY`, `COMMIT`,
+  `SERVING`, `FINALIZE`, and `ABORT` phases. POSIX transfers the listener with
+  `pass_fds`; Windows transfers `socket.share()` bytes only through the child
+  control pipe and restores them with `socket.fromshare()`.
+- Configure Linux, macOS, and Windows candidate verification for Python 3.12,
+  3.13, and 3.14. Windows execution remains a CI evidence gate, not physical
+  Scheduled Task host acceptance.
 - Add the portable, read-only `governance.py` evidence command to the installed
   payload. It reports only the existing manifest, listener, route, and runtime
   evidence; it does not inspect or modify AIGW, Codex history, credentials, or
@@ -20,6 +34,16 @@ work that has not yet been tagged.
 
 ### Fixed
 
+- Return a standard retryable HTTP 503 with `Retry-After: 3` when the 477
+  fallback is unsafe, its one follow-up attempt fails, or an identical request
+  is in cooldown, including requests that asked for streaming output.
+- Stop the old accept loop before committing a prepared replacement, verify the
+  child by PID, transaction, release, source, and manifest, and bound old-flow
+  drain. Failed pre-finalize transactions confirm child exit before restoring
+  old admission; unconfirmed aborts fail closed instead of risking dual accept.
+- Preserve the existing bounded drain/terminate path for the first migration
+  from an installed pre-v2 `1.0.24` listener, while subsequent v2 reloads and
+  upgrades use the transactional handoff.
 - Relaunch the Windows watchdog when the watchdog process itself is killed. The
   scheduled task's `RestartOnFailure` only reacts to a failed task launch, not to
   the launched watchdog being terminated later, so on a real host a killed
@@ -67,9 +91,6 @@ work that has not yet been tagged.
 - Restrict an emergency forced legacy bootstrap to separately authorized
   upgrade-only use after manifest integrity and single-listener verification;
   ordinary reload never receives this interruption path.
-- Emit a terminal SSE `error` event when a streaming request exhausts classified
-  DMX HTTP 477 empty-response retries; non-streaming callers retain retryable
-  HTTP 503 with `Retry-After: 3`.
 - Return retryable HTTP 503 with `Retry-After: 3` when all pre-content SSE
   reconnect attempts are exhausted, rather than returning an empty successful
   stream that the client must classify as a disconnection.
@@ -78,6 +99,10 @@ work that has not yet been tagged.
   launchd stdout/stderr sinks that created unbounded parallel logs.
 
 ### Verified
+
+- Add deterministic fake-upstream and real-subprocess coverage for first-body
+  fidelity, one-shot 477 recovery, cooldown isolation, state transitions,
+  rollback, active-flow completion, lease expiry, and repeated POSIX handoff.
 
 - Add deterministic offline transport coverage for exhausted pre-content SSE,
   bounded/redacted logging, drain admission rejection, in-flight completion,

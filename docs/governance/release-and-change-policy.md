@@ -4,16 +4,19 @@ Status: canonical.
 
 ## Change admission
 
-Changes require a scoped regression test, a boundary review, and Python 3.12,
-3.13, and 3.14 verification. Documentation must be updated whenever commands,
-installation behavior, ownership, or released behavior changes.
+Changes require a scoped regression test, a boundary review, and a
+tri-platform Python 3.12, 3.13, and 3.14 candidate verification matrix.
+Documentation must be updated whenever commands, installation behavior,
+ownership, or released behavior changes.
 
 ## Release identity
 
 `VERSION` is the active release-train identifier. Before a tag exists, it must
 be strictly newer than the latest released version and the work belongs under
 `Unreleased`. A release commit moves that material to a dated heading and is
-tagged as `v<VERSION>`. A release candidate must satisfy:
+tagged as `v<VERSION>`. Deployment is a post-release projection: no candidate
+may be installed before its forge-native tags, CI, and release records are
+verified. A release candidate must satisfy:
 
 - `VERSION`, runtime version lookup, and the dated Changelog heading agree;
 - `CHANGELOG.md` begins with `Unreleased`; every locally published heading maps
@@ -54,16 +57,16 @@ URLs, namespace, project ID, default branch, or release history.
 
 ## Operational changes
 
-`control.py status` and `governance.py` are read-only. `reload` and staged
-upgrade require a user-visible warning and a post-operation identity proof.
-They first wait for a bounded zero-active quiet window without closing Responses
-admission. They then close admission, allow already admitted work to finish, and
-may proceed only after loopback health reports `draining=true` with
-`active_responses=0`.
+`control.py status` and `governance.py` are read-only. A protocol-v2 `reload`
+or staged upgrade requires a user-visible warning and a post-operation identity
+proof. It prepares a non-accepting child, validates payload identity, writes the
+READY response, stops the old accept loop, and only then crosses COMMIT. The
+child must prove SERVING health by PID, transaction, release, source, and
+manifest before FINALIZE. Pre-finalize failure confirms child exit before old
+admission resumes; an unconfirmed abort fails closed. Already accepted handlers
+drain to zero or a bounded lease after finalization.
 
-A timeout restores admission without committing a staged payload; failure to
-find the quiet window starts no drain; a bounded listener lease also fails open
-if the controller disappears. A controller-only apply is not a reload or
+A controller-only apply is not a reload or
 upgrade: it requires exactly one verified listener serving normal admission and
 proves every listener, watchdog, version, and support file byte-identical to the
 verified live payload. It transactionally swaps only `control.py` and the
