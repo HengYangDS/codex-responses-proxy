@@ -14,6 +14,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -22,6 +23,8 @@ from platform_adapters import pick_adapter, common  # noqa: E402
 
 
 QUIESCENCE_SECONDS = 5.0
+HANDOFF_PROTOCOL_VERSION = 2
+_HANDOFF_MAX_BODY_BYTES = 64 * 1024
 
 
 def _source_root() -> str:
@@ -489,6 +492,281 @@ def _drain_listener_with_legacy_bootstrap(
     return _legacy_drain_listener(ctx, timeout_seconds, required_idle_seconds=5.0)
 
 
+def _runtime_supports_handoff(runtime: dict | None) -> bool:
+    """Report whether a live listener's own health snapshot advertises protocol-v2 handoff.
+
+    A legacy runtime -- ``None``, an empty dict, or any snapshot that predates
+    the ``handoff_protocol_version`` key entirely (an installed 1.0.24, for
+    instance) -- is reported as unsupported so callers fall back to the
+    existing drain/terminate/watchdog path unchanged.
+    """
+    if not isinstance(runtime, dict):
+        return False
+    pid = runtime.get("pid")
+    source = runtime.get("source_sha256")
+    manifest = runtime.get("payload_manifest_sha256")
+    release = runtime.get("release")
+    handoff_state = runtime.get("handoff_state")
+    transaction_id = runtime.get("handoff_transaction_id")
+    transaction_state_ok = (
+        (handoff_state == "idle" and transaction_id is None)
+        or (
+            handoff_state == "finalized"
+            and isinstance(transaction_id, str)
+            and bool(transaction_id)
+        )
+    )
+    return (
+        runtime.get("handoff_protocol_version") == HANDOFF_PROTOCOL_VERSION
+        and isinstance(pid, int)
+        and not isinstance(pid, bool)
+        and pid > 0
+        and isinstance(release, str)
+        and bool(release)
+        and _valid_sha256(source)
+        and _valid_sha256(manifest)
+        and runtime.get("accepting") is True
+        and runtime.get("draining") is False
+        and transaction_state_ok
+    )
+
+
+def _valid_sha256(value: object) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return value == value.lower()
+
+
+def _expected_handoff_metadata(root: str) -> dict:
+    """Compute the release/source/manifest identity a handoff child must prove.
+
+    ``root`` is either the live installed payload (``ctx.install_dir`` for
+    ``reload()``) or an already-verified staged payload (for
+    ``upgrade_from_stage()``); this never trusts caller-supplied text for the
+    expected identity, only bytes read directly from that verified payload.
+    """
+    try:
+        with open(os.path.join(root, "VERSION"), encoding="utf-8") as fh:
+            release = fh.read().strip()
+    except OSError as exc:
+        raise common.InstallError(f"payload VERSION is unavailable: {exc}") from exc
+    if not release:
+        raise common.InstallError("payload has no release version")
+    try:
+        source_sha256 = _sha256_file(os.path.join(root, "proxy", "dmx_responses_proxy.py"))
+        manifest_sha256 = _sha256_file(os.path.join(root, common.PAYLOAD_MANIFEST_FILENAME))
+    except OSError as exc:
+        raise common.InstallError(f"payload files are unavailable for a handoff transaction: {exc}") from exc
+    return {
+        "transaction_id": uuid.uuid4().hex,
+        "release": release,
+        "source_sha256": source_sha256,
+        "manifest_sha256": manifest_sha256,
+    }
+
+
+def _handoff_post(
+    ctx: common.InstallContext,
+    expected: dict,
+    *,
+    lease_seconds: float | None = None,
+    timeout_seconds: float = 5.0,
+) -> dict:
+    """POST the loopback-only handoff control endpoint and require an HTTP 202 ready ack."""
+    body = {
+        "transaction_id": expected["transaction_id"],
+        "release": expected["release"],
+        "source_sha256": expected["source_sha256"],
+        "manifest_sha256": expected["manifest_sha256"],
+    }
+    if lease_seconds is not None:
+        body["lease_seconds"] = max(1, int(lease_seconds))
+    body["timeout_seconds"] = max(1, min(120, int(timeout_seconds)))
+    data = json.dumps(body).encode("utf-8")
+    if len(data) > _HANDOFF_MAX_BODY_BYTES:
+        raise common.InstallError("handoff request payload is too large")
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{ctx.port}/control/handoff",
+        data=data,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=timeout_seconds) as response:
+            if response.status != 202:
+                raise common.InstallError(f"handoff control returned HTTP {response.status}")
+            raw = response.read(_HANDOFF_MAX_BODY_BYTES + 1)
+            if len(raw) > _HANDOFF_MAX_BODY_BYTES:
+                raise common.InstallError("handoff control response is too large")
+            payload = json.loads(raw)
+    except common.InstallError:
+        raise
+    except urllib.error.HTTPError as exc:
+        raise common.InstallError(f"handoff control returned HTTP {exc.code}") from exc
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
+        raise common.InstallError("handoff control is unavailable") from exc
+    if not isinstance(payload, dict):
+        raise common.InstallError("handoff control returned an invalid response")
+    if (
+        payload.get("ok") is not True
+        or payload.get("state") != "ready"
+        or payload.get("protocol_version") != HANDOFF_PROTOCOL_VERSION
+    ):
+        raise common.InstallError("handoff control did not return a protocol-v2 READY acknowledgement")
+    if payload.get("transaction_id") != expected["transaction_id"]:
+        raise common.InstallError("handoff control acknowledged an unexpected transaction")
+    child_pid = payload.get("child_pid")
+    if not isinstance(child_pid, int) or isinstance(child_pid, bool) or child_pid <= 0:
+        raise common.InstallError("handoff control response is missing a valid child pid")
+    return payload
+
+
+def _handoff_runtime_matches(runtime: dict | None, expected: dict, child_pid: int) -> bool:
+    """Require the new listener's own health snapshot to prove it is exactly the expected child."""
+    if not isinstance(runtime, dict):
+        return False
+    if runtime.get("pid") != child_pid:
+        return False
+    if runtime.get("handoff_protocol_version") != HANDOFF_PROTOCOL_VERSION:
+        return False
+    if runtime.get("handoff_transaction_id") != expected["transaction_id"]:
+        return False
+    if runtime.get("release") != expected["release"]:
+        return False
+    if runtime.get("source_sha256") != expected["source_sha256"]:
+        return False
+    if runtime.get("payload_manifest_sha256") != expected["manifest_sha256"]:
+        return False
+    if runtime.get("accepting") is not True:
+        return False
+    if runtime.get("draining") is not False:
+        return False
+    if runtime.get("handoff_state") not in {"serving", "finalized"}:
+        return False
+    return True
+
+
+def _request_handoff(
+    ctx: common.InstallContext,
+    expected: dict,
+    *,
+    timeout_seconds: float = 30.0,
+    lease_seconds: float = 30.0,
+) -> dict:
+    """Ask the current verified listener to hand off to a new child; never terminate anything.
+
+    Requires exactly one verified old listener before posting.  A transient
+    dual-accept window (the old and new listener both verified at once) is not
+    treated as success; only an *exact* ``[child_pid]`` verified-listener set,
+    together with the child's own health snapshot proving every expected
+    release/source/manifest/transaction field and ``accepting is True``, counts
+    as proof.  Never calls ``common.terminate_pid`` on any PID.
+    """
+    listeners = common.verified_proxy_listener_pids(ctx)
+    if len(listeners) != 1:
+        raise common.InstallError(
+            f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
+        )
+    old_pid = listeners[0]
+    ready = _handoff_post(ctx, expected, lease_seconds=lease_seconds, timeout_seconds=min(timeout_seconds, 10.0))
+    child_pid = ready["child_pid"]
+    convergence_seconds = timeout_seconds * 3 + max(1.0, lease_seconds) + 5.0
+    deadline = time.monotonic() + convergence_seconds
+    while time.monotonic() < deadline:
+        current_listeners = common.verified_proxy_listener_pids(ctx)
+        if current_listeners == [child_pid]:
+            runtime = _runtime_metrics(ctx)
+            if _handoff_runtime_matches(runtime, expected, child_pid):
+                return {
+                    "old_pid": old_pid,
+                    "new_pid": child_pid,
+                    "child_pid": child_pid,
+                    "transaction_id": expected["transaction_id"],
+                    "release": expected["release"],
+                    "runtime": runtime,
+                }
+            raise common.InstallError(
+                f"handoff child {child_pid} health snapshot did not match the expected transaction"
+            )
+        time.sleep(0.1)
+    raise common.InstallError(
+        f"handoff did not converge on verified listener {child_pid} within {convergence_seconds:g}s"
+    )
+
+
+def _wait_for_handoff_rollback(
+    ctx: common.InstallContext,
+    old_runtime: dict,
+    *,
+    timeout_seconds: float,
+) -> dict:
+    """Confirm the exact old process resumed normal admission after ABORT."""
+    old_pid = old_runtime["pid"]
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if common.verified_proxy_listener_pids(ctx) == [old_pid]:
+            runtime = _runtime_metrics(ctx)
+            if (
+                isinstance(runtime, dict)
+                and runtime.get("pid") == old_pid
+                and runtime.get("source_sha256") == old_runtime.get("source_sha256")
+                and runtime.get("payload_manifest_sha256") == old_runtime.get("payload_manifest_sha256")
+                and runtime.get("handoff_protocol_version") == HANDOFF_PROTOCOL_VERSION
+                and runtime.get("handoff_state") == "idle"
+                and runtime.get("handoff_transaction_id") is None
+                and runtime.get("accepting") is True
+                and runtime.get("draining") is False
+            ):
+                return runtime
+        time.sleep(0.1)
+    raise common.InstallError(
+        f"old proxy listener {old_pid} did not resume after handoff rollback within {timeout_seconds:g}s"
+    )
+
+
+def _resolve_handoff_after_controller_failure(
+    ctx: common.InstallContext,
+    old_runtime: dict,
+    expected: dict,
+    *,
+    timeout_seconds: float,
+    lease_seconds: float,
+) -> tuple[str, dict | None]:
+    """Resolve a controller-side failure without racing an autonomous FINALIZE."""
+    old_pid = old_runtime["pid"]
+    deadline = time.monotonic() + timeout_seconds + max(1.0, lease_seconds) + 5.0
+    while time.monotonic() < deadline:
+        listeners = common.verified_proxy_listener_pids(ctx)
+        runtime = _runtime_metrics(ctx)
+        if isinstance(runtime, dict):
+            pid = runtime.get("pid")
+            if (
+                isinstance(pid, int)
+                and pid != old_pid
+                and listeners == [pid]
+                and _handoff_runtime_matches(runtime, expected, pid)
+            ):
+                return "finalized", runtime
+            if (
+                listeners == [old_pid]
+                and runtime.get("pid") == old_pid
+                and runtime.get("source_sha256") == old_runtime.get("source_sha256")
+                and runtime.get("handoff_protocol_version") == HANDOFF_PROTOCOL_VERSION
+                and runtime.get("handoff_state") == "idle"
+                and runtime.get("handoff_transaction_id") is None
+                and runtime.get("accepting") is True
+                and runtime.get("draining") is False
+            ):
+                return "rolled_back", runtime
+        time.sleep(0.1)
+    return "unknown", None
+
+
 def status(ctx: common.InstallContext) -> dict:
     """Return non-secret runtime evidence for the installed projection."""
     integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
@@ -514,7 +792,55 @@ def reload(
     ctx: common.InstallContext,
     timeout_seconds: float = 30.0,
 ) -> dict[str, int]:
-    """Drain then replace exactly one verified listener via its watchdog."""
+    """Replace exactly one verified listener; prefer a live handoff over drain+restart.
+
+    A listener whose own health snapshot advertises protocol-v2 handoff support
+    is asked to prepare and hand off to a new child on its own already-open
+    listening socket; the old listener is never terminated by this controller
+    and keeps serving until the new one proves it.  A listener that predates
+    handoff keeps the existing drain -> terminate -> watchdog-replace path
+    unchanged.
+    """
+    runtime = _runtime_metrics(ctx)
+    if _runtime_supports_handoff(runtime):
+        integrity_ok, integrity_detail = common.verify_payload_manifest(ctx)
+        if not integrity_ok:
+            raise common.InstallError(
+                f"payload integrity check failed before handoff reload: {integrity_detail}"
+            )
+        expected = _expected_handoff_metadata(ctx.install_dir)
+        lease_seconds = max(1.0, timeout_seconds)
+        try:
+            result = _request_handoff(
+                ctx,
+                expected,
+                timeout_seconds=timeout_seconds,
+                lease_seconds=lease_seconds,
+            )
+        except BaseException as handoff_exc:
+            try:
+                resolution, resolved_runtime = _resolve_handoff_after_controller_failure(
+                    ctx,
+                    runtime,
+                    expected,
+                    timeout_seconds=timeout_seconds,
+                    lease_seconds=lease_seconds,
+                )
+            except BaseException:
+                resolution, resolved_runtime = "unknown", None
+            if resolution == "finalized" and isinstance(resolved_runtime, dict):
+                return {
+                    "old_pid": runtime["pid"],
+                    "new_pid": resolved_runtime["pid"],
+                    "transaction_id": expected["transaction_id"],
+                    "recovered_after_controller_failure": True,
+                }
+            if resolution == "unknown":
+                raise common.InstallError(
+                    "reload handoff outcome is unconfirmed; inspect the transaction-bound listener health"
+                ) from handoff_exc
+            raise
+        return {"old_pid": result["old_pid"], "new_pid": result["child_pid"]}
     old_pid = _drain_listener_with_legacy_bootstrap(ctx, timeout_seconds)["listener"]
     try:
         common.terminate_pid(old_pid)
@@ -584,10 +910,102 @@ def upgrade_from_stage(
     allow_legacy_bootstrap: bool = False,
     force_legacy_bootstrap: bool = False,
 ) -> dict[str, int | str]:
-    """Drain, commit a pre-verified stage, then replace the verified listener."""
+    """Commit a pre-verified stage, then replace the verified listener.
+
+    A listener that advertises protocol-v2 handoff support is asked, before
+    the staged payload is committed, whether it can hand off to a live child
+    instead of being drained and replaced by a watchdog-started process; the
+    old listener is never terminated by this controller and any pre-finalize
+    failure (including an interrupted controller) restores and finalizes the
+    payload transaction before the failure is re-raised.  A listener that
+    predates handoff keeps the existing drain -> commit -> terminate ->
+    watchdog-replace path unchanged, which is what carries an installed
+    1.0.24 across its very first 1.0.25 migration.
+    """
     staged_version = Path(stage, "VERSION").read_text(encoding="utf-8").strip()
     if not staged_version:
         raise common.InstallError("staged payload has no release version")
+    rollback_dir = os.path.join(common.payload_transaction_dir(ctx), "rollback")
+    if os.path.lexists(rollback_dir):
+        raise common.InstallError(
+            "a preserved payload rollback transaction already exists; refusing to reuse it for a new upgrade"
+        )
+    runtime = _runtime_metrics(ctx)
+    if _runtime_supports_handoff(runtime):
+        expected = _expected_handoff_metadata(stage)
+        lease_seconds = max(1.0, timeout_seconds)
+        handoff_invoked = False
+        try:
+            common.commit_payload_transaction(ctx, stage)
+            handoff_invoked = True
+            result = _request_handoff(
+                ctx,
+                expected,
+                timeout_seconds=timeout_seconds,
+                lease_seconds=lease_seconds,
+            )
+            common.finalize_payload_transaction(ctx)
+            return {
+                "old_pid": result["old_pid"],
+                "new_pid": result["child_pid"],
+                "release": expected["release"],
+                "transaction_id": expected["transaction_id"],
+            }
+        except BaseException as handoff_exc:
+            if handoff_invoked:
+                try:
+                    resolution, resolved_runtime = _resolve_handoff_after_controller_failure(
+                        ctx,
+                        runtime,
+                        expected,
+                        timeout_seconds=timeout_seconds,
+                        lease_seconds=lease_seconds,
+                    )
+                except BaseException:
+                    resolution, resolved_runtime = "unknown", None
+                if resolution == "finalized" and isinstance(resolved_runtime, dict):
+                    try:
+                        common.finalize_payload_transaction(ctx)
+                    except BaseException as finalize_exc:
+                        raise common.InstallError(
+                            f"upgrade handoff finalized but payload transaction cleanup failed: {finalize_exc}"
+                        ) from handoff_exc
+                    return {
+                        "old_pid": runtime["pid"],
+                        "new_pid": resolved_runtime["pid"],
+                        "release": expected["release"],
+                        "transaction_id": expected["transaction_id"],
+                        "recovered_after_controller_failure": True,
+                    }
+                if resolution == "unknown":
+                    raise common.InstallError(
+                        "upgrade handoff outcome is unconfirmed; payload transaction was preserved for recovery"
+                    ) from handoff_exc
+            if not os.path.isdir(rollback_dir):
+                raise
+            try:
+                common.restore_payload_transaction(ctx)
+            except BaseException as rollback_exc:
+                raise common.InstallError(
+                    f"upgrade handoff failed and payload rollback failed: {rollback_exc}"
+                ) from handoff_exc
+            try:
+                _wait_for_handoff_rollback(
+                    ctx,
+                    runtime,
+                    timeout_seconds=timeout_seconds,
+                )
+            except BaseException as resume_exc:
+                raise common.InstallError(
+                    f"upgrade handoff failed, payload restored, but old listener did not resume: {resume_exc}"
+                ) from handoff_exc
+            try:
+                common.finalize_payload_transaction(ctx)
+            except BaseException as finalize_exc:
+                raise common.InstallError(
+                    f"upgrade handoff failed and rollback transaction finalization failed: {finalize_exc}"
+                ) from handoff_exc
+            raise
     old_pid = _drain_listener_with_legacy_bootstrap(
         ctx,
         timeout_seconds,

@@ -1592,6 +1592,15 @@ class TestProxySanitize(unittest.TestCase):
         expected = hashlib.sha256(source.read_bytes()).hexdigest()
         self.assertEqual(self.p.runtime_status()["source_sha256"], expected)
 
+    def test_runtime_status_reports_protocol_v2_process_identity(self):
+        status = self.p.runtime_status()
+        self.assertEqual(status["handoff_protocol_version"], 2)
+        self.assertEqual(status["pid"], os.getpid())
+        self.assertEqual(status["handoff_state"], "idle")
+        self.assertIsNone(status["handoff_transaction_id"])
+        self.assertIs(status["accepting"], True)
+        self.assertIs(status["draining"], False)
+
     def test_log_redacts_secrets_limits_line_length_and_removes_query_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "proxy.log"
