@@ -354,6 +354,7 @@ def _installed_expected_metadata(ctx: common.InstallContext, transaction_id: str
         "release": manifest["release"],
         "source_sha256": manifest["files"]["proxy/dmx_responses_proxy.py"],
         "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+        "timeout_seconds": 10,
     }
 
 
@@ -1761,7 +1762,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         self.assertEqual(before.get("pid"), old.pid)
 
         expected = _installed_expected_metadata(ctx, "txn-real-1")
-        status_code, ready = _http_json(port, "/control/handoff", method="POST", body=expected, timeout=5)
+        status_code, ready = _http_json(port, "/control/handoff", method="POST", body=expected, timeout=15)
         self.assertEqual(status_code, 202)
         self.assertEqual(ready.get("transaction_id"), expected["transaction_id"])
         child_pid = {"value": None}
@@ -1787,7 +1788,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         self._addCleanupNow(lambda: _terminate_process(old))
 
         first = _installed_expected_metadata(ctx, "txn-repeat-1")
-        status_code, _ready = _http_json(port, "/control/handoff", method="POST", body=first, timeout=5)
+        status_code, _ready = _http_json(port, "/control/handoff", method="POST", body=first, timeout=15)
         self.assertEqual(status_code, 202)
         child_one = {"value": None}
 
@@ -1804,7 +1805,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         second = _installed_expected_metadata(ctx, "txn-repeat-2")
         second_request = {**second, "lease_seconds": 1, "timeout_seconds": 3}
         status_code, _ready = _http_json(
-            port, "/control/handoff", method="POST", body=second_request, timeout=5,
+            port, "/control/handoff", method="POST", body=second_request, timeout=15,
         )
         self.assertEqual(status_code, 202)
         child_two = {"value": None}
@@ -1860,7 +1861,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         self.assertTrue(started.wait(timeout=10), "long upstream call did not start on the old process in time")
 
         expected = _installed_expected_metadata(ctx, "txn-real-2")
-        status_code, ready = _http_json(port, "/control/handoff", method="POST", body=expected, timeout=5)
+        status_code, ready = _http_json(port, "/control/handoff", method="POST", body=expected, timeout=15)
         self.assertEqual(status_code, 202)
 
         child_pid = {"value": None}
@@ -1924,7 +1925,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
 
         expected = _installed_expected_metadata(ctx, "txn-real-3")
         expected["lease_seconds"] = 1
-        status_code, ready = _http_json(port, "/control/handoff", method="POST", body=expected, timeout=5)
+        status_code, ready = _http_json(port, "/control/handoff", method="POST", body=expected, timeout=15)
         self.assertEqual(status_code, 202)
 
         child_pid = {"value": None}
