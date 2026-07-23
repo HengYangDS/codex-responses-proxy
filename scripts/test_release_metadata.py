@@ -8,6 +8,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from check_ci_release_metadata import checker_arguments
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "scripts" / "check_release_metadata.py"
@@ -110,6 +112,18 @@ def test_gitlab_release_metadata_gate_has_complete_history() -> None:
     block = ci[start:end]
     if 'GIT_DEPTH: "0"' not in block:
         raise SystemExit("verify-release-metadata must fetch complete Git history")
+    if "python scripts/check_ci_release_metadata.py" not in block:
+        raise SystemExit("verify-release-metadata must select the correct pending/tagged metadata mode")
+
+
+def test_ci_release_metadata_mode_selection() -> None:
+    self_version = "1.0.25"
+    if checker_arguments(self_version, {self_version}, set()) != ["--prepare-release"]:
+        raise SystemExit("an untagged dated release must use --prepare-release")
+    if checker_arguments(self_version, {self_version}, {self_version}) != []:
+        raise SystemExit("a tagged release must use ordinary tag-aware metadata validation")
+    if checker_arguments(self_version, set(), set()) != []:
+        raise SystemExit("an active unreleased train must use ordinary metadata validation")
 
 
 def test_gitlab_ci_uses_only_the_project_runner_tag() -> None:
@@ -142,6 +156,7 @@ def main() -> None:
     test_prune_tags_removes_deleted_remote_tag()
     test_gitlab_ci_refreshes_tags_before_every_release_gate()
     test_gitlab_release_metadata_gate_has_complete_history()
+    test_ci_release_metadata_mode_selection()
     test_gitlab_ci_uses_only_the_project_runner_tag()
     test_gitlab_ci_runs_full_regression_matrix()
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
