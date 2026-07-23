@@ -52,7 +52,7 @@ verify-release-metadata:
     # release namespace, not runner-local history.
     - git fetch --tags --force --prune --prune-tags origin
   script:
-    - python scripts/check_release_metadata.py
+    - python scripts/check_ci_release_metadata.py
     - python scripts/check_markdown_presentation.py
     - python scripts/test_release_metadata.py
     - sh scripts/test-publish-gitlab-release.sh
