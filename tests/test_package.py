@@ -479,6 +479,7 @@ class TestManagedRouteState(unittest.TestCase):
     def test_reload_refuses_when_the_listener_cannot_acknowledge_drain(self):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))
         with (
+            mock.patch.object(control, "_runtime_metrics", return_value=None),
             mock.patch.object(control, "_wait_for_quiescent_listener", return_value={"listener": 12345, "runtime": {"draining": False, "active_responses": 0}}),
             mock.patch.object(control, "_set_listener_drain", side_effect=common.InstallError("listener drain control is unavailable")),
             mock.patch.object(control, "_legacy_drain_listener", side_effect=common.InstallError("legacy listener did not remain idle")),
@@ -491,6 +492,7 @@ class TestManagedRouteState(unittest.TestCase):
     def test_reload_drains_before_terminating_the_verified_listener(self):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))
         with (
+            mock.patch.object(control, "_runtime_metrics", return_value=None),
             mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
             mock.patch.object(control, "_drain_listener", return_value={"listener": 12345, "runtime": {"draining": True, "active_responses": 0}}),
             mock.patch.object(common, "verified_proxy_listener_pids", side_effect=[[54321]]),
@@ -503,6 +505,7 @@ class TestManagedRouteState(unittest.TestCase):
     def test_reload_reopens_admission_when_watchdog_replacement_times_out(self):
         ctx = self._managed_context(Path(tempfile.mkdtemp()))
         with (
+            mock.patch.object(control, "_runtime_metrics", return_value=None),
             mock.patch.object(control, "_drain_listener", return_value={"listener": 12345, "runtime": {"draining": True, "active_responses": 0}}),
             mock.patch.object(common, "verified_proxy_listener_pids", return_value=[12345]),
             mock.patch.object(common, "terminate_pid"),
@@ -518,6 +521,7 @@ class TestManagedRouteState(unittest.TestCase):
         stage = Path(tempfile.mkdtemp())
         (stage / "VERSION").write_text("9.9.9\n", encoding="utf-8")
         with (
+            mock.patch.object(control, "_runtime_metrics", return_value=None),
             mock.patch.object(common, "verify_payload_manifest", return_value=(True, "ok")),
             mock.patch.object(control, "_drain_listener", side_effect=common.InstallError("listener did not drain active Responses")),
             mock.patch.object(common, "commit_payload_transaction") as commit,
