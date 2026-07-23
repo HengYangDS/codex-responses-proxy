@@ -102,10 +102,19 @@ work that has not yet been tagged.
 
 ### Verified
 
+<<<<<<< HEAD
 - Add deterministic fake-upstream and real-subprocess coverage for first-body
   fidelity, one-shot 477 recovery, cooldown isolation, state transitions,
   rollback, active-flow completion, lease expiry, and repeated POSIX handoff.
 
+||||||| parent of da3df68 (docs(windows): record real-machine lifecycle validation)
+=======
+- Validate the Windows watchdog lifecycle on a real host: a killed watchdog
+  relaunches from the repeating time trigger, uninstall stops the running
+  watchdog, and the task runs windowless. Under a real standard-user interactive
+  logon the watchdog auto-starts and runs with a non-elevated least-privilege
+  token. See [docs/evidence/windows-real-machine-validation.md](docs/evidence/windows-real-machine-validation.md).
+>>>>>>> da3df68 (docs(windows): record real-machine lifecycle validation)
 - Add deterministic offline transport coverage for exhausted pre-content SSE,
   bounded/redacted logging, drain admission rejection, in-flight completion,
   timeout rollback, and fail-open drain-lease expiry.
