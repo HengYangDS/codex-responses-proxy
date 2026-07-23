@@ -38,11 +38,14 @@ Design guarantees
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import ipaddress
 import json
 import os
+import queue
 import re
+import subprocess
 import stat
 import sys
 import time
@@ -145,6 +148,7 @@ _RESPONSES_SEM = threading.BoundedSemaphore(max(1, RESPONSES_MAX_CONCURRENCY))
 # active counter before a reload leaves a window for a new SSE request to enter.
 _RESPONSE_GATE_LOCK = threading.Lock()
 _ACTIVE_RESPONSES = 0
+_ACTIVE_HANDLERS = 0
 _DRAINING = False
 _DRAIN_GENERATION = 0
 _DRAIN_DEADLINE = None
@@ -186,6 +190,495 @@ _LAST_FAILURE = None
 # entries so a hostile or buggy client fan-out cannot grow this without bound.
 _EMPTY_RESPONSE_FAILURES_LOCK = threading.Lock()
 _EMPTY_RESPONSE_FAILURES: dict[str, float] = {}
+
+# Rolling handoff is a process-local transaction.  The listener socket remains
+# open throughout; only the process allowed to call ``accept()`` changes at the
+# COMMIT barrier.  Keep this state independent from the Responses drain gate:
+# a prepared child is not yet accepting even though it is not draining.
+HANDOFF_PROTOCOL_VERSION = 2
+HANDOFF_CONTROL_MAX_BYTES = 32 * 1024
+HANDOFF_READY_TIMEOUT_SECONDS = 10.0
+HANDOFF_SERVING_TIMEOUT_SECONDS = 10.0
+HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS = 5.0
+HANDOFF_DEFAULT_LEASE_SECONDS = 30.0
+
+
+class HandoffError(RuntimeError):
+    """A bounded rolling-handoff transaction could not be completed safely."""
+
+
+class HandoffConflict(HandoffError):
+    """Another process-local handoff already owns the single-flight session."""
+
+
+_HANDOFF_TRANSITIONS = {
+    "idle": frozenset(("preparing",)),
+    "preparing": frozenset(("ready", "aborting")),
+    "ready": frozenset(("committing", "aborting")),
+    "committing": frozenset(("serving", "aborting")),
+    "serving": frozenset(("finalizing", "aborting")),
+    "finalizing": frozenset(("finalized", "aborting")),
+    "finalized": frozenset(("idle",)),
+    "aborting": frozenset(("rolled_back",)),
+    "rolled_back": frozenset(("idle",)),
+}
+_HANDOFF_LOCK = threading.RLock()
+_HANDOFF_SESSION: dict[str, object] = {}
+_SERVER_INSTANCE = None
+
+
+def _validate_handoff_transition(current_state: str, target_state: str) -> bool:
+    """Return whether one explicit protocol-v2 state transition is legal."""
+    return target_state in _HANDOFF_TRANSITIONS.get(current_state, frozenset())
+
+
+def _reset_handoff_session_to_idle() -> None:
+    """Reset the process-local transaction only after child cleanup is complete."""
+    with _HANDOFF_LOCK:
+        _HANDOFF_SESSION.clear()
+        _HANDOFF_SESSION.update({
+            "state": "idle",
+            "transaction_id": None,
+            "child_pid": None,
+            "outcome": None,
+            "outcome_ready": threading.Event(),
+            "lease_seconds": HANDOFF_DEFAULT_LEASE_SECONDS,
+            "drain_deadline": None,
+        })
+
+
+def _transition_handoff(target_state: str) -> None:
+    """Advance the locked session through the declared transition table."""
+    with _HANDOFF_LOCK:
+        current = str(_HANDOFF_SESSION.get("state", "idle"))
+        if not _validate_handoff_transition(current, target_state):
+            raise HandoffError(f"illegal handoff transition {current}->{target_state}")
+        _HANDOFF_SESSION["state"] = target_state
+
+
+def _payload_manifest_sha256() -> str | None:
+    """Hash the current payload manifest without exposing its contents."""
+    candidate = Path(__file__).resolve().parents[1] / "payload-manifest.json"
+    try:
+        return hashlib.sha256(candidate.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _disk_payload_matches_handoff_expected(expected: dict) -> bool:
+    """Verify the payload that a replacement child would load from disk."""
+    try:
+        proxy_path = Path(__file__).resolve()
+        disk_source = hashlib.sha256(proxy_path.read_bytes()).hexdigest()
+    except OSError:
+        return False
+    return (
+        expected.get("release") == release_version()
+        and expected.get("source_sha256") == disk_source
+        and expected.get("manifest_sha256") == _payload_manifest_sha256()
+    )
+
+
+def _handoff_runtime_identity() -> dict[str, object]:
+    """Return secret-free process and transaction identity for health proofs."""
+    with _HANDOFF_LOCK, _RESPONSE_GATE_LOCK:
+        state = str(_HANDOFF_SESSION.get("state", "idle"))
+        accepting = not _DRAINING and state in {"idle", "serving", "finalized"}
+        return {
+            "pid": os.getpid(),
+            "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
+            "handoff_transaction_id": _HANDOFF_SESSION.get("transaction_id"),
+            "handoff_state": state,
+            "payload_manifest_sha256": _payload_manifest_sha256(),
+            "accepting": accepting,
+            "active_handlers": _ACTIVE_HANDLERS,
+        }
+
+
+def _handoff_popen_kwargs(listener_fd: int | None, *, is_windows: bool) -> dict:
+    """Return platform-specific, pipe-only child process settings."""
+    kwargs = {
+        "stdin": subprocess.PIPE,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    if is_windows:
+        kwargs["creationflags"] = (
+            getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+        )
+    else:
+        if listener_fd is None:
+            raise HandoffError("POSIX handoff requires a listener fd")
+        kwargs["pass_fds"] = (listener_fd,)
+        kwargs["start_new_session"] = True
+    return kwargs
+
+
+class _HandoffChild:
+    """One bounded structured control channel to a prepared replacement."""
+
+    def __init__(self, process: subprocess.Popen):
+        if process.stdin is None or process.stdout is None:
+            raise HandoffError("handoff child pipes are unavailable")
+        self.process = process
+        self._send_lock = threading.Lock()
+        self._events: queue.Queue = queue.Queue()
+        self._reader_started = False
+        self._reader_lock = threading.Lock()
+
+    def send_message(self, message: dict) -> None:
+        if not isinstance(message, dict):
+            raise HandoffError("handoff message must be an object")
+        encoded = json.dumps(
+            message, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+        ).encode("ascii") + b"\n"
+        if len(encoded) > HANDOFF_CONTROL_MAX_BYTES:
+            raise HandoffError("handoff message exceeds the control limit")
+        with self._send_lock:
+            try:
+                self.process.stdin.write(encoded)
+                self.process.stdin.flush()
+            except (BrokenPipeError, OSError, ValueError) as exc:
+                raise HandoffError("handoff control pipe write failed") from exc
+
+    def _start_reader(self) -> None:
+        with self._reader_lock:
+            if self._reader_started:
+                return
+            self._reader_started = True
+
+            def read_events() -> None:
+                try:
+                    while True:
+                        line = self.process.stdout.readline(HANDOFF_CONTROL_MAX_BYTES + 1)
+                        if not line:
+                            self._events.put(HandoffError("handoff child control pipe closed"))
+                            return
+                        if len(line) > HANDOFF_CONTROL_MAX_BYTES or not line.endswith(b"\n"):
+                            self._events.put(HandoffError("handoff child message exceeds the control limit"))
+                            return
+                        try:
+                            message = json.loads(line)
+                        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                            self._events.put(HandoffError("handoff child emitted invalid JSON"))
+                            return
+                        if not isinstance(message, dict):
+                            self._events.put(HandoffError("handoff child message must be an object"))
+                            return
+                        self._events.put(message)
+                except (OSError, ValueError) as exc:
+                    self._events.put(HandoffError("handoff child control pipe read failed"))
+
+            threading.Thread(target=read_events, daemon=True, name="dmx-handoff-reader").start()
+
+    def recv_message(self, timeout: float) -> dict:
+        self._start_reader()
+        try:
+            item = self._events.get(timeout=max(0.01, float(timeout)))
+        except queue.Empty as exc:
+            raise HandoffError("handoff child response timed out") from exc
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    def terminate_bounded(self, timeout: float) -> bool:
+        if self.process.poll() is not None:
+            return True
+        try:
+            self.process.terminate()
+            self.process.wait(timeout=max(0.01, float(timeout)))
+            return True
+        except (OSError, subprocess.TimeoutExpired):
+            return self.process.poll() is not None
+
+    def kill_bounded(self, timeout: float) -> bool:
+        if self.process.poll() is not None:
+            return True
+        try:
+            self.process.kill()
+            self.process.wait(timeout=max(0.01, float(timeout)))
+            return True
+        except (OSError, subprocess.TimeoutExpired):
+            return self.process.poll() is not None
+
+
+def _spawn_handoff_child(
+    listener: socket.socket, expected: dict, *, is_windows: bool | None = None
+) -> _HandoffChild:
+    """Spawn a non-accepting replacement and send its bounded PREPARE message."""
+    windows = os.name == "nt" if is_windows is None else bool(is_windows)
+    listener_fd = None if windows else listener.fileno()
+    kwargs = _handoff_popen_kwargs(listener_fd, is_windows=windows)
+    env = os.environ.copy()
+    env["DMX_HANDOFF_CHILD"] = "1"
+    kwargs["env"] = env
+    process = subprocess.Popen(
+        [sys.executable, str(Path(__file__).resolve()), "--handoff-child"],
+        **kwargs,
+    )
+    child = _HandoffChild(process)
+    message = {
+        "type": "prepare",
+        "protocol_version": HANDOFF_PROTOCOL_VERSION,
+        "transaction_id": expected["transaction_id"],
+        "release": expected["release"],
+        "source_sha256": expected["source_sha256"],
+        "manifest_sha256": expected["manifest_sha256"],
+    }
+    if windows:
+        try:
+            shared = listener.share(process.pid)
+        except Exception as exc:
+            child.terminate_bounded(HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS)
+            raise HandoffError("Windows listener sharing failed") from exc
+        message["listener_share_b64"] = base64.b64encode(shared).decode("ascii")
+    else:
+        message["listener_fd"] = listener_fd
+    try:
+        child.send_message(message)
+    except Exception:
+        if not child.terminate_bounded(HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS):
+            child.kill_bounded(HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS)
+        raise
+    return child
+
+
+def _listener_from_handoff_prepare(message: dict) -> socket.socket:
+    """Reconstruct the already-listening socket from a validated PREPARE."""
+    if "listener_share_b64" in message:
+        encoded = message.get("listener_share_b64")
+        if not isinstance(encoded, str) or len(encoded) > HANDOFF_CONTROL_MAX_BYTES:
+            raise HandoffError("invalid Windows listener share")
+        try:
+            shared = base64.b64decode(encoded.encode("ascii"), validate=True)
+            return socket.fromshare(shared)
+        except Exception as exc:
+            raise HandoffError("Windows listener reconstruction failed") from exc
+    listener_fd = message.get("listener_fd")
+    if not isinstance(listener_fd, int) or listener_fd < 0:
+        raise HandoffError("invalid inherited listener fd")
+    return socket.socket(fileno=listener_fd)
+
+
+def _handoff_message_matches(message: object, expected: dict, message_type: str) -> bool:
+    """Validate one child event against the complete transaction identity."""
+    if not isinstance(message, dict) or message.get("type") != message_type:
+        return False
+    common = {
+        "type": message_type,
+        "pid": expected["pid"],
+        "transaction_id": expected["transaction_id"],
+    }
+    if message_type == "ready":
+        common.update({
+            "protocol_version": HANDOFF_PROTOCOL_VERSION,
+            "release": expected["release"],
+            "source_sha256": expected["source_sha256"],
+            "manifest_sha256": expected["manifest_sha256"],
+        })
+    return set(message) == set(common) and all(message.get(key) == value for key, value in common.items())
+
+
+def _health_matches_handoff(health: object, expected: dict) -> bool:
+    """Require the exact serving proof before FINALIZE."""
+    if not isinstance(health, dict):
+        return False
+    required = {
+        "pid": expected["pid"],
+        "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
+        "handoff_transaction_id": expected["transaction_id"],
+        "release": expected["release"],
+        "source_sha256": expected["source_sha256"],
+        "payload_manifest_sha256": expected["manifest_sha256"],
+        "handoff_state": "serving",
+        "accepting": True,
+    }
+    return all(health.get(key) == value for key, value in required.items())
+
+
+def _probe_handoff_health(port: int, *, timeout_seconds: float) -> dict:
+    """Read one loopback-only child health proof through the shared listener."""
+    url = f"http://127.0.0.1:{int(port)}/healthz"
+    request = urllib.request.Request(url, method="GET")
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=max(0.1, float(timeout_seconds))) as response:
+        payload = response.read(HANDOFF_CONTROL_MAX_BYTES + 1)
+    if len(payload) > HANDOFF_CONTROL_MAX_BYTES:
+        raise HandoffError("handoff health response exceeds the control limit")
+    try:
+        decoded = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HandoffError("handoff health response is invalid") from exc
+    if not isinstance(decoded, dict):
+        raise HandoffError("handoff health response must be an object")
+    return decoded
+
+
+def _rollback_handoff_without_child() -> None:
+    """Return a failed PREPARE to idle when no process survived creation."""
+    with _HANDOFF_LOCK:
+        state = str(_HANDOFF_SESSION.get("state", "idle"))
+        if state in {"preparing", "ready", "committing", "serving", "finalizing"}:
+            _transition_handoff("aborting")
+            _transition_handoff("rolled_back")
+        if _HANDOFF_SESSION.get("state") == "rolled_back":
+            _transition_handoff("idle")
+        _HANDOFF_SESSION["transaction_id"] = None
+        _HANDOFF_SESSION["child_pid"] = None
+
+
+def _abort_handoff(child: _HandoffChild) -> None:
+    """Abort one child and confirm its exit before exposing rollback."""
+    with _HANDOFF_LOCK:
+        state = str(_HANDOFF_SESSION.get("state", "idle"))
+        if state not in {"aborting", "rolled_back", "idle"}:
+            _transition_handoff("aborting")
+    try:
+        child.send_message({"type": "abort"})
+    except Exception:
+        pass
+    terminated = False
+    try:
+        terminated = bool(child.terminate_bounded(HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS))
+    except Exception:
+        terminated = False
+    if not terminated:
+        try:
+            terminated = bool(child.kill_bounded(HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS))
+        except Exception:
+            terminated = False
+    if not terminated:
+        raise HandoffError("handoff child could not be confirmed exited")
+    with _HANDOFF_LOCK:
+        if _HANDOFF_SESSION.get("state") == "aborting":
+            _transition_handoff("rolled_back")
+
+
+def _prepare_handoff(
+    server: ThreadingHTTPServer,
+    expected: dict,
+    *,
+    timeout_seconds: float = HANDOFF_READY_TIMEOUT_SECONDS,
+    lease_seconds: float = HANDOFF_DEFAULT_LEASE_SECONDS,
+) -> dict:
+    """Prepare and validate a non-accepting replacement without closing admission."""
+    required = ("transaction_id", "release", "source_sha256", "manifest_sha256")
+    if not isinstance(expected, dict) or any(
+        not isinstance(expected.get(key), str) or not expected.get(key) for key in required
+    ):
+        raise HandoffError("handoff request identity is incomplete")
+    with _HANDOFF_LOCK:
+        if _HANDOFF_SESSION.get("state") == "finalized":
+            _reset_handoff_session_to_idle()
+        if _HANDOFF_SESSION.get("state") != "idle":
+            raise HandoffConflict("handoff is already in progress")
+        _transition_handoff("preparing")
+        _HANDOFF_SESSION.update({
+            "transaction_id": expected["transaction_id"],
+            "child_pid": None,
+            "outcome": None,
+            "outcome_ready": threading.Event(),
+            "lease_seconds": _bounded_drain_lease_seconds(lease_seconds),
+            "timeout_seconds": max(0.1, float(timeout_seconds)),
+        })
+    child = None
+    try:
+        child = _spawn_handoff_child(server.socket, expected)
+        child_expected = {**expected, "pid": child.process.pid}
+        ready = child.recv_message(max(0.1, float(timeout_seconds)))
+        if not _handoff_message_matches(ready, child_expected, "ready"):
+            raise HandoffError("handoff child READY identity mismatch")
+        with _HANDOFF_LOCK:
+            _HANDOFF_SESSION.update({
+                "child_pid": child.process.pid,
+                "child": child,
+                "expected": dict(expected),
+            })
+            _transition_handoff("ready")
+        return {
+            "child": child,
+            "expected": dict(expected),
+            "timeout_seconds": max(0.1, float(timeout_seconds)),
+            "lease_seconds": _bounded_drain_lease_seconds(lease_seconds),
+        }
+    except Exception as exc:
+        if child is not None:
+            try:
+                _abort_handoff(child)
+            finally:
+                with _HANDOFF_LOCK:
+                    if _HANDOFF_SESSION.get("state") == "rolled_back":
+                        _transition_handoff("idle")
+                    _HANDOFF_SESSION["transaction_id"] = None
+                    _HANDOFF_SESSION["child_pid"] = None
+        else:
+            _rollback_handoff_without_child()
+        if isinstance(exc, HandoffError):
+            raise
+        raise HandoffError("handoff child preparation failed") from exc
+
+
+def _set_handoff_outcome(outcome: str) -> None:
+    with _HANDOFF_LOCK:
+        _HANDOFF_SESSION["outcome"] = outcome
+        event = _HANDOFF_SESSION.get("outcome_ready")
+        if isinstance(event, threading.Event):
+            event.set()
+
+
+def _commit_prepared_handoff(server: ThreadingHTTPServer, prepared: dict) -> str:
+    """Cross the accept barrier and either finalize or expose a resumable rollback."""
+    child = prepared["child"]
+    expected = prepared["expected"]
+    child_expected = {**expected, "pid": child.process.pid}
+    timeout_seconds = prepared["timeout_seconds"]
+    accept_stopped = False
+    try:
+        _transition_handoff("committing")
+        drain = _set_draining(True, lease_seconds=prepared["lease_seconds"])
+        with _HANDOFF_LOCK:
+            _HANDOFF_SESSION["drain_deadline"] = time.monotonic() + prepared["lease_seconds"]
+            _HANDOFF_SESSION["drain_generation"] = drain["drain_generation"]
+        server.shutdown()
+        accept_stopped = True
+        child.send_message({"type": "commit"})
+        serving = child.recv_message(timeout_seconds)
+        if not _handoff_message_matches(serving, child_expected, "serving"):
+            raise HandoffError("handoff child SERVING identity mismatch")
+        _transition_handoff("serving")
+        address = getattr(server, "server_address", None)
+        health_port = address[1] if isinstance(address, (tuple, list)) and len(address) > 1 else PORT
+        health = _probe_handoff_health(health_port, timeout_seconds=timeout_seconds)
+        if not _health_matches_handoff(health, child_expected):
+            raise HandoffError("handoff child health identity mismatch")
+        _transition_handoff("finalizing")
+        child.send_message({"type": "finalize"})
+        finalized = child.recv_message(timeout_seconds)
+        if not _handoff_message_matches(finalized, child_expected, "finalized"):
+            raise HandoffError("handoff child FINALIZED identity mismatch")
+        _transition_handoff("finalized")
+        _set_handoff_outcome("finalized")
+        return "finalized"
+    except Exception:
+        abort_confirmed = False
+        try:
+            _abort_handoff(child)
+            abort_confirmed = True
+        except Exception:
+            _set_handoff_outcome("abort_unconfirmed")
+        if abort_confirmed:
+            _set_handoff_outcome("rolled_back")
+        if not accept_stopped:
+            try:
+                server.shutdown()
+            except Exception:
+                pass
+        return "rolled_back" if abort_confirmed else "abort_unconfirmed"
+
+
+_reset_handoff_session_to_idle()
 
 # Cross-platform hardening: never route upstream calls through a system/registry/env
 # HTTP proxy. On macOS and Windows, urllib.request.getproxies() consults the OS proxy
@@ -247,6 +740,24 @@ class _ResilientProxyServer(ThreadingHTTPServer):
             self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except Exception:
             pass
+
+    def get_request(self):
+        request, address = super().get_request()
+        try:
+            request.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except Exception:
+            pass
+        return request, address
+
+    def process_request_thread(self, request, client_address):
+        global _ACTIVE_HANDLERS
+        with _RESPONSE_GATE_LOCK:
+            _ACTIVE_HANDLERS += 1
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            with _RESPONSE_GATE_LOCK:
+                _ACTIVE_HANDLERS = max(0, _ACTIVE_HANDLERS - 1)
 
     def handle_error(self, request, client_address):
         # A client that resets/closes mid-stream is normal at subagent turn end;
@@ -410,7 +921,7 @@ def runtime_status() -> dict:
         counters = dict(sorted(_COUNTERS.items()))
         upstream = dict(sorted(_UPSTREAM_CLASSIFICATIONS.items()))
         last_failure = dict(_LAST_FAILURE) if _LAST_FAILURE else None
-    return {
+    status = {
         "release": release_version(),
         "source_sha256": source_sha256(),
         "uptime_seconds": max(0, int(time.time() - _STARTED_AT)),
@@ -422,6 +933,8 @@ def runtime_status() -> dict:
         "upstream_classifications": upstream,
         "last_failure": last_failure,
     }
+    status.update(_handoff_runtime_identity())
+    return status
 
 
 def _reset_runtime_metrics_for_test() -> None:
@@ -2343,9 +2856,93 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _handoff_control(self):
+        """Prepare one replacement and acknowledge READY before crossing COMMIT."""
+        if not _is_loopback_client(self.client_address[0]):
+            self.send_error(403, "handoff control is available only from loopback")
+            return
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except (TypeError, ValueError):
+            self.send_error(400, "invalid handoff content length")
+            return
+        if content_length <= 0 or content_length > HANDOFF_CONTROL_MAX_BYTES:
+            self.send_error(413, "handoff request exceeds the control limit")
+            return
+        raw = self.rfile.read(content_length)
+        if len(raw) != content_length:
+            self.send_error(400, "incomplete handoff request")
+            return
+        try:
+            request = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self.send_error(400, "invalid handoff JSON")
+            return
+        if not isinstance(request, dict):
+            self.send_error(400, "handoff request must be an object")
+            return
+        allowed = {
+            "transaction_id", "release", "source_sha256", "manifest_sha256",
+            "timeout_seconds", "lease_seconds",
+        }
+        if set(request) - allowed:
+            self.send_error(400, "handoff request contains unknown fields")
+            return
+        expected = {key: request.get(key) for key in (
+            "transaction_id", "release", "source_sha256", "manifest_sha256",
+        )}
+        if not _disk_payload_matches_handoff_expected(expected):
+            self.send_error(409, "handoff request does not match the current disk payload")
+            return
+        try:
+            timeout_seconds = min(120.0, max(0.1, float(request.get("timeout_seconds", 30.0))))
+            lease_seconds = _bounded_drain_lease_seconds(request.get("lease_seconds"))
+            prepared = _prepare_handoff(
+                self.server,
+                expected,
+                timeout_seconds=timeout_seconds,
+                lease_seconds=lease_seconds,
+            )
+        except HandoffError as exc:
+            status = 409 if isinstance(exc, HandoffConflict) else 503
+            payload = json.dumps({
+                "ok": False,
+                "error": "handoff_in_progress" if status == 409 else "handoff_prepare_failed",
+            }, separators=(",", ":")).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        payload = json.dumps({
+            "ok": True,
+            "state": "ready",
+            "protocol_version": HANDOFF_PROTOCOL_VERSION,
+            "child_pid": prepared["child"].process.pid,
+            "transaction_id": expected["transaction_id"],
+        }, separators=(",", ":")).encode()
+        self.send_response(202)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+        self.wfile.flush()
+        threading.Thread(
+            target=_commit_prepared_handoff,
+            args=(self.server, prepared),
+            daemon=True,
+            name="dmx-handoff-commit",
+        ).start()
+
     def do_POST(self):
         if self.path == "/control/drain":
             self._drain_control(True)
+            return
+        if self.path == "/control/handoff":
+            self._handoff_control()
             return
         self._relay("POST")
 
@@ -2368,7 +2965,201 @@ class Handler(BaseHTTPRequestHandler):
         self._relay("PUT")
 
 
+def _serve_with_handoff_resume(
+    server: ThreadingHTTPServer,
+    *,
+    initial_serving_thread: threading.Thread | None = None,
+) -> None:
+    """Serve until ordinary stop, finalized replacement, or a resumable rollback."""
+    first_serving_thread = initial_serving_thread
+    while True:
+        if first_serving_thread is not None:
+            first_serving_thread.join()
+            first_serving_thread = None
+        else:
+            server.serve_forever()
+        with _HANDOFF_LOCK:
+            state = str(_HANDOFF_SESSION.get("state", "idle"))
+            outcome = _HANDOFF_SESSION.get("outcome")
+            outcome_ready = _HANDOFF_SESSION.get("outcome_ready")
+            timeout_seconds = float(_HANDOFF_SESSION.get("timeout_seconds", 1.0))
+        if outcome is None and state == "idle":
+            with _RESPONSE_GATE_LOCK:
+                draining = _DRAINING
+            if not draining:
+                return
+        if isinstance(outcome_ready, threading.Event) and not outcome_ready.is_set():
+            outcome_ready.wait(
+                timeout=max(1.0, timeout_seconds * 3 + HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS)
+            )
+        with _HANDOFF_LOCK:
+            outcome = _HANDOFF_SESSION.get("outcome")
+            deadline = _HANDOFF_SESSION.get("drain_deadline")
+        if outcome == "rolled_back":
+            _set_draining(False)
+            _reset_handoff_session_to_idle()
+            continue
+        if outcome == "finalized":
+            if not isinstance(deadline, (int, float)):
+                deadline = time.monotonic()
+            while True:
+                with _RESPONSE_GATE_LOCK:
+                    active = max(_ACTIVE_RESPONSES, _ACTIVE_HANDLERS)
+                if active <= 0 or time.monotonic() >= deadline:
+                    break
+                time.sleep(0.05)
+            if active > 0:
+                _log(f"event=handoff_old_drain_expired remaining_active={active}")
+            return
+        if outcome == "abort_unconfirmed":
+            _log("event=handoff_abort_unconfirmed action=old_listener_exit")
+            return
+        _log("event=handoff_outcome_unconfirmed action=old_listener_exit")
+        return
+
+
+def _read_child_control_message(stream) -> dict:
+    line = stream.readline(HANDOFF_CONTROL_MAX_BYTES + 1)
+    if not line:
+        raise EOFError("handoff control pipe closed")
+    if len(line) > HANDOFF_CONTROL_MAX_BYTES or not line.endswith(b"\n"):
+        raise HandoffError("handoff control message exceeds the limit")
+    try:
+        message = json.loads(line)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HandoffError("handoff control message is invalid") from exc
+    if not isinstance(message, dict):
+        raise HandoffError("handoff control message must be an object")
+    return message
+
+
+def _write_child_control_message(stream, message: dict) -> None:
+    encoded = json.dumps(
+        message, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+    ).encode("ascii") + b"\n"
+    if len(encoded) > HANDOFF_CONTROL_MAX_BYTES:
+        raise HandoffError("handoff control message exceeds the limit")
+    stream.write(encoded)
+    stream.flush()
+
+
+def _server_from_handoff_listener(listener: socket.socket) -> _ResilientProxyServer:
+    address = listener.getsockname()
+    server = _ResilientProxyServer(address, Handler, bind_and_activate=False)
+    try:
+        server.socket.close()
+    except OSError:
+        pass
+    server.socket = listener
+    server.server_address = address
+    return server
+
+
+def _valid_prepare_for_this_child(message: object) -> bool:
+    if not isinstance(message, dict) or message.get("type") != "prepare":
+        return False
+    listener_fields = {"listener_share_b64"} if "listener_share_b64" in message else {"listener_fd"}
+    expected_fields = {
+        "type", "protocol_version", "transaction_id", "release",
+        "source_sha256", "manifest_sha256",
+    } | listener_fields
+    if set(message) != expected_fields:
+        return False
+    return (
+        message.get("protocol_version") == HANDOFF_PROTOCOL_VERSION
+        and isinstance(message.get("transaction_id"), str)
+        and bool(message.get("transaction_id"))
+        and message.get("release") == release_version()
+        and message.get("source_sha256") == source_sha256()
+        and message.get("manifest_sha256") == _payload_manifest_sha256()
+    )
+
+
+def _run_handoff_child() -> int:
+    """Hold the inherited listener dormant until the parent crosses COMMIT."""
+    input_stream = sys.stdin.buffer
+    output_stream = sys.stdout.buffer
+    server = None
+    serving_thread = None
+    try:
+        prepare = _read_child_control_message(input_stream)
+        if not _valid_prepare_for_this_child(prepare):
+            raise HandoffError("handoff PREPARE identity mismatch")
+        _transition_handoff("preparing")
+        with _HANDOFF_LOCK:
+            _HANDOFF_SESSION.update({
+                "transaction_id": prepare["transaction_id"],
+                "child_pid": os.getpid(),
+                "expected": {
+                    "transaction_id": prepare["transaction_id"],
+                    "release": prepare["release"],
+                    "source_sha256": prepare["source_sha256"],
+                    "manifest_sha256": prepare["manifest_sha256"],
+                },
+            })
+        listener = _listener_from_handoff_prepare(prepare)
+        server = _server_from_handoff_listener(listener)
+        global _SERVER_INSTANCE
+        _SERVER_INSTANCE = server
+        _transition_handoff("ready")
+        _write_child_control_message(output_stream, {
+            "type": "ready",
+            "protocol_version": HANDOFF_PROTOCOL_VERSION,
+            "pid": os.getpid(),
+            "transaction_id": prepare["transaction_id"],
+            "release": release_version(),
+            "source_sha256": source_sha256(),
+            "manifest_sha256": _payload_manifest_sha256(),
+        })
+        command = _read_child_control_message(input_stream)
+        if command != {"type": "commit"}:
+            raise HandoffError("handoff child did not receive COMMIT")
+        _transition_handoff("committing")
+        _transition_handoff("serving")
+        serving_thread = threading.Thread(
+            target=server.serve_forever,
+            daemon=True,
+            name="dmx-handoff-serving",
+        )
+        serving_thread.start()
+        _write_child_control_message(output_stream, {
+            "type": "serving",
+            "pid": os.getpid(),
+            "transaction_id": prepare["transaction_id"],
+        })
+        command = _read_child_control_message(input_stream)
+        if command == {"type": "abort"}:
+            raise HandoffError("handoff parent aborted before FINALIZE")
+        if command != {"type": "finalize"}:
+            raise HandoffError("handoff child did not receive FINALIZE")
+        _transition_handoff("finalizing")
+        _transition_handoff("finalized")
+        _write_child_control_message(output_stream, {
+            "type": "finalized",
+            "pid": os.getpid(),
+            "transaction_id": prepare["transaction_id"],
+        })
+        _serve_with_handoff_resume(server, initial_serving_thread=serving_thread)
+        return 0
+    except Exception:
+        if server is not None:
+            if serving_thread is not None:
+                try:
+                    server.shutdown()
+                except Exception:
+                    pass
+                serving_thread.join(timeout=2)
+            try:
+                server.server_close()
+            except Exception:
+                pass
+        return 1
+
+
 def main():
+    if os.environ.get("DMX_HANDOFF_CHILD") == "1" or "--handoff-child" in sys.argv[1:]:
+        raise SystemExit(_run_handoff_child())
+    global _SERVER_INSTANCE
     _log(
         f"starting dmx-responses-proxy listener={HOST}:{PORT} "
         f"responses_max_concurrency={RESPONSES_MAX_CONCURRENCY} "
@@ -2376,10 +3167,13 @@ def main():
         f"log_max_bytes={LOG_MAX_BYTES} log_backup_count={LOG_BACKUP_COUNT}"
     )
     httpd = _ResilientProxyServer((HOST, PORT), Handler)
+    _SERVER_INSTANCE = httpd
     try:
-        httpd.serve_forever()
+        _serve_with_handoff_resume(httpd)
     except KeyboardInterrupt:
         pass
+    finally:
+        httpd.server_close()
 
 
 if __name__ == "__main__":
