@@ -28,3 +28,9 @@ replaced. It contains only bounded classifications, counts, and a failure time;
 it must never contain request bodies, prompts, credentials, headers, tokens, or
 raw upstream errors. It is evidence of current local transport behavior, not a
 claim that a particular historical Codex task has recovered.
+
+## Dated records
+
+- [Windows real-machine validation](windows-real-machine-validation.md) — first
+  live-host end-to-end run of the watchdog lifecycle fixes, including
+  standard-user logon self-start and non-elevated token.
