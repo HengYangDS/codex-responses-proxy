@@ -107,6 +107,37 @@ RESPONSE_FAILED_COMPACTION_BUDGET = int(
 # accepted by live probes.
 RESPONSE_FAILED_COMPACTION_RATIO_DENOMINATOR = 2
 RESPONSE_FAILED_MAX_STAGES = max(0, int(os.environ.get("DMX_RESPONSE_FAILED_MAX_STAGES", "3")))
+# HTTP 477 ``empty_response`` gets exactly one dedicated, semantics-preserving
+# fallback slot instead of the ordinary identical-bytes retry budget. The
+# compat policy version is folded into the cooldown key so a future change to
+# the projection rules below cannot collide with an older cached cooldown.
+EMPTY_RESPONSE_COMPAT_POLICY_VERSION = "empty-response-fallback-v1"
+EMPTY_RESPONSE_OPAQUE_REASONING_MARKER = (
+    "[reasoning omitted: opaque provider state cannot be replayed]"
+)
+EMPTY_RESPONSE_FALLBACK_BUDGET = _bounded_env_int(
+    "DMX_EMPTY_RESPONSE_FALLBACK_BUDGET", 4 * 1024 * 1024, 4 * 1024, 4 * 1024 * 1024,
+)
+EMPTY_RESPONSE_COOLDOWN_SECONDS = _bounded_env_int(
+    "DMX_EMPTY_RESPONSE_COOLDOWN_SECONDS", 30, 1, 300,
+)
+# Fixed, not env-configurable: this is a bounded local safety cap, not a tunable.
+EMPTY_RESPONSE_COOLDOWN_CAPACITY = 1024
+# Fixed, not env-configurable: the classified-477 fallback is dispatched as
+# its own immediate, nested upstream request (see the 477 branch below), not
+# as another iteration of the outer retry loop. It therefore never consumes
+# or depends on a slot in that loop's range and fires exactly once whenever a
+# 477 is classified -- even when that classification arrives on the outer
+# loop's very last iteration. This constant documents that dedicated,
+# always-available attempt.
+EMPTY_RESPONSE_DEDICATED_SLOTS = 1
+# One dedicated outer-loop slot for the ``response_failed`` dialogue-only
+# recovery continuation below. This is distinct from, and must not borrow
+# capacity from, the (separately bounded, independently disable-able)
+# ``response_failed`` pair-safe compaction stage budget: setting
+# ``DMX_RESPONSE_FAILED_MAX_STAGES=0`` must not silently remove the one spare
+# loop iteration the dialogue-only recovery needs to make its own attempt.
+RESPONSE_FAILED_DIALOGUE_SLOTS = 1
 _RESPONSES_SEM = threading.BoundedSemaphore(max(1, RESPONSES_MAX_CONCURRENCY))
 # The admission gate and active counter deliberately share one lock.  A drain
 # transition must be atomic with admission: after ``draining`` becomes true,
@@ -142,9 +173,19 @@ _COUNTERS = {
     "encrypted_malformed_blocks_stripped": 0,
     "encrypted_sse_keys_stripped": 0,
     "unreplayable_images_stripped": 0,
+    "empty_response_fallback_attempts": 0,
+    "empty_response_fallback_accepted": 0,
+    "empty_response_fallback_rejected": 0,
+    "empty_response_recovery_exhausted": 0,
+    "empty_response_cooldown_hits": 0,
 }
 _UPSTREAM_CLASSIFICATIONS = {}
 _LAST_FAILURE = None
+# Bounded local cooldown for classified empty-response exhaustion: keyed by
+# ``_empty_response_policy_fingerprint``, capped at EMPTY_RESPONSE_COOLDOWN_CAPACITY
+# entries so a hostile or buggy client fan-out cannot grow this without bound.
+_EMPTY_RESPONSE_FAILURES_LOCK = threading.Lock()
+_EMPTY_RESPONSE_FAILURES: dict[str, float] = {}
 
 # Cross-platform hardening: never route upstream calls through a system/registry/env
 # HTTP proxy. On macOS and Windows, urllib.request.getproxies() consults the OS proxy
@@ -396,6 +437,8 @@ def _reset_runtime_metrics_for_test() -> None:
             _COUNTERS[name] = 0
         _UPSTREAM_CLASSIFICATIONS.clear()
         _LAST_FAILURE = None
+    with _EMPTY_RESPONSE_FAILURES_LOCK:
+        _EMPTY_RESPONSE_FAILURES.clear()
 
 
 def _bounded_drain_lease_seconds(value: object | None) -> int:
@@ -564,6 +607,390 @@ def _dmx_empty_response_exhausted(attempts: int) -> bytes:
             "attempts": attempts,
         },
     }, separators=(",", ":")).encode()
+
+
+def _send_empty_response_exhausted(handler, attempts: int) -> None:
+    """Emit the bounded classified-empty-response failure as standard HTTP JSON.
+
+    Unlike other bounded recoveries, this path always answers with a standard
+    HTTP 503 even for a streaming request. The one dedicated fallback attempt
+    (if any) never reached upstream SSE bytes, so there is no in-progress
+    downstream stream that needs a synthetic terminal SSE event; sending a
+    plain JSON error here keeps this failure mode uniform and easy for a
+    client to retry regardless of ``stream``.
+    """
+    msg = _dmx_empty_response_exhausted(attempts)
+    handler.send_response(503)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Retry-After", "3")
+    handler.send_header("Content-Length", str(len(msg)))
+    handler.end_headers()
+    handler.wfile.write(msg)
+
+
+def _empty_response_policy_fingerprint(raw: bytes) -> str:
+    """Bind a cooldown key to both the compat policy and the exact request bytes.
+
+    Two requests that differ only in top-level provider state (for example a
+    different ``previous_response_id``) must cool down independently even when
+    the fallback bodies they would build turn out identical, so the key is
+    derived from the caller's own bytes rather than from the projected
+    fallback. Folding in the policy version means a future change to the
+    projection rules cannot collide with an older cached cooldown entry.
+    """
+    return hashlib.sha256(EMPTY_RESPONSE_COMPAT_POLICY_VERSION.encode("utf-8") + raw).hexdigest()
+
+
+def _purge_expired_empty_response_failures_locked(now: float) -> None:
+    """Drop every cooldown entry whose TTL has elapsed. Caller holds the lock.
+
+    This makes the TTL an actual eviction, not merely an ``is it still within
+    its window`` read-time check: an expired entry is removed from the dict
+    itself, so it neither lingers in memory nor counts against the fixed
+    ``EMPTY_RESPONSE_COOLDOWN_CAPACITY`` for unrelated later keys.
+    """
+    expired = [
+        recorded_key
+        for recorded_key, recorded_at in _EMPTY_RESPONSE_FAILURES.items()
+        if recorded_at + EMPTY_RESPONSE_COOLDOWN_SECONDS <= now
+    ]
+    for recorded_key in expired:
+        del _EMPTY_RESPONSE_FAILURES[recorded_key]
+
+
+def _remember_empty_response_failure(key: str, now: float | None = None) -> None:
+    """Record one classified empty-response exhaustion for bounded local cooldown.
+
+    Uses ``time.monotonic()`` by default so the cooldown cannot be perturbed by
+    a wall-clock adjustment. Expired entries are purged before insertion, then
+    the cache is capped at ``EMPTY_RESPONSE_COOLDOWN_CAPACITY`` entries; when
+    still full after that purge, the single oldest-recorded entry is evicted so
+    an unbounded stream of distinct requests can never grow this beyond its
+    fixed capacity.
+    """
+    moment = time.monotonic() if now is None else now
+    with _EMPTY_RESPONSE_FAILURES_LOCK:
+        _purge_expired_empty_response_failures_locked(moment)
+        _EMPTY_RESPONSE_FAILURES[key] = moment
+        while len(_EMPTY_RESPONSE_FAILURES) > EMPTY_RESPONSE_COOLDOWN_CAPACITY:
+            oldest_key = min(_EMPTY_RESPONSE_FAILURES, key=_EMPTY_RESPONSE_FAILURES.get)
+            del _EMPTY_RESPONSE_FAILURES[oldest_key]
+
+
+def _empty_response_cooldown_remaining(key: str, now: float | None = None) -> float:
+    """Return the remaining cooldown seconds for ``key``, or ``0`` when clear.
+
+    Uses ``time.monotonic()`` by default, matching ``_remember_empty_response_failure``.
+    Purges expired entries before the read so a stale entry can never report a
+    false-positive remaining cooldown, and never exposes any recorded key.
+    """
+    moment = time.monotonic() if now is None else now
+    with _EMPTY_RESPONSE_FAILURES_LOCK:
+        _purge_expired_empty_response_failures_locked(moment)
+        recorded = _EMPTY_RESPONSE_FAILURES.get(key)
+    if recorded is None:
+        return 0
+    remaining = recorded + EMPTY_RESPONSE_COOLDOWN_SECONDS - moment
+    return remaining if remaining > 0 else 0
+
+
+_EMPTY_RESPONSE_VALID_ROLES = frozenset(("user", "assistant", "developer", "system"))
+# Fixed, closed enum: any phase this proxy has not itself observed and vetted
+# is rejected rather than passed through, since an unknown phase value cannot
+# be shown to be safe to replay.
+_EMPTY_RESPONSE_VALID_PHASES = frozenset(("commentary", "final_answer"))
+_EMPTY_RESPONSE_MESSAGE_FIELDS = frozenset(("type", "id", "status", "role", "content", "phase"))
+_EMPTY_RESPONSE_AGENT_MESSAGE_FIELDS = frozenset(
+    ("type", "id", "status", "author", "recipient", "phase", "content")
+)
+_EMPTY_RESPONSE_CALL_ARG_FIELD = {"function_call": "arguments", "custom_tool_call": "input"}
+_EMPTY_RESPONSE_CALL_TYPE_FOR_OUTPUT = {
+    "function_call_output": "function_call",
+    "custom_tool_call_output": "custom_tool_call",
+}
+_EMPTY_RESPONSE_CALL_FIELDS = {
+    call_type: frozenset(("type", "id", "status", "call_id", "name", arg_field, "namespace", "caller"))
+    for call_type, arg_field in _EMPTY_RESPONSE_CALL_ARG_FIELD.items()
+}
+_EMPTY_RESPONSE_OUTPUT_FIELDS = frozenset(("type", "id", "status", "call_id", "output", "caller"))
+_EMPTY_RESPONSE_REASONING_FIELDS = frozenset(("type", "id", "status", "encrypted_content", "summary", "content"))
+
+
+def _is_empty_response_text_only(value) -> bool:
+    """True for a plain string or a list of only well-formed ``input_text`` blocks.
+
+    Each block must carry *exactly* ``type`` and ``text`` -- any additional
+    block field is unrepresentable in this projection and rejects the block,
+    rather than being silently dropped.
+    """
+    if isinstance(value, str):
+        return True
+    if isinstance(value, list):
+        for block in value:
+            if not isinstance(block, dict):
+                return False
+            if set(block.keys()) != {"type", "text"}:
+                return False
+            if block.get("type") != "input_text" or not isinstance(block.get("text"), str):
+                return False
+        return True
+    return False
+
+
+def _empty_response_valid_caller(caller) -> bool:
+    """A caller marker must be omitted, ``{"type":"direct"}``, or a well-formed program caller.
+
+    Only these two closed shapes can be shown to be losslessly representable:
+    ``{"type": "direct"}`` with no other keys, or
+    ``{"type": "program", "caller_id": <non-empty str>}`` with no other keys.
+    Any other ``type`` value, a ``program`` caller missing or with an empty
+    ``caller_id``, or any extra key is rejected rather than copied through
+    unexamined.
+    """
+    if caller is None:
+        return True
+    if not isinstance(caller, dict):
+        return False
+    caller_type = caller.get("type")
+    if caller_type == "direct":
+        return set(caller.keys()) == {"type"}
+    if caller_type == "program":
+        return (
+            set(caller.keys()) == {"type", "caller_id"}
+            and isinstance(caller.get("caller_id"), str)
+            and caller["caller_id"] != ""
+        )
+    return False
+
+
+def _empty_response_valid_namespace(namespace) -> bool:
+    """A namespace marker must be omitted or a non-empty string."""
+    return namespace is None or (isinstance(namespace, str) and namespace != "")
+
+
+def _build_empty_response_fallback(raw: bytes, budget: int | None = None):
+    """Build the single bounded, text-only fallback for a classified 477.
+
+    This is a fail-closed projector, not a general history rewriter: every
+    item type is matched against an explicit allow-list of semantic fields --
+    never copied through with an exclude-list -- so an unknown or additional
+    field on an otherwise-known item rejects the whole fallback instead of
+    being silently forwarded or silently dropped. The same applies to any
+    unknown item, invalid role/phase, malformed call/output/caller/namespace,
+    non-text content, orphaned/mismatched/duplicate tool output, or otherwise
+    unrepresentable shape: the caller stays free to expose the original
+    upstream response rather than receive a guessed projection. Only known
+    provider-owned state is removed: top-level ``previous_response_id`` /
+    ``conversation`` / ``prompt_cache_key``, the ``reasoning.encrypted_content``
+    include hint, and each known item's own ``id`` and ``status``. A string
+    ``input`` (rather than a list of items) is preserved losslessly since it
+    carries no items to project. A ``reasoning`` item maps to a fixed opaque
+    marker only when its own visible ``summary``/``content`` is empty -- a
+    reasoning item that also carries visible summary or content text cannot
+    be losslessly represented by the fixed marker and is rejected instead of
+    silently discarding that text. An ``agent_message`` maps to a plain
+    assistant message with a deterministic, JSON-escaped author/recipient
+    header so that quoted or newline-bearing values can never break the fixed
+    envelope; both keep their position in ``input``. Returns ``(raw, detail)``
+    unchanged when no projection is needed at all, so a caller can retry the
+    identical bytes exactly once. Returns ``(None, detail)`` when the request
+    cannot be safely projected, with ``detail["status"] == "rejected"``.
+    """
+    if budget is None:
+        budget = EMPTY_RESPONSE_FALLBACK_BUDGET
+    if not isinstance(budget, int) or isinstance(budget, bool) or budget <= 0:
+        return None, {"status": "rejected", "reason": "invalid_budget"}
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return None, {"status": "rejected", "reason": "invalid_json"}
+    if not isinstance(payload, dict):
+        return None, {"status": "rejected", "reason": "not_object"}
+
+    original_input = payload.get("input", [])
+    if isinstance(original_input, str):
+        original_items = None
+    elif isinstance(original_input, list):
+        original_items = original_input
+    else:
+        return None, {"status": "rejected", "reason": "invalid_input"}
+
+    changed = False
+    new_payload = dict(payload)
+    for field in ("previous_response_id", "conversation", "prompt_cache_key"):
+        if field in new_payload:
+            del new_payload[field]
+            changed = True
+
+    if "include" in new_payload:
+        include = new_payload["include"]
+        if not isinstance(include, list) or any(not isinstance(value, str) for value in include):
+            return None, {"status": "rejected", "reason": "invalid_include"}
+        trimmed_include = [value for value in include if value != "reasoning.encrypted_content"]
+        if len(trimmed_include) != len(include):
+            new_payload["include"] = trimmed_include
+            changed = True
+
+    if original_items is None:
+        # A string ``input`` carries no items to project; only the top-level
+        # provider bindings stripped above could have required any change.
+        projected_input = original_input
+    else:
+        calls: dict[str, str] = {}
+        outputs_seen: set[str] = set()
+        projected_items = []
+
+        for item in original_items:
+            if not isinstance(item, dict):
+                return None, {"status": "rejected", "reason": "invalid_item"}
+            item_type = item.get("type")
+
+            if item_type == "reasoning":
+                if set(item.keys()) - _EMPTY_RESPONSE_REASONING_FIELDS:
+                    return None, {"status": "rejected", "reason": "unknown_reasoning_field"}
+                if item.get("summary") not in (None, []):
+                    return None, {"status": "rejected", "reason": "malformed_reasoning"}
+                if item.get("content") not in (None, []):
+                    return None, {"status": "rejected", "reason": "malformed_reasoning"}
+                projected_items.append({
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": "commentary",
+                    "content": [
+                        {"type": "input_text", "text": EMPTY_RESPONSE_OPAQUE_REASONING_MARKER},
+                    ],
+                })
+                changed = True
+                continue
+
+            if item_type == "agent_message":
+                if set(item.keys()) - _EMPTY_RESPONSE_AGENT_MESSAGE_FIELDS:
+                    return None, {"status": "rejected", "reason": "unknown_agent_message_field"}
+                author = item.get("author")
+                recipient = item.get("recipient")
+                content = item.get("content")
+                phase = item.get("phase", "commentary")
+                if not isinstance(author, str) or author == "":
+                    return None, {"status": "rejected", "reason": "malformed_agent_message"}
+                if not isinstance(recipient, str) or recipient == "":
+                    return None, {"status": "rejected", "reason": "malformed_agent_message"}
+                if phase not in _EMPTY_RESPONSE_VALID_PHASES:
+                    return None, {"status": "rejected", "reason": "invalid_phase"}
+                if not isinstance(content, list):
+                    return None, {"status": "rejected", "reason": "malformed_agent_message"}
+                if not _is_empty_response_text_only(content):
+                    return None, {"status": "rejected", "reason": "non_text_agent_content"}
+                header_text = json.dumps(
+                    {"type": "agent_message", "author": author, "recipient": recipient},
+                    ensure_ascii=False, separators=(",", ":"),
+                )
+                header = {"type": "input_text", "text": header_text}
+                projected_items.append({
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": phase,
+                    "content": [header, *content],
+                })
+                changed = True
+                continue
+
+            if item_type == "message":
+                if set(item.keys()) - _EMPTY_RESPONSE_MESSAGE_FIELDS:
+                    return None, {"status": "rejected", "reason": "unknown_message_field"}
+                role = item.get("role")
+                if role not in _EMPTY_RESPONSE_VALID_ROLES:
+                    return None, {"status": "rejected", "reason": "invalid_role"}
+                phase = item.get("phase")
+                if phase is not None and (role != "assistant" or phase not in _EMPTY_RESPONSE_VALID_PHASES):
+                    return None, {"status": "rejected", "reason": "invalid_phase"}
+                content = item.get("content")
+                if not _is_empty_response_text_only(content):
+                    return None, {"status": "rejected", "reason": "non_text_message_content"}
+                kept = {"type": "message", "role": role, "content": content}
+                if phase is not None:
+                    kept["phase"] = phase
+                if kept != item:
+                    changed = True
+                projected_items.append(kept)
+                continue
+
+            if item_type in _EMPTY_RESPONSE_CALL_ARG_FIELD:
+                if set(item.keys()) - _EMPTY_RESPONSE_CALL_FIELDS[item_type]:
+                    return None, {"status": "rejected", "reason": "unknown_call_field"}
+                call_id = item.get("call_id")
+                name = item.get("name")
+                arg_field = _EMPTY_RESPONSE_CALL_ARG_FIELD[item_type]
+                arguments = item.get(arg_field)
+                namespace = item.get("namespace")
+                caller = item.get("caller")
+                if not isinstance(call_id, str) or call_id == "" or call_id in calls:
+                    return None, {"status": "rejected", "reason": "malformed_call"}
+                if not isinstance(name, str) or name == "":
+                    return None, {"status": "rejected", "reason": "malformed_call"}
+                if not isinstance(arguments, str):
+                    return None, {"status": "rejected", "reason": "malformed_call"}
+                if not _empty_response_valid_namespace(namespace):
+                    return None, {"status": "rejected", "reason": "malformed_namespace"}
+                if not _empty_response_valid_caller(caller):
+                    return None, {"status": "rejected", "reason": "malformed_caller"}
+                calls[call_id] = item_type
+                kept = {"type": item_type, "call_id": call_id, "name": name, arg_field: arguments}
+                if namespace is not None:
+                    kept["namespace"] = namespace
+                if caller is not None:
+                    kept["caller"] = caller
+                if kept != item:
+                    changed = True
+                projected_items.append(kept)
+                continue
+
+            if item_type in _EMPTY_RESPONSE_CALL_TYPE_FOR_OUTPUT:
+                if set(item.keys()) - _EMPTY_RESPONSE_OUTPUT_FIELDS:
+                    return None, {"status": "rejected", "reason": "unknown_output_field"}
+                call_id = item.get("call_id")
+                output = item.get("output")
+                caller = item.get("caller")
+                if not isinstance(call_id, str) or call_id == "" or call_id not in calls:
+                    return None, {"status": "rejected", "reason": "orphan_output"}
+                if calls[call_id] != _EMPTY_RESPONSE_CALL_TYPE_FOR_OUTPUT[item_type]:
+                    return None, {"status": "rejected", "reason": "mismatched_output"}
+                if call_id in outputs_seen:
+                    return None, {"status": "rejected", "reason": "duplicate_output"}
+                if not _is_empty_response_text_only(output):
+                    return None, {"status": "rejected", "reason": "non_text_output"}
+                if not _empty_response_valid_caller(caller):
+                    return None, {"status": "rejected", "reason": "malformed_caller"}
+                outputs_seen.add(call_id)
+                kept = {"type": item_type, "call_id": call_id, "output": output}
+                if caller is not None:
+                    kept["caller"] = caller
+                if kept != item:
+                    changed = True
+                projected_items.append(kept)
+                continue
+
+            return None, {"status": "rejected", "reason": "unknown_item_type"}
+
+        projected_input = projected_items
+
+    if not changed:
+        return raw, {"projected": False, "status": "accepted"}
+
+    new_payload["input"] = projected_input
+    try:
+        fallback = json.dumps(new_payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    except Exception:
+        return None, {"status": "rejected", "reason": "serialize_failed"}
+
+    if len(fallback) > budget:
+        return None, {"status": "rejected", "reason": "budget_exceeded"}
+
+    return fallback, {
+        "projected": True,
+        "status": "accepted",
+        "original_bytes": len(raw),
+        "fallback_bytes": len(fallback),
+    }
 
 
 def send_terminal_failure(handler, request_body: bytes, *, code: str, message: str, attempts: int) -> str:
@@ -1488,18 +1915,47 @@ class Handler(BaseHTTPRequestHandler):
             used_response_failed_compaction = False
             response_failed_stages = 0
             max_response_failed_stages = RESPONSE_FAILED_MAX_STAGES if is_responses else 0
+            # Reserved independently of ``max_response_failed_stages`` so the
+            # dialogue-only recovery continuation still gets its one bounded
+            # attempt even when ``DMX_RESPONSE_FAILED_MAX_STAGES=0``. It never
+            # widens the ordinary retry ceiling below, which is computed from
+            # ``max_attempts`` alone. The classified-477 fallback itself is
+            # dispatched immediately, as an independent nested request (see
+            # below), and deliberately does *not* add to this range.
+            dialogue_slots = RESPONSE_FAILED_DIALOGUE_SLOTS if is_responses else 0
             attempt_body = body
             used_response_failed_dialogue_recovery = False
             dialogue_recovery_metrics = None
+            # A classified 477 gets exactly one dedicated fallback slot per
+            # request. Before spending any upstream attempt, honor a bounded
+            # local cooldown recorded by a prior exhausted recovery for this
+            # exact (policy-versioned) request, so a client that retries an
+            # unrecoverable request in a tight loop cannot hammer upstream.
+            if is_responses:
+                cooldown_fingerprint = _empty_response_policy_fingerprint(body)
+                cooldown_remaining = _empty_response_cooldown_remaining(cooldown_fingerprint)
+                if cooldown_remaining > 0:
+                    _record_counter("empty_response_cooldown_hits")
+                    _record_failure("empty_response_cooldown_hit")
+                    _send_empty_response_exhausted(self, 0)
+                    _log(
+                        f"req={request_id} event=empty_response_cooldown_hit "
+                        f"remaining_seconds={cooldown_remaining:.1f} path={_safe_request_path(self.path)}"
+                    )
+                    return
             # Ordinary transient retries retain their previous bounded policy.
             # Explicit ``response_failed`` has its own staged, pair-safe
             # compaction path and must never loop the same bytes.
-            for attempt in range(max_attempts + max_response_failed_stages):
+            for attempt in range(max_attempts + max_response_failed_stages + dialogue_slots):
                 req = urllib.request.Request(url, data=attempt_body if attempt_body else None, method=method)
                 for k, v in out_headers.items():
                     req.add_header(k, v)
                 try:
                     resp = _urlopen(req, timeout=UPSTREAM_TIMEOUT)
+                    # The dedicated classified-477 fallback is dispatched as its
+                    # own immediate nested request below and never reaches this
+                    # normal loop success path, so only the ordinary
+                    # ``response_failed`` recovery branches need crediting here.
                     if used_response_failed_dialogue_recovery and dialogue_recovery_metrics:
                         _record_counter("response_failed_dialogue_recovery_accepted")
                         m = dialogue_recovery_metrics
@@ -1631,6 +2087,7 @@ class Handler(BaseHTTPRequestHandler):
                         disp
                         and transient_retries_used < retry_ceiling
                         and not (status_code == 400 and disp == "full")
+                        and not (status_code == 477 and disp == "full")
                     ):
                         delay = 3.0 if disp == "once" else backoffs[min(attempt, len(backoffs) - 1)]
                         _log(
@@ -1641,20 +2098,81 @@ class Handler(BaseHTTPRequestHandler):
                         time.sleep(delay)
                         continue
                     if status_code == 477 and disp == "full":
-                        _record_failure("upstream_empty_response_exhausted")
-                        terminal_mode = send_terminal_failure(
-                            self,
-                            body,
-                            code="dmx_empty_response_exhausted",
-                            message="DMX upstream returned empty responses after bounded retries",
-                            attempts=attempt + 1,
-                        )
+                        # DMX's empty-response extension gets exactly one bounded,
+                        # semantics-preserving fallback attempt instead of the
+                        # ordinary identical-bytes retry budget. An unsafe
+                        # projection rejects immediately without spending a
+                        # second upstream attempt. A safe projection is
+                        # dispatched right here as its own immediate, nested
+                        # upstream request -- the same URL/method/headers/timeout
+                        # -- independent of the outer attempt/iteration budget
+                        # above, so it always fires exactly once even when this
+                        # classified 477 arrives on the outer loop's very last
+                        # iteration.
+                        fingerprint = _empty_response_policy_fingerprint(body)
+                        fallback, detail = _build_empty_response_fallback(body)
+                        if fallback is None:
+                            _record_counter("empty_response_fallback_rejected")
+                            _record_counter("empty_response_recovery_exhausted")
+                            _record_failure("empty_response_fallback_rejected")
+                            _remember_empty_response_failure(fingerprint)
+                            _send_empty_response_exhausted(self, 1)
+                            _log(
+                                f"req={request_id} event=empty_response_fallback_rejected "
+                                f"reason={detail.get('reason', 'unknown')} attempts=1 "
+                                f"path={_safe_request_path(self.path)}"
+                            )
+                            return
+                        _record_counter("empty_response_fallback_attempts")
+                        previous_bytes = len(attempt_body)
+                        attempt_body = fallback
                         _log(
-                            f"req={request_id} event=empty_response_exhausted "
-                            f"attempts={attempt + 1} upstream_status=477 terminal={terminal_mode} "
+                            f"req={request_id} event=empty_response_fallback "
+                            f"projected={detail.get('projected', False)} "
+                            f"bytes={previous_bytes}->{len(fallback)} "
+                            f"policy={EMPTY_RESPONSE_COMPAT_POLICY_VERSION} "
                             f"path={_safe_request_path(self.path)}"
                         )
-                        return
+                        fallback_req = urllib.request.Request(
+                            url, data=attempt_body if attempt_body else None, method=method
+                        )
+                        for k, v in out_headers.items():
+                            fallback_req.add_header(k, v)
+                        try:
+                            resp = _urlopen(fallback_req, timeout=UPSTREAM_TIMEOUT)
+                        except urllib.error.HTTPError as fallback_error:
+                            try:
+                                fallback_error.read()
+                                fallback_status = fallback_error.code
+                            finally:
+                                fallback_error.close()
+                            _record_counter("empty_response_recovery_exhausted")
+                            _record_failure("empty_response_recovery_exhausted")
+                            _remember_empty_response_failure(fingerprint)
+                            _send_empty_response_exhausted(self, 2)
+                            _log(
+                                f"req={request_id} event=empty_response_fallback_failed "
+                                f"upstream_status={fallback_status} attempts=2 "
+                                f"path={_safe_request_path(self.path)}"
+                            )
+                            return
+                        except Exception as fallback_exc:
+                            _record_counter("empty_response_recovery_exhausted")
+                            _record_failure("empty_response_recovery_exhausted")
+                            _remember_empty_response_failure(fingerprint)
+                            _send_empty_response_exhausted(self, 2)
+                            _log(
+                                f"req={request_id} event=empty_response_fallback_failed "
+                                f"exception={_safe_exception_label(fallback_exc)} attempts=2 "
+                                f"path={_safe_request_path(self.path)}"
+                            )
+                            return
+                        _record_counter("empty_response_fallback_accepted")
+                        _log(
+                            f"req={request_id} event=empty_response_fallback_accepted "
+                            f"path={_safe_request_path(self.path)}"
+                        )
+                        break
                     self.send_response(status_code)
                     for k, v in error_headers.items():
                         if k.lower() not in _HOP_BY_HOP:
@@ -1670,6 +2188,10 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     return
                 except Exception as e:
+                    # The classified-477 fallback is dispatched as its own
+                    # immediate nested request above, with its own HTTPError
+                    # and transport-exception handling; a transport failure
+                    # there never reaches this ordinary per-iteration handler.
                     last_err = e
                     if attempt < max_attempts - 1:
                         _log(
