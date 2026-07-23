@@ -34,6 +34,15 @@ import uninstall  # noqa: E402
 import control  # noqa: E402
 
 
+def assert_private_log_mode(testcase, mode):
+    if os.name == "nt":
+        # Windows exposes only the read-only file attribute through chmod/stat;
+        # access isolation comes from the inherited user-profile directory ACL.
+        testcase.assertEqual(mode & 0o600, 0o600)
+    else:
+        testcase.assertEqual(mode, 0o600)
+
+
 def _ctx(port=8791, upstream="https://www.dmxapi.cn"):
     return common.InstallContext(
         home="/home/tester",
@@ -1194,7 +1203,7 @@ class TestWatchdogLogging(unittest.TestCase):
         self.assertNotIn("gAAAA_replay_secret", text)
         self.assertIn("log_retention_discarded_oversized_bytes=8192", text)
         self.assertLessEqual(size, 4096)
-        self.assertEqual(mode, 0o600)
+        assert_private_log_mode(self, mode)
 
 
 class TestProxySanitize(unittest.TestCase):
@@ -1623,7 +1632,7 @@ class TestProxySanitize(unittest.TestCase):
         self.assertNotIn("prompt=private", text)
         self.assertIn("[redacted]", text)
         self.assertIn("path=/v1/responses", text)
-        self.assertEqual(mode, 0o600)
+        assert_private_log_mode(self, mode)
         self.assertLessEqual(max(len(line.encode("utf-8")) for line in text.splitlines()), self.p._LOG_LINE_MAX_BYTES + 96)
 
     def test_log_rotation_discards_an_oversized_legacy_segment_without_reading_it(self):
