@@ -6,6 +6,13 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+### Fixed
+
+- Treat the exact DMX/OpenAI-shaped HTTP 400 `invalid_prompt` response whose
+  message is `Request blocked` as a bounded historical-replay rejection. It now
+  uses the existing strictly shrinking, tool-pair-safe recovery path; unrelated
+  `invalid_prompt` responses remain terminal and unchanged.
+
 ## [1.0.25] - 2026-07-23
 
 ### Added
