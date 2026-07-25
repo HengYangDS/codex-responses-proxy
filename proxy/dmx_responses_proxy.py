@@ -114,7 +114,7 @@ RESPONSE_FAILED_MAX_STAGES = max(0, int(os.environ.get("DMX_RESPONSE_FAILED_MAX_
 # fallback slot instead of the ordinary identical-bytes retry budget. The
 # compat policy version is folded into the cooldown key so a future change to
 # the projection rules below cannot collide with an older cached cooldown.
-EMPTY_RESPONSE_COMPAT_POLICY_VERSION = "empty-response-fallback-v3"
+EMPTY_RESPONSE_COMPAT_POLICY_VERSION = "empty-response-fallback-v4"
 EMPTY_RESPONSE_OPAQUE_REASONING_MARKER = (
     "[reasoning omitted: opaque provider state cannot be replayed]"
 )
@@ -1216,6 +1216,9 @@ def _empty_response_cooldown_remaining(key: str, now: float | None = None) -> fl
 
 
 _EMPTY_RESPONSE_VALID_ROLES = frozenset(("user", "assistant", "developer", "system"))
+_EMPTY_RESPONSE_STALE_SEARCH_TYPES = frozenset(
+    ("web_search_call", "tool_search_call", "tool_search_output")
+)
 # Fixed, closed enum: any phase this proxy has not itself observed and vetted
 # is rejected rather than passed through, since an unknown phase value cannot
 # be shown to be safe to replay.
@@ -1271,16 +1274,23 @@ def _project_empty_response_text_only(value):
     return None, False
 
 
-def _recover_empty_response_dialogue(raw: bytes, budget: int | None = None):
+def _recover_empty_response_dialogue(
+    raw: bytes, budget: int | None = None, *, rejection_reason: str | None = None
+):
     """Build a strict current-instruction/current-user fallback for HTTP 477.
 
-    This is used only when the semantic-preserving empty-response projection
-    cannot represent old replay state. It keeps the latest user message and at
-    most one nearest preceding developer/system instruction, provided each is
-    itself representable by the normal message projector. It deliberately drops
-    assistant, tool, search, reasoning, and unknown historical items without
-    mutating the stored conversation.
+    This is used only when exact stale search items make the semantic-preserving
+    empty-response projection reject an otherwise representable replay. It keeps
+    every preceding system/developer instruction in original order and the final
+    user message. No later state, arbitrary unknown item, or unrepresentable
+    historical content may be silently discarded.
     """
+    if rejection_reason is not None and rejection_reason != "unknown_item_type":
+        return None, None
+    if budget is None:
+        budget = EMPTY_RESPONSE_FALLBACK_BUDGET
+    if not isinstance(budget, int) or isinstance(budget, bool) or budget <= 0:
+        return None, None
     try:
         payload = json.loads(raw)
     except Exception:
@@ -1299,19 +1309,41 @@ def _recover_empty_response_dialogue(raw: bytes, budget: int | None = None):
         ),
         default=-1,
     )
-    if latest_user_index < 0:
+    if latest_user_index < 0 or latest_user_index != len(original_items) - 1:
         return None, None
 
-    selected_indexes = [latest_user_index]
-    for index in range(latest_user_index - 1, -1, -1):
-        item = original_items[index]
+    stale_search_indexes = {
+        index
+        for index, item in enumerate(original_items[:latest_user_index])
+        if isinstance(item, dict) and item.get("type") in _EMPTY_RESPONSE_STALE_SEARCH_TYPES
+    }
+    if not stale_search_indexes:
+        return None, None
+
+    validation_payload = dict(payload)
+    validation_payload["input"] = [
+        item for index, item in enumerate(original_items) if index not in stale_search_indexes
+    ]
+    try:
+        validation_raw = json.dumps(
+            validation_payload, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+    except Exception:
+        return None, None
+    validated, _validation_detail = _build_empty_response_fallback(validation_raw, budget)
+    if validated is None:
+        return None, None
+
+    selected_indexes = [
+        index
+        for index, item in enumerate(original_items[:latest_user_index])
         if (
             isinstance(item, dict)
             and item.get("type") == "message"
-            and item.get("role") in ("developer", "system")
-        ):
-            selected_indexes.insert(0, index)
-            break
+            and item.get("role") in ("system", "developer")
+        )
+    ]
+    selected_indexes.append(latest_user_index)
 
     dialogue = []
     for index in selected_indexes:
@@ -1344,10 +1376,6 @@ def _recover_empty_response_dialogue(raw: bytes, budget: int | None = None):
     try:
         recovery = json.dumps(candidate, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     except Exception:
-        return None, None
-    if budget is None:
-        budget = EMPTY_RESPONSE_FALLBACK_BUDGET
-    if not isinstance(budget, int) or isinstance(budget, bool) or budget <= 0:
         return None, None
     if len(recovery) > budget or len(recovery) >= len(raw):
         return None, None
@@ -2731,10 +2759,12 @@ class Handler(BaseHTTPRequestHandler):
                     if status_code == 477 and disp == "full":
                         # DMX's empty-response extension gets exactly one bounded,
                         # semantics-preserving fallback attempt instead of the
-                        # ordinary identical-bytes retry budget. An unsafe
-                        # projection rejects immediately without spending a
-                        # second upstream attempt. A safe projection is
-                        # dispatched right here as its own immediate, nested
+                        # ordinary identical-bytes retry budget. A projection
+                        # rejected only by exact stale search history may use a
+                        # stricter current-dialogue fallback; every other unsafe
+                        # projection rejects without spending a second upstream
+                        # attempt. A safe fallback is dispatched right here as
+                        # its own immediate, nested
                         # upstream request -- the same URL/method/headers/timeout
                         # -- independent of the outer attempt/iteration budget
                         # above, so it always fires exactly once even when this
@@ -2744,7 +2774,9 @@ class Handler(BaseHTTPRequestHandler):
                         fallback, detail = _build_empty_response_fallback(body)
                         if fallback is None:
                             rejection_reason = detail.get("reason", "unknown")
-                            fallback, dialogue_metrics = _recover_empty_response_dialogue(body)
+                            fallback, dialogue_metrics = _recover_empty_response_dialogue(
+                                body, rejection_reason=rejection_reason
+                            )
                             if fallback is None:
                                 _record_counter("empty_response_fallback_rejected")
                                 _record_counter("empty_response_recovery_exhausted")
