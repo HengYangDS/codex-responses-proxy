@@ -1803,6 +1803,72 @@ class TestProxyTransport(unittest.TestCase):
         outputs = {item["call_id"] for item in compact["input"] if item.get("type") in self.p._TOOL_OUTPUT_TYPES}
         self.assertTrue(outputs.issubset(calls))
 
+    def test_recovers_blocked_invalid_prompt_with_pair_safe_compact_request(self):
+        blocked = (
+            b'{"error":{"message":"Request blocked. (request id: fixture)",'
+            b'"type":"invalid_request_error","param":"","code":"invalid_prompt"}}'
+        )
+        success = b'{"id":"resp_recovered","status":"completed"}'
+        body = json.dumps({
+            "model": "gpt-5.6-terra",
+            "stream": False,
+            "prompt_cache_key": "full-history-cache-key",
+            "input": [
+                {"type": "message", "role": "developer", "content": "policy"},
+                {"type": "message", "role": "user", "content": "old" + "x" * 100_000},
+                {"type": "function_call", "call_id": "call_old", "name": "tool", "arguments": "{}"},
+                {"type": "function_call_output", "call_id": "call_old", "output": "old result"},
+                {"type": "message", "role": "user", "content": "latest user context"},
+            ],
+        }, separators=(",", ":")).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy(
+                [(400, blocked), (200, success)], tmp,
+            )
+            try:
+                response = self._request(port, body)
+                with response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.read(), success)
+            finally:
+                cleanup()
+
+        self.assertEqual(received[0], body)
+        self.assertEqual(len(received), 2)
+        compact = json.loads(received[1])
+        self.assertLess(len(received[1]), len(body))
+        self.assertNotIn("prompt_cache_key", compact)
+        self.assertEqual(compact["input"][-1]["content"], "latest user context")
+
+    def test_passes_through_unrelated_invalid_prompt(self):
+        invalid_prompt = (
+            b'{"error":{"message":"caller supplied an unsupported option",'
+            b'"type":"invalid_request_error","param":"tool_choice","code":"invalid_prompt"}}'
+        )
+        body = json.dumps({
+            "model": "gpt-5.6-terra",
+            "stream": False,
+            "input": [
+                {"type": "message", "role": "user", "content": "latest user context"},
+            ],
+        }, separators=(",", ":")).encode()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy(
+                [(400, invalid_prompt)], tmp,
+            )
+            try:
+                with self.assertRaises(urllib.error.HTTPError) as raised:
+                    self._request(port, body)
+                with raised.exception:
+                    self.assertEqual(raised.exception.code, 400)
+                    self.assertEqual(raised.exception.read(), invalid_prompt)
+            finally:
+                cleanup()
+
+        self.assertEqual(received, [body])
+
     def test_recovers_response_failed_with_dialogue_only_last_resort(self):
         response_failed = (
             b'{"error":{"message":"OpenAI responses stream failed: '
