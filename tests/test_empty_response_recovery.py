@@ -461,6 +461,91 @@ class EmptyResponseRecoveryTests(unittest.TestCase):
         self.assertEqual(json.loads(raw)["error"]["code"], "dmx_empty_response_exhausted")
         self.assertEqual(len(received), 1)
 
+    def test_unknown_history_uses_strict_dialogue_fallback_when_current_messages_are_safe(self):
+        body = self._body({
+            "stream": False,
+            "previous_response_id": "provider-history-binding",
+            "prompt_cache_key": "provider-history-cache",
+            "input": [
+                {"type": "message", "role": "developer", "content": "current instruction"},
+                {"type": "web_search_call", "action": {"type": "search", "query": "old query"}},
+                {
+                    "type": "tool_search_call",
+                    "call_id": "search-1",
+                    "execution": "server",
+                    "arguments": {"query": "old query", "limit": 3},
+                },
+                {
+                    "type": "tool_search_output",
+                    "call_id": "search-1",
+                    "execution": "server",
+                    "tools": [{"type": "tool", "name": "search"}],
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "old answer"}],
+                },
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "current user request"}],
+                },
+            ],
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy(
+                [(477, EMPTY_RESPONSE), (200, SUCCESS)], tmp
+            )
+            try:
+                with self._request(port, body) as response:
+                    self.assertEqual(response.read(), SUCCESS)
+            finally:
+                cleanup()
+
+        self.assertEqual(len(received), 2)
+        fallback = json.loads(received[1])
+        self.assertNotIn("previous_response_id", fallback)
+        self.assertNotIn("prompt_cache_key", fallback)
+        self.assertEqual(
+            fallback["input"],
+            [
+                {"type": "message", "role": "developer", "content": "current instruction"},
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "current user request"}],
+                },
+            ],
+        )
+
+    def test_unknown_history_with_unrepresentable_current_user_still_returns_503(self):
+        body = self._body({
+            "stream": False,
+            "input": [
+                {"type": "web_search_call", "action": {"type": "search", "query": "old query"}},
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_image", "image_url": "https://example.test/image.png"}],
+                },
+            ],
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy(
+                [(477, EMPTY_RESPONSE)] * 4, tmp
+            )
+            try:
+                code, _headers, raw = self._read_http_error(port, body)
+            finally:
+                cleanup()
+
+        self.assertEqual(code, 503)
+        self.assertEqual(json.loads(raw)["error"]["attempts"], 1)
+        self.assertEqual(len(received), 1)
+
     def test_fallback_failure_is_terminal_after_exactly_two_upstream_attempts(self):
         body = self._body({
             "stream": False,
@@ -572,7 +657,7 @@ class EmptyResponseRecoveryTests(unittest.TestCase):
         self.assertEqual(status["counters"]["empty_response_cooldown_hits"], 1)
 
     def test_policy_fingerprint_binds_version_and_sanitized_original_bytes(self):
-        self.assertEqual(self.p.EMPTY_RESPONSE_COMPAT_POLICY_VERSION, "empty-response-fallback-v2")
+        self.assertEqual(self.p.EMPTY_RESPONSE_COMPAT_POLICY_VERSION, "empty-response-fallback-v3")
         first = self._body({
             "previous_response_id": "first",
             "input": [{"type": "message", "role": "user", "content": "same"}],

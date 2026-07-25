@@ -114,7 +114,7 @@ RESPONSE_FAILED_MAX_STAGES = max(0, int(os.environ.get("DMX_RESPONSE_FAILED_MAX_
 # fallback slot instead of the ordinary identical-bytes retry budget. The
 # compat policy version is folded into the cooldown key so a future change to
 # the projection rules below cannot collide with an older cached cooldown.
-EMPTY_RESPONSE_COMPAT_POLICY_VERSION = "empty-response-fallback-v2"
+EMPTY_RESPONSE_COMPAT_POLICY_VERSION = "empty-response-fallback-v3"
 EMPTY_RESPONSE_OPAQUE_REASONING_MARKER = (
     "[reasoning omitted: opaque provider state cannot be replayed]"
 )
@@ -1269,6 +1269,94 @@ def _project_empty_response_text_only(value):
             return None, False
         return projected, changed
     return None, False
+
+
+def _recover_empty_response_dialogue(raw: bytes, budget: int | None = None):
+    """Build a strict current-instruction/current-user fallback for HTTP 477.
+
+    This is used only when the semantic-preserving empty-response projection
+    cannot represent old replay state. It keeps the latest user message and at
+    most one nearest preceding developer/system instruction, provided each is
+    itself representable by the normal message projector. It deliberately drops
+    assistant, tool, search, reasoning, and unknown historical items without
+    mutating the stored conversation.
+    """
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    original_items = payload.get("input")
+    if not isinstance(original_items, list) or not original_items:
+        return None, None
+
+    latest_user_index = max(
+        (
+            index
+            for index, item in enumerate(original_items)
+            if isinstance(item, dict) and item.get("type") == "message" and item.get("role") == "user"
+        ),
+        default=-1,
+    )
+    if latest_user_index < 0:
+        return None, None
+
+    selected_indexes = [latest_user_index]
+    for index in range(latest_user_index - 1, -1, -1):
+        item = original_items[index]
+        if (
+            isinstance(item, dict)
+            and item.get("type") == "message"
+            and item.get("role") in ("developer", "system")
+        ):
+            selected_indexes.insert(0, index)
+            break
+
+    dialogue = []
+    for index in selected_indexes:
+        item = original_items[index]
+        if set(item.keys()) - _EMPTY_RESPONSE_MESSAGE_FIELDS:
+            return None, None
+        role = item.get("role")
+        if role not in _EMPTY_RESPONSE_VALID_ROLES:
+            return None, None
+        phase = item.get("phase")
+        if phase is not None and (role != "assistant" or phase not in _EMPTY_RESPONSE_VALID_PHASES):
+            return None, None
+        content, _changed = _project_empty_response_text_only(item.get("content"))
+        if content is None:
+            return None, None
+        kept = {"type": "message", "role": role, "content": content}
+        if phase is not None:
+            kept["phase"] = phase
+        dialogue.append(kept)
+
+    candidate = dict(payload)
+    candidate["input"] = dialogue
+    for field in ("previous_response_id", "conversation", "prompt_cache_key"):
+        candidate.pop(field, None)
+    if "include" in candidate:
+        include = candidate["include"]
+        if not isinstance(include, list) or any(not isinstance(value, str) for value in include):
+            return None, None
+        candidate["include"] = [value for value in include if value != "reasoning.encrypted_content"]
+    try:
+        recovery = json.dumps(candidate, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    except Exception:
+        return None, None
+    if budget is None:
+        budget = EMPTY_RESPONSE_FALLBACK_BUDGET
+    if not isinstance(budget, int) or isinstance(budget, bool) or budget <= 0:
+        return None, None
+    if len(recovery) > budget or len(recovery) >= len(raw):
+        return None, None
+    return recovery, {
+        "original_bytes": len(raw),
+        "recovery_bytes": len(recovery),
+        "retained_messages": len(dialogue),
+        "dropped_input_items": len(original_items) - len(dialogue),
+    }
 
 
 def _empty_response_valid_caller(caller) -> bool:
@@ -2655,17 +2743,29 @@ class Handler(BaseHTTPRequestHandler):
                         fingerprint = _empty_response_policy_fingerprint(body)
                         fallback, detail = _build_empty_response_fallback(body)
                         if fallback is None:
-                            _record_counter("empty_response_fallback_rejected")
-                            _record_counter("empty_response_recovery_exhausted")
-                            _record_failure("empty_response_fallback_rejected")
-                            _remember_empty_response_failure(fingerprint)
-                            _send_empty_response_exhausted(self, 1)
+                            rejection_reason = detail.get("reason", "unknown")
+                            fallback, dialogue_metrics = _recover_empty_response_dialogue(body)
+                            if fallback is None:
+                                _record_counter("empty_response_fallback_rejected")
+                                _record_counter("empty_response_recovery_exhausted")
+                                _record_failure("empty_response_fallback_rejected")
+                                _remember_empty_response_failure(fingerprint)
+                                _send_empty_response_exhausted(self, 1)
+                                _log(
+                                    f"req={request_id} event=empty_response_fallback_rejected "
+                                    f"reason={detail.get('reason', 'unknown')} attempts=1 "
+                                    f"path={_safe_request_path(self.path)}"
+                                )
+                                return
+                            detail = {"projected": True, "dialogue_recovery": True}
                             _log(
-                                f"req={request_id} event=empty_response_fallback_rejected "
-                                f"reason={detail.get('reason', 'unknown')} attempts=1 "
+                                f"req={request_id} event=empty_response_dialogue_recovery "
+                                f"bytes={dialogue_metrics['original_bytes']}->{dialogue_metrics['recovery_bytes']} "
+                                f"retained_messages={dialogue_metrics['retained_messages']} "
+                                f"dropped_input_items={dialogue_metrics['dropped_input_items']} "
+                                f"reason={rejection_reason} "
                                 f"path={_safe_request_path(self.path)}"
                             )
-                            return
                         _record_counter("empty_response_fallback_attempts")
                         previous_bytes = len(attempt_body)
                         attempt_body = fallback
