@@ -114,7 +114,7 @@ RESPONSE_FAILED_MAX_STAGES = max(0, int(os.environ.get("DMX_RESPONSE_FAILED_MAX_
 # fallback slot instead of the ordinary identical-bytes retry budget. The
 # compat policy version is folded into the cooldown key so a future change to
 # the projection rules below cannot collide with an older cached cooldown.
-EMPTY_RESPONSE_COMPAT_POLICY_VERSION = "empty-response-fallback-v1"
+EMPTY_RESPONSE_COMPAT_POLICY_VERSION = "empty-response-fallback-v2"
 EMPTY_RESPONSE_OPAQUE_REASONING_MARKER = (
     "[reasoning omitted: opaque provider state cannot be replayed]"
 )
@@ -1237,25 +1237,38 @@ _EMPTY_RESPONSE_OUTPUT_FIELDS = frozenset(("type", "id", "status", "call_id", "o
 _EMPTY_RESPONSE_REASONING_FIELDS = frozenset(("type", "id", "status", "encrypted_content", "summary", "content"))
 
 
-def _is_empty_response_text_only(value) -> bool:
-    """True for a plain string or a list of only well-formed ``input_text`` blocks.
+def _project_empty_response_text_only(value):
+    """Return a lossless text projection, or ``None`` for unrepresentable content.
 
-    Each block must carry *exactly* ``type`` and ``text`` -- any additional
-    block field is unrepresentable in this projection and rejects the block,
-    rather than being silently dropped.
+    Plain strings and exact ``input_text`` blocks already conform to the
+    request-side Responses shape. Exact ``output_text`` blocks are standard
+    replayed assistant history, and their sole visible ``text`` value has the
+    same semantics when represented as ``input_text``. Any additional field or
+    non-text block remains unrepresentable and fails closed rather than being
+    silently discarded.
     """
     if isinstance(value, str):
-        return True
+        return value, False
     if isinstance(value, list):
+        projected = []
+        changed = False
         for block in value:
             if not isinstance(block, dict):
-                return False
+                return None, False
             if set(block.keys()) != {"type", "text"}:
-                return False
-            if block.get("type") != "input_text" or not isinstance(block.get("text"), str):
-                return False
-        return True
-    return False
+                return None, False
+            if not isinstance(block.get("text"), str):
+                return None, False
+            if block.get("type") == "input_text":
+                projected.append(block)
+                continue
+            if block.get("type") == "output_text":
+                projected.append({"type": "input_text", "text": block["text"]})
+                changed = True
+                continue
+            return None, False
+        return projected, changed
+    return None, False
 
 
 def _empty_response_valid_caller(caller) -> bool:
@@ -1399,7 +1412,8 @@ def _build_empty_response_fallback(raw: bytes, budget: int | None = None):
                     return None, {"status": "rejected", "reason": "invalid_phase"}
                 if not isinstance(content, list):
                     return None, {"status": "rejected", "reason": "malformed_agent_message"}
-                if not _is_empty_response_text_only(content):
+                projected_content, content_changed = _project_empty_response_text_only(content)
+                if projected_content is None:
                     return None, {"status": "rejected", "reason": "non_text_agent_content"}
                 header_text = json.dumps(
                     {"type": "agent_message", "author": author, "recipient": recipient},
@@ -1410,7 +1424,7 @@ def _build_empty_response_fallback(raw: bytes, budget: int | None = None):
                     "type": "message",
                     "role": "assistant",
                     "phase": phase,
-                    "content": [header, *content],
+                    "content": [header, *projected_content],
                 })
                 changed = True
                 continue
@@ -1425,12 +1439,13 @@ def _build_empty_response_fallback(raw: bytes, budget: int | None = None):
                 if phase is not None and (role != "assistant" or phase not in _EMPTY_RESPONSE_VALID_PHASES):
                     return None, {"status": "rejected", "reason": "invalid_phase"}
                 content = item.get("content")
-                if not _is_empty_response_text_only(content):
+                projected_content, content_changed = _project_empty_response_text_only(content)
+                if projected_content is None:
                     return None, {"status": "rejected", "reason": "non_text_message_content"}
-                kept = {"type": "message", "role": role, "content": content}
+                kept = {"type": "message", "role": role, "content": projected_content}
                 if phase is not None:
                     kept["phase"] = phase
-                if kept != item:
+                if content_changed or kept != item:
                     changed = True
                 projected_items.append(kept)
                 continue
@@ -1477,15 +1492,16 @@ def _build_empty_response_fallback(raw: bytes, budget: int | None = None):
                     return None, {"status": "rejected", "reason": "mismatched_output"}
                 if call_id in outputs_seen:
                     return None, {"status": "rejected", "reason": "duplicate_output"}
-                if not _is_empty_response_text_only(output):
+                projected_output, output_changed = _project_empty_response_text_only(output)
+                if projected_output is None:
                     return None, {"status": "rejected", "reason": "non_text_output"}
                 if not _empty_response_valid_caller(caller):
                     return None, {"status": "rejected", "reason": "malformed_caller"}
                 outputs_seen.add(call_id)
-                kept = {"type": item_type, "call_id": call_id, "output": output}
+                kept = {"type": item_type, "call_id": call_id, "output": projected_output}
                 if caller is not None:
                     kept["caller"] = caller
-                if kept != item:
+                if output_changed or kept != item:
                     changed = True
                 projected_items.append(kept)
                 continue

@@ -6,6 +6,13 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+### Fixed
+
+- Normalize exact replayed `output_text` blocks to the request-side
+  `input_text` representation during the bounded HTTP 477 empty-response
+  fallback. Unknown, enriched, image, and encrypted content remains rejected
+  without a fallback replay.
+
 ## [1.0.26] - 2026-07-25
 
 ### Fixed

@@ -259,6 +259,46 @@ class EmptyResponseRecoveryTests(unittest.TestCase):
         )
         self.assertNotIn("must-not-survive", fallback.decode())
 
+    def test_output_text_blocks_are_projected_as_input_text_in_each_text_slot(self):
+        body = self._body({
+            "input": [
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "visible assistant reply"}],
+                },
+                {
+                    "type": "agent_message",
+                    "author": "planner",
+                    "recipient": "user",
+                    "content": [{"type": "output_text", "text": "visible agent reply"}],
+                },
+                {"type": "function_call", "call_id": "c1", "name": "lookup", "arguments": "{}"},
+                {
+                    "type": "function_call_output",
+                    "call_id": "c1",
+                    "output": [{"type": "output_text", "text": "visible tool result"}],
+                },
+            ],
+        })
+
+        fallback, detail = self.p._build_empty_response_fallback(body)
+
+        self.assertTrue(detail["projected"])
+        projected = json.loads(fallback)
+        self.assertEqual(
+            projected["input"][0]["content"],
+            [{"type": "input_text", "text": "visible assistant reply"}],
+        )
+        self.assertEqual(
+            projected["input"][1]["content"][1:],
+            [{"type": "input_text", "text": "visible agent reply"}],
+        )
+        self.assertEqual(
+            projected["input"][3]["output"],
+            [{"type": "input_text", "text": "visible tool result"}],
+        )
+
     def test_builder_fails_closed_for_unknown_or_unrepresentable_history(self):
         cases = {
             "unknown item": [{"type": "future_item", "value": "opaque"}],
@@ -532,6 +572,7 @@ class EmptyResponseRecoveryTests(unittest.TestCase):
         self.assertEqual(status["counters"]["empty_response_cooldown_hits"], 1)
 
     def test_policy_fingerprint_binds_version_and_sanitized_original_bytes(self):
+        self.assertEqual(self.p.EMPTY_RESPONSE_COMPAT_POLICY_VERSION, "empty-response-fallback-v2")
         first = self._body({
             "previous_response_id": "first",
             "input": [{"type": "message", "role": "user", "content": "same"}],
