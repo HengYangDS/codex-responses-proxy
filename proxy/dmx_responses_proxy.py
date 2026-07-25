@@ -2507,10 +2507,16 @@ class Handler(BaseHTTPRequestHandler):
                     finally:
                         e.close()
                     disp = _is_transient_upstream(status_code, err_body)
+                    blocked_invalid_prompt = (
+                        status_code == 400
+                        and b'"code":"invalid_prompt"' in err_body.lower()
+                        and b"request blocked" in err_body.lower()
+                    )
                     classification = (
-                        "response_failed" if status_code == 400 and disp == "full"
-                        else ("empty_response" if status_code == 477 and disp == "full"
-                              else (f"http_{status_code}_{disp}" if disp else f"http_{status_code}"))
+                        "blocked_invalid_prompt" if blocked_invalid_prompt
+                        else ("response_failed" if status_code == 400 and disp == "full"
+                              else ("empty_response" if status_code == 477 and disp == "full"
+                                    else (f"http_{status_code}_{disp}" if disp else f"http_{status_code}")))
                     )
                     _record_upstream_classification(classification)
                     # A deterministic replay failure cannot be fixed by retrying

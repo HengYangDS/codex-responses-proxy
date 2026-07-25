@@ -1840,6 +1840,9 @@ class TestProxyTransport(unittest.TestCase):
         self.assertLess(len(received[1]), len(body))
         self.assertNotIn("prompt_cache_key", compact)
         self.assertEqual(compact["input"][-1]["content"], "latest user context")
+        classifications = self.p.runtime_status()["upstream_classifications"]
+        self.assertEqual(classifications.get("blocked_invalid_prompt"), 1)
+        self.assertNotIn("response_failed", classifications)
 
     def test_passes_through_unrelated_invalid_prompt(self):
         invalid_prompt = (
