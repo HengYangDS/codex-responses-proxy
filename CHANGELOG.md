@@ -6,6 +6,8 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+## [1.0.26] - 2026-07-25
+
 ### Fixed
 
 - Treat the exact DMX/OpenAI-shaped HTTP 400 `invalid_prompt` response whose
