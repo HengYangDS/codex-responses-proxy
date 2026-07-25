@@ -1061,8 +1061,9 @@ def _is_transient_upstream(code: int, err_body: bytes) -> str:
                   schema mismatch). The request body is preserved and retried
                   once after a bounded delay.
       "full"    — an explicit upstream Responses ``response_failed`` execution
-                  error. HTTP 400 proves that this request was not accepted as a
-                  response; it can use the ordinary bounded retry budget.
+                  error or exact ``invalid_prompt`` block. Both were rejected
+                  before a response was accepted, so they can use the bounded
+                  history-recovery path.
       ""        — not retryable (encrypted-content complaint or other genuine 4xx).
     """
     if code in (429, 500, 502, 503, 504, 524):
@@ -1098,6 +1099,13 @@ def _is_transient_upstream(code: int, err_body: bytes) -> str:
         # the request was rejected before a response was accepted, so it may use
         # the same bounded retry budget as other upstream execution failures.
         if b"response_failed" in low or b"openai responses stream failed" in low:
+            return "full"
+        # DMX returns this exact OpenAI-shaped error when the provider blocks a
+        # large historical prompt. It is distinct from an arbitrary caller 400:
+        # require both the typed code and the stable message marker before
+        # permitting the same pair-safe, shrinking recovery used for an
+        # explicit ``response_failed`` execution rejection.
+        if b'"code":"invalid_prompt"' in low and b"request blocked" in low:
             return "full"
         if b"invalid_payload" in low or b"does not match the expected schema" in low:
             return "once"
