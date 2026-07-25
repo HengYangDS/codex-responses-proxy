@@ -467,6 +467,7 @@ class EmptyResponseRecoveryTests(unittest.TestCase):
             "previous_response_id": "provider-history-binding",
             "prompt_cache_key": "provider-history-cache",
             "input": [
+                {"type": "message", "role": "system", "content": "system policy"},
                 {"type": "message", "role": "developer", "content": "current instruction"},
                 {"type": "web_search_call", "action": {"type": "search", "query": "old query"}},
                 {
@@ -511,6 +512,7 @@ class EmptyResponseRecoveryTests(unittest.TestCase):
         self.assertEqual(
             fallback["input"],
             [
+                {"type": "message", "role": "system", "content": "system policy"},
                 {"type": "message", "role": "developer", "content": "current instruction"},
                 {
                     "type": "message",
@@ -519,6 +521,84 @@ class EmptyResponseRecoveryTests(unittest.TestCase):
                 },
             ],
         )
+
+    def test_dialogue_fallback_rejects_non_search_unknown_history(self):
+        body = self._body({
+            "stream": False,
+            "previous_response_id": "provider-history-binding",
+            "input": [
+                {"type": "future_item", "opaque": "x" * 256},
+                {"type": "message", "role": "user", "content": "current user request"},
+            ],
+        })
+
+        fallback, metrics = self.p._recover_empty_response_dialogue(body)
+
+        self.assertIsNone(fallback)
+        self.assertIsNone(metrics)
+
+    def test_dialogue_fallback_rejects_unrepresentable_history_with_search_marker(self):
+        body = self._body({
+            "stream": False,
+            "input": [
+                {
+                    "type": "web_search_call",
+                    "action": {"type": "search", "query": "old query"},
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "input_image", "image_url": "https://example.test/old.png"}],
+                },
+                {"type": "message", "role": "user", "content": "current user request"},
+            ],
+        })
+
+        fallback, metrics = self.p._recover_empty_response_dialogue(body)
+
+        self.assertIsNone(fallback)
+        self.assertIsNone(metrics)
+
+    def test_dialogue_fallback_rejects_state_after_current_user(self):
+        body = self._body({
+            "stream": False,
+            "input": [
+                {
+                    "type": "web_search_call",
+                    "action": {"type": "search", "query": "old query"},
+                },
+                {"type": "message", "role": "user", "content": "current user request"},
+                {"type": "message", "role": "assistant", "content": "later assistant state"},
+            ],
+        })
+
+        fallback, metrics = self.p._recover_empty_response_dialogue(body)
+
+        self.assertIsNone(fallback)
+        self.assertIsNone(metrics)
+
+    def test_non_search_unknown_history_does_not_spend_dialogue_fallback(self):
+        body = self._body({
+            "stream": False,
+            "previous_response_id": "provider-history-binding",
+            "input": [
+                {"type": "future_item", "opaque": "x" * 256},
+                {"type": "message", "role": "user", "content": "current user request"},
+            ],
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = self._serve_proxy(
+                [(477, EMPTY_RESPONSE)] * 4, tmp
+            )
+            try:
+                code, _headers, raw = self._read_http_error(port, body)
+            finally:
+                cleanup()
+
+        self.assertEqual(code, 503)
+        self.assertEqual(json.loads(raw)["error"]["attempts"], 1)
+        self.assertEqual(len(received), 1)
 
     def test_unknown_history_with_unrepresentable_current_user_still_returns_503(self):
         body = self._body({
@@ -657,7 +737,7 @@ class EmptyResponseRecoveryTests(unittest.TestCase):
         self.assertEqual(status["counters"]["empty_response_cooldown_hits"], 1)
 
     def test_policy_fingerprint_binds_version_and_sanitized_original_bytes(self):
-        self.assertEqual(self.p.EMPTY_RESPONSE_COMPAT_POLICY_VERSION, "empty-response-fallback-v3")
+        self.assertEqual(self.p.EMPTY_RESPONSE_COMPAT_POLICY_VERSION, "empty-response-fallback-v4")
         first = self._body({
             "previous_response_id": "first",
             "input": [{"type": "message", "role": "user", "content": "same"}],
