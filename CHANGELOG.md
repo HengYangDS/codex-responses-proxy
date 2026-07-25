@@ -12,6 +12,10 @@ work that has not yet been tagged.
   `input_text` representation during the bounded HTTP 477 empty-response
   fallback. Unknown, enriched, image, and encrypted content remains rejected
   without a fallback replay.
+- When that semantic-preserving projection cannot represent old tool or search
+  replay state, fall back once to a strictly validated current instruction and
+  current user message. The proxy still rejects a request whose current message
+  itself cannot be represented safely.
 
 ## [1.0.26] - 2026-07-25
 
