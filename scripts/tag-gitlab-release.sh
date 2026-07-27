@@ -8,6 +8,7 @@ gitlab_name=${DMX_GITLAB_AUTHOR_NAME:-Yang HENG}
 gitlab_email=${DMX_GITLAB_AUTHOR_EMAIL:-heng.yang.ds@hotmail.com}
 signing_key=${DMX_GITLAB_SIGNING_KEY:-$HOME/.ssh/id_ed25519_signing_yheng_20260711.pub}
 ssh_signing_program=${DMX_GITLAB_SSH_SIGNING_PROGRAM:-${GPG_SSH_PROGRAM:-}}
+release_python=${DMX_RELEASE_PYTHON:-python3}
 
 case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "release tag must be v<semver>: $tag" >&2; exit 2 ;; esac
 case "$gitlab_name:$gitlab_email" in 'Yang HENG:heng.yang.ds@hotmail.com') ;; *) echo "invalid GitLab release identity" >&2; exit 2 ;; esac
@@ -28,6 +29,7 @@ fi
 
 git ls-remote --exit-code --tags "$gitlab_remote" "refs/tags/$tag" >/dev/null 2>&1 && { echo "GitLab tag already exists: $tag" >&2; exit 1; }
 git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1 && { echo "local tag already exists: $tag" >&2; exit 1; }
+"$release_python" "$root/scripts/check_release_metadata.py" --prepare-release >/dev/null
 git -c user.name="$gitlab_name" -c user.email="$gitlab_email" -c user.useConfigOnly=true \
   -c gpg.format=ssh -c gpg.ssh.program="$ssh_signing_program" -c user.signingkey="$signing_key" \
   tag -s -a "$tag" -m "Codex DMX Proxy $tag"
