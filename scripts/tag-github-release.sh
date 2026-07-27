@@ -8,6 +8,7 @@ github_name=${DMX_GITHUB_AUTHOR_NAME:-HengYang}
 github_email=${DMX_GITHUB_AUTHOR_EMAIL:-hengyang.2003@tsinghua.org.cn}
 signing_key=${DMX_GITHUB_SIGNING_KEY:-$HOME/.ssh/id_ed25519_signing_yheng_20260711.pub}
 ssh_signing_program=${DMX_GITHUB_SSH_SIGNING_PROGRAM:-${GPG_SSH_PROGRAM:-}}
+release_python=${DMX_RELEASE_PYTHON:-python3}
 
 case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "release tag must be v<semver>: $tag" >&2; exit 2 ;; esac
 case "$github_name:$github_email" in HengYang:hengyang.2003@tsinghua.org.cn) ;; *) echo "invalid GitHub release identity" >&2; exit 2 ;; esac
@@ -18,6 +19,7 @@ git diff --quiet && git diff --cached --quiet || { echo "refusing GitHub tag wit
 root=$(git rev-parse --show-toplevel)
 canonical_tag=$(git rev-parse --verify "refs/tags/$tag")
 "$root/scripts/check-release-tag-signature.sh" "$root" "$tag" gitlab >/dev/null
+"$release_python" "$root/scripts/check_release_metadata.py" --tag "$tag" >/dev/null
 canonical_tree=$(git rev-parse "$tag^{}^{tree}")
 if [ -z "$ssh_signing_program" ]; then
   ssh_signing_program=$(git config --get gpg.ssh.program 2>/dev/null || true)

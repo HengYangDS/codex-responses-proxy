@@ -6,6 +6,8 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+## [1.0.26] - 2026-07-27
+
 ### Fixed
 
 - Normalize exact replayed `output_text` blocks to the request-side
@@ -16,11 +18,9 @@ work that has not yet been tagged.
   otherwise representable history, fall back once to all preceding system and
   developer instructions plus the final user message. Arbitrary unknown or
   unrepresentable history and state after that user message remain rejected.
-
-## [1.0.26] - 2026-07-25
-
-### Fixed
-
+- Reject a stale pending-release date before signing a release tag, so an
+  offline release preparation cannot create a tag that will fail Forge
+  provenance checks.
 - Treat the exact DMX/OpenAI-shaped HTTP 400 `invalid_prompt` response whose
   message is `Request blocked` as a bounded historical-replay rejection. It now
   uses the existing strictly shrinking, tool-pair-safe recovery path; unrelated

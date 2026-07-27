@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
 
 
@@ -37,6 +39,37 @@ def expect_rejection(text: str, description: str, *args: str) -> None:
             raise SystemExit(f"release metadata checker accepted {description}")
     finally:
         path.unlink(missing_ok=True)
+
+
+def test_prepare_release_requires_current_utc_date() -> None:
+    spec = importlib.util.spec_from_file_location("check_release_metadata", CHECKER)
+    if spec is None or spec.loader is None:
+        raise SystemExit("could not load release metadata checker")
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    current = date(2026, 7, 27)
+    checker.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-27")], today=current)
+    try:
+        checker.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-26")], today=current)
+    except ValueError as exc:
+        if "current UTC date" not in str(exc):
+            raise SystemExit(f"stale pending-release date returned an unclear error: {exc}") from exc
+    else:
+        raise SystemExit("release metadata checker accepted a stale pending-release date")
+
+
+def test_provider_tag_scripts_preflight_before_signing() -> None:
+    cases = (
+        ("tag-gitlab-release.sh", "--prepare-release"),
+        ("tag-github-release.sh", '--tag "$tag"'),
+    )
+    for script_name, expected_argument in cases:
+        source = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+        preflight = f'"$release_python" "$root/scripts/check_release_metadata.py" {expected_argument}'
+        if preflight not in source:
+            raise SystemExit(f"{script_name} does not run its release metadata preflight")
+        if source.index(preflight) > source.index("tag -s -a"):
+            raise SystemExit(f"{script_name} runs its release metadata preflight after signing")
 
 
 def test_prune_tags_removes_deleted_remote_tag() -> None:
@@ -139,6 +172,8 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
 
 
 def main() -> None:
+    test_prepare_release_requires_current_utc_date()
+    test_provider_tag_scripts_preflight_before_signing()
     test_prune_tags_removes_deleted_remote_tag()
     test_gitlab_ci_refreshes_tags_before_every_release_gate()
     test_gitlab_release_metadata_gate_has_complete_history()

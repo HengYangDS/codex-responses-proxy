@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import re
 import subprocess
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 
@@ -131,6 +132,20 @@ def check_active_release_train(
         )
 
 
+def check_pending_release_date(
+    version: str,
+    releases: list[tuple[str, str]],
+    *,
+    today: date | None = None,
+) -> None:
+    current_date = today or datetime.now(timezone.utc).date()
+    release_date = next((item_date for item, item_date in releases if item == version), None)
+    if release_date != current_date.isoformat():
+        raise ValueError(
+            f"pending release {version} must use the current UTC date {current_date.isoformat()}"
+        )
+
+
 def check_governance_contract() -> None:
     required = (
         "AGENTS.md",
@@ -227,6 +242,10 @@ def main() -> None:
         first_published = releases[0][0] if releases else ""
         if first_published != version:
             raise SystemExit(f"pending release {version} must be the first published CHANGELOG section")
+        try:
+            check_pending_release_date(version, releases)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
     try:
         check_active_release_train(
             version,

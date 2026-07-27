@@ -15,6 +15,8 @@ key="$tmp/signing"
 mock_ssh="$tmp/mock-ssh"
 signing_wrapper="$tmp/signing-wrapper"
 signing_log="$tmp/signing.log"
+mock_python="$tmp/mock-python3"
+metadata_log="$tmp/metadata.log"
 mkdir -p "$home" "$tmp/allowed"
 : > "$global_config"
 ssh-keygen -q -t ed25519 -N '' -f "$key"
@@ -39,6 +41,13 @@ printf '%s\n' "$*" >> "${DMX_TEST_SIGNING_LOG:?}"
 exec ssh-keygen "$@"
 EOF
 chmod +x "$signing_wrapper"
+
+cat > "$mock_python" <<'EOF'
+#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "${DMX_TEST_METADATA_LOG:?}"
+EOF
+chmod +x "$mock_python"
 
 export HOME="$home"
 export GIT_CONFIG_NOSYSTEM=1
@@ -78,12 +87,18 @@ git -C "$source" remote add github git@github.com:test/codex-dmx-proxy.git
     DMX_GITHUB_ALLOWED_SIGNERS="$tmp/allowed/github" \
     DMX_GITLAB_ALLOWED_SIGNERS="$tmp/allowed/gitlab" \
     DMX_GITHUB_SIGNING_KEY="$key" \
+    DMX_RELEASE_PYTHON="$mock_python" \
+    DMX_TEST_METADATA_LOG="$metadata_log" \
     DMX_TEST_GITHUB_REMOTE="$remote" \
     GIT_SSH_COMMAND="$mock_ssh" \
     DMX_GITHUB_REMOTE=github \
     sh "$script" v1.0.0
 ) >/dev/null
 
+grep -F -- 'check_release_metadata.py --tag v1.0.0' "$metadata_log" >/dev/null || {
+  echo 'GitHub tag creation bypassed the tagged-release metadata preflight' >&2
+  exit 1
+}
 grep -F -- '-Y sign' "$signing_log" >/dev/null || {
   echo 'GitHub tag creation bypassed the configured SSH signing program' >&2
   exit 1

@@ -14,7 +14,8 @@ ownership, or released behavior changes.
 `VERSION` is the active release-train identifier. Before a tag exists, it must
 be strictly newer than the latest released version and the work belongs under
 `Unreleased`. A release commit moves that material to a dated heading and is
-tagged as `v<VERSION>`. Deployment is a post-release projection: no candidate
+tagged as `v<VERSION>` on the same UTC date; stale pending-release dates are
+rejected before signing. Deployment is a post-release projection: no candidate
 may be installed before its forge-native tags, CI, and release records are
 verified. A release candidate must satisfy:
 
