@@ -7,6 +7,14 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.31] - 2026-07-29
+
+### Fixed
+
+- Give every GitLab release-stage checkout complete provider history, so exact
+  tag verification and Release publication enforce the same chronology as the
+  main metadata gate.
+
 ## [1.0.30] - 2026-07-29
 
 ### Fixed
