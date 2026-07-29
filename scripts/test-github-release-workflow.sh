@@ -15,7 +15,7 @@ required = [
     "runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]",
     "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
     'python=/opt/homebrew/bin/python3.14',
-    '"$python" scripts/check_release_metadata.py --allow-unpublished-history --tag',
+    '"$python" scripts/check_release_metadata.py --provider github --tag "$SELECTED_TAG"',
     "check-release-tag-signature.sh",
     "actions/workflows/verify.yml/runs?branch=", "Verify workflow timed out",
     "expected_sha=$(git rev-parse 'HEAD^{commit}')", 'git rev-parse "$SELECTED_TAG^{tag}"',
@@ -31,6 +31,8 @@ for token in required:
         raise SystemExit(f"GitHub Actions release contract is missing {token!r}")
 if "ubuntu-24.04" in text or "codex-dmx-proxy-github-verify-macos-arm64" in text or "codex-dmx-proxy-github-release-macos-arm64" in text:
     raise SystemExit("GitHub release workflow must use only its dedicated trusted runner")
+if "--allow-unpublished-history" in text:
+    raise SystemExit("GitHub release workflow must not bypass provider chronology")
 if "actions/setup-python@" in text:
     raise SystemExit("self-hosted release must use the declared Homebrew Python")
 if "@main" in text or "@master" in text:
