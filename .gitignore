@@ -29,3 +29,7 @@ Thumbs.db
 
 # Local linked worktrees
 .worktrees/
+
+# ETHOS host-local coordination state
+.ethos/state/*
+!.ethos/state/.gitignore
