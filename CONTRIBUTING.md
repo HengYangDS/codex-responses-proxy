@@ -58,9 +58,12 @@ GitLab **Project Name** is the human-facing `Codex DMX Proxy`; its stable clone
 GitLab and GitHub are independent release planes. GitLab provenance uses
 `heng.yang.ds@hotmail.com`; the GitHub projection uses
 `hengyang.2003@tsinghua.org.cn`. Do not copy provider-native tags between
-forges. Use `sh scripts/project-github-forge.sh` only from a clean canonical
-GitLab checkout; it rewrites an isolated clone, preserves provider-specific
-tags, and updates GitHub `main` under a lease.
+forges. Every reachable commit must use the relevant provider identity for both
+author and committer and must be `Verified` under that provider trust anchor.
+Use `sh scripts/project-gitlab-forge.sh` to normalize the complete GitLab DAG,
+then `sh scripts/project-github-forge.sh` for GitHub. Both commands rewrite only
+an isolated clone, preserve source tree/topology/message/date semantics, retain
+provider-specific tags, verify every commit, and update `main` under a lease.
 
 Create a GitLab release tag only through `sh scripts/tag-gitlab-release.sh
 v<VERSION>`. It pins the GitLab identity and its tracked signing key explicitly,
