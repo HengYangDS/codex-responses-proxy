@@ -49,16 +49,16 @@ is the release source of truth. Keep `CHANGELOG.md` in this order:
 1. `## [Unreleased]` immediately below the introduction;
 2. the GitLab-owned canonical release chronology in descending SemVer order;
 3. every provider-native tag represented exactly once; canonical heading dates
-   follow GitLab tag creation, while independently signed GitHub tag dates may
-   differ;
+   follow the UTC date of GitLab tag creation, while independently signed
+   GitHub tag dates may differ;
 4. no release claims without executable evidence.
 
 GitLab is the canonical strict plane: validation requires complete history,
 every non-pending release heading must have a local tag, and its heading date
-must equal that GitLab tag's creation date. GitHub may retain canonical or
-legacy headings absent from its own tag namespace, but every GitHub-native tag
-still requires a heading; its independently signed native date does not rewrite
-GitLab chronology.
+must equal the UTC date of that GitLab tag's creation. GitHub may retain
+canonical or legacy headings absent from its own tag namespace, but every
+GitHub-native tag still requires a heading; its independently signed native
+date does not rewrite GitLab chronology.
 `python scripts/check_release_metadata.py --provider gitlab --prepare-release`
 enforces the GitLab candidate. GitHub main uses ordinary `--provider github`
 validation so a dated candidate remains valid after its preparation day; exact
