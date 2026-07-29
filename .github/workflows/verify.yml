@@ -70,6 +70,14 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      - name: Fetch the exact annotated tag object
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          git fetch --force --no-tags origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag
+          test "$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")" = "$GITHUB_SHA"
+          git checkout --detach "$GITHUB_SHA"
       - name: Verify release and source contracts
         run: |
           set -euo pipefail
