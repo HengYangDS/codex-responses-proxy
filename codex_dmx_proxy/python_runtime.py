@@ -46,11 +46,19 @@ def _launcher_python(name: str) -> str | None:
 def _service_safe(path: str | None) -> TypeGuard[str]:
     """Accept only an existing absolute interpreter, never a Store alias stub."""
 
+    executable = bool(
+        path
+        and (
+            os.path.splitext(path)[1].lower() == ".exe"
+            if os.name == "nt"
+            else os.access(path, os.X_OK)
+        )
+    )
     return bool(
         path
         and os.path.isabs(path)
         and os.path.isfile(path)
-        and (os.name == "nt" or os.access(path, os.X_OK))
+        and executable
         and not is_windows_store_stub(path)
     )
 
