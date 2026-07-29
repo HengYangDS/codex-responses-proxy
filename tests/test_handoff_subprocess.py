@@ -35,35 +35,75 @@ from codex_dmx_proxy import process
 class TestRealSubprocessHandoffIntegration(unittest.TestCase):
     """Exercise the complete rolling handoff against owned loopback processes."""
 
-    def _new_temp_root(self) -> Path:
+    def _installed_fixture(
+        self, *, release: str, port: int
+    ) -> tuple[Path, installation.InstallContext]:
         temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        return Path(temporary.name)
+        root = Path(temporary.name)
+        ctx = write_installed_payload(root, release=release, port=port)
+        initial = set(process.pids_naming_path(ctx.proxy_script))
+        self.addCleanup(self._cleanup_installed_fixture, temporary, ctx.proxy_script, initial)
+        return root, ctx
 
-    def _track_owned_proxy_children(self, ctx: installation.InstallContext) -> None:
-        proxy_script = ctx.proxy_script
-        initial = set(process.pids_naming_path(proxy_script))
-
-        def assert_no_orphans() -> None:
+    def _cleanup_installed_fixture(
+        self, temporary: tempfile.TemporaryDirectory, proxy_script: str, initial: set[int]
+    ) -> None:
+        try:
+            for pid in set(process.pids_naming_path(proxy_script)) - initial:
+                terminate_owned_proxy(pid, proxy_script)
             remaining = set(process.pids_naming_path(proxy_script)) - initial
             self.assertFalse(remaining, f"orphaned proxy children for {proxy_script}: {remaining}")
+        finally:
+            temporary.cleanup()
 
-        self.addCleanup(assert_no_orphans)
+    def test_fixture_cleanup_terminates_before_removing_temporary_payload(self) -> None:
+        events = []
+        temporary = tempfile.TemporaryDirectory()
+        cleanup = temporary.cleanup
+
+        def inventory(_proxy_script):
+            events.append("inventory")
+            return [123] if events.count("inventory") == 1 else []
+
+        try:
+            with (
+                mock.patch.object(process, "pids_naming_path", side_effect=inventory),
+                mock.patch.object(
+                    process,
+                    "pid_names_path",
+                    side_effect=lambda *_args: events.append("identity") or True,
+                ),
+                mock.patch.object(
+                    process,
+                    "terminate_pid",
+                    side_effect=lambda *_args, **_kwargs: events.append("terminate") or True,
+                ),
+                mock.patch.object(
+                    temporary, "cleanup", side_effect=lambda: events.append("cleanup")
+                ),
+            ):
+                self._cleanup_installed_fixture(temporary, "/tmp/owned/proxy.py", set())
+        finally:
+            cleanup()
+
+        self.assertEqual(events, ["inventory", "identity", "terminate", "inventory", "cleanup"])
 
     def test_owned_child_cleanup_is_bound_to_its_temporary_proxy_path(self) -> None:
         proxy_script = "/tmp/owned/.codex/dmx-proxy/proxy.py"
         with (
-            mock.patch.object(process, "process_command", return_value=f"python {proxy_script}"),
+            mock.patch.object(process, "pid_names_path", return_value=True) as owns_pid,
             mock.patch.object(process, "terminate_pid", return_value=True) as terminate,
         ):
             terminate_owned_proxy(123, proxy_script)
 
+        owns_pid.assert_called_once_with(123, proxy_script)
         terminate.assert_called_once_with(123, expected_path=proxy_script)
 
     def test_owned_child_cleanup_reports_an_unconfirmed_exit(self) -> None:
         proxy_script = "/tmp/owned/.codex/dmx-proxy/proxy.py"
         command = f"python {proxy_script} --handoff-child"
         with (
+            mock.patch.object(process, "pid_names_path", return_value=True),
             mock.patch.object(process, "process_command", return_value=command),
             mock.patch.object(process, "terminate_pid", return_value=False),
         ):
@@ -86,10 +126,8 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         self.addCleanup(upstream.close)
         upstream.push((200, b'{"id":"ok"}'))
 
-        root = self._new_temp_root()
         port = free_port()
-        ctx = write_installed_payload(root, release="1.0.25", port=port)
-        self._track_owned_proxy_children(ctx)
+        root, ctx = self._installed_fixture(release="1.0.25", port=port)
         log_path = root / "proxy.log"
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=log_path)
         self.addCleanup(lambda: terminate_process(old))
@@ -109,7 +147,6 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         self.assertTrue(
             wait_until(observe, timeout=10), "child did not take over serving with matching health"
         )
-        self.addCleanup(lambda: terminate_owned_proxy(child_pid["value"], ctx.proxy_script))
         self.assertTrue(
             wait_until(lambda: old.poll() is not None, timeout=10),
             "old process did not exit after finalize",
@@ -118,10 +155,8 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
     def test_finalized_child_can_drive_a_second_real_handoff(self):
         upstream = ScriptedUpstream()
         self.addCleanup(upstream.close)
-        root = self._new_temp_root()
         port = free_port()
-        ctx = write_installed_payload(root, release="1.0.25", port=port)
-        self._track_owned_proxy_children(ctx)
+        root, ctx = self._installed_fixture(release="1.0.25", port=port)
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=root / "proxy.log")
         self.addCleanup(lambda: terminate_process(old))
 
@@ -133,7 +168,6 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         child_one, observe_first = child_pid_observer(port, first, exclude_pid=old.pid)
 
         self.assertTrue(wait_until(observe_first, timeout=10))
-        self.addCleanup(lambda: terminate_owned_proxy(child_one["value"], ctx.proxy_script))
         self.assertTrue(wait_until(lambda: old.poll() is not None, timeout=10))
 
         second = installed_expected_metadata(ctx, "txn-repeat-2")
@@ -149,7 +183,6 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         child_two, observe_second = child_pid_observer(port, second, exclude_pid=child_one["value"])
 
         self.assertTrue(wait_until(observe_second, timeout=10))
-        self.addCleanup(lambda: terminate_owned_proxy(child_two["value"], ctx.proxy_script))
         retired = wait_until(lambda: not pid_alive(child_one["value"]), timeout=10)
         child_one_pid = child_one["value"]
         detail = (
@@ -182,10 +215,8 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
 
         upstream.push(long_response)
 
-        root = self._new_temp_root()
         port = free_port()
-        ctx = write_installed_payload(root, release="1.0.25", port=port)
-        self._track_owned_proxy_children(ctx)
+        root, ctx = self._installed_fixture(release="1.0.25", port=port)
         log_path = root / "proxy.log"
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=log_path)
         self.addCleanup(lambda: terminate_process(old))
@@ -213,7 +244,6 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         self.assertTrue(
             wait_until(observe, timeout=10), "child did not take over serving with matching health"
         )
-        self.addCleanup(lambda: terminate_owned_proxy(child_pid["value"], ctx.proxy_script))
 
         # The queue is now empty (the held request already popped its own
         # behavior before blocking on ``release``), so pushing exactly one new
@@ -247,10 +277,8 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
 
         upstream.push(never_finishes)
 
-        root = self._new_temp_root()
         port = free_port()
-        ctx = write_installed_payload(root, release="1.0.25", port=port)
-        self._track_owned_proxy_children(ctx)
+        root, ctx = self._installed_fixture(release="1.0.25", port=port)
         log_path = root / "proxy.log"
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=log_path)
         self.addCleanup(lambda: terminate_process(old))
@@ -280,7 +308,6 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         self.assertTrue(
             wait_until(observe, timeout=10), "child did not take over serving with matching health"
         )
-        self.addCleanup(lambda: terminate_owned_proxy(child_pid["value"], ctx.proxy_script))
 
         # Deterministic: the held request's behavior was already popped before
         # it blocked, so this new push belongs solely to the queued request below.
