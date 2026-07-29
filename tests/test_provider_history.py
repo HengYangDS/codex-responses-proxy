@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,7 +31,11 @@ class ProviderHistoryTests(unittest.TestCase):
             repository = root / "repository"
             key = root / "signing"
             allowed = root / "allowed-signers"
-            command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key), cwd=root)
+            ssh_keygen = shutil.which("ssh-keygen")
+            if not ssh_keygen:
+                self.skipTest("ssh-keygen is required")
+            signing_program = str(Path(ssh_keygen).resolve())
+            command(signing_program, "-q", "-t", "ed25519", "-N", "", "-f", str(key), cwd=root)
             public = " ".join(key.with_suffix(".pub").read_text().split()[:2])
             allowed.write_text(f'provider@example.test namespaces="git" {public}\n')
             command("git", "init", "-q", "-b", "main", str(repository), cwd=root)
@@ -77,7 +82,7 @@ class ProviderHistoryTests(unittest.TestCase):
                 "--signing-key",
                 str(key.with_suffix(".pub")),
                 "--signing-program",
-                "/usr/bin/ssh-keygen",
+                signing_program,
                 "--allowed-signers",
                 str(allowed),
                 cwd=repository,

@@ -147,8 +147,9 @@ class PublicationProofCliContracts(unittest.TestCase):
         with mock.patch.object(hosted.shutil, "which", return_value=None):
             with self.assertRaises(RuntimeError):
                 hosted.executable("gh", RuntimeError)
-        with mock.patch.object(hosted.shutil, "which", return_value="/usr/bin/gh"):
-            self.assertEqual(hosted.executable("gh", RuntimeError), "/usr/bin/gh")
+        candidate = str(Path("native-tools", "gh").resolve())
+        with mock.patch.object(hosted.shutil, "which", return_value=candidate):
+            self.assertEqual(hosted.executable("gh", RuntimeError), candidate)
 
         completed = mock.Mock(stdout='{"ok":true}')
         with mock.patch.object(hosted.subprocess, "run", return_value=completed):

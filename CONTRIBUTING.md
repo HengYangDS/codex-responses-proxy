@@ -15,7 +15,7 @@ repository has no third-party runtime dependency; ordinary reading and editing
 requires no local installer beyond a supported Python interpreter.
 
 ```bash
-python scripts/check_release_metadata.py
+python scripts/check_release_metadata.py --prepare-release
 python scripts/check_markdown_presentation.py
 python scripts/test_release_metadata.py
 PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh
@@ -51,7 +51,8 @@ is the release source of truth. Keep `CHANGELOG.md` in this order:
    matching Git tag creation date;
 3. no release claims without executable evidence.
 
-`python scripts/check_release_metadata.py` enforces this chronology; do not
+`python scripts/check_release_metadata.py --prepare-release` enforces this
+chronology before the tag exists; tagged source uses `--tag v<VERSION>`. Do not
 write an inferred or planned release into `CHANGELOG.md`.
 
 GitLab **Project Name** is the human-facing `Codex DMX Proxy`; its stable clone

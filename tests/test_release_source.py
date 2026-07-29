@@ -105,15 +105,12 @@ class ReleasedRepository:
             encoding="utf-8",
         )
         root.mkdir()
-        (root / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+        (root / "VERSION").write_bytes(f"{version}\n".encode())
         (root / "proxy").mkdir()
-        (root / "proxy" / "runtime.py").write_text(
-            "print('released bytes')\n",
-            encoding="utf-8",
-        )
+        (root / "proxy" / "runtime.py").write_bytes(b"print('released bytes')\n")
         (root / "bin").mkdir()
         executable = root / "bin" / "runner"
-        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.write_bytes(b"#!/bin/sh\nexit 0\n")
         executable.chmod(0o755)
         _git(root, "init", "-q", "-b", "main")
         _git(root, "config", "user.name", "Release Test")
@@ -140,7 +137,7 @@ class ReleasedRepository:
         tag = f"v{self.version}"
         _git(self.root, "tag", "-d", tag)
         if version is not None:
-            (self.root / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+            (self.root / "VERSION").write_bytes(f"{version}\n".encode())
             _git(self.root, "add", "VERSION")
             _git(self.root, "commit", "-qm", "replacement release")
         if lightweight:
@@ -210,6 +207,19 @@ class ReleaseSourceCase(unittest.TestCase):
 
 
 class TestReleaseSourceAdmission(ReleaseSourceCase):
+    def test_fixture_git_blobs_do_not_depend_on_native_text_newlines(self) -> None:
+        def write_crlf(path: Path, content: str, **_kwargs: object) -> int:
+            return path.write_bytes(content.replace("\n", "\r\n").encode())
+
+        with mock.patch.object(Path, "write_text", write_crlf):
+            repository = ReleasedRepository(self.base / "crlf-host" / "source")
+
+        self.assertEqual(_git_blob(repository.root, "HEAD:VERSION"), b"1.2.3\n")
+        self.assertEqual(
+            _git_blob(repository.root, "HEAD:proxy/runtime.py"),
+            b"print('released bytes')\n",
+        )
+
     def test_materializes_git_blobs_and_mints_exact_canonical_receipts(self) -> None:
         released = self.repository.admit()
         receipt = released.receipt
@@ -543,6 +553,25 @@ class TestOpaqueReleasedPayloadContract(ReleaseSourceCase):
         non_executable = self.base / "not-executable"
         non_executable.write_text("no\n", encoding="utf-8")
         non_executable.chmod(0o600)
+        native_windows_executable = self.base / "tool.EXE"
+        native_windows_executable.write_bytes(b"MZ")
+        metadata = native_windows_executable.lstat()
+        directory = self.base / "directory.exe"
+        directory.mkdir()
+        with mock.patch.object(release_admission.os, "access", return_value=True):
+            self.assertTrue(
+                release_admission._is_executable_regular_file(
+                    native_windows_executable, metadata, "nt"
+                )
+            )
+            self.assertFalse(
+                release_admission._is_executable_regular_file(
+                    non_executable, non_executable.lstat(), "nt"
+                )
+            )
+            self.assertFalse(
+                release_admission._is_executable_regular_file(directory, directory.lstat(), "nt")
+            )
         invalid_paths = (
             (
                 "executable regular file",
