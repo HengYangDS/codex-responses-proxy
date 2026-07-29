@@ -69,9 +69,7 @@ SCRIPT = os.environ.get(
 )
 CHECK_INTERVAL = float(os.environ.get("DMX_WATCHDOG_INTERVAL", "15"))
 MAX_BACKOFF = float(os.environ.get("DMX_WATCHDOG_MAX_BACKOFF", "120"))
-LOG_PATH = os.environ.get(
-    "DMX_WATCHDOG_LOG", os.path.expanduser("~/.codex/log/dmx-watchdog.log")
-)
+LOG_PATH = os.environ.get("DMX_WATCHDOG_LOG", os.path.expanduser("~/.codex/log/dmx-watchdog.log"))
 
 
 def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -83,7 +81,9 @@ def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int
     return min(maximum, max(minimum, value))
 
 
-LOG_MAX_BYTES = _bounded_env_int("DMX_WATCHDOG_LOG_MAX_BYTES", 512 * 1024, 4 * 1024, 64 * 1024 * 1024)
+LOG_MAX_BYTES = _bounded_env_int(
+    "DMX_WATCHDOG_LOG_MAX_BYTES", 512 * 1024, 4 * 1024, 64 * 1024 * 1024
+)
 LOG_BACKUP_COUNT = _bounded_env_int("DMX_WATCHDOG_LOG_BACKUP_COUNT", 2, 0, 10)
 _LOG_LINE_MAX_BYTES = 1024
 _LOG_LOCK = threading.Lock()
@@ -174,21 +174,27 @@ def spawn_proxy() -> "subprocess.Popen | None":
     if not os.path.exists(SCRIPT):
         _log(f"ERROR proxy script not found: {SCRIPT}")
         return None
-    kwargs = {}
-    if os.name == "nt":
-        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-        kwargs["creationflags"] = 0x00000008 | 0x00000200
-    else:
-        kwargs["start_new_session"] = True
     try:
-        proc = subprocess.Popen(
-            [PYTHON, SCRIPT],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            close_fds=True,
-            **kwargs,
-        )
+        command = [PYTHON, SCRIPT]
+        if os.name == "nt":
+            proc = subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                close_fds=True,
+                # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                creationflags=0x00000008 | 0x00000200,
+            )
+        else:
+            proc = subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                close_fds=True,
+                start_new_session=True,
+            )
         _log(f"spawned proxy pid={proc.pid} ({PYTHON} {SCRIPT})")
         return proc
     except Exception as exc:

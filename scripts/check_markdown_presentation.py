@@ -14,6 +14,8 @@ PROJECT_PATH = "codex-dmx-proxy"
 
 
 def fail(message: str) -> None:
+    """Exit with a stable Markdown presentation diagnostic."""
+
     raise SystemExit(f"Markdown presentation contract: {message}")
 
 

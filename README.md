@@ -36,6 +36,7 @@ replayed Codex state, for example:
 - a classified DMX HTTP 477 `empty_response` (one precise,
   semantic-preserving recovery);
 - an explicit upstream `response_failed` execution rejection of replay context.
+- the exact observed `Invalid 'input'` union validation contract.
 
 The adapter removes only deterministically incompatible outbound replay state.
 For an explicit upstream `response_failed` rejection, it first makes up to three
@@ -53,6 +54,19 @@ text, and remote image URLs whenever they remain in the pair-safe path. It is no
 general request transformer or a replacement for an upstream service with persistent
 failures.
 
+When the upstream returns the complete observed HTTP 400 `validation_error`
+stating that `input` matched no expected variant, the proxy records one bounded
+content-free structural diagnostic and may send exactly one smaller request.
+That request retains only the latest system, developer, and user messages in
+their original order, preserves top-level instructions, and removes stale
+response, conversation, cache, and encrypted-reasoning bindings. Failure of
+that request is terminal for this proxy operation: it cannot enter HTTP 477,
+`response_failed`, transport retry, or SSE reconnect policies.
+The structural diagnostic uses closed labels, bucketed cardinalities, presence
+flags, and a capped categorical hash. Separate recovery events retain exact
+byte lengths and retained/dropped item counts for bounded operational evidence;
+neither surface records message values or unknown names.
+
 ## Requirements
 
 - Python 3.12 or later; the runtime uses only the Python standard library.
@@ -61,21 +75,56 @@ failures.
 
 ## Install
 
-Clone a released source tag or download its GitLab release archive, then run:
+Installation is a post-release operation. Start from the exact clean checkout
+whose `HEAD` is the signed annotated `v<VERSION>` tag. Before invoking the
+installer, you may run the evidence-only command against both independent Forge
+planes and retain its JSON result for audit:
 
 ```bash
-python3 install.py
+python3 scripts/verify-publication-proof.py \
+  --tag "v$(cat VERSION)" \
+  --gitlab-remote "$GITLAB_REMOTE" \
+  --gitlab-api-base "$GITLAB_API_BASE" \
+  --gitlab-repo "$GITLAB_REPOSITORY" \
+  --github-remote "$GITHUB_REMOTE" \
+  --github-repo HengYangDS/codex-dmx-proxy \
+  --gitlab-anchor packaging/release/gitlab-allowed-signers \
+  --github-anchor packaging/release/github-allowed-signers \
+  --json > /secure-local/codex-dmx-publication-proof.json
 ```
 
-On Windows, use:
+The verifier fails closed unless both provider-native signed tags, required CI
+jobs, and formal Release records bind to the same source tree. For the canonical
+GitLab checkout, use its committed GitLab allowed-signers file as the external
+source anchor; for another canonical source plane, use that plane's matching
+anchor. JSON is evidence only and cannot authorize installation. The installer
+performs the same live verification in-process before it mints a one-use
+capability. Install the verified release with the complete verifier inputs:
 
-```powershell
-py -3 install.py
+```bash
+python3 install.py \
+  --tag "v$(cat VERSION)" \
+  --gitlab-remote "$GITLAB_REMOTE" \
+  --gitlab-api-base "$GITLAB_API_BASE" \
+  --gitlab-repo "$GITLAB_REPOSITORY" \
+  --github-remote "$GITHUB_REMOTE" \
+  --github-repo HengYangDS/codex-dmx-proxy \
+  --gitlab-anchor packaging/release/gitlab-allowed-signers \
+  --github-anchor packaging/release/github-allowed-signers \
+  --trust-anchor packaging/release/gitlab-allowed-signers
 ```
 
-The installer copies the executable payload to `~/.codex/dmx-proxy/`, registers
-the watchdog using the platform's user-level service mechanism, and verifies
-the loopback listener. It never downloads dependencies or collects credentials.
+On Windows, replace `python3` with `py -3`.
+
+The installer does not copy arbitrary working-tree files or accept a filesystem
+stage. It re-verifies the clean signed tag, consumes the released payload as an
+opaque one-use capability, creates a private sibling transaction, installs the
+verified Git blobs with their canonical receipt and manifest, and finalizes only
+after the listener proves the release, aggregate serving-payload digest, receipt
+digest, manifest digest, and accepting state. Failure restores the exact prior
+owned projection; an unprovable committed handoff is retained as an explicit
+recovery-required transaction. The installer never downloads Python dependencies
+or collects credentials.
 
 ### AIGW-managed routes
 
@@ -112,13 +161,6 @@ python3 ~/.codex/dmx-proxy/control.py disable
 # Hand off one verified protocol-v2 listener without closing its socket
 python3 ~/.codex/dmx-proxy/control.py reload --json
 
-# Stage a verified payload, then hand it off transactionally
-python3 install.py --stage-only
-python3 ~/.codex/dmx-proxy/control.py upgrade --stage <reported-stage> --json
-
-# Apply a controller-only lifecycle fix without replacing an unchanged listener
-python3 /path/to/source/control.py apply-control-plane --json
-
 # Read-only payload and loaded-listener provenance evidence
 python3 ~/.codex/dmx-proxy/governance.py --json
 
@@ -129,31 +171,25 @@ python3 uninstall.py
 python3 uninstall.py --purge
 ```
 
-For a protocol-v2 listener, `reload` and staged `upgrade` prepare and verify a
-non-accepting child first. The old process stops accepting before `COMMIT`; the
-child then proves its PID, transaction, release, source, and manifest before
-`FINALIZE`. The listening socket remains open throughout. Already accepted
-handlers drain to zero or a bounded lease, and a pre-finalize failure resumes
-the old process only after the child is confirmed exited. An unconfirmed abort
-fails closed rather than risking two accepting processes.
+For a protocol-v2 listener, installed-control `reload` is deliberately limited
+to the same installed payload. It verifies the manifest and receipt, prepares a
+non-accepting child, stops the old accept loop before `COMMIT`, and requires the
+child to prove PID, transaction, release, aggregate serving-payload digest,
+receipt digest, and manifest digest before `FINALIZE`. The listening socket
+remains open throughout. Already accepted handlers drain to zero or a bounded
+lease; a pre-finalize failure resumes the old process only after the child is
+confirmed exited. An unconfirmed abort fails closed rather than risking two
+accepting processes.
 
-`apply-control-plane` is intentionally different: it is a source-side
-controller repair, not a listener operation. Run it only from a committed,
-fully verified source checkout. It first proves every listener, watchdog,
-version, and support file is byte-identical to the verified live payload. It
-then transactionally updates only `control.py` and the manifest, reports the
-installed controller SHA-256, and leaves the verified listener and every active
-Responses stream undisturbed. Any listener-payload change must use `reload` or
-staged `upgrade` instead.
-
-The existing bounded drain/terminate/watchdog path remains only for the first
-migration from a listener that does not advertise protocol v2. It verifies
-payload integrity and listener identity, requires its authorized quiet-window
-gate, and never touches Codex session files. Subsequent protocol-v2 operations
-use the transactional handoff above.
+Changing payload bytes is exclusively a source-side `install.py` operation from
+an independently verified release. For a current protocol-v2 listener, that
+source-side transaction uses the same handoff protocol after committing the
+admitted release projection. Installed control exposes no arbitrary stage path,
+release upgrade, or controller-only partial apply.
 
 `governance.py --json` is read-only. It reports manifest integrity, route
-authority, verified listener identity, and the loaded proxy source SHA-256 when
+authority, verified listener identity, and the startup-frozen aggregate SHA-256
+of the loaded serving payload when
 the loopback listener is reachable. It does not inspect or change AIGW settings,
 Codex conversation state, credentials, or the proxy lifecycle.
 
@@ -162,16 +198,19 @@ Codex conversation state, credentials, or the proxy lifecycle.
 `status --json` also reports the listener's loopback-only, process-local
 `runtime` snapshot when the verified service is reachable. It includes counters
 for completed and incomplete streams, pre-content reconnects, bounded
-`response_failed` recovery, encrypted-replay stripping, and classified upstream
-outcomes. `last_failure` records only a stable class and Unix timestamp. It
+`response_failed` and exact input-variant recovery, encrypted-replay stripping,
+and classified upstream outcomes. `last_failure` records only a stable class
+and Unix timestamp. It
 never includes request bodies, tokens, credentials, headers, prompts, or
 upstream error payloads. The endpoint is read-only and is available only at
 `GET /healthz` on the loopback listener; it is not a remote monitoring API.
 `runtime.draining` and `runtime.active_responses` together expose the lifecycle
 barrier: while draining is true, no new Responses request may enter the active
 set. `runtime.drain_lease_remaining_seconds` makes the fail-open lease visible.
-The `handoff_*`, `pid`, `payload_manifest_sha256`, and `accepting` fields bind a
-protocol-v2 transition to one process and transaction. The loopback-only
+The `handoff_*`, `pid`, `serving_payload_sha256`,
+`release_receipt_sha256`, `payload_manifest_sha256`, and `accepting` fields bind
+a protocol-v2 transition to one process, transaction, and released payload.
+The loopback-only
 `POST /control/handoff` endpoint and its child pipe protocol are lifecycle
 internals, not general APIs.
 The loopback-only `POST /control/drain` and `DELETE /control/drain`
@@ -189,11 +228,12 @@ python3 scripts/observe-reliability.py \
 ```
 
 The first snapshot establishes a baseline and returns `observe`, not an
-inferred incident. A changed release, loaded-source digest, or listener restart
+inferred incident. A changed release, serving-payload digest, or listener restart
 starts a new window. In a comparable window, local payload/listener faults and
 new local stream failures are incidents; upstream `empty_response`, retryable
-5xx, and `response_failed` are observations below three events and incidents
-at three or more. New `proxy_draining` rejections are distinct from upstream
+5xx, `response_failed`, and exact input-variant validation are observations
+below three events and incidents at three or more. New `proxy_draining`
+rejections are distinct from upstream
 failures; when an operator has deliberately initiated maintenance, pass
 `--allow-drain` to classify that delta as `observe`. The optional state file
 contains only normalized counters, runtime identity, uptime, and observation
@@ -202,21 +242,22 @@ paths from the status payload, or upstream error payloads.
 
 ### One-time legacy bootstrap
 
-The first upgrade from a listener released before the drain protocol has no
-admission latch to invoke. In that narrow case, `upgrade` refuses by default.
-Only an explicitly authorized `--allow-legacy-bootstrap` operation may proceed,
-and it then requires the verified legacy listener to report zero active
-Responses twice across a five-second quiet window before it changes any payload.
-If a request arrives or the window does not complete, the upgrade refuses
-without mutation. Once the replacement listener starts, all later reloads and
-upgrades use protocol-v2 handoff; the compatibility check is not a normal
-operating mode.
+A listener released before protocol-v2 handoff cannot perform an atomic socket
+transfer. Source-side installation therefore refuses replacement by default.
+Only an explicitly authorized install with `--allow-legacy-bootstrap` may use
+the compatibility path. It first verifies the installed manifest and exactly
+one listener, then requires that PID to remain at zero active Responses for the
+bounded quiet window before committing the admitted release transaction.
+Activity, health loss, timeout, or PID change refuses the mutation. Once the
+protocol-v2 successor proves its released aggregate identity, future payload
+changes use source-side transactional handoff and installed-control operations
+remain same-payload reloads.
 
-If an urgent, separately authorized maintenance interruption is unavoidable,
-`--force-legacy-bootstrap` may be combined with
-`--allow-legacy-bootstrap`. It interrupts active Responses only after manifest
-integrity and exactly one verified listener are proven; it is rejected for all
-current drain-capable listeners and is not available to `reload`.
+If an urgent, separately authorized interruption is unavoidable,
+`--force-legacy-bootstrap` may be combined with `--allow-legacy-bootstrap` on
+the source-side installer. It still requires manifest integrity and exactly one
+verified legacy listener. The flag is rejected without the allow flag, is not
+available to installed-control `reload`, and is never a normal operating mode.
 
 ### Log retention and diagnostic safety
 
@@ -225,7 +266,7 @@ persist request bodies, credentials, headers, prompts, query values, or raw
 upstream payloads. Each log has a bounded rotating retention window; the default
 is four 4 MiB proxy segments and three 512 KiB watchdog segments, including the
 active segment. Oversized legacy segments are discarded without being copied or
-read into evidence. Installation and payload refresh also remove the retired
+read into evidence. Each admitted source-side installation also removes the retired
 `reject-*.json` raw request-capture files without reading or preserving them.
 Native macOS service stdout and stderr are deliberately discarded so they cannot
 become an unbounded second logging channel.
@@ -234,15 +275,22 @@ Set a durable retention policy at installation time:
 
 ```bash
 python3 install.py \
+  --tag "v$(cat VERSION)" \
+  --gitlab-remote "$GITLAB_REMOTE" --gitlab-api-base "$GITLAB_API_BASE" \
+  --gitlab-repo "$GITLAB_REPOSITORY" --github-remote "$GITHUB_REMOTE" \
+  --github-repo HengYangDS/codex-dmx-proxy \
+  --gitlab-anchor packaging/release/gitlab-allowed-signers \
+  --github-anchor packaging/release/github-allowed-signers \
+  --trust-anchor packaging/release/gitlab-allowed-signers \
   --proxy-log-max-bytes 4194304 \
   --proxy-log-backup-count 3 \
   --watchdog-log-max-bytes 524288 \
   --watchdog-log-backup-count 2
 ```
 
-The selected bounds are rendered into the native user service. Updating an
-installed service requires the normal installation or reload lifecycle and can
-briefly interrupt proxy traffic.
+The selected bounds are rendered into the native user service. Changing them
+requires another released, publication-proven source-side installation; a
+same-payload `reload` does not change service configuration.
 
 ## Design
 
@@ -268,15 +316,19 @@ rejections are returned unchanged.
 | --- | --- | --- |
 | Encrypted replay error | `control.py status --json` | Confirm a healthy listener and enabled route before investigating history. |
 | Upstream `response_failed` | `control.py status --json` | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
-| DMX HTTP 477 `empty_response` | `control.py status --json` | Retry the unchanged request through the normal bounded transient-retry budget. On exhaustion, a streaming request receives a terminal SSE `error`; a non-streaming request receives standard HTTP 503 with `Retry-After`. Unrelated 477 responses remain unchanged. |
+| Exact `Invalid 'input'` validation error | `control.py status --json` | The proxy may send one current-dialogue fallback. Diagnostics contain only bounded type counts, pairing state, a categorical shape hash, and the first locally detectable incompatibility; no request values or unknown labels are logged. |
+| DMX HTTP 477 `empty_response` | `control.py status --json` | The proxy may send one dedicated semantic-preserving fallback. If projection is unsafe or that follow-up fails, both streaming and non-streaming requests receive standard HTTP 503 with `Retry-After: 3`; unrelated 477 responses remain unchanged. |
 | SSE closes before completion | `control.py status --json` | The proxy retries only before sending substantive bytes downstream. If that bounded pre-content budget is exhausted, it returns retryable HTTP 503 with `Retry-After: 3` rather than an empty successful stream. |
 | Need current reliability evidence | `control.py status --json` | Inspect the secret-free `runtime` snapshot; it proves listener-local counters, not recovery of a historical conversation. |
 | Need a windowed incident decision | `scripts/observe-reliability.py --status-file <snapshot> --state <baseline>` | Compare only the same running payload; the tool is read-only and never reloads the listener. |
 | Client ignores a route change | Client configuration lifecycle | A running client may need its normal reload; the proxy does not restart it. |
 
-Logs are written under `~/.codex/log/`. They record bounded classifications,
-request identifiers, and byte counts only; the proxy does not persist request
-bodies, credentials, headers, prompts, query values, or raw upstream failures.
+Logs are written under `~/.codex/log/`. They record bounded operational facts:
+stable classifications, request identifiers, sanitized paths, byte lengths,
+recovery stages, and exact retained/dropped item counts. Input diagnostics use
+bucketed counts and closed labels. The proxy does not persist request bodies,
+credentials, headers, prompts, query values, unknown names, or raw upstream
+failures.
 
 ## Configure
 
@@ -284,7 +336,16 @@ The generated service supplies safe defaults. Use install arguments rather than
 editing a generated service definition:
 
 ```bash
-python3 install.py --port 8801 --upstream https://your.responses.endpoint
+python3 install.py \
+  --tag "v$(cat VERSION)" \
+  --gitlab-remote "$GITLAB_REMOTE" --gitlab-api-base "$GITLAB_API_BASE" \
+  --gitlab-repo "$GITLAB_REPOSITORY" --github-remote "$GITHUB_REMOTE" \
+  --github-repo HengYangDS/codex-dmx-proxy \
+  --gitlab-anchor packaging/release/gitlab-allowed-signers \
+  --github-anchor packaging/release/github-allowed-signers \
+  --trust-anchor packaging/release/gitlab-allowed-signers \
+  --port 8801 \
+  --upstream https://your.responses.endpoint
 ```
 
 See [`config.example`](config.example) for the supported environment variables.
@@ -295,11 +356,10 @@ See [`config.example`](config.example) for the supported environment variables.
 python3 scripts/check_release_metadata.py
 python3 scripts/check_markdown_presentation.py
 python3 scripts/test_release_metadata.py
+PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh
 for py in python3.12 python3.13 python3.14; do
   "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
-  "$py" tests/test_package.py
-  "$py" tests/test_empty_response_recovery.py
-  "$py" tests/test_rolling_handoff.py
+  "$py" scripts/run-python-tests.py
 done
 ```
 

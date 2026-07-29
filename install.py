@@ -1,39 +1,35 @@
 #!/usr/bin/env python3
-"""install.py — set up the Codex dmx-responses-proxy on this machine.
+"""Verify and transactionally install one fully published proxy release.
 
-Idempotent, fail-loud, cross-platform (macOS / Linux / Windows). Steps:
-
-  1. Resolve platform + an ABSOLUTE python interpreter (service contexts have no
-     shell PATH; a bare "python3" won't resolve).
-  2. Locate ~/.codex/config.toml (same path on all three OSes).
-  3. Detect a running Codex desktop client (mac/win). An AIGW-owned route is
-     left unchanged; a direct-route edit is reported as pending client reload.
-  4. Copy proxy + watchdog into ~/.codex/dmx-proxy/.
-  5. Point the Codex provider's base_url at the local proxy (backup first;
-     TOML-line-aware rewrite, not a fixed-string sed).
-  6. Register the watchdog as a login service via the platform adapter.
-  7. Verify: probe the port, then GET /v1/models through the proxy.
-
-The proxy passes the Codex Bearer token through untouched, so this installer never
-collects or stores an API key.
+The installer contacts both Forge planes, verifies their exact signed tag,
+CI, release record, and equal source tree, then admits only immutable runtime
+Git blobs into a sealed payload transaction.  It finalizes only after the new
+listener proves the expected aggregate, manifest, receipt, and release identity.
+It never reads or mutates Codex conversation history or model metadata.
 """
 
 from __future__ import annotations
 
 import os
 import sys
-import time
-import shutil
-from pathlib import Path
-import socket
 import argparse
 import subprocess
 import glob
+import shutil
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from platform_adapters import pick_adapter, common  # noqa: E402
+from platform_adapters import (
+    common,
+    payload,
+    pick_adapter,
+    publication,
+    release_source,
+    route_state,
+)  # noqa: E402
+from platform_adapters import deployment  # noqa: E402
 
 
 def _say(msg: str) -> None:
@@ -49,8 +45,9 @@ def _codex_running() -> bool:
     """Best-effort check for a running Codex *desktop app* (mac/win)."""
     try:
         if sys.platform == "darwin":
-            r = subprocess.run(["pgrep", "-f", "Codex.app/Contents/MacOS/Codex"],
-                               capture_output=True, text=True)
+            r = subprocess.run(
+                ["pgrep", "-f", "Codex.app/Contents/MacOS/Codex"], capture_output=True, text=True
+            )
             return bool(r.stdout.strip())
         if sys.platform.startswith("win"):
             r = subprocess.run(["tasklist"], capture_output=True, text=True)
@@ -69,8 +66,9 @@ def build_context(
     watchdog_log_max_bytes: int = common.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
     watchdog_log_backup_count: int = common.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
 ) -> common.InstallContext:
+    """Build one validated installation context from user-facing arguments."""
     port = common.validate_port(port)
-    upstream = common.normalize_upstream_url(upstream)
+    upstream = route_state.normalize_upstream_url(upstream)
     proxy_log_max_bytes = common.validate_log_retention(
         proxy_log_max_bytes,
         name="proxy log max bytes",
@@ -115,68 +113,89 @@ def build_context(
     )
 
 
-def copy_payload(ctx: common.InstallContext) -> None:
-    """Copy the declared runtime payload and remove known superseded artifacts.
+def admit_released_payload(
+    authority: publication.PublishedRelease,
+    *,
+    trust_anchor: Path,
+) -> release_source.ReleasedPayload:
+    """Admit exact signed HEAD bytes after independent publication was verified."""
 
-    Route state and config are user/runtime state and remain untouched. Retained
-    structured logs remain untouched. The two former macOS launchd stdout/stderr
-    sinks and the retired raw ``reject-*.json`` request captures are exact
-    superseded artifacts: current service definitions route those channels to
-    ``/dev/null`` and use bounded, redacted logs instead, so remove them without
-    reading or copying their potentially sensitive contents. The `tests/` tree
-    was shipped by older deployments but is not executable runtime payload;
-    remove that exact obsolete path before writing the manifest.
-    """
-    shutil.rmtree(os.path.join(ctx.install_dir, "tests"), ignore_errors=True)
-    for filename in ("dmx-watchdog.out.log", "dmx-watchdog.err.log"):
-        try:
-            Path(ctx.log_dir, filename).unlink(missing_ok=True)
-        except OSError:
-            pass
-    try:
-        for capture in Path(ctx.log_dir).glob("reject-*.json"):
-            if capture.is_file():
-                capture.unlink()
-    except OSError:
-        pass
-    for sub in ("proxy", "watchdog", "platform_adapters"):
-        src = os.path.join(HERE, sub)
-        dst = os.path.join(ctx.install_dir, sub)
-        os.makedirs(dst, exist_ok=True)
-        for name in os.listdir(src):
-            if name.endswith(".py"):
-                shutil.copy2(os.path.join(src, name), os.path.join(dst, name))
-    os.makedirs(ctx.log_dir, exist_ok=True)
-    for name in ("control.py", "governance.py", "VERSION"):
-        shutil.copy2(os.path.join(HERE, name), os.path.join(ctx.install_dir, name))
-    common.write_payload_manifest(ctx)
+    git = shutil.which("git")
+    ssh_keygen = shutil.which("ssh-keygen")
+    if not git or not ssh_keygen:
+        raise common.InstallError("git and ssh-keygen are required for released-source admission")
+    return release_source.admit(
+        HERE,
+        payload_paths=payload.RUNTIME_PAYLOAD_FILES,
+        serving_payload_paths=payload.SERVING_PAYLOAD_FILES,
+        trust_anchor=trust_anchor,
+        publication=authority,
+        git_path=Path(git).resolve(),
+        ssh_keygen_path=Path(ssh_keygen).resolve(),
+    )
 
 
-def stage_payload(ctx: common.InstallContext) -> str:
-    """Build and verify a complete runtime payload beside the live deployment."""
-    return common.stage_payload_transaction(ctx, HERE)
+def install_release(
+    ctx: common.InstallContext,
+    *,
+    tag: str,
+    gitlab_remote: str,
+    gitlab_api_base: str,
+    gitlab_repo: str,
+    github_remote: str,
+    github_repo: str,
+    gitlab_anchor: Path,
+    github_anchor: Path,
+    policy: Path,
+    trust_anchor: Path,
+    adapter: deployment.ServiceAdapter,
+    timeout_seconds: float = 30.0,
+    allow_legacy_bootstrap: bool = False,
+    force_legacy_bootstrap: bool = False,
+) -> dict[str, object]:
+    """Compose live publication verification, source admission, and deployment."""
 
-
-def commit_staged_payload(ctx: common.InstallContext, stage: str) -> None:
-    """Commit one pre-verified runtime payload without touching route state."""
-    common.commit_payload_transaction(ctx, stage)
+    authority = publication.verify(
+        tag=tag,
+        gitlab_remote=gitlab_remote,
+        gitlab_api_base=gitlab_api_base,
+        gitlab_repo=gitlab_repo,
+        github_remote=github_remote,
+        github_repo=github_repo,
+        gitlab_anchor=gitlab_anchor,
+        github_anchor=github_anchor,
+        policy_path=policy,
+    )
+    released = admit_released_payload(authority, trust_anchor=trust_anchor)
+    transaction = payload.begin_transaction(ctx, released)
+    return deployment.install(
+        ctx,
+        transaction,
+        adapter=adapter,
+        runtime_reader=deployment.read_runtime,
+        timeout_seconds=timeout_seconds,
+        allow_legacy_bootstrap=allow_legacy_bootstrap,
+        force_legacy_bootstrap=force_legacy_bootstrap,
+    )
 
 
 def wire_config(ctx: common.InstallContext) -> bool:
     """Point the Codex provider base_url at the local proxy (backup + rewrite)."""
     if not os.path.exists(ctx.codex_config):
-        _die(f"Codex config not found at {ctx.codex_config}. "
-             "Run/launch Codex once first so it creates its config.")
+        _die(
+            f"Codex config not found at {ctx.codex_config}. "
+            "Run/launch Codex once first so it creates its config."
+        )
     with open(ctx.codex_config, "r", encoding="utf-8") as fh:
         text = fh.read()
 
-    proxy_url = common.proxy_base_url(ctx.port)
-    if common.route_authority(ctx) == "aigw":
+    proxy_url = route_state.proxy_base_url(ctx.port)
+    if route_state.route_authority(ctx) == "aigw":
         _say("  AIGW owns the marked provider projection; leaving config as-is.")
         return True
-    current = common.read_base_urls(text)
-    state = common.load_install_state(ctx)
-    if state is not None and common.route_status(ctx, state) == "enabled":
+    current = route_state.read_base_urls(text)
+    state = route_state.load_install_state(ctx)
+    if state is not None and route_state.route_status(ctx, state) == "enabled":
         _say(f"  managed base_url already points at proxy ({proxy_url}); leaving config as-is.")
         return True
 
@@ -185,77 +204,57 @@ def wire_config(ctx: common.InstallContext) -> bool:
         # that deterministically reconstructs the exact current proxy config.
         backups = sorted(glob.glob(f"{ctx.codex_config}.bak-*"), key=os.path.getmtime, reverse=True)
         for backup in backups:
+            if not isinstance(backup, str):
+                continue
             try:
                 with open(backup, "r", encoding="utf-8") as fh:
                     direct_text = fh.read()
             except OSError:
                 continue
-            enabled_text, changed = common.rewrite_base_url(direct_text, "dmxapi", proxy_url)
+            enabled_text, changed = route_state.rewrite_base_url(direct_text, "dmxapi", proxy_url)
             if changed and enabled_text == text:
-                common.write_install_state(
+                route_state.write_install_state(
                     ctx,
-                    common.make_install_state(
-                        ctx, backup_path=backup, direct_text=direct_text, enabled_text=enabled_text,
+                    route_state.make_install_state(
+                        ctx,
+                        backup_path=backup,
+                        direct_text=direct_text,
+                        enabled_text=enabled_text,
                     ),
                 )
                 _say(f"  adopted existing proxy route using {os.path.basename(backup)}.")
                 return True
-        _say("  base_url already points at proxy but no exact managed backup was found; leaving config as-is.")
+        _say(
+            "  base_url already points at proxy but no exact managed backup was found; leaving config as-is."
+        )
         return False
 
-    new_text, changed = common.rewrite_base_url(text, "dmxapi", proxy_url)
+    new_text, changed = route_state.rewrite_base_url(text, "dmxapi", proxy_url)
     if changed == 0:
-        _say("  no dmxapi base_url found to rewrite. If your provider host differs, "
-             f"set base_url = \"{proxy_url}\" manually in {ctx.codex_config}.")
+        _say(
+            "  no dmxapi base_url found to rewrite. If your provider host differs, "
+            f'set base_url = "{proxy_url}" manually in {ctx.codex_config}.'
+        )
         return False
-    backup = common.backup_file(ctx.codex_config)
-    state = common.make_install_state(
+    backup = route_state.backup_file(ctx.codex_config)
+    state = route_state.make_install_state(
         ctx,
         backup_path=backup,
         direct_text=text,
         enabled_text=new_text,
     )
-    common.write_install_state(ctx, state)
+    route_state.write_install_state(ctx, state)
     try:
-        common._atomic_write_text(ctx.codex_config, new_text)
+        route_state._atomic_write_text(ctx.codex_config, new_text)
     except Exception:
-        common.remove_install_state(ctx)
+        route_state.remove_install_state(ctx)
         raise
     _say(f"  rewrote {changed} base_url -> {proxy_url} (backup: {os.path.basename(backup)})")
     return True
 
 
-def verify(ctx: common.InstallContext, timeout: float = 20.0) -> bool:
-    """Wait for the port, then GET /v1/models through the proxy."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            with socket.create_connection(("127.0.0.1", ctx.port), timeout=2):
-                break
-        except OSError:
-            time.sleep(1)
-    else:
-        _say(f"  WARNING: nothing listening on 127.0.0.1:{ctx.port} after {timeout:.0f}s")
-        return False
-
-    import urllib.request
-    import urllib.error
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    try:
-        req = urllib.request.Request(f"http://127.0.0.1:{ctx.port}/v1/models")
-        with opener.open(req, timeout=15) as r:
-            _say(f"  proxy /v1/models -> HTTP {r.status}")
-            return 200 <= r.status < 500
-    except urllib.error.HTTPError as e:
-        # Even a 401 proves the proxy is forwarding to upstream (auth is Codex's job).
-        _say(f"  proxy /v1/models -> HTTP {e.code} (proxy is forwarding; auth handled by Codex)")
-        return True
-    except Exception as e:
-        _say(f"  WARNING: proxy probe failed: {e}")
-        return False
-
-
 def main() -> None:
+    """Verify publication, install its runtime transaction, and optionally route it."""
     ap = argparse.ArgumentParser(description="Install the Codex dmx-responses-proxy.")
     ap.add_argument("--port", type=int, default=common.DEFAULT_PORT)
     ap.add_argument("--upstream", default=common.DEFAULT_UPSTREAM)
@@ -283,12 +282,38 @@ def main() -> None:
         default=common.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
         help="number of rotated watchdog log segments to retain",
     )
-    ap.add_argument("--skip-config", action="store_true",
-                    help="don't touch config.toml (only place files + service)")
     ap.add_argument(
-        "--stage-only",
+        "--skip-config",
         action="store_true",
-        help="prepare and verify a payload transaction without changing the live service",
+        help="don't touch config.toml (only place files + service)",
+    )
+    ap.add_argument("--tag", required=True, help="exact released vMAJOR.MINOR.PATCH tag")
+    ap.add_argument("--gitlab-remote", required=True)
+    ap.add_argument("--gitlab-api-base", required=True)
+    ap.add_argument("--gitlab-repo", required=True)
+    ap.add_argument("--github-remote", required=True)
+    ap.add_argument("--github-repo", required=True)
+    ap.add_argument("--gitlab-anchor", type=Path, required=True)
+    ap.add_argument("--github-anchor", type=Path, required=True)
+    ap.add_argument(
+        "--policy", type=Path, default=Path(HERE) / "packaging/release/publication-policy.toml"
+    )
+    ap.add_argument(
+        "--trust-anchor",
+        type=Path,
+        required=True,
+        help="external allowed-signers file for the canonical released checkout",
+    )
+    ap.add_argument("--timeout-seconds", type=float, default=30.0)
+    ap.add_argument(
+        "--allow-legacy-bootstrap",
+        action="store_true",
+        help="authorize the one-time quiet-window replacement of a legacy listener",
+    )
+    ap.add_argument(
+        "--force-legacy-bootstrap",
+        action="store_true",
+        help="authorize interruption of a verified legacy listener",
     )
     args = ap.parse_args()
 
@@ -319,40 +344,56 @@ def main() -> None:
         f"watchdog={ctx.watchdog_log_max_bytes}B x {ctx.watchdog_log_backup_count}"
     )
 
-    if args.stage_only:
-        stage = stage_payload(ctx)
-        _say(f"Staged verified payload: {stage}")
-        return
+    if args.force_legacy_bootstrap and not args.allow_legacy_bootstrap:
+        _die("--force-legacy-bootstrap requires --allow-legacy-bootstrap")
 
     if _codex_running():
-        _say("\n  ℹ Codex desktop appears to be running. AIGW-owned routes are left\n"
-             "    unchanged. For a proxy-managed direct-route edit, allow the client\n"
-             "    to reload its configuration through its normal lifecycle; existing\n"
-             "    conversations remain unchanged.\n")
+        _say(
+            "\n  ℹ Codex desktop appears to be running. AIGW-owned routes are left\n"
+            "    unchanged. For a proxy-managed direct-route edit, allow the client\n"
+            "    to reload its configuration through its normal lifecycle; existing\n"
+            "    conversations remain unchanged.\n"
+        )
 
-    _say("[1/4] copying proxy + watchdog ...")
-    copy_payload(ctx)
+    try:
+        result = install_release(
+            ctx,
+            tag=args.tag,
+            gitlab_remote=args.gitlab_remote,
+            gitlab_api_base=args.gitlab_api_base,
+            gitlab_repo=args.gitlab_repo,
+            github_remote=args.github_remote,
+            github_repo=args.github_repo,
+            gitlab_anchor=args.gitlab_anchor,
+            github_anchor=args.github_anchor,
+            policy=args.policy,
+            trust_anchor=args.trust_anchor,
+            adapter=adapter,
+            timeout_seconds=args.timeout_seconds,
+            allow_legacy_bootstrap=args.allow_legacy_bootstrap,
+            force_legacy_bootstrap=args.force_legacy_bootstrap,
+        )
+    except common.ManualStartRequired as warning:
+        _die(f"service persistence was not established: {warning}")
+    except (
+        common.InstallError,
+        publication.PublicationError,
+        release_source.ReleaseSourceError,
+        OSError,
+    ) as exc:
+        _die(str(exc))
 
     if not args.skip_config:
-        _say("[2/4] wiring Codex config base_url ...")
+        _say("Wiring Codex config base_url ...")
         wire_config(ctx)
     else:
-        _say("[2/4] skipping config (per --skip-config)")
+        _say("Skipping config (per --skip-config)")
 
-    _say("[3/4] registering watchdog service ...")
-    try:
-        adapter.install(ctx)
-    except common.ManualStartRequired as w:
-        _say(f"  ⚠ {w}")
-    except Exception as e:
-        _die(f"service registration failed: {e}")
-
-    _say("[4/4] verifying ...")
-    ok = verify(ctx)
-
-    _say("\nDone." if ok else "\nInstalled, but verification did not confirm a 2xx/4xx from the proxy.")
-    _say("Next: inspect `control.py status --json`. Existing conversations remain unchanged; "
-         "validate the original conversation separately when the client has reloaded its configuration.")
+    _say(f"Released payload installed through {result['mode']}.")
+    _say(
+        "Next: inspect `control.py status --json`. Existing conversations remain unchanged; "
+        "validate the original conversation separately when the client has reloaded its configuration."
+    )
 
 
 if __name__ == "__main__":

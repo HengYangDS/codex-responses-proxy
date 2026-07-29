@@ -6,6 +6,50 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+## [1.0.27] - 2026-07-29
+
+### Fixed
+
+- Recover only the exact third-party Responses `Invalid 'input'` union
+  validation contract with one strictly smaller, network-only current-dialogue
+  request. The recovery retains the latest system, developer, and user
+  messages in their original order, preserves top-level instructions, removes
+  stale provider bindings, and never chains into another retry policy.
+- Move this compatibility policy into `proxy/input_compatibility.py`, with
+  bounded value-free diagnostics, exact call/output pairing checks, and stable
+  terminal counters. Structural diagnostics erase unknown labels and values and
+  bucket collection sizes before hashing; recovery events still report exact
+  byte lengths and retained/dropped item counts without recording their values.
+
+### Quality
+
+- Establish `pyproject.toml` as the Python metadata and quality configuration
+  carrier while keeping `VERSION` as the sole release-version owner. Add one
+  repository-owned Ruff, formatting, type, public-docstring, code-size, and
+  product branch-coverage gate plus Python 3.12/3.13/3.14 regression matrices.
+
+### Changed
+
+- Make source-side `install.py` the sole payload-mutation entry. It now requires
+  an in-repository proof of both provider-native signed tags, required CI, and
+  formal Release records, then independently admits the clean exact signed tag
+  under an external anchor. Immutable Git blobs move through an opaque one-use
+  release capability into a private rollback transaction with a canonical
+  receipt, manifest, aggregate serving identity, installed-release state, and
+  explicit recovery hold.
+- Remove release archives, working-tree stages, installed-control upgrades, and
+  controller-only partial applies from supported installation surfaces.
+  Installed control retains read-only evidence, route operations, and
+  same-installed-payload reload; a different release is installed only by the
+  source-side transaction.
+- Bind fresh install, protocol-v2 handoff, rollback, and post-operation evidence
+  to release, aggregate serving-payload digest, release-receipt digest, manifest
+  digest, and accepting listener state. Unknown committed outcomes are preserved
+  as `recovery_required` rather than reported as success.
+- Restrict `--allow-legacy-bootstrap` and `--force-legacy-bootstrap` to the
+  source-side first replacement of a verified pre-v2 listener. Neither flag is
+  an installed-control reload or a normal protocol-v2 operating mode.
+
 ## [1.0.26] - 2026-07-27
 
 ### Fixed
@@ -95,7 +139,8 @@ work that has not yet been tagged.
 - Start the formal `1.0.22` source train instead of adopting the previously
   installed `1.0.21` candidate as a release: its payload was recoverable, but
   it lacked source-repository provenance and was therefore not publishable.
-- Record the proxy source SHA-256 captured when the listener loaded the payload,
+- Record the aggregate serving-payload SHA-256 captured when the listener loaded
+  the exact same-root executable module set,
   so loopback health distinguishes a new on-disk deployment from a running old
   process.
 - Replace the single-sample reload gate with an atomic loopback drain barrier.
