@@ -1,0 +1,25 @@
+schema-version = 1
+
+[gitlab]
+required-jobs = [
+  "verify-python-3.12",
+  "verify-python-3.13",
+  "verify-python-3.14",
+  "verify-release-metadata",
+  "verify-release-tag",
+  "verify-python-quality",
+  "publish-gitlab-release",
+]
+
+[github]
+required-jobs = [
+  "Python 3.12",
+  "Python 3.13",
+  "Python 3.14",
+  "Python 3.12 (Windows)",
+  "Python 3.13 (Windows)",
+  "Python 3.14 (Windows)",
+  "Governance and presentation",
+  "Python quality",
+  "Verify tag and publish record",
+]

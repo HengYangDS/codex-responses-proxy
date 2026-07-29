@@ -7,6 +7,7 @@ import importlib.util
 import subprocess
 import sys
 import tempfile
+import tomllib
 from datetime import date
 from pathlib import Path
 
@@ -28,13 +29,13 @@ def _run(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
 
 
 def expect_rejection(text: str, description: str, *args: str) -> None:
+    """Require the release metadata checker to reject a Changelog fixture."""
+
     with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8", delete=False) as handle:
         path = Path(handle.name)
         handle.write(text)
     try:
-        completed = _run(
-            sys.executable, str(CHECKER), *args, "--changelog", str(path)
-        )
+        completed = _run(sys.executable, str(CHECKER), *args, "--changelog", str(path))
         if completed.returncode == 0:
             raise SystemExit(f"release metadata checker accepted {description}")
     finally:
@@ -42,6 +43,8 @@ def expect_rejection(text: str, description: str, *args: str) -> None:
 
 
 def test_prepare_release_requires_current_utc_date() -> None:
+    """Reject a pending release whose heading date is not current in UTC."""
+
     spec = importlib.util.spec_from_file_location("check_release_metadata", CHECKER)
     if spec is None or spec.loader is None:
         raise SystemExit("could not load release metadata checker")
@@ -53,19 +56,25 @@ def test_prepare_release_requires_current_utc_date() -> None:
         checker.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-26")], today=current)
     except ValueError as exc:
         if "current UTC date" not in str(exc):
-            raise SystemExit(f"stale pending-release date returned an unclear error: {exc}") from exc
+            raise SystemExit(
+                f"stale pending-release date returned an unclear error: {exc}"
+            ) from exc
     else:
         raise SystemExit("release metadata checker accepted a stale pending-release date")
 
 
 def test_provider_tag_scripts_preflight_before_signing() -> None:
+    """Require provider tag scripts to validate metadata before signing."""
+
     cases = (
         ("tag-gitlab-release.sh", "--prepare-release"),
         ("tag-github-release.sh", '--tag "$tag"'),
     )
     for script_name, expected_argument in cases:
         source = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
-        preflight = f'"$release_python" "$root/scripts/check_release_metadata.py" {expected_argument}'
+        preflight = (
+            f'"$release_python" "$root/scripts/check_release_metadata.py" {expected_argument}'
+        )
         if preflight not in source:
             raise SystemExit(f"{script_name} does not run its release metadata preflight")
         if source.index(preflight) > source.index("tag -s -a"):
@@ -115,28 +124,41 @@ def test_prune_tags_removes_deleted_remote_tag() -> None:
         if _run("git", "rev-parse", "--verify", "refs/tags/v9.9.9", cwd=reused_runner).returncode:
             raise SystemExit("fixture did not retain the stale local tag")
         completed = _run(
-            "git", "fetch", "--tags", "--force", "--prune", "--prune-tags", "origin",
+            "git",
+            "fetch",
+            "--tags",
+            "--force",
+            "--prune",
+            "--prune-tags",
+            "origin",
             cwd=reused_runner,
         )
         if completed.returncode:
             raise SystemExit(completed.stderr)
-        if _run("git", "rev-parse", "--verify", "refs/tags/v9.9.9", cwd=reused_runner).returncode == 0:
+        if (
+            _run("git", "rev-parse", "--verify", "refs/tags/v9.9.9", cwd=reused_runner).returncode
+            == 0
+        ):
             raise SystemExit("tag-pruning fetch retained a tag deleted from origin")
 
 
 def test_gitlab_ci_refreshes_tags_before_every_release_gate() -> None:
+    """Require every GitLab release gate to prune stale runner tags."""
+
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     if ci.count(TAG_REFRESH) != 3:
         raise SystemExit("every GitLab release gate must refresh and prune origin tags")
     for job in ("verify-release-metadata:", "verify-release-tag:", "publish-gitlab-release:"):
         start = ci.index(job)
         next_job = ci.find("\n\n", start)
-        block = ci[start:next_job if next_job >= 0 else None]
+        block = ci[start : next_job if next_job >= 0 else None]
         if TAG_REFRESH not in block:
             raise SystemExit(f"{job} does not refresh and prune origin tags")
 
 
 def test_gitlab_release_metadata_gate_has_complete_history() -> None:
+    """Require full Git history for release metadata provenance checks."""
+
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     start = ci.index("verify-release-metadata:")
     end = ci.index("\n\nverify-release-tag:", start)
@@ -146,29 +168,66 @@ def test_gitlab_release_metadata_gate_has_complete_history() -> None:
 
 
 def test_gitlab_ci_uses_only_the_project_runner_tag() -> None:
+    """Require every GitLab job family to select the project runner."""
+
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    if ci.count(GITLAB_RUNNER_TAG) != 4:
-        raise SystemExit("every Codex DMX Proxy GitLab job family must select its project runner tag")
-    for job in (".python-verify:", "verify-release-metadata:", "verify-release-tag:", "publish-gitlab-release:"):
+    if ci.count(GITLAB_RUNNER_TAG) != 5:
+        raise SystemExit(
+            "every Codex DMX Proxy GitLab job family must select its project runner tag"
+        )
+    for job in (
+        ".python-verify:",
+        "verify-release-metadata:",
+        "verify-release-tag:",
+        "verify-python-quality:",
+        "publish-gitlab-release:",
+    ):
         start = ci.index(job)
         next_job = ci.find("\n\n", start)
-        block = ci[start:next_job if next_job >= 0 else None]
+        block = ci[start : next_job if next_job >= 0 else None]
         if GITLAB_RUNNER_TAG not in block:
             raise SystemExit(f"{job} must select the Codex DMX Proxy GitLab runner tag")
 
 
 def test_gitlab_ci_runs_full_regression_matrix() -> None:
+    """Require GitLab's Python matrix to use the canonical test owner."""
+
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     start = ci.index(".python-verify:")
     end = ci.index("\n\nverify-python-3.12:", start)
     block = ci[start:end]
-    for test in (
-        "python tests/test_package.py",
-        "python tests/test_empty_response_recovery.py",
-        "python tests/test_rolling_handoff.py",
+    owner = "python scripts/run-python-tests.py"
+    if owner not in block:
+        raise SystemExit(f".python-verify template must run {owner}")
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    tests = metadata["tool"]["codex-dmx-proxy"]["quality"]["coverage-tests"]
+    expected = sorted(str(path.relative_to(ROOT)) for path in (ROOT / "tests").glob("test_*.py"))
+    if sorted(tests) != expected:
+        raise SystemExit(
+            "canonical Python test inventory must exactly match tests/test_*.py: "
+            f"configured={sorted(tests)!r}, expected={expected!r}"
+        )
+
+
+def test_python_quality_gate_is_cross_forge() -> None:
+    """Require both Forge projections to invoke the single repository owner."""
+
+    gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
+    owner = "sh scripts/run-python-quality.sh"
+    if owner not in gitlab or owner not in github:
+        raise SystemExit(f"both Forge quality projections must invoke {owner}")
+    script = (ROOT / "scripts" / "run-python-quality.sh").read_text(encoding="utf-8")
+    for token in (
+        '"$ruff_path" check .',
+        '"$ruff_path" format --check .',
+        '"$python_path" scripts/check_quality.py',
+        '"$ty_path" check',
+        '"$python_path" -m coverage erase',
+        '"$python_path" -m coverage report',
     ):
-        if test not in block:
-            raise SystemExit(f".python-verify template must run {test}")
+        if token not in script:
+            raise SystemExit(f"Python quality owner is missing {token}")
 
 
 def main() -> None:
@@ -179,6 +238,7 @@ def main() -> None:
     test_gitlab_release_metadata_gate_has_complete_history()
     test_gitlab_ci_uses_only_the_project_runner_tag()
     test_gitlab_ci_runs_full_regression_matrix()
+    test_python_quality_gate_is_cross_forge()
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     heading = f"## [{version}]"
@@ -189,7 +249,9 @@ def main() -> None:
     else:
         subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT, check=True)
         if tag_exists:
-            expect_rejection(source, "a tagged release checked as a pending release", "--prepare-release")
+            expect_rejection(
+                source, "a tagged release checked as a pending release", "--prepare-release"
+            )
         else:
             expect_rejection(source, "an absent pending release heading", "--prepare-release")
     expect_rejection(
@@ -198,7 +260,9 @@ def main() -> None:
     )
     expect_rejection(source.replace("## [1.0.4] - 2026-07-14\n", "", 1), "a missing reachable tag")
     expect_rejection(
-        source.replace("## [1.0.8] - 2026-07-14", "## [1.0.9] - 2026-07-17\n\n## [1.0.8] - 2026-07-14", 1),
+        source.replace(
+            "## [1.0.8] - 2026-07-14", "## [1.0.9] - 2026-07-17\n\n## [1.0.8] - 2026-07-14", 1
+        ),
         "an untagged published release",
     )
     print("release metadata chronology contract: OK")

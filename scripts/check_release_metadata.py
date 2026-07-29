@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import re
 import subprocess
+import tomllib
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -18,17 +19,39 @@ CHANGELOG_HEADING = re.compile(
 
 
 def read_version() -> str:
+    """Return the repository release version after strict SemVer validation."""
+
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     if not SEMVER.fullmatch(version):
         raise ValueError(f"VERSION is not a release SemVer: {version!r}")
     return version
 
 
+def check_python_metadata() -> None:
+    """Keep Python support metadata aligned without duplicating release ownership."""
+
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    if "project" in metadata or "build-system" in metadata:
+        raise ValueError("pyproject.toml is tool metadata, not a Python distribution contract")
+    repository = metadata.get("tool", {}).get("codex-dmx-proxy", {})
+    if repository.get("supported-python") != ">=3.12" or "python-requires" in repository:
+        raise ValueError("pyproject.toml must support Python >=3.12 without an upper bound")
+    if repository.get("version-source") != "VERSION" or "version" in repository:
+        raise ValueError("VERSION must remain the only release-version owner")
+    if repository.get("distribution-mode") != "runtime-file-payload":
+        raise ValueError("the repository must declare its explicit runtime-file payload model")
+    if repository.get("build-system-allowed") is not False:
+        raise ValueError("a Python build system requires a separate complete packaging contract")
+
+
 def _version_key(version: str) -> tuple[int, int, int]:
-    return tuple(map(int, version.split(".")))
+    major, minor, patch = version.split(".")
+    return int(major), int(minor), int(patch)
 
 
 def known_release_versions() -> list[str]:
+    """Return locally known final-release tags in descending SemVer order."""
+
     return [
         tag.removeprefix("v")
         for tag in _git("tag", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
@@ -37,6 +60,8 @@ def known_release_versions() -> list[str]:
 
 
 def changelog_releases(path: Path | None = None) -> list[tuple[str, str]]:
+    """Return dated Changelog releases after validating section structure."""
+
     headings: list[tuple[str, str | None]] = []
     changelog = path or ROOT / "CHANGELOG.md"
     for line in changelog.read_text(encoding="utf-8").splitlines():
@@ -90,13 +115,13 @@ def check_changelog_provenance(
             "locally available release tags must appear once in CHANGELOG.md: "
             + ", ".join(missing_headings)
         )
-    for version, date in releases:
+    for version, release_date in releases:
         if version not in expected_versions:
             continue
         tag_date = _git("for-each-ref", f"refs/tags/v{version}", "--format=%(creatordate:short)")
-        if date != tag_date:
+        if release_date != tag_date:
             raise ValueError(
-                f"CHANGELOG release {version} is dated {date}, but tag v{version} was created on {tag_date}"
+                f"CHANGELOG release {version} is dated {release_date}, but tag v{version} was created on {tag_date}"
             )
 
 
@@ -138,6 +163,8 @@ def check_pending_release_date(
     *,
     today: date | None = None,
 ) -> None:
+    """Require a pending release heading to use the current UTC date."""
+
     current_date = today or datetime.now(timezone.utc).date()
     release_date = next((item_date for item, item_date in releases if item == version), None)
     if release_date != current_date.isoformat():
@@ -147,6 +174,8 @@ def check_pending_release_date(
 
 
 def check_governance_contract() -> None:
+    """Validate the repository's release and dual-forge governance surfaces."""
+
     required = (
         "AGENTS.md",
         "CONTRIBUTING.md",
@@ -185,7 +214,9 @@ def check_governance_contract() -> None:
         "| **License** | [MIT](LICENSE) |"
     )
     if project_identity not in readme:
-        raise ValueError("README.md must declare formal dual-forge identity and MIT license in its metadata table")
+        raise ValueError(
+            "README.md must declare formal dual-forge identity and MIT license in its metadata table"
+        )
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     if "python scripts/check_release_metadata.py" not in ci:
         raise ValueError("GitLab CI must execute the release and governance checker")
@@ -205,7 +236,10 @@ def check_governance_contract() -> None:
     )
     present = [path for path in retired_paths if (ROOT / path).exists()]
     if present:
-        raise ValueError("retired execution-document paths must not remain in the canonical tree: " + ", ".join(present))
+        raise ValueError(
+            "retired execution-document paths must not remain in the canonical tree: "
+            + ", ".join(present)
+        )
 
 
 def main() -> None:
@@ -226,6 +260,7 @@ def main() -> None:
     if args.prepare_release and args.tag:
         raise SystemExit("--prepare-release cannot be combined with --tag")
     version = read_version()
+    check_python_metadata()
     releases = changelog_releases(args.changelog)
     check_changelog_provenance(
         releases,
@@ -238,10 +273,14 @@ def main() -> None:
         current_heading = f"## [{version}] - "
         heading = next((f"## [{item}] - {date}" for item, date in releases if item == version), "")
         if not heading.startswith(current_heading):
-            raise SystemExit(f"CHANGELOG.md lacks pending release heading ## [{version}] - YYYY-MM-DD")
+            raise SystemExit(
+                f"CHANGELOG.md lacks pending release heading ## [{version}] - YYYY-MM-DD"
+            )
         first_published = releases[0][0] if releases else ""
         if first_published != version:
-            raise SystemExit(f"pending release {version} must be the first published CHANGELOG section")
+            raise SystemExit(
+                f"pending release {version} must be the first published CHANGELOG section"
+            )
         try:
             check_pending_release_date(version, releases)
         except ValueError as exc:
@@ -266,7 +305,9 @@ def main() -> None:
         expected = f"v{version}"
         if args.tag != expected:
             raise SystemExit(f"tag {args.tag!r} does not match expected {expected!r}")
-        subprocess.run(["git", "rev-parse", "--verify", f"refs/tags/{args.tag}"], cwd=ROOT, check=True)
+        subprocess.run(
+            ["git", "rev-parse", "--verify", f"refs/tags/{args.tag}"], cwd=ROOT, check=True
+        )
         if version not in {released for released, _ in releases}:
             raise SystemExit(f"CHANGELOG.md lacks dated release heading ## [{version}]")
     print(f"release and governance metadata: {version} OK")

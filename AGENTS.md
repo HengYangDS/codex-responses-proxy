@@ -47,11 +47,10 @@ must never edit the AIGW config itself.
 python scripts/check_release_metadata.py
 python scripts/check_markdown_presentation.py
 python scripts/test_release_metadata.py
+PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh
 for py in python3.12 python3.13 python3.14; do
   "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
-  "$py" tests/test_package.py
-  "$py" tests/test_empty_response_recovery.py
-  "$py" tests/test_rolling_handoff.py
+  "$py" scripts/run-python-tests.py
 done
 ```
 

@@ -18,13 +18,16 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from typing import TypeGuard
 
 
 SCHEMA_VERSION = 1
 EMPTY_RESPONSE_INCIDENT_THRESHOLD = 3
 UPSTREAM_5XX_INCIDENT_THRESHOLD = 3
 RESPONSE_FAILED_INCIDENT_THRESHOLD = 3
+INPUT_VARIANT_VALIDATION_INCIDENT_THRESHOLD = 3
 _UPSTREAM_5XX = re.compile(r"^http_(?:500|502|503|504|524)_full$")
+_INPUT_VARIANT_VALIDATION_CLASS = "input_variant_validation_error"
 _COUNTER_NAMES = (
     "responses_rejected_while_draining",
     "responses_local_queue_timeouts",
@@ -38,6 +41,12 @@ class ObservationError(ValueError):
     """Raised for an invalid or unsafe observation contract."""
 
 
+def _is_object(value: object) -> TypeGuard[dict[str, Any]]:
+    """Narrow a decoded JSON value to a string-keyed object."""
+
+    return isinstance(value, dict) and all(isinstance(key, str) for key in value)
+
+
 def _integer(value: object, *, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ObservationError(f"{label} must be a non-negative integer")
@@ -45,7 +54,7 @@ def _integer(value: object, *, label: str) -> int:
 
 
 def _count_map(value: object, *, label: str) -> dict[str, int]:
-    if not isinstance(value, dict):
+    if not _is_object(value):
         raise ObservationError(f"{label} must be an object")
     result: dict[str, int] = {}
     for key, count in value.items():
@@ -57,40 +66,49 @@ def _count_map(value: object, *, label: str) -> dict[str, int]:
 
 def _runtime_identity(status: dict[str, Any]) -> dict[str, str | None]:
     runtime = status.get("runtime")
-    if not isinstance(runtime, dict):
+    if not _is_object(runtime):
         raise ObservationError("runtime must be an object")
     release = runtime.get("release")
-    source_sha256 = runtime.get("source_sha256")
+    serving_payload_sha256 = runtime.get("serving_payload_sha256")
     if not isinstance(release, str) or not release:
         raise ObservationError("runtime.release must be a non-empty string")
-    if source_sha256 is not None and (
-        not isinstance(source_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", source_sha256)
+    if serving_payload_sha256 is not None and (
+        not isinstance(serving_payload_sha256, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", serving_payload_sha256)
     ):
-        raise ObservationError("runtime.source_sha256 must be a SHA-256 digest or null")
-    return {"release": release, "source_sha256": source_sha256}
+        raise ObservationError("runtime.serving_payload_sha256 must be a SHA-256 digest or null")
+    return {"release": release, "serving_payload_sha256": serving_payload_sha256}
 
 
 def normalize_status(value: object) -> dict[str, Any]:
     """Extract the small, secret-free status contract used by this observer."""
-    if not isinstance(value, dict):
+    if not _is_object(value):
         raise ObservationError("status snapshot must be a JSON object")
     runtime = value.get("runtime")
-    if not isinstance(runtime, dict):
+    if not _is_object(runtime):
         raise ObservationError("status snapshot has no runtime object")
     payload_integrity = value.get("payload_integrity")
-    if not isinstance(payload_integrity, dict) or not isinstance(payload_integrity.get("ok"), bool):
+    if not _is_object(payload_integrity) or not isinstance(payload_integrity.get("ok"), bool):
         raise ObservationError("payload_integrity.ok must be boolean")
     service = value.get("service")
     if service is not None and not isinstance(service, str):
         raise ObservationError("service must be a string or null")
     listener_pids = value.get("listener_pids")
-    if not isinstance(listener_pids, list) or any(isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0 for pid in listener_pids):
+    if not isinstance(listener_pids, list) or any(
+        isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0 for pid in listener_pids
+    ):
         raise ObservationError("listener_pids must be a list of positive integers")
     draining = runtime.get("draining")
     if not isinstance(draining, bool):
         raise ObservationError("runtime.draining must be boolean")
     active = _integer(runtime.get("active_responses"), label="runtime.active_responses")
     uptime = _integer(runtime.get("uptime_seconds"), label="runtime.uptime_seconds")
+    last_failure = runtime.get("last_failure")
+    last_failure_classification = (
+        last_failure.get("classification")
+        if _is_object(last_failure) and isinstance(last_failure.get("classification"), str)
+        else None
+    )
     return {
         "identity": _runtime_identity(value),
         "payload_integrity_ok": payload_integrity["ok"],
@@ -105,12 +123,7 @@ def normalize_status(value: object) -> dict[str, Any]:
         ),
         # Retain a stable class as context only.  It is intentionally excluded
         # from policy decisions: it may describe an old event in this process.
-        "last_failure_classification": (
-            runtime.get("last_failure", {}).get("classification")
-            if isinstance(runtime.get("last_failure"), dict)
-            and isinstance(runtime["last_failure"].get("classification"), str)
-            else None
-        ),
+        "last_failure_classification": last_failure_classification,
     }
 
 
@@ -123,10 +136,10 @@ def _load_state(path: Path) -> dict[str, Any] | None:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ObservationError(f"state file is unreadable: {exc}") from exc
-    if not isinstance(value, dict) or value.get("schema_version") != SCHEMA_VERSION:
+    if not _is_object(value) or value.get("schema_version") != SCHEMA_VERSION:
         raise ObservationError("state file has an unsupported schema")
     baseline = value.get("baseline")
-    if not isinstance(baseline, dict):
+    if not _is_object(baseline):
         raise ObservationError("state file has no baseline")
     return baseline
 
@@ -136,11 +149,14 @@ def _write_state(path: Path, baseline: dict[str, Any]) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if path.is_symlink():
         raise ObservationError("state path must not be a symlink")
-    payload = json.dumps(
-        {"schema_version": SCHEMA_VERSION, "baseline": baseline},
-        indent=2,
-        sort_keys=True,
-    ) + "\n"
+    payload = (
+        json.dumps(
+            {"schema_version": SCHEMA_VERSION, "baseline": baseline},
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary = Path(temporary_name)
     try:
@@ -169,7 +185,7 @@ def _baseline(current: dict[str, Any], observed_at_unix: int) -> dict[str, Any]:
 
 
 def _comparable(baseline: object, current: dict[str, Any]) -> tuple[bool, str]:
-    if not isinstance(baseline, dict):
+    if not _is_object(baseline):
         return False, "baseline_absent"
     if baseline.get("identity") != current["identity"]:
         return False, "runtime_identity_changed"
@@ -179,7 +195,7 @@ def _comparable(baseline: object, current: dict[str, Any]) -> tuple[bool, str]:
     if current["uptime_seconds"] < old_uptime:
         return False, "runtime_restarted"
     for field in ("counters", "upstream_classifications"):
-        if not isinstance(baseline.get(field), dict):
+        if not _is_object(baseline.get(field)):
             return False, "baseline_invalid"
     return True, "same_runtime"
 
@@ -215,7 +231,11 @@ def evaluate(
     comparable window.
     """
     current = normalize_status(status)
-    now = int(time.time()) if observed_at_unix is None else _integer(observed_at_unix, label="observed_at_unix")
+    now = (
+        int(time.time())
+        if observed_at_unix is None
+        else _integer(observed_at_unix, label="observed_at_unix")
+    )
     reasons: list[dict[str, str]] = []
     incidents: list[dict[str, str]] = []
     observations: list[dict[str, str]] = []
@@ -226,25 +246,44 @@ def evaluate(
         (incidents if severity == "incident" else observations).append(item)
 
     if not current["payload_integrity_ok"]:
-        add("payload_integrity_failed", "incident", "The installed payload manifest did not verify.")
+        add(
+            "payload_integrity_failed", "incident", "The installed payload manifest did not verify."
+        )
     if current["service"] != "running":
         severity = "observe" if current["service"] in (None, "unknown") else "incident"
         add("service_not_running", severity, "The service is not confirmed as running.")
     if current["listener_count"] != 1:
-        add("listener_cardinality", "incident", "The status snapshot does not show exactly one verified listener.")
+        add(
+            "listener_cardinality",
+            "incident",
+            "The status snapshot does not show exactly one verified listener.",
+        )
     if current["draining"]:
-        add("drain_active", "observe", "The listener is in its bounded maintenance admission barrier.")
+        add(
+            "drain_active",
+            "observe",
+            "The listener is in its bounded maintenance admission barrier.",
+        )
 
     comparable, comparison = _comparable(baseline, current)
     counter_deltas: dict[str, int] = {}
     upstream_deltas: dict[str, int] = {}
     window: dict[str, Any] = {"comparison": comparison, "comparable": comparable}
     if comparable:
-        assert isinstance(baseline, dict)
-        counter_deltas = _delta(current["counters"], baseline["counters"])
-        upstream_deltas = _delta(current["upstream_classifications"], baseline["upstream_classifications"])
+        if not _is_object(baseline):
+            raise AssertionError("comparable baseline must be an object")
+        baseline_counters = baseline.get("counters")
+        baseline_upstream = baseline.get("upstream_classifications")
+        if not _is_object(baseline_counters) or not _is_object(baseline_upstream):
+            raise AssertionError("comparable baseline maps must be objects")
+        counter_deltas = _delta(current["counters"], baseline_counters)
+        upstream_deltas = _delta(current["upstream_classifications"], baseline_upstream)
         old_observed = baseline.get("observed_at_unix")
-        if isinstance(old_observed, int) and not isinstance(old_observed, bool) and 0 <= old_observed <= now:
+        if (
+            isinstance(old_observed, int)
+            and not isinstance(old_observed, bool)
+            and 0 <= old_observed <= now
+        ):
             window["seconds"] = now - old_observed
         draining_rejections = counter_deltas.get("responses_rejected_while_draining", 0)
         if draining_rejections:
@@ -255,10 +294,26 @@ def evaluate(
                 f"{draining_rejections} locally rejected Responses request(s) while drain was active.",
             )
         for name, code, detail in (
-            ("responses_local_queue_timeouts", "local_queue_timeouts", "local admission queue timeout(s) occurred."),
-            ("streams_incomplete", "local_stream_incomplete", "stream(s) ended with response.incomplete."),
-            ("streams_pre_content_exhausted", "local_stream_pre_content_exhausted", "stream(s) exhausted pre-content reconnects."),
-            ("streams_failed", "local_stream_failed", "stream failure(s) occurred after admission."),
+            (
+                "responses_local_queue_timeouts",
+                "local_queue_timeouts",
+                "local admission queue timeout(s) occurred.",
+            ),
+            (
+                "streams_incomplete",
+                "local_stream_incomplete",
+                "stream(s) ended with response.incomplete.",
+            ),
+            (
+                "streams_pre_content_exhausted",
+                "local_stream_pre_content_exhausted",
+                "stream(s) exhausted pre-content reconnects.",
+            ),
+            (
+                "streams_failed",
+                "local_stream_failed",
+                "stream failure(s) occurred after admission.",
+            ),
         ):
             count = counter_deltas.get(name, 0)
             if count:
@@ -271,7 +326,9 @@ def evaluate(
                 severity,
                 f"{empty} classified upstream empty-response event(s) occurred in this window.",
             )
-        upstream_5xx = sum(count for name, count in upstream_deltas.items() if _UPSTREAM_5XX.fullmatch(name))
+        upstream_5xx = sum(
+            count for name, count in upstream_deltas.items() if _UPSTREAM_5XX.fullmatch(name)
+        )
         if upstream_5xx:
             severity = "incident" if upstream_5xx >= UPSTREAM_5XX_INCIDENT_THRESHOLD else "observe"
             add(
@@ -281,14 +338,32 @@ def evaluate(
             )
         response_failed = upstream_deltas.get("response_failed", 0)
         if response_failed:
-            severity = "incident" if response_failed >= RESPONSE_FAILED_INCIDENT_THRESHOLD else "observe"
+            severity = (
+                "incident" if response_failed >= RESPONSE_FAILED_INCIDENT_THRESHOLD else "observe"
+            )
             add(
                 "upstream_response_failed_burst",
                 severity,
                 f"{response_failed} classified upstream response_failed event(s) occurred in this window.",
             )
+        input_variant_validation = upstream_deltas.get(_INPUT_VARIANT_VALIDATION_CLASS, 0)
+        if input_variant_validation:
+            severity = (
+                "incident"
+                if input_variant_validation >= INPUT_VARIANT_VALIDATION_INCIDENT_THRESHOLD
+                else "observe"
+            )
+            add(
+                "upstream_input_variant_validation_burst",
+                severity,
+                f"{input_variant_validation} exact input-variant validation event(s) occurred in this window.",
+            )
     else:
-        add("baseline_required", "observe", "No comparable prior snapshot exists; counters were not interpreted as a new incident.")
+        add(
+            "baseline_required",
+            "observe",
+            "No comparable prior snapshot exists; counters were not interpreted as a new incident.",
+        )
 
     state = "incident" if incidents else ("observe" if observations else "healthy")
     report = {
@@ -304,9 +379,9 @@ def evaluate(
         "reasons": reasons,
         "limits": [
             "The observer reads one supplied secret-free status snapshot; it does not prove client-visible recovery.",
-            "A changed release, source digest, or restarted process starts a new observation window rather than fabricating deltas.",
+            "A changed release, aggregate serving-payload digest, or restarted process starts a new observation window rather than fabricating deltas.",
             "last_failure is context only because it can predate this window.",
-            "Upstream empty_response, retryable 5xx, and response_failed become incidents at three events per comparable window; lower counts remain observations.",
+            "Upstream empty_response, retryable 5xx, response_failed, and exact input-variant validation become incidents at three events per comparable window; lower counts remain observations.",
             "A deliberate drain can be classified with --allow-drain; the tool never starts, stops, reloads, or drains the listener.",
         ],
     }
@@ -324,8 +399,12 @@ def _read_status(path: str) -> object:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Evaluate a secret-free Codex DMX Proxy reliability snapshot.")
-    parser.add_argument("--status-file", default="-", help="control.py status --json output, or - for stdin")
+    parser = argparse.ArgumentParser(
+        description="Evaluate a secret-free Codex DMX Proxy reliability snapshot."
+    )
+    parser.add_argument(
+        "--status-file", default="-", help="control.py status --json output, or - for stdin"
+    )
     parser.add_argument("--state", help="explicit optional path for a normalized local baseline")
     parser.add_argument(
         "--allow-drain",
@@ -335,7 +414,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         baseline = _load_state(Path(args.state)) if args.state else None
-        report, next_baseline = evaluate(_read_status(args.status_file), baseline, allow_drain=args.allow_drain)
+        report, next_baseline = evaluate(
+            _read_status(args.status_file), baseline, allow_drain=args.allow_drain
+        )
         if args.state:
             _write_state(Path(args.state), next_baseline)
     except ObservationError as exc:
