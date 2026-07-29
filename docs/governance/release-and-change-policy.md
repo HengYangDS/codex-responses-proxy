@@ -61,6 +61,11 @@ its own external anchor, observes the policy-required hosted jobs and Release
 record, and requires the two tags to bind the same source tree. Its JSON is
 audit evidence only. Installation repeats live verification in the same process;
 no serialized document can be converted back into installation authority.
+Remote authentication remains the caller's explicit transport concern; the
+verifier clears ambient Git configuration and never injects a credential helper.
+API authentication remains with `glab` and `gh`; tag fetches use the supplied
+Git remote and its native external transport context. Prefer SSH and never put
+tokens or passwords in a remote URL.
 
 The source-side installer requires a clean checkout before live publication
 verification. Admission checks clean state again, requires `HEAD` to be the exact
