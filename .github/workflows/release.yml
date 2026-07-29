@@ -3,47 +3,92 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Existing v* tag to publish
-        required: true
-        type: string
 
 permissions:
   contents: write
   actions: read
 
 concurrency:
-  group: release-${{ github.repository }}-${{ inputs.tag || github.ref_name }}
+  group: release-${{ github.repository }}-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  require-verify:
+    name: Require exact tag verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require exact successful Verify run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = tag
+          deadline=$((SECONDS + 2400))
+          while :; do
+            runs=$(gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yml/runs?branch=$GITHUB_REF_NAME&event=push&per_page=100")
+            verdict=$(RUNS_JSON="$runs" python3 - "$GITHUB_REF_NAME" "$GITHUB_SHA" <<'PY'
+          import json, os, sys
+          tag, sha = sys.argv[1:]
+          pages = json.loads(os.environ["RUNS_JSON"])
+          matches = [
+              run for page in pages for run in page.get("workflow_runs", [])
+              if run.get("path") == ".github/workflows/verify.yml"
+              and run.get("event") == "push"
+              and run.get("head_branch") == tag
+              and run.get("head_sha") == sha
+          ]
+          if len(matches) > 1:
+              print("ambiguous")
+          elif not matches or matches[0].get("status") != "completed":
+              print("waiting")
+          else:
+              print(matches[0].get("conclusion") or "failed")
+          PY
+            )
+            case "$verdict" in
+              success) break ;;
+              waiting)
+                test "$SECONDS" -lt "$deadline" || {
+                  echo "exact tag Verify run timed out" >&2
+                  exit 1
+                }
+                sleep 10
+                ;;
+              *) echo "exact tag Verify run is not successful: $verdict" >&2; exit 1 ;;
+            esac
+          done
+
   verify-and-publish:
     name: Verify tag and publish record
+    needs: require-verify
     # This repository-scoped runner accepts only trusted tag and manual release revisions.
     runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
-          ref: ${{ inputs.tag || github.ref_name }}
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
       - name: Fetch the exact annotated tag object
         env:
-          SELECTED_TAG: ${{ inputs.tag || github.ref_name }}
+          SELECTED_TAG: ${{ github.ref_name }}
+          VERIFIED_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          case "$SELECTED_TAG" in v*) ;; *) echo "release requires a v* tag" >&2; exit 2 ;; esac
           git fetch --force --no-tags origin "+refs/tags/$SELECTED_TAG:refs/tags/$SELECTED_TAG"
           test "$(git cat-file -t "refs/tags/$SELECTED_TAG")" = tag
           target=$(git rev-parse "refs/tags/$SELECTED_TAG^{commit}")
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
-            test "$target" = "$GITHUB_SHA"
-          fi
+          test "$target" = "$VERIFIED_SHA"
           git checkout --detach "$target"
       - name: Verify provider-native release tag
         env:
-          SELECTED_TAG: ${{ inputs.tag || github.ref_name }}
+          SELECTED_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           python=/opt/homebrew/bin/python3.14
@@ -53,49 +98,10 @@ jobs:
           sh scripts/check-release-tag-signature.sh . "$SELECTED_TAG" github
           "$python" scripts/check_release_metadata.py --provider github --tag "$SELECTED_TAG"
           "$python" scripts/check_markdown_presentation.py
-      - name: Require the exact tag Verify workflow to succeed first
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SELECTED_TAG: ${{ inputs.tag || github.ref_name }}
-        run: |
-          set -euo pipefail
-          expected_sha=$(git rev-parse 'HEAD^{commit}')
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
-            test "$GITHUB_SHA" = "$expected_sha"
-          fi
-          deadline=$((SECONDS + 900))
-          while :; do
-            runs=$(gh api --paginate --slurp \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yml/runs?branch=$SELECTED_TAG&event=push&per_page=100")
-            verdict=$(RUNS_JSON="$runs" python3 - "$expected_sha" <<'PY'
-          import json, os, sys
-          pages = json.loads(os.environ["RUNS_JSON"])
-          sha = sys.argv[1]
-          matches = [
-              run for page in pages for run in page.get("workflow_runs", [])
-              if run.get("path") == ".github/workflows/verify.yml"
-              and run.get("event") == "push"
-              and run.get("head_branch") == __import__("os").environ["SELECTED_TAG"]
-              and run.get("head_sha") == sha
-          ]
-          if len(matches) != 1:
-              print("ambiguous" if len(matches) > 1 else "waiting")
-          elif matches[0].get("status") != "completed":
-              print("waiting")
-          else:
-              print(matches[0].get("conclusion") or "failed")
-          PY
-            )
-            case "$verdict" in
-              success) break ;;
-              waiting) test "$SECONDS" -lt "$deadline" || { echo "Verify workflow timed out" >&2; exit 1; }; sleep 10 ;;
-              *) echo "Verify workflow is not uniquely successful: $verdict" >&2; exit 1 ;;
-            esac
-          done
       - name: Publish or verify exact GitHub release record
         env:
           GH_TOKEN: ${{ github.token }}
-          SELECTED_TAG: ${{ inputs.tag || github.ref_name }}
+          SELECTED_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           expected_sha=$(git rev-parse 'HEAD^{commit}')
