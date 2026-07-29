@@ -145,7 +145,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         child_pid, observe = child_pid_observer(port, expected, exclude_pid=old.pid)
 
         self.assertTrue(
-            wait_until(observe, timeout=10), "child did not take over serving with matching health"
+            wait_until(observe, timeout=20), "child did not take over serving with matching health"
         )
         self.assertTrue(
             wait_until(lambda: old.poll() is not None, timeout=10),

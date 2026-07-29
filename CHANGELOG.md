@@ -7,6 +7,16 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.30] - 2026-07-29
+
+### Fixed
+
+- Normalize canonical tag creation timestamps to UTC before comparing them
+  with Changelog release dates, so a signed tag created across local midnight
+  preserves the repository's UTC release chronology.
+- Give the real rolling-handoff integration proof enough hosted-runner margin
+  to observe the successor without weakening its exact identity checks.
+
 ## [1.0.29] - 2026-07-29
 
 ### Changed

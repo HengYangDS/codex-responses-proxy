@@ -103,25 +103,19 @@ def test_cross_provider_changelog_provenance() -> None:
     ]
     original_known = getattr(checker, "known_release_versions")
     original_git = getattr(checker, "_git")
+    original_tag_date = getattr(checker, "tag_creation_date")
     try:
         setattr(checker, "known_release_versions", lambda: ["1.0.2"])
-        setattr(checker, "_git", lambda *args: "2000-01-01")
         checker.check_changelog_provenance(releases, provider="github")
         setattr(checker, "known_release_versions", lambda: ["1.0.2", "1.0.1"])
+        setattr(checker, "_git", lambda *args: "false")
         setattr(
             checker,
-            "_git",
-            lambda *args: (
-                "false"
-                if args == ("rev-parse", "--is-shallow-repository")
-                else {"v1.0.2": "2026-07-02", "v1.0.1": "2026-07-01"}[
-                    args[1].removeprefix("refs/tags/")
-                ]
-            ),
+            "tag_creation_date",
+            lambda version: {"1.0.2": "2026-07-02", "1.0.1": "2026-07-01"}[version],
         )
         checker.check_changelog_provenance(releases, pending_version="1.0.3")
         setattr(checker, "known_release_versions", lambda: ["1.0.2"])
-        setattr(checker, "_git", lambda *args: "2000-01-01")
         expect_value_error(
             lambda: checker.check_changelog_provenance(
                 [("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")],
@@ -141,13 +135,7 @@ def test_cross_provider_changelog_provenance() -> None:
             "a provider-external heading on canonical GitLab",
         )
         setattr(checker, "known_release_versions", lambda: ["1.0.3", "1.0.2", "1.0.1"])
-        setattr(
-            checker,
-            "_git",
-            lambda *args: (
-                "false" if args == ("rev-parse", "--is-shallow-repository") else "2000-01-01"
-            ),
-        )
+        setattr(checker, "tag_creation_date", lambda version: "2000-01-01")
         expect_value_error(
             lambda: checker.check_changelog_provenance(releases),
             "was created on",
@@ -187,6 +175,22 @@ def test_cross_provider_changelog_provenance() -> None:
         )
     finally:
         setattr(checker, "known_release_versions", original_known)
+        setattr(checker, "_git", original_git)
+        setattr(checker, "tag_creation_date", original_tag_date)
+
+
+def test_tag_creation_date_uses_utc() -> None:
+    """Normalize a local-midnight tagger timestamp to its UTC release date."""
+
+    checker = load_checker()
+    original_git = getattr(checker, "_git")
+    try:
+        setattr(checker, "_git", lambda *args: "1785342943")
+        require(
+            checker.tag_creation_date("1.0.29") == "2026-07-29",
+            "tag creation date followed the tagger offset instead of UTC",
+        )
+    finally:
         setattr(checker, "_git", original_git)
 
 
@@ -542,6 +546,7 @@ def test_python_quality_gate_is_cross_forge() -> None:
 
 def main() -> None:
     test_cross_provider_changelog_provenance()
+    test_tag_creation_date_uses_utc()
     test_prepare_release_requires_current_utc_date()
     test_exact_release_tag_contract()
     test_retired_cli_is_rejected()
