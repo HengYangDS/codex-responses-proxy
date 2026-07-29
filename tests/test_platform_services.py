@@ -114,11 +114,15 @@ class TestPythonResolution(unittest.TestCase):
             regular = root / "python"
             regular.write_text("#!/bin/sh\n", encoding="utf-8")
             regular.chmod(0o600)
-            for executable in ("relative-python", "/missing/python", str(root), str(regular)):
+            for executable in ("relative-python", str(root / "missing"), str(root), str(regular)):
                 with (
                     mock.patch.object(python_runtime.sys, "executable", executable),
-                    mock.patch.object(python_runtime.os, "name", "posix"),
                     mock.patch.object(python_runtime.shutil, "which", return_value=None),
+                    mock.patch.object(
+                        python_runtime,
+                        "is_windows_store_stub",
+                        return_value=False,
+                    ),
                     self.assertRaises(errors.InstallError),
                 ):
                     python_runtime.resolve_python()
@@ -237,12 +241,13 @@ class TestProcessIdentity(unittest.TestCase):
 
     def test_exact_resolved_argument_identity(self):
         ctx = platform_context()
-        script = ctx.proxy_script
-        parent = str(Path(script).parent)
+        script = os.path.abspath(ctx.proxy_script)
+        parent = os.path.dirname(script)
+        equivalent = os.path.join(parent, "..", "listener", "entrypoint.py")
         cases = (
             (f"python {script}", True),
             (f'python "{script}" --handoff-child', True),
-            (f"python {parent}/../listener/entrypoint.py", True),
+            (f"python {equivalent}", True),
             (f"python {script}.backup", False),
             (f"python --note={script}", False),
             (f"python {script}-suffix", False),
