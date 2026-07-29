@@ -239,10 +239,12 @@ def terminate_process(process: subprocess.Popen, timeout: float = 5) -> None:
 
 
 def terminate_owned_proxy(pid: int | None, proxy_script: str) -> None:
-    """Terminate one owned child by its exact temporary proxy path."""
-    if pid is None or not process.process_command(pid):
+    """Terminate one child only while its argv names the temporary proxy."""
+    if pid is None or not process.pid_names_path(pid, proxy_script):
         return
-    if not process.terminate_pid(pid, expected_path=proxy_script):
+    if process.terminate_pid(pid, expected_path=proxy_script):
+        return
+    if process.pid_names_path(pid, proxy_script):
         command = process.process_command(pid)
         raise RuntimeError(f"owned proxy child {pid} did not terminate: {command!r}")
 
