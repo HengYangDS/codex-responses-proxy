@@ -460,8 +460,9 @@ def _write_rollback_snapshot(ctx: installation.InstallContext, rollback: Path) -
                 raise errors.InstallError(f"installed payload integrity check failed: {detail}")
             previous_owned = current_owned
         else:
-            owned = projection._manifest_owned_files(install)
-            previous = manifest["release"]
+            historical = projection.verify_historical_projection(ctx)
+            owned = historical.files
+            previous = historical.release
             if _compare_versions(_read_journal_version(ctx), previous) < 0:
                 raise errors.InstallError("released payload downgrade is refused")
             previous_owned = set(owned) | {inventory.MANIFEST_FILENAME}

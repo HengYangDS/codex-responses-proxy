@@ -7,6 +7,21 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.35] - 2026-07-29
+
+### Fixed
+
+- Make one-time legacy bootstrap accept only digest-verified historical
+  schema-1/2 projections, derive the retired entrypoint from that same proof,
+  and bind quiet-window and termination checks to the old listener path rather
+  than the new semantic-package entrypoint.
+- Replace native supervision after the old listener exits and before successor
+  proof. A failed successor now restores old owned bytes, old supervision, and
+  accepting historical runtime proof; an unproven restoration fails explicitly.
+  Force mode still cannot bypass manifest or process-identity verification.
+- Validate types with current stable `ty 0.0.64` across local and both Forge
+  quality gates.
+
 ## [1.0.34] - 2026-07-29
 
 ### Fixed

@@ -529,7 +529,7 @@ def test_python_quality_gate_is_cross_forge() -> None:
     require_tokens(
         script,
         (
-            '"ty 0.0.56"|"ty 0.0.56 "*',
+            '"ty 0.0.64"|"ty 0.0.64 "*',
             "Coverage.py, version 7.13.5 with C extension",
             'COVERAGE_FILE="$coverage_dir/.coverage"',
             '"$ruff_path" check .',

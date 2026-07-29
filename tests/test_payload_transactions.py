@@ -23,6 +23,7 @@ from codex_dmx_proxy.release import admission as release_admission  # noqa: E402
 from codex_dmx_proxy.release import projection as payload_projection  # noqa: E402
 from codex_dmx_proxy.release import transaction as payload_transaction  # noqa: E402
 from tests.support.repository_fixtures import install_context  # noqa: E402
+from tests.support.repository_fixtures import write_retired_projection  # noqa: E402
 
 
 def released_fixture(version: str = "1.2.3") -> release_admission.ReleasedPayload:
@@ -78,40 +79,6 @@ def begin_transaction(
     claimed = (blobs, candidate.version, candidate.receipt_sha256, receipt, {})
     with mock.patch.object(release_admission, "claim", return_value=claimed):
         return payload_transaction.begin_transaction(ctx, candidate)
-
-
-def write_retired_projection(
-    ctx: installation.InstallContext,
-    *,
-    version: str = "1.0.27",
-    schema: int = 2,
-    overrides: dict[str, bytes] | None = None,
-) -> dict[str, bytes]:
-    """Write one exact historical manifest inventory for lifecycle tests."""
-
-    files = {
-        relative: (f"{version}\n".encode() if relative == "VERSION" else f"{relative}\n".encode())
-        for relative in payload_projection._RETIRED_RUNTIME_FILES[schema]
-    }
-    files.update(overrides or {})
-    if set(files) != set(payload_projection._RETIRED_RUNTIME_FILES[schema]):
-        raise AssertionError("retired fixture must match one exact historical inventory")
-    install = Path(ctx.install_dir)
-    for relative, content in files.items():
-        target = install / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(content)
-    manifest = {
-        "schema_version": schema,
-        "release": version,
-        "files": {
-            relative: hashlib.sha256(content).hexdigest() for relative, content in files.items()
-        },
-    }
-    (install / payload_projection.PAYLOAD_MANIFEST_FILENAME).write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    return files
 
 
 class TestPayloadIdentity(unittest.TestCase):

@@ -111,9 +111,12 @@ jobs:
           tools="$RUNNER_TEMP/codex-dmx-proxy-quality-tools"
           "$python" -m venv "$tools"
           "$tools/bin/python" -m pip install --disable-pip-version-check --no-cache-dir \
-            ruff==0.16.0 ty==0.0.56 coverage==7.13.5
+            ruff==0.16.0 ty==0.0.64 coverage==7.13.5
           ruff="$tools/bin/ruff"
           ty="$tools/bin/ty"
           test "$($ruff --version)" = "ruff 0.16.0"
-          test "$($ty --version)" = "ty 0.0.56 (3078f9fa2 2026-07-01)"
+          case "$($ty --version)" in
+            "ty 0.0.64"|"ty 0.0.64 "*) ;;
+            *) exit 1 ;;
+          esac
           PYTHON="$tools/bin/python" RUFF="$ruff" TY="$ty" sh scripts/run-python-quality.sh
