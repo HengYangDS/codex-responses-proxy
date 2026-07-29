@@ -129,6 +129,7 @@ def render_launcher(ctx: common.InstallContext) -> str:
 
 
 def render_task_xml(ctx: common.InstallContext) -> str:
+    """Render the scheduled-task XML for the windowless watchdog launcher."""
     return TASK_XML_TEMPLATE.format(
         user=xml_escape(_current_user()),
         pythonw=xml_escape(common.windows_pythonw(ctx.python)),
@@ -139,6 +140,7 @@ def render_task_xml(ctx: common.InstallContext) -> str:
 
 
 def install(ctx: common.InstallContext) -> None:
+    """Install and start the Windows scheduled watchdog task."""
     xml_path = _xml_path(ctx)
     launcher = _launcher_path(ctx)
     # The Task executes this launcher, so every future scheduled (re)launch retains
@@ -149,15 +151,20 @@ def install(ctx: common.InstallContext) -> None:
     with open(xml_path, "w", encoding="utf-16") as fh:
         fh.write(render_task_xml(ctx))
 
-    subprocess.run(["schtasks", "/delete", "/tn", TASK_NAME, "/f"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    r = subprocess.run(["schtasks", "/create", "/tn", TASK_NAME, "/xml", xml_path],
-                       capture_output=True, text=True)
+    subprocess.run(
+        ["schtasks", "/delete", "/tn", TASK_NAME, "/f"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    r = subprocess.run(
+        ["schtasks", "/create", "/tn", TASK_NAME, "/xml", xml_path], capture_output=True, text=True
+    )
     if r.returncode != 0:
         raise common.InstallError(f"schtasks create failed: {r.stderr.strip() or r.stdout.strip()}")
     # Start it now (the trigger otherwise only fires at next logon).
-    subprocess.run(["schtasks", "/run", "/tn", TASK_NAME],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(
+        ["schtasks", "/run", "/tn", TASK_NAME], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
 
 
 def _running_watchdog_pids(ctx: common.InstallContext) -> list[int]:
@@ -175,12 +182,14 @@ def _running_watchdog_pids(ctx: common.InstallContext) -> list[int]:
     command = (
         "Get-CimInstance Win32_Process | "
         "Where-Object { $_.CommandLine } | "
-        "ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"
+        'ForEach-Object { "$($_.ProcessId)`t$($_.CommandLine)" }'
     )
     try:
         output = subprocess.run(
             ["powershell", "-NoProfile", "-Command", command],
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
         ).stdout
     except Exception:
         return []
@@ -197,8 +206,12 @@ def _running_watchdog_pids(ctx: common.InstallContext) -> list[int]:
 
 
 def uninstall(ctx: common.InstallContext) -> None:
-    subprocess.run(["schtasks", "/delete", "/tn", TASK_NAME, "/f"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    """Stop and remove only this installation's scheduled watchdog task."""
+    subprocess.run(
+        ["schtasks", "/delete", "/tn", TASK_NAME, "/f"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     # Deleting the task does not stop a running instance; end this install's
     # watchdog so it cannot respawn the proxy after the caller stops it.
     for pid in _running_watchdog_pids(ctx):
@@ -206,8 +219,10 @@ def uninstall(ctx: common.InstallContext) -> None:
 
 
 def status(ctx: common.InstallContext) -> str:
-    r = subprocess.run(["schtasks", "/query", "/tn", TASK_NAME, "/fo", "list"],
-                       capture_output=True, text=True)
+    """Return the Windows scheduled task's read-only status classification."""
+    r = subprocess.run(
+        ["schtasks", "/query", "/tn", TASK_NAME, "/fo", "list"], capture_output=True, text=True
+    )
     if r.returncode != 0:
         return "absent"
     if "Running" in r.stdout:

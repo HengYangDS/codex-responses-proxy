@@ -34,9 +34,7 @@ jobs:
           python="/opt/homebrew/bin/python${{ matrix.python-version }}"
           test -x "$python"
           "$python" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
-          "$python" tests/test_package.py
-          "$python" tests/test_empty_response_recovery.py
-          "$python" tests/test_rolling_handoff.py
+          "$python" scripts/run-python-tests.py
 
   python-windows:
     name: Python ${{ matrix.python-version }} (Windows)
@@ -60,9 +58,7 @@ jobs:
           set -euo pipefail
           python --version
           python -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
-          python tests/test_package.py
-          python tests/test_empty_response_recovery.py
-          python tests/test_rolling_handoff.py
+          python scripts/run-python-tests.py
 
   governance:
     name: Governance and presentation
@@ -80,9 +76,30 @@ jobs:
           test -x "$python"
           "$python" scripts/check_release_metadata.py --allow-unpublished-history
           "$python" scripts/check_markdown_presentation.py
+          "$python" scripts/check_quality.py
           sh scripts/test-github-actions-contract.sh
           sh scripts/test-github-release-workflow.sh
           sh scripts/test-github-provider-projection.sh
           sh scripts/test-gitlab-tagging.sh
           sh scripts/test-github-tagging.sh
           sh scripts/test-publish-gitlab-release.sh
+
+  python-quality:
+    name: Python quality
+    runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - name: Verify lint, format, types, structure, docstrings, and product branch coverage
+        run: |
+          set -euo pipefail
+          python=/opt/homebrew/bin/python3.12
+          tools="$RUNNER_TEMP/codex-dmx-proxy-quality-tools"
+          "$python" -m venv "$tools"
+          "$tools/bin/python" -m pip install --disable-pip-version-check --no-cache-dir \
+            ruff==0.16.0 ty==0.0.56 coverage==7.13.5
+          ruff="$tools/bin/ruff"
+          ty="$tools/bin/ty"
+          test "$($ruff --version)" = "ruff 0.16.0"
+          test "$($ty --version)" = "ty 0.0.56 (3078f9fa2 2026-07-01)"
+          PYTHON="$tools/bin/python" RUFF="$ruff" TY="$ty" sh scripts/run-python-quality.sh

@@ -16,7 +16,7 @@ import shutil
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from platform_adapters import pick_adapter, common  # noqa: E402
+from platform_adapters import common, pick_adapter, route_state  # noqa: E402
 import control  # noqa: E402
 
 
@@ -24,39 +24,29 @@ def _say(msg: str) -> None:
     print(msg, flush=True)
 
 
-def _listener_pids(port: int) -> list[int]:
-    """Compatibility wrapper for the shared listener probe."""
-    return common.listener_pids(port)
-
-
-def _process_command(pid: int) -> str:
-    """Compatibility wrapper for the shared command probe."""
-    return common.process_command(pid)
-
-
-def _terminate_pid(pid: int) -> None:
-    """Compatibility wrapper for precise termination."""
-    common.terminate_pid(pid)
-
-
 def _stop_proxy(port: int, *, ctx: common.InstallContext | None = None) -> int:
     """Terminate only listeners verified against this installed proxy script."""
     if ctx is not None:
         pids = common.verified_proxy_listener_pids(ctx)
     else:
-        pids = [pid for pid in _listener_pids(port) if "dmx_responses_proxy.py" in _process_command(pid)]
+        pids = [
+            pid
+            for pid in common.listener_pids(port)
+            if "dmx_responses_proxy.py" in common.process_command(pid)
+        ]
     for pid in pids:
-        _terminate_pid(pid)
+        common.terminate_pid(pid)
     return len(pids)
 
 
 def restore_config(ctx: common.InstallContext) -> bool:
-    state = common.load_install_state(ctx)
+    """Restore only an exact managed direct route and preserve drifted state."""
+    state = route_state.load_install_state(ctx)
     if state is None:
         _say("  no valid managed route state found; leaving config.toml as-is.")
         return False
     if state.get("route_mode") == "aigw_endpoint":
-        status = common.route_status(ctx, state)
+        status = route_state.route_status(ctx, state)
         if status == "drifted":
             _say("  canonical AIGW endpoint has drifted; leaving it unchanged.")
             return False
@@ -66,13 +56,15 @@ def restore_config(ctx: common.InstallContext) -> bool:
             except common.InstallError as exc:
                 _say(f"  AIGW route restore failed; leaving proxy active: {exc}")
                 return False
-        if common.route_status(ctx, state) != "disabled":
-            _say("  canonical AIGW endpoint did not reach the recorded direct route; leaving it unchanged.")
+        if route_state.route_status(ctx, state) != "disabled":
+            _say(
+                "  canonical AIGW endpoint did not reach the recorded direct route; leaving it unchanged."
+            )
             return False
-        common.remove_install_state(ctx)
+        route_state.remove_install_state(ctx)
         _say("  restored canonical AIGW endpoint to the recorded direct route")
         return True
-    if common.route_status(ctx, state) != "enabled":
+    if route_state.route_status(ctx, state) != "enabled":
         _say("  config is disabled or drifted; leaving it unchanged.")
         return False
     backup = state["backup_path"]
@@ -81,22 +73,23 @@ def restore_config(ctx: common.InstallContext) -> bool:
         return False
     with open(backup, "r", encoding="utf-8") as fh:
         restored = fh.read()
-    if common._sha256_text(restored) != state["direct_sha256"]:
+    if route_state._sha256_text(restored) != state["direct_sha256"]:
         _say("  recorded config backup has changed; leaving config.toml as-is.")
         return False
-    common._atomic_write_text(ctx.codex_config, restored)
-    common.remove_install_state(ctx)
+    route_state._atomic_write_text(ctx.codex_config, restored)
+    route_state.remove_install_state(ctx)
     _say(f"  restored config from {os.path.basename(backup)}")
     return True
 
 
 def main() -> None:
+    """Remove the managed service and optionally restore or purge owned state."""
     ap = argparse.ArgumentParser(description="Uninstall the Codex dmx-responses-proxy.")
     ap.add_argument("--port", type=int, default=common.DEFAULT_PORT)
-    ap.add_argument("--purge", action="store_true",
-                    help="also delete the install dir (~/.codex/dmx-proxy)")
-    ap.add_argument("--keep-config", action="store_true",
-                    help="do not restore config.toml backup")
+    ap.add_argument(
+        "--purge", action="store_true", help="also delete the install dir (~/.codex/dmx-proxy)"
+    )
+    ap.add_argument("--keep-config", action="store_true", help="do not restore config.toml backup")
     args = ap.parse_args()
     try:
         args.port = common.validate_port(args.port)
@@ -116,8 +109,10 @@ def main() -> None:
         port=args.port,
     )
 
-    if common.route_authority(ctx) == "aigw":
-        raise SystemExit("ERROR: AIGW owns the active route; change the route with AIGW before uninstalling the proxy.")
+    if route_state.route_authority(ctx) == "aigw":
+        raise SystemExit(
+            "ERROR: AIGW owns the active route; change the route with AIGW before uninstalling the proxy."
+        )
     adapter = pick_adapter()
 
     _say("Uninstalling codex-dmx-proxy ...")
@@ -140,8 +135,10 @@ def main() -> None:
     else:
         _say(f"[3/3] leaving install dir {ctx.install_dir} (use --purge to delete)")
 
-    _say("\nDone. Existing conversations remain unchanged; verify the reverted route through "
-         "the client's normal configuration-reload lifecycle before treating it as active.")
+    _say(
+        "\nDone. Existing conversations remain unchanged; verify the reverted route through "
+        "the client's normal configuration-reload lifecycle before treating it as active."
+    )
 
 
 if __name__ == "__main__":
