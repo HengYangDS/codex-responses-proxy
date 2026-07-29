@@ -69,15 +69,16 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
           fetch-depth: 0
+          fetch-tags: true
       - name: Verify release and source contracts
         run: |
           set -euo pipefail
           python=/opt/homebrew/bin/python3.14
           test -x "$python"
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            "$python" scripts/check_release_metadata.py --tag "$GITHUB_REF_NAME"
+            "$python" scripts/check_release_metadata.py --provider github --tag "$GITHUB_REF_NAME"
           else
-            "$python" scripts/check_release_metadata.py --prepare-release
+            "$python" scripts/check_release_metadata.py --provider github
           fi
           "$python" scripts/check_markdown_presentation.py
           "$python" scripts/check_quality.py

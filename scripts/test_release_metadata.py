@@ -9,6 +9,8 @@ import sys
 import tempfile
 from datetime import date
 from pathlib import Path
+from types import ModuleType
+from typing import Callable
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,14 +70,130 @@ def expect_rejection(text: str, description: str, *args: str) -> None:
         path.unlink(missing_ok=True)
 
 
-def test_prepare_release_requires_current_utc_date() -> None:
-    """Reject a pending release whose heading date is not current in UTC."""
+def load_checker() -> ModuleType:
+    """Load the checker so pure policy units can replace Git observations."""
 
     spec = importlib.util.spec_from_file_location("check_release_metadata", CHECKER)
     if spec is None or spec.loader is None:
         raise SystemExit("could not load release metadata checker")
     checker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checker)
+    return checker
+
+
+def expect_value_error(action: Callable[[], object], message: str, description: str) -> None:
+    """Require a zero-argument policy action to fail with a useful diagnostic."""
+
+    try:
+        action()
+    except ValueError as exc:
+        require(message in str(exc), f"{description} returned an unclear error: {exc}")
+    else:
+        raise SystemExit(f"release metadata checker accepted {description}")
+
+
+def test_cross_provider_changelog_provenance() -> None:
+    """Keep GitLab strict while validating GitHub's native tag subset."""
+
+    checker = load_checker()
+    releases = [
+        ("1.0.3", "2026-07-03"),
+        ("1.0.2", "2026-07-02"),
+        ("1.0.1", "2026-07-01"),
+    ]
+    original_known = getattr(checker, "known_release_versions")
+    original_git = getattr(checker, "_git")
+    try:
+        setattr(checker, "known_release_versions", lambda: ["1.0.2"])
+        setattr(checker, "_git", lambda *args: "2000-01-01")
+        checker.check_changelog_provenance(releases, provider="github")
+        setattr(checker, "known_release_versions", lambda: ["1.0.2", "1.0.1"])
+        setattr(
+            checker,
+            "_git",
+            lambda *args: (
+                "false"
+                if args == ("rev-parse", "--is-shallow-repository")
+                else {"v1.0.2": "2026-07-02", "v1.0.1": "2026-07-01"}[
+                    args[1].removeprefix("refs/tags/")
+                ]
+            ),
+        )
+        checker.check_changelog_provenance(releases, pending_version="1.0.3")
+        setattr(checker, "known_release_versions", lambda: ["1.0.2"])
+        setattr(checker, "_git", lambda *args: "2000-01-01")
+        expect_value_error(
+            lambda: checker.check_changelog_provenance(
+                [("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")],
+                provider="github",
+            ),
+            "must appear once",
+            "a GitHub-native tag without a canonical heading",
+        )
+        expect_value_error(
+            lambda: checker.check_changelog_provenance(releases, provider="gitbucket"),
+            "unsupported release provider",
+            "an invalid provider",
+        )
+        expect_value_error(
+            lambda: checker.check_changelog_provenance(releases),
+            "1.0.3",
+            "a provider-external heading on canonical GitLab",
+        )
+        setattr(checker, "known_release_versions", lambda: ["1.0.3", "1.0.2", "1.0.1"])
+        setattr(
+            checker,
+            "_git",
+            lambda *args: (
+                "false" if args == ("rev-parse", "--is-shallow-repository") else "2000-01-01"
+            ),
+        )
+        expect_value_error(
+            lambda: checker.check_changelog_provenance(releases),
+            "was created on",
+            "GitLab canonical date drift",
+        )
+        setattr(checker, "_git", lambda *args: "true")
+        expect_value_error(
+            lambda: checker.check_changelog_provenance(releases, pending_version="1.0.3"),
+            "non-shallow",
+            "canonical chronology from a shallow repository",
+        )
+        setattr(checker, "known_release_versions", lambda: ["1.0.2"])
+        checker.check_active_release_train("1.0.3", releases, provider="github")
+        checker.check_active_release_train(
+            "1.0.4",
+            [("1.0.3", "2026-07-03"), ("1.0.2", "2026-07-02")],
+            provider="github",
+        )
+        expect_value_error(
+            lambda: checker.check_active_release_train("1.0.1", releases, provider="github"),
+            "exists before its Git tag",
+            "a stale GitHub VERSION",
+        )
+        setattr(checker, "known_release_versions", lambda: [])
+        checker.check_changelog_provenance(releases, provider="github")
+        checker.check_active_release_train("1.0.3", releases, provider="github")
+        expect_value_error(
+            lambda: checker.check_active_release_train("1.0.2", releases, provider="github"),
+            "exists before its Git tag",
+            "a stale VERSION in a zero-tag GitHub projection",
+        )
+        setattr(checker, "_git", lambda *args: "false")
+        expect_value_error(
+            lambda: checker.check_changelog_provenance(releases),
+            "cannot find a gitlab release SemVer tag",
+            "a zero-tag canonical GitLab projection",
+        )
+    finally:
+        setattr(checker, "known_release_versions", original_known)
+        setattr(checker, "_git", original_git)
+
+
+def test_prepare_release_requires_current_utc_date() -> None:
+    """Reject a pending release whose heading date is not current in UTC."""
+
+    checker = load_checker()
     current = date(2026, 7, 27)
     checker.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-27")], today=current)
     try:
@@ -89,23 +207,116 @@ def test_prepare_release_requires_current_utc_date() -> None:
         raise SystemExit("release metadata checker accepted a stale pending-release date")
 
 
-def test_provider_tag_scripts_preflight_before_signing() -> None:
-    """Require provider tag scripts to validate metadata before signing."""
+def test_exact_release_tag_contract() -> None:
+    """Reject lightweight, misnamed, nested, and wrong-target release tags."""
 
+    checker = load_checker()
+    original_git = getattr(checker, "_git")
     cases = (
-        ("tag-gitlab-release.sh", "--prepare-release"),
-        ("tag-github-release.sh", '--tag "$tag"'),
+        (
+            lambda *args: "commit" if args[:2] == ("cat-file", "-t") else "v1.2.3",
+            "annotated tag object",
+            "a lightweight release tag",
+        ),
+        (
+            lambda *args: {
+                ("cat-file", "-t", "refs/tags/v1.2.3"): "tag",
+                ("cat-file", "tag", "refs/tags/v1.2.3"): (
+                    "object same-commit\ntype commit\ntag v9.9.9\n\nmessage"
+                ),
+            }[args],
+            "embeds tag name",
+            "an annotated tag with the wrong embedded name",
+        ),
+        (
+            lambda *args: {
+                ("cat-file", "-t", "refs/tags/v1.2.3"): "tag",
+                ("cat-file", "tag", "refs/tags/v1.2.3"): (
+                    "object inner-tag\ntype tag\ntag v1.2.3\n\nmessage"
+                ),
+            }[args],
+            "directly name a commit",
+            "a nested annotated release tag",
+        ),
+        (
+            lambda *args: {
+                ("cat-file", "-t", "refs/tags/v1.2.3"): "tag",
+                ("cat-file", "tag", "refs/tags/v1.2.3"): (
+                    "object tagged-commit\ntype commit\ntag v1.2.3\n\nmessage"
+                ),
+                ("rev-parse", "HEAD^{commit}"): "head-commit",
+            }[args],
+            "not HEAD commit",
+            "an annotated tag that directly names the wrong commit",
+        ),
     )
-    for script_name, expected_argument in cases:
-        source = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
-        preflight = (
-            f'"$release_python" "$root/scripts/check_release_metadata.py" {expected_argument}'
+    try:
+        for git_observation, message, description in cases:
+            setattr(checker, "_git", git_observation)
+            expect_value_error(
+                lambda: checker.check_release_tag("v1.2.3", "1.2.3"),
+                message,
+                description,
+            )
+        setattr(
+            checker,
+            "_git",
+            lambda *args: {
+                ("cat-file", "-t", "refs/tags/v1.2.3"): "tag",
+                ("cat-file", "tag", "refs/tags/v1.2.3"): (
+                    "object same-commit\ntype commit\ntag v1.2.3\n\nmessage"
+                ),
+                ("rev-parse", "HEAD^{commit}"): "same-commit",
+            }[args],
         )
-        require(preflight in source, f"{script_name} does not run its release metadata preflight")
-        require(
-            source.index(preflight) < source.index("tag -s -a"),
-            f"{script_name} runs its release metadata preflight after signing",
-        )
+        checker.check_release_tag("v1.2.3", "1.2.3")
+    finally:
+        setattr(checker, "_git", original_git)
+
+
+def test_retired_cli_is_rejected() -> None:
+    """Keep the deleted unpublished-history bypass outside the parser grammar."""
+
+    completed = _run(sys.executable, str(CHECKER), "--allow-unpublished-history")
+    require(completed.returncode != 0, "retired unpublished-history parser flag was accepted")
+    require(
+        "unrecognized arguments" in completed.stderr,
+        "retired unpublished-history parser flag returned an unclear error",
+    )
+    completed = _run(
+        sys.executable,
+        str(CHECKER),
+        "--provider",
+        "github",
+        "--prepare-release",
+    )
+    require(completed.returncode != 0, "GitHub accepted canonical release preparation")
+    require("reserved for" in completed.stderr, "GitHub preparation returned an unclear error")
+
+
+def test_provider_tag_scripts_preflight_before_signing() -> None:
+    """Require canonical preparation before GitLab signs its release tag."""
+
+    source = (ROOT / "scripts" / "tag-gitlab-release.sh").read_text(encoding="utf-8")
+    preflight = (
+        '"$release_python" "$root/scripts/check_release_metadata.py" '
+        "--provider gitlab --prepare-release"
+    )
+    require(preflight in source, "tag-gitlab-release.sh lacks canonical metadata preparation")
+    require(
+        source.index(preflight) < source.index("tag -s -a"),
+        "tag-gitlab-release.sh prepares metadata after signing",
+    )
+    github = (ROOT / "scripts" / "tag-github-release.sh").read_text(encoding="utf-8")
+    exact = (
+        '"$release_python" "$projection/scripts/check_release_metadata.py" '
+        '--provider github --tag "$tag"'
+    )
+    require(exact in github, "tag-github-release.sh lacks exact projected tag validation")
+    require(
+        github.index("tag -s -a") < github.index(exact) < github.index("push origin"),
+        "tag-github-release.sh must validate the new native tag before pushing it",
+    )
 
 
 def test_provider_projection_re_signs_every_commit() -> None:
@@ -199,6 +410,31 @@ def test_gitlab_ci_refreshes_tags_before_every_release_gate() -> None:
         require(TAG_REFRESH in ci_block(ci, job), f"{job} does not refresh and prune origin tags")
 
 
+def test_github_governance_fetches_complete_provider_tags() -> None:
+    """Require GitHub governance to check the current provider tag namespace."""
+
+    workflow = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
+    start = workflow.index("\n  governance:")
+    end = workflow.index("\n  python-quality:", start)
+    checkout = workflow[start:end].split("- name: Verify release", 1)[0]
+    require_tokens(checkout, ("fetch-depth: 0", "fetch-tags: true"), "GitHub governance checkout")
+
+
+def test_github_release_metadata_is_strict() -> None:
+    """Forbid the retired broad bypass in exact GitHub tag validation."""
+
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    require(
+        '"$python" scripts/check_release_metadata.py --provider github --tag "$SELECTED_TAG"'
+        in workflow,
+        "GitHub release must validate its exact provider tag",
+    )
+    require(
+        "--allow-unpublished-history" not in workflow,
+        "GitHub release must not bypass provider chronology",
+    )
+
+
 def test_gitlab_release_metadata_gate_selects_validation_by_ref() -> None:
     """Require complete history and branch/tag-specific metadata validation."""
 
@@ -209,9 +445,9 @@ def test_gitlab_release_metadata_gate_selects_validation_by_ref() -> None:
         block,
         (
             'if [ -n "${CI_COMMIT_TAG:-}" ]; then',
-            'python scripts/check_release_metadata.py --tag "$CI_COMMIT_TAG"',
+            'python scripts/check_release_metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"',
             "else",
-            "python scripts/check_release_metadata.py --prepare-release",
+            "python scripts/check_release_metadata.py --provider gitlab --prepare-release",
         ),
         "GitLab release metadata ref dispatch",
     )
@@ -225,7 +461,7 @@ def test_gitlab_tag_gates_require_exact_tag_validation() -> None:
     """Keep tag verification strict after admitting main release candidates."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    strict = 'python scripts/check_release_metadata.py --tag "$CI_COMMIT_TAG"'
+    strict = 'python scripts/check_release_metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"'
     for job, next_job in (
         ("verify-release-tag:", "\n\nverify-python-quality:"),
         ("publish-gitlab-release:", None),
@@ -305,11 +541,16 @@ def test_python_quality_gate_is_cross_forge() -> None:
 
 
 def main() -> None:
+    test_cross_provider_changelog_provenance()
     test_prepare_release_requires_current_utc_date()
+    test_exact_release_tag_contract()
+    test_retired_cli_is_rejected()
     test_provider_tag_scripts_preflight_before_signing()
     test_provider_projection_re_signs_every_commit()
     test_prune_tags_removes_deleted_remote_tag()
     test_gitlab_ci_refreshes_tags_before_every_release_gate()
+    test_github_governance_fetches_complete_provider_tags()
+    test_github_release_metadata_is_strict()
     test_gitlab_release_metadata_gate_selects_validation_by_ref()
     test_gitlab_tag_gates_require_exact_tag_validation()
     test_gitlab_ci_uses_only_the_project_runner_tag()
@@ -340,6 +581,11 @@ def main() -> None:
             "## [1.0.8] - 2026-07-14", "## [1.0.9] - 2026-07-17\n\n## [1.0.8] - 2026-07-14", 1
         ),
         "an untagged published release",
+    )
+    subprocess.run(
+        [sys.executable, str(CHECKER), "--provider", "github"],
+        cwd=ROOT,
+        check=True,
     )
     print("release metadata chronology contract: OK")
 

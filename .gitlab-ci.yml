@@ -55,9 +55,9 @@ verify-release-metadata:
   script:
     - |
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        python scripts/check_release_metadata.py --tag "$CI_COMMIT_TAG"
+        python scripts/check_release_metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
       else
-        python scripts/check_release_metadata.py --prepare-release
+        python scripts/check_release_metadata.py --provider gitlab --prepare-release
       fi
     - python scripts/check_markdown_presentation.py
     - python scripts/test_release_metadata.py
@@ -81,7 +81,7 @@ verify-release-tag:
     - apt-get install -y --no-install-recommends git openssh-client
     - git fetch --tags --force --prune --prune-tags origin
   script:
-    - python scripts/check_release_metadata.py --tag "$CI_COMMIT_TAG"
+    - python scripts/check_release_metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
     - sh scripts/check-release-tag-signature.sh . "$CI_COMMIT_TAG" gitlab
 
 verify-python-quality:
@@ -113,5 +113,5 @@ publish-gitlab-release:
     - apt-get install -y --no-install-recommends curl git
     - git fetch --tags --force --prune --prune-tags origin
   script:
-    - python scripts/check_release_metadata.py --tag "$CI_COMMIT_TAG"
+    - python scripts/check_release_metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
     - sh scripts/publish-gitlab-release.sh

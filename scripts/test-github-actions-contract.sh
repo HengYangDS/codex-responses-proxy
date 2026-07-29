@@ -23,9 +23,10 @@ required = [
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97", "# v7.0.0",
     "shell: bash",
     'python=/opt/homebrew/bin/python3.14',
+    'fetch-tags: true',
     'if [[ "$GITHUB_REF_TYPE" == tag ]]; then',
-    '"$python" scripts/check_release_metadata.py --tag "$GITHUB_REF_NAME"',
-    '"$python" scripts/check_release_metadata.py --prepare-release',
+    '"$python" scripts/check_release_metadata.py --provider github --tag "$GITHUB_REF_NAME"',
+    '"$python" scripts/check_release_metadata.py --provider github',
     "python-quality:", "scripts/run-python-quality.sh",
     "test-github-provider-projection.sh", "test-gitlab-tagging.sh", "test-github-tagging.sh", "test-publish-gitlab-release.sh",
 ]
@@ -66,12 +67,20 @@ if windows_block.count("actions/setup-python@") != 1:
     raise SystemExit("Windows verification must use exactly one pinned setup-python action")
 governance_end = text.index("\n  python-quality:", governance_start)
 governance_block = text[governance_start:governance_end]
-tag_check = '"$python" scripts/check_release_metadata.py --tag "$GITHUB_REF_NAME"'
-branch_check = '"$python" scripts/check_release_metadata.py --prepare-release'
+checkout_block = governance_block.split("- name: Verify release", 1)[0]
+for token in ("fetch-depth: 0", "fetch-tags: true"):
+    if token not in checkout_block:
+        raise SystemExit(f"governance checkout must contain {token!r}")
+tag_check = '"$python" scripts/check_release_metadata.py --provider github --tag "$GITHUB_REF_NAME"'
+branch_check = '"$python" scripts/check_release_metadata.py --provider github'
 for token in ('if [[ "$GITHUB_REF_TYPE" == tag ]]; then', tag_check, "else", branch_check):
     if token not in governance_block:
         raise SystemExit(f"governance ref dispatch must contain {token!r}")
-if governance_block.index(tag_check) > governance_block.index(branch_check):
+if governance_block.count(branch_check) != 2:
+    raise SystemExit("governance must use one exact-tag and one ordinary GitHub check")
+if "--provider github --prepare-release" in governance_block:
+    raise SystemExit("ordinary GitHub main verification must not require same-day release preparation")
+if governance_block.index(tag_check) > governance_block.rindex(branch_check):
     raise SystemExit("governance ref dispatch must select tag validation before branch fallback")
 if "secrets:" in windows_block or "permissions:" in windows_block:
     raise SystemExit("Windows verification must inherit the read-only, secret-free workflow contract")
