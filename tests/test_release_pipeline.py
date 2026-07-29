@@ -95,7 +95,7 @@ class TestReleasedSourceProjectionPipeline(unittest.TestCase):
             target = self.repository / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
-        (self.repository / "VERSION").write_text(f"{self.version}\n", encoding="utf-8")
+        (self.repository / "VERSION").write_bytes(f"{self.version}\n".encode("ascii"))
 
         _git(self.repository, "init", "-q", "-b", "main")
         _git(self.repository, "config", "user.name", "Release Pipeline Test")

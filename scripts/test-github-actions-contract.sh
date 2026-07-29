@@ -23,6 +23,8 @@ required = [
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97", "# v7.0.0",
     "shell: bash",
     'python=/opt/homebrew/bin/python3.14',
+    'if [[ "$GITHUB_REF_TYPE" == tag ]]; then',
+    '"$python" scripts/check_release_metadata.py --tag "$GITHUB_REF_NAME"',
     '"$python" scripts/check_release_metadata.py --prepare-release',
     "python-quality:", "scripts/run-python-quality.sh",
     "test-github-provider-projection.sh", "test-gitlab-tagging.sh", "test-github-tagging.sh", "test-publish-gitlab-release.sh",
@@ -62,6 +64,15 @@ if "actions/setup-python@" in rest:
     raise SystemExit("only the Windows verification job may use actions/setup-python")
 if windows_block.count("actions/setup-python@") != 1:
     raise SystemExit("Windows verification must use exactly one pinned setup-python action")
+governance_end = text.index("\n  python-quality:", governance_start)
+governance_block = text[governance_start:governance_end]
+tag_check = '"$python" scripts/check_release_metadata.py --tag "$GITHUB_REF_NAME"'
+branch_check = '"$python" scripts/check_release_metadata.py --prepare-release'
+for token in ('if [[ "$GITHUB_REF_TYPE" == tag ]]; then', tag_check, "else", branch_check):
+    if token not in governance_block:
+        raise SystemExit(f"governance ref dispatch must contain {token!r}")
+if governance_block.index(tag_check) > governance_block.index(branch_check):
+    raise SystemExit("governance ref dispatch must select tag validation before branch fallback")
 if "secrets:" in windows_block or "permissions:" in windows_block:
     raise SystemExit("Windows verification must inherit the read-only, secret-free workflow contract")
 for retired in (
