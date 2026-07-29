@@ -266,19 +266,23 @@ paths from the status payload, or upstream error payloads.
 A listener released before protocol-v2 handoff cannot perform an atomic socket
 transfer. Source-side installation therefore refuses replacement by default.
 Only an explicitly authorized install with `--allow-legacy-bootstrap` may use
-the compatibility path. It first verifies the installed manifest and exactly
-one listener, then requires that PID to remain at zero active Responses for the
-bounded quiet window before committing the admitted release transaction.
-Activity, health loss, timeout, or PID change refuses the mutation. Once the
-protocol-v2 successor proves its released aggregate identity, future payload
-changes use source-side transactional handoff and installed-control operations
-remain same-payload reloads.
+the compatibility path. It verifies the exact supported historical manifest,
+derives the old entrypoint from that inventory, and binds exactly one listener
+PID to that path. After the bounded zero-active quiet window, the transaction
+snapshots old owned bytes, installs the candidate, terminates only the bound
+process, replaces native supervision, and finalizes only after exact successor
+identity proof. Activity, health loss, timeout, or PID change refuses mutation.
+After old-process exit, any service/startup failure restores the old owned bytes,
+old supervision entrypoint, and an accepting historical listener before the
+operation reports rollback. Future payload changes then use
+protocol-v2 handoff; installed control remains same-payload only.
 
 If an urgent, separately authorized interruption is unavoidable,
 `--force-legacy-bootstrap` may be combined with `--allow-legacy-bootstrap` on
 the source-side installer. It still requires manifest integrity and exactly one
-verified legacy listener. The flag is rejected without the allow flag, is not
-available to installed-control `reload`, and is never a normal operating mode.
+verified legacy listener; it skips only the quiet wait. The flag is rejected
+without the allow flag, is not available to installed-control `reload`, and is
+never a normal operating mode.
 
 ### Log retention and diagnostic safety
 

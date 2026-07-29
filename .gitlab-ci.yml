@@ -92,7 +92,7 @@ verify-python-quality:
   before_script:
     - apt-get update -qq
     - apt-get install -y --no-install-recommends git openssh-client
-    - python -m pip install --disable-pip-version-check --no-cache-dir ruff==0.16.0 ty==0.0.56 coverage==7.13.5
+    - python -m pip install --disable-pip-version-check --no-cache-dir ruff==0.16.0 ty==0.0.64 coverage==7.13.5
   script:
     - PYTHON=python RUFF=ruff TY=ty sh scripts/run-python-quality.sh
 

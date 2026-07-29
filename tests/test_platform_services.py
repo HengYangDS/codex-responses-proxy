@@ -277,6 +277,16 @@ class TestProcessIdentity(unittest.TestCase):
             ),
         ):
             self.assertEqual(process.verified_proxy_listener_pids(ctx), [8])
+        legacy = "/home/tester/.codex/dmx-proxy/proxy/dmx_responses_proxy.py"
+        with (
+            mock.patch.object(process, "listener_pids", return_value=[7, 8]),
+            mock.patch.object(
+                process,
+                "process_command",
+                side_effect=[f'python "{legacy}"', f'python "{script}"'],
+            ),
+        ):
+            self.assertEqual(process.verified_listener_pids(ctx.port, legacy), [7])
         with (
             mock.patch.object(process.os, "name", "nt"),
             mock.patch.object(process.ctypes, "windll", None, create=True),

@@ -13,6 +13,7 @@ import re
 import stat
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
@@ -80,6 +81,15 @@ _OWNED_PAYLOAD_METADATA = (
 _OWNED_PAYLOAD_FILES = (*RUNTIME_PAYLOAD_FILES, *_OWNED_PAYLOAD_METADATA)
 
 
+@dataclass(frozen=True)
+class HistoricalProjection:
+    """One exact, digest-verified historical installed projection."""
+
+    release: str
+    files: frozenset[str]
+    entrypoint: str
+
+
 def payload_manifest_path(ctx: installation.InstallContext) -> Path:
     """Return the installed runtime payload manifest path."""
     return Path(ctx.install_dir, PAYLOAD_MANIFEST_FILENAME)
@@ -113,7 +123,7 @@ def purge_installed_projection(ctx: installation.InstallContext) -> tuple[str, .
             raise errors.InstallError(f"installed payload integrity check failed: {detail}")
         owned = set(_OWNED_PAYLOAD_FILES)
     else:
-        owned = set(_manifest_owned_files(install)) | {PAYLOAD_MANIFEST_FILENAME}
+        owned = set(verify_historical_projection(ctx).files) | {PAYLOAD_MANIFEST_FILENAME}
     for relative in owned:
         _regular_file(install, relative, "installed payload purge")
     for relative in sorted(owned, key=lambda value: len(PurePosixPath(value).parts), reverse=True):
@@ -297,8 +307,25 @@ def _regular_file(root: Path, relative: str, label: str) -> Path:
     return path
 
 
-def _manifest_owned_files(install: Path) -> dict[str, str]:
-    """Verify a legacy schema-1/2 manifest and return its exact owned files."""
+def verify_historical_projection(ctx: installation.InstallContext) -> HistoricalProjection:
+    """Verify one supported historical manifest, inventory, and entrypoint."""
+
+    manifest, files = _historical_manifest_files(Path(ctx.install_dir))
+    entrypoint = next(
+        (relative for relative in ("proxy/dmx_responses_proxy.py",) if relative in files),
+        "",
+    )
+    if not entrypoint:
+        raise errors.InstallError("retired installed payload entrypoint is unsupported")
+    return HistoricalProjection(
+        release=manifest["release"],
+        files=frozenset(files),
+        entrypoint=str(_payload_path(Path(ctx.install_dir), entrypoint)),
+    )
+
+
+def _historical_manifest_files(install: Path) -> tuple[dict[str, Any], dict[str, str]]:
+    """Verify historical manifest bytes and return the parsed manifest and files."""
 
     manifest_path = install / PAYLOAD_MANIFEST_FILENAME
     if not manifest_path.exists():
@@ -346,7 +373,7 @@ def _manifest_owned_files(install: Path) -> dict[str, str]:
         raise errors.InstallError("retired installed payload VERSION is unreadable") from exc
     if version != f"{release}\n":
         raise errors.InstallError("retired installed payload VERSION does not match manifest")
-    return files
+    return manifest, files
 
 
 def _remove_empty_owned_directories(install: Path, owned: set[str]) -> None:

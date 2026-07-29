@@ -57,7 +57,10 @@ done
 Use `control.py status --json` for read-only runtime evidence. A protocol-v2
 reload is transactional but remains a lifecycle mutation and must be
 communicated before it is performed. A legacy first migration may interrupt
-traffic and requires its separate authorization.
+traffic and requires its separate authorization. It binds a supported
+historical manifest to its exact retired entrypoint and listener PID, then
+replaces native supervision before successor proof; force skips only the quiet
+wait, never integrity or identity checks.
 
 Released-source admission requires a clean checkout before live publication
 verification, then again on entry and before minting. The final admission

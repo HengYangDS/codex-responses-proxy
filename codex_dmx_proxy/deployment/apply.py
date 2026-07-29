@@ -12,6 +12,8 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from dataclasses import replace
 from typing import Any, Protocol
 
 from codex_dmx_proxy.deployment import handoff
@@ -26,14 +28,22 @@ RuntimeReader = Callable[[installation.InstallContext], dict[str, object] | None
 
 
 class ServiceAdapter(Protocol):
-    """Minimal service-registration surface required by fresh installation."""
+    """Native supervision surface required by installation and migration."""
 
     def install(self, ctx: installation.InstallContext) -> None:
-        """Register and start the platform watchdog service."""
+        """Register or replace and start the platform watchdog service."""
 
 
 class UnknownDeploymentOutcome(errors.InstallError):
     """Report a committed handoff whose final live outcome cannot be proved."""
+
+
+@dataclass(frozen=True)
+class LegacyListener:
+    """Historical projection and the exact listener process serving it."""
+
+    projection: projection.HistoricalProjection
+    process: process.OwnedProcess
 
 
 def install(
@@ -49,7 +59,7 @@ def install(
     """Apply one admitted release through fresh, handoff, or legacy lifecycle."""
 
     current = runtime_reader(ctx)
-    if current is None and not process.verified_proxy_listener_pids(ctx):
+    if current is None and not process.listener_pids(ctx.port):
         return _fresh_install(
             ctx,
             transaction,
@@ -73,6 +83,7 @@ def install(
     return _legacy_upgrade(
         ctx,
         transaction,
+        adapter=adapter,
         runtime_reader=runtime_reader,
         timeout_seconds=timeout_seconds,
         force=force_legacy_bootstrap,
@@ -134,32 +145,56 @@ def _legacy_upgrade(
     ctx: installation.InstallContext,
     transaction: transaction.PayloadTransaction,
     *,
+    adapter: ServiceAdapter,
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
     force: bool,
 ) -> dict[str, object]:
-    old_pid = prove_legacy_quiet_window(
+    old_listener = prove_legacy_quiet_window(
         ctx,
         runtime_reader=runtime_reader,
         timeout_seconds=timeout_seconds,
         force=force,
     )
     transaction.commit_projection()
+    old_terminated = False
     try:
-        if not process.terminate_pid(old_pid, expected_path=ctx.proxy_script):
+        if not process.terminate_pid(
+            old_listener.process.pid, expected_path=old_listener.process.script
+        ):
             raise errors.InstallError("verified legacy listener did not terminate")
+        old_terminated = True
+        adapter.install(ctx)
         runtime = wait_for_serving_runtime(
             ctx,
             transaction.expected,
             runtime_reader=runtime_reader,
             timeout_seconds=timeout_seconds,
-            old_pid=old_pid,
+            old_pid=old_listener.process.pid,
         )
-    except BaseException:
-        transaction.rollback()
+    except BaseException as exc:
+        try:
+            transaction.rollback()
+            if old_terminated:
+                legacy_ctx = replace(ctx, proxy_script=old_listener.projection.entrypoint)
+                adapter.install(legacy_ctx)
+                wait_for_legacy_runtime(
+                    legacy_ctx,
+                    release=old_listener.projection.release,
+                    runtime_reader=runtime_reader,
+                    timeout_seconds=timeout_seconds,
+                )
+        except BaseException as rollback_exc:
+            raise errors.InstallError(
+                f"legacy bootstrap failed and runtime rollback failed: {rollback_exc}"
+            ) from exc
         raise
     transaction.finalize(runtime)
-    return {"mode": "legacy-bootstrap", "runtime": runtime, "old_pid": old_pid}
+    return {
+        "mode": "legacy-bootstrap",
+        "runtime": runtime,
+        "old_pid": old_listener.process.pid,
+    }
 
 
 def request_handoff(
@@ -211,24 +246,26 @@ def prove_legacy_quiet_window(
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
     force: bool = False,
-) -> int:
-    """Prove one verified legacy listener is idle, unless interruption is authorized."""
+) -> LegacyListener:
+    """Bind verified historical bytes to one listener and prove it is idle."""
 
-    ok, detail = projection.verify_payload_manifest(ctx)
-    if not ok:
-        raise errors.InstallError(f"payload integrity check failed: {detail}")
-    listeners = process.verified_proxy_listener_pids(ctx)
+    try:
+        historical = projection.verify_historical_projection(ctx)
+    except errors.InstallError as exc:
+        raise errors.InstallError(f"payload integrity check failed: {exc}") from exc
+    legacy_script = historical.entrypoint
+    listeners = process.verified_listener_pids(ctx.port, legacy_script)
     if len(listeners) != 1:
         raise errors.InstallError(
             f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
         )
-    old_pid = listeners[0]
+    listener = LegacyListener(historical, process.OwnedProcess(listeners[0], legacy_script))
     if force:
-        return old_pid
+        return listener
     deadline = time.monotonic() + timeout_seconds
     quiet_started: float | None = None
     while time.monotonic() < deadline:
-        if process.verified_proxy_listener_pids(ctx) != [old_pid]:
+        if process.verified_listener_pids(ctx.port, legacy_script) != [listener.process.pid]:
             raise errors.InstallError("verified legacy listener changed during quiet-window proof")
         runtime = runtime_reader(ctx)
         active = runtime.get("active_responses") if isinstance(runtime, dict) else None
@@ -237,7 +274,7 @@ def prove_legacy_quiet_window(
             if quiet_started is None:
                 quiet_started = now
             elif now - quiet_started >= QUIET_SECONDS:
-                return old_pid
+                return listener
         else:
             quiet_started = None
         time.sleep(0.1)
@@ -273,6 +310,34 @@ def wait_for_serving_runtime(
                 return runtime
         time.sleep(0.1)
     raise errors.InstallError("released successor did not prove SERVING identity")
+
+
+def wait_for_legacy_runtime(
+    ctx: installation.InstallContext,
+    *,
+    release: str,
+    runtime_reader: RuntimeReader,
+    timeout_seconds: float,
+) -> dict[str, object]:
+    """Prove rollback restored one accepting historical listener."""
+
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        listeners = process.verified_listener_pids(ctx.port, ctx.proxy_script)
+        runtime = runtime_reader(ctx)
+        if isinstance(runtime, dict):
+            pid = runtime.get("pid")
+            if (
+                isinstance(pid, int)
+                and not isinstance(pid, bool)
+                and pid > 0
+                and listeners == [pid]
+                and runtime.get("release") == release
+                and runtime.get("accepting") is True
+            ):
+                return runtime
+        time.sleep(0.1)
+    raise errors.InstallError("historical listener rollback did not prove SERVING identity")
 
 
 def _runtime_matches(runtime: Mapping[str, object], expected: Mapping[str, object]) -> bool:

@@ -22,6 +22,7 @@ from codex_dmx_proxy.release import projection
 from codex_dmx_proxy.release import transaction
 import install
 from tests.support.repository_fixtures import install_context
+from tests.support.repository_fixtures import write_retired_projection
 
 
 class FakeTransaction:
@@ -137,11 +138,22 @@ class TestReleasedDeployment(unittest.TestCase):
             "draining": False,
         }
 
+    @staticmethod
+    def _legacy_listener() -> apply.LegacyListener:
+        script = "/installed/proxy/dmx_responses_proxy.py"
+        projection_state = projection.HistoricalProjection(
+            "1.0.26", frozenset({"proxy/dmx_responses_proxy.py"}), script
+        )
+        return apply.LegacyListener(projection_state, process.OwnedProcess(111, script))
+
     def test_fresh_install_commits_once_then_finalizes_only_after_service_proof(self) -> None:
         transaction = FakeTransaction()
         runtime = self._runtime(pid=123)
         adapter = FakeServiceAdapter()
-        with mock.patch.object(apply, "wait_for_serving_runtime", return_value=runtime):
+        with (
+            mock.patch.object(process, "listener_pids", return_value=[]),
+            mock.patch.object(apply, "wait_for_serving_runtime", return_value=runtime),
+        ):
             result = self._install(transaction, adapter=adapter)
         self.assertEqual(transaction.events, ["commit", ("finalize", runtime)])
         adapter.install_mock.assert_called_once_with(self.ctx)
@@ -180,14 +192,24 @@ class TestReleasedDeployment(unittest.TestCase):
         transaction = FakeTransaction()
         current = self._legacy_runtime()
         successor = self._runtime()
+        adapter = FakeServiceAdapter()
         with (
-            mock.patch.object(apply, "prove_legacy_quiet_window", return_value=111) as quiet,
+            mock.patch.object(
+                apply,
+                "prove_legacy_quiet_window",
+                return_value=self._legacy_listener(),
+            ) as quiet,
             mock.patch.object(apply, "wait_for_serving_runtime", return_value=successor),
             mock.patch.object(process, "terminate_pid", return_value=True) as terminate,
         ):
-            result = self._install(transaction, current, allow_legacy_bootstrap=True)
+            result = self._install(
+                transaction, current, adapter=adapter, allow_legacy_bootstrap=True
+            )
         quiet.assert_called_once()
-        terminate.assert_called_once_with(111, expected_path=self.ctx.proxy_script)
+        terminate.assert_called_once_with(
+            111, expected_path="/installed/proxy/dmx_responses_proxy.py"
+        )
+        adapter.install_mock.assert_called_once_with(self.ctx)
         self.assertEqual(transaction.events, ["commit", ("finalize", successor)])
         self.assertEqual(result["mode"], "legacy-bootstrap")
 
@@ -215,7 +237,7 @@ class TestReleasedDeployment(unittest.TestCase):
                 payload = FakeTransaction()
                 adapter = FakeServiceAdapter(failure=failure if service_fails == 1 else None)
                 with (
-                    mock.patch.object(process, "verified_proxy_listener_pids", return_value=[]),
+                    mock.patch.object(process, "listener_pids", return_value=[]),
                     mock.patch.object(
                         apply,
                         "wait_for_serving_runtime",
@@ -251,18 +273,133 @@ class TestReleasedDeployment(unittest.TestCase):
         for terminated, failure in failures:
             with self.subTest(failure=failure):
                 payload = FakeTransaction()
+                adapter = FakeServiceAdapter()
+                restored = {"pid": 333, "release": "1.0.26", "accepting": True}
                 with (
-                    mock.patch.object(apply, "prove_legacy_quiet_window", return_value=111),
+                    mock.patch.object(
+                        apply,
+                        "prove_legacy_quiet_window",
+                        return_value=self._legacy_listener(),
+                    ),
                     mock.patch.object(process, "terminate_pid", return_value=terminated),
                     mock.patch.object(
                         apply,
                         "wait_for_serving_runtime",
                         side_effect=failure if terminated else None,
                     ),
+                    mock.patch.object(
+                        apply,
+                        "wait_for_legacy_runtime",
+                        return_value=restored,
+                    ) as rollback_runtime,
                     self.assertRaisesRegex(type(failure), str(failure)),
                 ):
-                    self._install(payload, self._legacy_runtime(), allow_legacy_bootstrap=True)
+                    self._install(
+                        payload,
+                        self._legacy_runtime(),
+                        adapter=adapter,
+                        allow_legacy_bootstrap=True,
+                    )
                 self.assertEqual(payload.events, ["commit", "rollback"])
+                self.assertEqual(adapter.install_mock.call_count, 2 * int(terminated))
+                self.assertEqual(rollback_runtime.call_count, int(terminated))
+
+    def test_legacy_upgrade_rolls_back_when_supervision_replacement_fails(self) -> None:
+        payload = FakeTransaction()
+        adapter = FakeServiceAdapter()
+        adapter.install_mock.side_effect = [RuntimeError("service replacement failed"), None]
+        with (
+            mock.patch.object(
+                apply,
+                "prove_legacy_quiet_window",
+                return_value=self._legacy_listener(),
+            ),
+            mock.patch.object(process, "terminate_pid", return_value=True),
+            mock.patch.object(apply, "wait_for_legacy_runtime"),
+            self.assertRaisesRegex(RuntimeError, "service replacement failed"),
+        ):
+            self._install(
+                payload,
+                self._legacy_runtime(),
+                adapter=adapter,
+                allow_legacy_bootstrap=True,
+            )
+        self.assertEqual(payload.events, ["commit", "rollback"])
+        self.assertEqual(adapter.install_mock.call_count, 2)
+
+    def test_legacy_upgrade_reports_failed_runtime_rollback(self) -> None:
+        payload = FakeTransaction()
+        adapter = FakeServiceAdapter()
+        with (
+            mock.patch.object(
+                apply,
+                "prove_legacy_quiet_window",
+                return_value=self._legacy_listener(),
+            ),
+            mock.patch.object(process, "terminate_pid", return_value=True),
+            mock.patch.object(
+                apply,
+                "wait_for_serving_runtime",
+                side_effect=errors.InstallError("successor timeout"),
+            ),
+            mock.patch.object(
+                apply,
+                "wait_for_legacy_runtime",
+                side_effect=errors.InstallError("rollback timeout"),
+            ),
+            self.assertRaisesRegex(
+                errors.InstallError, "runtime rollback failed: rollback timeout"
+            ),
+        ):
+            self._install(
+                payload,
+                self._legacy_runtime(),
+                adapter=adapter,
+                allow_legacy_bootstrap=True,
+            )
+        self.assertEqual(payload.events, ["commit", "rollback"])
+
+    def test_schema_one_bootstrap_binds_integrity_listener_and_termination_to_old_entrypoint(
+        self,
+    ) -> None:
+        write_retired_projection(self.ctx, version="1.0.26", schema=1)
+        legacy_script = str(Path(self.ctx.install_dir, "proxy", "dmx_responses_proxy.py"))
+        with (
+            mock.patch.object(process, "listener_pids", return_value=[111]),
+            mock.patch.object(
+                process,
+                "process_command",
+                return_value=f'{self.ctx.python} "{legacy_script}"',
+            ),
+        ):
+            listener = apply.prove_legacy_quiet_window(
+                self.ctx,
+                runtime_reader=lambda _ctx: {"active_responses": 0},
+                timeout_seconds=0,
+                force=True,
+            )
+        self.assertEqual(
+            listener,
+            apply.LegacyListener(
+                projection.HistoricalProjection(
+                    "1.0.26",
+                    frozenset(projection._RETIRED_RUNTIME_FILES[1]),
+                    legacy_script,
+                ),
+                process.OwnedProcess(111, legacy_script),
+            ),
+        )
+
+    def test_force_legacy_bootstrap_never_bypasses_historical_manifest_integrity(self) -> None:
+        write_retired_projection(self.ctx, version="1.0.26", schema=1)
+        Path(self.ctx.install_dir, "proxy", "dmx_responses_proxy.py").write_bytes(b"tampered")
+        with self.assertRaisesRegex(errors.InstallError, "integrity"):
+            apply.prove_legacy_quiet_window(
+                self.ctx,
+                runtime_reader=lambda _ctx: {"active_responses": 0},
+                timeout_seconds=0,
+                force=True,
+            )
 
     def test_request_handoff_accepts_direct_or_recovered_successor_runtime(self) -> None:
         current = self._protocol_v2_runtime()
@@ -319,7 +456,7 @@ class TestReleasedDeployment(unittest.TestCase):
             *,
             timeout: float = 1,
             force: bool = False,
-        ) -> int:
+        ) -> apply.LegacyListener:
             return apply.prove_legacy_quiet_window(
                 self.ctx,
                 runtime_reader=runtime_reader,
@@ -327,8 +464,17 @@ class TestReleasedDeployment(unittest.TestCase):
                 force=force,
             )
 
+        legacy_script = str(Path(self.ctx.install_dir, "proxy", "dmx_responses_proxy.py"))
+        verified_manifest = projection.HistoricalProjection(
+            "1.0.26", frozenset({"proxy/dmx_responses_proxy.py"}), legacy_script
+        )
+
         with (
-            mock.patch.object(projection, "verify_payload_manifest", return_value=(False, "bad")),
+            mock.patch.object(
+                projection,
+                "verify_historical_projection",
+                side_effect=errors.InstallError("bad"),
+            ),
             self.assertRaisesRegex(errors.InstallError, "integrity"),
         ):
             prove()
@@ -336,15 +482,19 @@ class TestReleasedDeployment(unittest.TestCase):
         for listeners in ([], [111, 222]):
             with (
                 self.subTest(listeners=listeners),
-                mock.patch.object(projection, "verify_payload_manifest", return_value=(True, "ok")),
-                mock.patch.object(process, "verified_proxy_listener_pids", return_value=listeners),
+                mock.patch.object(
+                    projection, "verify_historical_projection", return_value=verified_manifest
+                ),
+                mock.patch.object(process, "verified_listener_pids", return_value=listeners),
                 self.assertRaisesRegex(errors.InstallError, "exactly one"),
             ):
                 prove()
 
         with (
-            mock.patch.object(projection, "verify_payload_manifest", return_value=(True, "ok")),
-            mock.patch.object(process, "verified_proxy_listener_pids", return_value=[111]),
+            mock.patch.object(
+                projection, "verify_historical_projection", return_value=verified_manifest
+            ),
+            mock.patch.object(process, "verified_listener_pids", return_value=[111]),
         ):
             self.assertEqual(
                 prove(
@@ -352,12 +502,14 @@ class TestReleasedDeployment(unittest.TestCase):
                     timeout=0,
                     force=True,
                 ),
-                111,
+                apply.LegacyListener(verified_manifest, process.OwnedProcess(111, legacy_script)),
             )
 
         with (
-            mock.patch.object(projection, "verify_payload_manifest", return_value=(True, "ok")),
-            mock.patch.object(process, "verified_proxy_listener_pids", side_effect=[[111], [222]]),
+            mock.patch.object(
+                projection, "verify_historical_projection", return_value=verified_manifest
+            ),
+            mock.patch.object(process, "verified_listener_pids", side_effect=[[111], [222]]),
             mock.patch.object(apply.time, "monotonic", side_effect=[0.0, 0.1]),
             self.assertRaisesRegex(errors.InstallError, "changed"),
         ):
@@ -370,8 +522,10 @@ class TestReleasedDeployment(unittest.TestCase):
         )
         clock = iter([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 6.0, 6.1, 6.2])
         with (
-            mock.patch.object(projection, "verify_payload_manifest", return_value=(True, "ok")),
-            mock.patch.object(process, "verified_proxy_listener_pids", return_value=[111]),
+            mock.patch.object(
+                projection, "verify_historical_projection", return_value=verified_manifest
+            ),
+            mock.patch.object(process, "verified_listener_pids", return_value=[111]),
             mock.patch.object(
                 apply.time,
                 "monotonic",
@@ -384,12 +538,14 @@ class TestReleasedDeployment(unittest.TestCase):
                     lambda _ctx: readings.pop(0),
                     timeout=10,
                 ),
-                111,
+                apply.LegacyListener(verified_manifest, process.OwnedProcess(111, legacy_script)),
             )
 
         with (
-            mock.patch.object(projection, "verify_payload_manifest", return_value=(True, "ok")),
-            mock.patch.object(process, "verified_proxy_listener_pids", return_value=[111]),
+            mock.patch.object(
+                projection, "verify_historical_projection", return_value=verified_manifest
+            ),
+            mock.patch.object(process, "verified_listener_pids", return_value=[111]),
             mock.patch.object(apply.time, "monotonic", side_effect=[0.0, 0.1, 0.2]),
             mock.patch.object(apply.time, "sleep"),
             self.assertRaisesRegex(errors.InstallError, "did not remain idle"),
@@ -455,6 +611,52 @@ class TestReleasedDeployment(unittest.TestCase):
             apply.wait_for_serving_runtime(
                 self.ctx,
                 expected,
+                runtime_reader=lambda _ctx: None,
+                timeout_seconds=0.15,
+            )
+
+    def test_wait_for_legacy_runtime_requires_exact_accepting_process_identity(self) -> None:
+        matching: dict[str, object] = {
+            "pid": 222,
+            "release": "1.0.26",
+            "accepting": True,
+        }
+        snapshots: list[dict[str, object] | None] = [
+            None,
+            {**matching, "pid": True},
+            {**matching, "pid": 0},
+            {**matching, "pid": 999},
+            {**matching, "release": "wrong"},
+            {**matching, "accepting": False},
+            matching,
+        ]
+        with (
+            mock.patch.object(
+                process,
+                "verified_listener_pids",
+                side_effect=[[], [True], [0], [222], [222], [222], [222]],
+            ),
+            mock.patch.object(apply.time, "monotonic", side_effect=map(float, range(8))),
+            mock.patch.object(apply.time, "sleep"),
+        ):
+            self.assertEqual(
+                apply.wait_for_legacy_runtime(
+                    self.ctx,
+                    release="1.0.26",
+                    runtime_reader=lambda _ctx: snapshots.pop(0),
+                    timeout_seconds=10,
+                ),
+                matching,
+            )
+        with (
+            mock.patch.object(process, "verified_listener_pids", return_value=[]),
+            mock.patch.object(apply.time, "monotonic", side_effect=[0.0, 0.1, 0.2]),
+            mock.patch.object(apply.time, "sleep"),
+            self.assertRaisesRegex(errors.InstallError, "historical listener rollback"),
+        ):
+            apply.wait_for_legacy_runtime(
+                self.ctx,
+                release="1.0.26",
                 runtime_reader=lambda _ctx: None,
                 timeout_seconds=0.15,
             )
