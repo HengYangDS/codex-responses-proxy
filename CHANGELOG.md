@@ -7,6 +7,14 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.34] - 2026-07-29
+
+### Fixed
+
+- Align real handoff successor observation with the runtime contract: an exact
+  positive-PID successor remains valid after it advances from the transient
+  `serving` state to the stable `finalized` state.
+
 ## [1.0.33] - 2026-07-29
 
 ### Fixed
