@@ -6,6 +6,8 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+## [1.0.29] - 2026-07-29
+
 ### Changed
 
 - Close the released-source admission race by checking clean state before live
