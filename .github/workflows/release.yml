@@ -29,6 +29,18 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref_name }}
           fetch-depth: 0
+      - name: Fetch the exact annotated tag object
+        env:
+          SELECTED_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch --force --no-tags origin "+refs/tags/$SELECTED_TAG:refs/tags/$SELECTED_TAG"
+          test "$(git cat-file -t "refs/tags/$SELECTED_TAG")" = tag
+          target=$(git rev-parse "refs/tags/$SELECTED_TAG^{commit}")
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            test "$target" = "$GITHUB_SHA"
+          fi
+          git checkout --detach "$target"
       - name: Verify provider-native release tag
         env:
           SELECTED_TAG: ${{ inputs.tag || github.ref_name }}
