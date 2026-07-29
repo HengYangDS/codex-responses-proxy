@@ -238,14 +238,13 @@ def terminate_process(process: subprocess.Popen, timeout: float = 5) -> None:
         process.wait(timeout=timeout)
 
 
-def terminate_pid_best_effort(pid: int | None) -> None:
-    """Best-effort cleanup for an owned child that must name the proxy script."""
-    if pid is None:
+def terminate_owned_proxy(pid: int | None, proxy_script: str) -> None:
+    """Terminate one owned child by its exact temporary proxy path."""
+    if pid is None or not process.process_command(pid):
         return
-    try:
-        process.terminate_pid(pid, expected_path=str(entrypoint_module.__file__))
-    except Exception:
-        pass
+    if not process.terminate_pid(pid, expected_path=proxy_script):
+        command = process.process_command(pid)
+        raise RuntimeError(f"owned proxy child {pid} did not terminate: {command!r}")
 
 
 def pid_alive(pid: int | None) -> bool:
