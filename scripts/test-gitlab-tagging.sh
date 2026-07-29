@@ -77,7 +77,7 @@ git -C "$source" remote add origin git@192.168.64.101:1122/test/codex-dmx-proxy.
   sh "$script" v1.0.0
 ) >/dev/null
 
-grep -F -- 'check_release_metadata.py --prepare-release' "$metadata_log" >/dev/null || {
+grep -F -- 'check_release_metadata.py --provider gitlab --prepare-release' "$metadata_log" >/dev/null || {
   echo 'GitLab tag creation bypassed the pending-release metadata preflight' >&2
   exit 1
 }

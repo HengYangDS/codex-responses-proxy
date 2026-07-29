@@ -47,13 +47,23 @@ Use focused Conventional Commits (`fix:`, `feat:`, `docs:`, `ci:`). `VERSION`
 is the release source of truth. Keep `CHANGELOG.md` in this order:
 
 1. `## [Unreleased]` immediately below the introduction;
-2. released SemVer headings in exact descending tag order, each dated with its
-   matching Git tag creation date;
-3. no release claims without executable evidence.
+2. the GitLab-owned canonical release chronology in descending SemVer order;
+3. every provider-native tag represented exactly once; canonical heading dates
+   follow GitLab tag creation, while independently signed GitHub tag dates may
+   differ;
+4. no release claims without executable evidence.
 
-`python scripts/check_release_metadata.py --prepare-release` enforces this
-chronology before the tag exists; tagged source uses `--tag v<VERSION>`. Do not
-write an inferred or planned release into `CHANGELOG.md`.
+GitLab is the canonical strict plane: validation requires complete history,
+every non-pending release heading must have a local tag, and its heading date
+must equal that GitLab tag's creation date. GitHub may retain canonical or
+legacy headings absent from its own tag namespace, but every GitHub-native tag
+still requires a heading; its independently signed native date does not rewrite
+GitLab chronology.
+`python scripts/check_release_metadata.py --provider gitlab --prepare-release`
+enforces the GitLab candidate. GitHub main uses ordinary `--provider github`
+validation so a dated candidate remains valid after its preparation day; exact
+tag verification adds `--tag v<VERSION>`. Do not write an inferred or planned
+release into `CHANGELOG.md`.
 
 GitLab **Project Name** is the human-facing `Codex DMX Proxy`; its stable clone
 **Path** remains `codex-dmx-proxy`. Never change the Path as a cosmetic rename.
@@ -74,4 +84,8 @@ Create a GitLab release tag only through `sh scripts/tag-gitlab-release.sh
 v<VERSION>`. It pins the GitLab identity and its tracked signing key explicitly,
 so a GitHub conditional Git identity cannot sign a GitLab tag by mistake. After
 GitLab tag publication and its CI evidence, run `sh scripts/tag-github-release.sh
-v<VERSION>` to create the separate GitHub provenance tag.
+v<VERSION>` from the clean canonical GitLab `main`. The command first proves
+that the exact signed GitLab tag binds `HEAD`, then fetches the complete GitHub
+tag namespace into an isolated GitHub checkout, creates and validates the
+provider-native tag at the equal-tree GitHub `main` tip, and pushes only that
+single tag.

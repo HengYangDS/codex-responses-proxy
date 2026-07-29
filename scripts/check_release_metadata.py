@@ -16,6 +16,7 @@ SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 CHANGELOG_HEADING = re.compile(
     r"^## \[(?P<version>Unreleased|(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))\](?: - (?P<date>\d{4}-\d{2}-\d{2}))?$"
 )
+PROVIDERS = frozenset({"gitlab", "github"})
 
 
 def read_version() -> str:
@@ -50,7 +51,7 @@ def _version_key(version: str) -> tuple[int, int, int]:
 
 
 def known_release_versions() -> list[str]:
-    """Return locally known final-release tags in descending SemVer order."""
+    """Return current provider tags in descending SemVer order."""
 
     return [
         tag.removeprefix("v")
@@ -85,28 +86,48 @@ def _git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
 
 
+def check_provider(provider: str) -> None:
+    """Reject programmatic callers that bypass argparse's provider choices."""
+
+    if provider not in PROVIDERS:
+        raise ValueError(f"unsupported release provider: {provider!r}")
+
+
+def tag_creation_date(version: str) -> str:
+    """Return the provider-native annotated-tag creation date."""
+
+    return _git("for-each-ref", f"refs/tags/v{version}", "--format=%(creatordate:short)")
+
+
 def check_changelog_provenance(
     releases: list[tuple[str, str]],
     *,
-    allow_unpublished_history: bool = False,
+    provider: str = "gitlab",
     pending_version: str | None = None,
 ) -> None:
-    """Require exact, dated Changelog coverage for every locally known release tag."""
+    """Validate the current provider tags against the cross-provider Changelog.
 
+    GitLab owns the canonical Changelog chronology: it requires complete history,
+    one tag per non-pending heading, and exact canonical dates. GitHub may retain
+    canonical headings absent from its native tag namespace. Its native tags must
+    still have headings, while their independently signed dates may differ.
+    """
+
+    check_provider(provider)
     actual_versions = [version for version, _ in releases]
     expected_versions = known_release_versions()
-    if not expected_versions:
-        if allow_unpublished_history:
-            return
-        raise ValueError("cannot find a release SemVer tag")
-    shallow = _git("rev-parse", "--is-shallow-repository") == "true"
-    missing = [
-        version
-        for version in actual_versions
-        if version not in expected_versions and version != pending_version
-    ]
-    if missing and not shallow and not allow_unpublished_history:
-        raise ValueError("release heading has no matching Git tag: " + ", ".join(missing))
+    if provider == "gitlab":
+        if _git("rev-parse", "--is-shallow-repository") == "true":
+            raise ValueError("GitLab chronology requires a complete, non-shallow repository")
+        if not expected_versions:
+            raise ValueError("cannot find a gitlab release SemVer tag")
+        missing = [
+            version
+            for version in actual_versions
+            if version not in expected_versions and version != pending_version
+        ]
+        if missing:
+            raise ValueError("release heading has no matching Git tag: " + ", ".join(missing))
     if len(actual_versions) != len(set(actual_versions)):
         raise ValueError("released CHANGELOG headings must not duplicate a version")
     missing_headings = [version for version in expected_versions if version not in actual_versions]
@@ -115,21 +136,23 @@ def check_changelog_provenance(
             "locally available release tags must appear once in CHANGELOG.md: "
             + ", ".join(missing_headings)
         )
-    for version, release_date in releases:
-        if version not in expected_versions:
-            continue
-        tag_date = _git("for-each-ref", f"refs/tags/v{version}", "--format=%(creatordate:short)")
-        if release_date != tag_date:
-            raise ValueError(
-                f"CHANGELOG release {version} is dated {release_date}, but tag v{version} was created on {tag_date}"
-            )
+    if provider == "gitlab":
+        for version, release_date in releases:
+            if version not in expected_versions:
+                continue
+            tag_date = tag_creation_date(version)
+            if release_date != tag_date:
+                raise ValueError(
+                    f"CHANGELOG release {version} is dated {release_date}, "
+                    f"but tag v{version} was created on {tag_date}"
+                )
 
 
 def check_active_release_train(
     version: str,
     releases: list[tuple[str, str]],
     *,
-    allow_unpublished_history: bool = False,
+    provider: str = "gitlab",
     pending_release: bool = False,
 ) -> None:
     """Accept an untagged next version without treating it as published.
@@ -138,6 +161,7 @@ def check_active_release_train(
     The active ``VERSION`` names that next release train, while the dated
     Changelog headings remain an immutable record of tags that already exist.
     """
+    check_provider(provider)
     known = known_release_versions()
     published = {released for released, _ in releases}
     if version in known:
@@ -145,8 +169,14 @@ def check_active_release_train(
             raise ValueError(f"CHANGELOG.md lacks dated release heading ## [{version}]")
         return
     if version in published:
-        if allow_unpublished_history or pending_release:
+        if pending_release:
             return
+        if provider == "github":
+            latest_heading = releases[0][0] if releases else ""
+            if version == latest_heading and (
+                not known or _version_key(version) > max(map(_version_key, known))
+            ):
+                return
         raise ValueError(f"CHANGELOG release {version} exists before its Git tag")
     comparison_set = known + [released for released, _ in releases]
     if not comparison_set:
@@ -154,6 +184,40 @@ def check_active_release_train(
     if _version_key(version) <= max(map(_version_key, comparison_set)):
         raise ValueError(
             f"untagged VERSION {version} must be newer than the latest released version"
+        )
+
+
+def check_release_tag(tag: str, version: str) -> None:
+    """Bind an exact annotated tag directly to the ``HEAD`` commit."""
+
+    expected = f"v{version}"
+    if tag != expected:
+        raise ValueError(f"tag {tag!r} does not match expected {expected!r}")
+    reference = f"refs/tags/{tag}"
+    try:
+        object_type = _git("cat-file", "-t", reference)
+    except subprocess.CalledProcessError as exc:
+        raise ValueError(f"release tag {tag!r} does not exist") from exc
+    if object_type != "tag":
+        raise ValueError(f"release tag {tag!r} must be an annotated tag object")
+    headers = _git("cat-file", "tag", reference).split("\n\n", 1)[0].splitlines()
+    embedded_name = next(
+        (line.removeprefix("tag ") for line in headers if line.startswith("tag ")), ""
+    )
+    if embedded_name != tag:
+        raise ValueError(f"release tag {tag!r} embeds tag name {embedded_name!r}, expected {tag!r}")
+    target_type = next(
+        (line.removeprefix("type ") for line in headers if line.startswith("type ")), ""
+    )
+    if target_type != "commit":
+        raise ValueError(f"release tag {tag!r} must directly name a commit")
+    tag_commit = next(
+        (line.removeprefix("object ") for line in headers if line.startswith("object ")), ""
+    )
+    head_commit = _git("rev-parse", "HEAD^{commit}")
+    if tag_commit != head_commit:
+        raise ValueError(
+            f"release tag {tag!r} directly names commit {tag_commit}, not HEAD commit {head_commit}"
         )
 
 
@@ -253,9 +317,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tag", help="require an exact v<version> tag")
     parser.add_argument(
-        "--allow-unpublished-history",
-        action="store_true",
-        help="allow a provider bootstrap branch with no locally native historical tags",
+        "--provider",
+        choices=("gitlab", "github"),
+        default="gitlab",
+        help="select the provider-native tag plane used for chronology validation",
     )
     parser.add_argument(
         "--prepare-release",
@@ -266,12 +331,14 @@ def main() -> None:
     args = parser.parse_args()
     if args.prepare_release and args.tag:
         raise SystemExit("--prepare-release cannot be combined with --tag")
+    if args.prepare_release and args.provider != "gitlab":
+        raise SystemExit("--prepare-release is reserved for the canonical gitlab release plane")
     version = read_version()
     check_python_metadata()
     releases = changelog_releases(args.changelog)
     check_changelog_provenance(
         releases,
-        allow_unpublished_history=args.allow_unpublished_history,
+        provider=args.provider,
         pending_version=version if args.prepare_release else None,
     )
     if args.prepare_release:
@@ -296,7 +363,7 @@ def main() -> None:
         check_active_release_train(
             version,
             releases,
-            allow_unpublished_history=args.allow_unpublished_history,
+            provider=args.provider,
             pending_release=args.prepare_release,
         )
     except ValueError as exc:
@@ -309,12 +376,10 @@ def main() -> None:
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     if args.tag:
-        expected = f"v{version}"
-        if args.tag != expected:
-            raise SystemExit(f"tag {args.tag!r} does not match expected {expected!r}")
-        subprocess.run(
-            ["git", "rev-parse", "--verify", f"refs/tags/{args.tag}"], cwd=ROOT, check=True
-        )
+        try:
+            check_release_tag(args.tag, version)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
         if version not in {released for released, _ in releases}:
             raise SystemExit(f"CHANGELOG.md lacks dated release heading ## [{version}]")
     print(f"release and governance metadata: {version} OK")

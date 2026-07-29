@@ -29,7 +29,7 @@ fi
 
 git ls-remote --exit-code --tags "$gitlab_remote" "refs/tags/$tag" >/dev/null 2>&1 && { echo "GitLab tag already exists: $tag" >&2; exit 1; }
 git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1 && { echo "local tag already exists: $tag" >&2; exit 1; }
-"$release_python" "$root/scripts/check_release_metadata.py" --prepare-release >/dev/null
+"$release_python" "$root/scripts/check_release_metadata.py" --provider gitlab --prepare-release >/dev/null
 git -c user.name="$gitlab_name" -c user.email="$gitlab_email" -c user.useConfigOnly=true \
   -c gpg.format=ssh -c gpg.ssh.program="$ssh_signing_program" -c user.signingkey="$signing_key" \
   tag -s -a "$tag" -m "Codex DMX Proxy $tag"

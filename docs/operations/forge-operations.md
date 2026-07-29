@@ -73,7 +73,12 @@ The GitLab tag pipeline and GitHub tag workflow independently verify the
 provider-specific tag signature and create a formal release record. Existing
 legacy tags are retained as historical evidence; no release claim for them is
 upgraded retroactively. New release tags must be signed under the active
-provider identity.
+provider identity. GitHub tag minting starts from a clean canonical GitLab
+`main` whose exact signed GitLab tag binds `HEAD`. It then fetches the complete
+remote GitHub tag namespace into an isolated checkout, requires the GitHub
+`main` tip to have the same tree, validates the new tag in the GitHub provider
+namespace, and pushes only that tag. It never imports or rewrites GitLab tag
+objects in GitHub.
 
 ## Provider identities
 

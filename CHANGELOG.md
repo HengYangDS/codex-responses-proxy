@@ -1,8 +1,9 @@
 # Changelog
 
 This project follows [Semantic Versioning](https://semver.org/). The changelog
-records released, user-relevant behavior only. `Unreleased` is reserved for
-work that has not yet been tagged.
+records released, user-relevant behavior across both Forge planes. `Unreleased`
+is reserved for work that has not yet been tagged. A provider may retain these
+shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 

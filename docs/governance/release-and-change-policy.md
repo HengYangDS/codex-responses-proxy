@@ -19,9 +19,16 @@ tagged as exact `v<VERSION>` on the same UTC date. A release candidate must
 satisfy all of the following:
 
 - `VERSION`, runtime version lookup, and the dated Changelog heading agree;
-- `CHANGELOG.md` starts with one `Unreleased` heading and released headings are
-  descending, date-correct, and in one-to-one correspondence with reachable
-  provider-native tags;
+- `CHANGELOG.md` starts with one `Unreleased` heading and keeps the shared
+  cross-provider chronology in descending order. GitLab's canonical plane
+  requires complete history, every non-pending release heading to have a
+  provider-native tag, and each heading date to match the GitLab tag. A GitHub
+  projection may retain canonical or legacy headings absent from its tag
+  namespace, but every GitHub-native tag still requires exactly one heading.
+  Its independently signed native tag date may differ and does not rewrite the
+  GitLab-owned chronology. Ordinary GitHub main validation checks this native
+  subset and rejects a stale active release train without invoking GitLab-only
+  release preparation;
 - repository metadata and quality pass, combined, statement-only, and
   branch-only coverage each reach at least 95%, and the complete platform matrix
   passes;
