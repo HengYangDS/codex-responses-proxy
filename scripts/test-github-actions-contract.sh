@@ -23,7 +23,7 @@ required = [
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97", "# v7.0.0",
     "shell: bash",
     'python=/opt/homebrew/bin/python3.14',
-    '"$python" scripts/check_release_metadata.py --allow-unpublished-history',
+    '"$python" scripts/check_release_metadata.py --prepare-release',
     "python-quality:", "scripts/run-python-quality.sh",
     "test-github-provider-projection.sh", "test-gitlab-tagging.sh", "test-github-tagging.sh", "test-publish-gitlab-release.sh",
 ]

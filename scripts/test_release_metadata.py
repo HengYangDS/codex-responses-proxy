@@ -200,11 +200,29 @@ def test_gitlab_ci_refreshes_tags_before_every_release_gate() -> None:
 
 
 def test_gitlab_release_metadata_gate_has_complete_history() -> None:
-    """Require full Git history for release metadata provenance checks."""
+    """Require complete history and explicit pending-release validation."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     block = ci_block(ci, "verify-release-metadata:", "\n\nverify-release-tag:")
     require('GIT_DEPTH: "0"' in block, "verify-release-metadata must fetch complete Git history")
+    require(
+        "python scripts/check_release_metadata.py --prepare-release" in block,
+        "mainline release metadata must validate the explicit pending release",
+    )
+
+
+def test_gitlab_tag_gates_require_exact_tag_validation() -> None:
+    """Keep tag verification strict after admitting main release candidates."""
+
+    ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    strict = 'python scripts/check_release_metadata.py --tag "$CI_COMMIT_TAG"'
+    for job, next_job in (
+        ("verify-release-tag:", "\n\nverify-python-quality:"),
+        ("publish-gitlab-release:", None),
+    ):
+        block = ci_block(ci, job, next_job)
+        require(strict in block, f"{job} must validate the exact provider tag")
+        require("--prepare-release" not in block, f"{job} must not accept a pending release")
 
 
 def test_gitlab_ci_uses_only_the_project_runner_tag() -> None:
@@ -283,6 +301,7 @@ def main() -> None:
     test_prune_tags_removes_deleted_remote_tag()
     test_gitlab_ci_refreshes_tags_before_every_release_gate()
     test_gitlab_release_metadata_gate_has_complete_history()
+    test_gitlab_tag_gates_require_exact_tag_validation()
     test_gitlab_ci_uses_only_the_project_runner_tag()
     test_gitlab_ci_runs_full_regression_matrix()
     test_python_quality_gate_is_cross_forge()
