@@ -7,6 +7,16 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.33] - 2026-07-29
+
+### Fixed
+
+- Move GitHub's dependency wait to a bounded read-only hosted gate so the
+  repository's sole trusted runner remains available for tag verification.
+- Keep Git tag proof authentication provider-neutral: isolated fetches now use
+  only the explicitly supplied remote transport instead of injecting `glab` as
+  an implicit credential helper.
+
 ## [1.0.32] - 2026-07-29
 
 ### Fixed

@@ -141,8 +141,8 @@ class GitPublicationContracts(unittest.TestCase):
         self.assertNotIn("GIT_DIR", environment)
         self.assertEqual(environment["GIT_TERMINAL_PROMPT"], "0")
 
-        with mock.patch.object(git.shutil, "which", return_value="/usr/bin/glab"):
-            self.assertIn("credential.helper", git._git_environment().values())
+        self.assertNotIn("GIT_CONFIG_COUNT", environment)
+        self.assertNotIn("credential.helper", environment.values())
 
         completed = SimpleNamespace(stdout=b"\xff")
         with (

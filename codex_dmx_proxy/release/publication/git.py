@@ -124,11 +124,6 @@ def _git_environment() -> dict[str, str]:
             "GIT_NO_REPLACE_OBJECTS": "1",
         }
     )
-    glab = shutil.which("glab")
-    if glab:
-        environment["GIT_CONFIG_COUNT"] = "1"
-        environment["GIT_CONFIG_KEY_0"] = "credential.helper"
-        environment["GIT_CONFIG_VALUE_0"] = f"!{Path(glab).resolve()} auth git-credential"
     return environment
 
 
