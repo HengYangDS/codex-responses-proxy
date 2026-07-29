@@ -19,6 +19,8 @@ branch=main
 github_remote=${DMX_GITHUB_REMOTE:-github}
 github_name=${DMX_GITHUB_AUTHOR_NAME:-HengYang}
 github_email=${DMX_GITHUB_AUTHOR_EMAIL:-hengyang.2003@tsinghua.org.cn}
+signing_key=${DMX_GITHUB_SIGNING_KEY:-$HOME/.ssh/id_ed25519_signing_yheng_20260711.pub}
+ssh_signing_program=${DMX_GITHUB_SSH_SIGNING_PROGRAM:-${GPG_SSH_PROGRAM:-}}
 github_allowed_signers=${DMX_GITHUB_ALLOWED_SIGNERS:-}
 gitlab_allowed_signers=${DMX_GITLAB_ALLOWED_SIGNERS:-}
 
@@ -47,6 +49,11 @@ github_allowed_signers=${github_allowed_signers:-$root/packaging/release/github-
 gitlab_allowed_signers=${gitlab_allowed_signers:-$root/packaging/release/gitlab-allowed-signers}
 [ -f "$github_allowed_signers" ] || { echo "GitHub release trust anchor is missing: $github_allowed_signers" >&2; exit 1; }
 [ -f "$gitlab_allowed_signers" ] || { echo "GitLab release trust anchor is missing: $gitlab_allowed_signers" >&2; exit 1; }
+if [ -z "$ssh_signing_program" ]; then
+  ssh_signing_program=$(git config --get gpg.ssh.program 2>/dev/null || true)
+fi
+[ -x "$ssh_signing_program" ] || { echo "GitHub SSH signing program is unavailable: $ssh_signing_program" >&2; exit 2; }
+[ -f "$signing_key" ] || { echo "GitHub signing key is unavailable: $signing_key" >&2; exit 2; }
 
 # Preserve the exact configured endpoint. `git remote get-url` expands global
 # `insteadOf` rules, which may silently exchange the selected transport.
@@ -66,18 +73,16 @@ projection_common=$(git -C "$projection" rev-parse --path-format=absolute --git-
 [ ! -e "$projection_common/objects/info/alternates" ] || { echo "projection clone has object alternates" >&2; exit 1; }
 git -C "$projection" remote remove origin 2>/dev/null || true
 git -C "$projection" for-each-ref --format='delete %(refname)' refs/heads refs/tags | git -C "$projection" update-ref --stdin
-git -C "$projection" branch --force "$branch" "$canonical"
-git -C "$projection" checkout --quiet "$branch"
-FILTER_BRANCH_SQUELCH_WARNING=1 git -C "$projection" filter-branch -f \
-  --env-filter '
-    GIT_AUTHOR_NAME="HengYang"
-    GIT_AUTHOR_EMAIL="hengyang.2003@tsinghua.org.cn"
-    GIT_COMMITTER_NAME="HengYang"
-    GIT_COMMITTER_EMAIL="hengyang.2003@tsinghua.org.cn"
-  ' -- "$branch" >/dev/null 2>&1
-git -C "$projection" for-each-ref --format='%(refname)' refs/original/ | while IFS= read -r ref; do
-  git -C "$projection" update-ref -d "$ref"
-done
+git -C "$projection" branch --force source "$canonical"
+python3 "$root/scripts/rewrite-provider-history.py" \
+  --repository "$projection" \
+  --source-ref refs/heads/source \
+  --target-ref "refs/heads/$branch" \
+  --name "$github_name" \
+  --email "$github_email" \
+  --signing-key "$signing_key" \
+  --signing-program "$ssh_signing_program" \
+  --allowed-signers "$github_allowed_signers" >/dev/null
 
 projected=$(git -C "$projection" rev-parse "refs/heads/$branch")
 [ "$(git -C "$projection" rev-parse "$projected^{tree}")" = "$canonical_tree" ] || { echo "projected GitHub branch tree differs from canonical branch" >&2; exit 1; }
@@ -85,6 +90,10 @@ if git -C "$projection" log "$projected" --format='%ae%n%ce' | grep -Fv -x "$git
   echo "projected GitHub history retains a non-GitHub identity" >&2
   exit 1
 fi
+git -C "$projection" rev-list "$projected" | while IFS= read -r commit; do
+  git -C "$projection" -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="$github_allowed_signers" \
+    verify-commit "$commit" >/dev/null
+done
 
 git -C "$projection" remote add github "$github_url"
 remote_tip=$(git_transport -C "$projection" ls-remote --heads github "refs/heads/$branch" | awk 'NR==1 {print $1}')

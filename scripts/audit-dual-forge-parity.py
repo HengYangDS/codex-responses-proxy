@@ -63,10 +63,33 @@ def local_non_main_branches() -> list[str]:
     )
 
 
-def branch_identities(ref: str) -> list[str]:
-    """Return author and committer email identities reachable from a ref."""
+def branch_provenance(ref: str, email: str, allowed_signers: Path) -> dict[str, object]:
+    """Verify every reachable commit's identity and provider-trusted signature."""
 
-    return [entry for entry in output("git", "log", ref, "--format=%ae%n%ce").splitlines() if entry]
+    commits = output("git", "rev-list", ref).splitlines()
+    identities = [
+        entry for entry in output("git", "log", ref, "--format=%ae%n%ce").splitlines() if entry
+    ]
+    unsigned = [
+        commit
+        for commit in commits
+        if command(
+            "git",
+            "-c",
+            "gpg.format=ssh",
+            "-c",
+            f"gpg.ssh.allowedSignersFile={allowed_signers}",
+            "verify-commit",
+            commit,
+            check=False,
+        ).returncode
+    ]
+    return {
+        "commit_count": len(commits),
+        "identity_only": set(identities) == {email},
+        "all_commits_signed": not unsigned,
+        "unsigned_commits": unsigned,
+    }
 
 
 def provider_release_evidence(remote: str, provider: str) -> dict[str, dict[str, object]]:
@@ -160,12 +183,26 @@ def audit() -> dict[str, Any]:
         }
         for tag in sorted(set(gitlab_tags) & set(github_tags))
     ]
-    result = {
+    gitlab_provenance = branch_provenance(
+        "origin/main", GITLAB_EMAIL, ROOT / "packaging/release/gitlab-allowed-signers"
+    )
+    github_provenance = branch_provenance(
+        "github/main", GITHUB_EMAIL, ROOT / "packaging/release/github-allowed-signers"
+    )
+    gitlab_provenance_ok = (
+        gitlab_provenance["identity_only"] is True
+        and gitlab_provenance["all_commits_signed"] is True
+    )
+    github_provenance_ok = (
+        github_provenance["identity_only"] is True
+        and github_provenance["all_commits_signed"] is True
+    )
+    result: dict[str, Any] = {
         "gitlab_main": gitlab_main,
         "github_main": github_main,
         "main_tree_equal": gitlab_tree == github_tree,
-        "gitlab_identity_only": set(branch_identities("origin/main")) == {GITLAB_EMAIL},
-        "github_identity_only": set(branch_identities("github/main")) == {GITHUB_EMAIL},
+        "gitlab_provenance": gitlab_provenance,
+        "github_provenance": github_provenance,
         "overlapping_tags": overlapping,
         "housekeeping": {
             "local_non_main_branches": local_non_main_branches(),
@@ -176,8 +213,8 @@ def audit() -> dict[str, Any]:
     }
     result["ok"] = (
         result["main_tree_equal"]
-        and result["gitlab_identity_only"]
-        and result["github_identity_only"]
+        and gitlab_provenance_ok
+        and github_provenance_ok
         and not result["housekeeping"]["local_non_main_branches"]
         and not result["housekeeping"]["gitlab_non_main_branches"]
         and not result["housekeeping"]["github_non_main_branches"]
@@ -202,8 +239,12 @@ def main() -> None:
         print(json.dumps(evidence, sort_keys=True))
     else:
         print(f"main tree parity: {'OK' if evidence['main_tree_equal'] else 'FAILED'}")
-        print(f"GitLab identity domain: {'OK' if evidence['gitlab_identity_only'] else 'FAILED'}")
-        print(f"GitHub identity domain: {'OK' if evidence['github_identity_only'] else 'FAILED'}")
+        print(
+            f"GitLab provenance: {'OK' if evidence['gitlab_provenance']['all_commits_signed'] and evidence['gitlab_provenance']['identity_only'] else 'FAILED'}"
+        )
+        print(
+            f"GitHub provenance: {'OK' if evidence['github_provenance']['all_commits_signed'] and evidence['github_provenance']['identity_only'] else 'FAILED'}"
+        )
         print(f"housekeeping: {'OK' if evidence['ok'] else 'FAILED'}")
     if not evidence["ok"]:
         raise SystemExit(1)
