@@ -375,7 +375,7 @@ See [`config.example`](config.example) for the supported environment variables.
 ## Verify a source checkout
 
 ```bash
-python3 scripts/check_release_metadata.py
+python3 scripts/check_release_metadata.py --prepare-release
 python3 scripts/check_markdown_presentation.py
 python3 scripts/test_release_metadata.py
 PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh

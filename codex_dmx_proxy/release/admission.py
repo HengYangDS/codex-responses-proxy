@@ -585,9 +585,19 @@ def _absolute_executable(path: os.PathLike[str] | str, label: str) -> Path:
         raise ReleaseSourceError(f"{label} path must be absolute")
     resolved = value.resolve(strict=True)
     metadata = resolved.lstat()
-    if not stat.S_ISREG(metadata.st_mode) or not os.access(resolved, os.X_OK):
+    if not _is_executable_regular_file(resolved, metadata, os.name):
         raise ReleaseSourceError(f"{label} path must name an executable regular file")
     return resolved
+
+
+def _is_executable_regular_file(path: Path, metadata: os.stat_result, os_name: str) -> bool:
+    """Require a Windows executable suffix or the POSIX executable permission."""
+
+    if not stat.S_ISREG(metadata.st_mode):
+        return False
+    if os_name == "nt":
+        return path.suffix.casefold() in {".bat", ".cmd", ".com", ".exe"}
+    return os.access(path, os.X_OK)
 
 
 def _external_regular_file(path: os.PathLike[str] | str, repo: Path) -> Path:

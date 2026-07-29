@@ -197,7 +197,8 @@ def _public_docstring_gaps(root: Path, path: Path, tree: ast.Module) -> list[str
             continue
         if ast.get_docstring(node, clean=False) is None:
             gaps.append(
-                f"public_docstring_missing:{path.relative_to(root)}:{node.lineno}:{node.name}"
+                "public_docstring_missing:"
+                f"{path.relative_to(root).as_posix()}:{node.lineno}:{node.name}"
             )
     return gaps
 
@@ -216,12 +217,12 @@ def audit_paths(
     gaps: list[str] = []
     inventory: list[dict[str, object]] = []
     selected = sorted(set(paths))
-    selected_relatives = {str(path.relative_to(root)) for path in selected}
+    selected_relatives = {path.relative_to(root).as_posix() for path in selected}
     unknown_ratchets = sorted(set(ratchets) - selected_relatives)
     gaps.extend(f"unused_code_size_ratchet:{path}" for path in unknown_ratchets)
     for path in selected:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        relative = str(path.relative_to(root))
+        relative = path.relative_to(root).as_posix()
         limit = test_limit if relative.startswith("tests/") else logic_limit
         logical = _logical_statements(path, tree)
         ratchet = ratchets.get(relative)

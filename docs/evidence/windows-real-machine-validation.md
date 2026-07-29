@@ -55,8 +55,9 @@ account has no filtered token to hand back; that is a property of the account,
 not a defect in the task principal. The standard-user run is the authoritative
 check for non-elevated operation.
 
-## Residual limit
+## Current boundary
 
-The offline unit suite passes except for two POSIX `chmod 0o600` assertions that
-Windows cannot satisfy (the mode reads back `0o666`). That is a test-platform
-limitation, not a payload defect.
+This record proves only the Windows 10 lifecycle run performed on 2026-07-23.
+Current cross-platform source acceptance is governed separately by the hosted
+Windows Python 3.12, 3.13, and 3.14 matrix; that matrix does not retroactively
+extend this dated real-host proof.

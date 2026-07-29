@@ -95,6 +95,15 @@ def _assert_fragments(test, text, include=(), exclude=()):
             test.assertNotIn(fragment, text)
 
 
+def _assert_executable_mode(test, mode):
+    """Assert POSIX execution or the strongest Windows mode projection."""
+
+    if os.name == "nt":
+        test.assertEqual(mode & 0o600, 0o600)
+    else:
+        test.assertEqual(mode, 0o755)
+
+
 class TestPythonResolution(unittest.TestCase):
     def test_resolution_and_rejection_boundaries(self):
         resolved = python_runtime.resolve_python()
@@ -158,7 +167,10 @@ class TestPythonResolution(unittest.TestCase):
             self.assertTrue(python_runtime.is_windows_store_stub(r"C:\WindowsApps\python.exe"))
             self.assertTrue(python_runtime.is_windows_store_stub(r"C:\WindowsApps\python.exe"))
         python = r"C:\Python\python.exe"
-        for exists, expected in ((True, "pythonw.exe"), (False, python)):
+        for exists, expected in (
+            (True, os.path.join(os.path.dirname(python), "pythonw.exe")),
+            (False, python),
+        ):
             with (
                 mock.patch.object(python_runtime.os, "name", "nt"),
                 mock.patch.object(python_runtime.os.path, "exists", return_value=exists),
@@ -532,7 +544,7 @@ class TestLinuxLifecycle(unittest.TestCase):
                 linux._install_cron(ctx)
             text = Path(wrapper).read_text(encoding="utf-8")
             self.assertIn('export DMX_PROXY_PORT="8791"', text)
-            self.assertEqual(Path(wrapper).stat().st_mode & 0o777, 0o755)
+            _assert_executable_mode(self, Path(wrapper).stat().st_mode & 0o777)
             installed = invoked.call_args_list[1].kwargs["input"]
             self.assertEqual(installed.count(installation.LABEL), 1)
             self.assertIn("@reboot /keep-me", installed)
@@ -821,8 +833,8 @@ class TestWindowsLifecycle(unittest.TestCase):
 
     def test_pid_discovery_and_uninstall(self):
         ctx = platform_context()
-        launcher = os.path.abspath(windows._launcher_path(ctx))
-        watchdog = os.path.abspath(ctx.watchdog_script)
+        launcher = windows._launcher_path(ctx)
+        watchdog = ctx.watchdog_script
         with mock.patch.object(
             windows.process,
             "pids_naming_path",
