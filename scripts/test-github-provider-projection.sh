@@ -13,6 +13,7 @@ bootstrap="$tmp/bootstrap"
 home="$tmp/home"
 global_config="$tmp/global.gitconfig"
 key="$tmp/signing"
+signing_wrapper="$tmp/signing-wrapper"
 mock_ssh="$tmp/mock-ssh"
 mkdir -p "$home" "$tmp/allowed"
 : > "$global_config"
@@ -20,6 +21,11 @@ ssh-keygen -q -t ed25519 -N '' -f "$key"
 public=$(awk '{print $1" "$2}' "$key.pub")
 printf 'heng.yang.ds@hotmail.com namespaces="git" %s\n' "$public" > "$tmp/allowed/gitlab"
 printf 'hengyang.2003@tsinghua.org.cn namespaces="git" %s\n' "$public" > "$tmp/allowed/github"
+cat > "$signing_wrapper" <<'EOF'
+#!/bin/sh
+exec /usr/bin/ssh-keygen "$@"
+EOF
+chmod +x "$signing_wrapper"
 
 cat > "$mock_ssh" <<'EOF'
 #!/bin/sh
@@ -45,7 +51,9 @@ mkdir -p "$source/packaging/release" "$source/scripts"
 cp "$tmp/allowed/gitlab" "$source/packaging/release/gitlab-allowed-signers"
 cp "$tmp/allowed/github" "$source/packaging/release/github-allowed-signers"
 cp "$root/scripts/check-release-tag-signature.sh" "$source/scripts/"
+cp "$root/scripts/rewrite-provider-history.py" "$source/scripts/"
 chmod +x "$source/scripts/check-release-tag-signature.sh"
+chmod +x "$source/scripts/rewrite-provider-history.py"
 printf 'first\n' > "$source/README.md"
 git -C "$source" add .
 git -C "$source" commit -qm 'first canonical source commit'
@@ -82,6 +90,8 @@ git -C "$source" remote add github git@github.com:test/codex-dmx-proxy.git
     DMX_GITLAB_ALLOWED_SIGNERS="$tmp/allowed/gitlab" \
     DMX_TEST_GITHUB_REMOTE="$remote" \
     GIT_SSH_COMMAND="$mock_ssh" \
+    DMX_GITHUB_SIGNING_KEY="$key.pub" \
+    DMX_GITHUB_SSH_SIGNING_PROGRAM="$signing_wrapper" \
     DMX_GITHUB_REMOTE=github \
     sh "$script" --branch main
 ) >/dev/null
@@ -95,5 +105,9 @@ if git -C "$remote" log main --format='%ae%n%ce' | grep -Fv -x 'hengyang.2003@ts
   echo 'GitHub projection retains a non-GitHub identity' >&2
   exit 1
 fi
+for commit in $(git -C "$remote" rev-list main); do
+  git -C "$remote" -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="$tmp/allowed/github" \
+    verify-commit "$commit" >/dev/null
+done
 
 echo 'GitHub provider projection isolation contract: OK'

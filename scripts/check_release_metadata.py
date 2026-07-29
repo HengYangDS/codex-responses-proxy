@@ -188,6 +188,10 @@ def check_governance_contract() -> None:
         "LICENSE",
         "governance.py",
         "scripts/project-github-forge.sh",
+        "scripts/project-gitlab-forge.sh",
+        "scripts/rewrite-provider-history.py",
+        "scripts/test-gitlab-provider-projection.sh",
+        "scripts/test-github-provider-projection.sh",
         "scripts/audit-dual-forge-parity.py",
         "scripts/tag-gitlab-release.sh",
         "scripts/tag-github-release.sh",
@@ -227,6 +231,9 @@ def check_governance_contract() -> None:
     operations = (ROOT / "docs" / "operations" / "forge-operations.md").read_text(encoding="utf-8")
     if "audit-dual-forge-parity.py --json" not in operations:
         raise ValueError("forge operations must document the read-only parity audit")
+    for token in ("author", "committer", "every reachable commit", "Verified"):
+        if token not in operations:
+            raise ValueError(f"forge operations must document commit provenance: {token}")
     retired_paths = (
         "docs/history",
         "docs/reviews",

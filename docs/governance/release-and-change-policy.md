@@ -38,6 +38,14 @@ history, signed tag object, CI execution, and Release record. GitHub is projecte
 from the canonical GitLab tree through a fresh isolated clone, but its commits
 and tags retain GitHub-native identity.
 
+Provider history is a release invariant, not cosmetic attribution. Every commit
+reachable from provider `main` has the provider's sole author and committer
+identity and a provider-trusted SSH signature. Historical correction therefore
+recreates the full DAG while preserving tree, parent topology, message, and
+dates, then replaces `main` only under an exact remote-tip lease. Existing tag
+and Release objects are immutable historical evidence and are never silently
+rewritten to pretend that their original target commits changed.
+
 `scripts/verify-publication-proof.py` is the in-repository, read-only verifier.
 It fetches each exact tag into isolation, verifies each provider signature under
 its own external anchor, observes the policy-required hosted jobs and Release

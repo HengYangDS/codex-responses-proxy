@@ -81,6 +81,32 @@ def test_provider_tag_scripts_preflight_before_signing() -> None:
             raise SystemExit(f"{script_name} runs its release metadata preflight after signing")
 
 
+def test_provider_projection_re_signs_every_commit() -> None:
+    """Reject identity-only history rewriting that strips commit signatures."""
+
+    github = (ROOT / "scripts" / "project-github-forge.sh").read_text(encoding="utf-8")
+    gitlab = (ROOT / "scripts" / "project-gitlab-forge.sh").read_text(encoding="utf-8")
+    rewriter = (ROOT / "scripts" / "rewrite-provider-history.py").read_text(encoding="utf-8")
+    if "filter-branch" in github:
+        raise SystemExit("GitHub projection must not use signature-stripping filter-branch")
+    for source in (github, gitlab):
+        if "rewrite-provider-history.py" not in source or "--force-with-lease" not in source:
+            raise SystemExit("each provider projection must use the signed rewriter under a lease")
+    for script_name in ("test-gitlab-provider-projection.sh", "test-github-provider-projection.sh"):
+        fixture = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+        if "verify-commit" not in fixture or "allowedSignersFile" not in fixture:
+            raise SystemExit(f"{script_name} must verify every projected commit")
+    for token in (
+        "commit-tree",
+        '"-S"',
+        "verify-commit",
+        "GIT_AUTHOR_EMAIL",
+        "GIT_COMMITTER_EMAIL",
+    ):
+        if token not in rewriter:
+            raise SystemExit(f"provider history rewriter is missing {token}")
+
+
 def test_prune_tags_removes_deleted_remote_tag() -> None:
     """Reproduce the reused-runner stale-tag failure without network access."""
 
@@ -242,6 +268,7 @@ def test_python_quality_gate_is_cross_forge() -> None:
 def main() -> None:
     test_prepare_release_requires_current_utc_date()
     test_provider_tag_scripts_preflight_before_signing()
+    test_provider_projection_re_signs_every_commit()
     test_prune_tags_removes_deleted_remote_tag()
     test_gitlab_ci_refreshes_tags_before_every_release_gate()
     test_gitlab_release_metadata_gate_has_complete_history()

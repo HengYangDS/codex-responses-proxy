@@ -5,25 +5,35 @@ Status: canonical.
 ## Model
 
 GitLab and GitHub are independent, complete forge planes. They preserve the
-same source tree and release version while retaining separate commit histories,
+same source trees, parent topology, messages, author dates, committer dates, and
+release version while retaining separate provider-signed commit histories,
 signed tags, CI execution, and release records. GitLab is the canonical source
 checkout; GitHub is its provider-identity projection. Neither forge is a mere
 backup or source snapshot.
 
+Every reachable commit on a provider `main` has one provider-native author and
+committer identity and a signature accepted by that provider's tracked trust
+anchor. The Forge UI must consequently report those commits as `Verified`.
+Contributor views are projections of this complete commit-history invariant;
+they are not repaired by profile aliases or display-name changes.
+
 ## Synchronization
 
-Run the projection from a clean canonical checkout:
+Normalize GitLab history from a clean source checkout, then project GitHub:
 
 ```bash
+sh scripts/project-gitlab-forge.sh
 sh scripts/project-github-forge.sh
 ```
 
-The command builds a fresh isolated clone, rewrites only that clone to the
-GitHub identity, checks tree parity, and updates `main` under a lease. It never
-rewrites canonical refs or overwrites provider-native tags. Historical GitLab
-tags are retained as their own evidence; the first post-bootstrap release
-starts GitHub-native tag provenance. Later runs verify every overlapping tag
-pair before advancing the branch.
+Each command builds a fresh isolated clone and uses
+`scripts/rewrite-provider-history.py` to recreate every reachable commit with
+the provider identity and SSH signature. The rewriter preserves tree, parent
+shape, message bytes, author date, and committer date, then verifies every
+rewritten commit before `main` changes under an exact remote-tip lease. It never
+overwrites provider-native tags. Historical tags and Releases remain immutable
+evidence of their original commit objects; a later normalized branch does not
+retroactively change those records.
 
 ## Parity audit
 
@@ -37,7 +47,8 @@ python3 scripts/audit-dual-forge-parity.py --json
 It uses isolated temporary clones to inspect provider-native tags and verifies:
 
 - GitLab/GitHub `main` tree equality;
-- provider-specific commit-identity domains;
+- provider-specific author and committer identity domains;
+- a provider-trusted signature on every reachable commit;
 - overlapping provider-native tag signatures and trees; and
 - absence of non-`main` local or remote branches, plus the current worktree
   inventory.
@@ -66,10 +77,11 @@ provider identity.
 
 ## Provider identities
 
-GitLab provenance uses `heng.yang.ds@hotmail.com`. GitHub provenance uses
-`hengyang.2003@tsinghua.org.cn`. The same signing key may be bound to distinct
-provider identities, but each provider verifies against its own committed
-allowed-signers file.
+GitLab provenance uses `Yang HENG <heng.yang.ds@hotmail.com>`. GitHub provenance
+uses `HengYang <hengyang.2003@tsinghua.org.cn>`. Author and committer must both
+match the relevant identity for every reachable commit. The same signing key
+may be bound to distinct provider identities, but each provider verifies every
+commit and tag against its own committed allowed-signers file.
 
 ## Local signing bridge
 

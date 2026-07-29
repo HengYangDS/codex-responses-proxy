@@ -107,6 +107,7 @@ coverage-tests = [
   "tests/test_input_transport.py",
   "tests/test_payload_transactions.py",
   "tests/test_platform_services.py",
+  "tests/test_provider_history.py",
   "tests/test_proxy_owner_boundaries.py",
   "tests/test_proxy_policy.py",
   "tests/test_proxy_transport.py",

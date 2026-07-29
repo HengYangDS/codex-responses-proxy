@@ -6,6 +6,21 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+## [1.0.29] - 2026-07-29
+
+### Changed
+
+- Make complete provider commit provenance a release invariant. GitLab now uses
+  `Yang HENG <heng.yang.ds@hotmail.com>` and GitHub uses
+  `HengYang <hengyang.2003@tsinghua.org.cn>` for both author and committer on
+  every commit reachable from `main`; every such commit is SSH-signed and must
+  be reported as `Verified` by its Forge.
+- Replace signature-stripping identity rewriting with an isolated, leased DAG
+  rebuild that preserves each source tree, parent topology, message, author
+  date, and committer date while re-signing every commit. Dual-Forge parity now
+  rejects an unsigned commit or a non-provider author/committer anywhere in the
+  reachable history.
+
 ## [1.0.28] - 2026-07-29
 
 ### Fixed
