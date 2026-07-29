@@ -94,9 +94,10 @@ def check_provider(provider: str) -> None:
 
 
 def tag_creation_date(version: str) -> str:
-    """Return the provider-native annotated-tag creation date."""
+    """Return the provider-native annotated-tag creation date in UTC."""
 
-    return _git("for-each-ref", f"refs/tags/v{version}", "--format=%(creatordate:short)")
+    timestamp = int(_git("for-each-ref", f"refs/tags/v{version}", "--format=%(creatordate:unix)"))
+    return datetime.fromtimestamp(timestamp, timezone.utc).date().isoformat()
 
 
 def check_changelog_provenance(
