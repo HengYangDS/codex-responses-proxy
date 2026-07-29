@@ -8,12 +8,15 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-import publication_proof_git
+from codex_dmx_proxy.release.publication import git
 
 
 class GitPublicationContracts(unittest.TestCase):
@@ -72,7 +75,7 @@ class GitPublicationContracts(unittest.TestCase):
         self.temp.cleanup()
 
     def test_collects_exact_signed_tag_identity(self) -> None:
-        evidence = publication_proof_git.collect(
+        evidence = git.collect(
             provider="gitlab", remote=str(self.remote), tag="v1.2.3", anchor=self.anchor
         )
         self.assertEqual(evidence["provider"], "gitlab")
@@ -86,17 +89,78 @@ class GitPublicationContracts(unittest.TestCase):
         subprocess.run(
             ["git", "-C", self.repo, "push", "-q", self.remote, "refs/tags/v1.2.4"], check=True
         )
-        with self.assertRaises(publication_proof_git.GitProofError):
-            publication_proof_git.collect(
+        with self.assertRaises(git.GitProofError):
+            git.collect(
                 provider="gitlab", remote=str(self.remote), tag="v1.2.4", anchor=self.anchor
             )
         wrong = self.root / "wrong"
         wrong.write_text(
             "nobody@example.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n"
         )
-        with self.assertRaises(publication_proof_git.GitProofError):
-            publication_proof_git.collect(
-                provider="gitlab", remote=str(self.remote), tag="v1.2.3", anchor=wrong
+        with self.assertRaises(git.GitProofError):
+            git.collect(provider="gitlab", remote=str(self.remote), tag="v1.2.3", anchor=wrong)
+
+    def test_rejects_invalid_inputs_and_unavailable_tools(self) -> None:
+        for provider, tag, anchor in (
+            ("other", "v1.2.3", self.anchor),
+            ("gitlab", "latest", self.anchor),
+            ("gitlab", "v1.2.3", self.root / "missing"),
+        ):
+            with (
+                self.subTest(provider=provider, tag=tag),
+                self.assertRaises(git.GitProofError),
+            ):
+                git.collect(
+                    provider=provider,
+                    remote=str(self.remote),
+                    tag=tag,
+                    anchor=anchor,
+                )
+        for missing in ("ssh-keygen", "git"):
+            with (
+                mock.patch.object(
+                    git.shutil,
+                    "which",
+                    side_effect=lambda name, missing=missing: (
+                        None if name == missing else f"/{name}"
+                    ),
+                ),
+                self.assertRaises(git.GitProofError),
+            ):
+                git.collect(
+                    provider="gitlab", remote=str(self.remote), tag="v1.2.3", anchor=self.anchor
+                )
+
+    def test_environment_error_translation_and_ascii_boundary(self) -> None:
+        with mock.patch.dict(
+            git.os.environ,
+            {"GIT_DIR": "foreign", "GIT_TERMINAL_PROMPT": "9"},
+            clear=True,
+        ):
+            environment = git._git_environment()
+        self.assertNotIn("GIT_DIR", environment)
+        self.assertEqual(environment["GIT_TERMINAL_PROMPT"], "0")
+
+        with mock.patch.object(git.shutil, "which", return_value="/usr/bin/glab"):
+            self.assertIn("credential.helper", git._git_environment().values())
+
+        completed = SimpleNamespace(stdout=b"\xff")
+        with (
+            mock.patch.object(git, "_run", return_value=completed),
+            self.assertRaisesRegex(git.GitProofError, "not ASCII"),
+        ):
+            git._output(("git",), {})
+
+        with (
+            mock.patch.object(
+                git.subprocess,
+                "run",
+                side_effect=subprocess.CalledProcessError(1, ["git"]),
+            ),
+            self.assertRaisesRegex(git.GitProofError, "fetch, verification"),
+        ):
+            git.collect(
+                provider="gitlab", remote=str(self.remote), tag="v1.2.3", anchor=self.anchor
             )
 
 

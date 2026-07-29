@@ -18,8 +18,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tests.support.handoff import ScriptedUpstream
+from tests.support.handoff import child_pid_observer
 from tests.support.handoff import free_port
-from tests.support.handoff import handoff_module
 from tests.support.handoff import http_json
 from tests.support.handoff import installed_expected_metadata
 from tests.support.handoff import pid_alive
@@ -28,58 +28,16 @@ from tests.support.handoff import terminate_pid_best_effort
 from tests.support.handoff import terminate_process
 from tests.support.handoff import wait_until
 from tests.support.handoff import write_installed_payload
-from tests.support.handoff import common
+from codex_dmx_proxy import process
 
 
 class TestRealSubprocessHandoffIntegration(unittest.TestCase):
-    """Owns and reliably terminates every subprocess/server it starts.
-
-    Cleanups are appended in the order: temp-payload-directory removal FIRST,
-    then everything else. ``tearDown`` runs them in reverse (LIFO), so the
-    directory is always the *last* thing removed -- every owned child/old
-    process must already be confirmed exited (and, on Windows, its open log
-    file handle released) before the temporary payload it depended on is torn
-    down.
-    """
-
-    def setUp(self):
-        self._handoff_cleanups = []
-
-    def tearDown(self):
-        for cleanup in reversed(self._handoff_cleanups):
-            try:
-                cleanup()
-            except Exception:
-                pass
-
-    def _addCleanupNow(self, fn):
-        self._handoff_cleanups.append(fn)
+    """Exercise the complete rolling handoff against owned loopback processes."""
 
     def _new_temp_root(self) -> Path:
-        tmp_ctx = tempfile.TemporaryDirectory()
-        # Registered first on purpose: reversed teardown order runs this last,
-        # i.e. only after every process cleanup registered below has run.
-        self._addCleanupNow(tmp_ctx.cleanup)
-        return Path(tmp_ctx.name)
-
-    def _child_takes_over_with_matching_health(self, port, expected, *, exclude_pid):
-        try:
-            _, health = http_json(port, "/healthz", timeout=1)
-        except (OSError, urllib.error.URLError, ValueError):
-            return None
-        if (
-            isinstance(health.get("pid"), int)
-            and health.get("pid") != exclude_pid
-            and health.get("handoff_protocol_version") == handoff_module.HANDOFF_PROTOCOL_VERSION
-            and health.get("handoff_transaction_id") == expected["transaction_id"]
-            and health.get("release") == expected["release"]
-            and health.get("serving_payload_sha256") == expected["serving_payload_sha256"]
-            and health.get("release_receipt_sha256") == expected["release_receipt_sha256"]
-            and health.get("payload_manifest_sha256") == expected["manifest_sha256"]
-            and health.get("accepting") is True
-        ):
-            return health["pid"]
-        return None
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        return Path(temporary.name)
 
     def _post_responses(self, port, *, timeout=15):
         request = urllib.request.Request(
@@ -94,7 +52,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
 
     def test_old_pid_serves_before_handoff_and_child_pid_serves_after(self):
         upstream = ScriptedUpstream()
-        self._addCleanupNow(upstream.close)
+        self.addCleanup(upstream.close)
         upstream.push((200, b'{"id":"ok"}'))
 
         root = self._new_temp_root()
@@ -102,7 +60,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         ctx = write_installed_payload(root, release="1.0.25", port=port)
         log_path = root / "proxy.log"
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=log_path)
-        self._addCleanupNow(lambda: terminate_process(old))
+        self.addCleanup(lambda: terminate_process(old))
 
         status_code, before = http_json(port, "/healthz")
         self.assertEqual(status_code, 200)
@@ -114,19 +72,12 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         )
         self.assertEqual(status_code, 202)
         self.assertEqual(ready.get("transaction_id"), expected["transaction_id"])
-        child_pid = {"value": None}
-
-        def observe():
-            found = self._child_takes_over_with_matching_health(port, expected, exclude_pid=old.pid)
-            if found is not None:
-                child_pid["value"] = found
-                return True
-            return False
+        child_pid, observe = child_pid_observer(port, expected, exclude_pid=old.pid)
 
         self.assertTrue(
             wait_until(observe, timeout=10), "child did not take over serving with matching health"
         )
-        self._addCleanupNow(lambda: terminate_pid_best_effort(child_pid["value"]))
+        self.addCleanup(lambda: terminate_pid_best_effort(child_pid["value"]))
         self.assertTrue(
             wait_until(lambda: old.poll() is not None, timeout=10),
             "old process did not exit after finalize",
@@ -134,30 +85,22 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
 
     def test_finalized_child_can_drive_a_second_real_handoff(self):
         upstream = ScriptedUpstream()
-        self._addCleanupNow(upstream.close)
+        self.addCleanup(upstream.close)
         root = self._new_temp_root()
         port = free_port()
         ctx = write_installed_payload(root, release="1.0.25", port=port)
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=root / "proxy.log")
-        self._addCleanupNow(lambda: terminate_process(old))
+        self.addCleanup(lambda: terminate_process(old))
 
         first = installed_expected_metadata(ctx, "txn-repeat-1")
         status_code, _ready = http_json(
             port, "/control/handoff", method="POST", body=first, timeout=15
         )
         self.assertEqual(status_code, 202)
-        child_one = {"value": None}
-
-        def observe_first():
-            child_one["value"] = self._child_takes_over_with_matching_health(
-                port,
-                first,
-                exclude_pid=old.pid,
-            )
-            return child_one["value"] is not None
+        child_one, observe_first = child_pid_observer(port, first, exclude_pid=old.pid)
 
         self.assertTrue(wait_until(observe_first, timeout=10))
-        self._addCleanupNow(lambda: terminate_pid_best_effort(child_one["value"]))
+        self.addCleanup(lambda: terminate_pid_best_effort(child_one["value"]))
         self.assertTrue(wait_until(lambda: old.poll() is not None, timeout=10))
 
         second = installed_expected_metadata(ctx, "txn-repeat-2")
@@ -170,22 +113,14 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
             timeout=15,
         )
         self.assertEqual(status_code, 202)
-        child_two = {"value": None}
-
-        def observe_second():
-            child_two["value"] = self._child_takes_over_with_matching_health(
-                port,
-                second,
-                exclude_pid=child_one["value"],
-            )
-            return child_two["value"] is not None
+        child_two, observe_second = child_pid_observer(port, second, exclude_pid=child_one["value"])
 
         self.assertTrue(wait_until(observe_second, timeout=10))
-        self._addCleanupNow(lambda: terminate_pid_best_effort(child_two["value"]))
+        self.addCleanup(lambda: terminate_pid_best_effort(child_two["value"]))
         retired = wait_until(lambda: not pid_alive(child_one["value"]), timeout=10)
         child_one_pid = child_one["value"]
         detail = (
-            common.process_command(child_one_pid)
+            process.process_command(child_one_pid)
             if not retired and isinstance(child_one_pid, int)
             else None
         )
@@ -198,7 +133,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         self,
     ):
         upstream = ScriptedUpstream()
-        self._addCleanupNow(upstream.close)
+        self.addCleanup(upstream.close)
         started = threading.Event()
         release = threading.Event()
 
@@ -219,7 +154,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         ctx = write_installed_payload(root, release="1.0.25", port=port)
         log_path = root / "proxy.log"
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=log_path)
-        self._addCleanupNow(lambda: terminate_process(old))
+        self.addCleanup(lambda: terminate_process(old))
 
         held = {}
 
@@ -228,7 +163,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
 
         holder = threading.Thread(target=run_holder)
         holder.start()
-        self._addCleanupNow(lambda: release.set())
+        self.addCleanup(lambda: release.set())
         self.assertTrue(
             started.wait(timeout=10), "long upstream call did not start on the old process in time"
         )
@@ -239,19 +174,12 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         )
         self.assertEqual(status_code, 202)
 
-        child_pid = {"value": None}
-
-        def observe():
-            found = self._child_takes_over_with_matching_health(port, expected, exclude_pid=old.pid)
-            if found is not None:
-                child_pid["value"] = found
-                return True
-            return False
+        child_pid, observe = child_pid_observer(port, expected, exclude_pid=old.pid)
 
         self.assertTrue(
             wait_until(observe, timeout=10), "child did not take over serving with matching health"
         )
-        self._addCleanupNow(lambda: terminate_pid_best_effort(child_pid["value"]))
+        self.addCleanup(lambda: terminate_pid_best_effort(child_pid["value"]))
 
         # The queue is now empty (the held request already popped its own
         # behavior before blocking on ``release``), so pushing exactly one new
@@ -270,7 +198,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
 
     def test_bounded_lease_forces_old_to_exit_even_if_a_held_stream_never_finishes(self):
         upstream = ScriptedUpstream()
-        self._addCleanupNow(upstream.close)
+        self.addCleanup(upstream.close)
         started = threading.Event()
         never_release = threading.Event()
 
@@ -290,7 +218,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         ctx = write_installed_payload(root, release="1.0.25", port=port)
         log_path = root / "proxy.log"
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=log_path)
-        self._addCleanupNow(lambda: terminate_process(old))
+        self.addCleanup(lambda: terminate_process(old))
 
         def hold_stream():
             try:
@@ -300,7 +228,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
 
         holder = threading.Thread(target=hold_stream, daemon=True)
         holder.start()
-        self._addCleanupNow(never_release.set)
+        self.addCleanup(never_release.set)
         self.assertTrue(
             started.wait(timeout=10), "held stream did not start on the old process in time"
         )
@@ -312,19 +240,12 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         )
         self.assertEqual(status_code, 202)
 
-        child_pid = {"value": None}
-
-        def observe():
-            found = self._child_takes_over_with_matching_health(port, expected, exclude_pid=old.pid)
-            if found is not None:
-                child_pid["value"] = found
-                return True
-            return False
+        child_pid, observe = child_pid_observer(port, expected, exclude_pid=old.pid)
 
         self.assertTrue(
             wait_until(observe, timeout=10), "child did not take over serving with matching health"
         )
-        self._addCleanupNow(lambda: terminate_pid_best_effort(child_pid["value"]))
+        self.addCleanup(lambda: terminate_pid_best_effort(child_pid["value"]))
 
         # Deterministic: the held request's behavior was already popped before
         # it blocked, so this new push belongs solely to the queued request below.

@@ -10,14 +10,55 @@ from typing import cast
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-import publication_proof_github
-import publication_proof_gitlab
+from codex_dmx_proxy.release.publication import github
+from codex_dmx_proxy.release.publication import gitlab
 
 
 class ForgeAdapterContracts(unittest.TestCase):
     """Normalize only exact hosted CI and release identities."""
+
+    @staticmethod
+    def _github_fixture(
+        commit: str,
+    ) -> tuple[list[dict[str, object]], dict[int, list[dict[str, object]]], dict[str, object]]:
+        runs: list[dict[str, object]] = [
+            {
+                "id": index,
+                "name": name,
+                "path": f".github/workflows/{name.lower()}.yml",
+                "event": "push",
+                "head_branch": "v1.2.3",
+                "head_sha": commit,
+                "status": "completed",
+                "conclusion": "success",
+            }
+            for index, name in ((1, "Verify"), (2, "Release"))
+        ]
+        jobs: dict[int, list[dict[str, object]]] = {
+            1: [
+                {"name": name, "status": "completed", "conclusion": "success"}
+                for name in github.DEFAULT_REQUIRED_JOBS[:-1]
+            ],
+            2: [
+                {
+                    "name": github.DEFAULT_REQUIRED_JOBS[-1],
+                    "status": "completed",
+                    "conclusion": "success",
+                }
+            ],
+        }
+        release: dict[str, object] = {
+            "id": 3,
+            "tag_name": "v1.2.3",
+            "name": "Codex DMX Proxy v1.2.3",
+            "draft": False,
+            "prerelease": False,
+            "published_at": "2026-07-29T00:00:00Z",
+        }
+        return runs, jobs, release
 
     @staticmethod
     def _gitlab_job(name: str, commit: str, pipeline_id: int = 7) -> dict[str, object]:
@@ -36,51 +77,15 @@ class ForgeAdapterContracts(unittest.TestCase):
             "commit": {"id": commit},
         }
 
-    def test_github_requires_exact_verify_and_release_runs(self) -> None:
-        commit = "a" * 40
-        runs = [
-            {
-                "id": 1,
-                "name": "Verify",
-                "path": ".github/workflows/verify.yml",
-                "event": "push",
-                "head_branch": "v1.2.3",
-                "head_sha": commit,
-                "status": "completed",
-                "conclusion": "success",
-            },
-            {
-                "id": 2,
-                "name": "Release",
-                "path": ".github/workflows/release.yml",
-                "event": "push",
-                "head_branch": "v1.2.3",
-                "head_sha": commit,
-                "status": "completed",
-                "conclusion": "success",
-            },
-        ]
-        jobs = {
-            1: [
-                {"name": name, "status": "completed", "conclusion": "success"}
-                for name in publication_proof_github.DEFAULT_REQUIRED_JOBS[:-1]
-            ],
-            2: [
-                {
-                    "name": publication_proof_github.DEFAULT_REQUIRED_JOBS[-1],
-                    "status": "completed",
-                    "conclusion": "success",
-                }
-            ],
-        }
-        release = {
-            "id": 3,
-            "tag_name": "v1.2.3",
-            "name": "Codex DMX Proxy v1.2.3",
-            "draft": False,
-            "prerelease": False,
-        }
-        result = publication_proof_github.normalize(
+    @staticmethod
+    def _normalize_github(
+        commit: str,
+        fixture: tuple[
+            list[dict[str, object]], dict[int, list[dict[str, object]]], dict[str, object]
+        ],
+    ):
+        runs, jobs, release = fixture
+        return github.normalize(
             repository="owner/repo",
             tag="v1.2.3",
             commit_oid=commit,
@@ -88,24 +93,27 @@ class ForgeAdapterContracts(unittest.TestCase):
             jobs=jobs,
             release=release,
         )
-        ci = cast(dict[str, object], result["ci"])
-        release_result = cast(dict[str, object], result["release"])
-        self.assertEqual(ci["status"], "success")
-        self.assertEqual(release_result["commit_oid"], commit)
-        runs[0]["head_sha"] = "b" * 40
-        with self.assertRaises(publication_proof_github.GitHubProofError):
-            publication_proof_github.normalize(
-                repository="owner/repo",
-                tag="v1.2.3",
-                commit_oid=commit,
-                runs=runs,
-                jobs=jobs,
-                release=release,
-            )
 
-    def test_gitlab_requires_exact_tag_pipeline_jobs_and_release(self) -> None:
-        commit = "a" * 40
-        pipeline = {
+    @staticmethod
+    def _normalize_gitlab(
+        commit: str,
+        fixture: tuple[dict[str, object], list[dict[str, object]], dict[str, object]],
+    ):
+        pipeline, jobs, release = fixture
+        return gitlab.normalize(
+            repository="group/repo",
+            tag="v1.2.3",
+            commit_oid=commit,
+            pipeline=pipeline,
+            jobs=jobs,
+            release=release,
+        )
+
+    @staticmethod
+    def _gitlab_fixture(
+        commit: str,
+    ) -> tuple[dict[str, object], list[dict[str, object]], dict[str, object]]:
+        pipeline: dict[str, object] = {
             "id": 7,
             "sha": commit,
             "ref": "v1.2.3",
@@ -114,161 +122,71 @@ class ForgeAdapterContracts(unittest.TestCase):
             "status": "success",
         }
         jobs = [
-            self._gitlab_job(name, commit)
-            for name in publication_proof_gitlab.DEFAULT_REQUIRED_JOBS
+            ForgeAdapterContracts._gitlab_job(name, commit) for name in gitlab.DEFAULT_REQUIRED_JOBS
         ]
-        release = {
+        release: dict[str, object] = {
             "tag_name": "v1.2.3",
             "name": "Codex DMX Proxy v1.2.3",
             "commit": {"id": commit},
             "upcoming_release": False,
+            "description": "Provider-native source release. See CHANGELOG.md for user-relevant changes.",
             "evidences": [{"sha": "f" * 40}],
         }
-        result = publication_proof_gitlab.normalize(
-            repository="group/repo",
-            tag="v1.2.3",
-            commit_oid=commit,
-            pipeline=pipeline,
-            jobs=jobs,
-            release=release,
-        )
+        return pipeline, jobs, release
+
+    def test_github_requires_exact_verify_and_release_runs(self) -> None:
+        commit = "a" * 40
+        runs, jobs, release = self._github_fixture(commit)
+        result = self._normalize_github(commit, (runs, jobs, release))
+        ci = cast(dict[str, object], result["ci"])
+        release_result = cast(dict[str, object], result["release"])
+        self.assertEqual(ci["status"], "success")
+        self.assertEqual(release_result["commit_oid"], commit)
+        runs[0]["head_sha"] = "b" * 40
+        with self.assertRaises(github.GitHubProofError):
+            self._normalize_github(commit, (runs, jobs, release))
+
+    def test_gitlab_requires_exact_tag_pipeline_jobs_and_release(self) -> None:
+        commit = "a" * 40
+        pipeline, jobs, release = self._gitlab_fixture(commit)
+        result = self._normalize_gitlab(commit, (pipeline, jobs, release))
         ci = cast(dict[str, object], result["ci"])
         self.assertEqual(ci["status"], "success")
         jobs[-1]["allow_failure"] = True
-        with self.assertRaises(publication_proof_gitlab.GitLabProofError):
-            publication_proof_gitlab.normalize(
-                repository="group/repo",
-                tag="v1.2.3",
-                commit_oid=commit,
-                pipeline=pipeline,
-                jobs=jobs,
-                release=release,
-            )
+        with self.assertRaises(gitlab.GitLabProofError):
+            self._normalize_gitlab(commit, (pipeline, jobs, release))
 
     def test_required_job_duplicates_fail_closed(self) -> None:
         commit = "a" * 40
-        github_runs = [
-            {
-                "id": 1,
-                "name": "Verify",
-                "path": ".github/workflows/verify.yml",
-                "event": "push",
-                "head_branch": "v1.2.3",
-                "head_sha": commit,
-                "status": "completed",
-                "conclusion": "success",
-            },
-            {
-                "id": 2,
-                "name": "Release",
-                "path": ".github/workflows/release.yml",
-                "event": "push",
-                "head_branch": "v1.2.3",
-                "head_sha": commit,
-                "status": "completed",
-                "conclusion": "success",
-            },
-        ]
-        duplicated = publication_proof_github.DEFAULT_REQUIRED_JOBS[0]
-        github_jobs = {
-            1: [
-                {"name": name, "status": "completed", "conclusion": "success"}
-                for name in publication_proof_github.DEFAULT_REQUIRED_JOBS[:-1]
-            ]
-            + [{"name": duplicated, "status": "completed", "conclusion": "success"}],
-            2: [
-                {
-                    "name": publication_proof_github.DEFAULT_REQUIRED_JOBS[-1],
-                    "status": "completed",
-                    "conclusion": "success",
-                }
-            ],
-        }
-        github_release = {
-            "id": 3,
-            "tag_name": "v1.2.3",
-            "name": "Codex DMX Proxy v1.2.3",
-            "draft": False,
-            "prerelease": False,
-        }
-        with self.assertRaises(publication_proof_github.GitHubProofError):
-            publication_proof_github.normalize(
-                repository="owner/repo",
-                tag="v1.2.3",
-                commit_oid=commit,
-                runs=github_runs,
-                jobs=github_jobs,
-                release=github_release,
-            )
+        runs, github_jobs, github_release = self._github_fixture(commit)
+        duplicated = github.DEFAULT_REQUIRED_JOBS[0]
+        github_jobs[1].append({"name": duplicated, "status": "completed", "conclusion": "success"})
+        with self.assertRaises(github.GitHubProofError):
+            self._normalize_github(commit, (runs, github_jobs, github_release))
 
-        gitlab_pipeline = {
-            "id": 7,
-            "sha": commit,
-            "ref": "v1.2.3",
-            "tag": True,
-            "source": "push",
-            "status": "success",
-        }
-        gitlab_jobs = [
-            self._gitlab_job(name, commit)
-            for name in publication_proof_gitlab.DEFAULT_REQUIRED_JOBS
-        ] + [self._gitlab_job(publication_proof_gitlab.DEFAULT_REQUIRED_JOBS[0], commit)]
-        gitlab_release = {
-            "tag_name": "v1.2.3",
-            "name": "Codex DMX Proxy v1.2.3",
-            "commit": {"id": commit},
-            "upcoming_release": False,
-            "evidences": [{"sha": "f" * 40}],
-        }
-        with self.assertRaises(publication_proof_gitlab.GitLabProofError):
-            publication_proof_gitlab.normalize(
-                repository="group/repo",
-                tag="v1.2.3",
-                commit_oid=commit,
-                pipeline=gitlab_pipeline,
-                jobs=gitlab_jobs,
-                release=gitlab_release,
-            )
+        pipeline, jobs, release = self._gitlab_fixture(commit)
+        jobs.append(self._gitlab_job(gitlab.DEFAULT_REQUIRED_JOBS[0], commit))
+        with self.assertRaises(gitlab.GitLabProofError):
+            self._normalize_gitlab(commit, (pipeline, jobs, release))
 
     def test_github_collection_binds_api_tag_object_to_fetched_identity(self) -> None:
         commit = "a" * 40
         tag_object = "b" * 40
-        runs = [
-            {
-                "id": 1,
-                "name": "Verify",
-                "path": ".github/workflows/verify.yml",
-                "event": "push",
-                "head_branch": "v1.2.3",
-                "head_sha": commit,
-                "status": "completed",
-                "conclusion": "success",
-            },
-            {
-                "id": 2,
-                "name": "Release",
-                "path": ".github/workflows/release.yml",
-                "event": "push",
-                "head_branch": "v1.2.3",
-                "head_sha": commit,
-                "status": "completed",
-                "conclusion": "success",
-            },
-        ]
+        runs, _, _ = self._github_fixture(commit)
         responses = [
-            {"object": {"type": "tag", "sha": tag_object}},
+            {"ref": "refs/tags/v1.2.3", "object": {"type": "tag", "sha": tag_object}},
             {"tag": "v1.2.3", "sha": tag_object, "object": {"type": "commit", "sha": commit}},
             {"workflow_runs": runs},
             {
                 "jobs": [
                     {"name": name, "status": "completed", "conclusion": "success"}
-                    for name in publication_proof_github.DEFAULT_REQUIRED_JOBS[:-1]
+                    for name in github.DEFAULT_REQUIRED_JOBS[:-1]
                 ]
             },
             {
                 "jobs": [
                     {
-                        "name": publication_proof_github.DEFAULT_REQUIRED_JOBS[-1],
+                        "name": github.DEFAULT_REQUIRED_JOBS[-1],
                         "status": "completed",
                         "conclusion": "success",
                     }
@@ -280,12 +198,13 @@ class ForgeAdapterContracts(unittest.TestCase):
                 "name": "Codex DMX Proxy v1.2.3",
                 "draft": False,
                 "prerelease": False,
+                "published_at": "2026-07-29T00:00:00Z",
             },
         ]
         with (
-            mock.patch.object(publication_proof_github, "_api", side_effect=responses[:2]),
+            mock.patch.object(github, "_api", side_effect=responses[:2]),
             mock.patch.object(
-                publication_proof_github,
+                github,
                 "_api_pages",
                 side_effect=[
                     [{"workflow_runs": [runs[0]]}],
@@ -296,7 +215,7 @@ class ForgeAdapterContracts(unittest.TestCase):
                 ],
             ),
         ):
-            publication_proof_github.collect(
+            github.collect(
                 repository="owner/repo",
                 tag="v1.2.3",
                 tag_object_oid=tag_object,
@@ -304,10 +223,10 @@ class ForgeAdapterContracts(unittest.TestCase):
             )
         responses[0] = {"object": {"type": "tag", "sha": "c" * 40}}
         with (
-            mock.patch.object(publication_proof_github, "_api", side_effect=responses[:1]),
-            self.assertRaises(publication_proof_github.GitHubProofError),
+            mock.patch.object(github, "_api", side_effect=responses[:1]),
+            self.assertRaises(github.GitHubProofError),
         ):
-            publication_proof_github.collect(
+            github.collect(
                 repository="owner/repo",
                 tag="v1.2.3",
                 tag_object_oid=tag_object,
@@ -316,51 +235,214 @@ class ForgeAdapterContracts(unittest.TestCase):
 
     def test_required_job_cannot_move_to_the_wrong_github_workflow(self) -> None:
         commit = "a" * 40
-        runs = [
-            {
-                "id": 1,
-                "name": "Verify",
-                "path": ".github/workflows/verify.yml",
-                "event": "push",
-                "head_branch": "v1.2.3",
-                "head_sha": commit,
-                "status": "completed",
-                "conclusion": "success",
-            },
-            {
-                "id": 2,
-                "name": "Release",
-                "path": ".github/workflows/release.yml",
-                "event": "push",
-                "head_branch": "v1.2.3",
-                "head_sha": commit,
-                "status": "completed",
-                "conclusion": "success",
-            },
-        ]
-        jobs = {
+        runs, jobs, release = self._github_fixture(commit)
+        jobs: dict[int, list[dict[str, object]]] = {
             1: [],
             2: [
                 {"name": name, "status": "completed", "conclusion": "success"}
-                for name in publication_proof_github.DEFAULT_REQUIRED_JOBS
+                for name in github.DEFAULT_REQUIRED_JOBS
             ],
         }
-        release = {
-            "id": 3,
-            "tag_name": "v1.2.3",
-            "name": "Codex DMX Proxy v1.2.3",
-            "draft": False,
-            "prerelease": False,
-        }
-        with self.assertRaisesRegex(publication_proof_github.GitHubProofError, "wrong workflow"):
-            publication_proof_github.normalize(
+        with self.assertRaisesRegex(github.GitHubProofError, "wrong workflow"):
+            self._normalize_github(commit, (runs, jobs, release))
+
+    def test_provider_candidates_and_release_identity_fail_closed(self) -> None:
+        commit = "a" * 40
+        pipeline, jobs, release = self._gitlab_fixture(commit)
+        for mutation in (
+            lambda: pipeline.update(source="web"),
+            lambda: release.update(description="wrong"),
+            lambda: release.update(evidences=[{"sha": "f" * 40}, {"sha": "e" * 40}]),
+        ):
+            pipeline.update(source="push")
+            release.update(
+                description="Provider-native source release. See CHANGELOG.md for user-relevant changes.",
+                evidences=[{"sha": "f" * 40}],
+            )
+            mutation()
+            with (
+                self.subTest(pipeline=pipeline, release=release),
+                self.assertRaises(gitlab.GitLabProofError),
+            ):
+                self._normalize_gitlab(commit, (pipeline, jobs, release))
+
+        runs, github_jobs, github_release = self._github_fixture(commit)
+        for mutation in (
+            lambda: runs.append(dict(runs[0], id=4)),
+            lambda: github_release.update(published_at=None),
+        ):
+            runs[:] = runs[:2]
+            github_release.update(published_at="2026-07-29T00:00:00Z")
+            mutation()
+            with (
+                self.subTest(runs=runs, release=github_release),
+                self.assertRaises(github.GitHubProofError),
+            ):
+                self._normalize_github(commit, (runs, github_jobs, github_release))
+
+    def test_github_malformed_boundaries_and_hosted_transport_fail_closed(self) -> None:
+        commit, tag_object = "a" * 40, "b" * 40
+        runs, jobs, release = self._github_fixture(commit)
+        cases = (
+            ("run-id", lambda: runs[0].update(id=True)),
+            ("incomplete-job", lambda: jobs[1][0].update(status="queued")),
+            ("release-id", lambda: release.update(id=True)),
+        )
+        for name, mutate in cases:
+            runs, jobs, release = self._github_fixture(commit)
+            mutate()
+            with self.subTest(name=name), self.assertRaises(github.GitHubProofError):
+                self._normalize_github(commit, (runs, jobs, release))
+
+        for helper, value in (
+            (github._mapping, []),
+            (github._mappings, {}),
+        ):
+            with self.assertRaises(github.GitHubProofError):
+                helper(value, "malformed")
+        with (
+            mock.patch.object(github.hosted, "api_json", return_value={}),
+            self.assertRaises(github.GitHubProofError),
+        ):
+            github._api_pages("endpoint")
+        with mock.patch.object(github.hosted, "api_json", return_value={}):
+            self.assertEqual(github._api("endpoint"), {})
+
+        responses = [
+            {"ref": "refs/tags/v1.2.3", "object": {"type": "tag", "sha": tag_object}},
+            {"tag": "wrong", "sha": tag_object, "object": {"type": "commit", "sha": commit}},
+        ]
+        with (
+            mock.patch.object(github, "_api", side_effect=responses),
+            self.assertRaisesRegex(github.GitHubProofError, "tag identity"),
+        ):
+            github.collect(
                 repository="owner/repo",
                 tag="v1.2.3",
+                tag_object_oid=tag_object,
                 commit_oid=commit,
-                runs=runs,
-                jobs=jobs,
-                release=release,
             )
+
+    def test_gitlab_collection_and_malformed_boundaries_fail_closed(self) -> None:
+        commit, tag_object = "a" * 40, "b" * 40
+        pipeline, jobs, release = self._gitlab_fixture(commit)
+        tag_record = {
+            "name": "v1.2.3",
+            "target": tag_object,
+            "commit": {"id": commit},
+        }
+        with (
+            mock.patch.object(
+                gitlab,
+                "_api",
+                side_effect=[tag_record, pipeline],
+            ),
+            mock.patch.object(
+                gitlab,
+                "_api_pages",
+                side_effect=[[pipeline], jobs, [release]],
+            ),
+        ):
+            result = gitlab.collect(
+                api_base="https://gitlab.example/api/v4/",
+                repository="group/repo",
+                tag="v1.2.3",
+                tag_object_oid=tag_object,
+                commit_oid=commit,
+            )
+        self.assertEqual(result["repository"], "group/repo")
+
+        with self.assertRaises(gitlab.GitLabProofError):
+            self._normalize_gitlab(
+                commit,
+                (pipeline, [{"name": "not-required"}, *jobs[:-1]], release),
+            )
+
+        wrong_commit = {**tag_record, "commit": {"id": "0" * 40}}
+        with (
+            mock.patch.object(gitlab, "_api", return_value=wrong_commit),
+            self.assertRaisesRegex(gitlab.GitLabProofError, "commit differs"),
+        ):
+            gitlab.collect(
+                api_base="https://gitlab.example/api/v4",
+                repository="group/repo",
+                tag="v1.2.3",
+                tag_object_oid=tag_object,
+                commit_oid=commit,
+            )
+
+        with (
+            mock.patch.object(
+                gitlab,
+                "_api",
+                side_effect=[tag_record, {**pipeline, "id": 8}],
+            ),
+            mock.patch.object(gitlab, "_api_pages", return_value=[pipeline]),
+            self.assertRaisesRegex(gitlab.GitLabProofError, "detail identity"),
+        ):
+            gitlab.collect(
+                api_base="https://gitlab.example/api/v4",
+                repository="group/repo",
+                tag="v1.2.3",
+                tag_object_oid=tag_object,
+                commit_oid=commit,
+            )
+
+        for value in ([], None):
+            with self.assertRaises(gitlab.GitLabProofError):
+                gitlab._mapping(value, "malformed")
+        for value in ([], {}):
+            with self.assertRaises(gitlab.GitLabProofError):
+                gitlab._stable_id(value)
+        for value, expected in (([1], [1]), ({"id": 1}, [{"id": 1}])):
+            self.assertEqual(gitlab._page_items(value), expected)
+        with self.assertRaises(gitlab.GitLabProofError):
+            gitlab._page_items("wrong")
+        with self.assertRaises(gitlab.GitLabProofError):
+            gitlab._evidence({})
+        with self.assertRaisesRegex(gitlab.GitLabProofError, "HTTP"):
+            gitlab.collect(
+                api_base="file:///tmp",
+                repository="group/repo",
+                tag="v1.2.3",
+                tag_object_oid=tag_object,
+                commit_oid=commit,
+            )
+
+        pipeline, jobs, release = self._gitlab_fixture(commit)
+        for mutation in (
+            lambda: pipeline.update(yaml_errors="bad"),
+            lambda: jobs[0].update(ref="wrong"),
+            lambda: jobs[0].update(commit={"id": "0" * 40}),
+            lambda: release.update(commit={"id": "0" * 40}),
+            lambda: release.update(evidences=[{"sha": ""}]),
+        ):
+            pipeline, jobs, release = self._gitlab_fixture(commit)
+            mutation()
+            with self.assertRaises(gitlab.GitLabProofError):
+                self._normalize_gitlab(commit, (pipeline, jobs, release))
+
+    def test_gitlab_cli_transport_and_pagination_translate_failures(self) -> None:
+        completed = mock.Mock(stdout='[{"id":1}]\n{"id":2}\n')
+        with (
+            mock.patch.object(gitlab.hosted, "executable", return_value="glab"),
+            mock.patch.object(gitlab.subprocess, "run", return_value=completed),
+        ):
+            self.assertEqual(gitlab._api_pages("endpoint"), [{"id": 1}, {"id": 2}])
+        with mock.patch.object(gitlab.hosted, "api_json", return_value={}):
+            self.assertEqual(gitlab._api("endpoint"), {})
+        for failure in (OSError("missing"), ValueError("bad")):
+            patch = (
+                mock.patch.object(gitlab.subprocess, "run", side_effect=failure)
+                if isinstance(failure, OSError)
+                else mock.patch.object(gitlab.json, "loads", side_effect=failure)
+            )
+            with (
+                mock.patch.object(gitlab.hosted, "executable", return_value="glab"),
+                patch,
+                self.assertRaises(gitlab.GitLabProofError),
+            ):
+                gitlab._api_pages("endpoint")
 
 
 if __name__ == "__main__":

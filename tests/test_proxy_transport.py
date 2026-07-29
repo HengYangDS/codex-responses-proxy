@@ -4,113 +4,41 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
-import tempfile
 import threading
 import unittest
 import urllib.error
 import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
 from typing import cast
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-PROXY_ROOT = ROOT / "proxy"
-for entry in (str(ROOT), str(PROXY_ROOT)):
-    if entry not in sys.path:
-        sys.path.insert(0, entry)
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-import response_failed as response_failed_policy  # noqa: E402
-import responses_rewrite  # noqa: E402
-import responses_transport  # noqa: E402
-import runtime_state  # noqa: E402
+from codex_dmx_proxy.compatibility import response_failed as response_failed_policy  # noqa: E402
+from codex_dmx_proxy.listener import state  # noqa: E402
+from codex_dmx_proxy.listener import rewrite  # noqa: E402
+from codex_dmx_proxy.listener import responses  # noqa: E402
+from tests.support.proxy_http import running_proxy  # noqa: E402
+from tests.support.proxy_http import request  # noqa: E402
 
 
 class TestProxyTransport(unittest.TestCase):
     """Exercise retry behavior through real local HTTP hops."""
 
     def setUp(self):
-        sys.path.insert(0, os.path.join(ROOT, "proxy"))
-        import dmx_responses_proxy as p
+        from codex_dmx_proxy.listener import entrypoint as p
 
         self.p = p
-        runtime_state.reset_for_test()
+        state.reset_for_test()
 
-    def _serve_proxy(self, responses, log_dir):
-        """Start a scripted upstream and the proxy, returning cleanup state."""
-        received = []
-
-        class UpstreamHandler(BaseHTTPRequestHandler):
-            def log_message(self, format: str, *args: Any) -> None:
-                del format, args
-
-            def do_POST(self):
-                length = int(self.headers.get("Content-Length", "0"))
-                received.append(self.rfile.read(length))
-                response = responses.pop(0)
-                if isinstance(response, dict):
-                    status = response.get("status", 200)
-                    chunks = response.get("chunks", [])
-                    started = response.get("started_event")
-                    if started is not None:
-                        started.set()
-                    release = response.get("release_event")
-                    if release is not None:
-                        release.wait(timeout=5)
-                    self.send_response(status)
-                    self.send_header(
-                        "Content-Type", response.get("content_type", "text/event-stream")
-                    )
-                    self.send_header("Connection", "close")
-                    self.end_headers()
-                    for chunk in chunks:
-                        self.wfile.write(chunk)
-                        self.wfile.flush()
-                    self.close_connection = True
-                    return
-                status, payload = response
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-
-        upstream = ThreadingHTTPServer(("127.0.0.1", 0), UpstreamHandler)
-        upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
-        upstream_thread.start()
-
-        old_upstream = responses_transport.UPSTREAM
-        old_log_path = runtime_state.LOG_PATH
-        responses_transport.UPSTREAM = f"http://127.0.0.1:{upstream.server_address[1]}"
-        runtime_state.LOG_PATH = str(Path(log_dir) / "proxy.log")
-        proxy = self.p.create_server(("127.0.0.1", 0))
-        proxy_thread = threading.Thread(target=proxy.serve_forever, daemon=True)
-        proxy_thread.start()
-
-        def cleanup():
-            proxy.shutdown()
-            proxy.server_close()
-            proxy_thread.join(timeout=2)
-            upstream.shutdown()
-            upstream.server_close()
-            upstream_thread.join(timeout=2)
-            responses_transport.UPSTREAM = old_upstream
-            runtime_state.LOG_PATH = old_log_path
-
-        return proxy.server_address[1], received, cleanup
-
-    @staticmethod
-    def _request(proxy_port, body):
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{proxy_port}/v1/responses",
-            data=body,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request)
+    def exchange(self, scripted, body):
+        """Run one loopback exchange and return received requests and payload."""
+        with running_proxy(scripted) as (port, received), request(port, body) as response:
+            self.assertEqual(response.status, 200)
+            return received, response.read()
 
     def test_recovers_response_failed_with_pair_safe_compact_request(self):
         response_failed = (
@@ -139,18 +67,8 @@ class TestProxyTransport(unittest.TestCase):
             separators=(",", ":"),
         ).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy(
-                [(400, response_failed), (200, success)],
-                tmp,
-            )
-            try:
-                response = self._request(port, body)
-                with response:
-                    self.assertEqual(response.status, 200)
-                    self.assertEqual(response.read(), success)
-            finally:
-                cleanup()
+        received, payload = self.exchange([(400, response_failed), (200, success)], body)
+        self.assertEqual(payload, success)
 
         self.assertEqual(received[0], body)
         self.assertEqual(len(received), 2)
@@ -191,18 +109,8 @@ class TestProxyTransport(unittest.TestCase):
             separators=(",", ":"),
         ).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy(
-                [(400, blocked), (200, success)],
-                tmp,
-            )
-            try:
-                response = self._request(port, body)
-                with response:
-                    self.assertEqual(response.status, 200)
-                    self.assertEqual(response.read(), success)
-            finally:
-                cleanup()
+        received, payload = self.exchange([(400, blocked), (200, success)], body)
+        self.assertEqual(payload, success)
 
         self.assertEqual(received[0], body)
         self.assertEqual(len(received), 2)
@@ -232,19 +140,12 @@ class TestProxyTransport(unittest.TestCase):
             separators=(",", ":"),
         ).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy(
-                [(400, invalid_prompt)],
-                tmp,
-            )
-            try:
-                with self.assertRaises(urllib.error.HTTPError) as raised:
-                    self._request(port, body)
-                with raised.exception:
-                    self.assertEqual(raised.exception.code, 400)
-                    self.assertEqual(raised.exception.read(), invalid_prompt)
-            finally:
-                cleanup()
+        with running_proxy([(400, invalid_prompt)]) as (port, received):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                request(port, body)
+            with raised.exception:
+                self.assertEqual(raised.exception.code, 400)
+                self.assertEqual(raised.exception.read(), invalid_prompt)
 
         self.assertEqual(received, [body])
 
@@ -280,23 +181,18 @@ class TestProxyTransport(unittest.TestCase):
             separators=(",", ":"),
         ).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy(
-                [(400, response_failed), (400, response_failed), (200, success)],
-                tmp,
-            )
-            try:
-                with (
-                    mock.patch.object(response_failed_policy, "MAX_STAGES", 1),
-                    mock.patch.object(runtime_state, "log") as log,
-                ):
-                    response = self._request(port, body)
-                    with response:
-                        self.assertEqual(response.status, 200)
-                        self.assertEqual(response.read(), success)
-                logs = "\n".join(call.args[0] for call in log.call_args_list)
-            finally:
-                cleanup()
+        with (
+            running_proxy([(400, response_failed), (400, response_failed), (200, success)]) as (
+                port,
+                received,
+            ),
+            mock.patch.object(response_failed_policy, "MAX_STAGES", 1),
+            mock.patch.object(state, "log") as log,
+            request(port, body) as response,
+        ):
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.read(), success)
+        logs = "\n".join(call.args[0] for call in log.call_args_list)
 
         self.assertEqual(received[0], body)
         self.assertEqual(len(received), 3)
@@ -341,22 +237,17 @@ class TestProxyTransport(unittest.TestCase):
             separators=(",", ":"),
         ).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy(
-                [(400, response_failed), (400, response_failed)],
-                tmp,
-            )
-            try:
-                with mock.patch.object(response_failed_policy, "MAX_STAGES", 0):
-                    with self.assertRaises(urllib.error.HTTPError) as raised:
-                        self._request(port, body)
-                error = raised.exception
-                with error:
-                    self.assertEqual(error.code, 503)
-                    self.assertEqual(error.headers["Retry-After"], "3")
-                    payload = json.loads(error.read())
-            finally:
-                cleanup()
+        with (
+            running_proxy([(400, response_failed), (400, response_failed)]) as (port, received),
+            mock.patch.object(response_failed_policy, "MAX_STAGES", 0),
+        ):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                request(port, body)
+            error = raised.exception
+            with error:
+                self.assertEqual(error.code, 503)
+                self.assertEqual(error.headers["Retry-After"], "3")
+                payload = json.loads(error.read())
 
         self.assertEqual(len(received), 1)
         self.assertEqual(payload["error"]["code"], "response_failed_recovery_exhausted")
@@ -376,19 +267,9 @@ class TestProxyTransport(unittest.TestCase):
             separators=(",", ":"),
         ).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy(
-                [(477, empty_response), (200, success)],
-                tmp,
-            )
-            try:
-                with mock.patch.object(responses_transport.time, "sleep", return_value=None):
-                    response = self._request(port, body)
-                    with response:
-                        self.assertEqual(response.status, 200)
-                        self.assertEqual(response.read(), success)
-            finally:
-                cleanup()
+        with mock.patch.object(responses.time, "sleep", return_value=None):
+            received, payload = self.exchange([(477, empty_response), (200, success)], body)
+        self.assertEqual(payload, success)
 
         self.assertEqual(received, [body, body])
 
@@ -408,17 +289,8 @@ class TestProxyTransport(unittest.TestCase):
             separators=(",", ":"),
         ).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, _received, cleanup = self._serve_proxy(
-                [(400, response_failed), (200, success)],
-                tmp,
-            )
-            try:
-                response = self._request(port, body)
-                with response:
-                    self.assertEqual(response.read(), success)
-            finally:
-                cleanup()
+        _received, payload = self.exchange([(400, response_failed), (200, success)], body)
+        self.assertEqual(payload, success)
 
         status = self.p.runtime_status()
         counters = cast("dict[str, int]", status["counters"])
@@ -432,17 +304,15 @@ class TestProxyTransport(unittest.TestCase):
         self.assertNotIn("secret-replay", json.dumps(status))
 
     def test_loopback_healthz_returns_machine_readable_metrics(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            port, _received, cleanup = self._serve_proxy([], tmp)
-            try:
-                with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
-                    f"http://127.0.0.1:{port}/healthz",
-                ) as response:
-                    self.assertEqual(response.status, 200)
-                    self.assertEqual(response.headers["Content-Type"], "application/json")
-                    status = json.loads(response.read())
-            finally:
-                cleanup()
+        with (
+            running_proxy([]) as (port, _received),
+            urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
+                f"http://127.0.0.1:{port}/healthz"
+            ) as response,
+        ):
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers["Content-Type"], "application/json")
+            status = json.loads(response.read())
 
         self.assertIn("counters", status)
         self.assertIn("upstream_classifications", status)
@@ -451,39 +321,34 @@ class TestProxyTransport(unittest.TestCase):
     def test_loopback_drain_rejects_new_responses_and_can_be_reopened(self):
         success = b'{"id":"resp_served","status":"completed"}'
         body = json.dumps({"stream": False, "input": []}).encode()
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy([(200, success)], tmp)
-            try:
-                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-                drain = urllib.request.Request(
-                    f"http://127.0.0.1:{port}/control/drain",
-                    method="POST",
-                )
-                with opener.open(drain) as response:
-                    snapshot = json.loads(response.read())
-                self.assertTrue(snapshot["draining"])
-                self.assertEqual(snapshot["active_responses"], 0)
+        with running_proxy([(200, success)]) as (port, received):
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            drain = urllib.request.Request(
+                f"http://127.0.0.1:{port}/control/drain",
+                method="POST",
+            )
+            with opener.open(drain) as response:
+                snapshot = json.loads(response.read())
+            self.assertTrue(snapshot["draining"])
+            self.assertEqual(snapshot["active_responses"], 0)
 
-                with self.assertRaises(urllib.error.HTTPError) as raised:
-                    self._request(port, body)
-                with raised.exception:
-                    self.assertEqual(raised.exception.code, 503)
-                    self.assertEqual(raised.exception.headers["Retry-After"], "1")
-                    payload = json.loads(raised.exception.read())
-                self.assertEqual(payload["error"]["code"], "proxy_draining")
-                self.assertEqual(received, [])
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                request(port, body)
+            with raised.exception:
+                self.assertEqual(raised.exception.code, 503)
+                self.assertEqual(raised.exception.headers["Retry-After"], "1")
+                payload = json.loads(raised.exception.read())
+            self.assertEqual(payload["error"]["code"], "proxy_draining")
+            self.assertEqual(received, [])
 
-                reopen = urllib.request.Request(
-                    f"http://127.0.0.1:{port}/control/drain",
-                    method="DELETE",
-                )
-                with opener.open(reopen) as response:
-                    self.assertFalse(json.loads(response.read())["draining"])
-                response = self._request(port, body)
-                with response:
-                    self.assertEqual(response.read(), success)
-            finally:
-                cleanup()
+            reopen = urllib.request.Request(
+                f"http://127.0.0.1:{port}/control/drain",
+                method="DELETE",
+            )
+            with opener.open(reopen) as response:
+                self.assertFalse(json.loads(response.read())["draining"])
+            with request(port, body) as response:
+                self.assertEqual(response.read(), success)
 
         status = self.p.runtime_status()
         counters = cast("dict[str, int]", status["counters"])
@@ -491,11 +356,9 @@ class TestProxyTransport(unittest.TestCase):
         self.assertFalse(status["draining"])
 
     def test_drain_lease_expires_without_a_controller_rollback_request(self):
-        runtime_state.reset_for_test()
-        with mock.patch.object(
-            runtime_state.time, "monotonic", side_effect=[10.0, 10.0, 12.1, 12.1, 12.1]
-        ):
-            started = runtime_state.set_draining(True, lease_seconds=2)
+        state.reset_for_test()
+        with mock.patch.object(state.time, "monotonic", side_effect=[10.0, 10.0, 12.1, 12.1, 12.1]):
+            started = state.set_draining(True, lease_seconds=2)
             expired = self.p.runtime_status()
         self.assertTrue(started["draining"])
         self.assertFalse(expired["draining"])
@@ -510,30 +373,25 @@ class TestProxyTransport(unittest.TestCase):
         release = threading.Event()
         worker_result = {}
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy(
-                [
-                    {
-                        "status": 200,
-                        "content_type": "application/json",
-                        "chunks": [success],
-                        "started_event": started,
-                        "release_event": release,
-                    },
-                ],
-                tmp,
-            )
+        scripted = {
+            "status": 200,
+            "content_type": "application/json",
+            "chunks": [success],
+            "started_event": started,
+            "release_event": release,
+        }
+        with running_proxy([scripted]) as (port, received):
+
+            def request_in_flight():
+                try:
+                    with request(port, body) as response:
+                        worker_result["body"] = response.read()
+                except BaseException as exc:  # asserted below; never hide a worker failure
+                    worker_result["error"] = exc
+
+            worker = threading.Thread(target=request_in_flight)
+            worker.start()
             try:
-
-                def request_in_flight():
-                    try:
-                        with self._request(port, body) as response:
-                            worker_result["body"] = response.read()
-                    except BaseException as exc:  # asserted below; never hide a worker failure
-                        worker_result["error"] = exc
-
-                worker = threading.Thread(target=request_in_flight)
-                worker.start()
                 self.assertTrue(
                     started.wait(timeout=2), "upstream never received the first Responses request"
                 )
@@ -549,7 +407,7 @@ class TestProxyTransport(unittest.TestCase):
                 self.assertEqual(snapshot["active_responses"], 1)
 
                 with self.assertRaises(urllib.error.HTTPError) as raised:
-                    self._request(port, body)
+                    request(port, body)
                 with raised.exception:
                     self.assertEqual(raised.exception.code, 503)
                     self.assertEqual(
@@ -571,7 +429,6 @@ class TestProxyTransport(unittest.TestCase):
                 self.assertEqual(drained["active_responses"], 0)
             finally:
                 release.set()
-                cleanup()
 
     def test_reconnects_a_pre_content_response_failed_stream(self):
         failed = {
@@ -589,15 +446,8 @@ class TestProxyTransport(unittest.TestCase):
         }
         body = json.dumps({"stream": True, "input": []}).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy([failed, recovered], tmp)
-            try:
-                with mock.patch.object(responses_transport.time, "sleep", return_value=None):
-                    response = self._request(port, body)
-                    with response:
-                        payload = response.read()
-            finally:
-                cleanup()
+        with mock.patch.object(responses.time, "sleep", return_value=None):
+            received, payload = self.exchange([failed, recovered], body)
 
         self.assertEqual(len(received), 2)
         self.assertIn(b"recovered", payload)
@@ -611,19 +461,17 @@ class TestProxyTransport(unittest.TestCase):
         premature_eof = {"chunks": [b'data: {"type":"response.created"}\n\n']}
         body = json.dumps({"stream": True, "input": []}).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy([premature_eof] * 6, tmp)
-            try:
-                with mock.patch.object(responses_transport.time, "sleep", return_value=None):
-                    with self.assertRaises(urllib.error.HTTPError) as raised:
-                        self._request(port, body)
-                error = raised.exception
-                with error:
-                    self.assertEqual(error.code, 503)
-                    self.assertEqual(error.headers["Retry-After"], "3")
-                    payload = json.loads(error.read())
-            finally:
-                cleanup()
+        with (
+            running_proxy([premature_eof] * 6) as (port, received),
+            mock.patch.object(responses.time, "sleep", return_value=None),
+        ):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                request(port, body)
+            error = raised.exception
+            with error:
+                self.assertEqual(error.code, 503)
+                self.assertEqual(error.headers["Retry-After"], "3")
+                payload = json.loads(error.read())
 
         self.assertEqual(received, [body] * 6)
         self.assertEqual(payload["error"]["type"], "upstream_unavailable")
@@ -648,15 +496,8 @@ class TestProxyTransport(unittest.TestCase):
         }
         body = json.dumps({"stream": True, "input": []}).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy([premature_eof, recovered], tmp)
-            try:
-                with mock.patch.object(responses_transport.time, "sleep", return_value=None):
-                    response = self._request(port, body)
-                    with response:
-                        payload = response.read()
-            finally:
-                cleanup()
+        with mock.patch.object(responses.time, "sleep", return_value=None):
+            received, payload = self.exchange([premature_eof, recovered], body)
 
         self.assertEqual(len(received), 2)
         self.assertIn(b'"delta":"ok"', payload)
@@ -678,14 +519,7 @@ class TestProxyTransport(unittest.TestCase):
         }
         body = json.dumps({"stream": True, "input": []}).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy([partial, unexpected_retry], tmp)
-            try:
-                response = self._request(port, body)
-                with response:
-                    payload = response.read()
-            finally:
-                cleanup()
+        received, payload = self.exchange([partial, unexpected_retry], body)
 
         self.assertEqual(len(received), 1)
         self.assertIn(b"partial", payload)
@@ -708,51 +542,20 @@ class TestProxyTransport(unittest.TestCase):
             separators=(",", ":"),
         ).encode()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy(
-                [(477, empty_response)] * 4,
-                tmp,
-            )
-            try:
-                with mock.patch.object(responses_transport.time, "sleep", return_value=None):
-                    with self.assertRaises(urllib.error.HTTPError) as raised:
-                        self._request(port, body)
-                error = raised.exception
-                with error:
-                    self.assertEqual(error.code, 503)
-                    self.assertEqual(error.headers["Retry-After"], "3")
-                    payload = json.loads(error.read())
-            finally:
-                cleanup()
+        with (
+            running_proxy([(477, empty_response)] * 4) as (port, received),
+            mock.patch.object(responses.time, "sleep", return_value=None),
+        ):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                request(port, body)
+            error = raised.exception
+            with error:
+                self.assertEqual(error.code, 503)
+                self.assertEqual(error.headers["Retry-After"], "3")
+                payload = json.loads(error.read())
 
         self.assertEqual(received, [body] * 2)
         self.assertEqual(payload["error"]["type"], "upstream_unavailable")
-        self.assertEqual(payload["error"]["code"], "dmx_empty_response_exhausted")
-        self.assertEqual(payload["error"]["attempts"], 2)
-
-    def test_streaming_empty_response_exhaustion_returns_standard_http_503(self):
-        empty_response = (
-            b'{"error":{"message":"official provider returned an empty response",'
-            b'"type":"dmx_api_error","code":"empty_response"}}'
-        )
-        body = json.dumps({"stream": True, "input": []}, separators=(",", ":")).encode()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            port, received, cleanup = self._serve_proxy([(477, empty_response)] * 4, tmp)
-            try:
-                with mock.patch.object(responses_transport.time, "sleep", return_value=None):
-                    with self.assertRaises(urllib.error.HTTPError) as raised:
-                        self._request(port, body)
-                error = raised.exception
-                with error:
-                    self.assertEqual(error.code, 503)
-                    self.assertEqual(error.headers["Content-Type"], "application/json")
-                    self.assertEqual(error.headers["Retry-After"], "3")
-                    payload = json.loads(error.read())
-            finally:
-                cleanup()
-
-        self.assertEqual(received, [body] * 2)
         self.assertEqual(payload["error"]["code"], "dmx_empty_response_exhausted")
         self.assertEqual(payload["error"]["attempts"], 2)
 
@@ -782,7 +585,7 @@ class TestProxyTransport(unittest.TestCase):
             }
         ).encode()
 
-        out, note = responses_rewrite.sanitize_responses_body(body)
+        out, note = rewrite.sanitize_responses_body(body)
         obj = json.loads(out)
 
         self.assertIn("local_image_items=2", note)
@@ -820,7 +623,7 @@ class TestProxyTransport(unittest.TestCase):
             }
         ).encode()
 
-        out, note = responses_rewrite.sanitize_responses_body(body)
+        out, note = rewrite.sanitize_responses_body(body)
         obj = json.loads(out)
 
         self.assertIn(f"local_image_items={len(bad_urls)}", note)

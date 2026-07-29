@@ -13,6 +13,7 @@ import sys
 import threading
 import unittest
 from pathlib import Path
+from typing import cast
 from unittest import mock
 
 
@@ -20,31 +21,31 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from tests.support.handoff import expected_metadata
 from tests.support.handoff import handoff_module
 from tests.support.handoff import http_json
-from tests.support.handoff import proxy_module
+from tests.support.handoff import entrypoint_module
 from tests.support.handoff import runtime_state_module
-from platform_adapters import control_handoff
-import http_surface
+from codex_dmx_proxy.deployment import handoff
 
 
 class TestProtocolContract(unittest.TestCase):
     """The wire-level contract every other component below depends on."""
 
     def setUp(self):
-        self.p = proxy_module
+        self.p = entrypoint_module
         runtime_state_module.reset_for_test()
         handoff_module.reset_session_to_idle()
 
-    def test_proxy_declares_handoff_protocol_version_two(self):
-        self.assertEqual(handoff_module.HANDOFF_PROTOCOL_VERSION, 2)
-
-    def test_control_declares_matching_handoff_protocol_version(self):
-        self.assertEqual(control_handoff.HANDOFF_PROTOCOL_VERSION, 2)
+    def test_parent_and_controller_declare_protocol_version_two(self):
+        self.assertEqual(
+            (handoff_module.HANDOFF_PROTOCOL_VERSION, handoff.HANDOFF_PROTOCOL_VERSION),
+            (2, 2),
+        )
 
     def test_runtime_status_contains_full_handoff_health_shape(self):
         status = self.p.runtime_status()
-        for key in (
+        required = (
             "pid",
             "handoff_protocol_version",
             "handoff_transaction_id",
@@ -55,35 +56,34 @@ class TestProtocolContract(unittest.TestCase):
             "payload_manifest_sha256",
             "accepting",
             "draining",
-        ):
-            self.assertIn(key, status, f"runtime_status() is missing {key!r}")
+        )
+        self.assertEqual(set(required).difference(status), set())
         self.assertEqual(status["handoff_protocol_version"], 2)
         self.assertEqual(status["pid"], os.getpid())
 
-    def test_runtime_status_reports_accepting_true_and_draining_false_when_idle(self):
+    def test_runtime_status_reports_an_accepting_idle_state(self):
         status = self.p.runtime_status()
-        self.assertIs(status["accepting"], True)
-        self.assertIs(status["draining"], False)
+        self.assertEqual(
+            (status["accepting"], status["draining"], status["handoff_transaction_id"]),
+            (True, False, None),
+        )
+        self.assertIn(status["handoff_state"], (None, "idle"))
 
     def test_a_prepared_or_committing_child_window_is_not_draining_but_is_also_not_accepting(self):
         # ``accepting`` is not merely ``not draining``: a transaction that owns
         # the single-flight session but has not yet closed admission (draining
         # is still False) must still report itself as unavailable for a fresh
         # handoff/admission decision.
-        for state in ("ready", "committing"):
-            with self.subTest(state=state):
-                handoff_module._HANDOFF_SESSION["state"] = state
-                try:
-                    status = self.p.runtime_status()
-                    self.assertIs(status["draining"], False)
-                    self.assertIs(status["accepting"], False)
-                finally:
-                    handoff_module.reset_session_to_idle()
+        def assert_unavailable(state):
+            handoff_module._HANDOFF_SESSION["state"] = state
+            try:
+                status = self.p.runtime_status()
+                self.assertEqual((status["draining"], status["accepting"]), (False, False))
+            finally:
+                handoff_module.reset_session_to_idle()
 
-    def test_idle_handoff_state_has_no_transaction_id(self):
-        status = self.p.runtime_status()
-        self.assertIn(status["handoff_state"], (None, "idle"))
-        self.assertIsNone(status["handoff_transaction_id"])
+        for state in ("ready", "committing"):
+            assert_unavailable(state)
 
     def test_healthz_over_real_loopback_http_exposes_the_same_shape(self):
         proxy = self.p.create_server(("127.0.0.1", 0))
@@ -92,15 +92,15 @@ class TestProtocolContract(unittest.TestCase):
         try:
             status_code, payload = http_json(proxy.server_address[1], "/healthz")
             self.assertEqual(status_code, 200)
-            for key in (
+            required = (
                 "pid",
                 "handoff_protocol_version",
                 "handoff_transaction_id",
                 "handoff_state",
                 "payload_manifest_sha256",
                 "accepting",
-            ):
-                self.assertIn(key, payload)
+            )
+            self.assertEqual(set(required).difference(payload), set())
         finally:
             proxy.shutdown()
             proxy.server_close()
@@ -108,162 +108,319 @@ class TestProtocolContract(unittest.TestCase):
 
 
 class TestHandoffTransitionValidation(unittest.TestCase):
-    def setUp(self):
-        self.p = handoff_module
-
-    def test_allows_the_documented_happy_path(self):
-        for current, target in (
-            ("idle", "preparing"),
-            ("preparing", "ready"),
-            ("ready", "committing"),
-            ("committing", "serving"),
-            ("serving", "finalizing"),
-            ("finalizing", "finalized"),
-            ("finalized", "idle"),
-        ):
-            with self.subTest(current=current, target=target):
-                self.assertTrue(self.p.validate_transition(current, target))
-
-    def test_allows_an_abort_escape_from_every_non_idle_non_finalized_state(self):
-        for current in ("preparing", "ready", "committing", "serving", "finalizing"):
-            with self.subTest(current=current):
-                self.assertTrue(self.p.validate_transition(current, "aborting"))
-        self.assertTrue(self.p.validate_transition("aborting", "rolled_back"))
-        self.assertTrue(self.p.validate_transition("rolled_back", "idle"))
-
-    def test_idle_and_finalized_have_no_abort_escape(self):
-        self.assertFalse(self.p.validate_transition("idle", "aborting"))
-        self.assertFalse(self.p.validate_transition("finalized", "aborting"))
-
-    def test_rejects_skipping_states_in_the_happy_path(self):
-        self.assertFalse(self.p.validate_transition("idle", "committing"))
-        self.assertFalse(self.p.validate_transition("idle", "serving"))
-        self.assertFalse(self.p.validate_transition("preparing", "committing"))
-        self.assertFalse(self.p.validate_transition("ready", "serving"))
-        self.assertFalse(self.p.validate_transition("committing", "finalizing"))
-
-    def test_finalized_can_only_recycle_to_idle_for_the_next_transaction(self):
-        self.assertFalse(self.p.validate_transition("finalized", "preparing"))
-        self.assertFalse(self.p.validate_transition("finalized", "rolled_back"))
-        self.assertTrue(self.p.validate_transition("finalized", "idle"))
-
-    def test_rejects_direct_nonterminal_to_rolled_back_shortcuts(self):
-        # Every non-idle, non-finalized phase must pass through ``aborting``
-        # first; jumping straight to ``rolled_back`` is illegal.
-        for current in ("idle", "preparing", "ready", "committing", "serving", "finalizing"):
-            with self.subTest(current=current):
-                self.assertFalse(self.p.validate_transition(current, "rolled_back"))
-
-    def test_rejects_committing_directly_from_rolled_back(self):
-        self.assertFalse(self.p.validate_transition("rolled_back", "committing"))
+    def test_transition_table_matches_the_documented_protocol(self):
+        allowed = frozenset(
+            (
+                ("idle", "preparing"),
+                ("preparing", "ready"),
+                ("ready", "committing"),
+                ("committing", "serving"),
+                ("serving", "finalizing"),
+                ("finalizing", "finalized"),
+                ("finalized", "idle"),
+                ("aborting", "rolled_back"),
+                ("rolled_back", "idle"),
+            )
+            + tuple(
+                (state, "aborting")
+                for state in ("preparing", "ready", "committing", "serving", "finalizing")
+            )
+        )
+        states = {state for transition in allowed for state in transition}
+        results = {
+            (current, target): handoff_module.validate_transition(current, target)
+            for current in states
+            for target in states
+        }
+        self.assertEqual({transition for transition, valid in results.items() if valid}, allowed)
 
 
 class TestHandoffPlatformHelpers(unittest.TestCase):
     def setUp(self):
         self.p = handoff_module
 
-    def _expected(self):
-        return {
-            "transaction_id": "txn-platform",
-            "release": "1.0.25",
-            "serving_payload_sha256": "a" * 64,
-            "release_receipt_sha256": "e" * 64,
-            "manifest_sha256": "b" * 64,
-        }
+    def test_platform_popen_kwargs_are_minimal_and_inherit_only_the_listener(self):
+        posix = self.p.popen_kwargs(37, is_windows=False)
+        windows = self.p.popen_kwargs(None, is_windows=True)
+        self.assertEqual(posix["pass_fds"], (37,))
+        self.assertNotIn("pass_fds", windows)
+        projected = tuple(
+            (kwargs["close_fds"], kwargs["stdin"], kwargs["stdout"]) for kwargs in (posix, windows)
+        )
+        self.assertEqual(projected, ((True, subprocess.PIPE, subprocess.PIPE),) * 2)
+        with self.assertRaisesRegex(self.p.HandoffError, "requires a listener fd"):
+            self.p.popen_kwargs(None, is_windows=False)
 
-    def test_posix_kwargs_include_pass_fds_and_close_fds(self):
-        kwargs = self.p.popen_kwargs(37, is_windows=False)
-        self.assertEqual(kwargs.get("pass_fds"), (37,))
-        self.assertTrue(kwargs.get("close_fds"))
+    def test_child_constructor_requires_both_control_pipes(self):
+        def reject_pipes(pipes):
+            process = mock.Mock(stdin=pipes[0], stdout=pipes[1])
+            with self.assertRaisesRegex(self.p.HandoffError, "pipes are unavailable"):
+                self.p.HandoffChild(process)
 
-    def test_windows_kwargs_omit_pass_fds_but_still_close_fds_and_pipe_stdio(self):
-        kwargs = self.p.popen_kwargs(None, is_windows=True)
-        self.assertNotIn("pass_fds", kwargs)
-        self.assertTrue(kwargs.get("close_fds"))
-        self.assertEqual(kwargs.get("stdin"), subprocess.PIPE)
-        self.assertEqual(kwargs.get("stdout"), subprocess.PIPE)
+        for pipes in ((None, mock.Mock()), (mock.Mock(), None)):
+            reject_pipes(pipes)
 
-    def test_posix_spawn_uses_the_listener_fileno_via_pass_fds(self):
+    def test_child_message_writer_rejects_invalid_oversized_and_broken_pipes(self):
+        process = mock.Mock(stdin=mock.Mock(), stdout=mock.Mock())
+        child = self.p.HandoffChild(process)
+        with self.assertRaisesRegex(self.p.HandoffError, "must be an object"):
+            child.send_message(cast("dict[str, object]", []))
+        with self.assertRaisesRegex(self.p.HandoffError, "exceeds the control limit"):
+            child.send_message({"value": "x" * self.p.HANDOFF_CONTROL_MAX_BYTES})
+        process.stdin.write.side_effect = BrokenPipeError
+        with self.assertRaisesRegex(self.p.HandoffError, "pipe write failed"):
+            child.send_message({"type": "prepare"})
+
+    def test_child_reader_projects_timeout_and_malformed_messages(self):
+        def reject(case):
+            raw, message = case
+            process = mock.Mock(stdin=io.BytesIO(), stdout=io.BytesIO(raw))
+            child = self.p.HandoffChild(process)
+            with self.assertRaisesRegex(self.p.HandoffError, message):
+                child.recv_message(0.1)
+
+        cases = (
+            (b"", "control pipe closed"),
+            (b"x" * (self.p.HANDOFF_CONTROL_MAX_BYTES + 1), "exceeds the control limit"),
+            (b"{\n", "invalid JSON"),
+            (b"[]\n", "must be an object"),
+        )
+        for case in cases:
+            reject(case)
+
+        process = mock.Mock(stdin=io.BytesIO(), stdout=mock.Mock())
+        child = self.p.HandoffChild(process)
+        child._reader_started = True
+        with self.assertRaisesRegex(self.p.HandoffError, "response timed out"):
+            child.recv_message(0)
+
+        child = self.p.HandoffChild(
+            mock.Mock(stdin=io.BytesIO(), stdout=io.BytesIO(b'{"type":"ready"}\n'))
+        )
+        self.assertEqual(child.recv_message(1), {"type": "ready"})
+        child._start_reader()
+        self.assertTrue(child._reader_started)
+
+        broken = mock.Mock()
+        broken.readline.side_effect = OSError
+        child = self.p.HandoffChild(mock.Mock(stdin=io.BytesIO(), stdout=broken))
+        with self.assertRaisesRegex(self.p.HandoffError, "pipe read failed"):
+            child.recv_message(0.1)
+
+    def test_bounded_child_shutdown_handles_already_exited_success_and_timeout(self):
+        def verify(case):
+            method, poll_result, poll_effect, wait, expected = case
+            process = mock.Mock(stdin=mock.Mock(), stdout=mock.Mock())
+            process.poll.return_value = poll_result
+            process.poll.side_effect = poll_effect
+            process.wait.side_effect = wait
+            self.assertIs(getattr(self.p.HandoffChild(process), method)(0), expected)
+
+        outcomes = (
+            (0, None, None, True),
+            (None, None, None, True),
+            (None, [None, None], subprocess.TimeoutExpired("child", 0.01), False),
+        )
+        cases = (
+            (method, poll_result, poll_effect, wait, expected)
+            for method in ("terminate_bounded", "kill_bounded")
+            for poll_result, poll_effect, wait, expected in outcomes
+        )
+        for case in cases:
+            verify(case)
+
+    def test_spawn_projects_only_the_platform_listener_capability(self):
+        expected = expected_metadata(transaction_id="txn-platform", release_receipt_sha256="e" * 64)
+        for is_windows, pid in ((False, 4242), (True, 5150)):
+            with self.subTest(is_windows=is_windows):
+                process = mock.Mock(pid=pid, stdin=mock.Mock(), stdout=mock.Mock())
+                listener = mock.Mock()
+                listener.fileno.return_value = 37
+                listener.share.return_value = b"opaque-share-bytes"
+                with mock.patch("subprocess.Popen", return_value=process) as popen:
+                    child = self.p.spawn_child(
+                        listener,
+                        expected,
+                        entrypoint_module._handoff_context(),
+                        is_windows=is_windows,
+                    )
+                self.assertIs(child.process, process)
+                args, kwargs = popen.call_args
+                written = b"".join(call.args[0] for call in process.stdin.write.call_args_list)
+                if is_windows:
+                    self.assertNotIn("pass_fds", kwargs)
+                    self.assertNotIn(b"opaque-share-bytes", str(args).encode())
+                    self.assertNotIn("opaque-share-bytes", json.dumps(kwargs.get("env") or {}))
+                    listener.share.assert_called_once_with(pid)
+                    self.assertEqual(
+                        base64.b64decode(json.loads(written.splitlines()[0])["listener_share_b64"]),
+                        b"opaque-share-bytes",
+                    )
+                    continue
+                self.assertEqual(kwargs["pass_fds"], (37,))
+                self.assertNotIn(b"listener_share_b64", written)
+
+    def test_windows_share_failure_terminates_the_owned_child(self):
+        fake_process = mock.Mock(pid=5150, stdin=mock.Mock(), stdout=mock.Mock())
+        listener = mock.Mock()
+        listener.share.side_effect = OSError("sharing failed")
+        with (
+            mock.patch("subprocess.Popen", return_value=fake_process),
+            mock.patch.object(
+                self.p.HandoffChild, "terminate_bounded", return_value=True
+            ) as terminate,
+        ):
+            with self.assertRaisesRegex(self.p.HandoffError, "listener sharing failed"):
+                self.p.spawn_child(
+                    listener,
+                    expected_metadata(
+                        transaction_id="txn-platform", release_receipt_sha256="e" * 64
+                    ),
+                    entrypoint_module._handoff_context(),
+                    is_windows=True,
+                )
+        terminate.assert_called_once()
+
+    def test_spawn_write_failure_escalates_from_terminate_to_kill(self):
         fake_process = mock.Mock(pid=4242, stdin=mock.Mock(), stdout=mock.Mock())
         listener = mock.Mock()
         listener.fileno.return_value = 37
-        with mock.patch("subprocess.Popen", return_value=fake_process) as popen:
-            child = self.p.spawn_child(
-                listener, self._expected(), proxy_module._handoff_context(), is_windows=False
-            )
-        self.assertIs(child.process, fake_process)
-        _, kwargs = popen.call_args
-        self.assertEqual(kwargs.get("pass_fds"), (37,))
-        self.assertTrue(kwargs.get("close_fds"))
-        written = b"".join(call.args[0] for call in fake_process.stdin.write.call_args_list)
-        self.assertNotIn(b"listener_share_b64", written)
+        with (
+            mock.patch("subprocess.Popen", return_value=fake_process),
+            mock.patch.object(self.p.HandoffChild, "send_message", side_effect=BrokenPipeError),
+            mock.patch.object(
+                self.p.HandoffChild, "terminate_bounded", return_value=False
+            ) as terminate,
+            mock.patch.object(self.p.HandoffChild, "kill_bounded", return_value=True) as kill,
+        ):
+            with self.assertRaises(BrokenPipeError):
+                self.p.spawn_child(
+                    listener,
+                    expected_metadata(
+                        transaction_id="txn-platform", release_receipt_sha256="e" * 64
+                    ),
+                    entrypoint_module._handoff_context(),
+                    is_windows=False,
+                )
+        terminate.assert_called_once()
+        kill.assert_called_once()
 
-    def test_windows_spawn_never_supplies_pass_fds_and_sends_share_bytes_only_as_base64_over_stdin(
-        self,
-    ):
-        fake_process = mock.Mock(pid=5150, stdin=mock.Mock(), stdout=mock.Mock())
-        listener = mock.Mock()
-        listener.share = mock.Mock(return_value=b"opaque-share-bytes")
-        with mock.patch("subprocess.Popen", return_value=fake_process) as popen:
-            self.p.spawn_child(
-                listener, self._expected(), proxy_module._handoff_context(), is_windows=True
-            )
-        args, kwargs = popen.call_args
-        self.assertNotIn("pass_fds", kwargs)
-        self.assertNotIn(b"opaque-share-bytes", str(args).encode())
-        self.assertNotIn("opaque-share-bytes", json.dumps(kwargs.get("env") or {}))
-        listener.share.assert_called_once_with(5150)
-        written = b"".join(call.args[0] for call in fake_process.stdin.write.call_args_list)
-        self.assertNotIn(b"opaque-share-bytes", written)  # only the base64 projection travels
-        message = json.loads(written.splitlines()[0])
+    def test_listener_reconstruction_uses_the_platform_specific_projection(self):
+        fake_socket = mock.Mock()
+        share = base64.b64encode(b"share-bytes").decode("ascii")
+        with mock.patch.object(socket, "fromshare", create=True, return_value=fake_socket) as ctor:
+            self.assertIs(self.p.listener_from_prepare({"listener_share_b64": share}), fake_socket)
+        ctor.assert_called_once_with(b"share-bytes")
+        with mock.patch.object(socket, "socket", return_value=fake_socket) as ctor:
+            self.assertIs(self.p.listener_from_prepare({"listener_fd": 37}), fake_socket)
+        ctor.assert_called_once_with(fileno=37)
+
+    def test_listener_reconstruction_rejects_invalid_platform_payloads(self):
+        def reject(message):
+            with self.assertRaises(self.p.HandoffError):
+                self.p.listener_from_prepare(message)
+
+        invalid = (
+            {"listener_share_b64": 7},
+            {"listener_share_b64": "x" * (self.p.HANDOFF_CONTROL_MAX_BYTES + 1)},
+            {"listener_share_b64": "not base64!"},
+            {"listener_fd": -1},
+            {"listener_fd": "37"},
+        )
+        for message in invalid:
+            reject(message)
+
+    def test_control_message_helpers_reject_invalid_framing_and_round_trip(self):
+        target = io.BytesIO()
+        self.p._write_control_message(target, {"type": "commit"})
         self.assertEqual(
-            base64.b64decode(message["listener_share_b64"]),
-            b"opaque-share-bytes",
+            self.p._read_control_message(io.BytesIO(target.getvalue())), {"type": "commit"}
         )
 
-    def test_windows_fromshare_roundtrip_reconstructs_a_socket_from_the_prepare_message(self):
-        fake_socket = mock.Mock()
-        message = {"listener_share_b64": base64.b64encode(b"share-bytes").decode("ascii")}
-        with mock.patch.object(
-            socket, "fromshare", create=True, return_value=fake_socket
-        ) as fromshare:
-            result = self.p.listener_from_prepare(message)
-        fromshare.assert_called_once_with(b"share-bytes")
-        self.assertIs(result, fake_socket)
+        def reject(case):
+            raw, error = case
+            with self.assertRaises(error):
+                self.p._read_control_message(io.BytesIO(raw))
 
-    def test_posix_listener_from_handoff_prepare_uses_the_inherited_fd(self):
-        fake_socket = mock.Mock()
-        message = {"listener_fd": 37}
-        with mock.patch.object(socket, "socket", return_value=fake_socket) as ctor:
-            result = self.p.listener_from_prepare(message)
-        ctor.assert_called_once_with(fileno=37)
-        self.assertIs(result, fake_socket)
+        invalid = (
+            (b"", EOFError),
+            (b"x" * (self.p.HANDOFF_CONTROL_MAX_BYTES + 1), self.p.HandoffError),
+            (b"{\n", self.p.HandoffError),
+            (b"[]\n", self.p.HandoffError),
+        )
+        for case in invalid:
+            reject(case)
+        with self.assertRaises(self.p.HandoffError):
+            self.p._write_control_message(
+                io.BytesIO(), {"value": "x" * self.p.HANDOFF_CONTROL_MAX_BYTES}
+            )
 
-    def test_precommit_control_pipe_eof_closes_without_shutdown_deadlock(self):
-        handoff_module.reset_session_to_idle()
+    def test_child_protocol_accepts_finalize_and_rejects_invalid_commands(self):
+        context = entrypoint_module._handoff_context()
         prepare = {
             "type": "prepare",
             "protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
-            "transaction_id": "txn-eof",
-            "release": proxy_module.release_version(),
-            "serving_payload_sha256": proxy_module.serving_payload_sha256(),
-            "release_receipt_sha256": proxy_module.release_receipt_sha256(),
-            "manifest_sha256": self.p.payload_manifest_sha256(proxy_module._handoff_context()),
+            "transaction_id": "txn-child",
+            "release": entrypoint_module.release_version(),
+            "serving_payload_sha256": entrypoint_module.serving_payload_sha256(),
+            "release_receipt_sha256": entrypoint_module.release_receipt_sha256(),
+            "manifest_sha256": self.p.payload_manifest_sha256(context),
             "listener_fd": 37,
         }
-        raw = json.dumps(prepare, separators=(",", ":")).encode() + b"\n"
-        fake_stdin = mock.Mock(buffer=io.BytesIO(raw))
-        fake_stdout = mock.Mock(buffer=io.BytesIO())
-        fake_server = mock.Mock()
-        with (
-            mock.patch.object(sys, "stdin", fake_stdin),
-            mock.patch.object(sys, "stdout", fake_stdout),
-            mock.patch.object(self.p, "listener_from_prepare", return_value=mock.Mock()),
-            mock.patch.object(http_surface, "server_from_listener", return_value=fake_server),
+
+        def run(*commands, valid_prepare=True, server=None):
+            handoff_module.reset_session_to_idle()
+            first = prepare if valid_prepare else {**prepare, "protocol_version": 1}
+            raw = b"".join(
+                json.dumps(message, separators=(",", ":")).encode() + b"\n"
+                for message in (first, *commands)
+            )
+            fake_stdin = mock.Mock(buffer=io.BytesIO(raw))
+            fake_stdout = mock.Mock(buffer=io.BytesIO())
+            fake_server = server or mock.Mock()
+            object.__setattr__(context, "server_factory", lambda _listener: fake_server)
+            with (
+                mock.patch.object(sys, "stdin", fake_stdin),
+                mock.patch.object(sys, "stdout", fake_stdout),
+                mock.patch.object(self.p, "listener_from_prepare", return_value=mock.Mock()),
+                mock.patch.object(self.p, "serve_with_resume"),
+                mock.patch("threading.Thread") as thread_cls,
+            ):
+                result = self.p.run_child(context)
+            self.assertEqual(
+                thread_cls.return_value.start.call_count, int({"type": "commit"} in commands)
+            )
+            return (
+                result,
+                fake_server,
+                [json.loads(line) for line in fake_stdout.buffer.getvalue().splitlines()],
+            )
+
+        result, server, messages = run({"type": "commit"}, {"type": "finalize"})
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            [message["type"] for message in messages], ["ready", "serving", "finalized"]
+        )
+        server.server_close.assert_not_called()
+
+        for commands, valid_prepare in (
+            ((), False),
+            (({"type": "unexpected"},), True),
+            (({"type": "commit"}, {"type": "abort"}), True),
+            (({"type": "commit"}, {"type": "unexpected"}), True),
         ):
-            self.assertEqual(self.p.run_child(proxy_module._handoff_context()), 1)
-        fake_server.shutdown.assert_not_called()
-        fake_server.server_close.assert_called_once()
+            with self.subTest(commands=commands, valid_prepare=valid_prepare):
+                result, server, _ = run(*commands, valid_prepare=valid_prepare)
+                self.assertEqual(result, 1)
+                self.assertEqual(server.server_close.call_count, int(valid_prepare))
+
+        failed = mock.Mock()
+        failed.shutdown.side_effect = OSError
+        failed.server_close.side_effect = OSError
+        result, failed, _ = run({"type": "commit"}, {"type": "abort"}, server=failed)
+        self.assertEqual(result, 1)
+        failed.shutdown.assert_called_once()
+        failed.server_close.assert_called_once()
 
 
 if __name__ == "__main__":

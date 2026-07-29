@@ -9,6 +9,13 @@ ty=${TY:-ty}
 
 cd "$root"
 
+if [ -z "${COVERAGE_FILE:-}" ]; then
+  coverage_dir=$(mktemp -d "${TMPDIR:-/tmp}/codex-dmx-proxy-coverage.XXXXXX")
+  COVERAGE_FILE="$coverage_dir/.coverage"
+  export COVERAGE_FILE
+  trap 'rm -rf "$coverage_dir"' EXIT HUP INT TERM
+fi
+
 python_path=$(command -v "$python") || {
   echo "Python quality interpreter is unavailable: $python" >&2
   exit 2
@@ -21,8 +28,12 @@ ty_path=$(command -v "$ty") || {
   echo "ty is unavailable: $ty" >&2
   exit 2
 }
-"$python_path" -m coverage --version >/dev/null 2>&1 || {
+coverage_version=$("$python_path" -m coverage --version 2>/dev/null | sed -n '1p') || {
   echo "coverage.py is unavailable to $python" >&2
+  exit 2
+}
+[ "$coverage_version" = "Coverage.py, version 7.13.5 with C extension" ] || {
+  echo "coverage.py 7.13.5 is required" >&2
   exit 2
 }
 [ "$($ruff_path --version)" = "ruff 0.16.0" ] || {
@@ -40,8 +51,9 @@ import tomllib
 from pathlib import Path
 
 policy = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["tool"]["codex-dmx-proxy"]["quality"]
-for path in policy["type-roots"]:
-    print(path)
+for key in ("source-roots", "test-roots"):
+    for path in policy[key]:
+        print(path)
 PY
 )
 
@@ -62,3 +74,4 @@ PY
 "$python_path" -m coverage erase
 "$python_path" scripts/run-python-tests.py --coverage
 "$python_path" -m coverage report
+"$python_path" scripts/check_branch_coverage.py

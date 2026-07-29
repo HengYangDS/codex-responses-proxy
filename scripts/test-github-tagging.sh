@@ -73,9 +73,9 @@ projection="$tmp/projection"
 git clone -q --no-local "file://$source" "$projection"
 git -C "$projection" tag -d v1.0.0 >/dev/null
 FILTER_BRANCH_SQUELCH_WARNING=1 git -C "$projection" filter-branch -f --env-filter '
-  GIT_AUTHOR_NAME="HengYang"
+  GIT_AUTHOR_NAME="Yang HENG"
   GIT_AUTHOR_EMAIL="hengyang.2003@tsinghua.org.cn"
-  GIT_COMMITTER_NAME="HengYang"
+  GIT_COMMITTER_NAME="Yang HENG"
   GIT_COMMITTER_EMAIL="hengyang.2003@tsinghua.org.cn"
 ' -- main >/dev/null 2>&1
 git -C "$projection" remote set-url origin "file://$remote"

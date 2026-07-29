@@ -1,232 +1,207 @@
 #!/usr/bin/env python3
-"""Focused contracts for the pure Responses input-compatibility policy."""
+"""Contracts for the pure Responses input-compatibility policy."""
 
 from __future__ import annotations
 
 import json
 import sys
 import unittest
+from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "proxy"))
+sys.path.insert(0, str(ROOT))
 
-import input_compatibility
+from codex_dmx_proxy.compatibility import input_variant
 
 
-def _exact_error() -> bytes:
-    return json.dumps(
-        {
-            "error": {
-                "message": (
-                    "invalid request body: Invalid 'input': "
-                    "value did not match any expected variant"
-                ),
-                "type": "invalid_request_error",
-                "param": "",
-                "code": "validation_error",
-            }
-        },
-        separators=(",", ":"),
-    ).encode()
+EXACT_ERROR = {
+    "error": {
+        "message": "invalid request body: Invalid 'input': value did not match any expected variant",
+        "type": "invalid_request_error",
+        "param": "",
+        "code": "validation_error",
+    }
+}
+
+
+def _json(value: object) -> bytes:
+    return json.dumps(value, separators=(",", ":")).encode()
+
+
+def _diagnose(item: object) -> input_variant.InputDiagnostic:
+    return input_variant.diagnose(_json({"input": [item]}))
+
+
+def _shape_hash(payload: object) -> str:
+    return input_variant.diagnose(_json(payload)).shape_sha256
+
+
+def _recover(payload: Mapping[str, object], budget: int):
+    raw = _json(payload)
+    recovery, metrics = input_variant.build_recovery(raw, budget if budget > 0 else len(raw))
+    return raw, recovery, metrics
 
 
 class TestExactErrorContract(unittest.TestCase):
-    """Verify that only the complete observed error contract is admitted."""
+    """Admit only the complete observed upstream error."""
 
-    def test_matches_complete_contract(self) -> None:
-        self.assertTrue(input_compatibility.is_exact_validation_error(400, _exact_error()))
-
-    def test_allows_only_envelope_metadata_outside_the_exact_error_object(self) -> None:
-        payload = json.loads(_exact_error())
-        payload["request_id"] = "opaque-envelope-metadata"
-        self.assertTrue(
-            input_compatibility.is_exact_validation_error(400, json.dumps(payload).encode())
+    def test_exact_contract_boundary(self) -> None:
+        exact = _json(EXACT_ERROR)
+        with_metadata = {**EXACT_ERROR, "request_id": "opaque"}
+        changed = json.loads(exact)
+        changed["error"]["request_id"] = "unstable"
+        cases = (
+            (400, exact, True),
+            (400, _json(with_metadata), True),
+            (422, exact, False),
+            (400, _json(changed), False),
+            (400, b"not-json", False),
+            (400, b"[]", False),
+            (400, b'{"error":null}', False),
         )
-
-    def test_rejects_extra_or_changed_fields(self) -> None:
-        payload = json.loads(_exact_error())
-        payload["error"]["request_id"] = "unstable"
-        self.assertFalse(
-            input_compatibility.is_exact_validation_error(400, json.dumps(payload).encode())
+        self.assertEqual(
+            [input_variant.is_exact_validation_error(status, body) for status, body, _ in cases],
+            [expected for _, _, expected in cases],
         )
-        self.assertFalse(input_compatibility.is_exact_validation_error(422, _exact_error()))
-
-    def test_rejects_malformed_or_non_object_error_bodies(self) -> None:
-        for body in (b"not-json", b"[]", b'{"error":null}'):
-            with self.subTest(body=body):
-                self.assertFalse(input_compatibility.is_exact_validation_error(400, body))
 
 
 class TestInputDiagnostic(unittest.TestCase):
-    """Verify bounded diagnostics without content or exact-cardinality fingerprints."""
+    """Keep structural diagnostics bounded, categorical, and content-free."""
 
-    def test_non_string_unhashable_types_are_classified_without_raising(self) -> None:
-        for value, expected in (({"private": "value"}, "dict"), (["private"], "list")):
-            with self.subTest(expected=expected):
-                diagnostic = input_compatibility.diagnose(
-                    json.dumps({"input": [{"type": value}]}).encode()
-                )
-                self.assertEqual(diagnostic.item_types, {expected: "1"})
-                self.assertEqual(diagnostic.first_incompatible_reason, "missing_item_type")
-
-    def test_unknown_names_and_values_do_not_enter_diagnostic(self) -> None:
+    def test_private_names_values_and_cardinality_are_erased(self) -> None:
         secret = "private-value-never-log"
-        diagnostic = input_compatibility.diagnose(
-            json.dumps(
-                {
-                    "input": [
-                        {
-                            "type": "private-extension-name",
-                            "role": "private-role",
-                            "private-field": secret,
-                        }
-                    ]
-                }
-            ).encode()
+        diagnostic = _diagnose(
+            {
+                "type": "private-extension-name",
+                "role": "private-role",
+                "private-field": secret,
+            }
         )
-        rendered = input_compatibility.format_diagnostic(diagnostic)
-        projected = json.dumps(input_compatibility.diagnostic_dict(diagnostic), sort_keys=True)
-        self.assertNotIn(secret, rendered + projected)
-        self.assertNotIn("private-extension-name", rendered + projected)
-        self.assertNotIn("private-field", rendered + projected)
+        projected = input_variant.diagnostic_dict(diagnostic)
+        rendered = input_variant.format_diagnostic(projected)
+        disclosure = rendered + json.dumps(projected, sort_keys=True)
+        self.assertFalse(
+            {secret, "private-extension-name", "private-field"} & set(disclosure.split())
+        )
 
-    def test_cardinality_is_bucketed_before_shape_hashing(self) -> None:
-        first = cast("dict[str, object]", input_compatibility.structure_shape([1, 2]))
-        second = cast("dict[str, object]", input_compatibility.structure_shape([1, 2, 3, 4]))
-        self.assertEqual(first["size"], "2-4")
-        self.assertEqual(second["size"], "2-4")
-        self.assertNotIn("length", first)
-        self.assertNotIn("length", second)
-
-    def test_diagnostic_exposes_buckets_and_presence_not_exact_cardinalities(self) -> None:
-        def diagnostic_for(repetitions: int) -> input_compatibility.InputDiagnostic:
+        def diagnostic_for(repetitions: int) -> input_variant.InputDiagnostic:
             items: list[dict[str, object]] = [
                 {"type": "message", "role": "user", "content": "current"},
                 {"type": "function_call", "call_id": "paired", "name": "f", "arguments": "{}"},
                 {"type": "function_call_output", "call_id": "paired", "output": "ok"},
             ]
             for index in range(repetitions):
-                call_id = f"unmatched-{index}"
-                items.extend(
-                    [
-                        {
-                            "type": "custom_tool_call",
-                            "call_id": call_id,
-                            "name": "f",
-                            "input": "{}",
-                        },
+                items += [
+                    {
+                        "type": "custom_tool_call",
+                        "call_id": f"unmatched-{index}",
+                        "name": "f",
+                        "input": "{}",
+                    },
+                    {"type": "custom_tool_call", "name": "f", "input": "{}"},
+                ]
+            return input_variant.diagnose(_json({"input": items}))
+
+        projected = [
+            input_variant.diagnostic_dict(diagnostic_for(repetitions)) for repetitions in (2, 4)
+        ]
+        self.assertEqual(
+            [cast("dict[str, str]", item["item_types"])["custom_tool_call"] for item in projected],
+            ["2-4", "5-16"],
+        )
+        for item in projected:
+            self.assertEqual(item["input_items_bucket"], "5-16")
+            self.assertTrue(
+                item["matched_pairs"] and item["unmatched_calls"] and item["missing_call_ids"]
+            )
+            self.assertNotIn("first_incompatible_index", item)
+        rendered = input_variant.format_diagnostic(diagnostic_for(2))
+        self.assertNotIn("input_items=", rendered)
+        self.assertNotRegex(rendered, r"(?:matched_pairs|unmatched_calls|missing_call_ids)=\d")
+
+    def test_shape_hash_erases_order_repetition_and_exact_sizes(self) -> None:
+        user = {"type": "message", "role": "user", "content": "current"}
+        reasoning = {"type": "reasoning", "summary": []}
+        pairs = (
+            ({"input": [user, reasoning]}, {"input": [reasoning, user, user, reasoning]}),
+            ({"input": [], "private": ["value"] * 17}, {"input": [], "private": ["value"] * 33}),
+            (
+                {"input": [], "private": {"one": 1}},
+                {"input": [], "private": {"one": 1, "two": 2, "three": 3}},
+            ),
+            (
+                {
+                    "input": [],
+                    "private": [
+                        {"type": f"private-{index}", "field": [None] * index} for index in range(33)
+                    ],
+                },
+                {
+                    "input": [],
+                    "private": [
+                        {"type": f"private-{index}", "field": [None] * index} for index in range(34)
+                    ],
+                },
+            ),
+            (
+                {"input": [], "private": [[[[[[[True]]]]]]]},
+                {"input": [], "private": [[[[[[[False, None]]]]]]]},
+            ),
+        )
+        self.assertEqual(
+            [_shape_hash(first) for first, _ in pairs], [_shape_hash(second) for _, second in pairs]
+        )
+
+    def test_pair_state_and_tool_search_contract(self) -> None:
+        valid_search = [
+            {"type": "tool_search_call", "call_id": "search", "arguments": {}},
+            {"type": "tool_search_output", "call_id": "search", "tools": []},
+        ]
+        self.assertEqual(
+            input_variant.diagnose(_json({"input": valid_search})).first_incompatible_reason, ""
+        )
+        self.assertEqual(
+            _diagnose(
+                {"type": "tool_search_output", "call_id": "search", "output": []}
+            ).first_incompatible_reason,
+            "invalid_tool_search_output",
+        )
+
+        diagnostic = input_variant.diagnose(
+            _json(
+                {
+                    "input": [
+                        {"type": "custom_tool_call_output", "call_id": "early", "output": "x"},
+                        {"type": "custom_tool_call", "call_id": "dup", "name": "f", "input": "{}"},
+                        {"type": "custom_tool_call", "call_id": "dup", "name": "f", "input": "{}"},
+                        {"type": "custom_tool_call_output", "call_id": "dup", "output": "x"},
+                        {"type": "custom_tool_call_output", "call_id": "dup", "output": "x"},
                         {"type": "custom_tool_call", "name": "f", "input": "{}"},
                     ]
-                )
-            return input_compatibility.diagnose(json.dumps({"input": items}).encode())
-
-        expected = (
-            (diagnostic_for(2), "2-4"),
-            (diagnostic_for(4), "5-16"),
-        )
-        for diagnostic, item_type_bucket in expected:
-            projected = input_compatibility.diagnostic_dict(diagnostic)
-            rendered = input_compatibility.format_diagnostic(diagnostic)
-            self.assertEqual(projected["input_items_bucket"], "5-16")
-            item_types = cast("dict[str, str]", projected["item_types"])
-            self.assertEqual(item_types["custom_tool_call"], item_type_bucket)
-            self.assertTrue(projected["matched_pairs"])
-            self.assertTrue(projected["unmatched_calls"])
-            self.assertTrue(projected["missing_call_ids"])
-            self.assertNotIn("first_incompatible_index", projected)
-            self.assertNotIn("input_items=", rendered)
-            self.assertNotRegex(rendered, r"(?:matched_pairs|unmatched_calls|missing_call_ids)=\d")
-
-    def test_shape_hash_ignores_order_and_repetition_within_one_bucket(self) -> None:
-        def shape_hash(items: list[dict[str, object]]) -> str:
-            return input_compatibility.diagnose(json.dumps({"input": items}).encode()).shape_sha256
-
-        user: dict[str, object] = {
-            "type": "message",
-            "role": "user",
-            "content": "current",
-        }
-        reasoning: dict[str, object] = {"type": "reasoning", "summary": []}
-        first = shape_hash([user, reasoning])
-        second = shape_hash([reasoning, user, user, reasoning])
-        self.assertEqual(first, second)
-
-    def test_shape_hash_does_not_reveal_exact_top_level_field_count(self) -> None:
-        def shape_hash(extra_fields: int) -> str:
-            payload: dict[str, object] = {"input": []}
-            payload.update({f"private-{index}": "value" for index in range(extra_fields)})
-            return input_compatibility.diagnose(json.dumps(payload).encode()).shape_sha256
-
-        self.assertEqual(shape_hash(1), shape_hash(3))
-
-    def test_shape_hash_does_not_reveal_large_exact_collection_size(self) -> None:
-        def shape_hash(size: int) -> str:
-            payload = {"input": [], "private": ["value"] * size}
-            return input_compatibility.diagnose(json.dumps(payload).encode()).shape_sha256
-
-        self.assertEqual(shape_hash(17), shape_hash(33))
-
-    def test_shape_hash_does_not_reveal_exact_unique_shape_count_above_cap(self) -> None:
-        def shape_hash(size: int) -> str:
-            values = [
-                {"type": f"private-{index}", "field": [None] * index} for index in range(size)
-            ]
-            payload = {"input": [], "private": values}
-            return input_compatibility.diagnose(json.dumps(payload).encode()).shape_sha256
-
-        self.assertEqual(shape_hash(33), shape_hash(34))
-
-    def test_tool_search_output_is_validated_by_tools_not_generic_output(self) -> None:
-        valid = input_compatibility.diagnose(
-            json.dumps(
-                {
-                    "input": [
-                        {
-                            "type": "tool_search_call",
-                            "call_id": "search",
-                            "arguments": {},
-                        },
-                        {
-                            "type": "tool_search_output",
-                            "call_id": "search",
-                            "tools": [],
-                        },
-                    ]
                 }
-            ).encode()
+            )
         )
-        self.assertEqual(valid.first_incompatible_reason, "")
-
-        invalid = input_compatibility.diagnose(
-            json.dumps(
-                {
-                    "input": [
-                        {
-                            "type": "tool_search_call",
-                            "call_id": "search",
-                            "arguments": {},
-                        },
-                        {
-                            "type": "tool_search_output",
-                            "call_id": "search",
-                            "output": [],
-                        },
-                    ]
-                }
-            ).encode()
+        self.assertEqual(
+            (
+                diagnostic.outputs_before_calls,
+                diagnostic.duplicate_calls,
+                diagnostic.duplicate_outputs,
+                diagnostic.missing_call_ids,
+                diagnostic.unmatched_outputs,
+            ),
+            (True,) * 5,
         )
-        self.assertEqual(invalid.first_incompatible_reason, "invalid_tool_search_output")
 
-    def test_reports_invalid_envelopes_and_pair_failures(self) -> None:
-        fixtures = (
+    def test_failure_reasons_cover_the_closed_shape_contract(self) -> None:
+        raw_cases = (
             (b"not-json", "invalid_json"),
             (b"[]", "request_not_object"),
             (b'{"input":null}', "input_not_list"),
-            (json.dumps({"input": [1]}).encode(), "item_not_object"),
+            (_json({"input": [1]}), "item_not_object"),
             (
-                json.dumps(
+                _json(
                     {
                         "input": [
                             {
@@ -238,48 +213,57 @@ class TestInputDiagnostic(unittest.TestCase):
                             {"type": "custom_tool_call_output", "call_id": "c", "output": "x"},
                         ]
                     }
-                ).encode(),
+                ),
                 "mismatched_output_type",
             ),
         )
-        for body, reason in fixtures:
-            with self.subTest(reason=reason):
-                diagnostic = input_compatibility.diagnose(body)
-                self.assertEqual(diagnostic.first_incompatible_reason, reason)
-
-    def test_reports_duplicate_missing_and_unmatched_pairs(self) -> None:
-        diagnostic = input_compatibility.diagnose(
-            json.dumps(
-                {
-                    "input": [
-                        {"type": "custom_tool_call_output", "call_id": "early", "output": "x"},
-                        {"type": "custom_tool_call", "call_id": "dup", "name": "f", "input": "{}"},
-                        {"type": "custom_tool_call", "call_id": "dup", "name": "f", "input": "{}"},
-                        {"type": "custom_tool_call_output", "call_id": "dup", "output": "x"},
-                        {"type": "custom_tool_call_output", "call_id": "dup", "output": "x"},
-                        {"type": "custom_tool_call", "name": "f", "input": "{}"},
-                    ]
-                }
-            ).encode()
+        self.assertEqual(
+            [input_variant.diagnose(body).first_incompatible_reason for body, _ in raw_cases],
+            [reason for _, reason in raw_cases],
         )
-        self.assertTrue(diagnostic.outputs_before_calls)
-        self.assertTrue(diagnostic.duplicate_calls)
-        self.assertTrue(diagnostic.duplicate_outputs)
-        self.assertTrue(diagnostic.missing_call_ids)
-        self.assertTrue(diagnostic.unmatched_outputs)
 
-    def test_validates_known_message_and_content_shapes(self) -> None:
-        fixtures = (
-            ({"type": "message", "role": "bogus", "content": "x"}, "invalid_message_role"),
-            ({"type": "message", "role": "user", "content": None}, "invalid_message_content"),
-            ({"type": "message", "role": "user", "content": []}, "empty_message_content"),
+        item_cases = (
+            ({"type": {"private": "value"}}, "missing_item_type", {"dict": "1"}),
+            ({"type": ["private"]}, "missing_item_type", {"list": "1"}),
+            ({"type": "future"}, "unknown_item_type", {"unknown": "1"}),
+            ({"type": "message", "role": "bogus", "content": "x"}, "invalid_message_role", None),
+            ({"type": "message", "role": "user", "content": None}, "invalid_message_content", None),
+            ({"type": "message", "role": "user", "content": []}, "empty_message_content", None),
+            (
+                {"type": "function_call", "call_id": "c", "name": "", "arguments": "{}"},
+                "invalid_function_call",
+                None,
+            ),
+            (
+                {"type": "custom_tool_call", "call_id": "c", "name": "", "input": "{}"},
+                "invalid_custom_tool_call",
+                None,
+            ),
+            (
+                {"type": "tool_search_call", "call_id": "c", "arguments": "{}"},
+                "invalid_tool_search_call",
+                None,
+            ),
+            (
+                {"type": "function_call_output", "call_id": "c", "output": None},
+                "invalid_tool_output",
+                None,
+            ),
+            ({"type": "message", "role": "user", "content": [1]}, "invalid_content_block", None),
+            (
+                {"type": "message", "role": "user", "content": [{"type": "future"}]},
+                "unknown_content_type",
+                None,
+            ),
             (
                 {"type": "message", "role": "user", "content": [{"type": "input_text"}]},
                 "invalid_input_text_block",
+                None,
             ),
             (
                 {"type": "agent_message", "content": [{"type": "encrypted_content"}]},
                 "malformed_encrypted_content_block",
+                None,
             ),
             (
                 {
@@ -288,19 +272,58 @@ class TestInputDiagnostic(unittest.TestCase):
                     "content": [{"type": "input_image", "detail": "auto"}],
                 },
                 "invalid_input_image_block",
+                None,
+            ),
+            (
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_image",
+                            "detail": "auto",
+                            "image_url": "https://example.invalid",
+                        }
+                    ],
+                },
+                "",
+                None,
             ),
         )
-        for item, reason in fixtures:
-            with self.subTest(reason=reason):
-                diagnostic = input_compatibility.diagnose(json.dumps({"input": [item]}).encode())
-                self.assertEqual(diagnostic.first_incompatible_reason, reason)
+        diagnostics = [_diagnose(item) for item, _, _ in item_cases]
+        self.assertEqual(
+            [diagnostic.first_incompatible_reason for diagnostic in diagnostics],
+            [reason for _, reason, _ in item_cases],
+        )
+        self.assertEqual(
+            [diagnostic.item_types for diagnostic in diagnostics[:3]],
+            [case[2] for case in item_cases[:3]],
+        )
+
+    def test_mapping_projection_rejects_untrusted_buckets_and_flags(self) -> None:
+        rendered = input_variant.format_diagnostic(
+            {
+                "input_items_bucket": "private",
+                "item_types": {"message": "1", "secret": "private", 1: "1"},
+                "content_types": "not-a-mapping",
+                "matched_pairs": True,
+                "unmatched_calls": "true",
+                "first_incompatible_reason": "invalid",
+            }
+        )
+        self.assertIn("input_items_bucket=0", rendered)
+        self.assertIn("item_types=message:1", rendered)
+        self.assertIn("content_types=-", rendered)
+        self.assertIn("matched_pairs=present", rendered)
+        self.assertIn("unmatched_calls=absent", rendered)
+        self.assertNotIn("secret", rendered)
 
 
 class TestDialogueRecovery(unittest.TestCase):
-    """Verify the single strictly smaller current-dialogue recovery projection."""
+    """Build one strictly smaller, text-only current-dialogue request."""
 
-    def test_preserves_instructions_and_latest_roles_in_original_order(self) -> None:
-        payload = {
+    def test_preserves_envelope_and_reports_exact_reduction(self) -> None:
+        payload: dict[str, object] = {
             "instructions": "top-level policy",
             "previous_response_id": "stale",
             "conversation": {"id": "stale"},
@@ -312,111 +335,75 @@ class TestDialogueRecovery(unittest.TestCase):
                 {"type": "custom_tool_call", "call_id": "call", "name": "exec", "input": "{}"},
             ],
         }
-        raw = json.dumps(payload, separators=(",", ":")).encode()
-        recovery, metrics = input_compatibility.build_recovery(raw, 512 * 1024)
+        raw, recovery, metrics = _recover(payload, 512 * 1024)
         self.assertIsNotNone(recovery)
         self.assertIsNotNone(metrics)
         assert recovery is not None
+        assert metrics is not None
         recovered = json.loads(recovery)
         self.assertEqual(recovered["instructions"], "top-level policy")
-        self.assertEqual(
-            recovered["input"],
-            [payload["input"][0], payload["input"][1]],
-        )
+        self.assertEqual(recovered["input"], [payload["input"][0], payload["input"][1]])
         self.assertEqual(recovered["include"], ["other"])
-        self.assertNotIn("previous_response_id", recovered)
-        self.assertNotIn("conversation", recovered)
-        self.assertNotIn("prompt_cache_key", recovered)
-        self.assertLess(len(recovery), len(raw))
-
-    def test_latest_role_messages_keep_their_original_relative_order(self) -> None:
-        payload = {
-            "input": [
-                {"type": "message", "role": "user", "content": "old user"},
-                {"type": "message", "role": "system", "content": "current system"},
-                {"type": "message", "role": "developer", "content": "old developer"},
-                {"type": "message", "role": "user", "content": "current user"},
-                {"type": "message", "role": "developer", "content": "current developer"},
-                {"type": "reasoning", "summary": []},
-            ]
-        }
-        raw = json.dumps(payload, separators=(",", ":")).encode()
-        recovery, _metrics = input_compatibility.build_recovery(raw, len(raw))
-        self.assertIsNotNone(recovery)
-        assert recovery is not None
+        self.assertFalse(
+            {"previous_response_id", "conversation", "prompt_cache_key"} & recovered.keys()
+        )
         self.assertEqual(
-            json.loads(recovery)["input"],
-            [payload["input"][1], payload["input"][3], payload["input"][4]],
+            metrics,
+            input_variant.RecoveryMetrics(len(raw), len(recovery), 2, 1, 3, True, True),
         )
 
-    def test_duplicate_roles_keep_only_each_latest_message_in_original_order(self) -> None:
-        payload = {
-            "input": [
-                {"type": "message", "role": "system", "content": "old system"},
-                {"type": "message", "role": "developer", "content": "old developer"},
-                {"type": "message", "role": "user", "content": "old user"},
-                {"type": "message", "role": "user", "content": "current user"},
-                {"type": "message", "role": "system", "content": "current system"},
-                {"type": "message", "role": "developer", "content": "current developer"},
-                {"type": "reasoning", "summary": []},
-            ]
-        }
-        raw = json.dumps(payload, separators=(",", ":")).encode()
-        recovery, _metrics = input_compatibility.build_recovery(raw, len(raw))
-        self.assertIsNotNone(recovery)
-        assert recovery is not None
-        self.assertEqual(
-            json.loads(recovery)["input"],
-            [payload["input"][3], payload["input"][4], payload["input"][5]],
-        )
-
-    def test_rejects_serialization_only_shrink(self) -> None:
-        raw = json.dumps(
-            {"input": [{"type": "message", "role": "user", "content": "current"}]}
-        ).encode()
-        self.assertEqual(input_compatibility.build_recovery(raw, 512 * 1024), (None, None))
-
-    def test_rejects_invalid_budget_envelope_and_missing_user(self) -> None:
-        valid = json.dumps(
-            {
-                "input": [
-                    {"type": "message", "role": "user", "content": "current"},
+    def test_latest_role_messages_keep_original_relative_order(self) -> None:
+        cases = (
+            (
+                [
+                    {"type": "message", "role": "user", "content": "old user"},
+                    {"type": "message", "role": "system", "content": "current system"},
+                    {"type": "message", "role": "developer", "content": "old developer"},
+                    {"type": "message", "role": "user", "content": "current user"},
+                    {"type": "message", "role": "developer", "content": "current developer"},
                     {"type": "reasoning", "summary": []},
-                ]
-            }
-        ).encode()
-        for raw, budget in (
-            (b"not-json", 100),
-            (b"[]", 100),
-            (b'{"input":[]}', 100),
-            (b'{"input":[{"type":"message","role":"developer","content":"x"}]}', 100),
-            (valid, 0),
-            (valid, True),
-            (valid, 10),
-        ):
-            with self.subTest(raw=raw, budget=budget):
-                self.assertEqual(input_compatibility.build_recovery(raw, budget), (None, None))
+                ],
+                (1, 3, 4),
+            ),
+            (
+                [
+                    {"type": "message", "role": "system", "content": "old system"},
+                    {"type": "message", "role": "developer", "content": "old developer"},
+                    {"type": "message", "role": "user", "content": "old user"},
+                    {"type": "message", "role": "user", "content": "current user"},
+                    {"type": "message", "role": "system", "content": "current system"},
+                    {"type": "message", "role": "developer", "content": "current developer"},
+                    {"type": "reasoning", "summary": []},
+                ],
+                (3, 4, 5),
+            ),
+        )
+        recovered: list[tuple[object, object]] = []
+        for items, retained in cases:
+            _, recovery, _ = _recover({"input": items}, 0)
+            assert recovery is not None
+            recovered.append((json.loads(recovery)["input"], [items[index] for index in retained]))
+        self.assertEqual(
+            [actual for actual, _ in recovered], [expected for _, expected in recovered]
+        )
 
     def test_projects_only_nonempty_text_content(self) -> None:
-        raw = json.dumps(
-            {
-                "input": [
-                    {
-                        "type": "message",
-                        "role": "user",
-                        "content": [
-                            {"type": "input_image", "detail": "auto", "image_url": "https://x"},
-                            {"type": "output_text", "text": "current"},
-                            {"type": "input_text", "text": ""},
-                        ],
-                    },
-                    {"type": "reasoning", "summary": []},
-                ]
-            },
-            separators=(",", ":"),
-        ).encode()
-        recovery, _metrics = input_compatibility.build_recovery(raw, len(raw))
-        self.assertIsNotNone(recovery)
+        payload = {
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {"type": "input_image", "detail": "auto", "image_url": "https://x"},
+                        {"type": "output_text", "text": "current"},
+                        {"type": "input_text", "text": ""},
+                        1,
+                    ],
+                },
+                {"type": "reasoning", "summary": []},
+            ]
+        }
+        _, recovery, _ = _recover(payload, 0)
         assert recovery is not None
         self.assertEqual(
             json.loads(recovery)["input"],
@@ -428,6 +415,67 @@ class TestDialogueRecovery(unittest.TestCase):
                 }
             ],
         )
+
+    def test_rejects_unrepresentable_or_non_reducing_requests(self) -> None:
+        valid = _json(
+            {
+                "input": [
+                    {"type": "message", "role": "user", "content": "current"},
+                    {"type": "reasoning", "summary": []},
+                ]
+            }
+        )
+        cases = (
+            (b"not-json", 100),
+            (b"[]", 100),
+            (b'{"input":[]}', 100),
+            (b'{"input":[{"type":"message","role":"developer","content":"x"}]}', 100),
+            (_json({"input": [{"type": "message", "role": "user", "content": "current"}]}), 100),
+            (
+                _json(
+                    {
+                        "input": [
+                            {"type": "message", "role": "user", "content": None},
+                            {"type": "reasoning"},
+                        ]
+                    }
+                ),
+                100,
+            ),
+            (
+                _json(
+                    {
+                        "input": [
+                            {
+                                "type": "message",
+                                "role": "user",
+                                "content": [1, {"type": "input_text", "text": ""}],
+                            },
+                            {"type": "reasoning"},
+                        ]
+                    }
+                ),
+                100,
+            ),
+            (valid, 0),
+            (valid, True),
+            (valid, 10),
+        )
+        self.assertEqual(
+            [input_variant.build_recovery(raw, budget) for raw, budget in cases],
+            [(None, None)] * len(cases),
+        )
+
+    def test_recovery_rejects_unencodable_envelope_values(self) -> None:
+        raw = json.dumps(
+            {
+                "input": [{"type": "message", "role": "user", "content": "current"}],
+                "previous_response_id": "stale",
+                "private": "\ud800",
+            },
+            separators=(",", ":"),
+        ).encode()
+        self.assertEqual(input_variant.build_recovery(raw, len(raw)), (None, None))
 
 
 if __name__ == "__main__":

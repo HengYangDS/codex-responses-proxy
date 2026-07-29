@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from platform_adapters import publication  # noqa: E402
+from codex_dmx_proxy.release import publication  # noqa: E402
 
 
 def parser() -> argparse.ArgumentParser:

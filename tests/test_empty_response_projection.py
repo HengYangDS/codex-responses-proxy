@@ -11,10 +11,9 @@ from pathlib import Path
 from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "proxy"))
 sys.path.insert(0, str(ROOT))
 
-import empty_response as policy
+from codex_dmx_proxy.compatibility import empty_response as policy
 from tests.support.empty_response import body
 
 
@@ -527,6 +526,122 @@ class EmptyResponseProjectionTests(unittest.TestCase):
                 )
                 self.assertIsNone(fallback)
                 self.assertEqual(detail["reason"], "invalid_include")
+
+    def test_dialogue_recovery_projects_only_safe_current_context(self):
+        search = {"type": "web_search_call", "action": {"type": "search"}}
+        user = {"type": "message", "role": "user", "content": "current"}
+        raw = self._body(
+            {
+                "previous_response_id": "stale",
+                "include": ["reasoning.encrypted_content", "other"],
+                "input": [
+                    {"type": "message", "role": "system", "content": "policy"},
+                    search,
+                    {"type": "message", "role": "developer", "content": "rules"},
+                    user,
+                ],
+            }
+        )
+        recovery, metrics = policy.recover_dialogue(raw, rejection_reason="unknown_item_type")
+        recovered = json.loads(recovery)
+        self.assertEqual(recovered["include"], ["other"])
+        self.assertEqual(
+            [item["role"] for item in recovered["input"]], ["system", "developer", "user"]
+        )
+        self.assertEqual(metrics["dropped_input_items"], 1)
+
+        for candidate, budget, reason in (
+            (b"not-json", None, None),
+            (b"[]", None, None),
+            (b'{"input":[]}', None, None),
+            (raw, 0, None),
+            (raw, len(recovery) - 1, None),
+            (raw, None, "invalid_phase"),
+        ):
+            with self.subTest(candidate=candidate, budget=budget, reason=reason):
+                self.assertEqual(
+                    policy.recover_dialogue(candidate, budget, rejection_reason=reason),
+                    (None, None),
+                )
+
+    def test_public_policy_boundaries_fail_closed(self):
+        exact = b'{"error":{"type":"dmx_api_error","code":"empty_response"}}'
+        self.assertTrue(policy.is_classified_error(477, exact))
+        self.assertFalse(policy.is_classified_error(500, exact))
+        self.assertFalse(policy.is_classified_error(477, b"not-json"))
+
+        for value in (
+            [{"type": "input_text", "text": "ok"}, 1],
+            [{"type": "input_text", "text": 1}],
+            [{"type": "future_text", "text": "x"}],
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(policy.project_text_only(value), (None, False))
+
+        def paired(output):
+            call = {"type": "function_call", "call_id": "c", "name": "f", "arguments": "{}"}
+            return self._body({"input": [call, output]})
+
+        for raw in (
+            b"not-json",
+            b"[]",
+            self._body({"input": 1}),
+            self._body({"input": [1]}),
+            self._body({"input": [{"type": "reasoning", "content": ["visible"]}]}),
+            self._body({"input": [{"type": "agent_message", "author": "a", "content": []}]}),
+            self._body(
+                {
+                    "input": [
+                        {
+                            "type": "agent_message",
+                            "author": "a",
+                            "recipient": "b",
+                            "content": "text",
+                        }
+                    ]
+                }
+            ),
+            paired({"type": "function_call_output", "call_id": "c", "output": 1}),
+            paired({"type": "custom_tool_call_output", "call_id": "c", "output": "ok"}),
+            paired(
+                {
+                    "type": "function_call_output",
+                    "call_id": "c",
+                    "output": "ok",
+                    "extra": True,
+                }
+            ),
+        ):
+            with self.subTest(raw=raw):
+                fallback, detail = policy.build_fallback(raw)
+                self.assertIsNone(fallback)
+                self.assertEqual(detail["status"], "rejected")
+
+        raw = self._body({"include": ["other"], "input": []})
+        self.assertEqual(policy.build_fallback(raw)[0], raw)
+
+    def test_projectors_reject_unencodable_envelope_values(self):
+        search = {"type": "web_search_call", "action": {"type": "search"}}
+        dialogue_raw = json.dumps(
+            {
+                "previous_response_id": "stale",
+                "private": "\ud800",
+                "input": [search, {"type": "message", "role": "user", "content": "current"}],
+            },
+            separators=(",", ":"),
+        ).encode()
+        self.assertEqual(
+            policy.recover_dialogue(dialogue_raw, rejection_reason="unknown_item_type"),
+            (None, None),
+        )
+
+        fallback_raw = json.dumps(
+            {"previous_response_id": "stale", "private": "\ud800", "input": "current"},
+            separators=(",", ":"),
+        ).encode()
+        fallback, detail = policy.build_fallback(fallback_raw)
+        self.assertIsNone(fallback)
+        self.assertEqual(detail, {"status": "rejected", "reason": "serialization_failed"})
 
 
 if __name__ == "__main__":

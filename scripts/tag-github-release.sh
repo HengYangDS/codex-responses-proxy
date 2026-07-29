@@ -4,14 +4,14 @@ set -eu
 
 tag=${1:?usage: tag-github-release.sh <v<semver>>}
 github_remote=${DMX_GITHUB_REMOTE:-github}
-github_name=${DMX_GITHUB_AUTHOR_NAME:-HengYang}
+github_name=${DMX_GITHUB_AUTHOR_NAME:-Yang HENG}
 github_email=${DMX_GITHUB_AUTHOR_EMAIL:-hengyang.2003@tsinghua.org.cn}
-signing_key=${DMX_GITHUB_SIGNING_KEY:-$HOME/.ssh/id_ed25519_signing_yheng_20260711.pub}
+signing_key=${DMX_GITHUB_SIGNING_KEY:-$HOME/.ssh/id_aigw_github_signing_20260729.pub}
 ssh_signing_program=${DMX_GITHUB_SSH_SIGNING_PROGRAM:-${GPG_SSH_PROGRAM:-}}
 release_python=${DMX_RELEASE_PYTHON:-python3}
 
 case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "release tag must be v<semver>: $tag" >&2; exit 2 ;; esac
-case "$github_name:$github_email" in HengYang:hengyang.2003@tsinghua.org.cn) ;; *) echo "invalid GitHub release identity" >&2; exit 2 ;; esac
+case "$github_name:$github_email" in 'Yang HENG:hengyang.2003@tsinghua.org.cn') ;; *) echo "invalid GitHub release identity" >&2; exit 2 ;; esac
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "run inside a Git worktree" >&2; exit 2; }
 git diff --quiet && git diff --cached --quiet || { echo "refusing GitHub tag with a dirty canonical checkout" >&2; exit 2; }

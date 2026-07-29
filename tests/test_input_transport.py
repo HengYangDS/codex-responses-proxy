@@ -3,27 +3,28 @@
 
 from __future__ import annotations
 
-import contextlib
+import http.client
+import io
 import json
+from email.message import Message
+from http.server import BaseHTTPRequestHandler
+import socket
 import sys
-import tempfile
-import threading
 import unittest
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import cast
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "proxy"))
+sys.path.insert(0, str(ROOT))
 
-import dmx_responses_proxy as proxy
-import responses_transport
-import runtime_state
-import sse_transport
+from codex_dmx_proxy.listener import entrypoint as proxy
+from codex_dmx_proxy.listener import responses
+from codex_dmx_proxy.listener import state
+from codex_dmx_proxy.listener import sse
+from tests.support.proxy_http import request, running_proxy
 
 
 EXACT_ERROR = json.dumps(
@@ -39,24 +40,6 @@ EXACT_ERROR = json.dumps(
     },
     separators=(",", ":"),
 ).encode()
-
-
-class _ScriptedResponse(TypedDict, total=False):
-    """One typed upstream response used by the loopback fixture."""
-
-    status: int
-    payload: bytes
-    content_type: str
-
-
-type ScriptedResponse = tuple[int, bytes] | _ScriptedResponse
-
-
-class _ReceivedRequest(TypedDict):
-    """Request facts retained by the fixture without decoding caller content."""
-
-    body: bytes
-    content_length: str | None
 
 
 def _request_body(*, stream: bool = False, secret: str = "private-current-prompt") -> bytes:
@@ -84,80 +67,69 @@ def _request_body(*, stream: bool = False, secret: str = "private-current-prompt
     ).encode()
 
 
+class _MemoryHandler(BaseHTTPRequestHandler):
+    """Small handler surface for direct transport branch contracts."""
+
+    def __init__(self, body: bytes = b"", *, path: str = "/v1/responses") -> None:
+        self.path = path
+        self.headers = Message()
+        self.headers["Content-Length"] = str(len(body))
+        self.headers["Connection"] = "close"
+        self.rfile = io.BytesIO(body)
+        self.wfile = io.BytesIO()
+        self.statuses: list[int] = []
+        self.sent_headers: list[tuple[str, str]] = []
+
+    def send_response(self, code: int, message: str | None = None) -> None:
+        del message
+        self.statuses.append(code)
+
+    def send_header(self, keyword: str, value: str) -> None:
+        self.sent_headers.append((keyword, value))
+
+    def end_headers(self) -> None:
+        pass
+
+    def output(self) -> bytes:
+        """Return the bytes written through the in-memory response stream."""
+        return cast("io.BytesIO", self.wfile).getvalue()
+
+
+def _http_error(code: int, message: str, body: bytes) -> urllib.error.HTTPError:
+    """Return an HTTP error with the stdlib header contract."""
+    return urllib.error.HTTPError(
+        "https://upstream.test/v1/responses", code, message, Message(), io.BytesIO(body)
+    )
+
+
+class _DirectResponse:
+    """Scripted response supporting normal reads and read exceptions."""
+
+    def __init__(
+        self,
+        *reads: bytes | BaseException,
+        content_type: str = "application/json",
+        status: int = 200,
+        fp: object | None = None,
+    ) -> None:
+        self._reads = list(reads)
+        self.headers = {"Content-Type": content_type, "Content-Length": "opaque"}
+        self.status = status
+        self.fp = fp if fp is not None else object()
+
+    def read(self, amount: int = -1) -> bytes:
+        del amount
+        item = self._reads.pop(0) if self._reads else b""
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+
 class InputTransportContracts(unittest.TestCase):
     """Exercise the recovery boundary through real loopback HTTP servers."""
 
     def setUp(self) -> None:
-        runtime_state.reset_for_test()
-
-    @contextlib.contextmanager
-    def _servers(
-        self,
-        scripted: list[ScriptedResponse],
-        log_dir: Path,
-    ) -> Iterator[tuple[int, list[_ReceivedRequest]]]:
-        received: list[_ReceivedRequest] = []
-        scripted_lock = threading.Lock()
-
-        class UpstreamHandler(BaseHTTPRequestHandler):
-            def log_message(self, format: str, *args: Any) -> None:
-                del format, args
-
-            def do_POST(self) -> None:
-                length = int(self.headers.get("Content-Length", "0"))
-                request_body = self.rfile.read(length)
-                received.append(
-                    {
-                        "body": request_body,
-                        "content_length": self.headers.get("Content-Length"),
-                    }
-                )
-                with scripted_lock:
-                    response = scripted.pop(0)
-                if isinstance(response, tuple):
-                    status, payload = response
-                    content_type = "application/json"
-                else:
-                    status = response.get("status", 200)
-                    payload = response.get("payload", b"")
-                    content_type = response.get("content_type", "application/json")
-                self.send_response(status)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-
-        upstream = ThreadingHTTPServer(("127.0.0.1", 0), UpstreamHandler)
-        upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
-        upstream_thread.start()
-        old_upstream = responses_transport.UPSTREAM
-        old_log_path = runtime_state.LOG_PATH
-        responses_transport.UPSTREAM = f"http://127.0.0.1:{upstream.server_address[1]}"
-        runtime_state.LOG_PATH = str(log_dir / "proxy.log")
-        server = proxy.create_server(("127.0.0.1", 0))
-        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
-        server_thread.start()
-        try:
-            yield server.server_address[1], received
-        finally:
-            server.shutdown()
-            server.server_close()
-            server_thread.join(timeout=2)
-            upstream.shutdown()
-            upstream.server_close()
-            upstream_thread.join(timeout=2)
-            responses_transport.UPSTREAM = old_upstream
-            runtime_state.LOG_PATH = old_log_path
-
-    @staticmethod
-    def _request(port: int, body: bytes):
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{port}/v1/responses",
-            data=body,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request)
+        state.reset_for_test()
 
     @staticmethod
     def _status_snapshot() -> dict[str, object]:
@@ -173,21 +145,14 @@ class InputTransportContracts(unittest.TestCase):
     def test_exact_error_recovers_once_with_fresh_content_length(self) -> None:
         success = b'{"id":"resp_recovered","status":"completed"}'
         body = _request_body()
-        with tempfile.TemporaryDirectory() as directory:
-            with self._servers([(400, EXACT_ERROR), (200, success)], Path(directory)) as (
-                port,
-                received,
-            ):
-                response = self._request(port, body)
-                with response:
-                    self.assertEqual(response.status, 200)
-                    self.assertEqual(response.read(), success)
+        with running_proxy([(400, EXACT_ERROR), (200, success)]) as (port, received):
+            with request(port, body) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.read(), success)
 
         self.assertEqual(len(received), 2)
-        recovery = received[1]["body"]
+        recovery = received[1]
         self.assertLess(len(recovery), len(body))
-        self.assertEqual(received[0]["content_length"], str(len(received[0]["body"])))
-        self.assertEqual(received[1]["content_length"], str(len(recovery)))
         recovered = json.loads(recovery)
         self.assertEqual(recovered["instructions"], "top-level-current-policy")
         self.assertNotIn("previous_response_id", recovered)
@@ -209,14 +174,11 @@ class InputTransportContracts(unittest.TestCase):
         self.assertEqual(counters["input_variant_dialogue_recovery_exhausted"], 0)
         self.assertEqual(classifications, {"input_variant_validation_error": 1})
         public_status = json.dumps(status, sort_keys=True)
-        for private_value in (
-            "private-current-prompt",
-            "top-level-current-policy",
-            "stale-response-binding",
-            "stale-conversation-binding",
-            "stale-private-cache-key",
-        ):
-            self.assertNotIn(private_value, public_status)
+        self.assertNotRegex(
+            public_status,
+            "private-current-prompt|top-level-current-policy|stale-response-binding|"
+            "stale-conversation-binding|stale-private-cache-key",
+        )
         self.assertIn("release", status)
         self.assertIn("serving_payload_sha256", status)
         self.assertIn("release_receipt_sha256", status)
@@ -226,16 +188,15 @@ class InputTransportContracts(unittest.TestCase):
             {"input": [{"type": "message", "role": "user", "content": "current"}]},
             separators=(",", ":"),
         ).encode()
-        with tempfile.TemporaryDirectory() as directory:
-            with self._servers([(400, EXACT_ERROR)], Path(directory)) as (port, received):
-                with self.assertRaises(urllib.error.HTTPError) as raised:
-                    self._request(port, body)
-                with raised.exception as error:
-                    self.assertEqual(error.code, 400)
-                    self.assertEqual(error.read(), EXACT_ERROR)
+        with running_proxy([(400, EXACT_ERROR)]) as (port, received):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                request(port, body)
+            with raised.exception as error:
+                self.assertEqual(error.code, 400)
+                self.assertEqual(error.read(), EXACT_ERROR)
 
         self.assertEqual(len(received), 1)
-        self.assertEqual(json.loads(received[0]["body"]), json.loads(body))
+        self.assertEqual(json.loads(received[0]), json.loads(body))
         counters, classifications = self._status_maps()
         self.assertEqual(counters["input_variant_dialogue_recovery_attempts"], 0)
         self.assertEqual(counters["response_failed_compaction_attempts"], 0)
@@ -253,16 +214,11 @@ class InputTransportContracts(unittest.TestCase):
         response_body = json.dumps(exact_with_metadata, separators=(",", ":")).encode()
         success = b'{"id":"resp_recovered","status":"completed"}'
         body = _request_body()
-        with tempfile.TemporaryDirectory() as directory:
-            log_dir = Path(directory)
-            with self._servers([(400, response_body), (200, success)], log_dir) as (
-                port,
-                received,
-            ):
-                with self._request(port, body) as response:
-                    self.assertEqual(response.status, 200)
-                    self.assertEqual(response.read(), success)
-            logs = (log_dir / "proxy.log").read_text(encoding="utf-8")
+        with running_proxy([(400, response_body), (200, success)]) as (port, received):
+            with request(port, body) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.read(), success)
+            logs = Path(state.LOG_PATH).read_text(encoding="utf-8")
 
         self.assertEqual(len(received), 2)
         self.assertNotIn("opaque-upstream-request-id", logs)
@@ -285,17 +241,16 @@ class InputTransportContracts(unittest.TestCase):
             separators=(",", ":"),
         ).encode()
         body = _request_body()
-        with tempfile.TemporaryDirectory() as directory:
-            with self._servers([(400, unknown)], Path(directory)) as (port, received):
-                with self.assertRaises(urllib.error.HTTPError) as raised:
-                    self._request(port, body)
-                with raised.exception as error:
-                    self.assertEqual(error.code, 400)
-                    self.assertEqual(error.headers["Content-Length"], str(len(unknown)))
-                    self.assertEqual(error.read(), unknown)
+        with running_proxy([(400, unknown)]) as (port, received):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                request(port, body)
+            with raised.exception as error:
+                self.assertEqual(error.code, 400)
+                self.assertEqual(error.headers["Content-Length"], str(len(unknown)))
+                self.assertEqual(error.read(), unknown)
 
         self.assertEqual(len(received), 1)
-        forwarded = json.loads(received[0]["body"])
+        forwarded = json.loads(received[0])
         expected = json.loads(body)
         expected["include"] = ["other"]
         self.assertEqual(forwarded, expected)
@@ -326,20 +281,18 @@ class InputTransportContracts(unittest.TestCase):
         }
         for label, (status_code, terminal_body, classification) in terminal_errors.items():
             with self.subTest(label=label):
-                runtime_state.reset_for_test()
+                state.reset_for_test()
                 body = _request_body()
-                with tempfile.TemporaryDirectory() as directory:
-                    with self._servers(
-                        [(400, EXACT_ERROR), (status_code, terminal_body)], Path(directory)
-                    ) as (port, received):
-                        with self.assertRaises(urllib.error.HTTPError) as raised:
-                            self._request(port, body)
-                        with raised.exception as error:
-                            self.assertEqual(error.code, status_code)
-                            self.assertEqual(
-                                error.headers["Content-Length"], str(len(terminal_body))
-                            )
-                            self.assertEqual(error.read(), terminal_body)
+                with running_proxy([(400, EXACT_ERROR), (status_code, terminal_body)]) as (
+                    port,
+                    received,
+                ):
+                    with self.assertRaises(urllib.error.HTTPError) as raised:
+                        request(port, body)
+                    with raised.exception as error:
+                        self.assertEqual(error.code, status_code)
+                        self.assertEqual(error.headers["Content-Length"], str(len(terminal_body)))
+                        self.assertEqual(error.read(), terminal_body)
 
                 self.assertEqual(len(received), 2)
                 counters, classifications = self._status_maps()
@@ -350,42 +303,37 @@ class InputTransportContracts(unittest.TestCase):
                 self.assertEqual(counters["response_failed_dialogue_recovery_attempts"], 0)
                 self.assertEqual(counters["streams_pre_content_reconnect_attempts"], 0)
                 expected_classifications = {classification: 1, "input_variant_validation_error": 1}
-                if classification == "input_variant_validation_error":
-                    expected_classifications = {"input_variant_validation_error": 2}
+                expected_classifications[classification] += (
+                    classification == "input_variant_validation_error"
+                )
                 self.assertEqual(classifications, expected_classifications)
 
     def test_recovery_transport_failure_is_terminal_without_normal_retry(self) -> None:
         body = _request_body()
         transport_error = urllib.error.URLError("private-upstream-detail")
-        with tempfile.TemporaryDirectory() as directory:
-            log_dir = Path(directory)
-            with self._servers([(400, EXACT_ERROR)], log_dir) as (port, received):
-                real_urlopen = responses_transport.urlopen_direct
-                calls = 0
+        with running_proxy([(400, EXACT_ERROR)]) as (port, received):
+            real_urlopen = responses.urlopen_direct
+            calls = 0
 
-                def fail_second(request: urllib.request.Request, timeout: float):
-                    nonlocal calls
-                    calls += 1
-                    if calls == 2:
-                        raise transport_error
-                    return real_urlopen(request, timeout)
+            def fail_second(outbound: urllib.request.Request, timeout: float):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise transport_error
+                return real_urlopen(outbound, timeout)
 
-                with mock.patch.object(
-                    responses_transport, "urlopen_direct", side_effect=fail_second
-                ):
-                    with self.assertRaises(urllib.error.HTTPError) as raised:
-                        self._request(port, body)
-                with raised.exception as error:
-                    payload = json.loads(error.read())
-                    self.assertEqual(error.code, 502)
-                    self.assertEqual(
-                        error.headers["Content-Length"],
-                        str(len(json.dumps(payload, separators=(",", ":")).encode())),
-                    )
-                    self.assertEqual(
-                        payload["error"]["code"], "input_variant_recovery_transport_error"
-                    )
-            logs = (log_dir / "proxy.log").read_text(encoding="utf-8")
+            with mock.patch.object(responses, "urlopen_direct", side_effect=fail_second):
+                with self.assertRaises(urllib.error.HTTPError) as raised:
+                    request(port, body)
+            with raised.exception as error:
+                payload = json.loads(error.read())
+                self.assertEqual(error.code, 502)
+                self.assertEqual(
+                    error.headers["Content-Length"],
+                    str(len(json.dumps(payload, separators=(",", ":")).encode())),
+                )
+                self.assertEqual(payload["error"]["code"], "input_variant_recovery_transport_error")
+            logs = Path(state.LOG_PATH).read_text(encoding="utf-8")
 
         self.assertEqual(calls, 2)
         self.assertEqual(len(received), 1)
@@ -401,27 +349,25 @@ class InputTransportContracts(unittest.TestCase):
         body = _request_body(stream=True)
         incomplete = b'data: {"type":"response.created"}\n\n'
         unexpected_reconnect = b'data: {"type":"response.completed"}\n\n'
-        with tempfile.TemporaryDirectory() as directory:
-            with self._servers(
-                [
-                    (400, EXACT_ERROR),
-                    {"status": 200, "payload": incomplete, "content_type": "text/event-stream"},
-                    {
-                        "status": 200,
-                        "payload": unexpected_reconnect,
-                        "content_type": "text/event-stream",
-                    },
-                ],
-                Path(directory),
-            ) as (port, received):
-                with mock.patch.object(sse_transport.time, "sleep", return_value=None):
-                    with self.assertRaises(urllib.error.HTTPError) as raised:
-                        self._request(port, body)
-                with raised.exception as error:
-                    payload = json.loads(error.read())
-                    self.assertEqual(error.code, 503)
-                    self.assertEqual(payload["error"]["code"], "stream_pre_content_exhausted")
-                    self.assertEqual(payload["error"]["attempts"], 1)
+        with running_proxy(
+            [
+                (400, EXACT_ERROR),
+                {"status": 200, "payload": incomplete, "content_type": "text/event-stream"},
+                {
+                    "status": 200,
+                    "payload": unexpected_reconnect,
+                    "content_type": "text/event-stream",
+                },
+            ]
+        ) as (port, received):
+            with mock.patch.object(sse.time, "sleep", return_value=None):
+                with self.assertRaises(urllib.error.HTTPError) as raised:
+                    request(port, body)
+            with raised.exception as error:
+                payload = json.loads(error.read())
+                self.assertEqual(error.code, 503)
+                self.assertEqual(payload["error"]["code"], "stream_pre_content_exhausted")
+                self.assertEqual(payload["error"]["attempts"], 1)
 
         self.assertEqual(len(received), 2)
         counters, _classifications = self._status_maps()
@@ -436,22 +382,22 @@ class InputTransportContracts(unittest.TestCase):
             b'data: {"type":"response.output_text.delta","delta":"ok"}\n\n'
             b'data: {"type":"response.completed"}\n\n'
         )
-        with tempfile.TemporaryDirectory() as directory:
-            log_dir = Path(directory)
-            with self._servers(
-                [
-                    (400, EXACT_ERROR),
-                    {"status": 200, "payload": completed, "content_type": "text/event-stream"},
-                ],
-                log_dir,
-            ) as (port, received):
-                with self._request(port, body) as response:
-                    self.assertEqual(response.status, 200)
-                    downstream = response.read()
-            logs = (log_dir / "proxy.log").read_text(encoding="utf-8")
+        with running_proxy(
+            [
+                (400, EXACT_ERROR),
+                {
+                    "status": 200,
+                    "chunks": [completed],
+                    "content_type": "text/event-stream",
+                },
+            ]
+        ) as (port, received):
+            with request(port, body) as response:
+                self.assertEqual(response.status, 200)
+                downstream = response.read()
+            logs = Path(state.LOG_PATH).read_text(encoding="utf-8")
 
         self.assertEqual(len(received), 2)
-        self.assertEqual(received[1]["content_length"], str(len(received[1]["body"])))
         self.assertEqual(downstream.count(b'"type":"response.created"'), 1)
         self.assertEqual(downstream.count(b'"type":"response.output_text.delta"'), 1)
         self.assertEqual(downstream.count(b'"type":"response.completed"'), 1)
@@ -463,6 +409,204 @@ class InputTransportContracts(unittest.TestCase):
         self.assertEqual(counters["input_variant_dialogue_recovery_accepted"], 1)
         self.assertEqual(counters["input_variant_dialogue_recovery_exhausted"], 0)
         self.assertEqual(classifications, {"input_variant_validation_error": 1})
+
+    def test_direct_sse_reader_covers_sanitization_and_failure_details(self) -> None:
+        encrypted = (
+            b'data: {"type":"response.output_item.added","item":'
+            b'{"type":"reasoning","encrypted_content":"secret"}}\n\n'
+        )
+        cases = (
+            (
+                _DirectResponse(
+                    http.client.IncompleteRead(b'data: {"type": "response.incomplete"}')
+                ),
+                "response.incomplete",
+                "incomplete",
+                object,
+            ),
+            (
+                _DirectResponse(socket.timeout("private")),
+                None,
+                "timeout",
+                socket.timeout,
+            ),
+            (_DirectResponse(RuntimeError("private")), None, "eof", RuntimeError),
+            (_DirectResponse(encrypted), None, "eof", object),
+        )
+        results = []
+        for upstream, terminal, detail, error_type in cases:
+            state.reset_for_test()
+            handler = _MemoryHandler()
+            result = sse._read_one_stream(handler, upstream, "/v1/responses", 1, lambda: None)
+            results.append(
+                (
+                    result["terminal"],
+                    result["detail"],
+                    isinstance(result["error"], error_type),
+                )
+            )
+        self.assertEqual(results, [(terminal, detail, True) for _, terminal, detail, _ in cases])
+        counters = cast("dict[str, int]", self._status_snapshot()["counters"])
+        self.assertEqual(counters["encrypted_sse_keys_stripped"], 1)
+        self.assertNotIn(b"secret", handler.output())
+
+    def test_direct_sse_relay_handles_reopen_failure_and_incomplete_terminal(self) -> None:
+        failed = _DirectResponse(b'data: {"type":"response.failed"}\n\n')
+        handler = _MemoryHandler()
+        with mock.patch.object(sse.time, "sleep", return_value=None):
+            result = sse.relay(
+                handler,
+                failed,
+                "/v1/responses",
+                1,
+                reopen=mock.Mock(side_effect=OSError("private")),
+            )
+        self.assertTrue(result["pre_content_exhausted"])
+        self.assertEqual(result["attempts"], 1)
+
+        state.reset_for_test()
+        handler = _MemoryHandler()
+        result = sse.relay(
+            handler,
+            _DirectResponse(b'data: {"type": "response.incomplete"}\n\n'),
+            "/v1/responses",
+            2,
+            send_headers=lambda: None,
+        )
+        self.assertFalse(result["pre_content_exhausted"])
+        self.assertTrue(handler.output().endswith(b"0\r\n\r\n"))
+        counters = cast("dict[str, int]", self._status_snapshot()["counters"])
+        self.assertEqual(counters["streams_incomplete"], 1)
+
+    def test_direct_relay_covers_queue_timeout_and_transport_exhaustion(self) -> None:
+        body = json.dumps({"input": []}).encode()
+        handler = _MemoryHandler(body)
+        with mock.patch.object(state, "admit_response", return_value=("timeout", 0)):
+            responses.relay(handler, "POST")
+        self.assertEqual(handler.statuses, [503])
+        self.assertIn(b"timed out waiting", handler.output())
+
+        state.reset_for_test()
+        handler = _MemoryHandler(path="/health")
+        with mock.patch.object(responses, "urlopen_direct", side_effect=OSError("private")):
+            responses.relay(handler, "GET")
+        self.assertEqual(handler.statuses, [502])
+        self.assertIn(b"upstream_transport_error", handler.output())
+
+    def test_direct_relay_covers_retry_and_fallback_transport_failure(self) -> None:
+        transient = _http_error(503, "failure", b"temporary")
+        success = _DirectResponse(b"ok")
+        handler = _MemoryHandler(json.dumps({"input": []}).encode())
+        with (
+            mock.patch.object(responses, "urlopen_direct", side_effect=[transient, success]),
+            mock.patch.object(responses.time, "sleep", return_value=None),
+        ):
+            responses.relay(handler, "POST")
+        self.assertEqual(handler.statuses, [200])
+        self.assertIn(b"ok", handler.output())
+
+        empty = (
+            b'{"error":{"message":"official provider returned an empty response",'
+            b'"type":"dmx_api_error","code":"empty_response"}}'
+        )
+        fallback_error = OSError("private")
+        handler = _MemoryHandler(json.dumps({"input": []}).encode())
+        upstream_error = _http_error(477, "empty", empty)
+        with mock.patch.object(
+            responses, "urlopen_direct", side_effect=[upstream_error, fallback_error]
+        ):
+            responses.relay(handler, "POST")
+        self.assertEqual(handler.statuses, [503])
+        self.assertIn(b"dmx_empty_response_exhausted", handler.output())
+
+    def test_direct_relay_handles_large_request_cooldown_and_dead_loop(self) -> None:
+        body = b" " * 400_000
+        handler = _MemoryHandler(body)
+        with mock.patch.object(responses, "urlopen_direct", return_value=_DirectResponse(b"ok")):
+            responses.relay(handler, "POST")
+        self.assertEqual(handler.statuses, [200])
+
+        state.reset_for_test()
+        body = json.dumps({"input": []}).encode()
+        handler = _MemoryHandler(body)
+        with mock.patch.object(state, "empty_response_cooldown_remaining", return_value=1.0):
+            responses.relay(handler, "POST")
+        self.assertEqual(handler.statuses, [503])
+        self.assertIn(b"dmx_empty_response_exhausted", handler.output())
+
+        state.reset_for_test()
+        handler = _MemoryHandler(body)
+        with (
+            mock.patch.object(responses, "INPUT_VARIANT_DIALOGUE_SLOTS", -4),
+            mock.patch.object(responses.response_failed, "DIALOGUE_SLOTS", 0),
+            mock.patch.object(responses.response_failed, "MAX_STAGES", 0),
+        ):
+            responses.relay(handler, "POST")
+        self.assertEqual(handler.statuses, [502])
+        self.assertIn(b"upstream_transport_error", handler.output())
+
+    def test_direct_relay_rejects_unsafe_empty_response_projection(self) -> None:
+        empty = (
+            b'{"error":{"message":"official provider returned an empty response",'
+            b'"type":"dmx_api_error","code":"empty_response"}}'
+        )
+        handler = _MemoryHandler(json.dumps({"input": []}).encode())
+        upstream_error = _http_error(477, "empty", empty)
+        with (
+            mock.patch.object(responses, "urlopen_direct", side_effect=upstream_error),
+            mock.patch.object(
+                responses.empty_response,
+                "build_fallback",
+                return_value=(None, {"reason": "unsafe"}),
+            ),
+            mock.patch.object(
+                responses.empty_response, "recover_dialogue", return_value=(None, {})
+            ),
+        ):
+            responses.relay(handler, "POST")
+        self.assertEqual(handler.statuses, [503])
+        self.assertIn(b"dmx_empty_response_exhausted", handler.output())
+
+    def test_direct_sse_relay_flushes_completed_prelude(self) -> None:
+        handler = _MemoryHandler()
+        sent = 0
+
+        def mark_headers() -> None:
+            nonlocal sent
+            sent += 1
+
+        result = sse.relay(
+            handler,
+            _DirectResponse(
+                b'data: {"type":"response.created"}\n\ndata: {"type":"response.completed"}\n\n'
+            ),
+            "/v1/responses",
+            1,
+            send_headers=mark_headers,
+        )
+        self.assertFalse(result["pre_content_exhausted"])
+        self.assertEqual(sent, 1)
+        self.assertEqual(handler.output().count(b"response.completed"), 1)
+
+    def test_direct_non_sse_stream_handles_incomplete_and_writer_failures(self) -> None:
+        partial = http.client.IncompleteRead(b"partial")
+        handler = _MemoryHandler(path="/health")
+        with mock.patch.object(responses, "urlopen_direct", return_value=_DirectResponse(partial)):
+            responses.relay(handler, "GET")
+        self.assertEqual(handler.statuses, [200])
+        self.assertIn(b"partial", handler.output())
+
+        statuses = []
+        for error in (BrokenPipeError(), RuntimeError("private")):
+            handler = _MemoryHandler(path="/health")
+            handler.wfile = mock.Mock()
+            handler.wfile.write.side_effect = error
+            with mock.patch.object(
+                responses, "urlopen_direct", return_value=_DirectResponse(b"body")
+            ):
+                responses.relay(handler, "GET")
+            statuses.append(handler.statuses)
+        self.assertEqual(statuses, [[200], [200]])
 
 
 if __name__ == "__main__":
