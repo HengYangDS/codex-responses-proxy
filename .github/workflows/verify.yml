@@ -74,7 +74,7 @@ jobs:
           set -euo pipefail
           python=/opt/homebrew/bin/python3.14
           test -x "$python"
-          "$python" scripts/check_release_metadata.py --allow-unpublished-history
+          "$python" scripts/check_release_metadata.py --prepare-release
           "$python" scripts/check_markdown_presentation.py
           "$python" scripts/check_quality.py
           sh scripts/test-github-actions-contract.sh

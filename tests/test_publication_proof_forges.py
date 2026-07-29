@@ -301,11 +301,15 @@ class ForgeAdapterContracts(unittest.TestCase):
             with self.assertRaises(github.GitHubProofError):
                 helper(value, "malformed")
         with (
+            mock.patch.object(github.hosted, "executable", return_value="gh"),
             mock.patch.object(github.hosted, "api_json", return_value={}),
             self.assertRaises(github.GitHubProofError),
         ):
             github._api_pages("endpoint")
-        with mock.patch.object(github.hosted, "api_json", return_value={}):
+        with (
+            mock.patch.object(github.hosted, "executable", return_value="gh"),
+            mock.patch.object(github.hosted, "api_json", return_value={}),
+        ):
             self.assertEqual(github._api("endpoint"), {})
 
         responses = [
@@ -429,7 +433,10 @@ class ForgeAdapterContracts(unittest.TestCase):
             mock.patch.object(gitlab.subprocess, "run", return_value=completed),
         ):
             self.assertEqual(gitlab._api_pages("endpoint"), [{"id": 1}, {"id": 2}])
-        with mock.patch.object(gitlab.hosted, "api_json", return_value={}):
+        with (
+            mock.patch.object(gitlab.hosted, "executable", return_value="glab"),
+            mock.patch.object(gitlab.hosted, "api_json", return_value={}),
+        ):
             self.assertEqual(gitlab._api("endpoint"), {})
         for failure in (OSError("missing"), ValueError("bad")):
             patch = (
