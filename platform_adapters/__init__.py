@@ -1,13 +1,14 @@
-"""platform_adapters — per-OS service registration for the dmx watchdog.
+"""Platform boundary for released deployment and native user services.
 
-Each adapter exposes the same three functions so the installer is platform-agnostic:
+Concrete modules own distinct concerns: ``release_source`` admits exact signed
+Git objects after dual-Forge publication proof; ``payload`` owns the sealed
+transaction, receipt, manifest, rollback, and recovery hold; ``deployment``
+composes source-side lifecycle proof; ``control_handoff`` owns protocol-v2
+transport and successor identity; and the OS modules register the watchdog.
 
-    install(ctx)    -> register + start the watchdog as a login service
-    uninstall(ctx)  -> stop + deregister the service (idempotent)
-    status(ctx)     -> "running" | "installed" | "absent"
-
-``ctx`` is an InstallContext (see common.py) carrying resolved absolute paths.
-``pick_adapter()`` returns the right module for the current OS.
+``pick_adapter()`` selects only the native service adapter. Installed control
+may observe or reload the same payload, but release admission and payload
+replacement remain source-side responsibilities.
 """
 
 from __future__ import annotations
@@ -22,12 +23,15 @@ def pick_adapter():
     plat = sys.platform
     if plat == "darwin":
         from . import macos
+
         return macos
     if plat.startswith("linux"):
         from . import linux
+
         return linux
     if plat in ("win32", "cygwin"):
         from . import windows
+
         return windows
     raise common.UnsupportedPlatform(f"unsupported platform: {plat}")
 

@@ -36,9 +36,8 @@ def collect() -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Read-only Codex DMX Proxy provenance evidence."
-    )
+    """Print the installed projection's read-only governance evidence."""
+    parser = argparse.ArgumentParser(description="Read-only Codex DMX Proxy provenance evidence.")
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args()
     evidence = collect()
@@ -50,9 +49,17 @@ def main() -> None:
     print(f"payload integrity: {'ok' if integrity['ok'] else 'FAILED'} ({integrity['detail']})")
     runtime = evidence.get("runtime")
     if isinstance(runtime, dict):
-        print(f"loaded source SHA-256: {runtime.get('source_sha256') or 'unavailable'}")
+        print(
+            "loaded serving payload SHA-256: "
+            f"{runtime.get('serving_payload_sha256') or 'unavailable'}"
+        )
     else:
-        print("loaded source SHA-256: unavailable")
+        print("loaded serving payload SHA-256: unavailable")
+    transaction = evidence.get("payload_transaction")
+    if isinstance(transaction, dict):
+        print(f"payload transaction: {transaction.get('state', 'unknown')}")
+    else:
+        print("payload transaction: none")
 
 
 if __name__ == "__main__":

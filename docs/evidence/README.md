@@ -7,8 +7,8 @@ A claim is accepted only with its scope, verifier, evidence, and limit stated.
 - **Source evidence:** unit tests, compile checks, metadata checker, and CI.
 - **Runtime evidence:** installed payload manifest, `control.py status --json`,
   `governance.py --json`, verified listener identity, the secret-free loopback
-  runtime counters including the loaded source SHA-256, and a bounded reload
-  receipt when requested.
+  runtime counters including the startup-frozen serving-payload SHA-256, and a
+  bounded reload receipt when requested.
 - **User-visible evidence:** a successful response in the original failing
   conversation is distinct from transport health.
 

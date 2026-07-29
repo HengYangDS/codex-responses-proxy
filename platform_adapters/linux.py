@@ -41,8 +41,7 @@ WantedBy=default.target
 def _has_user_systemd() -> bool:
     if not shutil.which("systemctl"):
         return False
-    r = subprocess.run(["systemctl", "--user", "is-system-running"],
-                       capture_output=True, text=True)
+    r = subprocess.run(["systemctl", "--user", "is-system-running"], capture_output=True, text=True)
     # Any answer other than a bus-connection failure means a user manager exists.
     return "Failed to connect to bus" not in (r.stderr + r.stdout)
 
@@ -56,6 +55,7 @@ def _cron_wrapper_path(ctx: common.InstallContext) -> str:
 
 
 def render_unit(ctx: common.InstallContext) -> str:
+    """Render the user-level systemd watchdog unit for this installation."""
     return UNIT_TEMPLATE.format(
         python=ctx.python,
         watchdog=ctx.watchdog_script,
@@ -75,14 +75,20 @@ def _install_systemd(ctx: common.InstallContext) -> None:
     with open(unit, "w", encoding="utf-8") as fh:
         fh.write(render_unit(ctx))
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
-    r = subprocess.run(["systemctl", "--user", "enable", "--now", f"{common.LABEL}.service"],
-                       capture_output=True, text=True)
+    r = subprocess.run(
+        ["systemctl", "--user", "enable", "--now", f"{common.LABEL}.service"],
+        capture_output=True,
+        text=True,
+    )
     if r.returncode != 0:
         raise common.InstallError(f"systemctl enable failed: {r.stderr.strip()}")
     # Survive logout / start at boot. Best-effort: on hardened hosts this may need
     # an admin once; we don't fail the install if it can't self-authorize.
-    subprocess.run(["loginctl", "enable-linger", os.environ.get("USER", "")],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(
+        ["loginctl", "enable-linger", os.environ.get("USER", "")],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def _install_cron(ctx: common.InstallContext) -> None:
@@ -109,11 +115,13 @@ def _install_cron(ctx: common.InstallContext) -> None:
     os.chmod(wrapper, 0o755)
     if not shutil.which("crontab"):
         # No systemd user bus AND no crontab (minimal container / locked-down host).
-        # Don't abort the whole install — the files are placed and the watchdog can
-        # run. Start it now for THIS session and tell the caller boot-persistence
-        # needs a manual hook. This degrades gracefully instead of failing hard.
-        subprocess.Popen([wrapper], stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True)
+        # A session-only watchdog is not a durable installation. Start it only so
+        # the adapter can report the precise persistence failure; the deployment
+        # transaction will roll back the payload and the caller must stop/recover
+        # the temporary process through the ordinary service boundary.
+        subprocess.Popen(
+            [wrapper], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+        )
         raise common.ManualStartRequired(
             "no systemd user bus and no crontab: started the watchdog for this "
             f"session, but it won't survive reboot. To persist, add to your login "
@@ -127,11 +135,13 @@ def _install_cron(ctx: common.InstallContext) -> None:
     if proc.returncode != 0:
         raise common.InstallError("failed to install crontab @reboot entry")
     # Start it now too (cron only fires at boot).
-    subprocess.Popen([wrapper], stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, start_new_session=True)
+    subprocess.Popen(
+        [wrapper], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+    )
 
 
 def install(ctx: common.InstallContext) -> None:
+    """Install and start the Linux user-level watchdog service."""
     if _has_user_systemd():
         _install_systemd(ctx)
     else:
@@ -139,14 +149,21 @@ def install(ctx: common.InstallContext) -> None:
 
 
 def uninstall(ctx: common.InstallContext) -> None:
+    """Stop and remove only this installation's Linux watchdog service."""
     # systemd path
     unit = _unit_path(ctx)
     if os.path.exists(unit):
-        subprocess.run(["systemctl", "--user", "disable", "--now", f"{common.LABEL}.service"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["systemctl", "--user", "disable", "--now", f"{common.LABEL}.service"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         os.remove(unit)
-        subprocess.run(["systemctl", "--user", "daemon-reload"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["systemctl", "--user", "daemon-reload"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     # cron path
     if shutil.which("crontab"):
         existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
@@ -157,10 +174,14 @@ def uninstall(ctx: common.InstallContext) -> None:
 
 
 def status(ctx: common.InstallContext) -> str:
+    """Return the Linux service manager's read-only status classification."""
     unit = _unit_path(ctx)
     if os.path.exists(unit):
-        r = subprocess.run(["systemctl", "--user", "is-active", f"{common.LABEL}.service"],
-                           capture_output=True, text=True)
+        r = subprocess.run(
+            ["systemctl", "--user", "is-active", f"{common.LABEL}.service"],
+            capture_output=True,
+            text=True,
+        )
         return "running" if r.stdout.strip() == "active" else "installed"
     if shutil.which("crontab"):
         existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout

@@ -6,67 +6,108 @@ Status: canonical.
 
 Codex DMX Proxy is a local data-plane adapter. It removes narrowly defined,
 third-party-incompatible replay artifacts from outbound `/responses` requests.
-It does not own conversation history, account credentials, or provider routing
-policy.
+It does not own conversation history, account credentials, provider routing
+policy, or publication truth.
 
 ## Authority model
 
 ```text
-Codex Desktop       -> per-conversation model selection and transcript state
-AIGW CLI            -> marked provider configuration and multi-profile projection
-Codex DMX Proxy     -> loopback Responses compatibility and proxy lifecycle
-Installed payload   -> generated, manifest-verified runtime projection
+Codex Desktop        -> per-conversation model selection and transcript state
+AIGW CLI             -> marked provider configuration and multi-profile projection
+GitLab + GitHub      -> independent signed tags, CI, and Release records
+Released checkout    -> source admission and payload lifecycle composition
+Installed control    -> read-only evidence, route control, same-payload reload
+Listener             -> loopback Responses compatibility and handoff state
 ```
 
-The proxy transforms a request only at the network edge. It must never repair a
+The proxy transforms requests only at the network edge. It must never repair a
 conversation by mutating session JSONL, SQLite state, archives, or model
 metadata. AIGW-owned marked provider blocks remain immutable to proxy route
 commands.
 
-## Runtime provenance
+The pure policy in `proxy/input_compatibility.py` owns the exact observed
+Responses input-union failure. Transport orchestration may invoke that policy
+once to construct a strictly smaller network request from the latest system,
+developer, and user messages plus top-level instructions. No stored transcript
+is rewritten, and the resulting attempt cannot cross into another retry or
+reconnect policy.
 
-`install.py` copies a declared executable subset of source into `~/.codex/dmx-proxy/`,
-removes known legacy `tests/` deployment residue and retired raw request captures
-under `~/.codex/log/`, and writes
-`payload-manifest.json`. The manifest contains only release identity and file
-hashes for the declared executable payload: no credentials, configuration,
-backups, request bodies, or logs. `control.py status --json` verifies this
-projection. The portable `governance.py --json` command is a read-only view of
-that same evidence. Runtime health also reports the source SHA-256 captured when
-the listener loaded the proxy payload, so a new file on disk cannot be mistaken
-for a reloaded process. `reload` first verifies the manifest; it then replaces
-only a listener whose command matches the installed proxy script. The control
-plane first waits for a bounded zero-active quiet window without changing
-admission. It then closes the listener's admission barrier and observes
-`draining=true` with `active_responses=0` from the same verified listener before
-replacement. A controller-only lifecycle change is separate: after proving all
-listener, watchdog, version, and support payload files byte-identical, it may
-transactionally replace only `control.py` and the matching manifest while one
-verified listener remains serving normal admission. It does not drain or restart
-that listener. A listener payload change requires replacement. If the applicable
-proof cannot be obtained, the listener remains serving and the payload is not
-changed.
+## Released-source admission
 
-The sole compatibility exception is the first replacement of a listener that
-predates the drain-control endpoint. It requires an explicit operator flag and
-is admitted only after two zero-active health samples separated by a five-second
-quiet window, from the same verified PID. Any new activity, identity change,
-timeout, or unavailable health refuses the mutation. The replacement itself
-carries the atomic admission barrier, so the compatibility rule is retired
-immediately after that bootstrap.
+Installation is permitted only after the source-side installer itself verifies
+the provider-native signed GitLab and GitHub tags, required hosted CI jobs,
+formal Release records, and common source tree. The evidence-only
+`scripts/verify-publication-proof.py` exposes the same observation without
+minting reusable authority. The installer then verifies that checkout `HEAD` is the exact signed
+annotated `v<VERSION>` tag under an external allowed-signers anchor.
 
-An emergency force path exists only for this one-time legacy bootstrap and only
-after separate operator authorization. It proves manifest integrity and exactly
-one verified listener before interrupting traffic. It is excluded from ordinary
-reload and never weakens the atomic protocol for drain-capable listeners.
+`platform_adapters.release_source` reads immutable Git objects rather than
+working-tree payload bytes and returns an opaque, immutable, one-use release
+capability. That capability binds the tag object, commit, tree, dual-Forge
+publication evidence, payload blobs and modes, aggregate serving-payload digest,
+and canonical receipt. A release archive, arbitrary directory, working-tree
+stage, or installed controller cannot create that capability.
+
+## Payload transaction and provenance
+
+`platform_adapters.payload` consumes the capability once. It owns the private
+sibling transaction, exact rollback snapshot, canonical release receipt,
+manifest, installed-release state, and recovery-required journal. The manifest
+covers only declared executable files and records release identity, per-file
+digests, the canonical aggregate serving-payload digest, and the release-receipt
+digest. Configuration, backups, logs, request data, credentials, and route state
+are outside the payload transaction.
+
+A fresh installation or replacement finalizes only after one accepting listener
+proves the expected release, aggregate serving-payload digest, receipt digest,
+and manifest digest. A pre-finalize failure restores the exact prior owned
+projection. If a committed handoff outcome cannot be proved, the transaction is
+preserved as recovery-required rather than guessed successful or rolled back
+blindly.
+
+`control.py status --json` and portable `governance.py --json` are read-only
+views of installed integrity, route authority, listener identity, transaction
+state, and startup-frozen runtime identity. The `proxy/` directory remains an
+installed script-directory module set, not a Python package or compatibility
+facade.
+
+## Lifecycle ownership
+
+Installed `control.py reload` is same-payload only. It verifies the installed
+manifest and receipt, prepares a non-accepting protocol-v2 child, stops the old
+accept loop before `COMMIT`, and proves PID, transaction, release, aggregate
+payload, receipt, manifest, and accepting state before `FINALIZE`. The listening
+socket remains open. Accepted handlers drain to zero or the bounded lease; a
+pre-finalize failure resumes old admission only after child exit is confirmed.
+An unconfirmed abort fails closed.
+
+A different release is installed only by source-side `install.py`. After release
+admission and transaction commit, `platform_adapters.deployment` uses the same
+protocol-v2 handoff owner and runtime identity proof. Installed control exposes
+no arbitrary stage-path upgrade or controller-only partial apply.
+
+The sole compatibility exception is source-side replacement of a verified
+listener that predates protocol-v2 handoff. It requires explicit
+`--allow-legacy-bootstrap` authorization and a bounded zero-active quiet window
+on the same PID before payload mutation. `--force-legacy-bootstrap` is a separate
+interruption authorization; it still requires manifest integrity and exactly
+one verified legacy listener. Neither flag applies to same-payload reload or a
+current protocol-v2 listener.
 
 ## Diagnostic boundary
 
-The runtime status endpoint is the primary operational evidence surface. It
-contains only bounded counters, classifications, and a failure timestamp. Logs
-are a secondary local diagnostic surface: structured events are bounded by a
-rotating retention policy and redact secret-shaped values as a defensive control.
-No raw request, response, header, prompt, query value, credential, or upstream
-error payload is retained. An oversized legacy segment is discarded rather than
-copied into a record. Native service stdout and stderr must not form an
-unbounded parallel log channel.
+Runtime status contains only bounded counters, classifications, provenance
+digests, and timestamps. Logs are a secondary local diagnostic surface:
+structured events are bounded by rotating retention and redact secret-shaped
+values. No raw request, response, header, prompt, query value, credential, or
+upstream error payload is retained. Retired raw-capture filenames are removed
+without reading their contents; oversized legacy log segments are discarded
+rather than copied into evidence. Native service stdout and stderr must not form
+an unbounded parallel log channel.
+
+Input-union diagnostics contain closed-enum type counts, call/output pairing
+state, the first detected incompatibility category, and a hash of a capped
+categorical shape. Unknown names, values, and exact collection cardinalities
+are erased before hashing or diagnostic logging. Recovery events may retain
+exact byte lengths and retained or dropped item counts, but never the
+corresponding message values or unknown names.

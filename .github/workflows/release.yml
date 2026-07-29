@@ -40,14 +40,57 @@ jobs:
           sh scripts/check-release-tag-signature.sh . "$SELECTED_TAG" github
           "$python" scripts/check_release_metadata.py --allow-unpublished-history --tag "$SELECTED_TAG"
           "$python" scripts/check_markdown_presentation.py
-      - name: Publish or verify immutable GitHub release record
+      - name: Require the exact tag Verify workflow to succeed first
         env:
           GH_TOKEN: ${{ github.token }}
           SELECTED_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          if gh release view "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "GitHub release already exists: $SELECTED_TAG"
+          deadline=$((SECONDS + 900))
+          while :; do
+            runs=$(gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yml/runs?branch=$SELECTED_TAG&event=push&per_page=100")
+            verdict=$(RUNS_JSON="$runs" python3 - "$GITHUB_SHA" <<'PY'
+          import json, os, sys
+          pages = json.loads(os.environ["RUNS_JSON"])
+          sha = sys.argv[1]
+          matches = [
+              run for page in pages for run in page.get("workflow_runs", [])
+              if run.get("path") == ".github/workflows/verify.yml"
+              and run.get("event") == "push"
+              and run.get("head_branch") == __import__("os").environ["SELECTED_TAG"]
+              and run.get("head_sha") == sha
+          ]
+          if len(matches) != 1:
+              print("ambiguous" if len(matches) > 1 else "waiting")
+          elif matches[0].get("status") != "completed":
+              print("waiting")
+          else:
+              print(matches[0].get("conclusion") or "failed")
+          PY
+            )
+            case "$verdict" in
+              success) break ;;
+              waiting) test "$SECONDS" -lt "$deadline" || { echo "Verify workflow timed out" >&2; exit 1; }; sleep 10 ;;
+              *) echo "Verify workflow is not uniquely successful: $verdict" >&2; exit 1 ;;
+            esac
+          done
+      - name: Publish or verify exact GitHub release record
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SELECTED_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,isDraft,isPrerelease >/tmp/release.json 2>/dev/null; then
+            python3 - "$SELECTED_TAG" /tmp/release.json <<'PY'
+          import json, sys
+          tag = sys.argv[1]
+          release = json.load(open(sys.argv[2], encoding="utf-8"))
+          expected = {"tagName": tag, "name": f"Codex DMX Proxy {tag}", "isDraft": False, "isPrerelease": False}
+          if release != expected:
+              raise SystemExit("existing GitHub release does not match exact release identity")
+          PY
+            echo "GitHub release already matches: $SELECTED_TAG"
           else
             gh release create "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" \
               --verify-tag --title "Codex DMX Proxy $SELECTED_TAG" --generate-notes

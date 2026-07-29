@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +18,8 @@ GITHUB_EMAIL = "hengyang.2003@tsinghua.org.cn"
 
 
 def command(*args: str, cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess[str]:
+    """Run a captured subprocess and raise a concise error when requested."""
+
     result = subprocess.run(args, cwd=cwd, text=True, capture_output=True, check=False)
     if check and result.returncode:
         raise RuntimeError((result.stderr or result.stdout).strip() or "command failed")
@@ -24,14 +27,20 @@ def command(*args: str, cwd: Path = ROOT, check: bool = True) -> subprocess.Comp
 
 
 def output(*args: str, cwd: Path = ROOT) -> str:
+    """Return stripped standard output for a successful command."""
+
     return command(*args, cwd=cwd).stdout.strip()
 
 
 def remote_url(remote: str) -> str:
+    """Return the repository-local URL configured for a Git remote."""
+
     return output("git", "config", "--local", "--get", f"remote.{remote}.url")
 
 
 def remote_branches(remote: str) -> list[str]:
+    """Return provider branches other than the canonical main branch."""
+
     refs = output("git", "ls-remote", "--heads", remote).splitlines()
     return sorted(
         ref.removeprefix("refs/heads/")
@@ -43,14 +52,20 @@ def remote_branches(remote: str) -> list[str]:
 
 
 def local_non_main_branches() -> list[str]:
+    """Return local branches other than the canonical main branch."""
+
     return sorted(
         branch
-        for branch in output("git", "for-each-ref", "refs/heads", "--format=%(refname:short)").splitlines()
+        for branch in output(
+            "git", "for-each-ref", "refs/heads", "--format=%(refname:short)"
+        ).splitlines()
         if branch != "main"
     )
 
 
 def branch_identities(ref: str) -> list[str]:
+    """Return author and committer email identities reachable from a ref."""
+
     return [entry for entry in output("git", "log", ref, "--format=%ae%n%ce").splitlines() if entry]
 
 
@@ -63,11 +78,23 @@ def provider_release_evidence(remote: str, provider: str) -> dict[str, dict[str,
         command("git", "-C", str(clone), "remote", "remove", "origin")
         command("git", "-C", str(clone), "remote", "add", "provider", remote_url(remote))
         command(
-            "git", "-C", str(clone), "fetch", "--quiet", "--no-tags", "provider",
+            "git",
+            "-C",
+            str(clone),
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "provider",
             "refs/heads/main:refs/remotes/provider/main",
         )
         remote_tags = command(
-            "git", "-C", str(clone), "ls-remote", "--tags", "provider", "v[0-9]*",
+            "git",
+            "-C",
+            str(clone),
+            "ls-remote",
+            "--tags",
+            "provider",
+            "v[0-9]*",
         ).stdout.splitlines()
         evidence: dict[str, dict[str, object]] = {}
         for line in remote_tags:
@@ -76,18 +103,36 @@ def provider_release_evidence(remote: str, provider: str) -> dict[str, dict[str,
                 continue
             tag = ref.removeprefix("refs/tags/")
             command(
-                "git", "-C", str(clone), "fetch", "--quiet", "--no-tags", "provider",
+                "git",
+                "-C",
+                str(clone),
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                "provider",
                 f"refs/tags/{tag}:refs/tags/{tag}",
             )
             if command(
-                "git", "-C", str(clone), "merge-base", "--is-ancestor", f"{tag}^{{}}",
-                "refs/remotes/provider/main", check=False,
+                "git",
+                "-C",
+                str(clone),
+                "merge-base",
+                "--is-ancestor",
+                f"{tag}^{{}}",
+                "refs/remotes/provider/main",
+                check=False,
             ).returncode:
                 continue
-            signature = command(
-                str(ROOT / "scripts" / "check-release-tag-signature.sh"), str(clone), tag, provider,
-                check=False,
-            ).returncode == 0
+            signature = (
+                command(
+                    str(ROOT / "scripts" / "check-release-tag-signature.sh"),
+                    str(clone),
+                    tag,
+                    provider,
+                    check=False,
+                ).returncode
+                == 0
+            )
             evidence[tag] = {
                 "tree": output("git", "-C", str(clone), "rev-parse", f"{tag}^{{}}^{{tree}}"),
                 "signature": signature,
@@ -97,7 +142,9 @@ def provider_release_evidence(remote: str, provider: str) -> dict[str, dict[str,
         shutil.rmtree(workspace, ignore_errors=True)
 
 
-def audit() -> dict:
+def audit() -> dict[str, Any]:
+    """Collect read-only cross-forge parity and housekeeping evidence."""
+
     gitlab_main = output("git", "rev-parse", "origin/main")
     github_main = output("git", "rev-parse", "github/main")
     gitlab_tree = output("git", "rev-parse", f"{gitlab_main}^{{tree}}")
@@ -135,7 +182,10 @@ def audit() -> dict:
         and not result["housekeeping"]["gitlab_non_main_branches"]
         and not result["housekeeping"]["github_non_main_branches"]
         and bool(overlapping)
-        and all(item["same_tree"] and item["gitlab_signature"] and item["github_signature"] for item in overlapping)
+        and all(
+            item["same_tree"] and item["gitlab_signature"] and item["github_signature"]
+            for item in overlapping
+        )
     )
     return result
 

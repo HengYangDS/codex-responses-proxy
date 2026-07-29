@@ -1,0 +1,125 @@
+# This repository ships an explicit, verified runtime file payload. It is not a
+# PEP 517/621 wheel or sdist project; a future distribution package requires a
+# separate package-map, build-backend, artifact, and VERSION-provider contract.
+[tool.codex-dmx-proxy]
+supported-python = ">=3.12"
+version-source = "VERSION"
+distribution-mode = "runtime-file-payload"
+build-system-allowed = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.format]
+docstring-code-format = true
+line-ending = "lf"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E402"]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+known-first-party = ["handoff", "input_compatibility", "platform_adapters", "runtime_state"]
+
+[tool.ty.environment]
+python-version = "3.12"
+python-platform = "all"
+extra-paths = [".", "proxy", "scripts", "tests"]
+
+[tool.coverage.run]
+branch = true
+source = [
+  "platform_adapters",
+  "proxy",
+]
+omit = [
+  "*/__pycache__/*",
+  "platform_adapters/__init__.py",
+  "platform_adapters/common.py",
+  "platform_adapters/control_handoff.py",
+  "platform_adapters/deployment.py",
+  "platform_adapters/linux.py",
+  "platform_adapters/macos.py",
+  "platform_adapters/publication.py",
+  "platform_adapters/windows.py",
+  "proxy/control_surface.py",
+  "proxy/dmx_responses_proxy.py",
+  "proxy/handoff.py",
+  "proxy/http_surface.py",
+  "proxy/payload_identity.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+precision = 2
+fail_under = 80
+exclude_also = [
+  "if __name__ == .__main__.:",
+]
+
+[tool.codex-dmx-proxy.quality]
+logic-max-statements = 600
+test-max-statements = 800
+module-public-definition-docstrings-required = true
+module-public-definition-docstring-roots = [
+  "control.py",
+  "governance.py",
+  "install.py",
+  "uninstall.py",
+  "proxy",
+  "platform_adapters",
+  "watchdog",
+]
+logic-roots = [
+  "control.py",
+  "governance.py",
+  "install.py",
+  "uninstall.py",
+  "proxy",
+  "platform_adapters",
+  "watchdog",
+  "scripts",
+]
+test-roots = ["tests"]
+type-roots = [
+  "control.py",
+  "governance.py",
+  "install.py",
+  "uninstall.py",
+  "proxy",
+  "platform_adapters",
+  "watchdog",
+  "scripts",
+  "tests",
+]
+coverage-tests = [
+  "tests/test_controller_lifecycle.py",
+  "tests/test_empty_response_projection.py",
+  "tests/test_empty_response_transport.py",
+  "tests/test_handoff_controller.py",
+  "tests/test_handoff_protocol.py",
+  "tests/test_handoff_runtime.py",
+  "tests/test_handoff_subprocess.py",
+  "tests/test_input_compatibility.py",
+  "tests/test_input_transport.py",
+  "tests/test_payload_transactions.py",
+  "tests/test_platform_services.py",
+  "tests/test_proxy_owner_boundaries.py",
+  "tests/test_proxy_policy.py",
+  "tests/test_proxy_transport.py",
+  "tests/test_publication_proof.py",
+  "tests/test_publication_proof_cli.py",
+  "tests/test_publication_proof_forges.py",
+  "tests/test_publication_proof_git.py",
+  "tests/test_quality_contract.py",
+  "tests/test_release_installation.py",
+  "tests/test_release_pipeline.py",
+  "tests/test_release_source.py",
+  "tests/test_reliability_observer.py",
+  "tests/test_repository_contracts.py",
+  "tests/test_route_management.py",
+  "tests/test_runtime_state.py",
+]

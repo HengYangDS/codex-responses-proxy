@@ -4,106 +4,110 @@ Status: canonical.
 
 ## Change admission
 
-Changes require a scoped regression test, a boundary review, and a
-tri-platform Python 3.12, 3.13, and 3.14 candidate verification matrix.
-Documentation must be updated whenever commands, installation behavior,
-ownership, or released behavior changes.
+Changes require scoped regression tests, boundary review, and candidate
+verification on Python 3.12, 3.13, and 3.14. Documentation must change with
+commands, ownership, installation, lifecycle, evidence, or released behavior.
+A local green gate proves only the local candidate; it does not prove either
+Forge publication or an installed runtime.
 
 ## Release identity
 
-`VERSION` is the active release-train identifier. Before a tag exists, it must
-be strictly newer than the latest released version and the work belongs under
+`VERSION` is the release-train identifier. Before a tag exists, it must be
+strictly newer than the latest release and its material remains under
 `Unreleased`. A release commit moves that material to a dated heading and is
-tagged as `v<VERSION>` on the same UTC date; stale pending-release dates are
-rejected before signing. Deployment is a post-release projection: no candidate
-may be installed before its forge-native tags, CI, and release records are
-verified. A release candidate must satisfy:
+tagged as exact `v<VERSION>` on the same UTC date. A release candidate must
+satisfy all of the following:
 
 - `VERSION`, runtime version lookup, and the dated Changelog heading agree;
-- `CHANGELOG.md` begins with `Unreleased`; every locally published heading maps
-  exactly once to a reachable provider-native `v<semver>` tag, uses that tag's
-  creation date, and is in descending SemVer order. `Unreleased` contains only
-  work after the newest reachable tag;
-- `scripts/check_release_metadata.py` and the complete CI matrix pass;
-- Git tag is exactly `v<VERSION>`;
-- claims distinguish structural tests from physical host acceptance.
+- `CHANGELOG.md` starts with one `Unreleased` heading and released headings are
+  descending, date-correct, and in one-to-one correspondence with reachable
+  provider-native tags;
+- repository metadata, quality, coverage, and the complete platform matrix pass;
+- the tag is a signed annotated tag that directly identifies the release commit;
+- claims distinguish source structure, Forge publication, local installation,
+  physical host acceptance, and original-task recovery.
 
-A source tag records a source version. It is not, on its own, proof of
-published artifacts, native-host acceptance, signing, notarization, or an
-original-conversation recovery. Those claims require their corresponding,
-current evidence and must never be inferred from a Changelog heading.
+A tag is source identity, not publication proof by itself. No candidate may be
+installed before both Forge planes have completed their signed tag, required CI,
+and formal Release record.
 
-## Independent forge operation
+## Independent Forge publication proof
 
-GitLab and GitHub are equal, independent forge planes. Each owns its commit
-history, signed tags, CI execution, and release record. `scripts/project-github-
-forge.sh` projects the canonical GitLab branch through a fresh isolated clone
-with the GitHub identity; it never copies, overwrites, or regenerates tags.
-When a version is released on both planes, the two same-named tags are separate
-provider provenance objects and must verify against their respective trust
-anchors.
+GitLab and GitHub are equal, independent authority planes. Each owns its commit
+history, signed tag object, CI execution, and Release record. GitHub is projected
+from the canonical GitLab tree through a fresh isolated clone, but its commits
+and tags retain GitHub-native identity.
 
-The canonical release sequence is explicit: `tag-gitlab-release.sh` creates and
-verifies the GitLab-native tag with the GitLab identity and signer; after its
-pipeline evidence, `tag-github-release.sh` creates and verifies the GitHub-native
-tag in the projected identity history. No ambient Git configuration may select a
-provider signer implicitly.
+`scripts/verify-publication-proof.py` is the in-repository, read-only verifier.
+It fetches each exact tag into isolation, verifies each provider signature under
+its own external anchor, observes the policy-required hosted jobs and Release
+record, and requires the two tags to bind the same source tree. Its JSON is
+audit evidence only. Installation repeats live verification in the same process;
+no serialized document can be converted back into installation authority.
 
-## GitLab metadata
+The source-side installer independently requires a clean checkout whose `HEAD`
+is the exact signed annotated `v<VERSION>` tag. It reads payload bytes from Git
+objects, never from an arbitrary working-tree stage. `platform_adapters.release_source`
+returns an opaque one-use capability binding source identity, publication proof,
+payload blobs and modes, aggregate serving identity, receipt, and sidecar.
 
-The display **Project Name** is `Codex DMX Proxy`. The stable repository
-**Path** is `codex-dmx-proxy`. Name is prose for people; Path is an external
-identifier. A cosmetic display-name correction must not silently migrate clone
-URLs, namespace, project ID, default branch, or release history.
+## Installation transaction
 
-## Operational changes
+Every payload mutation is owned by source-side `install.py`. The installer
+consumes the release capability into one private transaction that owns the
+candidate projection, rollback snapshot, canonical receipt, manifest,
+installed-release state, and recovery hold. It refuses downgrades and same-version
+replays. It finalizes only after the accepting listener proves release,
+aggregate serving-payload digest, release-receipt digest, and manifest digest.
 
-`control.py status` and `governance.py` are read-only. A protocol-v2 `reload`
-or staged upgrade requires a user-visible warning and a post-operation identity
-proof. It prepares a non-accepting child, validates payload identity, writes the
-READY response, stops the old accept loop, and only then crosses COMMIT. The
-child must prove SERVING health by PID, transaction, release, source, and
-manifest before FINALIZE. Pre-finalize failure confirms child exit before old
-admission resumes; an unconfirmed abort fails closed. Already accepted handlers
-drain to zero or a bounded lease after finalization.
+Failure before a proven terminal state restores the exact previous owned
+projection. If a committed handoff result is unknown, the transaction is kept as
+`recovery_required`; neither success nor rollback may be inferred. Installed
+control exposes no arbitrary stage-path upgrade and no controller-only partial
+apply. Release archives are not installation sources because they cannot carry
+the signed annotated tag object and its verified publication chain.
 
-A controller-only apply is not a reload or
-upgrade: it requires exactly one verified listener serving normal admission and
-proves every listener, watchdog, version, and support file byte-identical to the
-verified live payload. It transactionally swaps only `control.py` and the
-manifest, preserves route state and logs, and does not drain, restart, or
-interrupt Responses traffic.
-Route changes are owned by AIGW whenever its marked provider block is
-present.
+Route changes remain owned by AIGW whenever its marked provider block is present.
+
+## Lifecycle operations
+
+`control.py status` and `governance.py` are read-only. Installed-control `reload`
+is same-payload only and requires a user-visible warning plus post-operation
+identity proof. It prepares a non-accepting child, stops the old accept loop
+before `COMMIT`, and requires `SERVING` proof by PID, transaction, release,
+aggregate serving-payload digest, release-receipt digest, and manifest digest
+before `FINALIZE`. Accepted handlers drain to zero or the bounded lease.
+Pre-finalize failure confirms child exit before old admission resumes; an
+unconfirmed abort fails closed.
+
+Replacing payload bytes is a source-side install operation. For a current
+protocol-v2 listener, source-side deployment commits the admitted release
+transaction and uses the same handoff transport and identity proof. A one-time
+legacy replacement requires explicit `--allow-legacy-bootstrap`, installed
+manifest integrity, exactly one verified PID, and a bounded zero-active quiet
+window. `--force-legacy-bootstrap` adds separate interruption authorization; it
+is unavailable to `reload`, rejected without the allow flag, and never applies
+to a current protocol-v2 listener.
 
 ## Reliability observation and incident boundary
 
-`control.py status --json` is the listener-local, secret-free source of raw
-runtime counters. `scripts/observe-reliability.py` is the corresponding
-source-side evaluator: it accepts a supplied snapshot and an optional explicit
-baseline state file, but does not call the listener, mutate configuration,
-retain request/response material, or perform lifecycle control.
+`control.py status --json` is the secret-free source of listener-local counters.
+`scripts/observe-reliability.py` evaluates a supplied snapshot and optional
+explicit baseline file; it does not contact the listener, mutate configuration,
+retain request or response material, or perform lifecycle control.
 
-The evaluator compares counters only when release, loaded source digest, and
-monotonic uptime prove the same running payload. A first snapshot, a restart,
-or a payload change begins a new observation window; lifetime counters and
-`last_failure` must not be reclassified as a new incident. Payload-integrity
-failure, missing/multiple verified listeners, local stream failures,
-pre-content stream exhaustion, and local queue timeouts are immediate local
-incidents. Drain rejections remain a separate local class: an approved
-maintenance observation may classify them as `observe`, never as an upstream
-failure. Upstream `empty_response`, retryable 5xx, and `response_failed` are
-classified independently; one or two events in a comparable window require
-observation, while three or more require an upstream incident. The policy is
-deliberately bounded and must remain covered by deterministic tests.
+Counters are comparable only when release, startup-frozen aggregate
+serving-payload digest, and monotonic uptime identify the same running payload.
+A first snapshot, restart, or payload change starts a new observation window;
+lifetime counters and `last_failure` are not reclassified as new incidents.
+Payload-integrity failure, missing or multiple verified listeners, local stream
+failures, pre-content exhaustion, and local queue timeouts are immediate local
+incidents. Drain rejections remain a separate local class: approved maintenance
+may classify them as `observe`, never as upstream failure.
 
-For a one-time upgrade from a listener that predates drain control, lifecycle
-control requires explicit operator authorization and may use only its
-verified-PID, two-sample five-second idle-window compatibility gate. It must
-refuse on any activity, health loss, timeout, or PID change, and it is not an
-alternative for listeners that support atomic drain.
-
-An emergency forced legacy bootstrap is an interruption, not a drain. It needs
-separate operator authorization, manifest integrity, and exactly one verified
-listener; it is unavailable to ordinary reload and must disappear from use after
-the first drain-capable listener has started.
+Upstream `empty_response`, retryable 5xx, `response_failed`, and the exact input-
+variant validation class are evaluated independently. One or two new events in
+a comparable window require observation; three or more require an incident.
+These gates prove only the stated runtime evidence. Historical Codex task
+recovery requires a separate acceptance result from that exact task after a
+released runtime is serving.

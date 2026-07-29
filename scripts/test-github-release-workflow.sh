@@ -17,7 +17,9 @@ required = [
     'python=/opt/homebrew/bin/python3.14',
     '"$python" scripts/check_release_metadata.py --allow-unpublished-history --tag',
     "check-release-tag-signature.sh",
+    "actions/workflows/verify.yml/runs?branch=", "Verify workflow timed out",
     "gh release create", "--verify-tag", "--generate-notes",
+    "existing GitHub release does not match exact release identity",
 ]
 for token in required:
     if token not in text:
