@@ -11,23 +11,179 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 import unittest
+import unittest.mock
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[2]
-PROXY_ROOT = ROOT / "proxy"
-for import_root in (str(ROOT), str(PROXY_ROOT)):
-    if import_root not in sys.path:
-        sys.path.insert(0, import_root)
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-from platform_adapters import common, payload  # noqa: E402
-import dmx_responses_proxy as proxy_module  # noqa: E402
-import handoff as handoff_module  # noqa: E402
-import runtime_state as runtime_state_module  # noqa: E402
+from codex_dmx_proxy import installation  # noqa: E402
+from codex_dmx_proxy import process  # noqa: E402
+from codex_dmx_proxy.release import projection
+from codex_dmx_proxy.listener import entrypoint as entrypoint_module  # noqa: E402
+from codex_dmx_proxy.listener import handoff as handoff_module  # noqa: E402
+from codex_dmx_proxy.listener import state as runtime_state_module  # noqa: E402
+from tests.support.repository_fixtures import install_context  # noqa: E402
+
+
+def expected_metadata(**overrides) -> dict[str, object]:
+    """Return a complete protocol identity with optional field overrides."""
+    identity: dict[str, object] = {
+        "transaction_id": "txn-1",
+        "release": "1.0.25",
+        "serving_payload_sha256": "a" * 64,
+        "release_receipt_sha256": "f" * 64,
+        "manifest_sha256": "b" * 64,
+    }
+    identity.update(overrides)
+    return identity
+
+
+def child_message(kind: str, child, expected: dict[str, object]) -> dict[str, object]:
+    """Return the exact parent-side READY, SERVING, or FINALIZED message."""
+    message = {
+        "type": kind,
+        "pid": child.process.pid,
+        "transaction_id": expected["transaction_id"],
+    }
+    if kind == "ready":
+        message.update(
+            protocol_version=handoff_module.HANDOFF_PROTOCOL_VERSION,
+            release=expected["release"],
+            serving_payload_sha256=expected["serving_payload_sha256"],
+            release_receipt_sha256=expected["release_receipt_sha256"],
+            manifest_sha256=expected["manifest_sha256"],
+        )
+    return message
+
+
+def matching_health(child_or_pid, expected: dict[str, object], **overrides) -> dict[str, object]:
+    """Return a complete child health identity with optional field overrides."""
+    pid = child_or_pid if isinstance(child_or_pid, int) else child_or_pid.process.pid
+    health = {
+        "pid": pid,
+        "handoff_protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
+        "handoff_transaction_id": expected["transaction_id"],
+        "release": expected["release"],
+        "serving_payload_sha256": expected["serving_payload_sha256"],
+        "release_receipt_sha256": expected["release_receipt_sha256"],
+        "payload_manifest_sha256": expected["manifest_sha256"],
+        "handoff_state": "serving",
+        "accepting": True,
+        "draining": False,
+    }
+    health.update(overrides)
+    return health
+
+
+def fake_child(*, pid: int = 54321):
+    """Return a controllable parent-side child process fixture."""
+    child = unittest.mock.Mock()
+    child.process = unittest.mock.Mock(pid=pid)
+    child.terminate_bounded.return_value = True
+    return child
+
+
+def fake_server():
+    """Return a parent-side listener fixture."""
+    server = unittest.mock.Mock()
+    server.shutdown = unittest.mock.Mock()
+    return server
+
+
+class Response:
+    """Minimal context-managed JSON response fixture."""
+
+    def __init__(self, payload, *, status: int = 202):
+        self.status = status
+        self.payload = json.dumps(payload).encode() if isinstance(payload, dict) else payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self, _limit):
+        return self.payload
+
+
+def ready_ack(expected: dict[str, object], **overrides) -> dict[str, object]:
+    """Return a protocol-v2 READY acknowledgement."""
+    payload: dict[str, object] = {
+        "ok": True,
+        "state": "ready",
+        "protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
+        "transaction_id": expected["transaction_id"],
+        "child_pid": 1000,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def idle_runtime(**overrides) -> dict[str, object]:
+    """Return a protocol-v2 runtime ready to initiate a handoff."""
+    runtime: dict[str, object] = {
+        "pid": 999,
+        "handoff_protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
+        "handoff_transaction_id": None,
+        "handoff_state": "idle",
+        "release": "1.0.24",
+        "serving_payload_sha256": "a" * 64,
+        "release_receipt_sha256": "e" * 64,
+        "payload_manifest_sha256": "b" * 64,
+        "accepting": True,
+        "draining": False,
+    }
+    runtime.update(overrides)
+    return runtime
+
+
+def child_pid_matching_health(port: int, expected: dict, *, exclude_pid: int | None):
+    """Return the matching successor PID observed through loopback health."""
+    try:
+        _, health = http_json(port, "/healthz", timeout=1)
+    except (OSError, urllib.error.URLError, ValueError):
+        return None
+    pid = health.get("pid")
+    required = matching_health(pid, expected)
+    return (
+        pid
+        if isinstance(pid, int)
+        and pid != exclude_pid
+        and all(health.get(key) == value for key, value in required.items())
+        else None
+    )
+
+
+def child_pid_observer(
+    port: int, expected: dict, *, exclude_pid: int | None
+) -> tuple[dict[str, int | None], Callable[[], bool]]:
+    """Return a successor-PID cell and the bounded health predicate that fills it."""
+    observed: dict[str, int | None] = {"value": None}
+
+    def matches() -> bool:
+        observed["value"] = child_pid_matching_health(port, expected, exclude_pid=exclude_pid)
+        return observed["value"] is not None
+
+    return observed, matches
+
+
+def fake_handler(body: dict):
+    """Return a loopback control-handler fixture containing one JSON body."""
+    payload = json.dumps(body).encode()
+    handler = unittest.mock.Mock()
+    handler.client_address = ("127.0.0.1", 51234)
+    handler.headers = {"Content-Length": str(len(payload))}
+    handler.rfile.read.return_value = payload
+    return handler
 
 
 def free_port() -> int:
@@ -83,11 +239,11 @@ def terminate_process(process: subprocess.Popen, timeout: float = 5) -> None:
 
 
 def terminate_pid_best_effort(pid: int | None) -> None:
-    """Best-effort cleanup for an owned handoff child identified by PID."""
+    """Best-effort cleanup for an owned child that must name the proxy script."""
     if pid is None:
         return
     try:
-        common.terminate_pid(pid)
+        process.terminate_pid(pid, expected_path=str(entrypoint_module.__file__))
     except Exception:
         pass
 
@@ -97,7 +253,7 @@ def pid_alive(pid: int | None) -> bool:
     if pid is None:
         return False
     try:
-        return bool(common.process_command(pid))
+        return bool(process.process_command(pid))
     except Exception:
         return False
 
@@ -158,37 +314,29 @@ class ScriptedUpstream:
         self.thread.join(timeout=2)
 
 
-def write_installed_payload(root: Path, *, release: str, port: int) -> common.InstallContext:
+def write_installed_payload(root: Path, *, release: str, port: int) -> installation.InstallContext:
     """Build an installed-like temporary payload without touching the source tree."""
     install_dir = root / ".codex" / "dmx-proxy"
-    for relative in payload.RUNTIME_PAYLOAD_FILES:
+    for relative in projection.RUNTIME_PAYLOAD_FILES:
         source = ROOT / relative
         target = install_dir / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(source.read_bytes())
     (install_dir / "VERSION").write_text(release + "\n", encoding="utf-8")
-    ctx = common.InstallContext(
-        home=str(root),
-        install_dir=str(install_dir),
-        proxy_script=str(install_dir / "proxy" / "dmx_responses_proxy.py"),
-        watchdog_script=str(install_dir / "watchdog" / "watchdog.py"),
-        python=sys.executable,
-        codex_config=str(root / ".codex" / "config.toml"),
-        log_dir=str(root / ".codex" / "log"),
-        port=port,
-    )
-    receipt = install_dir / payload.RELEASE_RECEIPT_FILENAME
+    ctx = install_context(root)
+    ctx.port = port
+    receipt = install_dir / projection.RELEASE_RECEIPT_FILENAME
     receipt.write_bytes(b'{"fixture":"handoff-subprocess"}\n')
-    payload._write_payload_manifest_for_fixture(
+    projection._write_payload_manifest_for_fixture(
         ctx,
         release_receipt_sha256=hashlib.sha256(receipt.read_bytes()).hexdigest(),
     )
     return ctx
 
 
-def installed_expected_metadata(ctx: common.InstallContext, transaction_id: str) -> dict:
+def installed_expected_metadata(ctx: installation.InstallContext, transaction_id: str) -> dict:
     """Read the exact identity expected from a prepared child runtime."""
-    manifest_path = Path(payload.payload_manifest_path(ctx))
+    manifest_path = Path(projection.payload_manifest_path(ctx))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     return {
         "transaction_id": transaction_id,
@@ -201,7 +349,11 @@ def installed_expected_metadata(ctx: common.InstallContext, transaction_id: str)
 
 
 def start_real_proxy(
-    ctx: common.InstallContext, *, upstream_url: str, log_path: Path, extra_env: dict | None = None
+    ctx: installation.InstallContext,
+    *,
+    upstream_url: str,
+    log_path: Path,
+    extra_env: dict | None = None,
 ) -> subprocess.Popen:
     """Start an installed-like proxy and prove its listener became reachable."""
     env = dict(os.environ)
@@ -237,4 +389,5 @@ class HandoffTestCase(unittest.TestCase):
         self.p = handoff_module
         runtime_state_module.reset_for_test()
         self.p.reset_session_to_idle()
-        self.context = proxy_module._handoff_context()
+        self.context = entrypoint_module._handoff_context()
+        self.installation = runtime_state_module

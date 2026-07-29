@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: release-${{ github.repository }}-${{ inputs.tag || github.ref_name }}
@@ -46,11 +47,15 @@ jobs:
           SELECTED_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
+          expected_sha=$(git rev-parse 'HEAD^{commit}')
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            test "$GITHUB_SHA" = "$expected_sha"
+          fi
           deadline=$((SECONDS + 900))
           while :; do
             runs=$(gh api --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yml/runs?branch=$SELECTED_TAG&event=push&per_page=100")
-            verdict=$(RUNS_JSON="$runs" python3 - "$GITHUB_SHA" <<'PY'
+            verdict=$(RUNS_JSON="$runs" python3 - "$expected_sha" <<'PY'
           import json, os, sys
           pages = json.loads(os.environ["RUNS_JSON"])
           sha = sys.argv[1]
@@ -81,17 +86,54 @@ jobs:
           SELECTED_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          if gh release view "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,isDraft,isPrerelease >/tmp/release.json 2>/dev/null; then
-            python3 - "$SELECTED_TAG" /tmp/release.json <<'PY'
-          import json, sys
+          expected_sha=$(git rev-parse 'HEAD^{commit}')
+          expected_tag_oid=$(git rev-parse "$SELECTED_TAG^{tag}")
+          releases=$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/releases?per_page=100")
+          verdict=$(RELEASES_JSON="$releases" python3 - "$SELECTED_TAG" <<'PY'
+          import json, os, sys
           tag = sys.argv[1]
-          release = json.load(open(sys.argv[2], encoding="utf-8"))
-          expected = {"tagName": tag, "name": f"Codex DMX Proxy {tag}", "isDraft": False, "isPrerelease": False}
-          if release != expected:
+          pages = json.loads(os.environ["RELEASES_JSON"])
+          matches = [release for page in pages for release in page if release.get("tag_name") == tag]
+          if len(matches) > 1:
+              raise SystemExit("duplicate GitHub release records for exact tag")
+          if not matches:
+              print("missing")
+              raise SystemExit(0)
+          release = matches[0]
+          expected = {"tag_name": tag, "name": f"Codex DMX Proxy {tag}", "draft": False, "prerelease": False}
+          if (any(release.get(key) != value for key, value in expected.items())
+                  or not isinstance(release.get("id"), int)
+                  or not release.get("published_at")):
               raise SystemExit("existing GitHub release does not match exact release identity")
+          print("matching")
           PY
-            echo "GitHub release already matches: $SELECTED_TAG"
-          else
+          )
+          case "$verdict" in
+            matching) echo "GitHub release already matches: $SELECTED_TAG" ;;
+            missing) ;;
+            *) echo "unexpected GitHub release verdict: $verdict" >&2; exit 1 ;;
+          esac
+          ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$SELECTED_TAG")
+          tag_oid=$(REF_JSON="$ref" python3 - <<'PY'
+          import json, os
+          object_ = json.loads(os.environ["REF_JSON"]).get("object", {})
+          if object_.get("type") != "tag" or not object_.get("sha"):
+              raise SystemExit("GitHub release tag is not an annotated provider tag")
+          print(object_["sha"])
+          PY
+          )
+          tag_object=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_oid")
+          test "$tag_oid" = "$expected_tag_oid"
+          TAG_JSON="$tag_object" python3 - "$SELECTED_TAG" "$tag_oid" "$expected_sha" <<'PY'
+          import json, os, sys
+          tag, oid, commit = sys.argv[1:]
+          record = json.loads(os.environ["TAG_JSON"])
+          target = record.get("object", {})
+          if (record.get("tag"), record.get("sha"), target.get("type"), target.get("sha")) != (tag, oid, "commit", commit):
+              raise SystemExit("GitHub release tag does not resolve to the checked-out commit")
+          PY
+          if [ "$verdict" = missing ]; then
             gh release create "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" \
               --verify-tag --title "Codex DMX Proxy $SELECTED_TAG" --generate-notes
           fi

@@ -6,7 +6,7 @@ tag=${1:?usage: tag-gitlab-release.sh <v<semver>>}
 gitlab_remote=${DMX_GITLAB_REMOTE:-origin}
 gitlab_name=${DMX_GITLAB_AUTHOR_NAME:-Yang HENG}
 gitlab_email=${DMX_GITLAB_AUTHOR_EMAIL:-heng.yang.ds@hotmail.com}
-signing_key=${DMX_GITLAB_SIGNING_KEY:-$HOME/.ssh/id_ed25519_signing_yheng_20260711.pub}
+signing_key=${DMX_GITLAB_SIGNING_KEY:-$HOME/.ssh/id_aigw_gitlab_signing_20260729.pub}
 ssh_signing_program=${DMX_GITLAB_SSH_SIGNING_PROGRAM:-${GPG_SSH_PROGRAM:-}}
 release_python=${DMX_RELEASE_PYTHON:-python3}
 

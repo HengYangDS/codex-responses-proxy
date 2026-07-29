@@ -13,8 +13,8 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-GITLAB_EMAIL = "heng.yang.ds@hotmail.com"
-GITHUB_EMAIL = "hengyang.2003@tsinghua.org.cn"
+GITLAB_IDENTITY = ("Yang HENG", "heng.yang.ds@hotmail.com")
+GITHUB_IDENTITY = ("Yang HENG", "hengyang.2003@tsinghua.org.cn")
 
 
 def command(*args: str, cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -63,13 +63,14 @@ def local_non_main_branches() -> list[str]:
     )
 
 
-def branch_provenance(ref: str, email: str, allowed_signers: Path) -> dict[str, object]:
-    """Verify every reachable commit's identity and provider-trusted signature."""
+def branch_provenance(
+    ref: str, identity: tuple[str, str], allowed_signers: Path, *, cwd: Path = ROOT
+) -> dict[str, object]:
+    """Verify each reachable commit's exact identity and trusted signature."""
 
-    commits = output("git", "rev-list", ref).splitlines()
-    identities = [
-        entry for entry in output("git", "log", ref, "--format=%ae%n%ce").splitlines() if entry
-    ]
+    commits = output("git", "rev-list", ref, cwd=cwd).splitlines()
+    records = output("git", "log", ref, "--format=%an%x00%ae%x00%cn%x00%ce", cwd=cwd).splitlines()
+    expected = "\x00".join((*identity, *identity))
     unsigned = [
         commit
         for commit in commits
@@ -81,12 +82,13 @@ def branch_provenance(ref: str, email: str, allowed_signers: Path) -> dict[str, 
             f"gpg.ssh.allowedSignersFile={allowed_signers}",
             "verify-commit",
             commit,
+            cwd=cwd,
             check=False,
         ).returncode
     ]
     return {
         "commit_count": len(commits),
-        "identity_only": set(identities) == {email},
+        "identity_only": bool(records) and set(records) == {expected},
         "all_commits_signed": not unsigned,
         "unsigned_commits": unsigned,
     }
@@ -135,17 +137,19 @@ def provider_release_evidence(remote: str, provider: str) -> dict[str, dict[str,
                 "provider",
                 f"refs/tags/{tag}:refs/tags/{tag}",
             )
-            if command(
-                "git",
-                "-C",
-                str(clone),
-                "merge-base",
-                "--is-ancestor",
-                f"{tag}^{{}}",
-                "refs/remotes/provider/main",
-                check=False,
-            ).returncode:
-                continue
+            reachable = (
+                command(
+                    "git",
+                    "-C",
+                    str(clone),
+                    "merge-base",
+                    "--is-ancestor",
+                    f"{tag}^{{}}",
+                    "refs/remotes/provider/main",
+                    check=False,
+                ).returncode
+                == 0
+            )
             signature = (
                 command(
                     str(ROOT / "scripts" / "check-release-tag-signature.sh"),
@@ -159,19 +163,50 @@ def provider_release_evidence(remote: str, provider: str) -> dict[str, dict[str,
             evidence[tag] = {
                 "tree": output("git", "-C", str(clone), "rev-parse", f"{tag}^{{}}^{{tree}}"),
                 "signature": signature,
+                "reachable_from_main": reachable,
             }
         return evidence
     finally:
         shutil.rmtree(workspace, ignore_errors=True)
 
 
+def live_main(
+    remote: str, identity: tuple[str, str], anchor: Path
+) -> tuple[str, str, dict[str, object]]:
+    """Fetch and verify the provider's current main in an isolated clone."""
+
+    with tempfile.TemporaryDirectory(prefix="codex-dmx-proxy-main-") as directory:
+        clone = Path(directory) / "repository"
+        command("git", "clone", "--quiet", "--no-local", "--no-tags", f"file://{ROOT}", str(clone))
+        command("git", "-C", str(clone), "remote", "remove", "origin")
+        command("git", "-C", str(clone), "remote", "add", "provider", remote_url(remote))
+        command(
+            "git",
+            "-C",
+            str(clone),
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "provider",
+            "refs/heads/main:refs/remotes/provider/main",
+        )
+        ref = "refs/remotes/provider/main"
+        return (
+            output("git", "rev-parse", ref, cwd=clone),
+            output("git", "rev-parse", f"{ref}^{{tree}}", cwd=clone),
+            branch_provenance(ref, identity, anchor.resolve(), cwd=clone),
+        )
+
+
 def audit() -> dict[str, Any]:
     """Collect read-only cross-forge parity and housekeeping evidence."""
 
-    gitlab_main = output("git", "rev-parse", "origin/main")
-    github_main = output("git", "rev-parse", "github/main")
-    gitlab_tree = output("git", "rev-parse", f"{gitlab_main}^{{tree}}")
-    github_tree = output("git", "rev-parse", f"{github_main}^{{tree}}")
+    gitlab_main, gitlab_tree, gitlab_provenance = live_main(
+        "origin", GITLAB_IDENTITY, ROOT / "packaging/release/gitlab-allowed-signers"
+    )
+    github_main, github_tree, github_provenance = live_main(
+        "github", GITHUB_IDENTITY, ROOT / "packaging/release/github-allowed-signers"
+    )
     gitlab_tags = provider_release_evidence("origin", "gitlab")
     github_tags = provider_release_evidence("github", "github")
     overlapping = [
@@ -180,15 +215,11 @@ def audit() -> dict[str, Any]:
             "same_tree": gitlab_tags[tag]["tree"] == github_tags[tag]["tree"],
             "gitlab_signature": gitlab_tags[tag]["signature"],
             "github_signature": github_tags[tag]["signature"],
+            "gitlab_reachable_from_main": gitlab_tags[tag]["reachable_from_main"],
+            "github_reachable_from_main": github_tags[tag]["reachable_from_main"],
         }
         for tag in sorted(set(gitlab_tags) & set(github_tags))
     ]
-    gitlab_provenance = branch_provenance(
-        "origin/main", GITLAB_EMAIL, ROOT / "packaging/release/gitlab-allowed-signers"
-    )
-    github_provenance = branch_provenance(
-        "github/main", GITHUB_EMAIL, ROOT / "packaging/release/github-allowed-signers"
-    )
     gitlab_provenance_ok = (
         gitlab_provenance["identity_only"] is True
         and gitlab_provenance["all_commits_signed"] is True

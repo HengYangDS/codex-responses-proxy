@@ -13,104 +13,53 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT))
 
-from tests.support.handoff import HandoffTestCase
-from tests.support.handoff import handoff_module
-from tests.support.handoff import handoff_outcome_ready
-from tests.support.handoff import proxy_module
-from tests.support.handoff import runtime_state_module
-from tests.support.handoff import wait_until
-import control_surface
+from tests.support.handoff import (
+    HandoffTestCase,
+    child_message,
+    entrypoint_module,
+    expected_metadata,
+    fake_child,
+    fake_handler,
+    fake_server,
+    handoff_module,
+    handoff_outcome_ready,
+    matching_health,
+    runtime_state_module,
+    wait_until,
+)
+from codex_dmx_proxy.listener import control
 
 
 class TestParentHandoffStateMachine(HandoffTestCase):
     """Legal/illegal runtime behavior of the prepare -> commit -> finalize driver."""
 
-    def _expected(self, **overrides):
-        expected = {
-            "transaction_id": "txn-1",
-            "release": "1.0.25",
-            "serving_payload_sha256": "a" * 64,
-            "release_receipt_sha256": "f" * 64,
-            "manifest_sha256": "b" * 64,
-        }
-        expected.update(overrides)
-        return expected
-
-    def _fake_server(self):
-        server = mock.Mock()
-        server.shutdown = mock.Mock()
-        return server
-
-    def _fake_child(self, *, pid=54321):
-        child = mock.Mock()
-        child.process = mock.Mock(pid=pid)
-        child.terminate_bounded.return_value = True
-        return child
-
-    def _ready_message(self, child, expected):
-        return {
-            "type": "ready",
-            "protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
-            "pid": child.process.pid,
-            "transaction_id": expected["transaction_id"],
-            "release": expected["release"],
-            "serving_payload_sha256": expected["serving_payload_sha256"],
-            "release_receipt_sha256": expected["release_receipt_sha256"],
-            "manifest_sha256": expected["manifest_sha256"],
-        }
-
-    def _serving_message(self, child, expected):
-        return {
-            "type": "serving",
-            "pid": child.process.pid,
-            "transaction_id": expected["transaction_id"],
-        }
-
-    def _finalized_message(self, child, expected):
-        return {
-            "type": "finalized",
-            "pid": child.process.pid,
-            "transaction_id": expected["transaction_id"],
-        }
-
-    def _happy_recv_sequence(self, child, expected):
-        return [
-            self._ready_message(child, expected),
-            self._serving_message(child, expected),
-            self._finalized_message(child, expected),
-        ]
-
-    def _matching_health(self, child, expected, *, handoff_state="serving"):
-        return {
-            "pid": child.process.pid,
-            "handoff_protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
-            "handoff_transaction_id": expected["transaction_id"],
-            "release": expected["release"],
-            "serving_payload_sha256": expected["serving_payload_sha256"],
-            "release_receipt_sha256": expected["release_receipt_sha256"],
-            "payload_manifest_sha256": expected["manifest_sha256"],
-            "handoff_state": handoff_state,
-            "accepting": True,
-        }
+    def committed(self, *after_ready, health=None, **kwargs):
+        expected = kwargs.pop("expected", expected_metadata())
+        child = kwargs.pop("child", fake_child())
+        server = kwargs.pop("server", fake_server())
+        child.recv_message.side_effect = [child_message("ready", child, expected), *after_ready]
+        with mock.patch.object(self.p, "spawn_child", return_value=child):
+            prepared = self.p.prepare(server, expected, self.context, **kwargs)
+        with mock.patch.object(
+            self.p,
+            "probe_health",
+            return_value=matching_health(child, expected) if health is None else health,
+        ):
+            outcome = self.p.commit(server, prepared, self.context)
+        return outcome, server, child, expected
 
     def test_prepare_then_commit_finalizes_and_never_reopens_admission_itself(self):
-        server = self._fake_server()
-        child = self._fake_child()
-        expected = self._expected()
-        child.recv_message.side_effect = self._happy_recv_sequence(child, expected)
-        with (
-            mock.patch.object(self.p, "spawn_child", return_value=child) as spawn,
-            mock.patch.object(
-                self.p, "probe_health", return_value=self._matching_health(child, expected)
-            ),
-        ):
-            prepared = self.p.prepare(server, expected, self.context, timeout_seconds=5)
-            self.assertEqual(self.p._HANDOFF_SESSION.get("state"), "ready")
-            outcome = self.p.commit(server, prepared, self.context)
-        spawn.assert_called_once()
+        child = fake_child()
+        expected = expected_metadata()
+        outcome, server, _, _ = self.committed(
+            child_message("serving", child, expected),
+            child_message("finalized", child, expected),
+            child=child,
+            expected=expected,
+            timeout_seconds=5,
+        )
         self.assertEqual(outcome, "finalized")
         server.shutdown.assert_called_once()
         child.send_message.assert_any_call({"type": "commit"})
@@ -119,9 +68,9 @@ class TestParentHandoffStateMachine(HandoffTestCase):
         self.assertTrue(handoff_outcome_ready().is_set())
 
     def test_draining_is_set_before_shutdown_and_shutdown_completes_before_commit_is_sent(self):
-        server = self._fake_server()
-        child = self._fake_child()
-        expected = self._expected()
+        server = fake_server()
+        child = fake_child()
+        expected = expected_metadata()
         order = []
         server.shutdown.side_effect = lambda: order.append("shutdown")
 
@@ -129,19 +78,23 @@ class TestParentHandoffStateMachine(HandoffTestCase):
             order.append(f"send:{message.get('type')}")
 
         child.send_message.side_effect = send_message
-        child.recv_message.side_effect = self._happy_recv_sequence(child, expected)
-        real_set_draining = self.context.set_draining
+        child.recv_message.side_effect = [
+            child_message("ready", child, expected),
+            child_message("serving", child, expected),
+            child_message("finalized", child, expected),
+        ]
+        real_set_draining = self.installation.set_draining
 
         def observing_set_draining(enabled, **kwargs):
             order.append(f"draining:{enabled}")
             return real_set_draining(enabled, **kwargs)
 
-        observing_context = proxy_module._handoff_context()
+        observing_context = entrypoint_module._handoff_context()
         object.__setattr__(observing_context, "set_draining", observing_set_draining)
         with (
             mock.patch.object(self.p, "spawn_child", return_value=child),
             mock.patch.object(
-                self.p, "probe_health", return_value=self._matching_health(child, expected)
+                self.p, "probe_health", return_value=matching_health(child, expected)
             ),
         ):
             prepared = self.p.prepare(server, expected, observing_context, timeout_seconds=5)
@@ -150,41 +103,12 @@ class TestParentHandoffStateMachine(HandoffTestCase):
         self.assertLess(order.index("draining:True"), order.index("shutdown"))
         self.assertLess(order.index("shutdown"), order.index("send:commit"))
 
-    def test_child_never_receives_commit_before_shutdown_returns(self):
-        server = self._fake_server()
-        child = self._fake_child()
-        expected = self._expected()
-        shutdown_returned = threading.Event()
-
-        def slow_shutdown():
-            time.sleep(0.05)
-            shutdown_returned.set()
-
-        server.shutdown.side_effect = slow_shutdown
-
-        def send_message(message):
-            if message.get("type") == "commit":
-                self.assertTrue(
-                    shutdown_returned.is_set(), "commit sent before shutdown() returned"
-                )
-
-        child.send_message.side_effect = send_message
-        child.recv_message.side_effect = self._happy_recv_sequence(child, expected)
-        with (
-            mock.patch.object(self.p, "spawn_child", return_value=child),
-            mock.patch.object(
-                self.p, "probe_health", return_value=self._matching_health(child, expected)
-            ),
-        ):
-            prepared = self.p.prepare(server, expected, self.context, timeout_seconds=5)
-            self.p.commit(server, prepared, self.context)
-
     def test_simultaneous_handoff_is_rejected(self):
-        server = self._fake_server()
-        expected = self._expected()
+        server = fake_server()
+        expected = expected_metadata()
         release_spawn = threading.Event()
-        child = self._fake_child()
-        child.recv_message.side_effect = [self._ready_message(child, expected)]
+        child = fake_child()
+        child.recv_message.side_effect = [child_message("ready", child, expected)]
 
         def slow_spawn(*_args, **_kwargs):
             release_spawn.wait(timeout=5)
@@ -216,145 +140,196 @@ class TestParentHandoffStateMachine(HandoffTestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("already in progress", str(errors[0]).lower())
 
-    def test_child_start_failure_never_touches_admission_and_resets_to_idle(self):
-        server = self._fake_server()
-        expected = self._expected()
-        with mock.patch.object(self.p, "spawn_child", side_effect=OSError("fork failed")):
-            with self.assertRaises(self.p.HandoffError):
-                self.p.prepare(server, expected, self.context, timeout_seconds=5)
-        server.shutdown.assert_not_called()
-        self.assertEqual(self.p._HANDOFF_SESSION.get("state"), "idle")
+    def test_prepare_rejects_incomplete_identity_and_recycles_finalized_session(self):
+        server = fake_server()
+        for expected in ({}, {**expected_metadata(), "release": ""}):
+            with (
+                self.subTest(expected=expected),
+                self.assertRaisesRegex(self.p.HandoffError, "identity is incomplete"),
+            ):
+                self.p.prepare(server, expected, self.context)
 
-    def test_child_ready_timeout_resets_to_idle_without_touching_admission(self):
-        server = self._fake_server()
-        child = self._fake_child()
-        expected = self._expected()
-        child.recv_message.side_effect = TimeoutError("no ready message")
+        child = fake_child()
+        expected = expected_metadata(transaction_id="txn-recycled")
+        child.recv_message.return_value = child_message("ready", child, expected)
+        self.p._HANDOFF_SESSION["state"] = "finalized"
         with mock.patch.object(self.p, "spawn_child", return_value=child):
-            with self.assertRaises(self.p.HandoffError):
-                self.p.prepare(server, expected, self.context, timeout_seconds=1)
-        server.shutdown.assert_not_called()
-        self.assertEqual(self.p._HANDOFF_SESSION.get("state"), "idle")
-        child.terminate_bounded.assert_called_once()
+            prepared = self.p.prepare(server, expected, self.context)
+        self.assertEqual(prepared["expected"], expected)
+        self.assertEqual(self.p._HANDOFF_SESSION["state"], "ready")
 
-    def test_ready_message_field_mismatches_are_each_rejected(self):
-        expected = self._expected()
-        overrides = {
-            "protocol_version": 1,
-            "pid": 999999,
-            "transaction_id": "wrong-txn",
-            "release": "1.0.24",
-            "serving_payload_sha256": "c" * 64,
-            "release_receipt_sha256": "e" * 64,
-            "manifest_sha256": "d" * 64,
+    def test_transition_and_disk_identity_helpers_fail_closed(self):
+        self.p._HANDOFF_SESSION["state"] = "idle"
+        with self.assertRaisesRegex(self.p.HandoffError, "illegal handoff transition"):
+            self.p._transition("serving")
+
+        expected = {
+            "release": entrypoint_module.release_version(),
+            "serving_payload_sha256": entrypoint_module.serving_payload_sha256(),
+            "release_receipt_sha256": entrypoint_module.release_receipt_sha256(),
+            "manifest_sha256": self.p.payload_manifest_sha256(self.context),
         }
-        for field, bad_value in overrides.items():
-            with self.subTest(field=field):
+        self.assertTrue(self.p.disk_payload_matches_expected(expected, self.context))
+        self.assertFalse(
+            self.p.disk_payload_matches_expected({**expected, "release": "wrong"}, self.context)
+        )
+        missing_context = entrypoint_module._handoff_context()
+        object.__setattr__(missing_context, "proxy_script", Path("/missing/proxy/dmx.py"))
+        self.assertIsNone(self.p.payload_manifest_sha256(missing_context))
+
+        self.p._HANDOFF_SESSION.update(state="ready", transaction_id="txn-identity")
+        identity = self.p.runtime_identity(self.context)
+        self.assertFalse(identity["accepting"])
+        self.assertEqual(identity["handoff_transaction_id"], "txn-identity")
+
+    def test_probe_health_rejects_oversized_invalid_and_non_object_payloads(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        opener = mock.Mock(open=mock.Mock(return_value=response))
+        with mock.patch.object(self.p.urllib.request, "build_opener", return_value=opener):
+            for payload, error in (
+                (b"x" * (self.p.HANDOFF_CONTROL_MAX_BYTES + 1), "exceeds the control limit"),
+                (b"{", "response is invalid"),
+                (b"[]", "must be an object"),
+            ):
+                with self.subTest(error=error), self.assertRaisesRegex(self.p.HandoffError, error):
+                    response.read.return_value = payload
+                    self.p.probe_health(8791, timeout_seconds=1)
+            response.read.return_value = b'{"ok":true}'
+            self.assertEqual(self.p.probe_health(8791, timeout_seconds=1), {"ok": True})
+
+    def test_prepare_failures_never_cross_admission_and_reset_when_child_exit_is_confirmed(self):
+        expected = expected_metadata()
+        for name, spawn_result in (
+            ("spawn", OSError("fork failed")),
+            ("ready timeout", TimeoutError("no ready message")),
+        ):
+            with self.subTest(case=name):
                 handoff_module.reset_session_to_idle()
-                server = self._fake_server()
-                child = self._fake_child()
-                message = dict(self._ready_message(child, expected), **{field: bad_value})
-                child.recv_message.side_effect = [message]
-                with mock.patch.object(self.p, "spawn_child", return_value=child):
-                    with self.assertRaises(self.p.HandoffError):
-                        self.p.prepare(server, expected, self.context, timeout_seconds=1)
-                server.shutdown.assert_not_called()
-                child.terminate_bounded.assert_called_once()
-
-    def test_ready_message_wrong_type_is_rejected(self):
-        server = self._fake_server()
-        child = self._fake_child()
-        expected = self._expected()
-        message = dict(self._ready_message(child, expected), type="hello")
-        child.recv_message.side_effect = [message]
-        with mock.patch.object(self.p, "spawn_child", return_value=child):
-            with self.assertRaises(self.p.HandoffError):
-                self.p.prepare(server, expected, self.context, timeout_seconds=1)
-        child.terminate_bounded.assert_called_once()
-
-    def test_commit_pipe_failure_aborts_and_records_rollback(self):
-        server = self._fake_server()
-        child = self._fake_child()
-        expected = self._expected()
-        child.recv_message.side_effect = [self._ready_message(child, expected)]
-
-        def send_message(message):
-            if message.get("type") == "commit":
-                raise BrokenPipeError("child closed its stdin")
-
-        child.send_message.side_effect = send_message
-        with mock.patch.object(self.p, "spawn_child", return_value=child):
-            prepared = self.p.prepare(server, expected, self.context, timeout_seconds=5)
-            outcome = self.p.commit(server, prepared, self.context)
-        self.assertEqual(outcome, "rolled_back")
-        server.shutdown.assert_called_once()  # shutdown already happened before commit
-        child.terminate_bounded.assert_called_once()
-        self.assertEqual(self.p._HANDOFF_SESSION.get("outcome"), "rolled_back")
-        self.assertTrue(handoff_outcome_ready().is_set())
-
-    def test_serving_timeout_aborts_and_records_rollback(self):
-        server = self._fake_server()
-        child = self._fake_child()
-        expected = self._expected()
-        child.recv_message.side_effect = [
-            self._ready_message(child, expected),
-            TimeoutError("no serving message"),
-        ]
-        with mock.patch.object(self.p, "spawn_child", return_value=child):
-            prepared = self.p.prepare(server, expected, self.context, timeout_seconds=1)
-            outcome = self.p.commit(server, prepared, self.context)
-        self.assertEqual(outcome, "rolled_back")
-        child.terminate_bounded.assert_called_once()
-
-    def test_serving_message_field_mismatches_each_abort_and_record_rollback(self):
-        expected = self._expected()
-        for field, bad_value in (("pid", 1), ("transaction_id", "wrong-txn")):
-            with self.subTest(field=field):
-                handoff_module.reset_session_to_idle()
-                server = self._fake_server()
-                child = self._fake_child()
-                serving = dict(self._serving_message(child, expected), **{field: bad_value})
-                child.recv_message.side_effect = [self._ready_message(child, expected), serving]
-                with mock.patch.object(self.p, "spawn_child", return_value=child):
-                    prepared = self.p.prepare(server, expected, self.context, timeout_seconds=5)
-                    outcome = self.p.commit(server, prepared, self.context)
-                self.assertEqual(outcome, "rolled_back")
-                child.terminate_bounded.assert_called_once()
-
-    def test_health_mismatches_each_abort_and_record_rollback(self):
-        expected = self._expected()
-        overrides = {
-            "pid": 1,
-            "handoff_protocol_version": 1,
-            "handoff_transaction_id": "txn-wrong",
-            "release": "1.0.24",
-            "serving_payload_sha256": "c" * 64,
-            "release_receipt_sha256": "e" * 64,
-            "payload_manifest_sha256": "d" * 64,
-            "handoff_state": "idle",
-            "accepting": False,
-        }
-        for field, bad_value in overrides.items():
-            with self.subTest(field=field):
-                handoff_module.reset_session_to_idle()
-                server = self._fake_server()
-                child = self._fake_child()
-                health = dict(self._matching_health(child, expected), **{field: bad_value})
-                child.recv_message.side_effect = self._happy_recv_sequence(child, expected)[:2]
+                server = fake_server()
+                child = fake_child()
+                child.recv_message.side_effect = spawn_result
+                options = (
+                    {"side_effect": spawn_result} if name == "spawn" else {"return_value": child}
+                )
                 with (
-                    mock.patch.object(self.p, "spawn_child", return_value=child),
-                    mock.patch.object(self.p, "probe_health", return_value=health),
+                    mock.patch.object(self.p, "spawn_child", **options),
+                    self.assertRaises(self.p.HandoffError),
                 ):
-                    prepared = self.p.prepare(server, expected, self.context, timeout_seconds=5)
-                    outcome = self.p.commit(server, prepared, self.context)
+                    self.p.prepare(server, expected, self.context, timeout_seconds=1)
+                server.shutdown.assert_not_called()
+                self.assertEqual(self.p._HANDOFF_SESSION.get("state"), "idle")
+                self.assertEqual(child.terminate_bounded.call_count, int(name != "spawn"))
+
+    def test_commit_failures_roll_back_after_the_accept_barrier(self):
+        child = fake_child()
+        cases = (
+            ("commit pipe", (), BrokenPipeError("commit pipe failed")),
+            ("serving timeout", (TimeoutError("no serving message"),), None),
+            ("serving pid", ({"type": "serving", "pid": 1, "transaction_id": "txn-1"},), None),
+            (
+                "serving transaction",
+                ({"type": "serving", "pid": child.process.pid, "transaction_id": "wrong-txn"},),
+                None,
+            ),
+        )
+        for name, messages, send_failure in cases:
+            with self.subTest(case=name):
+                handoff_module.reset_session_to_idle()
+                child = fake_child()
+                child.send_message.side_effect = send_failure
+                outcome, server, child, _ = self.committed(
+                    *messages, child=child, timeout_seconds=1
+                )
                 self.assertEqual(outcome, "rolled_back")
-                child.send_message.assert_any_call({"type": "abort"})
+                server.shutdown.assert_called_once()
                 child.terminate_bounded.assert_called_once()
+                self.assertEqual(self.p._HANDOFF_SESSION.get("outcome"), "rolled_back")
+                self.assertTrue(handoff_outcome_ready().is_set())
+
+    def test_identity_matrices_reject_ready_serving_health_and_finalized_mismatches(self):
+        expected = expected_metadata()
+        child = fake_child()
+        fields = {
+            "ready": {
+                "protocol_version": 1,
+                "pid": 999999,
+                "transaction_id": "wrong-txn",
+                "release": "1.0.24",
+                "serving_payload_sha256": "c" * 64,
+                "release_receipt_sha256": "e" * 64,
+                "manifest_sha256": "d" * 64,
+            },
+            "serving": {"pid": 1, "transaction_id": "wrong-txn"},
+            "health": {
+                "pid": 1,
+                "handoff_protocol_version": 1,
+                "handoff_transaction_id": "txn-wrong",
+                "release": "1.0.24",
+                "serving_payload_sha256": "c" * 64,
+                "release_receipt_sha256": "e" * 64,
+                "payload_manifest_sha256": "d" * 64,
+                "handoff_state": "idle",
+                "accepting": False,
+            },
+            "finalized": {"pid": 1, "transaction_id": "wrong-txn"},
+        }
+        for stage, overrides in fields.items():
+            for field, bad_value in overrides.items():
+                with self.subTest(stage=stage, field=field):
+                    handoff_module.reset_session_to_idle()
+                    child = fake_child()
+                    message = {
+                        **child_message(stage if stage != "health" else "serving", child, expected),
+                        **{field: bad_value},
+                    }
+                    if stage == "ready":
+                        child.recv_message.side_effect = [message]
+                        with (
+                            mock.patch.object(self.p, "spawn_child", return_value=child),
+                            self.assertRaises(self.p.HandoffError),
+                        ):
+                            self.p.prepare(fake_server(), expected, self.context, timeout_seconds=1)
+                        child.terminate_bounded.assert_called_once()
+                        continue
+                    after_ready = [child_message("serving", child, expected)]
+                    health = matching_health(child, expected)
+                    after_ready = [message] if stage == "serving" else after_ready
+                    health = {**health, field: bad_value} if stage == "health" else health
+                    after_ready += [message] * (stage == "finalized")
+                    outcome, _, child, _ = self.committed(
+                        *after_ready, child=child, health=health, timeout_seconds=1
+                    )
+                    self.assertEqual(outcome, "rolled_back")
+                    child.terminate_bounded.assert_called_once()
+
+    def test_health_identity_allows_observability_fields(self):
+        expected = expected_metadata()
+        child = fake_child()
+        health = {
+            **matching_health(child, expected),
+            "uptime_seconds": 12.5,
+            "active_responses": 0,
+            "active_handlers": 1,
+            "counters": {},
+            "upstream_classifications": {},
+            "last_failure": None,
+        }
+        outcome, _, child, _ = self.committed(
+            child_message("serving", child, expected),
+            child_message("finalized", child, expected),
+            child=child,
+            expected=expected,
+            health=health,
+            timeout_seconds=1,
+        )
+        self.assertEqual(outcome, "finalized")
+        child.terminate_bounded.assert_not_called()
 
     def test_abort_falls_back_to_kill_when_terminate_does_not_exit_child_in_time(self):
-        server = self._fake_server()
-        child = self._fake_child()
-        expected = self._expected()
+        server = fake_server()
+        child = fake_child()
+        expected = expected_metadata()
         child.recv_message.side_effect = TimeoutError("no ready message")
         child.terminate_bounded.return_value = False  # terminate alone was insufficient
         child.kill_bounded = mock.Mock(return_value=True)
@@ -365,11 +340,11 @@ class TestParentHandoffStateMachine(HandoffTestCase):
         child.kill_bounded.assert_called_once()
 
     def test_unconfirmed_abort_never_reports_a_resumable_rollback(self):
-        server = self._fake_server()
-        child = self._fake_child()
-        expected = self._expected()
+        server = fake_server()
+        child = fake_child()
+        expected = expected_metadata()
         child.recv_message.side_effect = [
-            self._ready_message(child, expected),
+            child_message("ready", child, expected),
             BrokenPipeError("commit pipe failed"),
         ]
         child.terminate_bounded.return_value = False
@@ -382,10 +357,26 @@ class TestParentHandoffStateMachine(HandoffTestCase):
         self.assertNotEqual(self.p._HANDOFF_SESSION["state"], "rolled_back")
         server.shutdown.assert_called()
 
+    def test_abort_swallows_control_and_shutdown_errors_but_requires_confirmed_exit(self):
+        child = fake_child()
+        child.send_message.side_effect = BrokenPipeError
+        child.terminate_bounded.side_effect = OSError
+        child.kill_bounded.return_value = True
+        self.p._HANDOFF_SESSION["state"] = "serving"
+        self.p.abort(child)
+        self.assertEqual(self.p._HANDOFF_SESSION["state"], "rolled_back")
+
+        child = fake_child()
+        child.terminate_bounded.side_effect = OSError
+        child.kill_bounded.side_effect = OSError
+        self.p._HANDOFF_SESSION["state"] = "serving"
+        with self.assertRaisesRegex(self.p.HandoffError, "could not be confirmed exited"):
+            self.p.abort(child)
+
     def test_unconfirmed_precommit_abort_stays_fail_closed_instead_of_returning_idle(self):
-        server = self._fake_server()
-        child = self._fake_child()
-        expected = self._expected()
+        server = fake_server()
+        child = fake_child()
+        expected = expected_metadata()
         child.recv_message.side_effect = TimeoutError("no ready message")
         child.terminate_bounded.return_value = False
         child.kill_bounded = mock.Mock(return_value=False)
@@ -394,123 +385,83 @@ class TestParentHandoffStateMachine(HandoffTestCase):
                 self.p.prepare(server, expected, self.context, timeout_seconds=1)
         self.assertEqual(self.p._HANDOFF_SESSION["state"], "aborting")
 
-    def test_finalize_ack_failure_aborts_and_records_rollback(self):
-        server = self._fake_server()
-        child = self._fake_child()
-        expected = self._expected()
-        child.recv_message.side_effect = [
-            self._ready_message(child, expected),
-            self._serving_message(child, expected),
-            BrokenPipeError("gone"),
-        ]
+    def test_internal_fail_closed_branches_are_bounded(self):
+        expected = expected_metadata()
+        server = fake_server()
+        child = fake_child()
+        child.send_message.side_effect = BrokenPipeError
+        child.terminate_bounded.return_value = True
+        server.socket.fileno.return_value = 37
         with (
-            mock.patch.object(self.p, "spawn_child", return_value=child),
-            mock.patch.object(
-                self.p, "probe_health", return_value=self._matching_health(child, expected)
-            ),
+            mock.patch.object(self.p.subprocess, "Popen", return_value=mock.Mock()),
+            mock.patch.object(self.p, "HandoffChild", return_value=child),
         ):
-            prepared = self.p.prepare(server, expected, self.context, timeout_seconds=5)
-            outcome = self.p.commit(server, prepared, self.context)
-        self.assertEqual(outcome, "rolled_back")
-        child.terminate_bounded.assert_called_once()
+            with self.assertRaises(BrokenPipeError):
+                self.p.spawn_child(server.socket, expected, self.context, is_windows=False)
+        child.kill_bounded.assert_not_called()
 
-    def test_finalized_message_field_mismatches_each_abort_and_record_rollback(self):
-        expected = self._expected()
-        for field, bad_value in (("pid", 1), ("transaction_id", "wrong-txn")):
-            with self.subTest(field=field):
-                handoff_module.reset_session_to_idle()
-                server = self._fake_server()
-                child = self._fake_child()
-                finalized = dict(self._finalized_message(child, expected), **{field: bad_value})
-                child.recv_message.side_effect = [
-                    self._ready_message(child, expected),
-                    self._serving_message(child, expected),
-                    finalized,
-                ]
-                with (
-                    mock.patch.object(self.p, "spawn_child", return_value=child),
-                    mock.patch.object(
-                        self.p, "probe_health", return_value=self._matching_health(child, expected)
-                    ),
-                ):
-                    prepared = self.p.prepare(server, expected, self.context, timeout_seconds=5)
-                    outcome = self.p.commit(server, prepared, self.context)
-                self.assertEqual(outcome, "rolled_back")
-                child.terminate_bounded.assert_called_once()
+        self.p._HANDOFF_SESSION["state"] = "idle"
+        self.p.abort(fake_child())
+        self.assertEqual(self.p._HANDOFF_SESSION["state"], "idle")
+
+        self.p._HANDOFF_SESSION["outcome_ready"] = object()
+        self.p._set_outcome("rolled_back")
+        self.assertEqual(self.p._HANDOFF_SESSION["outcome"], "rolled_back")
+
+        invalid_context = entrypoint_module._handoff_context()
+        self.assertFalse(self.p._valid_prepare([], invalid_context))
+
+        child = fake_child()
+        child.recv_message.return_value = child_message("ready", child, expected)
+        with mock.patch.object(self.p, "spawn_child", return_value=child):
+            prepared = self.p.prepare(server, expected, self.context, timeout_seconds=1)
+        child.send_message.side_effect = BrokenPipeError
+        child.terminate_bounded.return_value = False
+        child.kill_bounded.return_value = False
+        server.shutdown.side_effect = OSError
+        outcome = self.p.commit(server, prepared, self.context)
+        self.assertEqual(outcome, "abort_unconfirmed")
 
 
 class TestHandoffControlHandler(unittest.TestCase):
     def setUp(self):
-        self.bindings = control_surface.Bindings(
-            runtime_status=proxy_module.runtime_status,
-            handoff_context=proxy_module._handoff_context,
+        self.bindings = control.Bindings(
+            runtime_status=entrypoint_module.runtime_status,
+            handoff_context=entrypoint_module._handoff_context,
         )
 
-    def _expected(self):
-        return {
-            "transaction_id": "txn-handler",
-            "release": "1.0.25",
-            "serving_payload_sha256": "a" * 64,
-            "release_receipt_sha256": "e" * 64,
-            "manifest_sha256": "b" * 64,
-        }
-
-    def _fake_handler_self(self, body: dict):
-        payload = json.dumps(body).encode()
-        fake_self = mock.Mock()
-        fake_self.client_address = ("127.0.0.1", 51234)
-        fake_self.headers = {"Content-Length": str(len(payload))}
-        fake_self.rfile = mock.Mock()
-        fake_self.rfile.read.return_value = payload
-        fake_self.wfile = mock.Mock()
-        fake_self.server = mock.Mock()
-        return fake_self
-
-    def test_handler_writes_and_flushes_the_202_before_starting_the_background_coordinator(self):
+    def test_handler_acknowledges_ready_before_starting_the_commit_coordinator(self):
         order = []
-        fake_self = self._fake_handler_self(self._expected())
-        fake_self.wfile.write.side_effect = lambda *_a: order.append("write")
-        fake_self.wfile.flush.side_effect = lambda: order.append("flush")
-        prepared = {"child": mock.Mock(process=mock.Mock(pid=999)), "expected": self._expected()}
+        handler = fake_handler(expected_metadata())
+        handler.wfile.write.side_effect = lambda chunk: order.append(("write", chunk))
+        handler.wfile.flush.side_effect = lambda: order.append(("flush", None))
+        expected = expected_metadata()
+        prepared = {"child": mock.Mock(process=mock.Mock(pid=999)), "expected": expected}
         with (
             mock.patch.object(handoff_module, "disk_payload_matches_expected", return_value=True),
             mock.patch.object(handoff_module, "prepare", return_value=prepared),
             mock.patch("threading.Thread") as thread_cls,
         ):
-            thread_cls.return_value.start.side_effect = lambda: order.append("coordinator_started")
-            control_surface.prepare_handoff(fake_self, self.bindings)
-        self.assertEqual(order, ["write", "flush", "coordinator_started"])
-        thread_cls.assert_called_once()
-        _, kwargs = thread_cls.call_args
-        self.assertEqual(kwargs.get("target"), handoff_module.commit)
-
-    def test_handler_response_body_carries_child_pid_and_transaction_id(self):
-        fake_self = self._fake_handler_self(self._expected())
-        written = []
-        fake_self.wfile.write.side_effect = lambda chunk: written.append(chunk)
-        prepared = {"child": mock.Mock(process=mock.Mock(pid=999)), "expected": self._expected()}
-        with (
-            mock.patch.object(handoff_module, "disk_payload_matches_expected", return_value=True),
-            mock.patch.object(handoff_module, "prepare", return_value=prepared),
-            mock.patch("threading.Thread"),
-        ):
-            control_surface.prepare_handoff(fake_self, self.bindings)
-        fake_self.send_response.assert_called_once_with(202)
-        body = json.loads(b"".join(written))
-        self.assertEqual(body.get("child_pid"), 999)
-        self.assertEqual(body.get("transaction_id"), self._expected()["transaction_id"])
+            thread_cls.return_value.start.side_effect = lambda: order.append(("start", None))
+            control.prepare_handoff(handler, self.bindings)
+        body = json.loads(order[0][1])
+        self.assertEqual([event for event, _ in order], ["write", "flush", "start"])
+        self.assertEqual(
+            (handler.send_response.call_args.args[0], body["child_pid"], body["transaction_id"]),
+            (202, 999, expected["transaction_id"]),
+        )
+        self.assertEqual(thread_cls.call_args.kwargs["target"], handoff_module.commit)
 
     def test_handler_rejects_non_loopback_clients(self):
-        fake_self = self._fake_handler_self(self._expected())
-        fake_self.client_address = ("10.0.0.5", 51234)
+        handler = fake_handler(expected_metadata())
+        handler.client_address = ("10.0.0.5", 51234)
         with mock.patch.object(handoff_module, "prepare") as prepare:
-            control_surface.prepare_handoff(fake_self, self.bindings)
-        prepare.assert_not_called()
-        fake_self.send_error.assert_called_once()
-        self.assertEqual(fake_self.send_error.call_args.args[0], 403)
+            control.prepare_handoff(handler, self.bindings)
+            prepare.assert_not_called()
+        self.assertEqual(handler.send_error.call_args.args[0], 403)
 
     def test_handler_returns_409_when_a_handoff_is_already_in_progress(self):
-        fake_self = self._fake_handler_self(self._expected())
+        fake_self = fake_handler(expected_metadata())
         with (
             mock.patch.object(handoff_module, "disk_payload_matches_expected", return_value=True),
             mock.patch.object(
@@ -519,8 +470,111 @@ class TestHandoffControlHandler(unittest.TestCase):
                 side_effect=handoff_module.HandoffConflict("a handoff is already in progress"),
             ),
         ):
-            control_surface.prepare_handoff(fake_self, self.bindings)
+            control.prepare_handoff(fake_self, self.bindings)
         fake_self.send_response.assert_called_once_with(409)
+
+    def test_drain_control_enforces_loopback_and_projects_the_lease(self):
+        remote = fake_handler({})
+        remote.client_address = ("198.51.100.7", 51234)
+        with mock.patch.object(runtime_state_module, "set_draining") as set_draining:
+            control.set_drain(remote, True)
+        set_draining.assert_not_called()
+        remote.send_error.assert_called_once_with(
+            403, "drain control is available only from loopback"
+        )
+
+        local = fake_handler({})
+        local.headers["X-DMX-Drain-Lease-Seconds"] = "41"
+        with mock.patch.object(
+            runtime_state_module,
+            "set_draining",
+            return_value={"draining": True, "drain_generation": 1},
+        ) as set_draining:
+            control.set_drain(local, True)
+        set_draining.assert_called_once_with(True, lease_seconds="41")
+        local.send_response.assert_called_once_with(200)
+
+        reopened = fake_handler({})
+        with mock.patch.object(
+            runtime_state_module,
+            "set_draining",
+            return_value={"draining": False, "drain_generation": 2},
+        ) as set_draining:
+            control.set_drain(reopened, False)
+        set_draining.assert_called_once_with(False, lease_seconds=None)
+
+    def test_status_control_serializes_the_bound_runtime_snapshot(self):
+        fake_self = fake_handler({})
+        bindings = control.Bindings(
+            runtime_status=lambda: {"ok": True, "pid": 42},
+            handoff_context=entrypoint_module._handoff_context,
+        )
+        control.send_status(fake_self, bindings)
+        fake_self.send_response.assert_called_once_with(200)
+        self.assertEqual(
+            json.loads(fake_self.wfile.write.call_args.args[0]), {"ok": True, "pid": 42}
+        )
+
+    def test_handler_rejects_invalid_control_envelopes_before_prepare(self):
+        cases = (
+            ({"Content-Length": "not-an-int"}, b"{}", 400),
+            ({"Content-Length": "0"}, b"", 413),
+            (
+                {"Content-Length": str(handoff_module.HANDOFF_CONTROL_MAX_BYTES + 1)},
+                b"",
+                413,
+            ),
+            ({"Content-Length": "2"}, b"{", 400),
+            ({"Content-Length": "1"}, b"{", 400),
+            ({"Content-Length": "2"}, b"[]", 400),
+        )
+        for headers, raw, expected_status in cases:
+            with self.subTest(headers=headers, raw=raw):
+                fake_self = fake_handler({})
+                fake_self.headers = headers
+                fake_self.rfile.read.return_value = raw
+                with mock.patch.object(handoff_module, "prepare") as prepare:
+                    control.prepare_handoff(fake_self, self.bindings)
+                prepare.assert_not_called()
+                fake_self.send_error.assert_called_once()
+                self.assertEqual(fake_self.send_error.call_args.args[0], expected_status)
+
+        unknown = fake_handler({**expected_metadata(), "unexpected": True})
+        with mock.patch.object(handoff_module, "prepare") as prepare:
+            control.prepare_handoff(unknown, self.bindings)
+            prepare.assert_not_called()
+        unknown.send_error.assert_called_once_with(400, "handoff request contains unknown fields")
+
+    def test_handler_rejects_disk_mismatch_and_projects_non_conflict_prepare_failure(self):
+        mismatch = fake_handler(expected_metadata())
+        with (
+            mock.patch.object(handoff_module, "disk_payload_matches_expected", return_value=False),
+            mock.patch.object(handoff_module, "prepare") as prepare,
+        ):
+            control.prepare_handoff(mismatch, self.bindings)
+            prepare.assert_not_called()
+        mismatch.send_error.assert_called_once_with(
+            409, "handoff request does not match the current disk payload"
+        )
+
+        failed = fake_handler(
+            {**expected_metadata(), "timeout_seconds": "999", "lease_seconds": "17"}
+        )
+        written = []
+        failed.wfile.write.side_effect = written.append
+        with (
+            mock.patch.object(handoff_module, "disk_payload_matches_expected", return_value=True),
+            mock.patch.object(
+                handoff_module,
+                "prepare",
+                side_effect=handoff_module.HandoffError("child failed"),
+            ) as prepare,
+        ):
+            control.prepare_handoff(failed, self.bindings)
+        self.assertEqual(prepare.call_args.kwargs["timeout_seconds"], 120.0)
+        self.assertEqual(prepare.call_args.kwargs["lease_seconds"], 17)
+        failed.send_response.assert_called_once_with(503)
+        self.assertEqual(json.loads(b"".join(written))["error"], "handoff_prepare_failed")
 
 
 class TestServeWithHandoffResume(HandoffTestCase):
@@ -541,7 +595,7 @@ class TestServeWithHandoffResume(HandoffTestCase):
         server.serve_forever.side_effect = fake_serve_forever
         self.p.serve_with_resume(server, self.context)
         self.assertEqual(server.serve_forever.call_count, 2)
-        self.assertFalse(proxy_module.runtime_status()["draining"])
+        self.assertFalse(entrypoint_module.runtime_status()["draining"])
 
     def test_waits_for_the_outcome_ready_event_instead_of_trusting_stale_state(self):
         # ``server.shutdown()`` returning on the request thread races with the
@@ -574,27 +628,65 @@ class TestServeWithHandoffResume(HandoffTestCase):
             "resume loop did not wait for the delayed rollback outcome",
         )
 
-    def test_finalized_outcome_returns_without_serving_again(self):
+    def test_terminal_outcomes_stop_serving_and_log_only_unconfirmed_states(self):
+        for outcome, expected_log in (
+            ("finalized", None),
+            (None, None),
+            ("abort_unconfirmed", "handoff_abort_unconfirmed"),
+            ("unknown", "handoff_outcome_unconfirmed"),
+        ):
+            with self.subTest(outcome=outcome):
+                self.p.reset_session_to_idle()
+                logs = []
+                context = entrypoint_module._handoff_context()
+                object.__setattr__(context, "log", logs.append)
+                server = mock.Mock()
+
+                def serve():
+                    self.p._HANDOFF_SESSION["outcome"] = outcome
+                    handoff_outcome_ready().set()
+
+                server.serve_forever.side_effect = serve
+                self.p.serve_with_resume(server, context)
+                server.serve_forever.assert_called_once()
+                self.assertEqual(bool(logs and expected_log in logs[0]), bool(expected_log))
+
+    def test_finalized_outcome_waits_for_active_work_until_deadline(self):
         server = mock.Mock()
+        active = iter((2, 0))
+        context = entrypoint_module._handoff_context()
+        object.__setattr__(context, "active_responses", lambda: next(active))
+        object.__setattr__(context, "active_handlers", lambda: 0)
+        logs = []
+        object.__setattr__(context, "log", logs.append)
 
-        def fake_serve_forever():
-            self.p._HANDOFF_SESSION["outcome"] = "finalized"
-            handoff_outcome_ready().set()
+        server.serve_forever.side_effect = lambda: (
+            self.p._HANDOFF_SESSION.update(
+                outcome="finalized", drain_deadline=time.monotonic() + 10
+            ),
+            handoff_outcome_ready().set(),
+        )
+        with mock.patch.object(self.p.time, "sleep", return_value=None):
+            self.p.serve_with_resume(server, context)
+        self.assertEqual(logs, [])
 
-        server.serve_forever.side_effect = fake_serve_forever
-        self.p.serve_with_resume(server, self.context)
-        server.serve_forever.assert_called_once()
+        context = entrypoint_module._handoff_context()
+        object.__setattr__(context, "active_responses", lambda: 3)
+        object.__setattr__(context, "active_handlers", lambda: 0)
+        logs = []
+        object.__setattr__(context, "log", logs.append)
+        self.p._HANDOFF_SESSION.update(outcome="finalized", drain_deadline=time.monotonic() - 1)
+        server.serve_forever.side_effect = lambda: handoff_outcome_ready().set()
+        self.p.serve_with_resume(server, context)
+        self.assertIn("remaining_active=3", logs[0])
 
-    def test_no_handoff_outcome_returns_without_serving_again(self):
+    def test_initial_serving_thread_is_joined_before_outcome_projection(self):
+        initial = mock.Mock()
         server = mock.Mock()
-
-        def fake_serve_forever():
-            self.p._HANDOFF_SESSION["outcome"] = None  # e.g. plain KeyboardInterrupt
-            handoff_outcome_ready().set()
-
-        server.serve_forever.side_effect = fake_serve_forever
-        self.p.serve_with_resume(server, self.context)
-        server.serve_forever.assert_called_once()
+        self.p._HANDOFF_SESSION.update(outcome=None, state="idle")
+        self.p.serve_with_resume(server, self.context, initial_serving_thread=initial)
+        initial.join.assert_called_once()
+        server.serve_forever.assert_not_called()
 
 
 if __name__ == "__main__":

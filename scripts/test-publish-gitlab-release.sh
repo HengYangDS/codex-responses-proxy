@@ -3,8 +3,27 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 script="$root/scripts/publish-gitlab-release.sh"
+ci="$root/.gitlab-ci.yml"
+policy="$root/packaging/release/publication-policy.toml"
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/codex-dmx-proxy-gitlab-release.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+
+python3 - "$ci" "$policy" <<'PYTHON'
+import re
+import sys
+import tomllib
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+policy = tomllib.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+match = re.search(r"(?m)^publish-gitlab-release:\n(?:^  .+\n)*?^  needs:\n(?P<needs>(?:^    - [^\n]+\n)+)", text)
+if match is None:
+    raise SystemExit("GitLab release job has no explicit required-job dependencies")
+actual = tuple(line.removeprefix("    - ") for line in match["needs"].splitlines())
+expected = tuple(job for job in policy["gitlab"]["required-jobs"] if job != "publish-gitlab-release")
+if actual != expected:
+    raise SystemExit(f"GitLab release dependencies differ from publication policy: {actual!r}")
+PYTHON
 
 mock_curl="$tmp/curl"
 log="$tmp/curl.log"

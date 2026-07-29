@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""uninstall.py — remove the Codex dmx-responses-proxy from this machine.
+"""Remove Codex DMX Proxy from this machine.
 
-Reverses install.py: stops + deregisters the watchdog service, restores the most
-recent config.toml backup (rolling base_url back to the direct upstream), and
-optionally removes the install dir. Idempotent.
+Stops and deregisters the watchdog service, then restores only the direct route
+recorded in valid managed state. A proxy-owned Codex route is restored from its
+recorded, digest-matched backup; an adopted AIGW route is disabled through the
+AIGW CLI and verified before state removal. ``--purge`` removes only files proved
+owned by a valid payload manifest; unknown install content is preserved and
+reported as an incomplete uninstall.
 """
 
 from __future__ import annotations
@@ -11,35 +14,53 @@ from __future__ import annotations
 import os
 import sys
 import argparse
-import shutil
+from typing import Protocol, cast
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from platform_adapters import common, pick_adapter, route_state  # noqa: E402
+from codex_dmx_proxy.supervision.select import adapter  # noqa: E402
+from codex_dmx_proxy import installation  # noqa: E402
+from codex_dmx_proxy import errors  # noqa: E402
+from codex_dmx_proxy import process  # noqa: E402
+from codex_dmx_proxy.release import projection  # noqa: E402
+from codex_dmx_proxy.route import management as route_state  # noqa: E402
 import control  # noqa: E402
+
+
+class ServiceAdapter(Protocol):
+    """Native supervision operations required by uninstall."""
+
+    def uninstall(self, ctx: installation.InstallContext) -> None: ...
+
+    def status(self, ctx: installation.InstallContext) -> str: ...
 
 
 def _say(msg: str) -> None:
     print(msg, flush=True)
 
 
-def _stop_proxy(port: int, *, ctx: common.InstallContext | None = None) -> int:
-    """Terminate only listeners verified against this installed proxy script."""
-    if ctx is not None:
-        pids = common.verified_proxy_listener_pids(ctx)
-    else:
-        pids = [
-            pid
-            for pid in common.listener_pids(port)
-            if "dmx_responses_proxy.py" in common.process_command(pid)
-        ]
+def _stop_proxy(ctx: installation.InstallContext) -> int:
+    """Terminate and prove exit of each listener owned by this installation."""
+    pids = process.verified_proxy_listener_pids(ctx)
     for pid in pids:
-        common.terminate_pid(pid)
+        if not process.terminate_pid(pid, expected_path=ctx.proxy_script):
+            raise errors.InstallError(f"verified proxy listener {pid} did not exit")
+    remaining = process.verified_proxy_listener_pids(ctx)
+    if remaining:
+        raise errors.InstallError(f"verified proxy listeners remain: {remaining}")
     return len(pids)
 
 
-def restore_config(ctx: common.InstallContext) -> bool:
+def _remove_service(service: ServiceAdapter, ctx: installation.InstallContext) -> None:
+    """Deregister supervision and require its read-only status to prove absence."""
+    service.uninstall(ctx)
+    state = service.status(ctx)
+    if state != "absent":
+        raise errors.InstallError(f"watchdog service remains {state}")
+
+
+def restore_config(ctx: installation.InstallContext) -> bool:
     """Restore only an exact managed direct route and preserve drifted state."""
     state = route_state.load_install_state(ctx)
     if state is None:
@@ -53,7 +74,7 @@ def restore_config(ctx: common.InstallContext) -> bool:
         if status == "enabled":
             try:
                 control.set_aigw_route(ctx, state, enabled=False)
-            except common.InstallError as exc:
+            except errors.InstallError as exc:
                 _say(f"  AIGW route restore failed; leaving proxy active: {exc}")
                 return False
         if route_state.route_status(ctx, state) != "disabled":
@@ -84,24 +105,26 @@ def restore_config(ctx: common.InstallContext) -> bool:
 
 def main() -> None:
     """Remove the managed service and optionally restore or purge owned state."""
-    ap = argparse.ArgumentParser(description="Uninstall the Codex dmx-responses-proxy.")
-    ap.add_argument("--port", type=int, default=common.DEFAULT_PORT)
+    ap = argparse.ArgumentParser(description="Uninstall Codex DMX Proxy.")
+    ap.add_argument("--port", type=int, default=installation.DEFAULT_PORT)
     ap.add_argument(
-        "--purge", action="store_true", help="also delete the install dir (~/.codex/dmx-proxy)"
+        "--purge",
+        action="store_true",
+        help="also remove the manifest-owned runtime payload; preserve unknown content",
     )
-    ap.add_argument("--keep-config", action="store_true", help="do not restore config.toml backup")
+    ap.add_argument("--keep-config", action="store_true", help="do not restore the managed route")
     args = ap.parse_args()
     try:
-        args.port = common.validate_port(args.port)
-    except common.InstallError as exc:
+        args.port = installation.validate_port(args.port)
+    except errors.InstallError as exc:
         ap.error(str(exc))
 
-    codex_home = common.codex_home()
+    codex_home = installation.codex_home()
     install_dir = os.path.join(codex_home, "dmx-proxy")
-    ctx = common.InstallContext(
+    ctx = installation.InstallContext(
         home=os.path.dirname(codex_home),
         install_dir=install_dir,
-        proxy_script=os.path.join(install_dir, "proxy", "dmx_responses_proxy.py"),
+        proxy_script=os.path.join(install_dir, "codex_dmx_proxy", "listener", "entrypoint.py"),
         watchdog_script=os.path.join(install_dir, "watchdog", "watchdog.py"),
         python=sys.executable,
         codex_config=os.path.join(codex_home, "config.toml"),
@@ -109,11 +132,15 @@ def main() -> None:
         port=args.port,
     )
 
-    if route_state.route_authority(ctx) == "aigw":
+    state = route_state.load_install_state(ctx)
+    if route_state.route_authority(ctx) == "aigw" and (
+        state is None or state.get("route_mode") != "aigw_endpoint" or args.keep_config
+    ):
         raise SystemExit(
-            "ERROR: AIGW owns the active route; change the route with AIGW before uninstalling the proxy."
+            "ERROR: AIGW owns the route; uninstall requires an adopted managed route so it can "
+            "delegate exact restoration through AIGW before removing the service."
         )
-    adapter = pick_adapter()
+    service = cast(ServiceAdapter, adapter())
 
     _say("Uninstalling codex-dmx-proxy ...")
     if not args.keep_config:
@@ -124,14 +151,22 @@ def main() -> None:
 
     _say("[2/3] deregistering watchdog service ...")
     try:
-        adapter.uninstall(ctx)
-    except Exception as e:
-        _say(f"  (service removal note: {e})")
-    _stop_proxy(args.port, ctx=ctx)
+        _remove_service(service, ctx)
+        _stop_proxy(ctx)
+    except (errors.InstallError, OSError) as exc:
+        raise SystemExit(f"ERROR: uninstall stopped before payload mutation: {exc}") from exc
 
     if args.purge:
-        _say("[3/3] removing install dir ...")
-        shutil.rmtree(ctx.install_dir, ignore_errors=True)
+        _say("[3/3] removing manifest-owned payload ...")
+        try:
+            remaining = projection.purge_installed_projection(ctx)
+        except errors.InstallError as exc:
+            raise SystemExit(f"ERROR: payload purge refused: {exc}") from exc
+        if remaining:
+            raise SystemExit(
+                "ERROR: manifest-owned payload was removed, but unknown install content remains: "
+                + ", ".join(remaining)
+            )
     else:
         _say(f"[3/3] leaving install dir {ctx.install_dir} (use --purge to delete)")
 

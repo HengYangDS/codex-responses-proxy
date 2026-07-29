@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import ast
 import json
+import os
+import subprocess
 import tokenize
 import tomllib
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,21 +20,150 @@ CONFIG = ROOT / "pyproject.toml"
 _DEFINITION_TYPES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
-def _paths_from_roots(root: Path, configured_roots: Iterable[str]) -> list[Path]:
-    """Resolve configured files and directories into one deterministic Python inventory."""
+@dataclass(frozen=True)
+class RepositoryInventory:
+    """Index-owned quality paths plus fail-closed checkout gaps."""
 
-    paths: set[Path] = set()
+    paths: tuple[Path, ...]
+    gaps: tuple[str, ...]
+
+
+def _in_scope(relative: str, configured_roots: Iterable[str]) -> bool:
+    """Return whether a repository-relative path belongs to a configured root."""
+
+    path = PurePosixPath(relative)
     for configured in configured_roots:
-        path = root / configured
-        if path.is_file() and path.suffix == ".py":
-            paths.add(path)
-        elif path.is_dir():
-            paths.update(
-                candidate
-                for candidate in path.rglob("*.py")
-                if "__pycache__" not in candidate.parts
-            )
-    return sorted(paths)
+        configured_path = PurePosixPath(configured)
+        if any(char in configured for char in "*?["):
+            if len(path.parts) == len(configured_path.parts) and path.match(configured):
+                return True
+        elif path == configured_path or (
+            configured_path.suffix != ".py" and configured_path in path.parents
+        ):
+            return True
+    return False
+
+
+def _physical_python_paths(root: Path, configured_roots: Iterable[str]) -> set[str]:
+    """Resolve configured files and directories into one checkout inventory."""
+
+    paths: set[str] = set()
+    for configured in configured_roots:
+        matches = (
+            sorted(root.glob(configured))
+            if any(char in configured for char in "*?[")
+            else [root / configured]
+        )
+        for path in matches:
+            if path.suffix == ".py" and (path.is_file() or path.is_symlink()):
+                paths.add(path.relative_to(root).as_posix())
+            elif path.is_dir():
+                paths.update(
+                    candidate.relative_to(root).as_posix()
+                    for candidate in path.rglob("*.py")
+                    if "__pycache__" not in candidate.parts
+                    and (candidate.is_file() or candidate.is_symlink())
+                )
+    return paths
+
+
+def _index_entries(root: Path) -> tuple[dict[str, str], list[str]]:
+    """Read stage-zero index modes without treating the working tree as ownership truth."""
+
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "--stage", "-z"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except OSError as exc:
+        return {}, [f"quality_inventory_git_unavailable:{exc}"]
+    if result.returncode:
+        detail = os.fsdecode(result.stderr).strip() or str(result.returncode)
+        return {}, [f"quality_inventory_git_failed:{detail}"]
+
+    entries: dict[str, str] = {}
+    unmerged: set[str] = set()
+    for raw in result.stdout.split(b"\0"):
+        if not raw:
+            continue
+        try:
+            metadata, encoded_path = raw.split(b"\t", 1)
+            mode, _, stage = metadata.split()
+        except ValueError:
+            return {}, ["quality_inventory_git_output_malformed"]
+        path = os.fsdecode(encoded_path)
+        if stage != b"0":
+            unmerged.add(path)
+        else:
+            entries[path] = os.fsdecode(mode)
+    return entries, (
+        [f"quality_inventory_unmerged:{','.join(sorted(unmerged))}"] if unmerged else []
+    )
+
+
+def _has_symlink(root: Path, relative: str) -> bool:
+    """Reject a file reached through a symlink at any repository-relative component."""
+
+    path = PurePosixPath(relative)
+    return any((root.joinpath(*parent.parts)).is_symlink() for parent in (path, *path.parents[:-1]))
+
+
+def _repository_inventory(
+    root: Path, source_roots: Iterable[str], test_roots: Iterable[str]
+) -> RepositoryInventory:
+    """Return index-owned regular Python files and fail-closed checkout gaps."""
+
+    source_roots = tuple(source_roots)
+    test_roots = tuple(test_roots)
+    configured_roots = (*source_roots, *test_roots)
+    entries, gaps = _index_entries(root)
+    scoped_entries = {
+        path: mode
+        for path, mode in entries.items()
+        if path.endswith(".py")
+        and "__pycache__" not in PurePosixPath(path).parts
+        and _in_scope(path, configured_roots)
+    }
+    physical = _physical_python_paths(root, configured_roots)
+    tracked = set(scoped_entries)
+    untracked = sorted(physical - tracked)
+    missing = sorted(path for path in tracked if not (root / path).exists())
+    symlinks = sorted(path for path in tracked | physical if _has_symlink(root, path))
+    non_regular = sorted(
+        path
+        for path, mode in scoped_entries.items()
+        if path not in symlinks
+        and (
+            mode not in {"100644", "100755"} or path not in missing and not (root / path).is_file()
+        )
+    )
+    test_entries = sorted(path for path in tracked if _in_scope(path, test_roots))
+    configured_tests: list[str] = []
+    misnamed: list[str] = []
+    for path in test_entries:
+        relative = PurePosixPath(path)
+        if relative.name == "__init__.py" or relative.parts[:2] == ("tests", "support"):
+            continue
+        if relative.match("test_*.py"):
+            configured_tests.append(path)
+        else:
+            misnamed.append(path)
+    for label, paths in (
+        ("untracked", untracked),
+        ("missing", missing),
+        ("symlink", symlinks),
+        ("non_regular", non_regular),
+        ("test_misnamed", misnamed),
+    ):
+        if paths:
+            gaps.append(f"quality_inventory_{label}:{','.join(paths)}")
+    if not configured_tests:
+        gaps.append("quality_inventory_test_empty")
+    invalid = {*missing, *symlinks, *non_regular}
+    paths = tuple(root / path for path in sorted(tracked - invalid))
+    return RepositoryInventory(paths, tuple(sorted(gaps)))
 
 
 def _logical_statements(path: Path, tree: ast.Module) -> int:
@@ -77,8 +209,7 @@ def audit_paths(
     logic_limit: int,
     test_limit: int,
     ratchets: Mapping[str, int],
-    module_public_definition_docstrings_required: bool,
-    docstring_paths: set[Path] | None = None,
+    module_public_definition_docstrings_required: bool = True,
 ) -> tuple[list[str], list[dict[str, object]]]:
     """Audit an explicit source inventory against hard limits and exact ratchets."""
 
@@ -109,9 +240,7 @@ def audit_paths(
                 gaps.append(f"code_size_ratchet_increased:{relative}:{logical}>{ratchet}")
         elif logical > limit:
             gaps.append(f"code_size_exceeded:{relative}:{logical}>{limit}")
-        if module_public_definition_docstrings_required and (
-            docstring_paths is None or path in docstring_paths
-        ):
+        if module_public_definition_docstrings_required and not relative.startswith("tests/"):
             gaps.extend(_public_docstring_gaps(root, path, tree))
     return sorted(gaps), inventory
 
@@ -132,28 +261,17 @@ def audit() -> dict[str, object]:
     metadata = tool.get("codex-dmx-proxy", {})
     policy = metadata.get("quality", {}) if isinstance(metadata, dict) else {}
     policy_errors: list[str] = []
-    if "project" in config or "build-system" in config:
-        policy_errors.append("repository_must_not_pretend_to_be_a_python_distribution")
-    if metadata.get("supported-python") != ">=3.12":
-        policy_errors.append("supported_python_must_be_3_12_without_upper_bound")
-    if "python-requires" in metadata:
-        policy_errors.append("python_requires_is_distribution_metadata_not_a_tool_contract")
-    if metadata.get("version-source") != "VERSION" or "version" in metadata:
-        policy_errors.append("version_owner_must_remain_VERSION")
-    if metadata.get("distribution-mode") != "runtime-file-payload":
-        policy_errors.append("distribution_mode_must_be_runtime_file_payload")
-    if metadata.get("build-system-allowed") is not False:
-        policy_errors.append("build_system_must_remain_disallowed")
+    if metadata.get("requires-python") != ">=3.12":
+        policy_errors.append("requires_python_must_be_3_12_without_upper_bound")
+    if metadata.get("version-source") != "VERSION":
+        policy_errors.append("version_source_must_remain_VERSION")
+    if metadata.get("distribution") != "runtime-files" or "build-system" in config:
+        policy_errors.append("distribution_must_remain_unbuilt_runtime_files")
     if not isinstance(policy, dict):
         policy_errors.append("quality_policy_must_be_a_table")
         policy = {}
-    logic_roots = _string_list(policy, "logic-roots", policy_errors)
+    source_roots = _string_list(policy, "source-roots", policy_errors)
     test_roots = _string_list(policy, "test-roots", policy_errors)
-    docstring_roots = _string_list(
-        policy, "module-public-definition-docstring-roots", policy_errors
-    )
-    type_roots = _string_list(policy, "type-roots", policy_errors)
-    coverage_tests = _string_list(policy, "coverage-tests", policy_errors)
     logic_limit = policy.get("logic-max-statements")
     test_limit = policy.get("test-max-statements")
     if not isinstance(logic_limit, int) or isinstance(logic_limit, bool) or logic_limit <= 0:
@@ -162,52 +280,34 @@ def audit() -> dict[str, object]:
     if not isinstance(test_limit, int) or isinstance(test_limit, bool) or test_limit <= 0:
         policy_errors.append("test_max_statements_must_be_positive_integer")
         test_limit = 0
-    public_required = policy.get("module-public-definition-docstrings-required")
-    if not isinstance(public_required, bool):
-        policy_errors.append("module_public_definition_docstrings_required_must_be_boolean")
-        public_required = False
     raw_ratchets = policy.get("ratchet", {})
     if not isinstance(raw_ratchets, dict) or any(
         not isinstance(path, str)
         or not isinstance(limit, int)
         or isinstance(limit, bool)
         or limit <= 0
-        for path, limit in getattr(raw_ratchets, "items", lambda: ())()
+        for path, limit in (raw_ratchets.items() if isinstance(raw_ratchets, dict) else ())
     ):
         policy_errors.append("quality_ratchets_must_map_paths_to_positive_integers")
         ratchets: dict[str, int] = {}
     else:
         ratchets = dict(raw_ratchets)
-    source_paths = _paths_from_roots(ROOT, [*logic_roots, *test_roots])
-    docstring_paths = set(_paths_from_roots(ROOT, docstring_roots))
+    repository_inventory = _repository_inventory(ROOT, source_roots, test_roots)
     gaps, inventory = audit_paths(
         ROOT,
-        source_paths,
+        repository_inventory.paths,
         logic_limit=logic_limit,
         test_limit=test_limit,
         ratchets=ratchets,
-        module_public_definition_docstrings_required=public_required,
-        docstring_paths=docstring_paths,
+        module_public_definition_docstrings_required=True,
     )
-    configured_paths = {
-        "logic_roots": logic_roots,
-        "test_roots": test_roots,
-        "module_public_definition_docstring_roots": docstring_roots,
-        "type_roots": type_roots,
-        "coverage_tests": coverage_tests,
-    }
+    configured_paths = {"source_roots": source_roots, "test_roots": test_roots}
     for key, values in configured_paths.items():
         for value in values:
-            if not (ROOT / value).exists():
+            matches = ROOT.glob(value) if any(char in value for char in "*?[") else (ROOT / value,)
+            if not any(path.exists() for path in matches):
                 policy_errors.append(f"quality_policy_missing_path:{key}:{value}")
-    actual_tests = sorted(
-        str(path.relative_to(ROOT)) for path in (ROOT / "tests").glob("test_*.py")
-    )
-    if coverage_tests != sorted(set(coverage_tests)):
-        policy_errors.append("coverage_tests_must_be_unique_and_sorted")
-    if coverage_tests != actual_tests:
-        policy_errors.append("coverage_tests_must_match_tests_inventory_exactly")
-    all_gaps = sorted([*policy_errors, *gaps])
+    all_gaps = sorted([*policy_errors, *repository_inventory.gaps, *gaps])
     return {
         "ok": not all_gaps,
         "gaps": all_gaps,

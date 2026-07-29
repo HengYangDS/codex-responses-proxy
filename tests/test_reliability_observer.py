@@ -58,22 +58,25 @@ def _status(
     }
 
 
-class TestInputVariantObservation(unittest.TestCase):
-    """Keep the exact input-variant class separate from generic validation."""
-
+class ObserverCase(unittest.TestCase):
     def setUp(self) -> None:
         self.observer = _observer()
 
-    def _evaluate_delta(self, count: int):
-        lifetime_count = 7
-        _, baseline = self.observer.evaluate(
-            _status(upstream={INPUT_VARIANT_CLASS: lifetime_count}), observed_at_unix=10
-        )
+    def delta(self, before, after, **kwargs):
+        _, baseline = self.observer.evaluate(_status(**before), observed_at_unix=10)
         return self.observer.evaluate(
-            _status(uptime=110, upstream={INPUT_VARIANT_CLASS: lifetime_count + count}),
-            baseline,
-            observed_at_unix=20,
+            _status(uptime=110, **after), baseline, observed_at_unix=20, **kwargs
         )[0]
+
+
+class TestInputVariantObservation(ObserverCase):
+    """Keep the exact input-variant class separate from generic validation."""
+
+    def _evaluate_delta(self, count: int):
+        return self.delta(
+            {"upstream": {INPUT_VARIANT_CLASS: 7}},
+            {"upstream": {INPUT_VARIANT_CLASS: 7 + count}},
+        )
 
     def test_one_or_two_exact_input_variant_events_require_observation(self):
         for count in (1, 2):
@@ -96,13 +99,8 @@ class TestInputVariantObservation(unittest.TestCase):
         self.assertEqual([item["severity"] for item in reasons], ["incident"])
 
     def test_unknown_validation_class_is_not_treated_as_input_variant(self):
-        _, baseline = self.observer.evaluate(
-            _status(upstream={"validation_error": 4}), observed_at_unix=10
-        )
-        report, _ = self.observer.evaluate(
-            _status(uptime=110, upstream={"validation_error": 7}),
-            baseline,
-            observed_at_unix=20,
+        report = self.delta(
+            {"upstream": {"validation_error": 4}}, {"upstream": {"validation_error": 7}}
         )
         self.assertEqual(report["state"], "healthy")
         self.assertEqual(report["reasons"], [])
@@ -112,11 +110,8 @@ class TestInputVariantObservation(unittest.TestCase):
         )
 
 
-class TestReliabilityWindowPolicy(unittest.TestCase):
+class TestReliabilityWindowPolicy(ObserverCase):
     """Keep lifetime counters distinct from bounded observation windows."""
-
-    def setUp(self) -> None:
-        self.observer = _observer()
 
     def test_first_snapshot_does_not_reclassify_lifetime_counts_as_an_incident(self) -> None:
         report, baseline = self.observer.evaluate(
@@ -133,14 +128,11 @@ class TestReliabilityWindowPolicy(unittest.TestCase):
         self.assertEqual(baseline["upstream_classifications"]["empty_response"], 23)
 
     def test_upstream_empty_response_threshold_is_windowed_and_explicit(self) -> None:
-        _, baseline = self.observer.evaluate(
-            _status(upstream={"empty_response": 10}), observed_at_unix=10
+        observe = self.delta(
+            {"upstream": {"empty_response": 10}}, {"upstream": {"empty_response": 11}}
         )
-        observe, _ = self.observer.evaluate(
-            _status(uptime=110, upstream={"empty_response": 11}), baseline, observed_at_unix=20
-        )
-        incident, _ = self.observer.evaluate(
-            _status(uptime=120, upstream={"empty_response": 13}), baseline, observed_at_unix=30
+        incident = self.delta(
+            {"upstream": {"empty_response": 10}}, {"upstream": {"empty_response": 13}}
         )
         self.assertEqual(observe["state"], "observe")
         self.assertEqual(incident["state"], "incident")
@@ -150,14 +142,9 @@ class TestReliabilityWindowPolicy(unittest.TestCase):
         )
 
     def test_upstream_5xx_and_response_failed_have_separate_thresholds(self) -> None:
-        _, baseline = self.observer.evaluate(
-            _status(upstream={"http_503_full": 2, "response_failed": 8}),
-            observed_at_unix=10,
-        )
-        report, _ = self.observer.evaluate(
-            _status(uptime=110, upstream={"http_503_full": 5, "response_failed": 11}),
-            baseline,
-            observed_at_unix=20,
+        report = self.delta(
+            {"upstream": {"http_503_full": 2, "response_failed": 8}},
+            {"upstream": {"http_503_full": 5, "response_failed": 11}},
         )
         codes = {item["code"] for item in report["reasons"]}
         self.assertEqual(report["state"], "incident")
@@ -169,20 +156,10 @@ class TestReliabilityWindowPolicy(unittest.TestCase):
         self.assertIn("upstream_response_failed_burst", codes)
 
     def test_proxy_drain_is_not_conflated_with_upstream_failure(self) -> None:
-        _, baseline = self.observer.evaluate(
-            _status(counters={"responses_rejected_while_draining": 4}), observed_at_unix=10
-        )
-        incident, _ = self.observer.evaluate(
-            _status(uptime=110, counters={"responses_rejected_while_draining": 5}),
-            baseline,
-            observed_at_unix=20,
-        )
-        maintenance, _ = self.observer.evaluate(
-            _status(uptime=110, counters={"responses_rejected_while_draining": 5}),
-            baseline,
-            allow_drain=True,
-            observed_at_unix=20,
-        )
+        before = {"counters": {"responses_rejected_while_draining": 4}}
+        after = {"counters": {"responses_rejected_while_draining": 5}}
+        incident = self.delta(before, after)
+        maintenance = self.delta(before, after, allow_drain=True)
         self.assertEqual(incident["state"], "incident")
         self.assertEqual(maintenance["state"], "observe")
         self.assertNotIn(
@@ -190,11 +167,8 @@ class TestReliabilityWindowPolicy(unittest.TestCase):
         )
 
     def test_local_stream_failure_and_payload_integrity_are_incidents(self) -> None:
-        _, baseline = self.observer.evaluate(
-            _status(counters={"streams_failed": 2}), observed_at_unix=10
-        )
-        stream_report, _ = self.observer.evaluate(
-            _status(uptime=111, counters={"streams_failed": 3}), baseline, observed_at_unix=20
+        stream_report = self.delta(
+            {"counters": {"streams_failed": 2}}, {"counters": {"streams_failed": 3}}
         )
         integrity_report, _ = self.observer.evaluate(
             _status(integrity=False, listeners=[]), observed_at_unix=10

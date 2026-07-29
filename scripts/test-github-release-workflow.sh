@@ -11,13 +11,18 @@ import sys
 
 text = Path(sys.argv[1]).read_text(encoding="utf-8")
 required = [
-    "name: Release", 'tags: ["v*"]', "permissions:\n  contents: write",
+    "name: Release", 'tags: ["v*"]', "permissions:\n  contents: write\n  actions: read",
     "runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]",
     "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
     'python=/opt/homebrew/bin/python3.14',
     '"$python" scripts/check_release_metadata.py --allow-unpublished-history --tag',
     "check-release-tag-signature.sh",
     "actions/workflows/verify.yml/runs?branch=", "Verify workflow timed out",
+    "expected_sha=$(git rev-parse 'HEAD^{commit}')", 'git rev-parse "$SELECTED_TAG^{tag}"',
+    'if [ "$GITHUB_EVENT_NAME" = push ]; then', 'test "$GITHUB_SHA" = "$expected_sha"',
+    'test "$tag_oid" = "$expected_tag_oid"', 'release.get("published_at")',
+    'releases?per_page=100', "duplicate GitHub release records for exact tag",
+    "GitHub release tag does not resolve to the checked-out commit",
     "gh release create", "--verify-tag", "--generate-notes",
     "existing GitHub release does not match exact release identity",
 ]

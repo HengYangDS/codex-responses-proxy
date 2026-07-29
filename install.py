@@ -17,19 +17,21 @@ import subprocess
 import glob
 import shutil
 from pathlib import Path
+from typing import cast
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from platform_adapters import (
-    common,
-    payload,
-    pick_adapter,
-    publication,
-    release_source,
-    route_state,
-)  # noqa: E402
-from platform_adapters import deployment  # noqa: E402
+from codex_dmx_proxy.supervision.select import adapter  # noqa: E402
+from codex_dmx_proxy.deployment import apply  # noqa: E402
+from codex_dmx_proxy import installation  # noqa: E402
+from codex_dmx_proxy import errors  # noqa: E402
+from codex_dmx_proxy import python_runtime  # noqa: E402
+from codex_dmx_proxy.release import publication  # noqa: E402
+from codex_dmx_proxy.release import admission as release_admission  # noqa: E402
+from codex_dmx_proxy.release import inventory  # noqa: E402
+from codex_dmx_proxy.release import transaction  # noqa: E402
+from codex_dmx_proxy.route import management as route_state  # noqa: E402
 
 
 def _say(msg: str) -> None:
@@ -61,47 +63,47 @@ def build_context(
     port: int,
     upstream: str,
     *,
-    proxy_log_max_bytes: int = common.DEFAULT_PROXY_LOG_MAX_BYTES,
-    proxy_log_backup_count: int = common.DEFAULT_PROXY_LOG_BACKUP_COUNT,
-    watchdog_log_max_bytes: int = common.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
-    watchdog_log_backup_count: int = common.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
-) -> common.InstallContext:
+    proxy_log_max_bytes: int = installation.DEFAULT_PROXY_LOG_MAX_BYTES,
+    proxy_log_backup_count: int = installation.DEFAULT_PROXY_LOG_BACKUP_COUNT,
+    watchdog_log_max_bytes: int = installation.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
+    watchdog_log_backup_count: int = installation.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
+) -> installation.InstallContext:
     """Build one validated installation context from user-facing arguments."""
-    port = common.validate_port(port)
+    port = installation.validate_port(port)
     upstream = route_state.normalize_upstream_url(upstream)
-    proxy_log_max_bytes = common.validate_log_retention(
+    proxy_log_max_bytes = installation.validate_log_retention(
         proxy_log_max_bytes,
         name="proxy log max bytes",
         minimum=4 * 1024,
         maximum=64 * 1024 * 1024,
     )
-    proxy_log_backup_count = common.validate_log_retention(
+    proxy_log_backup_count = installation.validate_log_retention(
         proxy_log_backup_count,
         name="proxy log backup count",
         minimum=0,
         maximum=10,
     )
-    watchdog_log_max_bytes = common.validate_log_retention(
+    watchdog_log_max_bytes = installation.validate_log_retention(
         watchdog_log_max_bytes,
         name="watchdog log max bytes",
         minimum=4 * 1024,
         maximum=64 * 1024 * 1024,
     )
-    watchdog_log_backup_count = common.validate_log_retention(
+    watchdog_log_backup_count = installation.validate_log_retention(
         watchdog_log_backup_count,
         name="watchdog log backup count",
         minimum=0,
         maximum=10,
     )
-    codex_home = common.codex_home()
+    codex_home = installation.codex_home()
     home = os.path.dirname(codex_home)
     install_dir = os.path.join(codex_home, "dmx-proxy")
-    return common.InstallContext(
+    return installation.InstallContext(
         home=home,
         install_dir=install_dir,
-        proxy_script=os.path.join(install_dir, "proxy", "dmx_responses_proxy.py"),
+        proxy_script=os.path.join(install_dir, "codex_dmx_proxy", "listener", "entrypoint.py"),
         watchdog_script=os.path.join(install_dir, "watchdog", "watchdog.py"),
-        python=common.resolve_python(),
+        python=python_runtime.resolve_python(),
         codex_config=os.path.join(codex_home, "config.toml"),
         log_dir=os.path.join(codex_home, "log"),
         port=port,
@@ -117,17 +119,16 @@ def admit_released_payload(
     authority: publication.PublishedRelease,
     *,
     trust_anchor: Path,
-) -> release_source.ReleasedPayload:
+) -> release_admission.ReleasedPayload:
     """Admit exact signed HEAD bytes after independent publication was verified."""
 
     git = shutil.which("git")
     ssh_keygen = shutil.which("ssh-keygen")
     if not git or not ssh_keygen:
-        raise common.InstallError("git and ssh-keygen are required for released-source admission")
-    return release_source.admit(
+        raise errors.InstallError("git and ssh-keygen are required for released-source admission")
+    return release_admission.admit(
         HERE,
-        payload_paths=payload.RUNTIME_PAYLOAD_FILES,
-        serving_payload_paths=payload.SERVING_PAYLOAD_FILES,
+        payload_paths=inventory.RUNTIME_FILES,
         trust_anchor=trust_anchor,
         publication=authority,
         git_path=Path(git).resolve(),
@@ -136,7 +137,7 @@ def admit_released_payload(
 
 
 def install_release(
-    ctx: common.InstallContext,
+    ctx: installation.InstallContext,
     *,
     tag: str,
     gitlab_remote: str,
@@ -148,13 +149,17 @@ def install_release(
     github_anchor: Path,
     policy: Path,
     trust_anchor: Path,
-    adapter: deployment.ServiceAdapter,
+    adapter: apply.ServiceAdapter,
     timeout_seconds: float = 30.0,
     allow_legacy_bootstrap: bool = False,
     force_legacy_bootstrap: bool = False,
 ) -> dict[str, object]:
     """Compose live publication verification, source admission, and deployment."""
 
+    git = shutil.which("git")
+    if not git:
+        raise errors.InstallError("git is required for released-source admission")
+    release_admission.require_clean_checkout(HERE, git_path=Path(git).resolve())
     authority = publication.verify(
         tag=tag,
         gitlab_remote=gitlab_remote,
@@ -167,19 +172,19 @@ def install_release(
         policy_path=policy,
     )
     released = admit_released_payload(authority, trust_anchor=trust_anchor)
-    transaction = payload.begin_transaction(ctx, released)
-    return deployment.install(
+    payload_transaction = transaction.begin_transaction(ctx, released)
+    return apply.install(
         ctx,
-        transaction,
+        payload_transaction,
         adapter=adapter,
-        runtime_reader=deployment.read_runtime,
+        runtime_reader=apply.read_runtime,
         timeout_seconds=timeout_seconds,
         allow_legacy_bootstrap=allow_legacy_bootstrap,
         force_legacy_bootstrap=force_legacy_bootstrap,
     )
 
 
-def wire_config(ctx: common.InstallContext) -> bool:
+def wire_config(ctx: installation.InstallContext) -> bool:
     """Point the Codex provider base_url at the local proxy (backup + rewrite)."""
     if not os.path.exists(ctx.codex_config):
         _die(
@@ -255,31 +260,31 @@ def wire_config(ctx: common.InstallContext) -> bool:
 
 def main() -> None:
     """Verify publication, install its runtime transaction, and optionally route it."""
-    ap = argparse.ArgumentParser(description="Install the Codex dmx-responses-proxy.")
-    ap.add_argument("--port", type=int, default=common.DEFAULT_PORT)
-    ap.add_argument("--upstream", default=common.DEFAULT_UPSTREAM)
+    ap = argparse.ArgumentParser(description="Install Codex DMX Proxy.")
+    ap.add_argument("--port", type=int, default=installation.DEFAULT_PORT)
+    ap.add_argument("--upstream", default=installation.DEFAULT_UPSTREAM)
     ap.add_argument(
         "--proxy-log-max-bytes",
         type=int,
-        default=common.DEFAULT_PROXY_LOG_MAX_BYTES,
+        default=installation.DEFAULT_PROXY_LOG_MAX_BYTES,
         help="maximum bytes retained in each proxy log segment",
     )
     ap.add_argument(
         "--proxy-log-backup-count",
         type=int,
-        default=common.DEFAULT_PROXY_LOG_BACKUP_COUNT,
+        default=installation.DEFAULT_PROXY_LOG_BACKUP_COUNT,
         help="number of rotated proxy log segments to retain",
     )
     ap.add_argument(
         "--watchdog-log-max-bytes",
         type=int,
-        default=common.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
+        default=installation.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
         help="maximum bytes retained in each watchdog log segment",
     )
     ap.add_argument(
         "--watchdog-log-backup-count",
         type=int,
-        default=common.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
+        default=installation.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
         help="number of rotated watchdog log segments to retain",
     )
     ap.add_argument(
@@ -318,8 +323,8 @@ def main() -> None:
     args = ap.parse_args()
 
     try:
-        adapter = pick_adapter()
-    except common.UnsupportedPlatform as e:
+        service = cast(apply.ServiceAdapter, adapter())
+    except errors.UnsupportedPlatform as e:
         _die(str(e))
 
     try:
@@ -331,7 +336,7 @@ def main() -> None:
             watchdog_log_max_bytes=args.watchdog_log_max_bytes,
             watchdog_log_backup_count=args.watchdog_log_backup_count,
         )
-    except common.InstallError as exc:
+    except errors.InstallError as exc:
         _die(str(exc))
     _say(f"Installing codex-dmx-proxy on {sys.platform}")
     _say(f"  python:      {ctx.python}")
@@ -368,17 +373,17 @@ def main() -> None:
             github_anchor=args.github_anchor,
             policy=args.policy,
             trust_anchor=args.trust_anchor,
-            adapter=adapter,
+            adapter=service,
             timeout_seconds=args.timeout_seconds,
             allow_legacy_bootstrap=args.allow_legacy_bootstrap,
             force_legacy_bootstrap=args.force_legacy_bootstrap,
         )
-    except common.ManualStartRequired as warning:
+    except errors.ManualStartRequired as warning:
         _die(f"service persistence was not established: {warning}")
     except (
-        common.InstallError,
+        errors.InstallError,
         publication.PublicationError,
-        release_source.ReleaseSourceError,
+        release_admission.ReleaseSourceError,
         OSError,
     ) as exc:
         _die(str(exc))

@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           python="/opt/homebrew/bin/python${{ matrix.python-version }}"
           test -x "$python"
-          "$python" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
+          "$python" -m compileall -q codex_dmx_proxy watchdog install.py uninstall.py control.py governance.py tests scripts
           "$python" scripts/run-python-tests.py
 
   python-windows:
@@ -57,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           python --version
-          python -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
+          python -m compileall -q codex_dmx_proxy watchdog install.py uninstall.py control.py governance.py tests scripts
           python scripts/run-python-tests.py
 
   governance:
@@ -80,6 +80,7 @@ jobs:
           sh scripts/test-github-actions-contract.sh
           sh scripts/test-github-release-workflow.sh
           sh scripts/test-github-provider-projection.sh
+          sh scripts/test-gitlab-provider-projection.sh
           sh scripts/test-gitlab-tagging.sh
           sh scripts/test-github-tagging.sh
           sh scripts/test-publish-gitlab-release.sh

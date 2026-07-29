@@ -18,84 +18,32 @@ def body(payload: object) -> bytes:
 
 
 def semantic_body() -> bytes:
-    """Build representative provider-bound history for projection contracts."""
+    """Return representative history crossing every projection owner."""
     return body(
         {
-            "model": "gpt-5.6-terra",
-            "stream": False,
-            "previous_response_id": "resp_provider_state",
-            "conversation": {"id": "conversation_provider_state"},
-            "prompt_cache_key": "cache_provider_state",
+            "previous_response_id": "stale",
+            "conversation": {"id": "stale"},
+            "prompt_cache_key": "stale",
             "include": ["reasoning.encrypted_content", "other"],
             "input": [
-                {
-                    "type": "reasoning",
-                    "id": "reasoning_provider_state",
-                    "encrypted_content": "opaque_provider_state",
-                    "summary": [],
-                },
-                {
-                    "type": "message",
-                    "id": "message_provider_id",
-                    "status": "completed",
-                    "role": "developer",
-                    "content": "current policy",
-                },
+                {"type": "reasoning", "encrypted_content": "opaque", "summary": []},
+                {"type": "message", "role": "developer", "content": "policy"},
                 {
                     "type": "agent_message",
-                    "id": "agent_provider_id",
                     "author": "planner",
                     "recipient": "user",
-                    "phase": "commentary",
-                    "content": [
-                        {"type": "input_text", "text": "第一段 🧭"},
-                        {"type": "input_text", "text": "second segment"},
-                    ],
+                    "content": [{"type": "output_text", "text": "plan"}],
                 },
                 {
                     "type": "function_call",
-                    "id": "function_provider_id",
-                    "status": "completed",
-                    "call_id": "function-1",
+                    "call_id": "f",
                     "name": "lookup",
-                    "arguments": '{"city":"杭州"}',
-                    "namespace": "weather",
-                    "caller": {"type": "direct"},
+                    "arguments": "{}",
                 },
-                {
-                    "type": "function_call_output",
-                    "id": "function_output_provider_id",
-                    "status": "completed",
-                    "call_id": "function-1",
-                    "output": "晴朗",
-                    "caller": {"type": "direct"},
-                },
-                {
-                    "type": "custom_tool_call",
-                    "id": "custom_provider_id",
-                    "status": "completed",
-                    "call_id": "custom-1",
-                    "name": "terminal",
-                    "input": "printf ok",
-                    "namespace": "local",
-                    "caller": {"type": "direct"},
-                },
-                {
-                    "type": "custom_tool_call_output",
-                    "id": "custom_output_provider_id",
-                    "status": "completed",
-                    "call_id": "custom-1",
-                    "output": [
-                        {"type": "input_text", "text": "line one"},
-                        {"type": "input_text", "text": "第二行"},
-                    ],
-                    "caller": {"type": "direct"},
-                },
-                {
-                    "type": "message",
-                    "role": "user",
-                    "content": "continue from the tool results",
-                },
+                {"type": "function_call_output", "call_id": "f", "output": "ok"},
+                {"type": "custom_tool_call", "call_id": "c", "name": "shell", "input": "pwd"},
+                {"type": "custom_tool_call_output", "call_id": "c", "output": "here"},
+                {"type": "message", "role": "user", "content": "continue"},
             ],
         }
     )

@@ -20,7 +20,7 @@ python scripts/check_markdown_presentation.py
 python scripts/test_release_metadata.py
 PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh
 for py in python3.12 python3.13 python3.14; do
-  "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
+  "$py" -m compileall -q codex_dmx_proxy watchdog install.py uninstall.py control.py governance.py tests scripts
   "$py" scripts/run-python-tests.py
 done
 ```
@@ -28,6 +28,10 @@ done
 Add a failing regression before production behavior changes. Tests must not
 require real user credentials, a live third-party endpoint, or a mutation of
 `~/.codex`.
+
+The quality command enforces aggregate, statement, and measured branch coverage
+independently at 95% or higher. No one result substitutes for either independent
+result emitted by `scripts/check_branch_coverage.py`.
 
 `scripts/observe-reliability.py` is source-side observation only. It accepts a
 supplied secret-free `control.py status --json` snapshot and may write an

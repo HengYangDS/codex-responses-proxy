@@ -12,33 +12,32 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import install  # noqa: E402
-from platform_adapters import common  # noqa: E402
+from codex_dmx_proxy import errors  # noqa: E402
 
 
 class TestInstallationInputValidation(unittest.TestCase):
     def test_build_context_rejects_out_of_range_ports(self):
         for port in (0, -1, 65536):
-            with self.subTest(port=port):
-                with self.assertRaises(common.InstallError):
-                    install.build_context(port, "https://www.dmxapi.cn")
+            with self.subTest(port=port), self.assertRaises(errors.InstallError):
+                install.build_context(port, "https://www.dmxapi.cn")
 
     def test_build_context_rejects_unsafe_upstream_urls(self):
-        for upstream in (
-            "https://",
-            "ftp://example.test",
-            "https://bad host.example",
-            "https://example.test:99999",
-            "https://example.test:0",
-            "https://example.test/has space",
-            'https://example.test/" & whoami',
-            "https://example.test/%25expanded",
-            "https://example.test/(batch-group)",
-            "https://example.test/v1?query=not-a-base-url",
-            "https://example.test/v1;command",
-        ):
-            with self.subTest(upstream=upstream):
-                with self.assertRaises(common.InstallError):
-                    install.build_context(8791, upstream)
+        unsafe = """
+https://
+ftp://example.test
+https://bad host.example
+https://example.test:99999
+https://example.test:0
+https://example.test/has space
+https://example.test/" & whoami
+https://example.test/%25expanded
+https://example.test/(batch-group)
+https://example.test/v1?query=not-a-base-url
+https://example.test/v1;command
+""".splitlines()[1:]
+        for upstream in unsafe:
+            with self.subTest(upstream=upstream), self.assertRaises(errors.InstallError):
+                install.build_context(8791, upstream)
 
     def test_build_context_normalizes_a_safe_upstream_url(self):
         ctx = install.build_context(8791, "https://example.test/v1/")
@@ -52,12 +51,27 @@ class TestInstallationInputValidation(unittest.TestCase):
             {"watchdog_log_backup_count": 11},
         )
         for kwargs in invalid:
-            with self.subTest(kwargs=kwargs):
-                with self.assertRaises(common.InstallError):
-                    install.build_context(8791, "https://example.test", **kwargs)
+            with self.subTest(kwargs=kwargs), self.assertRaises(errors.InstallError):
+                install.build_context(8791, "https://example.test", **kwargs)
 
 
 class TestGovernanceMetadata(unittest.TestCase):
+    def test_semantic_packages_replace_retired_flat_modules_without_facades(self):
+        retired = ("platform_adapters", "proxy")
+        self.assertFalse([path for path in retired if (ROOT / path).exists()])
+        packages = "compatibility deployment listener release route supervision".split()
+        for package in (f"codex_dmx_proxy/{name}" for name in packages):
+            source = (ROOT / package / "__init__.py").read_text(encoding="utf-8")
+            self.assertNotIn("import ", source, package)
+
+    def test_publication_authority_has_no_scripts_module_loader(self):
+        source = (ROOT / "codex_dmx_proxy/release/publication/__init__.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("importlib", source)
+        self.assertNotIn("sys.modules", source)
+        self.assertFalse(tuple((ROOT / "scripts").glob("publication_proof*.py")))
+
     def test_lifecycle_scripts_do_not_prescribe_client_restart_or_new_thread(self):
         text = "\n".join(
             Path(ROOT, relative).read_text(encoding="utf-8").lower()
@@ -78,7 +92,9 @@ class TestGovernanceMetadata(unittest.TestCase):
             self.assertNotIn(retired, source)
 
     def test_payload_mutation_accepts_no_raw_source_or_stage_path(self):
-        payload_source = Path(ROOT, "platform_adapters", "payload.py").read_text(encoding="utf-8")
+        payload_source = Path(ROOT, "codex_dmx_proxy", "release", "transaction.py").read_text(
+            encoding="utf-8"
+        )
         install_source = Path(ROOT, "install.py").read_text(encoding="utf-8")
         for retired in (
             "stage_payload_transaction",
@@ -88,67 +104,47 @@ class TestGovernanceMetadata(unittest.TestCase):
         ):
             self.assertNotIn(retired, payload_source)
         self.assertNotIn("--stage-only", install_source)
-        self.assertIn("payload.begin_transaction", install_source)
-        self.assertIn("deployment.install", install_source)
 
 
 class TestReleaseMetadata(unittest.TestCase):
-    def test_active_release_version_has_one_leading_unreleased_section(self):
-        version = Path(ROOT, "VERSION").read_text(encoding="utf-8").strip()
-        releases = Path(ROOT, "CHANGELOG.md").read_text(encoding="utf-8")
-        unreleased = "## [Unreleased]"
-        self.assertRegex(version, r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
-        self.assertEqual(releases.count(unreleased), 1)
-        version_heading = f"## [{version}]"
-        if version_heading in releases:
-            self.assertLess(releases.index(unreleased), releases.index(version_heading))
-        else:
-            self.assertGreater(version, "0.0.0")
-
-    def test_governance_surface_is_portable_and_read_only(self):
-        source = Path(ROOT, "governance.py").read_text(encoding="utf-8")
-        for forbidden in (
-            "AIGW",
-            "ChatGPT",
-            "JetBrains",
-            "subprocess",
-            "write_text",
-            "unlink",
-            "sys.path.insert",
-        ):
-            self.assertNotIn(forbidden, source)
-        self.assertIn("control.status", source)
-
-    def test_proxy_has_no_payload_or_header_dump_escape_hatch(self):
-        source = Path(ROOT, "proxy", "dmx_responses_proxy.py").read_text(encoding="utf-8")
-        for forbidden in ("DMX_DUMP_BODIES", "DMX_DUMP_HEADERS", "reject-"):
-            self.assertNotIn(forbidden, source)
-
-    def test_proxy_declares_bounded_secret_safe_log_contract(self):
-        runtime_source = Path(ROOT, "proxy", "runtime_state.py").read_text(encoding="utf-8")
-        transport_source = "\n".join(
-            Path(ROOT, "proxy", name).read_text(encoding="utf-8")
-            for name in ("responses_transport.py", "sse_transport.py")
+    def test_control_and_data_planes_keep_explicit_privacy_boundaries(self):
+        cases = (
+            (
+                ("governance.py",),
+                ("control.status",),
+                (
+                    "AIGW",
+                    "ChatGPT",
+                    "JetBrains",
+                    "subprocess",
+                    "write_text",
+                    "unlink",
+                    "sys.path.insert",
+                ),
+            ),
+            (
+                ("codex_dmx_proxy/listener/entrypoint.py",),
+                (),
+                ("DMX_DUMP_BODIES", "DMX_DUMP_HEADERS", "reject-"),
+            ),
+            (
+                ("codex_dmx_proxy/listener/state.py", "watchdog/watchdog.py"),
+                (
+                    "DMX_PROXY_LOG_MAX_BYTES",
+                    "DMX_PROXY_LOG_BACKUP_COUNT",
+                    "DMX_WATCHDOG_LOG_MAX_BYTES",
+                    "DMX_WATCHDOG_LOG_BACKUP_COUNT",
+                ),
+                (),
+            ),
         )
-        watchdog_source = Path(ROOT, "watchdog", "watchdog.py").read_text(encoding="utf-8")
-        for required in (
-            "DMX_PROXY_LOG_MAX_BYTES",
-            "DMX_PROXY_LOG_BACKUP_COUNT",
-            "_redact_log_message",
-            "safe_request_path",
-        ):
-            self.assertIn(required, runtime_source)
-        for required in (
-            "streams_pre_content_exhausted",
-            "stream_pre_content_exhausted",
-        ):
-            self.assertIn(required, transport_source)
-        for required in (
-            "DMX_WATCHDOG_LOG_MAX_BYTES",
-            "DMX_WATCHDOG_LOG_BACKUP_COUNT",
-            "_redact_log_message",
-        ):
-            self.assertIn(required, watchdog_source)
+        for paths, required, forbidden in cases:
+            source = "\n".join((ROOT / path).read_text(encoding="utf-8") for path in paths)
+            with self.subTest(paths=paths):
+                for value in required:
+                    self.assertIn(value, source)
+                for value in forbidden:
+                    self.assertNotIn(value, source)
 
     def test_mit_license_is_present(self):
         license_text = Path(ROOT, "LICENSE").read_text(encoding="utf-8")

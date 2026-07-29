@@ -17,9 +17,9 @@ USAGE
 
 branch=main
 github_remote=${DMX_GITHUB_REMOTE:-github}
-github_name=${DMX_GITHUB_AUTHOR_NAME:-HengYang}
+github_name=${DMX_GITHUB_AUTHOR_NAME:-Yang HENG}
 github_email=${DMX_GITHUB_AUTHOR_EMAIL:-hengyang.2003@tsinghua.org.cn}
-signing_key=${DMX_GITHUB_SIGNING_KEY:-$HOME/.ssh/id_ed25519_signing_yheng_20260711.pub}
+signing_key=${DMX_GITHUB_SIGNING_KEY:-$HOME/.ssh/id_aigw_github_signing_20260729.pub}
 ssh_signing_program=${DMX_GITHUB_SSH_SIGNING_PROGRAM:-${GPG_SSH_PROGRAM:-}}
 github_allowed_signers=${DMX_GITHUB_ALLOWED_SIGNERS:-}
 gitlab_allowed_signers=${DMX_GITLAB_ALLOWED_SIGNERS:-}
@@ -35,7 +35,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$branch" in ''|*' '*|*..*|*'~'*|*'^'*|*':'*|*'?'*|*'['*|*'\'*) echo "invalid branch name: $branch" >&2; exit 2 ;; esac
-case "$github_name" in HengYang) ;; *) echo "GitHub author name must be HengYang" >&2; exit 2 ;; esac
+case "$github_name" in 'Yang HENG') ;; *) echo "GitHub author name must be Yang HENG" >&2; exit 2 ;; esac
 case "$github_email" in hengyang.2003@tsinghua.org.cn) ;; *) echo "GitHub identity must be hengyang.2003@tsinghua.org.cn" >&2; exit 2 ;; esac
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "run inside a Git worktree" >&2; exit 2; }

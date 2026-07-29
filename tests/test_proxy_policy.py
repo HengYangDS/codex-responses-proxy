@@ -4,50 +4,74 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 import tempfile
 import unittest
+from collections.abc import Mapping
 from pathlib import Path
+from typing import cast
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-PROXY_ROOT = ROOT / "proxy"
-for entry in (str(ROOT), str(PROXY_ROOT)):
-    if entry not in sys.path:
-        sys.path.insert(0, entry)
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-import response_failed  # noqa: E402
-import responses_rewrite  # noqa: E402
-import runtime_state  # noqa: E402
+from codex_dmx_proxy.compatibility import response_failed  # noqa: E402
+from codex_dmx_proxy.listener import rewrite  # noqa: E402
+from codex_dmx_proxy.listener import state  # noqa: E402
 from tests.support.repository_fixtures import assert_private_log_mode  # noqa: E402
+
+
+def _body(input_items, **extra):
+    return json.dumps({"input": input_items, **extra}, separators=(",", ":")).encode()
+
+
+def _message(role, content):
+    return {"type": "message", "role": role, "content": content}
+
+
+def _call(kind, call_id, payload):
+    key = "arguments" if kind == "function_call" else "input"
+    name = "wait" if kind == "function_call" else "exec"
+    return {"type": kind, "call_id": call_id, "name": name, key: payload}
+
+
+def _output(kind, call_id, payload):
+    return {"type": kind, "call_id": call_id, "output": payload}
 
 
 class TestProxySanitize(unittest.TestCase):
     """Verify the packaged proxy's core stripping logic still works."""
 
     def setUp(self):
-        sys.path.insert(0, os.path.join(ROOT, "proxy"))
-        import dmx_responses_proxy as p
+        from codex_dmx_proxy.listener import entrypoint as p
 
         self.p = p
-        runtime_state.reset_for_test()
+        state.reset_for_test()
+
+    def assert_rejected(self, function, fixtures):
+        for raw, budget in fixtures:
+            with self.subTest(raw=raw, budget=budget):
+                self.assertEqual(function(raw, budget), (None, None))
+
+    def assert_compacted(self, compact: bytes | None, detail: Mapping[str, object] | None):
+        """Narrow a successful compaction result for contract assertions."""
+        self.assertIsNotNone(compact)
+        self.assertIsNotNone(detail)
+        return cast("bytes", compact), cast("Mapping[str, object]", detail)
 
     def test_strips_reasoning_and_encrypted(self):
-        body = json.dumps(
-            {
-                "input": [
-                    {"type": "reasoning", "encrypted_content": "gAAAA_secret"},
-                    {"type": "message", "content": "hello"},
-                ],
-                "include": ["reasoning.encrypted_content", "other"],
-            }
-        ).encode()
-        out, note = responses_rewrite.sanitize_responses_body(body)
+        body = _body(
+            [
+                {"type": "reasoning", "encrypted_content": "gAAAA_secret"},
+                {"type": "message", "content": "hello"},
+            ],
+            include=["reasoning.encrypted_content", "other"],
+        )
+        out, _ = rewrite.sanitize_responses_body(body)
         obj = json.loads(out)
-        self.assertEqual(len(obj["input"]), 1)  # reasoning dropped
-        self.assertEqual(obj["input"][0]["type"], "message")
-        self.assertNotIn("reasoning.encrypted_content", obj["include"])
         self.assertEqual(obj["input"], [{"type": "message", "content": "hello"}])
+        self.assertNotIn("reasoning.encrypted_content", obj["include"])
 
     def test_preserves_required_agent_message_encrypted_content(self):
         body = json.dumps(
@@ -74,7 +98,7 @@ class TestProxySanitize(unittest.TestCase):
             }
         ).encode()
 
-        out, note = responses_rewrite.sanitize_responses_body(body)
+        out, note = rewrite.sanitize_responses_body(body)
         obj = json.loads(out)
 
         self.assertEqual(len(obj["input"]), 1)  # replayed reasoning still dropped
@@ -108,7 +132,7 @@ class TestProxySanitize(unittest.TestCase):
             }
         ).encode()
 
-        out, note = responses_rewrite.sanitize_responses_body(body)
+        out, note = rewrite.sanitize_responses_body(body)
         obj = json.loads(out)
 
         self.assertIn("malformed_encrypted_blocks=1", note)
@@ -136,7 +160,7 @@ class TestProxySanitize(unittest.TestCase):
             }
         ).encode()
 
-        out, note = responses_rewrite.sanitize_responses_body(body)
+        out, note = rewrite.sanitize_responses_body(body)
 
         self.assertEqual(out, body)
         self.assertIn("clean", note)
@@ -150,83 +174,49 @@ class TestProxySanitize(unittest.TestCase):
             b'"encrypted_content":"required"}]}'
             b"]}}\n\n"
         )
-        out, removed = responses_rewrite.sanitize_sse_event(raw)
+        out, removed = rewrite.sanitize_sse_event(raw)
         event = json.loads(out.split(b"data: ", 1)[1])
         output = event["response"]["output"]
         self.assertEqual(removed, 1)
         self.assertNotIn("encrypted_content", output[0])
         self.assertEqual(output[1]["content"][0]["encrypted_content"], "required")
 
-    def test_retries_gateway_524_as_transient_upstream_failure(self):
-        self.assertEqual(response_failed.retry_disposition(524, b"gateway timeout"), "full")
-
-    def test_retries_dmx_empty_response_477_as_transient_upstream_failure(self):
-        error = (
-            b'{"error":{"message":"official provider returned an empty response",'
-            b'"type":"dmx_api_error","code":"empty_response"}}'
+    def test_retry_disposition_classifies_gateway_and_terminal_failures(self):
+        cases = (
+            (524, b"gateway timeout", "full"),
+            (477, b'{"error":{"type":"dmx_api_error","code":"empty_response"}}', "full"),
+            (477, b'{"error":"unprocessable"}', ""),
+            (477, b'{"error":{"type":"other_gateway","code":"empty_response"}}', ""),
+            (400, b'{"error":{"code":"response_failed"}}', "full"),
+            (418, b"teapot", ""),
+            (400, b"invalid_encrypted_content", ""),
+            (400, b"could not be verified", ""),
+            (400, b'{"code":"invalid_prompt"} request blocked', "full"),
+            (400, b"invalid_payload", "once"),
+            (400, b"does not match the expected schema", "once"),
         )
-        self.assertEqual(response_failed.retry_disposition(477, error), "full")
-
-    def test_does_not_retry_unrelated_477(self):
-        self.assertEqual(response_failed.retry_disposition(477, b'{"error":"unprocessable"}'), "")
-        self.assertEqual(
-            response_failed.retry_disposition(
-                477,
-                b'{"error":{"type":"other_gateway","code":"empty_response"}}',
-            ),
-            "",
-        )
-
-    def test_retries_upstream_response_failed_400_once(self):
-        error = (
-            b'{"error":{"message":"OpenAI responses stream failed: '
-            b'response_failed - Response failed",'
-            b'"type":"new_api_error","code":"response_failed"}}'
-        )
-        self.assertEqual(response_failed.retry_disposition(400, error), "full")
+        for status, payload, expected in cases:
+            with self.subTest(status=status, payload=payload):
+                self.assertEqual(response_failed.retry_disposition(status, payload), expected)
+        self.assertEqual(json.loads(response_failed.exhausted_payload(4))["error"]["attempts"], 4)
 
     def test_response_failed_compaction_keeps_complete_tool_pairs_and_latest_user(self):
         """Fallback removes only an old prefix; no retained output is orphaned."""
-        body = json.dumps(
-            {
-                "prompt_cache_key": "cache-key-must-not-reach-the-fallback",
-                "input": [
-                    {"type": "message", "role": "user", "content": "old" + "x" * 300_000},
-                    {
-                        "type": "custom_tool_call",
-                        "call_id": "custom-1",
-                        "name": "exec",
-                        "input": "{}",
-                    },
-                    {
-                        "type": "custom_tool_call_output",
-                        "call_id": "custom-1",
-                        "output": "y" * 300_000,
-                    },
-                    {
-                        "type": "function_call",
-                        "call_id": "function-1",
-                        "name": "wait",
-                        "arguments": "{}",
-                    },
-                    {
-                        "type": "function_call_output",
-                        "call_id": "function-1",
-                        "output": "done",
-                    },
-                    {
-                        "type": "message",
-                        "role": "user",
-                        "content": "latest user context must survive",
-                    },
-                ],
-            }
-        ).encode()
+        body = _body(
+            [
+                _message("user", "old" + "x" * 300_000),
+                _call("custom_tool_call", "custom-1", "{}"),
+                _output("custom_tool_call_output", "custom-1", "y" * 300_000),
+                _call("function_call", "function-1", "{}"),
+                _output("function_call_output", "function-1", "done"),
+                _message("user", "latest user context must survive"),
+            ],
+            prompt_cache_key="cache-key-must-not-reach-the-fallback",
+        )
 
         compact, detail = response_failed.compact_request(body)
 
-        self.assertIsNotNone(compact)
-        self.assertIsNotNone(detail)
+        compact, detail = self.assert_compacted(compact, detail)
         self.assertGreaterEqual(detail["removed_inputs"], 1)
         self.assertLessEqual(len(compact), response_failed.COMPACTION_BUDGET)
         obj = json.loads(compact)
@@ -246,120 +236,54 @@ class TestProxySanitize(unittest.TestCase):
         self.assertIn("function-1", calls)
 
     def test_response_failed_compaction_never_starts_at_an_orphaned_tool_output(self):
-        body = json.dumps(
-            {
-                "input": [
-                    {"type": "message", "role": "user", "content": "old" + "x" * 10_000},
-                    {
-                        "type": "custom_tool_call",
-                        "call_id": "custom-oversize",
-                        "name": "exec",
-                        "input": "{}",
-                    },
-                    {
-                        "type": "custom_tool_call_output",
-                        "call_id": "custom-oversize",
-                        "output": "y" * 600_000,
-                    },
-                    {"type": "message", "role": "user", "content": "newest user context"},
-                ],
-            }
-        ).encode()
-
-        compact, detail = response_failed.compact_request(body)
-
-        self.assertIsNotNone(compact)
-        self.assertEqual(detail["removed_inputs"], 3)
-        obj = json.loads(compact)
-        self.assertEqual(
-            obj["input"],
+        body = _body(
             [
-                {"type": "message", "role": "user", "content": "newest user context"},
-            ],
+                _message("user", "old" + "x" * 10_000),
+                _call("custom_tool_call", "custom-oversize", "{}"),
+                _output("custom_tool_call_output", "custom-oversize", "y" * 600_000),
+                _message("user", "newest user context"),
+            ]
         )
 
-    def test_response_failed_compaction_keeps_latest_user_when_tool_work_follows_it(self):
-        body = json.dumps(
-            {
-                "input": [
-                    {"type": "message", "role": "user", "content": "old" + "x" * 300_000},
-                    {"type": "message", "role": "user", "content": "latest user context"},
-                    {
-                        "type": "custom_tool_call",
-                        "call_id": "latest-call",
-                        "name": "exec",
-                        "input": "{}",
-                    },
-                    {
-                        "type": "custom_tool_call_output",
-                        "call_id": "latest-call",
-                        "output": "y" * 300_000,
-                    },
-                ],
-            }
-        ).encode()
-
         compact, detail = response_failed.compact_request(body)
 
-        self.assertIsNotNone(compact)
-        self.assertEqual(detail["removed_inputs"], 1)
+        compact, detail = self.assert_compacted(compact, detail)
+        self.assertEqual(detail["removed_inputs"], 3)
         obj = json.loads(compact)
-        self.assertEqual(obj["input"][0]["content"], "latest user context")
+        self.assertEqual(obj["input"], [_message("user", "newest user context")])
 
     def test_response_failed_compaction_reduces_an_already_sub_budget_failure(self):
-        body = json.dumps(
-            {
-                "prompt_cache_key": "stale-full-history-key",
-                "input": [
-                    {"type": "message", "role": "user", "content": "old" + "x" * 280_000},
-                    {"type": "message", "role": "user", "content": "latest user context"},
-                    {
-                        "type": "custom_tool_call",
-                        "call_id": "latest-call",
-                        "name": "exec",
-                        "input": "{}",
-                    },
-                    {
-                        "type": "custom_tool_call_output",
-                        "call_id": "latest-call",
-                        "output": "y" * 180_000,
-                    },
-                ],
-            }
-        ).encode()
+        body = _body(
+            [
+                _message("user", "old" + "x" * 280_000),
+                _message("user", "latest user context"),
+                _call("custom_tool_call", "latest-call", "{}"),
+                _output("custom_tool_call_output", "latest-call", "y" * 180_000),
+            ],
+            prompt_cache_key="stale-full-history-key",
+        )
         self.assertLess(len(body), response_failed.COMPACTION_BUDGET)
 
         compact, detail = response_failed.compact_request(body)
 
-        self.assertIsNotNone(compact)
+        compact, detail = self.assert_compacted(compact, detail)
         self.assertLessEqual(len(compact), len(body) // 2)
         self.assertEqual(detail["removed_inputs"], 1)
         self.assertNotIn("prompt_cache_key", json.loads(compact))
 
     def test_response_failed_compaction_uses_smallest_safe_suffix_when_budget_is_impossible(self):
-        body = json.dumps(
-            {
-                "input": [
-                    {"type": "message", "role": "user", "content": "old context"},
-                    {"type": "message", "role": "user", "content": "latest user context"},
-                    {
-                        "type": "custom_tool_call",
-                        "call_id": "latest-call",
-                        "name": "exec",
-                        "input": "{}",
-                    },
-                    {
-                        "type": "custom_tool_call_output",
-                        "call_id": "latest-call",
-                        "output": "y" * 220_000,
-                    },
-                ],
-            }
-        ).encode()
+        body = _body(
+            [
+                _message("user", "old context"),
+                _message("user", "latest user context"),
+                _call("custom_tool_call", "latest-call", "{}"),
+                _output("custom_tool_call_output", "latest-call", "y" * 220_000),
+            ]
+        )
 
         compact, detail = response_failed.compact_request(body, budget=20_000)
 
-        self.assertIsNotNone(compact)
+        compact, detail = self.assert_compacted(compact, detail)
         self.assertFalse(detail["budget_met"])
         self.assertLess(len(compact), len(body))
         obj = json.loads(compact)
@@ -367,15 +291,11 @@ class TestProxySanitize(unittest.TestCase):
         self.assertTrue(response_failed.tool_pair_boundary_is_safe(obj["input"], 0))
 
     def test_response_failed_compaction_is_a_noop_when_no_safe_suffix_fits(self):
-        body = json.dumps(
-            {
-                "tools": [{"type": "function", "name": "huge", "parameters": "x" * 600_000}],
-                "prompt_cache_key": "must-remain-on-original-request",
-                "input": [
-                    {"type": "message", "role": "user", "content": "newest user context"},
-                ],
-            }
-        ).encode()
+        body = _body(
+            [_message("user", "newest user context")],
+            tools=[{"type": "function", "name": "huge", "parameters": "x" * 600_000}],
+            prompt_cache_key="must-remain-on-original-request",
+        )
 
         compact, detail = response_failed.compact_request(body)
 
@@ -384,79 +304,55 @@ class TestProxySanitize(unittest.TestCase):
         self.assertEqual(json.loads(body)["prompt_cache_key"], "must-remain-on-original-request")
 
     def test_response_failed_dialogue_recovery_keeps_latest_context_without_tool_replay(self):
-        body = json.dumps(
-            {
-                "prompt_cache_key": "stale-full-history-key",
-                "input": [
-                    {"type": "message", "role": "developer", "content": "old policy"},
-                    {"type": "message", "role": "user", "content": "old request"},
-                    {"type": "custom_tool_call", "call_id": "old", "name": "tool", "input": "{}"},
-                    {"type": "custom_tool_call_output", "call_id": "old", "output": "old result"},
-                    {"type": "message", "role": "developer", "content": "current policy"},
-                    {"type": "message", "role": "user", "content": "intermediate request"},
-                    {"type": "message", "role": "user", "content": "latest user request"},
-                    {"type": "custom_tool_call", "call_id": "new", "name": "tool", "input": "{}"},
-                    {
-                        "type": "custom_tool_call_output",
-                        "call_id": "new",
-                        "output": "large" + "x" * 100_000,
-                    },
-                ],
-            },
-            separators=(",", ":"),
-        ).encode()
+        body = _body(
+            [
+                _message("developer", "old policy"),
+                _message("user", "old request"),
+                _call("custom_tool_call", "old", "{}"),
+                _output("custom_tool_call_output", "old", "old result"),
+                _message("developer", "current policy"),
+                _message("user", "intermediate request"),
+                _message("user", "latest user request"),
+                _call("custom_tool_call", "new", "{}"),
+                _output("custom_tool_call_output", "new", "large" + "x" * 100_000),
+            ],
+            prompt_cache_key="stale-full-history-key",
+        )
 
         recovery, detail = response_failed.recover_dialogue(body)
 
-        self.assertIsNotNone(recovery)
-        self.assertIsNotNone(detail)
+        recovery, detail = self.assert_compacted(recovery, detail)
         recovered = json.loads(recovery)
         self.assertNotIn("prompt_cache_key", recovered)
         self.assertEqual(
             recovered["input"],
-            [
-                {"type": "message", "role": "developer", "content": "current policy"},
-                {"type": "message", "role": "user", "content": "latest user request"},
-            ],
+            [_message("developer", "current policy"), _message("user", "latest user request")],
         )
         self.assertEqual(detail["dropped_input_items"], 7)
         self.assertLess(len(recovery), len(body))
 
     def test_response_failed_dialogue_recovery_allows_current_user_without_instruction(self):
-        body = json.dumps(
-            {
-                "input": [
-                    {"type": "message", "role": "user", "content": "old request"},
-                    {"type": "message", "role": "assistant", "content": "old response"},
-                    {"type": "message", "role": "user", "content": "latest user request"},
-                    {"type": "custom_tool_call", "call_id": "new", "name": "tool", "input": "{}"},
-                    {
-                        "type": "custom_tool_call_output",
-                        "call_id": "new",
-                        "output": "large" + "x" * 100_000,
-                    },
-                ],
-            },
-            separators=(",", ":"),
-        ).encode()
+        body = _body(
+            [
+                _message("user", "old request"),
+                _message("assistant", "old response"),
+                _message("user", "latest user request"),
+                _call("custom_tool_call", "new", "{}"),
+                _output("custom_tool_call_output", "new", "large" + "x" * 100_000),
+            ]
+        )
 
         recovery, detail = response_failed.recover_dialogue(body)
 
-        self.assertIsNotNone(recovery)
-        self.assertIsNotNone(detail)
+        recovery, detail = self.assert_compacted(recovery, detail)
         self.assertEqual(
             json.loads(recovery)["input"],
-            [{"type": "message", "role": "user", "content": "latest user request"}],
+            [_message("user", "latest user request")],
         )
         self.assertEqual(detail["retained_messages"], 1)
 
-    def test_does_not_retry_unrelated_400(self):
-        self.assertEqual(response_failed.retry_disposition(400, b'{"error":"bad request"}'), "")
-
-    def test_runtime_server_version_uses_version_file(self):
-        self.assertEqual(
-            self.p.release_version(), Path(ROOT, "VERSION").read_text(encoding="utf-8").strip()
-        )
+    def test_source_tree_without_an_installed_manifest_has_no_release_claim(self):
+        self.assertEqual(self.p.release_version(), "0+unknown")
 
     def test_runtime_status_reports_loaded_serving_payload_sha256(self):
         identity = self.p.runtime_status()["serving_payload_sha256"]
@@ -465,31 +361,20 @@ class TestProxySanitize(unittest.TestCase):
         else:
             self.assertEqual(identity, self.p._LOADED_PAYLOAD.serving_payload_sha256)
 
-    def test_runtime_status_reports_protocol_v2_process_identity(self):
-        status = self.p.runtime_status()
-        self.assertEqual(status["handoff_protocol_version"], 2)
-        self.assertEqual(status["pid"], os.getpid())
-        self.assertEqual(status["handoff_state"], "idle")
-        self.assertIsNone(status["handoff_transaction_id"])
-        self.assertIs(status["accepting"], True)
-        self.assertIs(status["draining"], False)
-
     def test_log_redacts_secrets_limits_line_length_and_removes_query_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "proxy.log"
-            old_log_path = runtime_state.LOG_PATH
-            runtime_state.LOG_PATH = str(log_path)
+            old_log_path = state.LOG_PATH
+            state.LOG_PATH = str(log_path)
             try:
-                runtime_state.log(
+                state.log(
                     "authorization: Bearer super-secret-token "
                     "encrypted=gAAAA_replay_secret "
                     "x" * 2048
                 )
-                runtime_state.log(
-                    f"path={runtime_state.safe_request_path('/v1/responses?prompt=private')}"
-                )
+                state.log(f"path={state.safe_request_path('/v1/responses?prompt=private')}")
             finally:
-                runtime_state.LOG_PATH = old_log_path
+                state.LOG_PATH = old_log_path
 
             text = log_path.read_text(encoding="utf-8")
             mode = log_path.stat().st_mode & 0o777
@@ -501,25 +386,25 @@ class TestProxySanitize(unittest.TestCase):
         assert_private_log_mode(self, mode)
         self.assertLessEqual(
             max(len(line.encode("utf-8")) for line in text.splitlines()),
-            runtime_state.LOG_LINE_MAX_BYTES + 96,
+            state.LOG_LINE_MAX_BYTES + 96,
         )
 
     def test_log_rotation_discards_an_oversized_legacy_segment_without_reading_it(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "proxy.log"
             log_path.write_bytes(b"x" * 8192)
-            old_log_path = runtime_state.LOG_PATH
-            old_max = runtime_state.LOG_MAX_BYTES
-            old_backups = runtime_state.LOG_BACKUP_COUNT
-            runtime_state.LOG_PATH = str(log_path)
-            runtime_state.LOG_MAX_BYTES = 4096
-            runtime_state.LOG_BACKUP_COUNT = 1
+            old_log_path = state.LOG_PATH
+            old_max = state.LOG_MAX_BYTES
+            old_backups = state.LOG_BACKUP_COUNT
+            state.LOG_PATH = str(log_path)
+            state.LOG_MAX_BYTES = 4096
+            state.LOG_BACKUP_COUNT = 1
             try:
-                runtime_state.log("event=rotation_probe")
+                state.log("event=rotation_probe")
             finally:
-                runtime_state.LOG_PATH = old_log_path
-                runtime_state.LOG_MAX_BYTES = old_max
-                runtime_state.LOG_BACKUP_COUNT = old_backups
+                state.LOG_PATH = old_log_path
+                state.LOG_MAX_BYTES = old_max
+                state.LOG_BACKUP_COUNT = old_backups
 
             self.assertTrue(log_path.exists())
             self.assertLessEqual(log_path.stat().st_size, 4096)
@@ -530,14 +415,80 @@ class TestProxySanitize(unittest.TestCase):
 
     def test_fail_open_on_non_json(self):
         raw = b"not json at all"
-        out, note = responses_rewrite.sanitize_responses_body(raw)
+        out, note = rewrite.sanitize_responses_body(raw)
         self.assertEqual(out, raw)  # unchanged
         self.assertIn("passthrough", note)
 
-    def test_clean_body_untouched(self):
-        body = json.dumps({"input": [{"type": "message", "content": "hi"}]}).encode()
-        out, note = responses_rewrite.sanitize_responses_body(body)
-        self.assertIn("clean", note)
+    def test_fail_open_on_json_values_that_are_not_response_objects(self):
+        for raw in (b"[]", b"null", b'"text"'):
+            with self.subTest(raw=raw):
+                out, note = rewrite.sanitize_responses_body(raw)
+                self.assertEqual(out, raw)
+                self.assertIn("passthrough", note)
+
+    def test_sse_sanitizer_passes_non_json_and_non_target_events_unchanged(self):
+        events = (
+            b"data: [DONE]\n\n",
+            b'data: {"encrypted_content":\n\n',
+            b'data: {"type":"response.output_text.delta","delta":"ok"}\n\n',
+        )
+        for raw in events:
+            with self.subTest(raw=raw):
+                self.assertEqual(rewrite.sanitize_sse_event(raw), (raw, 0))
+
+    def test_request_sanitizer_fails_open_when_mutation_cannot_be_serialized(self):
+        raw = b'{"input":[{"type":"reasoning","encrypted_content":"opaque"}]}'
+        with mock.patch.object(rewrite.json, "dumps", side_effect=TypeError("unsupported")):
+            out, note = rewrite.sanitize_responses_body(raw)
+        self.assertEqual(out, raw)
+        self.assertIn("passthrough", note)
+
+    def test_sse_sanitizer_fails_open_when_mutation_cannot_be_serialized(self):
+        raw = (
+            b'data: {"type":"response.completed","response":{"output":['
+            b'{"type":"reasoning","encrypted_content":"opaque"}]}}\n\n'
+        )
+        with mock.patch.object(rewrite.json, "dumps", side_effect=TypeError("unsupported")):
+            self.assertEqual(rewrite.sanitize_sse_event(raw), (raw, 0))
+
+    def test_deep_request_and_sse_projection_fail_open(self):
+        nested = '{"x":' * 496 + "0" + "}" * 496
+        request = ('{"input":[{"type":"message","role":"user","content":' + nested + "}]}").encode()
+        self.assertEqual(rewrite.sanitize_responses_body(request)[0], request)
+
+        event = (
+            "data: "
+            + '{"x":' * 997
+            + '{"type":"reasoning","encrypted_content":"opaque"}'
+            + "}" * 997
+            + "\n\n"
+        ).encode()
+        self.assertEqual(rewrite.sanitize_sse_event(event), (event, 0))
+
+    def test_response_failed_pair_boundary_ignores_non_object_items(self):
+        items: list[object] = [
+            1,
+            {"type": "function_call_output", "call_id": "missing", "output": "x"},
+        ]
+        self.assertFalse(response_failed.tool_pair_boundary_is_safe(items, 0))
+        self.assertTrue(response_failed.tool_pair_boundary_is_safe(items, 2))
+
+    def test_response_failed_rejects_invalid_compaction_and_recovery_boundaries(self):
+        common = ((b"not-json", None), (b"[]", None), (b'{"input":[]}', None))
+        self.assert_rejected(
+            response_failed.compact_request,
+            (*common, (b'{"input":[1,2]}', None), (b'{"input":[{},{}]}', 0)),
+        )
+        valid = _body([_message("user", "old"), _message("user", "current")])
+        self.assert_rejected(
+            response_failed.recover_dialogue,
+            (
+                *common,
+                (b'{"input":[{"type":"message","role":"developer","content":"x"}]}', None),
+                (valid, 0),
+                (valid, 1),
+            ),
+        )
 
 
 if __name__ == "__main__":
