@@ -180,9 +180,7 @@ class TestReleasedDeployment(unittest.TestCase):
             with self.subTest(current=current):
                 payload = FakeTransaction()
                 with (
-                    mock.patch.object(
-                        process, "verified_proxy_listener_pids", return_value=listeners
-                    ),
+                    mock.patch.object(process, "listener_pids", return_value=listeners),
                     self.assertRaisesRegex(errors.InstallError, "authorized legacy bootstrap"),
                 ):
                     self._install(payload, current)
