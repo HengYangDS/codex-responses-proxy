@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 from tests.support.handoff import (
     HandoffTestCase,
     child_message,
+    child_pid_matching_health,
     entrypoint_module,
     expected_metadata,
     fake_child,
@@ -30,6 +31,35 @@ from tests.support.handoff import (
     wait_until,
 )
 from codex_dmx_proxy.listener import control
+
+
+class TestSuccessorHealthObservation(unittest.TestCase):
+    """Exact successor states accepted by the subprocess health observer."""
+
+    def test_successor_observer_accepts_the_stable_finalized_health_state(self):
+        expected = expected_metadata()
+        health = matching_health(54321, expected, handoff_state="finalized")
+
+        with mock.patch("tests.support.handoff.http_json", return_value=(200, health)):
+            observed = child_pid_matching_health(8791, expected, exclude_pid=12345)
+
+        self.assertEqual(observed, 54321)
+
+    def test_successor_observer_rejects_non_successor_health(self):
+        expected = expected_metadata()
+        cases = (
+            matching_health(54321, expected, handoff_state="idle"),
+            matching_health(54321, expected, release="wrong-release"),
+            matching_health(0, expected),
+            matching_health(True, expected),
+        )
+
+        for health in cases:
+            with (
+                self.subTest(health=health),
+                mock.patch("tests.support.handoff.http_json", return_value=(200, health)),
+            ):
+                self.assertIsNone(child_pid_matching_health(8791, expected, exclude_pid=12345))
 
 
 class TestParentHandoffStateMachine(HandoffTestCase):
