@@ -264,10 +264,9 @@ class TestProcessIdentity(unittest.TestCase):
             (script, False),
             ('python "unterminated', False),
         )
-        with mock.patch.object(process.os, "name", "posix"):
-            for command, expected in cases:
-                with self.subTest(command=command):
-                    self.assertEqual(process.command_names_path(command, script), expected)
+        for command, expected in cases:
+            with self.subTest(command=command):
+                self.assertEqual(process.command_names_path(command, script), expected)
 
         with (
             mock.patch.object(process, "listener_pids", return_value=[7, 8]),
