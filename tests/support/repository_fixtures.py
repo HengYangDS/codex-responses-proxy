@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -12,6 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from codex_dmx_proxy import installation  # noqa: E402
+from codex_dmx_proxy.release import projection  # noqa: E402
 
 
 def install_context(root: Path) -> installation.InstallContext:
@@ -56,3 +59,37 @@ def assert_private_log_mode(testcase, mode: int) -> None:
         testcase.assertEqual(mode & 0o600, 0o600)
     else:
         testcase.assertEqual(mode, 0o600)
+
+
+def write_retired_projection(
+    ctx: installation.InstallContext,
+    *,
+    version: str = "1.0.27",
+    schema: int = 2,
+    overrides: dict[str, bytes] | None = None,
+) -> dict[str, bytes]:
+    """Write one exact historical manifest inventory for lifecycle tests."""
+
+    files = {
+        relative: (f"{version}\n".encode() if relative == "VERSION" else f"{relative}\n".encode())
+        for relative in projection._RETIRED_RUNTIME_FILES[schema]
+    }
+    files.update(overrides or {})
+    if set(files) != set(projection._RETIRED_RUNTIME_FILES[schema]):
+        raise AssertionError("retired fixture must match one exact historical inventory")
+    install = Path(ctx.install_dir)
+    for relative, content in files.items():
+        target = install / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    manifest = {
+        "schema_version": schema,
+        "release": version,
+        "files": {
+            relative: hashlib.sha256(content).hexdigest() for relative, content in files.items()
+        },
+    }
+    (install / projection.PAYLOAD_MANIFEST_FILENAME).write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return files

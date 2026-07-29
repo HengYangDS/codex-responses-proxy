@@ -123,10 +123,16 @@ Replacing payload bytes is a source-side install operation. For a current
 protocol-v2 listener, source-side deployment commits the admitted release
 transaction and uses the same handoff transport and identity proof. A one-time
 legacy replacement requires explicit `--allow-legacy-bootstrap`, installed
-manifest integrity, exactly one verified PID, and a bounded zero-active quiet
-window. `--force-legacy-bootstrap` adds separate interruption authorization; it
-is unavailable to `reload`, rejected without the allow flag, and never applies
-to a current protocol-v2 listener.
+historical-manifest integrity, exactly one PID bound to the manifest-derived
+legacy entrypoint, and a bounded zero-active quiet window. Candidate commit then
+terminates only that bound process and replaces native supervision before
+successor proof; failure restores the owned projection. The same historical
+verifier governs transaction snapshot and purge. `--force-legacy-bootstrap`
+adds separate interruption authorization; it skips only the quiet wait, is
+unavailable to `reload`, is rejected without the allow flag, and never applies
+to a current protocol-v2 listener. Rollback after old-process exit also restores
+the historical supervision entrypoint and requires accepting runtime proof; an
+unproven restoration is a rollback failure, never a successful rollback claim.
 
 Uninstall has three distinct authority boundaries. Route restoration changes
 only exact managed state and preserves drift, but is not atomic with later

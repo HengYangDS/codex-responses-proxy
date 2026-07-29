@@ -112,10 +112,17 @@ no arbitrary stage-path upgrade or controller-only partial apply.
 The sole compatibility exception is source-side replacement of a verified
 listener that predates protocol-v2 handoff. It requires explicit
 `--allow-legacy-bootstrap` authorization and a bounded zero-active quiet window
-on the same PID before payload mutation. `--force-legacy-bootstrap` is a separate
-interruption authorization; it still requires manifest integrity and exactly
-one verified legacy listener. Neither flag applies to same-payload reload or a
-current protocol-v2 listener.
+on the same PID before payload mutation. The historical verifier shared with
+rollback and purge proves the schema-specific inventory and derives the retired
+entrypoint used by listener discovery, quiet-window rechecks, and termination.
+After candidate commit, native supervision is replaced before successor proof
+so no service retains the old entrypoint. `--force-legacy-bootstrap` is separate
+interruption authorization; it skips only the quiet wait, never manifest,
+entrypoint, PID, or rollback proof. Neither flag applies to same-payload reload
+or a current protocol-v2 listener. A failure after old-process exit restores the
+old owned projection, reinstalls supervision with the historical entrypoint, and
+must prove one accepting historical listener; otherwise rollback is explicitly
+reported as failed.
 
 Uninstall keeps route restoration separate from destructive cleanup: drift or a
 failed delegated restore preserves configuration, but does not by itself make

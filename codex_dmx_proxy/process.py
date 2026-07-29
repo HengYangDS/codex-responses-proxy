@@ -9,8 +9,17 @@ import shlex
 import subprocess
 import time
 from ctypes import wintypes
+from dataclasses import dataclass
 
 from codex_dmx_proxy.installation import InstallContext
+
+
+@dataclass(frozen=True)
+class OwnedProcess:
+    """A PID bound to the exact installed script proven to own it."""
+
+    pid: int
+    script: str
 
 
 def listener_pids(port: int) -> list[int]:
@@ -162,10 +171,16 @@ def pids_naming_path(expected_path: str) -> list[int]:
     ]
 
 
-def verified_proxy_listener_pids(context: InstallContext) -> list[int]:
-    """Return listeners whose argv exactly names this installed proxy script."""
+def verified_listener_pids(port: int, expected_path: str) -> list[int]:
+    """Return listeners whose argv exactly names ``expected_path``."""
 
-    return [pid for pid in listener_pids(context.port) if pid_names_path(pid, context.proxy_script)]
+    return [pid for pid in listener_pids(port) if pid_names_path(pid, expected_path)]
+
+
+def verified_proxy_listener_pids(context: InstallContext) -> list[int]:
+    """Return listeners whose argv exactly names the current proxy entrypoint."""
+
+    return verified_listener_pids(context.port, context.proxy_script)
 
 
 def terminate_pid(pid: int, *, expected_path: str, timeout_seconds: float = 5.0) -> bool:

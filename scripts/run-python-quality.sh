@@ -41,8 +41,8 @@ coverage_version=$("$python_path" -m coverage --version 2>/dev/null | sed -n '1p
   exit 2
 }
 case "$($ty_path --version)" in
-  "ty 0.0.56"|"ty 0.0.56 "*) ;;
-  *) echo "ty 0.0.56 is required" >&2; exit 2 ;;
+  "ty 0.0.64"|"ty 0.0.64 "*) ;;
+  *) echo "ty 0.0.64 is required" >&2; exit 2 ;;
 esac
 
 set -- $(
