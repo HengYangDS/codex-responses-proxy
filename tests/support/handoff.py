@@ -147,17 +147,20 @@ def idle_runtime(**overrides) -> dict[str, object]:
 
 
 def child_pid_matching_health(port: int, expected: dict, *, exclude_pid: int | None):
-    """Return the matching successor PID observed through loopback health."""
+    """Return the exact serving or finalized successor observed through health."""
     try:
         _, health = http_json(port, "/healthz", timeout=1)
     except (OSError, urllib.error.URLError, ValueError):
         return None
     pid = health.get("pid")
     required = matching_health(pid, expected)
+    required["handoff_state"] = health.get("handoff_state")
     return (
         pid
-        if isinstance(pid, int)
+        if type(pid) is int
+        and pid > 0
         and pid != exclude_pid
+        and health.get("handoff_state") in {"serving", "finalized"}
         and all(health.get(key) == value for key, value in required.items())
         else None
     )
