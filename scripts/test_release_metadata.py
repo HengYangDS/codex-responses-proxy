@@ -471,6 +471,7 @@ def test_gitlab_tag_gates_require_exact_tag_validation() -> None:
         ("publish-gitlab-release:", None),
     ):
         block = ci_block(ci, job, next_job)
+        require('GIT_DEPTH: "0"' in block, f"{job} must fetch complete Git history")
         require(strict in block, f"{job} must validate the exact provider tag")
         require("--prepare-release" not in block, f"{job} must not accept a pending release")
 
