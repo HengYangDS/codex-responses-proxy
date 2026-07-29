@@ -17,6 +17,9 @@ stages:
   stage: verify
   image: python:${PYTHON_VERSION}-slim
   tags: [codex-dmx-proxy-gitlab-ci]
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y --no-install-recommends git openssh-client
   script:
     - python --version
     - python -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
@@ -80,6 +83,8 @@ verify-python-quality:
   image: python:3.12-slim
   tags: [codex-dmx-proxy-gitlab-ci]
   before_script:
+    - apt-get update -qq
+    - apt-get install -y --no-install-recommends git openssh-client
     - python -m pip install --disable-pip-version-check --no-cache-dir ruff==0.16.0 ty==0.0.56 coverage==7.13.5
   script:
     - PYTHON=python RUFF=ruff TY=ty sh scripts/run-python-quality.sh

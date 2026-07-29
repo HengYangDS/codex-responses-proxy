@@ -199,6 +199,8 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
     owner = "python scripts/run-python-tests.py"
     if owner not in block:
         raise SystemExit(f".python-verify template must run {owner}")
+    if "apt-get install -y --no-install-recommends git openssh-client" not in block:
+        raise SystemExit(".python-verify must install Git and OpenSSH for signed-source tests")
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     tests = metadata["tool"]["codex-dmx-proxy"]["quality"]["coverage-tests"]
     expected = sorted(str(path.relative_to(ROOT)) for path in (ROOT / "tests").glob("test_*.py"))
@@ -217,7 +219,14 @@ def test_python_quality_gate_is_cross_forge() -> None:
     owner = "sh scripts/run-python-quality.sh"
     if owner not in gitlab or owner not in github:
         raise SystemExit(f"both Forge quality projections must invoke {owner}")
+    quality_start = gitlab.index("verify-python-quality:")
+    quality_end = gitlab.index("\n\npublish-gitlab-release:", quality_start)
+    quality_block = gitlab[quality_start:quality_end]
+    if "apt-get install -y --no-install-recommends git openssh-client" not in quality_block:
+        raise SystemExit("GitLab Python quality must install Git and OpenSSH for coverage tests")
     script = (ROOT / "scripts" / "run-python-quality.sh").read_text(encoding="utf-8")
+    if '"ty 0.0.56"|"ty 0.0.56 "*' not in script:
+        raise SystemExit("Python quality must accept both supported ty 0.0.56 version forms")
     for token in (
         '"$ruff_path" check .',
         '"$ruff_path" format --check .',

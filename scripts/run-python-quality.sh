@@ -30,7 +30,7 @@ ty_path=$(command -v "$ty") || {
   exit 2
 }
 case "$($ty_path --version)" in
-  "ty 0.0.56 "*) ;;
+  "ty 0.0.56"|"ty 0.0.56 "*) ;;
   *) echo "ty 0.0.56 is required" >&2; exit 2 ;;
 esac
 
