@@ -7,6 +7,13 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.32] - 2026-07-29
+
+### Fixed
+
+- Restore the exact annotated GitHub tag object after checkout and bind its
+  peeled commit before tag verification or Release publication.
+
 ## [1.0.31] - 2026-07-29
 
 ### Fixed
