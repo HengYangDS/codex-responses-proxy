@@ -6,6 +6,15 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
+## [1.0.28] - 2026-07-29
+
+### Fixed
+
+- Install Git and OpenSSH in every GitLab Python and quality job that executes
+  signed-release-source tests, and accept both supported `ty 0.0.56` version
+  output forms. This closes the hosted-only gap exposed by the failed
+  `v1.0.27` tag pipeline without weakening or skipping the signing tests.
+
 ## [1.0.27] - 2026-07-29
 
 ### Fixed
