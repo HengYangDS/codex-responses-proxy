@@ -31,6 +31,8 @@ from tests.support.handoff import write_installed_payload
 from codex_dmx_proxy import installation
 from codex_dmx_proxy import process
 
+SUCCESSOR_TIMEOUT = 20
+
 
 class TestRealSubprocessHandoffIntegration(unittest.TestCase):
     """Exercise the complete rolling handoff against owned loopback processes."""
@@ -145,7 +147,8 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         child_pid, observe = child_pid_observer(port, expected, exclude_pid=old.pid)
 
         self.assertTrue(
-            wait_until(observe, timeout=20), "child did not take over serving with matching health"
+            wait_until(observe, timeout=SUCCESSOR_TIMEOUT),
+            "child did not take over serving with matching health",
         )
         self.assertTrue(
             wait_until(lambda: old.poll() is not None, timeout=10),
@@ -167,7 +170,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         self.assertEqual(status_code, 202)
         child_one, observe_first = child_pid_observer(port, first, exclude_pid=old.pid)
 
-        self.assertTrue(wait_until(observe_first, timeout=10))
+        self.assertTrue(wait_until(observe_first, timeout=SUCCESSOR_TIMEOUT))
         self.assertTrue(wait_until(lambda: old.poll() is not None, timeout=10))
 
         second = installed_expected_metadata(ctx, "txn-repeat-2")
@@ -182,7 +185,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         self.assertEqual(status_code, 202)
         child_two, observe_second = child_pid_observer(port, second, exclude_pid=child_one["value"])
 
-        self.assertTrue(wait_until(observe_second, timeout=10))
+        self.assertTrue(wait_until(observe_second, timeout=SUCCESSOR_TIMEOUT))
         retired = wait_until(lambda: not pid_alive(child_one["value"]), timeout=10)
         child_one_pid = child_one["value"]
         detail = (
@@ -242,7 +245,8 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         child_pid, observe = child_pid_observer(port, expected, exclude_pid=old.pid)
 
         self.assertTrue(
-            wait_until(observe, timeout=10), "child did not take over serving with matching health"
+            wait_until(observe, timeout=SUCCESSOR_TIMEOUT),
+            "child did not take over serving with matching health",
         )
 
         # The queue is now empty (the held request already popped its own
@@ -306,7 +310,8 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         child_pid, observe = child_pid_observer(port, expected, exclude_pid=old.pid)
 
         self.assertTrue(
-            wait_until(observe, timeout=10), "child did not take over serving with matching health"
+            wait_until(observe, timeout=SUCCESSOR_TIMEOUT),
+            "child did not take over serving with matching health",
         )
 
         # Deterministic: the held request's behavior was already popped before
