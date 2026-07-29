@@ -31,17 +31,17 @@ def check_python_metadata() -> None:
     """Keep Python support metadata aligned without duplicating release ownership."""
 
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    if "project" in metadata or "build-system" in metadata:
-        raise ValueError("pyproject.toml is tool metadata, not a Python distribution contract")
     repository = metadata.get("tool", {}).get("codex-dmx-proxy", {})
-    if repository.get("supported-python") != ">=3.12" or "python-requires" in repository:
-        raise ValueError("pyproject.toml must support Python >=3.12 without an upper bound")
-    if repository.get("version-source") != "VERSION" or "version" in repository:
-        raise ValueError("VERSION must remain the only release-version owner")
-    if repository.get("distribution-mode") != "runtime-file-payload":
-        raise ValueError("the repository must declare its explicit runtime-file payload model")
-    if repository.get("build-system-allowed") is not False:
-        raise ValueError("a Python build system requires a separate complete packaging contract")
+    if repository.get("requires-python") != ">=3.12":
+        raise ValueError("pyproject.toml must require Python >=3.12 without an upper bound")
+    if repository.get("version-source") != "VERSION":
+        raise ValueError("pyproject.toml must keep VERSION as the version owner")
+    if (
+        "project" in metadata
+        or repository.get("distribution") != "runtime-files"
+        or "build-system" in metadata
+    ):
+        raise ValueError("the repository must remain an unbuilt runtime-file distribution")
 
 
 def _version_key(version: str) -> tuple[int, int, int]:
@@ -301,7 +301,7 @@ def main() -> None:
         )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    proxy = (ROOT / "proxy" / "dmx_responses_proxy.py").read_text(encoding="utf-8")
+    proxy = (ROOT / "codex_dmx_proxy" / "listener" / "entrypoint.py").read_text(encoding="utf-8")
     if "release_version()" not in proxy:
         raise SystemExit("proxy runtime header does not read VERSION")
     try:

@@ -78,7 +78,7 @@ provider identity.
 ## Provider identities
 
 GitLab provenance uses `Yang HENG <heng.yang.ds@hotmail.com>`. GitHub provenance
-uses `HengYang <hengyang.2003@tsinghua.org.cn>`. Author and committer must both
+uses `Yang HENG <hengyang.2003@tsinghua.org.cn>`. Author and committer must both
 match the relevant identity for every reachable commit. The same signing key
 may be bound to distinct provider identities, but each provider verifies every
 commit and tag against its own committed allowed-signers file.

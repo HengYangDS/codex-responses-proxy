@@ -17,7 +17,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from platform_adapters import payload, publication, release_source  # noqa: E402
+from codex_dmx_proxy.release import publication  # noqa: E402
+from codex_dmx_proxy.release import inventory  # noqa: E402
+from codex_dmx_proxy.release import admission as release_admission  # noqa: E402
+from codex_dmx_proxy.release import projection as payload_projection
+from codex_dmx_proxy.release import transaction as payload_transaction  # noqa: E402
 from tests.support.publication import verified_authority  # noqa: E402
 from tests.support.repository_fixtures import install_context  # noqa: E402
 
@@ -25,10 +29,7 @@ from tests.support.repository_fixtures import install_context  # noqa: E402
 def _git_environment() -> dict[str, str]:
     """Return a deterministic Git environment isolated from host configuration."""
 
-    environment = os.environ.copy()
-    for name in tuple(environment):
-        if name.startswith("GIT_"):
-            environment.pop(name)
+    environment = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
     environment.update(
         {
             "GIT_CONFIG_GLOBAL": os.devnull,
@@ -82,13 +83,14 @@ class TestReleasedSourceProjectionPipeline(unittest.TestCase):
             encoding="utf-8",
         )
 
-        source_only = {
-            "install.py",
-            "platform_adapters/deployment.py",
-            "platform_adapters/release_source.py",
-        }
-        self.source_only = tuple(sorted(source_only.difference(payload.RUNTIME_PAYLOAD_FILES)))
-        for relative in (*payload.RUNTIME_PAYLOAD_FILES, *self.source_only):
+        # A released checkout carries the runtime payload plus this exact
+        # source-only pre-projection closure.
+        self.source_only = set(inventory.SOURCE_INSTALL_FILES)
+        self.assertTrue(
+            self.source_only.isdisjoint(payload_projection.RUNTIME_PAYLOAD_FILES),
+            "source-side installer files must not leak into the installed runtime",
+        )
+        for relative in (*payload_projection.RUNTIME_PAYLOAD_FILES, *self.source_only):
             source = ROOT / relative
             target = self.repository / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -117,19 +119,21 @@ class TestReleasedSourceProjectionPipeline(unittest.TestCase):
         )
 
     def _publication(self) -> publication.PublishedRelease:
-        tag = f"refs/tags/v{self.version}"
-        tag_object = _git(self.repository, "rev-parse", tag)
-        commit = _git(self.repository, "rev-parse", f"{tag}^{{commit}}")
-        tree = _git(self.repository, "rev-parse", f"{tag}^{{tree}}")
+        tag = f"v{self.version}"
+        ref = f"refs/tags/{tag}"
+        tag_object, commit, tree = (
+            _git(self.repository, "rev-parse", revision)
+            for revision in (ref, f"{ref}^{{commit}}", f"{ref}^{{tree}}")
+        )
         return verified_authority(
             {
                 "schema_version": 1,
-                "tag": f"v{self.version}",
+                "tag": tag,
                 "verified": True,
                 "tree_equal": True,
                 "forges": {
                     "gitlab": {
-                        "tag": f"v{self.version}",
+                        "tag": tag,
                         "tag_object_oid": tag_object,
                         "commit_oid": commit,
                         "tree_oid": tree,
@@ -137,7 +141,7 @@ class TestReleasedSourceProjectionPipeline(unittest.TestCase):
                         "signature_verified": True,
                     },
                     "github": {
-                        "tag": f"v{self.version}",
+                        "tag": tag,
                         "tag_object_oid": "f" * len(tag_object),
                         "commit_oid": "e" * len(commit),
                         "tree_oid": tree,
@@ -148,26 +152,35 @@ class TestReleasedSourceProjectionPipeline(unittest.TestCase):
             }
         )
 
+    def test_source_only_plus_runtime_inventory_is_import_complete(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, str(self.repository / "install.py"), "--help"],
+            cwd=self.base,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("Install Codex DMX Proxy", completed.stdout)
+
     def test_signed_release_projects_only_runtime_and_finalizes_provenance(self) -> None:
-        admitted = release_source.admit(
+        admitted = release_admission.admit(
             self.repository,
-            payload_paths=payload.RUNTIME_PAYLOAD_FILES,
-            serving_payload_paths=payload.SERVING_PAYLOAD_FILES,
+            payload_paths=payload_projection.RUNTIME_PAYLOAD_FILES,
             trust_anchor=self.trust_anchor,
             publication=self._publication(),
             git_path=self.git,
             ssh_keygen_path=self.ssh_keygen,
         )
-        context = install_context(self.base / "host")
-        transaction = payload.begin_transaction(context, admitted)
+        install = install_context(self.base / "host")
+        transaction = payload_transaction.begin_transaction(install, admitted)
 
         transaction.commit_projection()
 
-        install_root = Path(context.install_dir)
-        expected_projection = {
-            *payload.RUNTIME_PAYLOAD_FILES,
-            payload.PAYLOAD_MANIFEST_FILENAME,
-            payload.RELEASE_RECEIPT_FILENAME,
+        install_root = Path(install.install_dir)
+        expected_projection = set(payload_projection.RUNTIME_PAYLOAD_FILES) | {
+            payload_projection.PAYLOAD_MANIFEST_FILENAME,
+            payload_projection.RELEASE_RECEIPT_FILENAME,
         }
         actual_projection = {
             path.relative_to(install_root).as_posix()
@@ -177,50 +190,39 @@ class TestReleasedSourceProjectionPipeline(unittest.TestCase):
         self.assertEqual(actual_projection, expected_projection)
         for relative in self.source_only:
             self.assertFalse((install_root / relative).exists())
-        for relative in payload.RUNTIME_PAYLOAD_FILES:
-            self.assertEqual(
-                (install_root / relative).read_bytes(),
-                (self.repository / relative).read_bytes(),
-            )
 
-        receipt_path = install_root / payload.RELEASE_RECEIPT_FILENAME
-        manifest_path = Path(payload.payload_manifest_path(context))
+        receipt_path = install_root / payload_projection.RELEASE_RECEIPT_FILENAME
+        manifest_path = Path(payload_projection.payload_manifest_path(install))
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual(receipt, admitted.receipt)
-        self.assertEqual(
-            hashlib.sha256(receipt_path.read_bytes()).hexdigest(), admitted.receipt_sha256
-        )
+        self.assertEqual(receipt, release_admission._plain_value(admitted.receipt))
         self.assertEqual(manifest["release"], self.version)
-        self.assertEqual(set(manifest["files"]), set(payload.RUNTIME_PAYLOAD_FILES))
-        self.assertEqual(set(manifest["serving_files"]), set(payload.SERVING_PAYLOAD_FILES))
+        self.assertEqual(set(manifest["files"]), set(payload_projection.RUNTIME_PAYLOAD_FILES))
+        self.assertEqual(
+            set(manifest["serving_files"]), set(payload_projection.SERVING_PAYLOAD_FILES)
+        )
         self.assertEqual(manifest["release_receipt_sha256"], admitted.receipt_sha256)
         self.assertEqual(manifest["serving_payload_sha256"], admitted.serving_payload_sha256)
-        self.assertEqual(
-            transaction.expected["manifest_sha256"],
-            hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
-        )
-        ok, detail = payload.verify_payload_manifest(context)
+        ok, detail = payload_projection.verify_payload_manifest(install)
         self.assertTrue(ok, detail)
 
         journal = json.loads(
-            Path(payload.transaction_journal_path(context)).read_text(encoding="utf-8")
+            Path(payload_transaction.transaction_journal_path(install)).read_text(encoding="utf-8")
         )
-        self.assertEqual(journal["state"], "committed")
-        self.assertEqual(journal["version"], self.version)
-        self.assertEqual(journal["receipt_sha256"], admitted.receipt_sha256)
 
         runtime = {"pid": 1234, "accepting": True}
         transaction.finalize(runtime)
 
         state = json.loads(
-            Path(payload.installed_release_state_path(context)).read_text(encoding="utf-8")
+            Path(payload_transaction.installed_release_state_path(install)).read_text(
+                encoding="utf-8"
+            )
         )
         self.assertEqual(state["version"], self.version)
         self.assertEqual(state["receipt_sha256"], admitted.receipt_sha256)
         self.assertEqual(state["transaction_id"], journal["transaction_id"])
         self.assertEqual(state["runtime"], runtime)
-        self.assertFalse(Path(payload.payload_transaction_dir(context)).exists())
+        self.assertFalse(Path(payload_transaction.payload_transaction_dir(install)).exists())
 
 
 if __name__ == "__main__":

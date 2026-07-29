@@ -25,7 +25,7 @@ conversation by mutating session JSONL, SQLite state, archives, or model
 metadata. AIGW-owned marked provider blocks remain immutable to proxy route
 commands.
 
-The pure policy in `proxy/input_compatibility.py` owns the exact observed
+The pure policy in `codex_dmx_proxy/compatibility/input_variant.py` owns the exact observed
 Responses input-union failure. Transport orchestration may invoke that policy
 once to construct a strictly smaller network request from the latest system,
 developer, and user messages plus top-level instructions. No stored transcript
@@ -38,25 +38,46 @@ Installation is permitted only after the source-side installer itself verifies
 the provider-native signed GitLab and GitHub tags, required hosted CI jobs,
 formal Release records, and common source tree. The evidence-only
 `scripts/verify-publication-proof.py` exposes the same observation without
-minting reusable authority. The installer then verifies that checkout `HEAD` is the exact signed
-annotated `v<VERSION>` tag under an external allowed-signers anchor.
+minting reusable authority. The installer requires a clean checkout before that
+live observation; admission checks clean state again, then verifies that `HEAD`
+is the exact signed annotated `v<VERSION>` tag under an external allowed-signers
+anchor.
 
-`platform_adapters.release_source` reads immutable Git objects rather than
+`codex_dmx_proxy.release.admission` reads immutable Git objects rather than
 working-tree payload bytes and returns an opaque, immutable, one-use release
 capability. That capability binds the tag object, commit, tree, dual-Forge
 publication evidence, payload blobs and modes, aggregate serving-payload digest,
-and canonical receipt. A release archive, arbitrary directory, working-tree
-stage, or installed controller cannot create that capability.
+and canonical receipt. Before minting, admission compares the frozen `HEAD`, tag
+object, tag commit, tree, and object format, requires clean state a final time,
+and compares the same identity again. Dirty state or a clean ref move is rejected
+rather than admitted. Git verification ignores global, system, and `GIT_*`
+environment overrides, and disables replace objects, hooks, and filesystem
+monitoring. A release archive, arbitrary directory, working-tree stage, or
+installed controller cannot create that capability.
 
 ## Payload transaction and provenance
 
-`platform_adapters.payload` consumes the capability once. It owns the private
-sibling transaction, exact rollback snapshot, canonical release receipt,
-manifest, installed-release state, and recovery-required journal. The manifest
-covers only declared executable files and records release identity, per-file
-digests, the canonical aggregate serving-payload digest, and the release-receipt
-digest. Configuration, backups, logs, request data, credentials, and route state
-are outside the payload transaction.
+`codex_dmx_proxy.release.projection` owns the installed manifest schema,
+integrity reader, exact historical inventories, and manifest-bounded purge. The
+manifest covers only declared executable files and records release identity,
+per-file digests, the canonical aggregate serving-payload digest, and the
+release-receipt digest. `codex_dmx_proxy.release.transaction` consumes the
+capability once and owns the private sibling transaction, exact rollback
+snapshot, commit, installed-release state, and recovery-required journal while
+composing projection writes. Configuration, backups, logs, request data,
+credentials, and route state remain outside both owners.
+
+The sibling transaction is private coordination state for the installer, not a
+cryptographic evidence carrier. Its permissions isolate other local users; a
+process already running as the same operating-system user is outside this
+rollback-integrity threat boundary. Forge signatures, release admission, and the
+installed manifest remain the authenticity evidence.
+
+Cleanup follows the same ownership boundary. Exact retired raw-capture files are
+deleted without being read and are never copied into rollback. Retired
+install-owned executable paths are included in the prior-payload snapshot before
+the candidate projection removes them, allowing a proven rollback to reconstruct
+the exact previous owned projection without retaining obsolete paths on success.
 
 A fresh installation or replacement finalizes only after one accepting listener
 proves the expected release, aggregate serving-payload digest, receipt digest,
@@ -67,9 +88,11 @@ blindly.
 
 `control.py status --json` and portable `governance.py --json` are read-only
 views of installed integrity, route authority, listener identity, transaction
-state, and startup-frozen runtime identity. The `proxy/` directory remains an
-installed script-directory module set, not a Python package or compatibility
-facade.
+state, and startup-frozen runtime identity. `codex_dmx_proxy` is the single
+product root: `compatibility` owns pure provider recovery, `listener` owns the
+serving process, `release` owns source and payload identity, `deployment` owns
+release application, `route` owns reversible route state, and `supervision`
+owns native user services. Package initializers are declarations, not facades.
 
 ## Lifecycle ownership
 
@@ -82,7 +105,7 @@ pre-finalize failure resumes old admission only after child exit is confirmed.
 An unconfirmed abort fails closed.
 
 A different release is installed only by source-side `install.py`. After release
-admission and transaction commit, `platform_adapters.deployment` uses the same
+admission and transaction commit, `codex_dmx_proxy.deployment.apply` uses the same
 protocol-v2 handoff owner and runtime identity proof. Installed control exposes
 no arbitrary stage-path upgrade or controller-only partial apply.
 
@@ -93,6 +116,17 @@ on the same PID before payload mutation. `--force-legacy-bootstrap` is a separat
 interruption authorization; it still requires manifest integrity and exactly
 one verified legacy listener. Neither flag applies to same-payload reload or a
 current protocol-v2 listener.
+
+Uninstall keeps route restoration separate from destructive cleanup: drift or a
+failed delegated restore preserves configuration, but does not by itself make
+the later service-removal sequence atomic. Payload mutation begins only after
+the native service reports `absent` and exact owned watchdog and listener
+processes are proved gone. Ownership requires a Python command whose resolved
+`argv[1]` equals the installed script; identity is re-read before signalling and
+boundedly rechecked afterwards so PID reuse cannot target a new occupant.
+`--purge` removes only a valid current manifest inventory or an exact supported
+historical inventory. Unknown physical content is preserved and reported as an
+incomplete uninstall.
 
 ## Diagnostic boundary
 

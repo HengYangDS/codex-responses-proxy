@@ -63,15 +63,15 @@ canonical_tag=$(git -C "$source" rev-parse refs/tags/v1.0.0)
 git clone -q --no-local "file://$source" "$bootstrap"
 git -C "$bootstrap" tag -d v1.0.0 >/dev/null
 FILTER_BRANCH_SQUELCH_WARNING=1 git -C "$bootstrap" filter-branch -f --env-filter '
-  GIT_AUTHOR_NAME="HengYang"
+  GIT_AUTHOR_NAME="Yang HENG"
   GIT_AUTHOR_EMAIL="hengyang.2003@tsinghua.org.cn"
-  GIT_COMMITTER_NAME="HengYang"
+  GIT_COMMITTER_NAME="Yang HENG"
   GIT_COMMITTER_EMAIL="hengyang.2003@tsinghua.org.cn"
 ' -- main >/dev/null 2>&1
 git -C "$bootstrap" for-each-ref --format='%(refname)' refs/original/ | while IFS= read -r ref; do
   git -C "$bootstrap" update-ref -d "$ref"
 done
-git -C "$bootstrap" -c user.name=HengYang -c user.email=hengyang.2003@tsinghua.org.cn \
+git -C "$bootstrap" -c user.name='Yang HENG' -c user.email=hengyang.2003@tsinghua.org.cn \
   -c gpg.format=ssh -c user.signingkey="$key" tag -s -a v1.0.0 -m 'GitHub release identity'
 git -C "$bootstrap" remote set-url origin "file://$remote"
 git -C "$bootstrap" -c core.hooksPath=/dev/null push -q origin main refs/tags/v1.0.0

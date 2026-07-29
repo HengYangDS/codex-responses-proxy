@@ -4,11 +4,41 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
-from platform_adapters import publication
+from codex_dmx_proxy.release import publication
+
+
+VERIFY_ARGUMENTS = dict(
+    tag="v1.2.3",
+    gitlab_remote="gitlab-remote",
+    gitlab_api_base="https://gitlab.example/api/v4",
+    gitlab_repo="gitlab/repository",
+    github_remote="github-remote",
+    github_repo="github/repository",
+    gitlab_anchor=Path("gitlab-anchor"),
+    github_anchor=Path("github-anchor"),
+    policy_path=Path("publication-policy.toml"),
+)
+
+
+def forge_evidence(*, items: list[dict[str, object]] | None = None) -> dict[str, object]:
+    """Return minimal matching dual-Forge evidence for authority tests."""
+    identity: dict[str, object] = {
+        "tag_object_oid": "a" * 40,
+        "commit_oid": "b" * 40,
+        "tree_oid": "c" * 40,
+    }
+    if items is not None:
+        identity["items"] = items
+    return {
+        "verified": True,
+        "tag": "v1.2.3",
+        "forges": {
+            provider: {"provider": provider, **identity} for provider in ("gitlab", "github")
+        },
+    }
 
 
 def verified_authority(evidence: Mapping[str, Any]) -> publication.PublishedRelease:
@@ -28,26 +58,19 @@ def verified_authority(evidence: Mapping[str, Any]) -> publication.PublishedRele
         assert isinstance(forge, Mapping)
         return forge
 
-    modules = {
-        "publication_proof_git": SimpleNamespace(GitProofError=RuntimeError, collect=collect_git),
-        "publication_proof_gitlab": SimpleNamespace(
-            GitLabProofError=RuntimeError,
-            collect=collect_hosted,
-        ),
-        "publication_proof_github": SimpleNamespace(
-            GitHubProofError=RuntimeError,
-            collect=collect_hosted,
-        ),
-        "publication_proof": SimpleNamespace(
-            evaluate=lambda tag, gitlab, github, policy: {
+    with (
+        mock.patch.object(publication.git, "collect", side_effect=collect_git),
+        mock.patch.object(publication.gitlab, "collect", side_effect=collect_hosted),
+        mock.patch.object(publication.github, "collect", side_effect=collect_hosted),
+        mock.patch.object(
+            publication.evaluator,
+            "evaluate",
+            side_effect=lambda tag, gitlab, github, policy: {
                 "verified": True,
                 "tree_equal": True,
                 "forges": {"gitlab": gitlab, "github": github},
-            }
+            },
         ),
-    }
-    with (
-        mock.patch.object(publication, "_script_module", side_effect=modules.__getitem__),
         mock.patch.object(
             publication,
             "load_policy",

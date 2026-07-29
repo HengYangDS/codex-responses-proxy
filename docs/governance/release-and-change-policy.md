@@ -22,7 +22,9 @@ satisfy all of the following:
 - `CHANGELOG.md` starts with one `Unreleased` heading and released headings are
   descending, date-correct, and in one-to-one correspondence with reachable
   provider-native tags;
-- repository metadata, quality, coverage, and the complete platform matrix pass;
+- repository metadata and quality pass, combined, statement-only, and
+  branch-only coverage each reach at least 95%, and the complete platform matrix
+  passes;
 - the tag is a signed annotated tag that directly identifies the release commit;
 - claims distinguish source structure, Forge publication, local installation,
   physical host acceptance, and original-task recovery.
@@ -53,20 +55,31 @@ record, and requires the two tags to bind the same source tree. Its JSON is
 audit evidence only. Installation repeats live verification in the same process;
 no serialized document can be converted back into installation authority.
 
-The source-side installer independently requires a clean checkout whose `HEAD`
-is the exact signed annotated `v<VERSION>` tag. It reads payload bytes from Git
-objects, never from an arbitrary working-tree stage. `platform_adapters.release_source`
+The source-side installer requires a clean checkout before live publication
+verification. Admission checks clean state again, requires `HEAD` to be the exact
+signed annotated `v<VERSION>` tag, and reads payload bytes from Git objects,
+never from an arbitrary working-tree stage. Before capability minting, it
+compares the frozen `HEAD`, tag object, tag commit, tree, and object format,
+requires a final clean checkout, then compares the same identity again. Dirty
+state and clean ref movement both fail closed. `codex_dmx_proxy.release.admission`
 returns an opaque one-use capability binding source identity, publication proof,
 payload blobs and modes, aggregate serving identity, receipt, and sidecar.
 
 ## Installation transaction
 
 Every payload mutation is owned by source-side `install.py`. The installer
-consumes the release capability into one private transaction that owns the
-candidate projection, rollback snapshot, canonical receipt, manifest,
-installed-release state, and recovery hold. It refuses downgrades and same-version
-replays. It finalizes only after the accepting listener proves release,
-aggregate serving-payload digest, release-receipt digest, and manifest digest.
+consumes the release capability into one private transaction that owns commit,
+rollback snapshot, installed-release state, and recovery hold. The separate
+installed-projection owner defines and verifies the manifest, writes the
+canonical receipt, and enforces manifest-bounded purge. The transaction refuses
+downgrades and same-version replays and finalizes only after the accepting
+listener proves release, aggregate serving-payload digest, release-receipt
+digest, and manifest digest.
+
+The private transaction is same-process rollback coordination, not signed
+evidence. Directory permissions exclude other local users, but same-UID process
+tampering is outside its integrity boundary; publication signatures and the
+admitted release remain the authenticity owners.
 
 Failure before a proven terminal state restores the exact previous owned
 projection. If a committed handoff result is unknown, the transaction is kept as
@@ -74,6 +87,12 @@ projection. If a committed handoff result is unknown, the transaction is kept as
 control exposes no arbitrary stage-path upgrade and no controller-only partial
 apply. Release archives are not installation sources because they cannot carry
 the signed annotated tag object and its verified publication chain.
+
+Retired raw captures are a separate privacy cleanup: their exact filenames are
+removed before a transaction is prepared and their contents never enter the
+rollback snapshot. Retired install-owned executable paths are different; the
+snapshot first preserves any prior owned bytes, and commit then removes those
+paths from the candidate projection so a failed deployment can restore them.
 
 Route changes remain owned by AIGW whenever its marked provider block is present.
 
@@ -96,6 +115,15 @@ manifest integrity, exactly one verified PID, and a bounded zero-active quiet
 window. `--force-legacy-bootstrap` adds separate interruption authorization; it
 is unavailable to `reload`, rejected without the allow flag, and never applies
 to a current protocol-v2 listener.
+
+Uninstall has three distinct authority boundaries. Route restoration changes
+only exact managed state and preserves drift, but is not atomic with later
+cleanup. Native-service deregistration must be confirmed as `absent`, and each
+owned watchdog or listener must be identified by a Python executable plus exact
+resolved script in `argv[1]`, rechecked before signalling, and boundedly proved
+gone before payload mutation. A purge trusts only a valid current manifest or an
+exact supported historical inventory; unknown claims fail closed, while unknown
+physical content is preserved and produces a nonzero incomplete result.
 
 ## Reliability observation and incident boundary
 

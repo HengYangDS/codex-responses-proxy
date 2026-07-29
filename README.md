@@ -20,8 +20,8 @@ It is intentionally narrow:
 - **Codex Desktop** owns conversations and the model selected for each one.
 - **AIGW** owns provider configuration, credentials, endpoint selection, and
   projection to Codex profiles.
-- **Codex DMX Proxy** owns outbound Responses compatibility and the lifecycle of
-  its local listener only.
+- **Codex DMX Proxy** owns outbound Responses compatibility, its released
+  payload and deployment, native supervision, and its reversible route adapter.
 
 ## When to use it
 
@@ -35,7 +35,7 @@ replayed Codex state, for example:
 - a transient `invalid_payload`, gateway timeout, or pre-content SSE interruption;
 - a classified DMX HTTP 477 `empty_response` (one precise,
   semantic-preserving recovery);
-- an explicit upstream `response_failed` execution rejection of replay context.
+- an explicit upstream `response_failed` execution rejection of replay context;
 - the exact observed `Invalid 'input'` union validation contract.
 
 The adapter removes only deterministically incompatible outbound replay state.
@@ -70,15 +70,21 @@ neither surface records message values or unknown names.
 ## Requirements
 
 - Python 3.12 or later; the runtime uses only the Python standard library.
+- Git and OpenSSH, including `ssh-keygen`, for source and signature verification.
 - A Codex installation that has already created `~/.codex/config.toml`.
 - A verified third-party Responses endpoint. The adapter never stores an API key.
+- Authenticated network access to both configured Forge APIs and Git remotes.
+- The repository-tracked GitLab and GitHub signer policies, plus an independent
+  absolute release trust-anchor file stored outside this checkout.
 
 ## Install
 
 Installation is a post-release operation. Start from the exact clean checkout
-whose `HEAD` is the signed annotated `v<VERSION>` tag. Before invoking the
-installer, you may run the evidence-only command against both independent Forge
-planes and retain its JSON result for audit:
+whose `HEAD` is the signed annotated `v<VERSION>` tag. The installer requires
+that clean state before live publication verification, checks it again on
+released-source admission, and repeats the check before minting the payload
+capability. Before invoking it, you may run the evidence-only command against
+both independent Forge planes and retain its JSON result for audit:
 
 ```bash
 python3 scripts/verify-publication-proof.py \
@@ -94,12 +100,13 @@ python3 scripts/verify-publication-proof.py \
 ```
 
 The verifier fails closed unless both provider-native signed tags, required CI
-jobs, and formal Release records bind to the same source tree. For the canonical
-GitLab checkout, use its committed GitLab allowed-signers file as the external
-source anchor; for another canonical source plane, use that plane's matching
-anchor. JSON is evidence only and cannot authorize installation. The installer
-performs the same live verification in-process before it mints a one-use
-capability. Install the verified release with the complete verifier inputs:
+jobs, and formal Release records bind to the same source tree. The two committed
+allowed-signers files are provider-specific publication policy. They do not
+replace the installer's independent release trust anchor, which must be an
+absolute regular file outside the checkout. JSON is evidence only and cannot
+authorize installation. The installer performs the same live verification
+in-process before it mints a one-use capability. Install the verified release
+with the complete verifier inputs:
 
 ```bash
 python3 install.py \
@@ -111,20 +118,22 @@ python3 install.py \
   --github-repo HengYangDS/codex-dmx-proxy \
   --gitlab-anchor packaging/release/gitlab-allowed-signers \
   --github-anchor packaging/release/github-allowed-signers \
-  --trust-anchor packaging/release/gitlab-allowed-signers
+  --trust-anchor "$DMX_RELEASE_TRUST_ANCHOR"
 ```
 
 On Windows, replace `python3` with `py -3`.
 
 The installer does not copy arbitrary working-tree files or accept a filesystem
-stage. It re-verifies the clean signed tag, consumes the released payload as an
-opaque one-use capability, creates a private sibling transaction, installs the
-verified Git blobs with their canonical receipt and manifest, and finalizes only
-after the listener proves the release, aggregate serving-payload digest, receipt
-digest, manifest digest, and accepting state. Failure restores the exact prior
-owned projection; an unprovable committed handoff is retained as an explicit
-recovery-required transaction. The installer never downloads Python dependencies
-or collects credentials.
+stage. Admission reads immutable blobs from the signed tag, freezes `HEAD`, tag
+object, tag commit, tree, and Git object format, then compares that complete
+identity before and after its final clean-check. Worktree or identity drift
+therefore prevents capability minting. The opaque one-use capability carries
+the verified blobs, canonical receipt, and sidecar into a private sibling
+transaction, which finalizes only after the listener proves the release,
+aggregate serving-payload digest, receipt digest, manifest digest, and accepting
+state. Failure restores the exact prior owned projection; an unprovable
+committed handoff is retained as an explicit recovery-required transaction. The
+installer never downloads Python dependencies or collects credentials.
 
 ### AIGW-managed routes
 
@@ -164,12 +173,24 @@ python3 ~/.codex/dmx-proxy/control.py reload --json
 # Read-only payload and loaded-listener provenance evidence
 python3 ~/.codex/dmx-proxy/governance.py --json
 
-# Remove the service and restore a proxy-managed direct route
+# Remove the service and restore the exact adopted managed route
 python3 uninstall.py
 
 # Also remove the generated runtime payload
 python3 uninstall.py --purge
 ```
+
+Uninstall first attempts the recorded route restoration unless `--keep-config`
+is selected. That step preserves drifted or unverifiable configuration and is
+not an all-or-nothing transaction with later cleanup. Before any payload
+mutation, native service removal must report `absent`, and every watchdog and
+listener selected for termination must be an exact Python process whose
+`argv[1]` resolves to this installation's script. Identity is re-read
+immediately before signalling and boundedly rechecked afterwards; PID reuse
+never authorizes signalling the new occupant. `--purge` then removes only files
+owned by a valid current manifest or an exact supported historical inventory.
+Unknown install content is preserved and reported with a nonzero exit rather
+than a successful `Done` message.
 
 For a protocol-v2 listener, installed-control `reload` is deliberately limited
 to the same installed payload. It verifies the manifest and receipt, prepares a
@@ -281,7 +302,7 @@ python3 install.py \
   --github-repo HengYangDS/codex-dmx-proxy \
   --gitlab-anchor packaging/release/gitlab-allowed-signers \
   --github-anchor packaging/release/github-allowed-signers \
-  --trust-anchor packaging/release/gitlab-allowed-signers \
+  --trust-anchor "$DMX_RELEASE_TRUST_ANCHOR" \
   --proxy-log-max-bytes 4194304 \
   --proxy-log-backup-count 3 \
   --watchdog-log-max-bytes 524288 \
@@ -300,11 +321,12 @@ Codex -> 127.0.0.1:8791 -> verified Responses endpoint
            +-- watchdog supervised by the native user service
 ```
 
-The proxy forwards method, path, headers, and credentials unchanged. For
+The proxy preserves end-to-end headers and credentials while normalizing
+transport-owned headers such as Host, Content-Length, and Accept-Encoding. For
 `POST /responses`, it may remove stale top-level reasoning replay items,
 unreplayable local images, malformed legacy encrypted-content shells, and
 `reasoning.encrypted_content` from `include`. It fails open: if a body cannot
-be parsed safely, it forwards the original bytes unchanged.
+be parsed and safely reserialized, it forwards the original bytes unchanged.
 
 Bounded retries apply only to explicitly classified upstream conditions. An
 ordinary client-side 400, an encrypted-content validation error, and unknown
@@ -343,7 +365,7 @@ python3 install.py \
   --github-repo HengYangDS/codex-dmx-proxy \
   --gitlab-anchor packaging/release/gitlab-allowed-signers \
   --github-anchor packaging/release/github-allowed-signers \
-  --trust-anchor packaging/release/gitlab-allowed-signers \
+  --trust-anchor "$DMX_RELEASE_TRUST_ANCHOR" \
   --port 8801 \
   --upstream https://your.responses.endpoint
 ```
@@ -358,7 +380,7 @@ python3 scripts/check_markdown_presentation.py
 python3 scripts/test_release_metadata.py
 PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh
 for py in python3.12 python3.13 python3.14; do
-  "$py" -m compileall -q proxy watchdog platform_adapters install.py uninstall.py control.py governance.py tests scripts
+  "$py" -m compileall -q codex_dmx_proxy watchdog install.py uninstall.py control.py governance.py tests scripts
   "$py" scripts/run-python-tests.py
 done
 ```

@@ -1,50 +1,10 @@
 #!/usr/bin/env python3
-"""watchdog — keep the dmx-responses-proxy alive, cross-platform.
+"""Keep one installed proxy listener available without restart storms.
 
-Why this exists
----------------
-The proxy is a plain HTTP server; if it dies (crash, an ``Address already in use``
-on a bad restart, an OOM kill) nothing brings it back, and Codex silently falls
-back to failing with ``encrypted content could not be verified``. The original
-macOS deployment relied on a launchd ``KeepAlive`` for this — but that mechanism is
-per-OS (launchd / systemd / Task Scheduler) and, as we learned the hard way, easy
-to mis-wire (a missing plist, a ``disabled`` label) so it never actually guards.
-
-This watchdog moves the self-heal logic into ONE piece of portable, testable code.
-The platform service layer only has to do the simplest possible thing — start this
-watchdog once at login and restart *it* if *it* dies. The harder job (is the proxy
-up? if not, start it, but don't storm) lives here and behaves identically on macOS,
-Linux, and Windows.
-
-What it does
-------------
-A resident loop. Every ``CHECK_INTERVAL`` seconds:
-  * TCP-probe 127.0.0.1:<port> (cheap; no HTTP request).
-  * If reachable  -> the proxy is up, do nothing.
-  * If unreachable -> spawn the proxy as a detached child using the ABSOLUTE python
-    path recorded at install time, then back off before probing again.
-
-Single-instance safety: because "is the proxy up?" is answered by whether the port
-is bound, two watchdogs (or a watchdog racing a manual proxy) never double-spawn —
-whoever loses the bind race just sees the port occupied and moves on. This is the
-direct prevention of the ``Address already in use`` crash that motivated the tool.
-
-Restart throttling: consecutive failed starts widen the backoff (CHECK_INTERVAL up
-to MAX_BACKOFF) so a proxy that dies instantly on a bad config can't be fork-bombed.
-
-Config (env, with install-time defaults baked into the service definition):
-  DMX_PROXY_HOST            (default 127.0.0.1)
-  DMX_PROXY_PORT            (default 8791)
-  DMX_PROXY_PYTHON          absolute interpreter path (default: sys.executable)
-  DMX_PROXY_SCRIPT          absolute path to dmx_responses_proxy.py
-                            (default: sibling ../proxy/dmx_responses_proxy.py)
-  DMX_WATCHDOG_INTERVAL     healthy-probe interval seconds (default 15)
-  DMX_WATCHDOG_MAX_BACKOFF  max backoff after repeated failures (default 120)
-  DMX_WATCHDOG_LOG          log file (default ~/.codex/log/dmx-watchdog.log)
-  DMX_WATCHDOG_LOG_MAX_BYTES (default 524288; each retained segment)
-  DMX_WATCHDOG_LOG_BACKUP_COUNT (default 2)
-
-Stdlib only. Runs on any Python 3.8+.
+The native user service owns watchdog persistence. This process probes the
+configured loopback port, starts only the absolute installed entrypoint when it
+is unavailable, and backs off after repeated failures. Logs are bounded and
+secret-safe; request payloads never cross this boundary.
 """
 
 from __future__ import annotations
@@ -57,6 +17,7 @@ import time
 import socket
 import subprocess
 import threading
+from contextlib import suppress
 from pathlib import Path
 
 HOST = os.environ.get("DMX_PROXY_HOST", "127.0.0.1")
@@ -65,11 +26,12 @@ PYTHON = os.environ.get("DMX_PROXY_PYTHON", sys.executable)
 _HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.environ.get(
     "DMX_PROXY_SCRIPT",
-    os.path.join(os.path.dirname(_HERE), "proxy", "dmx_responses_proxy.py"),
+    os.path.join(os.path.dirname(_HERE), "codex_dmx_proxy", "listener", "entrypoint.py"),
 )
 CHECK_INTERVAL = float(os.environ.get("DMX_WATCHDOG_INTERVAL", "15"))
 MAX_BACKOFF = float(os.environ.get("DMX_WATCHDOG_MAX_BACKOFF", "120"))
 LOG_PATH = os.environ.get("DMX_WATCHDOG_LOG", os.path.expanduser("~/.codex/log/dmx-watchdog.log"))
+_WINDOWS_DETACH_FLAGS = 0x00000008 | 0x00000200
 
 
 def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -96,8 +58,9 @@ _LOG_SECRET_PATTERNS = (
 def _redact_log_message(msg: str) -> str:
     """Bound watchdog diagnostics without retaining secret-shaped values."""
     value = str(msg).replace("\r", " ").replace("\n", " ")
-    for pattern in _LOG_SECRET_PATTERNS:
-        value = pattern.sub("[redacted]", value)
+    value = _LOG_SECRET_PATTERNS[1].sub(
+        "[redacted]", _LOG_SECRET_PATTERNS[0].sub("[redacted]", value)
+    )
     encoded = value.encode("utf-8", "replace")
     if len(encoded) > _LOG_LINE_MAX_BYTES:
         value = encoded[:_LOG_LINE_MAX_BYTES].decode("utf-8", "ignore") + " [truncated]"
@@ -116,10 +79,9 @@ def _rotate_log_if_needed(path: Path, incoming_bytes: int) -> int:
     if current_size + incoming_bytes <= LOG_MAX_BYTES:
         return 0
 
-    discarded = 0
     if current_size > LOG_MAX_BYTES:
         path.unlink(missing_ok=True)
-        discarded += current_size
+        return current_size
     elif LOG_BACKUP_COUNT <= 0:
         path.unlink(missing_ok=True)
     else:
@@ -129,7 +91,7 @@ def _rotate_log_if_needed(path: Path, incoming_bytes: int) -> int:
             if source.exists():
                 source.replace(path.with_name(f"{path.name}.{index + 1}"))
         path.replace(path.with_name(f"{path.name}.1"))
-    return discarded
+    return 0
 
 
 def _log(msg: str) -> None:
@@ -146,10 +108,8 @@ def _log(msg: str) -> None:
                     f"log_retention_discarded_oversized_bytes={discarded} {message}\n"
                 )
             with path.open("a", encoding="utf-8") as handle:
-                try:
+                with suppress(OSError):
                     os.chmod(path, 0o600)
-                except OSError:
-                    pass
                 handle.write(line)
     except OSError:
         pass
@@ -183,8 +143,7 @@ def spawn_proxy() -> "subprocess.Popen | None":
                 stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL,
                 close_fds=True,
-                # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-                creationflags=0x00000008 | 0x00000200,
+                creationflags=_WINDOWS_DETACH_FLAGS,
             )
         else:
             proc = subprocess.Popen(
@@ -211,27 +170,23 @@ def run(max_iterations: "int | None" = None) -> None:
     consecutive_failures = 0
     iterations = 0
     while True:
-        if is_proxy_up():
-            consecutive_failures = 0
-            sleep_for = CHECK_INTERVAL
-        else:
+        up = is_proxy_up()
+        sleep_for = CHECK_INTERVAL
+        if not up:
             _log(f"proxy down on {HOST}:{PORT} — starting it")
             spawn_proxy()
-            # Give the proxy a moment to bind before the next probe, and widen the
-            # window if it keeps failing to come up (bad config crash-loop guard).
             consecutive_failures += 1
             settle = min(MAX_BACKOFF, CHECK_INTERVAL * consecutive_failures)
-            # Verify it actually bound; if not, the widened backoff applies.
             time.sleep(min(3.0, settle))
-            if is_proxy_up():
-                consecutive_failures = 0
-                sleep_for = CHECK_INTERVAL
-            else:
+            up = is_proxy_up()
+            if not up:
                 sleep_for = settle
                 _log(
                     f"proxy still down after start attempt "
                     f"#{consecutive_failures}; backing off {sleep_for:.0f}s"
                 )
+        if up:
+            consecutive_failures = 0
 
         iterations += 1
         if max_iterations is not None and iterations >= max_iterations:

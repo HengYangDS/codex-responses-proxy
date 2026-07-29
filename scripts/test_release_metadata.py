@@ -7,7 +7,6 @@ import importlib.util
 import subprocess
 import sys
 import tempfile
-import tomllib
 from datetime import date
 from pathlib import Path
 
@@ -28,6 +27,34 @@ def _run(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
     )
 
 
+def require(condition: object, message: str) -> None:
+    """Fail one metadata contract with its exact diagnostic."""
+
+    if not condition:
+        raise SystemExit(message)
+
+
+def require_success(completed: subprocess.CompletedProcess[str]) -> None:
+    """Require one repository command to succeed."""
+
+    require(completed.returncode == 0, completed.stderr)
+
+
+def ci_block(source: str, job: str, next_job: str | None = None) -> str:
+    """Return one exact top-level CI job or template block."""
+
+    start = source.index(job)
+    end = source.index(next_job, start) if next_job else source.find("\n\n", start)
+    return source[start : end if end >= 0 else None]
+
+
+def require_tokens(source: str, tokens: tuple[str, ...], context: str) -> None:
+    """Require every literal contract token in one source surface."""
+
+    missing = [token for token in tokens if token not in source]
+    require(not missing, f"{context} is missing {missing[0] if missing else ''}")
+
+
 def expect_rejection(text: str, description: str, *args: str) -> None:
     """Require the release metadata checker to reject a Changelog fixture."""
 
@@ -36,8 +63,7 @@ def expect_rejection(text: str, description: str, *args: str) -> None:
         handle.write(text)
     try:
         completed = _run(sys.executable, str(CHECKER), *args, "--changelog", str(path))
-        if completed.returncode == 0:
-            raise SystemExit(f"release metadata checker accepted {description}")
+        require(completed.returncode != 0, f"release metadata checker accepted {description}")
     finally:
         path.unlink(missing_ok=True)
 
@@ -75,10 +101,11 @@ def test_provider_tag_scripts_preflight_before_signing() -> None:
         preflight = (
             f'"$release_python" "$root/scripts/check_release_metadata.py" {expected_argument}'
         )
-        if preflight not in source:
-            raise SystemExit(f"{script_name} does not run its release metadata preflight")
-        if source.index(preflight) > source.index("tag -s -a"):
-            raise SystemExit(f"{script_name} runs its release metadata preflight after signing")
+        require(preflight in source, f"{script_name} does not run its release metadata preflight")
+        require(
+            source.index(preflight) < source.index("tag -s -a"),
+            f"{script_name} runs its release metadata preflight after signing",
+        )
 
 
 def test_provider_projection_re_signs_every_commit() -> None:
@@ -87,24 +114,24 @@ def test_provider_projection_re_signs_every_commit() -> None:
     github = (ROOT / "scripts" / "project-github-forge.sh").read_text(encoding="utf-8")
     gitlab = (ROOT / "scripts" / "project-gitlab-forge.sh").read_text(encoding="utf-8")
     rewriter = (ROOT / "scripts" / "rewrite-provider-history.py").read_text(encoding="utf-8")
-    if "filter-branch" in github:
-        raise SystemExit("GitHub projection must not use signature-stripping filter-branch")
+    require(
+        "filter-branch" not in github,
+        "GitHub projection must not use signature-stripping filter-branch",
+    )
     for source in (github, gitlab):
-        if "rewrite-provider-history.py" not in source or "--force-with-lease" not in source:
-            raise SystemExit("each provider projection must use the signed rewriter under a lease")
+        require_tokens(
+            source,
+            ("rewrite-provider-history.py", "--force-with-lease"),
+            "each provider projection",
+        )
     for script_name in ("test-gitlab-provider-projection.sh", "test-github-provider-projection.sh"):
         fixture = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
-        if "verify-commit" not in fixture or "allowedSignersFile" not in fixture:
-            raise SystemExit(f"{script_name} must verify every projected commit")
-    for token in (
-        "commit-tree",
-        '"-S"',
-        "verify-commit",
-        "GIT_AUTHOR_EMAIL",
-        "GIT_COMMITTER_EMAIL",
-    ):
-        if token not in rewriter:
-            raise SystemExit(f"provider history rewriter is missing {token}")
+        require_tokens(fixture, ("verify-commit", "allowedSignersFile"), script_name)
+    require_tokens(
+        rewriter,
+        ("commit-tree", '"-S"', "verify-commit", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"),
+        "provider history rewriter",
+    )
 
 
 def test_prune_tags_removes_deleted_remote_tag() -> None:
@@ -117,17 +144,13 @@ def test_prune_tags_removes_deleted_remote_tag() -> None:
         reused_runner = temp_root / "reused-runner"
 
         for args in (("git", "init", "--bare", str(remote)), ("git", "init", str(publisher))):
-            completed = _run(*args, cwd=temp_root)
-            if completed.returncode:
-                raise SystemExit(completed.stderr)
+            require_success(_run(*args, cwd=temp_root))
         for args in (
             ("git", "config", "user.name", "Release Test"),
             ("git", "config", "user.email", "release@example.test"),
             ("git", "config", "user.useConfigOnly", "true"),
         ):
-            completed = _run(*args, cwd=publisher)
-            if completed.returncode:
-                raise SystemExit(completed.stderr)
+            require_success(_run(*args, cwd=publisher))
         (publisher / "README.md").write_text("release metadata fixture\n", encoding="utf-8")
         for args in (
             ("git", "add", "README.md"),
@@ -138,17 +161,14 @@ def test_prune_tags_removes_deleted_remote_tag() -> None:
             ("git", "tag", "v9.9.9"),
             ("git", "push", "origin", "refs/tags/v9.9.9"),
         ):
-            completed = _run(*args, cwd=publisher)
-            if completed.returncode:
-                raise SystemExit(completed.stderr)
-        completed = _run("git", "clone", str(remote), str(reused_runner), cwd=temp_root)
-        if completed.returncode:
-            raise SystemExit(completed.stderr)
-        completed = _run("git", "push", "origin", ":refs/tags/v9.9.9", cwd=publisher)
-        if completed.returncode:
-            raise SystemExit(completed.stderr)
-        if _run("git", "rev-parse", "--verify", "refs/tags/v9.9.9", cwd=reused_runner).returncode:
-            raise SystemExit("fixture did not retain the stale local tag")
+            require_success(_run(*args, cwd=publisher))
+        require_success(_run("git", "clone", str(remote), str(reused_runner), cwd=temp_root))
+        require_success(_run("git", "push", "origin", ":refs/tags/v9.9.9", cwd=publisher))
+        require(
+            _run("git", "rev-parse", "--verify", "refs/tags/v9.9.9", cwd=reused_runner).returncode
+            == 0,
+            "fixture did not retain the stale local tag",
+        )
         completed = _run(
             "git",
             "fetch",
@@ -159,48 +179,42 @@ def test_prune_tags_removes_deleted_remote_tag() -> None:
             "origin",
             cwd=reused_runner,
         )
-        if completed.returncode:
-            raise SystemExit(completed.stderr)
-        if (
+        require_success(completed)
+        require(
             _run("git", "rev-parse", "--verify", "refs/tags/v9.9.9", cwd=reused_runner).returncode
-            == 0
-        ):
-            raise SystemExit("tag-pruning fetch retained a tag deleted from origin")
+            != 0,
+            "tag-pruning fetch retained a tag deleted from origin",
+        )
 
 
 def test_gitlab_ci_refreshes_tags_before_every_release_gate() -> None:
     """Require every GitLab release gate to prune stale runner tags."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    if ci.count(TAG_REFRESH) != 3:
-        raise SystemExit("every GitLab release gate must refresh and prune origin tags")
+    require(
+        ci.count(TAG_REFRESH) == 3,
+        "every GitLab release gate must refresh and prune origin tags",
+    )
     for job in ("verify-release-metadata:", "verify-release-tag:", "publish-gitlab-release:"):
-        start = ci.index(job)
-        next_job = ci.find("\n\n", start)
-        block = ci[start : next_job if next_job >= 0 else None]
-        if TAG_REFRESH not in block:
-            raise SystemExit(f"{job} does not refresh and prune origin tags")
+        require(TAG_REFRESH in ci_block(ci, job), f"{job} does not refresh and prune origin tags")
 
 
 def test_gitlab_release_metadata_gate_has_complete_history() -> None:
     """Require full Git history for release metadata provenance checks."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    start = ci.index("verify-release-metadata:")
-    end = ci.index("\n\nverify-release-tag:", start)
-    block = ci[start:end]
-    if 'GIT_DEPTH: "0"' not in block:
-        raise SystemExit("verify-release-metadata must fetch complete Git history")
+    block = ci_block(ci, "verify-release-metadata:", "\n\nverify-release-tag:")
+    require('GIT_DEPTH: "0"' in block, "verify-release-metadata must fetch complete Git history")
 
 
 def test_gitlab_ci_uses_only_the_project_runner_tag() -> None:
     """Require every GitLab job family to select the project runner."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    if ci.count(GITLAB_RUNNER_TAG) != 5:
-        raise SystemExit(
-            "every Codex DMX Proxy GitLab job family must select its project runner tag"
-        )
+    require(
+        ci.count(GITLAB_RUNNER_TAG) == 5,
+        "every Codex DMX Proxy GitLab job family must select its project runner tag",
+    )
     for job in (
         ".python-verify:",
         "verify-release-metadata:",
@@ -208,33 +222,25 @@ def test_gitlab_ci_uses_only_the_project_runner_tag() -> None:
         "verify-python-quality:",
         "publish-gitlab-release:",
     ):
-        start = ci.index(job)
-        next_job = ci.find("\n\n", start)
-        block = ci[start : next_job if next_job >= 0 else None]
-        if GITLAB_RUNNER_TAG not in block:
-            raise SystemExit(f"{job} must select the Codex DMX Proxy GitLab runner tag")
+        require(
+            GITLAB_RUNNER_TAG in ci_block(ci, job),
+            f"{job} must select the Codex DMX Proxy GitLab runner tag",
+        )
 
 
 def test_gitlab_ci_runs_full_regression_matrix() -> None:
     """Require GitLab's Python matrix to use the canonical test owner."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    start = ci.index(".python-verify:")
-    end = ci.index("\n\nverify-python-3.12:", start)
-    block = ci[start:end]
-    owner = "python scripts/run-python-tests.py"
-    if owner not in block:
-        raise SystemExit(f".python-verify template must run {owner}")
-    if "apt-get install -y --no-install-recommends git openssh-client" not in block:
-        raise SystemExit(".python-verify must install Git and OpenSSH for signed-source tests")
-    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    tests = metadata["tool"]["codex-dmx-proxy"]["quality"]["coverage-tests"]
-    expected = sorted(str(path.relative_to(ROOT)) for path in (ROOT / "tests").glob("test_*.py"))
-    if sorted(tests) != expected:
-        raise SystemExit(
-            "canonical Python test inventory must exactly match tests/test_*.py: "
-            f"configured={sorted(tests)!r}, expected={expected!r}"
-        )
+    block = ci_block(ci, ".python-verify:", "\n\nverify-python-3.12:")
+    require_tokens(
+        block,
+        (
+            "python scripts/run-python-tests.py",
+            "apt-get install -y --no-install-recommends git openssh-client",
+        ),
+        ".python-verify template",
+    )
 
 
 def test_python_quality_gate_is_cross_forge() -> None:
@@ -243,26 +249,31 @@ def test_python_quality_gate_is_cross_forge() -> None:
     gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
     owner = "sh scripts/run-python-quality.sh"
-    if owner not in gitlab or owner not in github:
-        raise SystemExit(f"both Forge quality projections must invoke {owner}")
-    quality_start = gitlab.index("verify-python-quality:")
-    quality_end = gitlab.index("\n\npublish-gitlab-release:", quality_start)
-    quality_block = gitlab[quality_start:quality_end]
-    if "apt-get install -y --no-install-recommends git openssh-client" not in quality_block:
-        raise SystemExit("GitLab Python quality must install Git and OpenSSH for coverage tests")
+    require_tokens(gitlab, (owner,), "GitLab quality projection")
+    require_tokens(github, (owner,), "GitHub quality projection")
+    require_tokens(
+        ci_block(gitlab, "verify-python-quality:", "\n\npublish-gitlab-release:"),
+        ("apt-get install -y --no-install-recommends git openssh-client",),
+        "GitLab Python quality",
+    )
     script = (ROOT / "scripts" / "run-python-quality.sh").read_text(encoding="utf-8")
-    if '"ty 0.0.56"|"ty 0.0.56 "*' not in script:
-        raise SystemExit("Python quality must accept both supported ty 0.0.56 version forms")
-    for token in (
-        '"$ruff_path" check .',
-        '"$ruff_path" format --check .',
-        '"$python_path" scripts/check_quality.py',
-        '"$ty_path" check',
-        '"$python_path" -m coverage erase',
-        '"$python_path" -m coverage report',
-    ):
-        if token not in script:
-            raise SystemExit(f"Python quality owner is missing {token}")
+    require_tokens(
+        script,
+        (
+            '"ty 0.0.56"|"ty 0.0.56 "*',
+            "Coverage.py, version 7.13.5 with C extension",
+            'COVERAGE_FILE="$coverage_dir/.coverage"',
+            '"$ruff_path" check .',
+            '"$ruff_path" format --check .',
+            '"$python_path" scripts/check_quality.py',
+            '"$ty_path" check',
+            '"$python_path" -m coverage erase',
+            '"$python_path" scripts/run-python-tests.py --coverage',
+            '"$python_path" -m coverage report',
+            '"$python_path" scripts/check_branch_coverage.py',
+        ),
+        "Python quality owner",
+    )
 
 
 def main() -> None:

@@ -9,29 +9,6 @@ DMX_UPSTREAM=https://www.dmxapi.cn
 # Loopback listener port.
 DMX_PROXY_PORT=8791
 
-# Maximum concurrent /responses requests.
-DMX_RESPONSES_MAX_CONCURRENCY=64
-
-# Full-request byte budget for each pair-safe fallback after an explicit
-# upstream HTTP 400 `response_failed`. This is intentionally conservative.
-DMX_RESPONSE_FAILED_COMPACTION_BUDGET=524288
-
-# Maximum number of pair-safe fallback stages before the one dialogue-only
-# recovery attempt. Set to 0 to skip pair-safe compaction, not the final
-# dialogue-only recovery. The default is deliberately conservative.
-DMX_RESPONSE_FAILED_MAX_STAGES=3
-
-# Byte budget for the single dedicated fallback built after a classified
-# upstream HTTP 477 `empty_response`. This projection is text-only. Bounded
-# between 4096 (4 KiB) and 4194304 (4 MiB, also the default).
-DMX_EMPTY_RESPONSE_FALLBACK_BUDGET=4194304
-
-# Local cooldown, in seconds, applied to an identical request after its
-# classified empty-response recovery is exhausted. Prevents a tight client
-# retry loop from repeating a known-unrecoverable request against upstream.
-# Bounded between 1 and 300 seconds.
-DMX_EMPTY_RESPONSE_COOLDOWN_SECONDS=30
-
 # Maximum bytes in each structured proxy log segment and the number of rotated
 # segments retained. The proxy never logs request bodies, credentials, headers,
 # prompts, or raw upstream payloads. Values outside their supported bounds are
@@ -45,8 +22,11 @@ DMX_PROXY_LOG_BACKUP_COUNT=3
 DMX_WATCHDOG_LOG_MAX_BYTES=524288
 DMX_WATCHDOG_LOG_BACKUP_COUNT=2
 
-# Watchdog TCP health-check interval, in seconds.
-DMX_WATCHDOG_INTERVAL=15
-
 # Recommended override method:
-#   python3 install.py --port 8801 --upstream https://your.responses.endpoint
+#   python3 install.py \
+#     --port 8801 \
+#     --upstream https://your.responses.endpoint \
+#     --proxy-log-max-bytes 4194304 \
+#     --proxy-log-backup-count 3 \
+#     --watchdog-log-max-bytes 524288 \
+#     --watchdog-log-backup-count 2

@@ -2,23 +2,25 @@
 
 from __future__ import annotations
 
+import contextlib
+import tempfile
 import threading
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-import dmx_responses_proxy as proxy
-import responses_transport
-import runtime_state
+from codex_dmx_proxy.listener import state
+from codex_dmx_proxy.listener import responses as response_transport
+from codex_dmx_proxy.listener import entrypoint as proxy
 
 ScriptedResponse = tuple[int, bytes] | dict[str, Any]
 
 
 def serve_proxy(
     responses: Sequence[ScriptedResponse], log_dir: str | Path
-) -> tuple[int, list[bytes], object]:
+) -> tuple[int, list[bytes], Callable[[], None]]:
     """Start scripted loopback servers and return port, bodies, and cleanup."""
     scripted = list(responses)
     received: list[bytes] = []
@@ -61,10 +63,10 @@ def serve_proxy(
     upstream = ThreadingHTTPServer(("127.0.0.1", 0), UpstreamHandler)
     upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
     upstream_thread.start()
-    old_upstream = responses_transport.UPSTREAM
-    old_log_path = runtime_state.LOG_PATH
-    responses_transport.UPSTREAM = f"http://127.0.0.1:{upstream.server_address[1]}"
-    runtime_state.LOG_PATH = str(Path(log_dir) / "proxy.log")
+    old_upstream = response_transport.UPSTREAM
+    old_log_path = state.LOG_PATH
+    response_transport.UPSTREAM = f"http://127.0.0.1:{upstream.server_address[1]}"
+    state.LOG_PATH = str(Path(log_dir) / "proxy.log")
     server = proxy.create_server(("127.0.0.1", 0))
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
@@ -76,10 +78,21 @@ def serve_proxy(
         upstream.shutdown()
         upstream.server_close()
         upstream_thread.join(timeout=2)
-        responses_transport.UPSTREAM = old_upstream
-        runtime_state.LOG_PATH = old_log_path
+        response_transport.UPSTREAM = old_upstream
+        state.LOG_PATH = old_log_path
 
     return server.server_address[1], received, cleanup
+
+
+@contextlib.contextmanager
+def running_proxy(responses: Sequence[ScriptedResponse]):
+    """Yield a scripted loopback proxy and always release both servers."""
+    with tempfile.TemporaryDirectory() as log_dir:
+        port, received, cleanup = serve_proxy(responses, log_dir)
+        try:
+            yield port, received
+        finally:
+            cleanup()
 
 
 def request(proxy_port: int, body: bytes):

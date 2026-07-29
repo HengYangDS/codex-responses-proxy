@@ -6,13 +6,26 @@ work that has not yet been tagged.
 
 ## [Unreleased]
 
-## [1.0.29] - 2026-07-29
-
 ### Changed
 
+- Close the released-source admission race by checking clean state before live
+  publication verification and again during admission, then binding and
+  rechecking `HEAD`, tag object, tag commit, tree, object format, and immutable
+  Git blobs before the one-use payload capability is minted.
+- Require exact Python `argv[1]` process identity before watchdog or listener
+  termination, re-read identity before signalling, and boundedly prove the
+  original identity exited. Uninstall now proves native-service absence before
+  payload mutation; purge removes only manifest-owned files, preserves unknown
+  content, and reports incomplete cleanup with a nonzero exit.
+- Replace the flat split package with the single semantic `codex_dmx_proxy`
+  product root and make the serving inventory and digest one release-owned
+  contract.
+- Limit retired-layout migration and rollback to files proved owned by the
+  previous manifest; preserve unknown contents and remove only empty retired
+  directories.
 - Make complete provider commit provenance a release invariant. GitLab now uses
   `Yang HENG <heng.yang.ds@hotmail.com>` and GitHub uses
-  `HengYang <hengyang.2003@tsinghua.org.cn>` for both author and committer on
+  `Yang HENG <hengyang.2003@tsinghua.org.cn>` for both author and committer on
   every commit reachable from `main`; every such commit is SSH-signed and must
   be reported as `Verified` by its Forge.
 - Replace signature-stripping identity rewriting with an isolated, leased DAG
@@ -20,6 +33,12 @@ work that has not yet been tagged.
   date, and committer date while re-signing every commit. Dual-Forge parity now
   rejects an unsigned commit or a non-provider author/committer anywhere in the
   reachable history.
+
+### Quality
+
+- Enforce combined, statement-only, and branch-only coverage independently at
+  95%, derive the Python quality scope from one source inventory, and remove
+  installed-control legacy bootstrap residue.
 
 ## [1.0.28] - 2026-07-29
 
@@ -39,7 +58,7 @@ work that has not yet been tagged.
   request. The recovery retains the latest system, developer, and user
   messages in their original order, preserves top-level instructions, removes
   stale provider bindings, and never chains into another retry policy.
-- Move this compatibility policy into `proxy/input_compatibility.py`, with
+- Isolate this compatibility policy behind a dedicated pure-policy module, with
   bounded value-free diagnostics, exact call/output pairing checks, and stable
   terminal counters. Structural diagnostics erase unknown labels and values and
   bucket collection sizes before hashing; recovery events still report exact
