@@ -411,6 +411,40 @@ class TestRunnerContracts(unittest.TestCase):
             )
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
+    @unittest.skipUnless(os.name == "posix", "models POSIX shell executable lookup")
+    def test_quality_runner_accepts_metadata_but_rejects_version_prefixes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            misleading, required = root / "misleading", root / "required"
+            misleading.mkdir()
+            required.mkdir()
+            executables = {
+                root
+                / "python": "if [ \"$1 $2 $3\" = '-m coverage --version' ]; then echo 'Coverage.py, version 7.13.5 with C extension'; elif [ \"$#\" = 1 ] && [ \"$1\" = '-' ]; then printf 'codex_dmx_proxy\\ntests\\n'; fi",
+                root / "ruff": "[ \"${1:-}\" = --version ] && echo 'ruff 0.16.0'; exit 0",
+                misleading / "ty": "[ \"${1:-}\" = --version ] && echo 'ty 0.0.640'; exit 0",
+                required
+                / "ty": "[ \"${1:-}\" = --version ] && echo 'ty 0.0.64 (stable build)'; exit 0",
+            }
+            for path, body in executables.items():
+                path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+                path.chmod(0o755)
+            completed = subprocess.run(
+                ["sh", str(ROOT / "scripts/run-python-quality.sh")],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+                env=os.environ
+                | {
+                    "PATH": f"{misleading}:{required}:{os.environ['PATH']}",
+                    "PYTHON": str(root / "python"),
+                    "RUFF": str(root / "ruff"),
+                    "TY": "ty",
+                },
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

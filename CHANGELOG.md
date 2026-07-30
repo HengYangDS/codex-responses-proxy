@@ -7,6 +7,15 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.40] - 2026-07-30
+
+### Fixed
+
+- Admit the exact pinned quality-tool semantic version when stable executables
+  append space-delimited informational build metadata.
+- Reject different versions and misleading prefixes without weakening the
+  repository-owned quality gate.
+
 ## [1.0.39] - 2026-07-30
 
 ### Fixed

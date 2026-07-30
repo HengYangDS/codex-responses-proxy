@@ -1,0 +1,10 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "VERSION",
+  "scripts/run-python-quality.sh",
+  "tests/test_quality_contract.py",
+  "openspec/changes/quality-tool-version-contract/**",
+  "openspec/changes/archive/2026-07-30-quality-tool-version-contract/**",
+  "openspec/specs/ci-diagnostics/**",
+]
