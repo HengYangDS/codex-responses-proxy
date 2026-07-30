@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-07-30
+goal: Keep Windows product matrices portable without pretending POSIX
+  executable-bit behavior is a Windows contract.

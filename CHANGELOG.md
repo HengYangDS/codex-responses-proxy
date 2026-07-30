@@ -7,6 +7,14 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.39] - 2026-07-30
+
+### Fixed
+
+- Limit the shell executable-lookup fixture to POSIX hosts while retaining the
+  complete Windows product matrix, so Windows does not misinterpret POSIX
+  executable-bit semantics as a product failure.
+
 ## [1.0.38] - 2026-07-30
 
 ### Fixed
