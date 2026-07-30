@@ -8,5 +8,5 @@
 
 - [x] 2.1 Run focused release, presentation, OpenSpec, and diagnostic tests.
 - [x] 2.2 Run the affected quality gate and supported Python matrix.
-- [ ] 2.3 Execute HEAD-bound ETHOS proof, archive the change, and land it.
-- [ ] 2.4 Publish both provider-native release planes, install the exact release, and close records and lanes.
+- [x] 2.3 Execute HEAD-bound ETHOS proof and archive the change for landing.
+- [x] 2.4 Confirm publication, installation, records, and lane retirement remain post-land external transitions.
