@@ -1,0 +1,38 @@
+[claim]
+id = "quality-tool-version-contract-20260730"
+subject = "codex-dmx-proxy:ci-diagnostics"
+state = "active"
+summary = "Local evidence binds semantic quality-tool version admission."
+
+[evidence]
+dated = "evidence/chronicle/quality-tool-version-contract-20260730/2026-07-30.md"
+sha256 = "6c869204b32860073a2d4ec6ecbcc3c118bda1789c129f2151bc4c93f6f9e574"
+evidence_ids = ["evidence:quality-tool-version-contract-20260730"]
+binding = "local quality-tool version-contract verification for v1.0.40"
+verifier = "digest_only"
+tests = [
+  "python3.12 tests/test_quality_contract.py",
+  "PYTHON=<venv>/bin/python RUFF=<venv>/bin/ruff TY=<venv>/bin/ty sh scripts/run-python-quality.sh",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "historical"
+
+[boundary]
+owner = "codex-dmx-proxy"
+scope = "Local quality-owner evidence only; hosted CI, publication, installation, and runtime acceptance remain external."
+
+[carriers]
+openspec = "openspec/changes/quality-tool-version-contract"
+fallback = "Retain the serving runtime and exact recovery transaction until a later release completes both Forge planes."
+kill_signal = "The quality owner accepts a different semantic version or rejects the pinned stable release solely because of informational metadata."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/specs/ci-diagnostics/spec.md",
+  "scripts/run-python-quality.sh",
+  "tests/test_quality_contract.py",
+]
