@@ -10,6 +10,12 @@ commands, ownership, installation, lifecycle, evidence, or released behavior.
 A local green gate proves only the local candidate; it does not prove either
 Forge publication or an installed runtime.
 
+Canonical test jobs treat Python warnings and unhandled tracebacks as failures.
+Expected peer disconnects in loopback integration tests are handled at the
+fixture boundary, while production HTTP responses remain explicitly closed.
+Compilation writes bytecode only to an isolated temporary prefix, and quality
+checks do not retain a Ruff cache in the checkout.
+
 ## Release identity
 
 `VERSION` is the release-train identifier. Before a tag exists, it must be

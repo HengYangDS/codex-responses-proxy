@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import subprocess
 import sys
 import tempfile
@@ -262,7 +263,7 @@ class TestRunnerContracts(unittest.TestCase):
 
     def test_runner_collects_all_failures_before_exiting(self) -> None:
         source = (ROOT / "scripts" / "run-python-tests.py").read_text(encoding="utf-8")
-        self.assertIn("failures: list[tuple[str, int]]", source)
+        self.assertIn("failures: list[tuple[str, str]]", source)
         self.assertIn("check=False", source)
         self.assertIn("canonical Python tests failed", source)
 
@@ -342,6 +343,27 @@ class TestRunnerContracts(unittest.TestCase):
         runner = self._runner()
         command = runner.command_for("tests/test_route_management.py", coverage=False, append=False)
         self.assertEqual(command, [sys.executable, "tests/test_route_management.py"])
+
+    def test_runner_rejects_unhandled_tracebacks_and_python_warnings(self) -> None:
+        runner = self._runner()
+        self.assertFalse(runner.abnormal_output(b"390 tests passed\n", b""))
+        for output in (
+            b"Traceback (most recent call last):\n",
+            b"Exception occurred during processing of request\n",
+            b"ResourceWarning: unclosed response\n",
+        ):
+            with self.subTest(output=output):
+                self.assertTrue(runner.abnormal_output(b"", output))
+
+    def test_runner_compile_inventory_isolated_from_the_checkout(self) -> None:
+        runner = self._runner()
+        self.assertIn("tests", runner.COMPILE_TARGETS)
+        self.assertIn("codex_dmx_proxy", runner.COMPILE_TARGETS)
+        self.assertIn("sys.pycache_prefix", inspect.getsource(runner.compile_sources))
+
+    def test_gitlab_quality_install_declares_the_container_root_policy(self) -> None:
+        pipeline = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+        self.assertIn("--root-user-action=ignore", pipeline)
 
 
 if __name__ == "__main__":

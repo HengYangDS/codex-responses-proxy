@@ -7,6 +7,22 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.36] - 2026-07-30
+
+### Fixed
+
+- Close failed handoff HTTP responses explicitly and confine intentional peer
+  disconnect handling to the loopback test server, eliminating the leaked
+  `ResourceWarning` and `socketserver` traceback seen in otherwise successful
+  Python 3.14 and GitLab jobs.
+- Make the canonical Python runner fail on warnings, unhandled traceback text,
+  and `socketserver` exception banners; compile through an isolated bytecode
+  prefix, disable retained Ruff caches, and declare the GitLab container's pip
+  root-user policy explicitly.
+- Use the same compile-and-test entrypoint across Python 3.12, 3.13, and 3.14 on
+  GitLab, GitHub macOS, and GitHub Windows so green hosted jobs also prove clean
+  diagnostic output.
+
 ## [1.0.35] - 2026-07-29
 
 ### Fixed

@@ -60,8 +60,8 @@ PY
 # Ruff owns repository-wide deterministic source shape, including tests and
 # governance scripts. The structural audit, type checker, and coverage gate own
 # their narrower semantic scopes below.
-"$ruff_path" check .
-"$ruff_path" format --check .
+"$ruff_path" check --no-cache .
+"$ruff_path" format --no-cache --check .
 "$python_path" scripts/check_quality.py
 "$ty_path" check \
   --python "$python_path" \
