@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-07-30
+goal: Make release admission validate behavior, not obsolete shell text, and
+  keep CI dependency bootstrap warning-free.

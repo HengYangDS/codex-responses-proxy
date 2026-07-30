@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "scripts" / "check_release_metadata.py"
 TAG_REFRESH = "git fetch --tags --force --prune --prune-tags origin"
 GITLAB_RUNNER_TAG = "tags: [codex-dmx-proxy-gitlab-ci]"
+APT_INSTALL = "apt-get install -qq -y --no-install-recommends"
 
 
 def _run(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
@@ -506,7 +507,7 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
         block,
         (
             "python scripts/run-python-tests.py",
-            "apt-get install -y --no-install-recommends git openssh-client",
+            f"{APT_INSTALL} git openssh-client",
         ),
         ".python-verify template",
     )
@@ -520,28 +521,11 @@ def test_python_quality_gate_is_cross_forge() -> None:
     owner = "sh scripts/run-python-quality.sh"
     require_tokens(gitlab, (owner,), "GitLab quality projection")
     require_tokens(github, (owner,), "GitHub quality projection")
+    require_tokens(gitlab, ("DEBIAN_FRONTEND: noninteractive",), "GitLab pipeline")
     require_tokens(
         ci_block(gitlab, "verify-python-quality:", "\n\npublish-gitlab-release:"),
-        ("apt-get install -y --no-install-recommends git openssh-client",),
+        (f"{APT_INSTALL} git openssh-client",),
         "GitLab Python quality",
-    )
-    script = (ROOT / "scripts" / "run-python-quality.sh").read_text(encoding="utf-8")
-    require_tokens(
-        script,
-        (
-            '"ty 0.0.64"|"ty 0.0.64 "*',
-            "Coverage.py, version 7.13.5 with C extension",
-            'COVERAGE_FILE="$coverage_dir/.coverage"',
-            '"$ruff_path" check --no-cache .',
-            '"$ruff_path" format --no-cache --check .',
-            '"$python_path" scripts/check_quality.py',
-            '"$ty_path" check',
-            '"$python_path" -m coverage erase',
-            '"$python_path" scripts/run-python-tests.py --coverage',
-            '"$python_path" -m coverage report',
-            '"$python_path" scripts/check_branch_coverage.py',
-        ),
-        "Python quality owner",
     )
 
 
