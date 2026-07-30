@@ -106,6 +106,15 @@ control exposes no arbitrary stage-path upgrade and no controller-only partial
 apply. Release archives are not installation sources because they cannot carry
 the signed annotated tag object and its verified publication chain.
 
+Recovery remains source-side and publication-gated. The installer may restore
+only the exact retained rollback snapshot while the live accepting listener's
+release, serving digest, receipt digest, manifest digest, and idle handoff state
+match that prior projection, and the PID is uniquely bound to the installed
+entrypoint. It then begins a new admitted release transaction.
+An explicitly authorized protocol-v2 bootstrap binds one idle
+accepting listener to its exact installed entrypoint before termination and
+must prove either the released successor or the restored prior runtime.
+
 Retired raw captures are a separate privacy cleanup: their exact filenames are
 removed before a transaction is prepared and their contents never enter the
 rollback snapshot. Retired install-owned executable paths are different; the

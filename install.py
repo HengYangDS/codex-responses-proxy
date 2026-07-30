@@ -153,6 +153,8 @@ def install_release(
     timeout_seconds: float = 30.0,
     allow_legacy_bootstrap: bool = False,
     force_legacy_bootstrap: bool = False,
+    force_v2_bootstrap: bool = False,
+    rollback_recovery: bool = False,
 ) -> dict[str, object]:
     """Compose live publication verification, source admission, and deployment."""
 
@@ -171,6 +173,12 @@ def install_release(
         github_anchor=github_anchor,
         policy_path=policy,
     )
+    if rollback_recovery:
+        recovery_runtime = apply.read_runtime(ctx)
+        if recovery_runtime is None:
+            raise errors.InstallError("protocol-v2 recovery requires an available listener")
+        apply.prove_v2_listener(ctx, recovery_runtime)
+        transaction.rollback_recovery(ctx, runtime=recovery_runtime)
     released = admit_released_payload(authority, trust_anchor=trust_anchor)
     payload_transaction = transaction.begin_transaction(ctx, released)
     return apply.install(
@@ -181,6 +189,7 @@ def install_release(
         timeout_seconds=timeout_seconds,
         allow_legacy_bootstrap=allow_legacy_bootstrap,
         force_legacy_bootstrap=force_legacy_bootstrap,
+        force_v2_bootstrap=force_v2_bootstrap,
     )
 
 
@@ -320,6 +329,16 @@ def main() -> None:
         action="store_true",
         help="authorize interruption of a verified legacy listener",
     )
+    ap.add_argument(
+        "--force-v2-bootstrap",
+        action="store_true",
+        help="authorize interruption of one exact verified protocol-v2 listener",
+    )
+    ap.add_argument(
+        "--rollback-recovery",
+        action="store_true",
+        help="restore one exact retained recovery transaction before installing this release",
+    )
     args = ap.parse_args()
 
     try:
@@ -377,6 +396,8 @@ def main() -> None:
             timeout_seconds=args.timeout_seconds,
             allow_legacy_bootstrap=args.allow_legacy_bootstrap,
             force_legacy_bootstrap=args.force_legacy_bootstrap,
+            force_v2_bootstrap=args.force_v2_bootstrap,
+            rollback_recovery=args.rollback_recovery,
         )
     except errors.ManualStartRequired as warning:
         _die(f"service persistence was not established: {warning}")

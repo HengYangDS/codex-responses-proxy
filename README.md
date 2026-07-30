@@ -135,6 +135,16 @@ state. Failure restores the exact prior owned projection; an unprovable
 committed handoff is retained as an explicit recovery-required transaction. The
 installer never downloads Python dependencies or collects credentials.
 
+If a prior source-side install retained an exact `recovery_required`
+transaction, a newer verified installer can use `--rollback-recovery` to
+restore that recorded prior projection only while the accepting listener still
+reports the same release, serving digest, receipt digest, manifest digest, and
+idle handoff state, and is the sole PID bound to the installed entrypoint. A
+protocol-v2 listener whose released upgrade logic is known unable to advance
+may then be replaced with the explicit `--force-v2-bootstrap` authorization.
+These options do not weaken live
+publication, source, payload, process, or successor proof.
+
 ### AIGW-managed routes
 
 When the active provider block is owned by AIGW, the installer deliberately

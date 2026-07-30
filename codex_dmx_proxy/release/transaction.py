@@ -18,6 +18,7 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from codex_dmx_proxy import errors, installation
+from codex_dmx_proxy.listener import identity
 from codex_dmx_proxy.release import digest, inventory, projection
 
 if TYPE_CHECKING:
@@ -97,6 +98,41 @@ def transaction_status(ctx: installation.InstallContext) -> dict[str, object] | 
         "fresh",
     )
     return {key: journal[key] for key in allowed if key in journal}
+
+
+def rollback_recovery(
+    ctx: installation.InstallContext,
+    *,
+    runtime: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """Restore one exact retained transaction bound to its prior live runtime."""
+
+    journal = projection._read_canonical_json(
+        transaction_journal_path(ctx), "payload transaction journal"
+    )
+    if (
+        journal.get("schema_version") != TRANSACTION_JOURNAL_SCHEMA
+        or journal.get("state") != "recovery_required"
+        or not isinstance(journal.get("transaction_id"), str)
+        or not isinstance(journal.get("version"), str)
+    ):
+        raise errors.InstallError("payload recovery transaction is unavailable or invalid")
+    rollback = payload_transaction_dir(ctx) / "rollback"
+    previous = identity.committed_payload(rollback / inventory.ENTRYPOINT)
+    if previous is None:
+        raise errors.InstallError("payload recovery rollback runtime identity is invalid")
+    expected_runtime = {**previous.handoff(), "accepting": True, "handoff_state": "idle"}
+    expected_runtime["payload_manifest_sha256"] = expected_runtime.pop("manifest_sha256")
+    if runtime is None or any(runtime.get(key) != value for key, value in expected_runtime.items()):
+        raise errors.InstallError("payload recovery runtime does not match the rollback projection")
+    _restore_rollback_snapshot(ctx, rollback)
+    result = {
+        "transaction_id": journal["transaction_id"],
+        "version": journal["version"],
+        "state": "rolled_back",
+    }
+    _remove_transaction_root(ctx)
+    return result
 
 
 class PayloadTransaction:

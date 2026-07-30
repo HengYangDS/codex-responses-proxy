@@ -1,0 +1,46 @@
+[claim]
+id = "handoff-upgrade-identity-20260730"
+subject = "codex-dmx-proxy:runtime-upgrade"
+state = "active"
+summary = "Local evidence bounds the repair for cross-version protocol-v2 successor identity and recovery."
+
+[evidence]
+dated = "evidence/chronicle/handoff-upgrade-identity-20260730/2026-07-30.md"
+sha256 = "aa4a556e34ac09eeeee796266c8a2b6d96c73a15f4f7c88fb0f256abbb08966d"
+evidence_ids = ["evidence:handoff-upgrade-identity-20260730"]
+binding = "live 1.0.35 to 1.0.36 failure plus the locally verified 1.0.37 repair scope"
+verifier = "digest_only"
+tests = [
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" scripts/run-python-tests.py --compile; done",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "historical"
+
+[boundary]
+owner = "codex-dmx-proxy"
+scope = "Local upgrade repair evidence only; hosted CI, publication, installation, and runtime acceptance remain external."
+
+[carriers]
+openspec = "openspec/changes/handoff-upgrade-identity"
+fallback = "Keep the old listener serving and preserve the recovery transaction."
+kill_signal = "A valid committed successor is rejected by the old listener's frozen identity."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "codex_dmx_proxy/deployment/apply.py",
+  "codex_dmx_proxy/listener/entrypoint.py",
+  "codex_dmx_proxy/listener/handoff.py",
+  "codex_dmx_proxy/listener/identity.py",
+  "codex_dmx_proxy/release/transaction.py",
+  "docs/governance/release-and-change-policy.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "tests/test_handoff_runtime.py",
+  "tests/test_payload_transactions.py",
+  "tests/test_release_installation.py",
+]
