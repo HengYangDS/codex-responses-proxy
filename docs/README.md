@@ -13,6 +13,7 @@ without copying a larger governance system into a small transport adapter.
 | [decisions/](decisions/0001-control-plane-data-plane-boundary.md) | Durable, revisitable design rulings. |
 | [evidence/](evidence/README.md) | Verification records and proof limits. |
 | [operations/](operations/forge-operations.md) | Independent GitLab and GitHub forge operation. |
+| [OpenSpec](../openspec/) | Active and archived change specifications. |
 | [CHANGELOG](../CHANGELOG.md) | Published release history. |
 
 Source, tests, `VERSION`, and CI remain higher authority than prose. Generated

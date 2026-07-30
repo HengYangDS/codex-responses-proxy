@@ -1,0 +1,17 @@
+schema: spec-driven
+context: |
+  Codex DMX Proxy is a runtime-files compatibility adapter for third-party
+  Responses endpoints. VERSION owns release identity. Python support is 3.12,
+  3.13, and 3.14. GitLab and GitHub are independent publication planes.
+rules:
+  proposal:
+    - Distinguish local proof, hosted CI, publication, installation, and runtime acceptance.
+    - Keep authority boundaries explicit and list non-goals.
+  specs:
+    - State requirements with observable WHEN, THEN, and AND scenarios.
+    - Keep provider projections subordinate to the repository-owned command.
+  design:
+    - Assign each failure and repair to one semantic owner.
+    - Preserve rollback, evidence, and external-state boundaries.
+  tasks:
+    - Require exact commands and evidence for verification and closeout.
