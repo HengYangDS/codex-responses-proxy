@@ -121,8 +121,16 @@ def rollback_recovery(
     previous = identity.committed_payload(rollback / inventory.ENTRYPOINT)
     if previous is None:
         raise errors.InstallError("payload recovery rollback runtime identity is invalid")
-    expected_runtime = {**previous.handoff(), "accepting": True, "handoff_state": "idle"}
-    expected_runtime["payload_manifest_sha256"] = expected_runtime.pop("manifest_sha256")
+    candidate = identity.committed_payload(Path(ctx.proxy_script))
+    if candidate is None:
+        raise errors.InstallError("payload recovery candidate projection identity is invalid")
+    expected_runtime = {
+        **previous.handoff(),
+        "payload_manifest_sha256": candidate.manifest_sha256,
+        "accepting": True,
+        "handoff_state": "idle",
+    }
+    expected_runtime.pop("manifest_sha256")
     if runtime is None or any(runtime.get(key) != value for key, value in expected_runtime.items()):
         raise errors.InstallError("payload recovery runtime does not match the rollback projection")
     _restore_rollback_snapshot(ctx, rollback)

@@ -812,10 +812,12 @@ class TestReceiptBoundPayloadTransaction(unittest.TestCase):
         candidate.preserve_for_recovery("handoff outcome unknown")
         rollback = Path(payload_transaction.payload_transaction_dir(ctx), "rollback")
         previous_identity = listener_identity.committed_payload(rollback / inventory.ENTRYPOINT)
+        candidate_identity = listener_identity.committed_payload(Path(ctx.proxy_script))
         assert previous_identity is not None
+        assert candidate_identity is not None
         runtime = {
             **previous_identity.handoff(),
-            "payload_manifest_sha256": previous_identity.manifest_sha256,
+            "payload_manifest_sha256": candidate_identity.manifest_sha256,
             "accepting": True,
             "handoff_state": "idle",
         }
@@ -873,10 +875,12 @@ class TestReceiptBoundPayloadTransaction(unittest.TestCase):
         root = Path(payload_transaction.payload_transaction_dir(ctx))
         rollback = root / "rollback"
         previous_identity = listener_identity.committed_payload(rollback / inventory.ENTRYPOINT)
+        candidate_identity = listener_identity.committed_payload(Path(ctx.proxy_script))
         assert previous_identity is not None
+        assert candidate_identity is not None
         runtime = {
             **previous_identity.handoff(),
-            "payload_manifest_sha256": previous_identity.manifest_sha256,
+            "payload_manifest_sha256": candidate_identity.manifest_sha256,
             "accepting": True,
             "handoff_state": "idle",
         }
@@ -886,6 +890,12 @@ class TestReceiptBoundPayloadTransaction(unittest.TestCase):
                 ctx,
                 runtime={**runtime, "release": "wrong"},
             )
+        candidate_version = Path(ctx.install_dir, "VERSION")
+        candidate_bytes = candidate_version.read_bytes()
+        candidate_version.write_bytes(b"tampered\n")
+        with self.assertRaisesRegex(errors.InstallError, "candidate projection identity"):
+            payload_transaction.rollback_recovery(ctx, runtime=runtime)
+        candidate_version.write_bytes(candidate_bytes)
         (root / "rollback" / "VERSION").write_bytes(b"tampered\n")
         with self.assertRaisesRegex(errors.InstallError, "runtime identity is invalid"):
             payload_transaction.rollback_recovery(ctx, runtime=runtime)
