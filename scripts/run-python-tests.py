@@ -24,8 +24,9 @@ COMPILE_TARGETS = (
     "scripts",
 )
 ABNORMAL_OUTPUT = re.compile(
-    rb"Traceback \(most recent call last\):|Exception occurred during processing of request|"
-    rb"(?:Resource|Deprecation|Runtime|Syntax|Future|Import|Encoding|Bytes|Unicode)Warning:"
+    rb"Traceback \(most recent call last\):|Exception ignored in:|"
+    rb"Exception occurred during processing of request|"
+    rb"(?:[A-Za-z_][A-Za-z0-9_]*Warning|Warning):"
 )
 
 
