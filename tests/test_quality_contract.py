@@ -349,8 +349,11 @@ class TestRunnerContracts(unittest.TestCase):
         self.assertFalse(runner.abnormal_output(b"390 tests passed\n", b""))
         for output in (
             b"Traceback (most recent call last):\n",
+            b"Exception ignored in: <function Resource.__del__>\n",
             b"Exception occurred during processing of request\n",
             b"ResourceWarning: unclosed response\n",
+            b"module.py:1: UserWarning: visible warning\n",
+            b"Warning: visible base warning\n",
         ):
             with self.subTest(output=output):
                 self.assertTrue(runner.abnormal_output(b"", output))
