@@ -18,6 +18,9 @@ shared headings even when a historical tag exists only on the other Forge.
   authorized verified-listener bootstrap. A damaged recovery remains retained;
   bootstrap failure restores the prior payload and must prove the prior runtime
   rather than claiming success.
+- Resolve bare quality-tool commands by the exact required version across PATH,
+  preventing an outer proof runner's virtual environment from silently
+  substituting its own Ruff or ty while preserving explicit CI tool paths.
 
 ## [1.0.36] - 2026-07-30
 
