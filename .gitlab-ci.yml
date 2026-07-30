@@ -22,8 +22,7 @@ stages:
     - apt-get install -y --no-install-recommends git openssh-client
   script:
     - python --version
-    - python -m compileall -q codex_dmx_proxy watchdog install.py uninstall.py control.py governance.py tests scripts
-    - python scripts/run-python-tests.py
+    - python scripts/run-python-tests.py --compile
 
 verify-python-3.12:
   extends: .python-verify
@@ -92,7 +91,7 @@ verify-python-quality:
   before_script:
     - apt-get update -qq
     - apt-get install -y --no-install-recommends git openssh-client
-    - python -m pip install --disable-pip-version-check --no-cache-dir ruff==0.16.0 ty==0.0.64 coverage==7.13.5
+    - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore ruff==0.16.0 ty==0.0.64 coverage==7.13.5
   script:
     - PYTHON=python RUFF=ruff TY=ty sh scripts/run-python-quality.sh
 

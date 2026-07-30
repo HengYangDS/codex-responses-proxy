@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import sys
 import tempfile
@@ -209,8 +210,12 @@ class TestControllerHandoffWiring(unittest.TestCase):
                     with self.assertRaisesRegex(errors.InstallError, message):
                         handoff.post_ready(ctx, expected)
 
+            conflict_body = io.BytesIO(b"conflict")
             for failure, message in (
-                (urllib.error.HTTPError("url", 409, "conflict", Message(), None), "HTTP 409"),
+                (
+                    urllib.error.HTTPError("url", 409, "conflict", Message(), conflict_body),
+                    "HTTP 409",
+                ),
                 (urllib.error.URLError("offline"), "unavailable"),
                 (ValueError("bad timeout"), "unavailable"),
             ):
@@ -218,6 +223,7 @@ class TestControllerHandoffWiring(unittest.TestCase):
                     opener.open.side_effect = failure
                     with self.assertRaisesRegex(errors.InstallError, message):
                         handoff.post_ready(ctx, expected)
+            self.assertTrue(conflict_body.closed)
 
         oversized = expected_metadata(release="x" * handoff._MAX_BODY_BYTES)
         with self.assertRaisesRegex(errors.InstallError, "request payload is too large"):
