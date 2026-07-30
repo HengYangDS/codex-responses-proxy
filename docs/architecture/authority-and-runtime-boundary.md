@@ -39,6 +39,22 @@ does not accept an upstream host from a request header or body. Environment
 overrides are service-owner inputs and must be credential-free absolute HTTPS
 origins.
 
+Proxy-owned reversible AIGW route state mirrors that namespace explicitly.
+Schema v3 records the AIGW account identifier separately from one closed
+`dmxapi`, `ucloud`, or `aihubmix` provider route and requires `proxy_url` to be
+the corresponding loopback base at the installed listener port. The unscoped
+`/v1` URL remains only for the bounded direct-Codex compatibility path; it is
+not a canonical AIGW endpoint and new AIGW state never records or emits it.
+
+Historical schema-v2 AIGW state remains readable but cannot re-enable the
+unscoped route. After AIGW's public CLI and sync lifecycle have projected the
+selected account to either its exact direct URL or canonical scoped proxy URL,
+installed `control.py adopt-aigw` is the sole proxy-state migration entry. It
+atomically replaces only `install-state.json`, verifies the canonical AIGW
+endpoint, and never edits AIGW configuration. Route-state migration therefore
+follows successful released-payload installation and runtime proof; it is not
+part of the payload transaction or its rollback authority.
+
 Before remote I/O, `codex_dmx_proxy.listener.rewrite` projects Responses replay
 onto a closed portable grammar. Provider continuation IDs, stored-item
 references, reasoning/search state, provider item IDs, and opaque ciphertext

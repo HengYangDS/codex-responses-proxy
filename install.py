@@ -203,7 +203,7 @@ def wire_config(ctx: installation.InstallContext) -> bool:
     with open(ctx.codex_config, "r", encoding="utf-8") as fh:
         text = fh.read()
 
-    proxy_url = route_state.proxy_base_url(ctx.port)
+    proxy_url = route_state.legacy_dmx_proxy_base_url(ctx.port)
     if route_state.route_authority(ctx) == "aigw":
         _say("  AIGW owns the marked provider projection; leaving config as-is.")
         return True

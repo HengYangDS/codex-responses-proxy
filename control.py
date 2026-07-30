@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -32,8 +33,20 @@ def _context() -> installation.InstallContext:
     try:
         with open(state_path, "r", encoding="utf-8") as fh:
             value = json.load(fh).get("proxy_url", "")
-        if value.startswith("http://127.0.0.1:") and value.endswith("/v1"):
-            port = int(value.rsplit(":", 1)[1].removesuffix("/v1"))
+        parsed = urllib.parse.urlsplit(value)
+        scoped_paths = {f"/{route}/v1" for route in route_state.PROVIDER_ROUTES}
+        if (
+            parsed.scheme == "http"
+            and parsed.hostname == "127.0.0.1"
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.path in {"/v1", *scoped_paths}
+            and parsed.query == ""
+            and parsed.fragment == ""
+            and parsed.port is not None
+            and parsed.port > 0
+        ):
+            port = parsed.port
     except (OSError, ValueError, json.JSONDecodeError):
         pass
     return installation.InstallContext(
@@ -74,7 +87,13 @@ def _set_aigw_account_endpoint(account: str, endpoint: str) -> None:
         raise errors.InstallError(f"AIGW endpoint update failed: {detail or 'unknown error'}")
 
 
-def adopt_aigw_route(ctx: installation.InstallContext, *, account: str, direct_url: str) -> dict:
+def adopt_aigw_route(
+    ctx: installation.InstallContext,
+    *,
+    account: str,
+    direct_url: str,
+    provider_route: str = "dmxapi",
+) -> dict:
     """Record an opt-in AIGW endpoint route without parsing or writing its config.
 
     The only control-plane mutation later performed by this mode is a call to the
@@ -88,7 +107,7 @@ def adopt_aigw_route(ctx: installation.InstallContext, *, account: str, direct_u
     except OSError as exc:
         raise errors.InstallError("could not read canonical AIGW config") from exc
     direct_url = route_state.normalize_upstream_url(direct_url)
-    proxy_url = route_state.proxy_base_url(ctx.port)
+    proxy_url = route_state.provider_proxy_base_url(ctx.port, provider_route)
     if endpoint not in (direct_url, proxy_url):
         raise errors.InstallError(
             "AIGW endpoint differs from requested direct/proxy route; refusing adoption"
@@ -98,6 +117,7 @@ def adopt_aigw_route(ctx: installation.InstallContext, *, account: str, direct_u
         aigw_config_path=config_path,
         account=account,
         direct_url=direct_url,
+        provider_route=provider_route,
     )
     route_state.write_install_state(ctx, state)
     return state
@@ -107,12 +127,24 @@ def set_aigw_route(ctx: installation.InstallContext, state: dict | None, *, enab
     """Ask AIGW to toggle an adopted canonical endpoint without editing its config."""
     if state is None or state.get("route_mode") != "aigw_endpoint":
         raise errors.InstallError("AIGW route is unmanaged; run control.py adopt-aigw first")
+    if state.get("schema_version") == 2 and enabled:
+        raise errors.InstallError(
+            "legacy AIGW route state cannot enable /v1; project the scoped endpoint "
+            "through AIGW and run control.py adopt-aigw"
+        )
     status = route_state.aigw_route_status(ctx, state, state["aigw_config_path"])
     if status == "drifted":
         raise errors.InstallError(
             "canonical AIGW endpoint has changed outside proxy control; refusing to overwrite it"
         )
-    target = state["proxy_url"] if enabled else state["direct_url"]
+    target = (
+        route_state.provider_proxy_base_url(
+            ctx.port,
+            route_state.aigw_provider_route(state),
+        )
+        if enabled
+        else state["direct_url"]
+    )
     if status != ("enabled" if enabled else "disabled"):
         _set_aigw_account_endpoint(state["aigw_account"], target)
         status = route_state.aigw_route_status(ctx, state, state["aigw_config_path"])
@@ -239,7 +271,13 @@ def main() -> None:
             "adopt-aigw",
         ),
     )
-    parser.add_argument("--aigw-account", default="dmx", help="AIGW account ID for adopt-aigw")
+    parser.add_argument("--aigw-account", default="dmxapi", help="AIGW account ID for adopt-aigw")
+    parser.add_argument(
+        "--provider-route",
+        default="dmxapi",
+        choices=tuple(sorted(route_state.PROVIDER_ROUTES)),
+        help="provider-scoped proxy route for adopt-aigw",
+    )
     parser.add_argument(
         "--direct-url",
         default=installation.DEFAULT_UPSTREAM + "/v1",
@@ -253,7 +291,12 @@ def main() -> None:
 
     if args.command == "adopt-aigw":
         try:
-            state = adopt_aigw_route(ctx, account=args.aigw_account, direct_url=args.direct_url)
+            state = adopt_aigw_route(
+                ctx,
+                account=args.aigw_account,
+                direct_url=args.direct_url,
+                provider_route=args.provider_route,
+            )
         except errors.InstallError as exc:
             raise SystemExit(f"ERROR: {exc}") from exc
         evidence = {
