@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import os
 import subprocess
 import sys
 import tempfile
@@ -367,6 +368,8 @@ class TestRunnerContracts(unittest.TestCase):
     def test_gitlab_quality_install_declares_the_container_root_policy(self) -> None:
         pipeline = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         self.assertIn("--root-user-action=ignore", pipeline)
+        self.assertIn("DEBIAN_FRONTEND: noninteractive", pipeline)
+        self.assertNotIn("apt-get install -y ", pipeline)
 
     def test_quality_runner_resolves_the_required_tool_beyond_a_foreign_venv(self) -> None:
         source = (ROOT / "scripts" / "run-python-quality.sh").read_text(encoding="utf-8")
@@ -374,6 +377,38 @@ class TestRunnerContracts(unittest.TestCase):
         self.assertIn("for directory in $PATH", source)
         self.assertIn('ruff_path=$(resolve_versioned_tool "$ruff" "ruff 0.16.0"', source)
         self.assertIn('ty_path=$(resolve_versioned_tool "$ty" "ty 0.0.64"', source)
+
+    def test_quality_runner_skips_an_earlier_wrong_tool_version(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            foreign, required = root / "foreign", root / "required"
+            foreign.mkdir()
+            required.mkdir()
+            executables = {
+                root
+                / "python": "if [ \"$1 $2 $3\" = '-m coverage --version' ]; then echo 'Coverage.py, version 7.13.5 with C extension'; elif [ \"$#\" = 1 ] && [ \"$1\" = '-' ]; then printf 'codex_dmx_proxy\\ntests\\n'; fi",
+                root / "ruff": "[ \"${1:-}\" = --version ] && echo 'ruff 0.16.0'; exit 0",
+                foreign / "ty": "[ \"${1:-}\" = --version ] && echo 'ty 0.0.63'; exit 0",
+                required / "ty": "[ \"${1:-}\" = --version ] && echo 'ty 0.0.64'; exit 0",
+            }
+            for path, body in executables.items():
+                path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+                path.chmod(0o755)
+            completed = subprocess.run(
+                ["sh", str(ROOT / "scripts/run-python-quality.sh")],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+                env=os.environ
+                | {
+                    "PATH": f"{foreign}:{required}:{os.environ['PATH']}",
+                    "PYTHON": str(root / "python"),
+                    "RUFF": str(root / "ruff"),
+                    "TY": "ty",
+                },
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
 if __name__ == "__main__":
