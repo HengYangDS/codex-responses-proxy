@@ -1,0 +1,8 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/posix-quality-fixture/**",
+  "openspec/changes/archive/2026-07-30-posix-quality-fixture/**",
+  "tests/test_quality_contract.py",
+]

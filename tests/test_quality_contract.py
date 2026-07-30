@@ -378,6 +378,7 @@ class TestRunnerContracts(unittest.TestCase):
         self.assertIn('ruff_path=$(resolve_versioned_tool "$ruff" "ruff 0.16.0"', source)
         self.assertIn('ty_path=$(resolve_versioned_tool "$ty" "ty 0.0.64"', source)
 
+    @unittest.skipUnless(os.name == "posix", "models POSIX shell executable lookup")
     def test_quality_runner_skips_an_earlier_wrong_tool_version(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
