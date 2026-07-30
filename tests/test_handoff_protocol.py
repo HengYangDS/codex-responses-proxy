@@ -364,7 +364,7 @@ class TestHandoffPlatformHelpers(unittest.TestCase):
             "release": entrypoint_module.release_version(),
             "serving_payload_sha256": entrypoint_module.serving_payload_sha256(),
             "release_receipt_sha256": entrypoint_module.release_receipt_sha256(),
-            "manifest_sha256": self.p.payload_manifest_sha256(context),
+            "manifest_sha256": context.payload_manifest_sha256(),
             "listener_fd": 37,
         }
 

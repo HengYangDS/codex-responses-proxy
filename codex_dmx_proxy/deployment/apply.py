@@ -55,6 +55,7 @@ def install(
     timeout_seconds: float = 30.0,
     allow_legacy_bootstrap: bool = False,
     force_legacy_bootstrap: bool = False,
+    force_v2_bootstrap: bool = False,
 ) -> dict[str, object]:
     """Apply one admitted release through fresh, handoff, or legacy lifecycle."""
 
@@ -69,6 +70,15 @@ def install(
         )
     if handoff.runtime_supports_handoff(current):
         assert current is not None
+        if force_v2_bootstrap:
+            return _v2_bootstrap(
+                ctx,
+                transaction,
+                current=current,
+                adapter=adapter,
+                runtime_reader=runtime_reader,
+                timeout_seconds=timeout_seconds,
+            )
         return _protocol_v2_upgrade(
             ctx,
             transaction,
@@ -88,6 +98,67 @@ def install(
         timeout_seconds=timeout_seconds,
         force=force_legacy_bootstrap,
     )
+
+
+def _v2_bootstrap(
+    ctx: installation.InstallContext,
+    transaction: transaction.PayloadTransaction,
+    *,
+    current: dict[str, object],
+    adapter: ServiceAdapter,
+    runtime_reader: RuntimeReader,
+    timeout_seconds: float,
+) -> dict[str, object]:
+    """Replace one verified v2 listener whose upgrade protocol cannot advance."""
+
+    old = prove_v2_listener(ctx, current)
+    transaction.commit_projection()
+    terminated = False
+    try:
+        if not process.terminate_pid(old.pid, expected_path=old.script):
+            raise errors.InstallError("verified protocol-v2 listener did not terminate")
+        terminated = True
+        adapter.install(ctx)
+        runtime = wait_for_serving_runtime(
+            ctx,
+            transaction.expected,
+            runtime_reader=runtime_reader,
+            timeout_seconds=timeout_seconds,
+            old_pid=old.pid,
+        )
+    except BaseException as exc:
+        try:
+            transaction.rollback()
+            if terminated:
+                adapter.install(ctx)
+                wait_for_legacy_runtime(
+                    ctx,
+                    release=str(current["release"]),
+                    runtime_reader=runtime_reader,
+                    timeout_seconds=timeout_seconds,
+                )
+        except BaseException as rollback_exc:
+            raise errors.InstallError(
+                f"protocol-v2 bootstrap failed and runtime rollback failed: {rollback_exc}"
+            ) from exc
+        raise
+    transaction.finalize(runtime)
+    return {"mode": "protocol-v2-bootstrap", "runtime": runtime, "old_pid": old.pid}
+
+
+def prove_v2_listener(
+    ctx: installation.InstallContext,
+    runtime: dict[str, object],
+) -> process.OwnedProcess:
+    """Bind one idle accepting v2 runtime to its exact installed entrypoint."""
+
+    listeners = process.verified_proxy_listener_pids(ctx)
+    pid = runtime.get("pid")
+    if type(pid) is not int or listeners != [pid]:
+        raise errors.InstallError("protocol-v2 bootstrap requires one verified listener")
+    if runtime.get("accepting") is not True or runtime.get("handoff_state") != "idle":
+        raise errors.InstallError("protocol-v2 bootstrap requires one idle accepting listener")
+    return process.OwnedProcess(pid, ctx.proxy_script)
 
 
 def _fresh_install(

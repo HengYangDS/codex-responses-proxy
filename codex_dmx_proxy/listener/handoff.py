@@ -9,7 +9,6 @@ through :class:`Context`.
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import os
 import queue
@@ -26,6 +25,8 @@ from typing import IO
 from typing import Callable
 from typing import Mapping
 from typing import TypedDict
+
+from codex_dmx_proxy.listener import identity
 
 
 type JsonObject = dict[str, object]
@@ -85,6 +86,8 @@ class Context:
     release_version: Callable[[], str]
     serving_payload_sha256: Callable[[], str | None]
     release_receipt_sha256: Callable[[], str | None]
+    payload_manifest_sha256: Callable[[], str | None]
+    committed_payload: Callable[[], identity.LoadedPayloadIdentity | None]
     response_gate_lock: threading.Lock
     draining: Callable[[], bool]
     active_responses: Callable[[], int]
@@ -139,28 +142,22 @@ def _transition(target_state: str) -> None:
         _HANDOFF_SESSION["state"] = target_state
 
 
-def payload_manifest_sha256(context: Context) -> str | None:
-    """Hash the installed payload manifest without exposing its contents."""
-    candidate = context.proxy_script.parents[2] / "payload-manifest.json"
-    try:
-        return hashlib.sha256(candidate.read_bytes()).hexdigest()
-    except OSError:
-        return None
-
-
 def _payload_identity(context: Context) -> JsonObject:
     return {
         "release": context.release_version(),
         "serving_payload_sha256": context.serving_payload_sha256(),
         "release_receipt_sha256": context.release_receipt_sha256(),
-        "manifest_sha256": payload_manifest_sha256(context),
+        "manifest_sha256": context.payload_manifest_sha256(),
     }
 
 
 def disk_payload_matches_expected(expected: ReadOnlyJsonObject, context: Context) -> bool:
     """Verify the payload that a replacement child would load from disk."""
-    required = _payload_identity(context)
-    return {key: expected.get(key) for key in required} == required
+    committed = context.committed_payload()
+    return (
+        committed is not None
+        and {key: expected.get(key) for key in committed.handoff()} == committed.handoff()
+    )
 
 
 def runtime_identity(context: Context) -> dict[str, object]:
@@ -173,7 +170,7 @@ def runtime_identity(context: Context) -> dict[str, object]:
             "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
             "handoff_transaction_id": _HANDOFF_SESSION.get("transaction_id"),
             "handoff_state": state,
-            "payload_manifest_sha256": payload_manifest_sha256(context),
+            "payload_manifest_sha256": context.payload_manifest_sha256(),
             "accepting": accepting,
             "active_handlers": context.active_handlers(),
         }
@@ -662,7 +659,7 @@ def _valid_prepare(message: object, context: Context) -> bool:
         "release": context.release_version(),
         "serving_payload_sha256": context.serving_payload_sha256(),
         "release_receipt_sha256": context.release_receipt_sha256(),
-        "manifest_sha256": payload_manifest_sha256(context),
+        "manifest_sha256": context.payload_manifest_sha256(),
         listener_field: message.get(listener_field),
     }
     transaction_id = message.get("transaction_id")

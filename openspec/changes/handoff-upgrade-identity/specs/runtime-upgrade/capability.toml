@@ -1,0 +1,25 @@
+family = "runtime"
+primary_invariant = "A cross-version handoff proves the committed successor payload, not the old process identity."
+routing_question = "Does this change alter released-payload handoff, recovery, or runtime acceptance?"
+decision_axes = ["lifecycle", "surface", "authority"]
+boundary_rules = [
+  "The old listener validates committed successor bytes before preparing a child.",
+  "The child independently freezes and echoes the same successor identity.",
+  "Recovery restores only an exact retained rollback snapshot before a new release transaction begins.",
+  "An interrupted protocol-v2 bootstrap requires explicit authorization and exact old and successor runtime proof.",
+]
+aliases = []
+
+[owner]
+package = "codex-dmx-proxy"
+scope = "Cross-version protocol-v2 released-payload upgrade and recovery"
+
+[recommended_facets]
+lifecycle = ["installation", "recovery"]
+surface = ["runtime", "listener", "control", "docs", "openspec"]
+authority = ["source", "test", "docs", "openspec", "claim", "evidence"]
+
+[proof_profile]
+default_command = "ethos prove --json"
+executed_command = "ethos prove --execute --expect-head <head> --json"
+required_gates = ["python-quality", "platform-matrix"]

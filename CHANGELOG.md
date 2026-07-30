@@ -7,6 +7,18 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.37] - 2026-07-30
+
+### Fixed
+
+- Validate protocol-v2 upgrade requests against the complete committed
+  successor payload rather than the old listener's frozen runtime identity, so
+  a real cross-version handoff no longer fails with HTTP 409.
+- Add an explicit, publication-gated recovery rollback and a separately
+  authorized verified-listener bootstrap. A damaged recovery remains retained;
+  bootstrap failure restores the prior payload and must prove the prior runtime
+  rather than claiming success.
+
 ## [1.0.36] - 2026-07-30
 
 ### Fixed

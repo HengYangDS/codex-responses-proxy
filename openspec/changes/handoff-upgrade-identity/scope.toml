@@ -1,0 +1,22 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "codex_dmx_proxy/deployment/apply.py",
+  "codex_dmx_proxy/listener/entrypoint.py",
+  "codex_dmx_proxy/listener/control.py",
+  "codex_dmx_proxy/listener/handoff.py",
+  "codex_dmx_proxy/listener/identity.py",
+  "codex_dmx_proxy/release/projection.py",
+  "codex_dmx_proxy/release/transaction.py",
+  "docs/governance/release-and-change-policy.md",
+  "evidence/claims/handoff-upgrade-identity-20260730.toml",
+  "evidence/chronicle/handoff-upgrade-identity-20260730/**",
+  "install.py",
+  "openspec/**",
+  "tests/test_handoff_protocol.py",
+  "tests/test_handoff_runtime.py",
+  "tests/test_payload_transactions.py",
+  "tests/test_release_installation.py",
+]

@@ -68,7 +68,7 @@ class FakeServiceAdapter:
         self.install_mock(ctx)
 
 
-class InstallArguments(TypedDict):
+class InstallArguments(TypedDict, total=False):
     tag: str
     gitlab_remote: str
     gitlab_api_base: str
@@ -80,6 +80,7 @@ class InstallArguments(TypedDict):
     policy: Path
     trust_anchor: Path
     adapter: apply.ServiceAdapter
+    rollback_recovery: bool
 
 
 class TestReleasedDeployment(unittest.TestCase):
@@ -108,6 +109,7 @@ class TestReleasedDeployment(unittest.TestCase):
         timeout_seconds: float = 30.0,
         allow_legacy_bootstrap: bool = False,
         force_legacy_bootstrap: bool = False,
+        force_v2_bootstrap: bool = False,
     ) -> dict[str, object]:
         return apply.install(
             self.ctx,
@@ -117,6 +119,7 @@ class TestReleasedDeployment(unittest.TestCase):
             timeout_seconds=timeout_seconds,
             allow_legacy_bootstrap=allow_legacy_bootstrap,
             force_legacy_bootstrap=force_legacy_bootstrap,
+            force_v2_bootstrap=force_v2_bootstrap,
         )
 
     @staticmethod
@@ -172,6 +175,103 @@ class TestReleasedDeployment(unittest.TestCase):
         handoff.assert_called_once()
         self.assertEqual(transaction.events, ["commit", ("finalize", successor)])
         self.assertEqual(result["mode"], "protocol-v2-upgrade")
+
+    def test_authorized_v2_bootstrap_binds_terminates_and_proves_the_exact_listener(self) -> None:
+        payload = FakeTransaction()
+        current = self._protocol_v2_runtime()
+        successor = self._runtime()
+        adapter = FakeServiceAdapter()
+        old = process.OwnedProcess(111, self.ctx.proxy_script)
+        with (
+            mock.patch.object(apply, "prove_v2_listener", return_value=old) as prove,
+            mock.patch.object(process, "terminate_pid", return_value=True) as terminate,
+            mock.patch.object(apply, "wait_for_serving_runtime", return_value=successor),
+        ):
+            result = self._install(
+                payload,
+                current,
+                adapter=adapter,
+                force_v2_bootstrap=True,
+            )
+        prove.assert_called_once()
+        terminate.assert_called_once_with(111, expected_path=self.ctx.proxy_script)
+        adapter.install_mock.assert_called_once_with(self.ctx)
+        self.assertEqual(payload.events, ["commit", ("finalize", successor)])
+        self.assertEqual(result["mode"], "protocol-v2-bootstrap")
+
+    def test_v2_bootstrap_failure_restores_payload_and_old_runtime(self) -> None:
+        payload = FakeTransaction()
+        current = self._protocol_v2_runtime()
+        adapter = FakeServiceAdapter()
+        old = process.OwnedProcess(111, self.ctx.proxy_script)
+        with (
+            mock.patch.object(apply, "prove_v2_listener", return_value=old),
+            mock.patch.object(process, "terminate_pid", return_value=True),
+            mock.patch.object(
+                apply,
+                "wait_for_serving_runtime",
+                side_effect=errors.InstallError("successor failed"),
+            ),
+            mock.patch.object(apply, "wait_for_legacy_runtime", return_value=current),
+            self.assertRaisesRegex(errors.InstallError, "successor failed"),
+        ):
+            self._install(
+                payload,
+                current,
+                adapter=adapter,
+                force_v2_bootstrap=True,
+            )
+        self.assertEqual(payload.events, ["commit", "rollback"])
+        self.assertEqual(adapter.install_mock.call_count, 2)
+
+    def test_v2_bootstrap_rejects_unbound_or_non_idle_listener_before_commit(self) -> None:
+        payload = FakeTransaction()
+        current = self._protocol_v2_runtime()
+        with mock.patch.object(process, "verified_proxy_listener_pids", return_value=[111]):
+            self.assertEqual(
+                apply.prove_v2_listener(self.ctx, current),
+                process.OwnedProcess(111, self.ctx.proxy_script),
+            )
+        cases = (
+            ({**current, "pid": True}, [111]),
+            (current, []),
+            ({**current, "accepting": False}, [111]),
+            ({**current, "handoff_state": "ready"}, [111]),
+        )
+        for runtime, listeners in cases:
+            with (
+                self.subTest(runtime=runtime, listeners=listeners),
+                mock.patch.object(process, "verified_proxy_listener_pids", return_value=listeners),
+                self.assertRaises(errors.InstallError),
+            ):
+                self._install(payload, runtime, force_v2_bootstrap=True)
+        self.assertEqual(payload.events, [])
+
+    def test_v2_bootstrap_reports_termination_and_rollback_failures(self) -> None:
+        current = self._protocol_v2_runtime()
+        old = process.OwnedProcess(111, self.ctx.proxy_script)
+        payload = FakeTransaction()
+        with (
+            mock.patch.object(apply, "prove_v2_listener", return_value=old),
+            mock.patch.object(process, "terminate_pid", return_value=False),
+            self.assertRaisesRegex(errors.InstallError, "did not terminate"),
+        ):
+            self._install(payload, current, force_v2_bootstrap=True)
+        self.assertEqual(payload.events, ["commit", "rollback"])
+
+        payload = FakeTransaction()
+        with (
+            mock.patch.object(apply, "prove_v2_listener", return_value=old),
+            mock.patch.object(process, "terminate_pid", return_value=True),
+            mock.patch.object(
+                apply, "wait_for_serving_runtime", side_effect=RuntimeError("failed")
+            ),
+            mock.patch.object(
+                apply, "wait_for_legacy_runtime", side_effect=RuntimeError("rollback")
+            ),
+            self.assertRaisesRegex(errors.InstallError, "runtime rollback failed"),
+        ):
+            self._install(payload, current, force_v2_bootstrap=True)
 
     def test_legacy_or_unreadable_listener_refuses_before_commit_without_authorization(
         self,
@@ -746,6 +846,37 @@ class TestInstallComposition(unittest.TestCase):
             install.install_release(ctx, **arguments)
         clean.assert_called_once()
         begin.assert_not_called()
+
+    def test_recovery_rollback_requires_fresh_live_publication_before_restore(self) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        authority = mock.create_autospec(publication.PublishedRelease, instance=True)
+        arguments = self._arguments()
+        arguments["rollback_recovery"] = True
+        runtime = {"release": "1.2.2", "accepting": True}
+        with (
+            mock.patch.object(install.release_admission, "require_clean_checkout"),
+            mock.patch.object(install.publication, "verify", return_value=authority) as verify,
+            mock.patch.object(install.apply, "read_runtime", return_value=runtime),
+            mock.patch.object(install.apply, "prove_v2_listener") as prove_listener,
+            mock.patch.object(install.transaction, "rollback_recovery") as rollback,
+            mock.patch.object(install, "admit_released_payload", return_value=mock.Mock()),
+            mock.patch.object(install.transaction, "begin_transaction", return_value=mock.Mock()),
+            mock.patch.object(install.apply, "install", return_value={"mode": "recovered"}),
+        ):
+            install.install_release(ctx, **arguments)
+        verify.assert_called_once()
+        prove_listener.assert_called_once_with(ctx, runtime)
+        rollback.assert_called_once_with(ctx, runtime=runtime)
+
+        with (
+            mock.patch.object(install.release_admission, "require_clean_checkout"),
+            mock.patch.object(install.publication, "verify", return_value=authority),
+            mock.patch.object(install.apply, "read_runtime", return_value=None),
+            mock.patch.object(install.transaction, "rollback_recovery") as rollback,
+            self.assertRaisesRegex(errors.InstallError, "available listener"),
+        ):
+            install.install_release(ctx, **arguments)
+        rollback.assert_not_called()
 
     def test_publication_verification_failure_refuses_before_source_admission(self) -> None:
         with (
