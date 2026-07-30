@@ -23,8 +23,20 @@ None.
 
 ### Modified Capabilities
 
-- `ci-diagnostics`: release gates validate semantic owner behavior and hosted
-  dependency bootstrap is warning-free.
+- `ci-diagnostics`: subject=successful CI diagnostic integrity; reuse=existing;
+  change=modify; release gates validate semantic owner behavior and hosted
+  dependency bootstrap is warning-free;
+  facet:lifecycle=validation,release;
+  facet:surface=test,quality,ci,docs,openspec;
+  facet:authority=source,test,docs,openspec,claim,evidence.
+
+## Out of Scope
+
+- Runtime request behavior, Codex transcript/session/model state, and AIGW
+  configuration or credentials.
+- Rewriting the immutable `v1.0.37` provider-native tags or failed job history.
+- Weakening signed-source, provider identity, coverage, publication, or
+  installation proof.
 
 ## Impact
 
