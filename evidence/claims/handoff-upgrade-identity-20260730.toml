@@ -6,7 +6,7 @@ summary = "Local evidence bounds the repair for cross-version protocol-v2 succes
 
 [evidence]
 dated = "evidence/chronicle/handoff-upgrade-identity-20260730/2026-07-30.md"
-sha256 = "aa4a556e34ac09eeeee796266c8a2b6d96c73a15f4f7c88fb0f256abbb08966d"
+sha256 = "dea5af553d65ae4bed886b0ac713fe04812e1a6458d4ad820e5c177202085611"
 evidence_ids = ["evidence:handoff-upgrade-identity-20260730"]
 binding = "live 1.0.35 to 1.0.36 failure plus the locally verified 1.0.37 repair scope"
 verifier = "digest_only"
@@ -40,7 +40,9 @@ targets = [
   "codex_dmx_proxy/release/transaction.py",
   "docs/governance/release-and-change-policy.md",
   "openspec/specs/runtime-upgrade/spec.md",
+  "scripts/run-python-quality.sh",
   "tests/test_handoff_runtime.py",
   "tests/test_payload_transactions.py",
+  "tests/test_quality_contract.py",
   "tests/test_release_installation.py",
 ]

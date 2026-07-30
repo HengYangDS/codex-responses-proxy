@@ -14,7 +14,10 @@ Canonical test jobs treat Python warnings and unhandled tracebacks as failures.
 Expected peer disconnects in loopback integration tests are handled at the
 fixture boundary, while production HTTP responses remain explicitly closed.
 Compilation writes bytecode only to an isolated temporary prefix, and quality
-checks do not retain a Ruff cache in the checkout.
+checks do not retain a Ruff cache in the checkout. A bare Ruff or ty command is
+resolved to the first PATH candidate with the exact repository-required
+version, so an outer runner's virtual environment cannot silently substitute a
+different tool; an explicit executable path remains authoritative.
 
 ## Release identity
 

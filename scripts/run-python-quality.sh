@@ -7,6 +7,37 @@ python=${PYTHON:-python3}
 ruff=${RUFF:-ruff}
 ty=${TY:-ty}
 
+resolve_versioned_tool() {
+  requested=$1
+  expected=$2
+  label=$3
+  case "$requested" in
+    */*)
+      [ -x "$requested" ] && [ "$("$requested" --version)" = "$expected" ] || {
+        echo "$label ${expected#* } is required" >&2
+        return 2
+      }
+      printf '%s\n' "$requested"
+      ;;
+    *)
+      old_ifs=$IFS
+      IFS=:
+      for directory in $PATH; do
+        [ -n "$directory" ] || directory=.
+        candidate=$directory/$requested
+        if [ -x "$candidate" ] && [ "$("$candidate" --version 2>/dev/null)" = "$expected" ]; then
+          IFS=$old_ifs
+          printf '%s\n' "$candidate"
+          return 0
+        fi
+      done
+      IFS=$old_ifs
+      echo "$label ${expected#* } is required" >&2
+      return 2
+      ;;
+  esac
+}
+
 cd "$root"
 
 if [ -z "${COVERAGE_FILE:-}" ]; then
@@ -20,14 +51,8 @@ python_path=$(command -v "$python") || {
   echo "Python quality interpreter is unavailable: $python" >&2
   exit 2
 }
-ruff_path=$(command -v "$ruff") || {
-  echo "Ruff is unavailable: $ruff" >&2
-  exit 2
-}
-ty_path=$(command -v "$ty") || {
-  echo "ty is unavailable: $ty" >&2
-  exit 2
-}
+ruff_path=$(resolve_versioned_tool "$ruff" "ruff 0.16.0" "Ruff") || exit $?
+ty_path=$(resolve_versioned_tool "$ty" "ty 0.0.64" "ty") || exit $?
 coverage_version=$("$python_path" -m coverage --version 2>/dev/null | sed -n '1p') || {
   echo "coverage.py is unavailable to $python" >&2
   exit 2
@@ -36,15 +61,6 @@ coverage_version=$("$python_path" -m coverage --version 2>/dev/null | sed -n '1p
   echo "coverage.py 7.13.5 is required" >&2
   exit 2
 }
-[ "$($ruff_path --version)" = "ruff 0.16.0" ] || {
-  echo "Ruff 0.16.0 is required" >&2
-  exit 2
-}
-case "$($ty_path --version)" in
-  "ty 0.0.64"|"ty 0.0.64 "*) ;;
-  *) echo "ty 0.0.64 is required" >&2; exit 2 ;;
-esac
-
 set -- $(
   "$python_path" - <<'PY'
 import tomllib
