@@ -6,6 +6,7 @@ paths = [
   "evidence/claims/release-gate-contract-repair-20260730.toml",
   "evidence/chronicle/release-gate-contract-repair-20260730/**",
   "openspec/changes/release-gate-contract-repair/**",
+  "openspec/changes/archive/2026-07-30-release-gate-contract-repair/**",
   "openspec/specs/ci-diagnostics/**",
   "scripts/test_release_metadata.py",
   "tests/test_quality_contract.py",
