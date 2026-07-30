@@ -6,7 +6,7 @@ summary = "Local evidence bounds the repair for cross-version protocol-v2 succes
 
 [evidence]
 dated = "evidence/chronicle/handoff-upgrade-identity-20260730/2026-07-30.md"
-sha256 = "dea5af553d65ae4bed886b0ac713fe04812e1a6458d4ad820e5c177202085611"
+sha256 = "747b9a61e3c4d5653c1f86133bfd63ba1174afe1507d4caa98f9d58e14adc789"
 evidence_ids = ["evidence:handoff-upgrade-identity-20260730"]
 binding = "live 1.0.35 to 1.0.36 failure plus the locally verified 1.0.37 repair scope"
 verifier = "digest_only"
@@ -24,7 +24,7 @@ owner = "codex-dmx-proxy"
 scope = "Local upgrade repair evidence only; hosted CI, publication, installation, and runtime acceptance remain external."
 
 [carriers]
-openspec = "openspec/changes/handoff-upgrade-identity"
+openspec = "openspec/changes/archive/2026-07-30-handoff-upgrade-identity"
 fallback = "Keep the old listener serving and preserve the recovery transaction."
 kill_signal = "A valid committed successor is rejected by the old listener's frozen identity."
 
