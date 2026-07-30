@@ -56,6 +56,6 @@ fallback warnings.
 
 #### Scenario: A clean quality gate completes
 
-- **WHEN** the repository-owned quality command succeeds
+- **WHEN** the repository-owned quality command succeeds in hosted CI
 - **THEN** no bytecode, coverage file, or Ruff cache remains in the checkout
 - **AND** the job log contains no pip root-user or Debian frontend warning.
