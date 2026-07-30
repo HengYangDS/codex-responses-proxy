@@ -1,0 +1,21 @@
+schema_version = 1
+paths = [
+  ".ethos/profile.toml",
+  ".github/workflows/verify.yml",
+  ".gitlab-ci.yml",
+  "CHANGELOG.md",
+  "CONTRIBUTING.md",
+  "VERSION",
+  "codex_dmx_proxy/deployment/handoff.py",
+  "docs/governance/release-and-change-policy.md",
+  "evidence/claims/ci-log-hygiene-20260730.toml",
+  "evidence/chronicle/ci-log-hygiene-20260730/**",
+  "openspec/**",
+  "scripts/run-python-quality.sh",
+  "scripts/run-python-tests.py",
+  "scripts/test-github-actions-contract.sh",
+  "scripts/test_release_metadata.py",
+  "tests/support/handoff.py",
+  "tests/test_handoff_controller.py",
+  "tests/test_quality_contract.py",
+]

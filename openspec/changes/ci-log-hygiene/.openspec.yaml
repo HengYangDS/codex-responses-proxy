@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-07-30
+goal: Require clean diagnostic output across the supported Python and Forge matrix.
