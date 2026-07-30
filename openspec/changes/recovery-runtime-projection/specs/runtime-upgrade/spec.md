@@ -22,3 +22,17 @@ accepting, idle process bound to the installed entrypoint.
 - **WHEN** a runtime field differs from the rollback projection or the reported
   manifest differs from the committed candidate
 - **THEN** recovery refuses without changing the transaction or installed files
+
+#### Scenario: Recoverable committed transaction
+
+- **WHEN** one canonical recovery journal, intact rollback snapshot, fully
+  verified committed candidate, and matching accepting prior listener are present
+- **THEN** recovery restores the prior owned projection, removes transaction
+  residue, and leaves successor installation to a new admitted transaction
+
+#### Scenario: Ambiguous recovery state
+
+- **WHEN** either projection, rollback proof, or listener identity is missing or
+  mismatched
+- **THEN** recovery fails closed without removing the journal or claiming either
+  rollback or installation success
