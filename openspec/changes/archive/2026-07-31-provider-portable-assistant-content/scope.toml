@@ -1,0 +1,17 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "VERSION",
+  "codex_dmx_proxy/compatibility/empty_response.py",
+  "codex_dmx_proxy/listener/rewrite.py",
+  "docs/evidence/README.md",
+  "evidence/claims/provider-portable-assistant-content-20260731.toml",
+  "evidence/chronicle/provider-portable-assistant-content-20260731/**",
+  "openspec/changes/provider-portable-assistant-content/**",
+  "openspec/changes/archive/2026-07-31-provider-portable-assistant-content/**",
+  "openspec/specs/provider-portable-responses/**",
+  "tests/test_provider_portable_responses.py",
+  "tests/test_empty_response_projection.py",
+  "tests/test_empty_response_transport.py",
+  "tests/test_proxy_policy.py",
+]

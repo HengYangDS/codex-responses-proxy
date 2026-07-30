@@ -7,6 +7,19 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.44] - 2026-07-30
+
+### Fixed
+
+- Project textual assistant and synthesized-agent history through the
+  provider-neutral Easy Input Message string carrier, preserve refusal text,
+  strip output-only metadata, and keep instruction, user, and tool content on
+  input grammar so third-party Responses validators do not receive incomplete
+  output-message hybrids.
+- Preserve the same assistant carrier through the bounded DMX empty-response
+  retry and insert explicit portable markers for root-only agent or tool
+  ciphertext instead of emitting empty replay items.
+
 ## [1.0.43] - 2026-07-30
 
 ### Fixed

@@ -104,11 +104,12 @@ class TestProxySanitize(unittest.TestCase):
         self.assertEqual(len(obj["input"]), 1)  # replayed reasoning still dropped
         agent = obj["input"][0]
         self.assertEqual((agent["role"], agent["phase"]), ("assistant", "commentary"))
+        header, content = agent["content"].split("\n", 1)
         self.assertEqual(
-            json.loads(agent["content"][0]["text"]),
+            json.loads(header),
             {"type": "agent_message", "author": "agent", "recipient": "user"},
         )
-        self.assertEqual(agent["content"][1], {"type": "input_text", "text": "reply"})
+        self.assertEqual(content, "reply")
         self.assertNotIn("required_agent_message_payload", cast("bytes", out).decode())
         self.assertIn("encrypted_blocks=1", note)
         self.assertIn("reasoning_items=1", note)
@@ -140,13 +141,8 @@ class TestProxySanitize(unittest.TestCase):
         obj = json.loads(cast("bytes", out))
 
         self.assertIn("encrypted_blocks=2", note)
-        self.assertEqual(
-            obj["input"][0]["content"][1:],
-            [
-                {"type": "input_text", "text": "before"},
-                {"type": "input_text", "text": "after"},
-            ],
-        )
+        _header, content = obj["input"][0]["content"].split("\n", 1)
+        self.assertEqual(content, "beforeafter")
         self.assertNotIn("valid_required_payload", cast("bytes", out).decode())
 
     def test_rejects_unknown_fields_that_resemble_encrypted_content(self):
@@ -182,7 +178,7 @@ class TestProxySanitize(unittest.TestCase):
         self.assertNotIn("encrypted_content", output[0])
         self.assertEqual(
             output[1]["content"],
-            [{"type": "input_text", "text": rewrite.OPAQUE_CONTENT_MARKER}],
+            [{"type": "output_text", "text": rewrite.OPAQUE_CONTENT_MARKER}],
         )
 
     def test_retry_disposition_classifies_gateway_and_terminal_failures(self):

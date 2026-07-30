@@ -134,24 +134,67 @@ def _is_replayable_remote_image_url(value: object) -> bool:
     return True
 
 
-def _project_content(
+def _text_block_value(typed: JsonObject, block_type: object) -> str:
+    if block_type == "input_text":
+        allowed = {"type", "text", "prompt_cache_breakpoint"}
+        if set(typed) - allowed:
+            _reject("invalid_text_block")
+        breakpoint = typed.get("prompt_cache_breakpoint")
+        if breakpoint is not None and breakpoint != {"mode": "explicit"}:
+            _reject("invalid_text_block")
+    else:
+        allowed = {"type", "text", "annotations", "logprobs"}
+        if set(typed) - allowed:
+            _reject("invalid_text_block")
+        if "annotations" in typed and not isinstance(typed["annotations"], list):
+            _reject("invalid_text_block")
+        if (
+            "logprobs" in typed
+            and typed["logprobs"] is not None
+            and not isinstance(typed["logprobs"], list)
+        ):
+            _reject("invalid_text_block")
+    text = typed.get("text")
+    if not isinstance(text, str):
+        _reject("invalid_text_block")
+    return cast(str, text)
+
+
+def _project_input_content(
     value: object,
     *,
     allow_images: bool,
     encrypted_marker: bool,
+    root_ciphertext: int = 0,
 ) -> tuple[object, bool, int, int, int]:
-    """Return content, change flag, ciphertext removals, markers, and local images."""
+    """Return provider-neutral input content and bounded projection metrics."""
     if isinstance(value, str):
-        if not value:
-            _reject("empty_text_content")
-        return value, False, 0, 0, 0
+        if value:
+            return value, bool(root_ciphertext), root_ciphertext, 0, 0
+        if root_ciphertext and encrypted_marker:
+            return (
+                [{"type": "input_text", "text": OPAQUE_CONTENT_MARKER}],
+                True,
+                root_ciphertext,
+                1,
+                0,
+            )
+        _reject("empty_text_content")
     if not isinstance(value, list):
+        if root_ciphertext and value is None and encrypted_marker:
+            return (
+                [{"type": "input_text", "text": OPAQUE_CONTENT_MARKER}],
+                True,
+                root_ciphertext,
+                1,
+                0,
+            )
         _reject("invalid_content")
     blocks = cast("list[object]", value)
 
     projected: list[JsonObject] = []
     changed = False
-    encrypted = 0
+    encrypted = root_ciphertext
     local_images = 0
     for block in blocks:
         if not isinstance(block, dict):
@@ -159,15 +202,13 @@ def _project_content(
         typed = cast(JsonObject, block)
         block_type = typed.get("type")
         if block_type in ("input_text", "output_text"):
-            if set(typed) != {"type", "text"} or not isinstance(typed.get("text"), str):
-                _reject("invalid_text_block")
-            projected.append({"type": "input_text", "text": typed["text"]})
-            changed = changed or block_type == "output_text"
+            text = _text_block_value(typed, block_type)
+            projected.append({"type": "input_text", "text": text})
+            changed = changed or set(typed) != {"type", "text"} or block_type != "input_text"
         elif block_type == "refusal":
             if set(typed) != {"type", "refusal"} or not isinstance(typed.get("refusal"), str):
                 _reject("invalid_refusal_block")
-            projected.append({"type": "input_text", "text": typed["refusal"]})
-            changed = True
+            _reject("invalid_refusal_role")
         elif block_type == "encrypted_content":
             encrypted += 1
             changed = True
@@ -190,12 +231,70 @@ def _project_content(
             _reject("unknown_content_type")
 
     markers = 0
-    if not projected and encrypted and encrypted_marker:
+    only_empty_text = projected and all(
+        block.get("type") == "input_text" and block.get("text") == "" for block in projected
+    )
+    if encrypted and encrypted_marker and (not projected or only_empty_text):
+        projected.clear()
         projected.append({"type": "input_text", "text": OPAQUE_CONTENT_MARKER})
         markers = 1
+        changed = True
     if not projected:
         _reject("empty_portable_content")
     return projected, changed, encrypted, markers, local_images
+
+
+def _project_assistant_text(
+    value: object,
+    *,
+    encrypted_marker: bool,
+    root_ciphertext: int = 0,
+) -> tuple[str, bool, int, int]:
+    """Project assistant history to the provider-neutral easy-message string."""
+    if isinstance(value, str):
+        if value:
+            return value, False, root_ciphertext, 0
+        if root_ciphertext and encrypted_marker:
+            return OPAQUE_CONTENT_MARKER, True, root_ciphertext, 1
+        _reject("empty_text_content")
+    if not isinstance(value, list):
+        if root_ciphertext and value is None and encrypted_marker:
+            return OPAQUE_CONTENT_MARKER, True, root_ciphertext, 1
+        _reject("invalid_content")
+
+    text_parts: list[str] = []
+    encrypted = root_ciphertext
+    changed = bool(root_ciphertext)
+    for block in cast("list[object]", value):
+        if not isinstance(block, dict):
+            _reject("invalid_content_block")
+        typed = cast(JsonObject, block)
+        block_type = typed.get("type")
+        if block_type in ("input_text", "output_text"):
+            text_parts.append(_text_block_value(typed, block_type))
+            changed = True
+        elif block_type == "refusal":
+            refusal = typed.get("refusal")
+            if set(typed) != {"type", "refusal"} or not isinstance(refusal, str):
+                _reject("invalid_refusal_block")
+            text_parts.append(cast(str, refusal))
+            changed = True
+        elif block_type == "encrypted_content":
+            encrypted += 1
+            changed = True
+        elif block_type == "input_image":
+            _reject("unsupported_assistant_image")
+        else:
+            _reject("unknown_content_type")
+
+    markers = 0
+    text = "".join(text_parts)
+    if not text and encrypted and encrypted_marker:
+        text = OPAQUE_CONTENT_MARKER
+        markers = 1
+    if not text:
+        _reject("empty_portable_content")
+    return text, changed, encrypted, markers
 
 
 def _project_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
@@ -206,9 +305,15 @@ def _project_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
         _reject("invalid_message_role")
     if phase is not None and (role != "assistant" or phase not in _VALID_PHASES):
         _reject("invalid_message_phase")
-    content, changed, encrypted, markers, local_images = _project_content(
-        item.get("content"), allow_images=True, encrypted_marker=False
-    )
+    if role == "assistant":
+        content, changed, encrypted, markers = _project_assistant_text(
+            item.get("content"), encrypted_marker=False
+        )
+        local_images = 0
+    else:
+        content, changed, encrypted, markers, local_images = _project_input_content(
+            item.get("content"), allow_images=True, encrypted_marker=False
+        )
     projected: JsonObject = {"type": "message", "role": role, "content": content}
     if phase is not None:
         projected["phase"] = phase
@@ -229,11 +334,13 @@ def _project_agent_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]
         _reject("invalid_agent_message")
     if phase not in _VALID_PHASES:
         _reject("invalid_agent_phase")
-    content, _changed, encrypted, markers, local_images = _project_content(
-        item.get("content"), allow_images=False, encrypted_marker=True
+    root_value = item.get("encrypted_content")
+    if "encrypted_content" in item and not isinstance(root_value, str):
+        _reject("invalid_encrypted_content")
+    root_ciphertext = int(isinstance(root_value, str))
+    content, _changed, encrypted, markers = _project_assistant_text(
+        item.get("content"), encrypted_marker=True, root_ciphertext=root_ciphertext
     )
-    assert isinstance(content, list)
-    root_ciphertext = int(isinstance(item.get("encrypted_content"), str))
     header = json.dumps(
         {"type": "agent_message", "author": author, "recipient": recipient},
         ensure_ascii=False,
@@ -243,13 +350,13 @@ def _project_agent_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]
         "type": "message",
         "role": "assistant",
         "phase": phase,
-        "content": [{"type": "input_text", "text": header}, *content],
+        "content": header + "\n" + content,
     }, {
         "changed": 1,
         "item_ids": int("id" in item),
-        "encrypted_blocks": encrypted + root_ciphertext,
+        "encrypted_blocks": encrypted,
         "omission_markers": markers,
-        "local_image_items": local_images,
+        "local_image_items": 0,
     }
 
 
@@ -307,17 +414,16 @@ def _project_output(
     if not _valid_caller(caller):
         _reject("invalid_caller")
     raw_output = item.get("output")
-    root_ciphertext = int(isinstance(item.get("encrypted_content"), str))
-    if raw_output is None and root_ciphertext:
-        output: object = [{"type": "input_text", "text": OPAQUE_CONTENT_MARKER}]
-        changed, encrypted, markers = True, root_ciphertext, 1
-    else:
-        output, changed, encrypted, markers, local_images = _project_content(
-            raw_output, allow_images=True, encrypted_marker=True
-        )
-        encrypted += root_ciphertext
-    if raw_output is None and root_ciphertext:
-        local_images = 0
+    root_value = item.get("encrypted_content")
+    if "encrypted_content" in item and not isinstance(root_value, str):
+        _reject("invalid_encrypted_content")
+    root_ciphertext = int(isinstance(root_value, str))
+    output, changed, encrypted, markers, local_images = _project_input_content(
+        raw_output,
+        allow_images=True,
+        encrypted_marker=True,
+        root_ciphertext=root_ciphertext,
+    )
     outputs.add(valid_call_id)
     projected: JsonObject = {"type": item_type, "call_id": valid_call_id, "output": output}
     if caller is not None:
@@ -442,7 +548,22 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes | None, str]:
     )
 
 
-def _strip_encrypted_blocks(item: JsonObject, field: str) -> int:
+def _semantically_empty_stream_content(value: object) -> bool:
+    if value in (None, "", []):
+        return True
+    if not isinstance(value, list):
+        return False
+    return all(
+        isinstance(block, dict)
+        and (
+            (block.get("type") in ("input_text", "output_text") and block.get("text") == "")
+            or (block.get("type") == "refusal" and block.get("refusal") == "")
+        )
+        for block in value
+    )
+
+
+def _strip_encrypted_blocks(item: JsonObject, field: str, marker_type: str) -> int:
     value = item.get(field)
     if not isinstance(value, list):
         return 0
@@ -453,8 +574,17 @@ def _strip_encrypted_blocks(item: JsonObject, field: str) -> int:
     ]
     removed = len(value) - len(kept)
     if removed:
-        item[field] = kept or [{"type": "input_text", "text": OPAQUE_CONTENT_MARKER}]
+        item[field] = (
+            [{"type": marker_type, "text": OPAQUE_CONTENT_MARKER}]
+            if _semantically_empty_stream_content(kept)
+            else kept
+        )
     return removed
+
+
+def _mark_root_only_ciphertext(item: JsonObject, field: str, marker_type: str) -> None:
+    if _semantically_empty_stream_content(item.get(field)):
+        item[field] = [{"type": marker_type, "text": OPAQUE_CONTENT_MARKER}]
 
 
 def _strip_provider_ciphertext(obj: object) -> int:
@@ -466,15 +596,17 @@ def _strip_provider_ciphertext(obj: object) -> int:
             del item["encrypted_content"]
             removed += 1
         if item_type == "agent_message":
-            removed += _strip_encrypted_blocks(item, "content")
+            removed += _strip_encrypted_blocks(item, "content", "output_text")
             if "encrypted_content" in item:
                 del item["encrypted_content"]
                 removed += 1
+                _mark_root_only_ciphertext(item, "content", "output_text")
         if item_type in _OUTPUT_CALL_TYPE:
-            removed += _strip_encrypted_blocks(item, "output")
+            removed += _strip_encrypted_blocks(item, "output", "input_text")
             if "encrypted_content" in item:
                 del item["encrypted_content"]
                 removed += 1
+                _mark_root_only_ciphertext(item, "output", "input_text")
         for value in tuple(item.values()):
             removed += _strip_provider_ciphertext(value)
     elif isinstance(obj, list):

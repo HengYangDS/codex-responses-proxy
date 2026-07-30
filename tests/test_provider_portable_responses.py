@@ -59,7 +59,14 @@ class ProviderPortableRequestTests(unittest.TestCase):
                         "status": "completed",
                         "role": "assistant",
                         "phase": "final_answer",
-                        "content": [{"type": "output_text", "text": "visible answer"}],
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "visible answer",
+                                "annotations": [],
+                                "logprobs": [],
+                            }
+                        ],
                         "internal_chat_message_metadata_passthrough": {"opaque": True},
                     },
                     {
@@ -139,14 +146,15 @@ class ProviderPortableRequestTests(unittest.TestCase):
         )
         assistant = projected["input"][0]
         self.assertEqual(assistant["phase"], "final_answer")
-        self.assertEqual(assistant["content"], [{"type": "input_text", "text": "visible answer"}])
+        self.assertEqual(assistant["content"], "visible answer")
         agent = projected["input"][1]
         self.assertEqual((agent["role"], agent["phase"]), ("assistant", "commentary"))
+        header, visible = agent["content"].split("\n", 1)
         self.assertEqual(
-            json.loads(agent["content"][0]["text"]),
+            json.loads(header),
             {"type": "agent_message", "author": "planner", "recipient": "user"},
         )
-        self.assertEqual(agent["content"][1]["text"], "visible agent text")
+        self.assertEqual(visible, "visible agent text")
         function_call, function_output = projected["input"][2:4]
         self.assertEqual(function_call["call_id"], function_output["call_id"])
         self.assertEqual(
@@ -185,6 +193,67 @@ class ProviderPortableRequestTests(unittest.TestCase):
         projected_raw, _note = rewrite.sanitize_responses_body(raw)
 
         self.assertEqual(json.loads(cast("bytes", projected_raw)), {"input": "hello"})
+
+    def test_normalizes_typed_dialogue_content_by_projected_role(self) -> None:
+        raw = _body(
+            {
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "system",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "system",
+                                "annotations": [],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "message",
+                        "role": "developer",
+                        "content": [{"type": "output_text", "text": "developer", "logprobs": []}],
+                    },
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "user",
+                                "prompt_cache_breakpoint": {"mode": "explicit"},
+                            }
+                        ],
+                    },
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "answer",
+                                "prompt_cache_breakpoint": {"mode": "explicit"},
+                            },
+                            {"type": "refusal", "refusal": "declined"},
+                        ],
+                    },
+                ]
+            }
+        )
+
+        projected_raw, note = rewrite.sanitize_responses_body(raw)
+
+        self.assertIsNotNone(projected_raw, note)
+        content = [item["content"] for item in json.loads(cast("bytes", projected_raw))["input"]]
+        self.assertEqual(
+            content,
+            [
+                [{"type": "input_text", "text": "system"}],
+                [{"type": "input_text", "text": "developer"}],
+                [{"type": "input_text", "text": "user"}],
+                "answerdeclined",
+            ],
+        )
 
     def test_fails_closed_for_unknown_or_malformed_replay_shapes(self) -> None:
         cases = {
@@ -255,6 +324,72 @@ class ProviderPortableRequestTests(unittest.TestCase):
                 },
                 "rejected invalid_text_block",
             ),
+            "input text has unknown metadata": (
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": "x", "unknown": True}],
+                        }
+                    ]
+                },
+                "rejected invalid_text_block",
+            ),
+            "input text has invalid cache breakpoint": (
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_text",
+                                    "text": "x",
+                                    "prompt_cache_breakpoint": {"mode": "future"},
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "rejected invalid_text_block",
+            ),
+            "output text has unknown metadata": (
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "x", "unknown": True}],
+                        }
+                    ]
+                },
+                "rejected invalid_text_block",
+            ),
+            "output text annotations are not a list": (
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "x", "annotations": {}}],
+                        }
+                    ]
+                },
+                "rejected invalid_text_block",
+            ),
+            "output text logprobs are not a list": (
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "x", "logprobs": {}}],
+                        }
+                    ]
+                },
+                "rejected invalid_text_block",
+            ),
             "invalid refusal block": (
                 {
                     "input": [
@@ -266,6 +401,112 @@ class ProviderPortableRequestTests(unittest.TestCase):
                     ]
                 },
                 "rejected invalid_refusal_block",
+            ),
+            "refusal on input role": (
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "refusal", "refusal": "no"}],
+                        }
+                    ]
+                },
+                "rejected invalid_refusal_role",
+            ),
+            "malformed refusal on input role": (
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "refusal", "refusal": 1}],
+                        }
+                    ]
+                },
+                "rejected invalid_refusal_block",
+            ),
+            "image on assistant role": (
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "input_image",
+                                    "image_url": "https://example.test/image.png",
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "rejected unsupported_assistant_image",
+            ),
+            "non-string agent root ciphertext": (
+                {
+                    "input": [
+                        {
+                            "type": "agent_message",
+                            "author": "planner",
+                            "recipient": "user",
+                            "content": [],
+                            "encrypted_content": 1,
+                        }
+                    ]
+                },
+                "rejected invalid_encrypted_content",
+            ),
+            "assistant scalar content": (
+                {"input": [{"type": "message", "role": "assistant", "content": 1}]},
+                "rejected invalid_content",
+            ),
+            "assistant non-object block": (
+                {"input": [{"type": "message", "role": "assistant", "content": [1]}]},
+                "rejected invalid_content_block",
+            ),
+            "assistant unknown block": (
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "future_content"}],
+                        }
+                    ]
+                },
+                "rejected unknown_content_type",
+            ),
+            "assistant empty typed text": (
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": ""}],
+                        }
+                    ]
+                },
+                "rejected empty_portable_content",
+            ),
+            "non-string tool root ciphertext": (
+                {
+                    "input": [
+                        {
+                            "type": "function_call",
+                            "call_id": "c",
+                            "name": "f",
+                            "arguments": "{}",
+                        },
+                        {
+                            "type": "function_call_output",
+                            "call_id": "c",
+                            "output": [],
+                            "encrypted_content": 1,
+                        },
+                    ]
+                },
+                "rejected invalid_encrypted_content",
             ),
             "invalid image field": (
                 {
@@ -415,13 +656,17 @@ class ProviderPortableRequestTests(unittest.TestCase):
                     {
                         "type": "message",
                         "role": "assistant",
+                        "content": [{"type": "refusal", "refusal": "cannot comply"}],
+                    },
+                    {
+                        "type": "message",
+                        "role": "user",
                         "content": [
-                            {"type": "refusal", "refusal": "cannot comply"},
                             {
                                 "type": "input_image",
                                 "image_url": "https://example.test/image.png",
                                 "detail": "original",
-                            },
+                            }
                         ],
                     },
                     {
@@ -446,9 +691,9 @@ class ProviderPortableRequestTests(unittest.TestCase):
 
         self.assertIsNotNone(projected_raw, note)
         projected = json.loads(cast("bytes", projected_raw))
-        message, call, output = projected["input"]
-        self.assertEqual(message["content"][0], {"type": "input_text", "text": "cannot comply"})
-        self.assertEqual(message["content"][1]["detail"], "original")
+        message, image_message, call, output = projected["input"]
+        self.assertEqual(message["content"], "cannot comply")
+        self.assertEqual(image_message["content"][0]["detail"], "original")
         self.assertEqual(call["caller"], {"type": "direct"})
         self.assertEqual(output["caller"], {"type": "program", "caller_id": "planner"})
         self.assertEqual(
@@ -456,6 +701,71 @@ class ProviderPortableRequestTests(unittest.TestCase):
             [{"type": "input_text", "text": rewrite.OPAQUE_CONTENT_MARKER}],
         )
         self.assertNotIn("provider-bound", cast("bytes", projected_raw).decode())
+
+    def test_projects_root_only_ciphertext_to_explicit_portable_markers(self) -> None:
+        raw = _body(
+            {
+                "input": [
+                    {
+                        "type": "agent_message",
+                        "author": "planner",
+                        "recipient": "user",
+                        "content": [],
+                        "encrypted_content": "agent-secret",
+                    },
+                    {
+                        "type": "function_call",
+                        "call_id": "c1",
+                        "name": "lookup",
+                        "arguments": "{}",
+                    },
+                    {
+                        "type": "function_call_output",
+                        "call_id": "c1",
+                        "output": [],
+                        "encrypted_content": "tool-secret",
+                    },
+                ]
+            }
+        )
+
+        projected_raw, note = rewrite.sanitize_responses_body(raw)
+
+        self.assertIsNotNone(projected_raw, note)
+        agent, _call, output = json.loads(cast("bytes", projected_raw))["input"]
+        header, marker = agent["content"].split("\n", 1)
+        self.assertEqual(
+            json.loads(header),
+            {"type": "agent_message", "author": "planner", "recipient": "user"},
+        )
+        self.assertEqual(marker, rewrite.OPAQUE_CONTENT_MARKER)
+        self.assertEqual(
+            output["output"],
+            [{"type": "input_text", "text": rewrite.OPAQUE_CONTENT_MARKER}],
+        )
+        self.assertIn("encrypted_blocks=2", note)
+        self.assertIn("omission_markers=2", note)
+
+        for content in ("", None):
+            with self.subTest(root_only_agent_content=content):
+                projected_raw, note = rewrite.sanitize_responses_body(
+                    _body(
+                        {
+                            "input": [
+                                {
+                                    "type": "agent_message",
+                                    "author": "planner",
+                                    "recipient": "user",
+                                    "content": content,
+                                    "encrypted_content": "agent-secret",
+                                }
+                            ]
+                        }
+                    )
+                )
+                self.assertIsNotNone(projected_raw, note)
+                projected = json.loads(cast("bytes", projected_raw))["input"][0]
+                self.assertTrue(projected["content"].endswith(rewrite.OPAQUE_CONTENT_MARKER))
 
 
 class ProviderPortableStreamTests(unittest.TestCase):
@@ -502,6 +812,25 @@ class ProviderPortableStreamTests(unittest.TestCase):
             [{"type": "input_text", "text": rewrite.OPAQUE_CONTENT_MARKER}],
         )
 
+    def test_marks_encrypted_only_agent_output_with_output_text(self) -> None:
+        event = self._event(
+            {
+                "type": "agent_message",
+                "content": [{"type": "encrypted_content", "encrypted_content": "agent-secret"}],
+            }
+        )
+
+        rewritten, removed = rewrite.sanitize_sse_event(event)
+
+        self.assertEqual(removed, 1)
+        payload = json.loads(
+            next(line[6:] for line in rewritten.splitlines() if line.startswith(b"data: "))
+        )
+        self.assertEqual(
+            payload["item"]["content"],
+            [{"type": "output_text", "text": rewrite.OPAQUE_CONTENT_MARKER}],
+        )
+
     def test_removes_root_ciphertext_with_non_block_content(self) -> None:
         cases = (
             {
@@ -521,6 +850,137 @@ class ProviderPortableStreamTests(unittest.TestCase):
                 rewritten, removed = rewrite.sanitize_sse_event(self._event(item))
                 self.assertEqual(removed, 1)
                 self.assertNotIn(b"secret", rewritten)
+
+    def test_marks_root_only_ciphertext_in_nested_and_item_events(self) -> None:
+        cases = (
+            (
+                self._event(
+                    {
+                        "type": "agent_message",
+                        "content": [],
+                        "encrypted_content": "agent-secret",
+                    }
+                ),
+                "content",
+                "output_text",
+            ),
+            (
+                b"event: response.completed\n"
+                + b"data: "
+                + _body(
+                    {
+                        "response": {
+                            "output": [
+                                {
+                                    "type": "function_call_output",
+                                    "call_id": "c1",
+                                    "output": None,
+                                    "encrypted_content": "tool-secret",
+                                }
+                            ]
+                        }
+                    }
+                )
+                + b"\n\n",
+                "output",
+                "input_text",
+            ),
+        )
+        for event, field, block_type in cases:
+            with self.subTest(field=field):
+                rewritten, removed = rewrite.sanitize_sse_event(event)
+                payload = json.loads(
+                    next(line[6:] for line in rewritten.splitlines() if line.startswith(b"data: "))
+                )
+                item = payload.get("item") or payload["response"]["output"][0]
+                self.assertEqual(removed, 1)
+                self.assertEqual(
+                    item[field],
+                    [{"type": block_type, "text": rewrite.OPAQUE_CONTENT_MARKER}],
+                )
+
+    def test_marks_ciphertext_when_only_empty_text_blocks_remain(self) -> None:
+        cases = (
+            (
+                {
+                    "type": "agent_message",
+                    "content": [
+                        {"type": "output_text", "text": ""},
+                        {"type": "encrypted_content", "encrypted_content": "agent-secret"},
+                    ],
+                },
+                "content",
+                "output_text",
+            ),
+            (
+                {
+                    "type": "function_call_output",
+                    "call_id": "c1",
+                    "output": [
+                        {"type": "input_text", "text": ""},
+                        {"type": "encrypted_content", "encrypted_content": "tool-secret"},
+                    ],
+                },
+                "output",
+                "input_text",
+            ),
+            (
+                {
+                    "type": "agent_message",
+                    "content": [
+                        {"type": "refusal", "refusal": ""},
+                        {"type": "encrypted_content", "encrypted_content": "agent-secret"},
+                    ],
+                },
+                "content",
+                "output_text",
+            ),
+        )
+        for item, field, block_type in cases:
+            with self.subTest(field=field):
+                rewritten, removed = rewrite.sanitize_sse_event(self._event(item))
+                payload = json.loads(
+                    next(line[6:] for line in rewritten.splitlines() if line.startswith(b"data: "))
+                )
+                self.assertEqual(removed, 1)
+                self.assertEqual(
+                    payload["item"][field],
+                    [{"type": block_type, "text": rewrite.OPAQUE_CONTENT_MARKER}],
+                )
+
+    def test_marks_root_ciphertext_when_content_has_only_empty_text_blocks(self) -> None:
+        cases = (
+            (
+                {
+                    "type": "agent_message",
+                    "content": [{"type": "output_text", "text": ""}],
+                    "encrypted_content": "agent-secret",
+                },
+                "content",
+                "output_text",
+            ),
+            (
+                {
+                    "type": "function_call_output",
+                    "call_id": "c1",
+                    "output": [{"type": "input_text", "text": ""}],
+                    "encrypted_content": "tool-secret",
+                },
+                "output",
+                "input_text",
+            ),
+        )
+        for item, field, block_type in cases:
+            with self.subTest(field=field):
+                rewritten, removed = rewrite.sanitize_sse_event(self._event(item))
+                payload = json.loads(
+                    next(line[6:] for line in rewritten.splitlines() if line.startswith(b"data: "))
+                )
+                self.assertEqual(removed, 1)
+                self.assertEqual(
+                    payload["item"][field],
+                    [{"type": block_type, "text": rewrite.OPAQUE_CONTENT_MARKER}],
+                )
 
     def test_sse_event_with_unrecognized_ciphertext_text_is_unchanged(self) -> None:
         event = self._event({"type": "message", "content": "encrypted_content"})
@@ -592,7 +1052,33 @@ class ProviderRouteTests(unittest.TestCase):
                 "include": ["reasoning.encrypted_content"],
                 "input": [
                     {"type": "reasoning", "id": "rs_old", "encrypted_content": "opaque"},
+                    {
+                        "type": "message",
+                        "id": "msg_old",
+                        "status": "completed",
+                        "role": "assistant",
+                        "phase": "final_answer",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "prior answer",
+                                "annotations": [],
+                            },
+                            {"type": "refusal", "refusal": "prior refusal"},
+                        ],
+                    },
                     {"type": "message", "role": "user", "content": "continue"},
+                    {
+                        "type": "function_call",
+                        "call_id": "c1",
+                        "name": "lookup",
+                        "arguments": "{}",
+                    },
+                    {
+                        "type": "function_call_output",
+                        "call_id": "c1",
+                        "output": [{"type": "output_text", "text": "tool result"}],
+                    },
                 ],
             }
         )
@@ -612,9 +1098,19 @@ class ProviderRouteTests(unittest.TestCase):
             payload = json.loads(forwarded)
             self.assertNotIn("previous_response_id", payload)
             self.assertEqual(payload["include"], [])
+            assistant, user, call, output = payload["input"]
             self.assertEqual(
-                payload["input"], [{"type": "message", "role": "user", "content": "continue"}]
+                assistant,
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": "final_answer",
+                    "content": "prior answerprior refusal",
+                },
             )
+            self.assertEqual(user, {"type": "message", "role": "user", "content": "continue"})
+            self.assertEqual(call["call_id"], output["call_id"])
+            self.assertEqual(output["output"], [{"type": "input_text", "text": "tool result"}])
 
     def test_unknown_route_and_unknown_replay_shape_never_reach_upstream(self) -> None:
         with running_proxy([]) as (port, received):

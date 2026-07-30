@@ -1,0 +1,45 @@
+[claim]
+id = "provider-portable-assistant-content-20260731"
+subject = "codex-dmx-proxy:provider-portable-responses"
+state = "active"
+summary = "Local evidence binds role-correct provider-portable assistant replay for v1.0.44."
+
+[evidence]
+dated = "evidence/chronicle/provider-portable-assistant-content-20260731/2026-07-31.md"
+sha256 = "f359ed7a9079634e580d0677529201d16779533cc73c806e655bef47c0da617d"
+evidence_ids = ["evidence:provider-portable-assistant-content-20260731"]
+binding = "v1.0.43 original-thread assistant-content failure, TDD repair, and local source verification for v1.0.44"
+verifier = "digest_only"
+tests = [
+  "python3.12 -m unittest -v tests.test_provider_portable_responses tests.test_proxy_policy tests.test_empty_response_projection tests.test_empty_response_transport",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh",
+  "python3.12 scripts/run-python-tests.py --compile",
+  "python3.13 scripts/run-python-tests.py --compile",
+  "python3.14 scripts/run-python-tests.py --compile",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "historical"
+
+[boundary]
+owner = "codex-dmx-proxy"
+scope = "Local source-repair evidence only; hosted CI, dual-Forge publication, installation, AIGW switching, and original-conversation acceptance remain external."
+
+[carriers]
+openspec = "openspec/changes/archive/2026-07-31-provider-portable-assistant-content"
+fallback = "Retain the published and serving v1.0.43 runtime until v1.0.44 passes both Forge planes and protocol-v2 installation."
+kill_signal = "Any assistant replay again emits an incomplete output-message hybrid, or DMX fallback changes the normal portable carrier."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "VERSION",
+  "codex_dmx_proxy/compatibility/empty_response.py",
+  "codex_dmx_proxy/listener/rewrite.py",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/test_empty_response_projection.py",
+  "tests/test_empty_response_transport.py",
+  "tests/test_provider_portable_responses.py",
+  "tests/test_proxy_policy.py",
+]
