@@ -23,7 +23,7 @@ None.
 
 ### Modified Capabilities
 
-- `ci-diagnostics`: subject=successful CI diagnostic integrity; reuse=existing;
+- `ci-diagnostics`: subject=successful CI diagnostic integrity; reuse=extend;
   change=modify; release gates validate semantic owner behavior and hosted
   dependency bootstrap is warning-free;
   facet:lifecycle=validation,release;
