@@ -55,24 +55,28 @@ class EmptyResponseProjectionTests(unittest.TestCase):
         self.assertEqual(projected["input"][0]["phase"], "commentary")
         self.assertEqual(
             projected["input"][0]["content"],
-            [{"type": "input_text", "text": policy.OPAQUE_REASONING_MARKER}],
+            policy.OPAQUE_REASONING_MARKER,
         )
         self.assertNotIn("must-not-survive", fallback.decode())
 
-    def test_output_text_blocks_are_projected_as_input_text_in_each_text_slot(self):
+    def test_text_blocks_are_projected_by_semantic_owner(self):
         body = self._body(
             {
                 "input": [
                     {
                         "type": "message",
                         "role": "assistant",
-                        "content": [{"type": "output_text", "text": "visible assistant reply"}],
+                        "phase": "final_answer",
+                        "content": [
+                            {"type": "input_text", "text": "visible assistant reply"},
+                            {"type": "refusal", "refusal": "declined"},
+                        ],
                     },
                     {
                         "type": "agent_message",
                         "author": "planner",
                         "recipient": "user",
-                        "content": [{"type": "output_text", "text": "visible agent reply"}],
+                        "content": [{"type": "input_text", "text": "visible agent reply"}],
                     },
                     {"type": "function_call", "call_id": "c1", "name": "lookup", "arguments": "{}"},
                     {
@@ -90,16 +94,68 @@ class EmptyResponseProjectionTests(unittest.TestCase):
         projected = json.loads(fallback)
         self.assertEqual(
             projected["input"][0]["content"],
-            [{"type": "input_text", "text": "visible assistant reply"}],
+            "visible assistant replydeclined",
         )
+        self.assertEqual(projected["input"][0]["phase"], "final_answer")
+        header, agent_text = projected["input"][1]["content"].split("\n", 1)
         self.assertEqual(
-            projected["input"][1]["content"][1:],
-            [{"type": "input_text", "text": "visible agent reply"}],
+            json.loads(header),
+            {"type": "agent_message", "author": "planner", "recipient": "user"},
         )
+        self.assertEqual(agent_text, "visible agent reply")
         self.assertEqual(
             projected["input"][3]["output"],
             [{"type": "input_text", "text": "visible tool result"}],
         )
+
+    def test_remote_images_remain_input_content_for_input_owned_history(self):
+        image = {
+            "type": "input_image",
+            "image_url": "https://example.test/a.png",
+            "detail": "high",
+        }
+        body = self._body(
+            {
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "system",
+                        "content": [{"type": "input_text", "text": "inspect"}, image],
+                    },
+                    {
+                        "type": "message",
+                        "role": "developer",
+                        "content": [image],
+                    },
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [image],
+                    },
+                    {
+                        "type": "function_call",
+                        "call_id": "c1",
+                        "name": "inspect",
+                        "arguments": "{}",
+                    },
+                    {
+                        "type": "function_call_output",
+                        "call_id": "c1",
+                        "output": [image],
+                    },
+                ]
+            }
+        )
+
+        fallback, detail = policy.build_fallback(body)
+
+        self.assertEqual(fallback, body)
+        self.assertFalse(detail["projected"])
+        projected = json.loads(fallback)
+        self.assertEqual(projected["input"][0]["content"][1], image)
+        self.assertEqual(projected["input"][1]["content"], [image])
+        self.assertEqual(projected["input"][2]["content"], [image])
+        self.assertEqual(projected["input"][4]["output"], [image])
 
     def test_builder_fails_closed_for_unknown_or_unrepresentable_history(self):
         cases = {
@@ -146,6 +202,26 @@ class EmptyResponseProjectionTests(unittest.TestCase):
                     "role": "user",
                     "content": [
                         {"type": "input_text", "text": "hi", "annotations": []},
+                    ],
+                },
+            ],
+            "non-remote input image": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_image", "image_url": "file:///tmp/a.png"}],
+                },
+            ],
+            "invalid input image detail": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_image",
+                            "image_url": "https://example.test/a.png",
+                            "detail": "future",
+                        }
                     ],
                 },
             ],
@@ -250,9 +326,9 @@ class EmptyResponseProjectionTests(unittest.TestCase):
         fallback, _detail = policy.build_fallback(body)
 
         projected = json.loads(fallback)
-        header = projected["input"][0]["content"][0]
+        header, content = projected["input"][0]["content"].split("\n", 1)
         self.assertEqual(
-            header["text"],
+            header,
             json.dumps(
                 {
                     "type": "agent_message",
@@ -265,7 +341,8 @@ class EmptyResponseProjectionTests(unittest.TestCase):
         )
         # The header is valid, self-contained JSON: embedded quotes/newlines in
         # author/recipient cannot break out of the fixed envelope.
-        json.loads(header["text"])
+        json.loads(header)
+        self.assertEqual(content, "hello")
 
     def test_string_input_is_preserved_losslessly(self):
         no_op = self._body({"stream": False, "input": "hello there"})
@@ -350,7 +427,7 @@ class EmptyResponseProjectionTests(unittest.TestCase):
         self.assertIsNone(metrics)
 
     def test_policy_fingerprint_binds_version_and_sanitized_original_bytes(self):
-        self.assertEqual(policy.POLICY_VERSION, "empty-response-fallback-v4")
+        self.assertEqual(policy.POLICY_VERSION, "empty-response-fallback-v5")
         first = self._body(
             {
                 "previous_response_id": "first",
@@ -576,7 +653,8 @@ class EmptyResponseProjectionTests(unittest.TestCase):
             [{"type": "future_text", "text": "x"}],
         ):
             with self.subTest(value=value):
-                self.assertEqual(policy.project_text_only(value), (None, False))
+                self.assertEqual(policy.project_input_text(value), (None, False))
+                self.assertEqual(policy.project_assistant_text(value), (None, False))
 
         def paired(output):
             call = {"type": "function_call", "call_id": "c", "name": "f", "arguments": "{}"}

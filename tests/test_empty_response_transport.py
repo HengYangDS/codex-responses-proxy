@@ -83,6 +83,48 @@ class EmptyResponseTransportTests(unittest.TestCase):
                 cleanup()
 
         self.assertEqual(received, [sanitized, fallback])
+        fallback_payload = json.loads(received[1])
+        assistant = next(
+            item for item in fallback_payload["input"] if item.get("role") == "assistant"
+        )
+        self.assertIsInstance(assistant["content"], str)
+
+    def test_classified_477_retries_portable_remote_images(self):
+        image = {
+            "type": "input_image",
+            "image_url": "https://example.test/a.png",
+            "detail": "auto",
+        }
+        request_body = self._body(
+            {
+                "stream": False,
+                "input": [
+                    {"type": "message", "role": "user", "content": [image]},
+                    {
+                        "type": "function_call",
+                        "call_id": "c1",
+                        "name": "inspect",
+                        "arguments": "{}",
+                    },
+                    {"type": "function_call_output", "call_id": "c1", "output": [image]},
+                ],
+            }
+        )
+        sanitized, note = rewrite.sanitize_responses_body(request_body)
+        self.assertIsNotNone(sanitized, note)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            port, received, cleanup = serve_proxy([(477, EMPTY_RESPONSE), (200, SUCCESS)], tmp)
+            try:
+                with self._request(port, request_body) as response:
+                    self.assertEqual(response.read(), SUCCESS)
+            finally:
+                cleanup()
+
+        self.assertEqual(received, [sanitized, sanitized])
+        replay = json.loads(received[1])
+        self.assertEqual(replay["input"][0]["content"], [image])
+        self.assertEqual(replay["input"][2]["output"], [image])
 
     def test_unsafe_projection_returns_local_400_without_an_upstream_call(self):
         body = self._body({"stream": False, "input": [{"type": "future_item"}]})

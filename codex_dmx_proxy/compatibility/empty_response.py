@@ -10,8 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import urllib.parse
 
-POLICY_VERSION = "empty-response-fallback-v4"
+POLICY_VERSION = "empty-response-fallback-v5"
 OPAQUE_REASONING_MARKER = "[reasoning omitted: opaque provider state cannot be replayed]"
 
 
@@ -103,8 +104,43 @@ _EMPTY_RESPONSE_REASONING_FIELDS = frozenset(
 )
 
 
-def project_text_only(value):
-    """Project strings or exact text blocks; reject all other content."""
+def _text_block_value(block):
+    block_type = block.get("type")
+    if block_type == "input_text":
+        allowed = {"type", "text", "prompt_cache_breakpoint"}
+    elif block_type == "output_text":
+        allowed = {"type", "text", "annotations", "logprobs"}
+    else:
+        return None
+    if set(block) - allowed or not isinstance(block.get("text"), str):
+        return None
+    return block["text"]
+
+
+def _portable_input_image(block):
+    if set(block) - {"type", "image_url", "detail"}:
+        return None
+    image_url = block.get("image_url")
+    if not isinstance(image_url, str) or not image_url or any(ch.isspace() for ch in image_url):
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(image_url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return None
+        _ = parsed.port
+    except ValueError:
+        return None
+    image = {"type": "input_image", "image_url": image_url}
+    detail = block.get("detail")
+    if detail is not None:
+        if detail not in ("low", "high", "auto", "original"):
+            return None
+        image["detail"] = detail
+    return image
+
+
+def project_input_text(value):
+    """Project validated input-owned text and remote images onto input grammar."""
     if isinstance(value, str):
         return value, False
     if isinstance(value, list):
@@ -113,20 +149,43 @@ def project_text_only(value):
         for block in value:
             if not isinstance(block, dict):
                 return None, False
-            if set(block.keys()) != {"type", "text"}:
-                return None, False
-            if not isinstance(block.get("text"), str):
-                return None, False
-            if block.get("type") == "input_text":
-                projected.append(block)
+            text = _text_block_value(block)
+            if text is not None:
+                projected.append({"type": "input_text", "text": text})
+                changed = changed or set(block) != {"type", "text"} or block["type"] != "input_text"
                 continue
-            if block.get("type") == "output_text":
-                projected.append({"type": "input_text", "text": block["text"]})
-                changed = True
+            if block.get("type") == "input_image":
+                image = _portable_input_image(block)
+                if image is None:
+                    return None, False
+                projected.append(image)
+                changed = changed or image != block
                 continue
             return None, False
         return projected, changed
     return None, False
+
+
+def project_assistant_text(value):
+    """Project textual assistant history onto the easy-message string carrier."""
+    if isinstance(value, str):
+        return (value, False) if value else (None, False)
+    if not isinstance(value, list):
+        return None, False
+    text_parts = []
+    for block in value:
+        if not isinstance(block, dict):
+            return None, False
+        text = _text_block_value(block)
+        if text is not None:
+            text_parts.append(text)
+            continue
+        if set(block) == {"type", "refusal"} and isinstance(block.get("refusal"), str):
+            text_parts.append(block["refusal"])
+            continue
+        return None, False
+    text = "".join(text_parts)
+    return (text, True) if text else (None, False)
 
 
 def recover_dialogue(raw: bytes, budget: int | None = None, *, rejection_reason: str | None = None):
@@ -196,7 +255,7 @@ def recover_dialogue(raw: bytes, budget: int | None = None, *, rejection_reason:
             return None, None
         if item.get("phase") is not None:
             return None, None
-        content, _changed = project_text_only(item.get("content"))
+        content, _changed = project_input_text(item.get("content"))
         if content is None:
             return None, None
         dialogue.append({"type": "message", "role": item["role"], "content": content})
@@ -262,7 +321,7 @@ def _project_reasoning(item):
         "type": "message",
         "role": "assistant",
         "phase": "commentary",
-        "content": [{"type": "input_text", "text": OPAQUE_REASONING_MARKER}],
+        "content": OPAQUE_REASONING_MARKER,
     }, None
 
 
@@ -277,7 +336,7 @@ def _project_agent_message(item):
         return _reject("invalid_phase")
     if not isinstance(content, list):
         return _reject("malformed_agent_message")
-    projected, _ = project_text_only(content)
+    projected, _ = project_assistant_text(content)
     if projected is None:
         return _reject("non_text_agent_content")
     header = json.dumps(
@@ -289,7 +348,7 @@ def _project_agent_message(item):
         "type": "message",
         "role": "assistant",
         "phase": phase,
-        "content": [{"type": "input_text", "text": header}, *projected],
+        "content": header + "\n" + projected,
     }, None
 
 
@@ -301,7 +360,8 @@ def _project_message(item):
         return _reject("invalid_role")
     if phase is not None and (role != "assistant" or phase not in _EMPTY_RESPONSE_VALID_PHASES):
         return _reject("invalid_phase")
-    content, changed = project_text_only(item.get("content"))
+    projector = project_assistant_text if role == "assistant" else project_input_text
+    content, changed = projector(item.get("content"))
     if content is None:
         return _reject("non_text_message_content")
     projected = {"type": "message", "role": role, "content": content}
@@ -348,7 +408,7 @@ def _project_output(item, calls, outputs_seen):
         return _reject("mismatched_output")
     if call_id in outputs_seen:
         return _reject("duplicate_output")
-    output, changed = project_text_only(item.get("output"))
+    output, changed = project_input_text(item.get("output"))
     if output is None:
         return _reject("non_text_output")
     if not _valid_caller(caller):
@@ -393,7 +453,7 @@ def _project_items(items):
 
 
 def build_fallback(raw: bytes, budget: int | None = None):
-    """Build one bounded, text-only fallback, rejecting every unknown shape."""
+    """Build one bounded provider-portable fallback, rejecting every unknown shape."""
     if budget is None:
         budget = FALLBACK_BUDGET
     if not isinstance(budget, int) or isinstance(budget, bool) or budget <= 0:
