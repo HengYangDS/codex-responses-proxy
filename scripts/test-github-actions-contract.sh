@@ -17,8 +17,7 @@ required = [
     "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
     "python-version: [\"3.12\", \"3.13\", \"3.14\"]",
     'python="/opt/homebrew/bin/python${{ matrix.python-version }}"',
-    '"$python" -m compileall -q',
-    '"$python" scripts/run-python-tests.py',
+    '"$python" scripts/run-python-tests.py --compile',
     "python-windows:", "windows-2025",
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97", "# v7.0.0",
     "shell: bash",
@@ -53,7 +52,7 @@ governance_start = text.index("\n  governance:")
 mac_block = text[mac_start:windows_start]
 windows_block = text[windows_start:governance_start]
 rest = text[:windows_start] + text[governance_start:]
-test_owner = '"$python" scripts/run-python-tests.py'
+test_owner = '"$python" scripts/run-python-tests.py --compile'
 if test_owner not in mac_block:
     raise SystemExit(f"macOS Python matrix must run {test_owner}")
 for token in (
@@ -62,7 +61,7 @@ for token in (
     "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
     "shell: bash",
-    "python scripts/run-python-tests.py",
+    "python scripts/run-python-tests.py --compile",
 ):
     if token not in windows_block:
         raise SystemExit(f"Windows Python matrix must contain {token!r}")

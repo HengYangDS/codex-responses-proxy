@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -265,6 +266,17 @@ def pid_alive(pid: int | None) -> bool:
 type UpstreamBehavior = tuple[int, bytes] | Callable[[BaseHTTPRequestHandler], None]
 
 
+class _DisconnectAwareHTTPServer(ThreadingHTTPServer):
+    """Ignore only peer disconnects that an integration test intentionally causes."""
+
+    def handle_error(self, request: Any, client_address: tuple[str, int]) -> None:
+        error = sys.exc_info()[1]
+        disconnects = {errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE}
+        if isinstance(error, OSError) and error.errno in disconnects:
+            return
+        super().handle_error(request, client_address)
+
+
 class ScriptedUpstream:
     """Run a real loopback HTTP upstream with a deterministic response queue."""
 
@@ -297,7 +309,7 @@ class ScriptedUpstream:
                 self.end_headers()
                 self.wfile.write(response_payload)
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = _DisconnectAwareHTTPServer(("127.0.0.1", 0), Handler)
         self.port = self.server.server_address[1]
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()

@@ -153,7 +153,9 @@ def post_ready(
     except errors.InstallError:
         raise
     except urllib.error.HTTPError as exc:
-        raise errors.InstallError(f"handoff control returned HTTP {exc.code}") from exc
+        code = exc.code
+        exc.close()
+        raise errors.InstallError(f"handoff control returned HTTP {code}") from exc
     except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
         raise errors.InstallError("handoff control is unavailable") from exc
     if not isinstance(response_payload, dict):
