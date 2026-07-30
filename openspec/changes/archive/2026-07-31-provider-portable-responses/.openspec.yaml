@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-07-31
+goal: Allow the same Codex conversation to continue across arbitrary provider
+  switches through one governed compatibility data plane.

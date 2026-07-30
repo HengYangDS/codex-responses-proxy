@@ -10,6 +10,7 @@ from email.message import Message
 from http.server import BaseHTTPRequestHandler
 import socket
 import sys
+import tempfile
 import unittest
 import urllib.error
 import urllib.request
@@ -22,6 +23,7 @@ sys.path.insert(0, str(ROOT))
 
 from codex_dmx_proxy.listener import entrypoint as proxy
 from codex_dmx_proxy.listener import responses
+from codex_dmx_proxy.listener import rewrite
 from codex_dmx_proxy.listener import state
 from codex_dmx_proxy.listener import sse
 from tests.support.proxy_http import request, running_proxy
@@ -129,6 +131,11 @@ class InputTransportContracts(unittest.TestCase):
     """Exercise the recovery boundary through real loopback HTTP servers."""
 
     def setUp(self) -> None:
+        old_log_path = state.LOG_PATH
+        self._log_directory = tempfile.TemporaryDirectory()
+        state.LOG_PATH = str(Path(self._log_directory.name) / "proxy.log")
+        self.addCleanup(self._log_directory.cleanup)
+        self.addCleanup(setattr, state, "LOG_PATH", old_log_path)
         state.reset_for_test()
 
     @staticmethod
@@ -251,8 +258,7 @@ class InputTransportContracts(unittest.TestCase):
 
         self.assertEqual(len(received), 1)
         forwarded = json.loads(received[0])
-        expected = json.loads(body)
-        expected["include"] = ["other"]
+        expected = json.loads(cast("bytes", rewrite.sanitize_responses_body(body)[0]))
         self.assertEqual(forwarded, expected)
         counters, classifications = self._status_maps()
         self.assertEqual(counters["input_variant_dialogue_recovery_attempts"], 0)
@@ -487,7 +493,7 @@ class InputTransportContracts(unittest.TestCase):
         self.assertIn(b"timed out waiting", handler.output())
 
         state.reset_for_test()
-        handler = _MemoryHandler(path="/health")
+        handler = _MemoryHandler(path="/v1/health")
         with mock.patch.object(responses, "urlopen_direct", side_effect=OSError("private")):
             responses.relay(handler, "GET")
         self.assertEqual(handler.statuses, [502])
@@ -520,7 +526,7 @@ class InputTransportContracts(unittest.TestCase):
         self.assertIn(b"dmx_empty_response_exhausted", handler.output())
 
     def test_direct_relay_handles_large_request_cooldown_and_dead_loop(self) -> None:
-        body = b" " * 400_000
+        body = json.dumps({"input": "x" * 400_000}).encode()
         handler = _MemoryHandler(body)
         with mock.patch.object(responses, "urlopen_direct", return_value=_DirectResponse(b"ok")):
             responses.relay(handler, "POST")
@@ -590,7 +596,7 @@ class InputTransportContracts(unittest.TestCase):
 
     def test_direct_non_sse_stream_handles_incomplete_and_writer_failures(self) -> None:
         partial = http.client.IncompleteRead(b"partial")
-        handler = _MemoryHandler(path="/health")
+        handler = _MemoryHandler(path="/v1/health")
         with mock.patch.object(responses, "urlopen_direct", return_value=_DirectResponse(partial)):
             responses.relay(handler, "GET")
         self.assertEqual(handler.statuses, [200])
@@ -598,7 +604,7 @@ class InputTransportContracts(unittest.TestCase):
 
         statuses = []
         for error in (BrokenPipeError(), RuntimeError("private")):
-            handler = _MemoryHandler(path="/health")
+            handler = _MemoryHandler(path="/v1/health")
             handler.wfile = mock.Mock()
             handler.wfile.write.side_effect = error
             with mock.patch.object(

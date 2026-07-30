@@ -25,6 +25,28 @@ conversation by mutating session JSONL, SQLite state, archives, or model
 metadata. AIGW-owned marked provider blocks remain immutable to proxy route
 commands.
 
+The listener exposes three canonical data-plane namespaces:
+
+```text
+/dmxapi/v1  -> release-owned DMXAPI HTTPS origin
+/ucloud/v1  -> release-owned UCloud/Azure HTTPS origin
+/aihubmix/v1 -> release-owned AIHubMix HTTPS origin
+```
+
+AIGW selects one namespace through its account endpoint and supplies that
+account's credential. The listener strips only the provider path prefix and
+does not accept an upstream host from a request header or body. Environment
+overrides are service-owner inputs and must be credential-free absolute HTTPS
+origins.
+
+Before remote I/O, `codex_dmx_proxy.listener.rewrite` projects Responses replay
+onto a closed portable grammar. Provider continuation IDs, stored-item
+references, reasoning/search state, provider item IDs, and opaque ciphertext
+are removed. Text and complete call/output relationships remain. Unknown or
+malformed replay fails locally; DMX HTTP 477 recovery and cooldown apply only
+after that projection and only on the DMXAPI route. Stream sanitization prevents
+new provider ciphertext from re-entering later replay.
+
 The pure policy in `codex_dmx_proxy/compatibility/input_variant.py` owns the exact observed
 Responses input-union failure. Transport orchestration may invoke that policy
 once to construct a strictly smaller network request from the latest system,
