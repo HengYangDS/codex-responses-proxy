@@ -1,1 +1,4 @@
 schema: spec-driven
+created: 2026-07-30
+goal: Align recovery truth and admit each provider signing key once per history
+  projection command.
