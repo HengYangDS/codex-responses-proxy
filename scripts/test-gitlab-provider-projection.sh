@@ -12,11 +12,13 @@ remote="$tmp/gitlab.git"
 home="$tmp/home"
 key="$tmp/signing"
 wrapper="$tmp/signing-wrapper"
+signing_log="$tmp/signing.log"
 mkdir -p "$home"
 ssh-keygen -q -t ed25519 -N '' -f "$key"
 public=$(awk '{print $1" "$2}' "$key.pub")
 cat > "$wrapper" <<'EOF'
 #!/bin/sh
+printf '%s\n' "$*" >> "${DMX_TEST_SIGNING_LOG:?}"
 exec /usr/bin/ssh-keygen "$@"
 EOF
 chmod +x "$wrapper"
@@ -45,9 +47,15 @@ git -C "$source" remote add origin "file://$remote"
 (
   cd "$source"
   DMX_GITLAB_SIGNING_KEY="$key.pub" \
+    DMX_TEST_SIGNING_LOG="$signing_log" \
     DMX_GITLAB_SSH_SIGNING_PROGRAM="$wrapper" \
     sh "$script"
 ) >/dev/null
+
+[ "$(grep -c -- '-Y sign' "$signing_log")" -eq 2 ] || {
+  echo 'GitLab projection did not sign each rewritten commit exactly once' >&2
+  exit 1
+}
 
 [ "$(git -C "$source" for-each-ref --format='%(refname) %(objectname)' | LC_ALL=C sort)" = "$source_refs" ] || {
   echo 'GitLab projection rewrote source refs' >&2

@@ -1,0 +1,40 @@
+[claim]
+id = "recovery-contract-and-signing-efficiency-20260730"
+subject = "codex-dmx-proxy:runtime-upgrade"
+state = "active"
+summary = "Local evidence binds recovery prose and command-scoped provider signing."
+
+[evidence]
+dated = "evidence/chronicle/recovery-contract-and-signing-efficiency-20260730/2026-07-30.md"
+sha256 = "fc23351caf3cc428fbb6b43770cb021ee8825b397e51ccc4430448cef07fb742"
+evidence_ids = ["evidence:recovery-contract-and-signing-efficiency-20260730"]
+binding = "two-projection recovery contract and one-admission complete provider projection for v1.0.42"
+verifier = "digest_only"
+tests = [
+  "python3 scripts/test_release_metadata.py",
+  "sh scripts/test-gitlab-provider-projection.sh",
+  "sh scripts/test-github-provider-projection.sh",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "historical"
+
+[boundary]
+owner = "codex-dmx-proxy"
+scope = "Local contract and projection evidence only; hosted CI, publication, installation, and runtime acceptance remain external."
+
+[carriers]
+openspec = "openspec/changes/recovery-contract-and-signing-efficiency"
+fallback = "Use the existing low-level provider projection scripts with a caller-owned exact-key agent."
+kill_signal = "Canonical recovery prose again conflates rollback and candidate manifest identity, or provider projection starts one agent per commit."
+
+[promotion]
+targets = [
+  "README.md",
+  "docs/governance/release-and-change-policy.md",
+  "docs/operations/forge-operations.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "scripts/run-provider-projection.sh",
+]

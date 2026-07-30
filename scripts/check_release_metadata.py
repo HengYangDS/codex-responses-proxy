@@ -254,6 +254,7 @@ def check_governance_contract() -> None:
         "governance.py",
         "scripts/project-github-forge.sh",
         "scripts/project-gitlab-forge.sh",
+        "scripts/run-provider-projection.sh",
         "scripts/rewrite-provider-history.py",
         "scripts/test-gitlab-provider-projection.sh",
         "scripts/test-github-provider-projection.sh",

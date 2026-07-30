@@ -22,8 +22,8 @@ they are not repaired by profile aliases or display-name changes.
 Normalize GitLab history from a clean source checkout, then project GitHub:
 
 ```bash
-sh scripts/project-gitlab-forge.sh
-sh scripts/project-github-forge.sh
+scripts/run-provider-projection.sh gitlab
+scripts/run-provider-projection.sh github
 ```
 
 Each command builds a fresh isolated clone and uses
@@ -34,6 +34,13 @@ rewritten commit before `main` changes under an exact remote-tip lease. It never
 overwrites provider-native tags. Historical tags and Releases remain immutable
 evidence of their original commit objects; a later normalized branch does not
 retroactively change those records.
+
+The runner admits the exact provider signing key once per projection command.
+It reuses a caller-owned agent only when that exact key is already loaded;
+otherwise it creates one disposable agent, loads only that provider key through
+the configured askpass bridge, executes the isolated projection, and terminates
+only the agent it created. Per-commit signatures remain independent; repeated
+per-commit Keychain agent creation is not part of the supported workflow.
 
 ## Parity audit
 
