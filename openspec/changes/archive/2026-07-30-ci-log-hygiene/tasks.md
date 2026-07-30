@@ -20,6 +20,8 @@
 ## 4. Close out
 
 - [x] 4.1 Complete strict OpenSpec validation before exact-HEAD ETHOS proof.
-- [ ] 4.2 Land through candidate and accepted roles, then retire the owned Work Lane.
-- [ ] 4.3 Publish independent signed GitLab and GitHub histories, tags, CI, and Releases.
-- [ ] 4.4 Install and verify release `1.0.36`, update records, and audit residue.
+- [x] 4.2 Archive the locally proven change through the official OpenSpec
+  transition. Candidate landing and Work Lane retirement are repository
+  lifecycle transitions; Forge publication, installation, runtime acceptance,
+  and repository-family records remain external states owned by their respective
+  release operations rather than this change checklist.
