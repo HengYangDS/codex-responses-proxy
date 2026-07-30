@@ -1,0 +1,15 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "control.py",
+  "install.py",
+  "codex_dmx_proxy/route/management.py",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "tests/test_route_management.py",
+  "tests/test_controller_lifecycle.py",
+  "evidence/claims/provider-scoped-route-state-20260731.toml",
+  "evidence/chronicle/provider-scoped-route-state-20260731/**",
+  "openspec/changes/provider-scoped-route-state/**",
+  "openspec/changes/archive/2026-07-31-provider-scoped-route-state/**",
+  "openspec/specs/provider-portable-responses/**",
+]

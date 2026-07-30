@@ -38,13 +38,33 @@ class RouteTestCase(unittest.TestCase):
 
 
 class TestConfigRewrite(unittest.TestCase):
+    def test_distinguishes_legacy_direct_and_provider_scoped_proxy_bases(self):
+        self.assertEqual(
+            route_state.legacy_dmx_proxy_base_url(8791),
+            "http://127.0.0.1:8791/v1",
+        )
+        self.assertEqual(
+            route_state.provider_proxy_base_url(8791, "dmxapi"),
+            "http://127.0.0.1:8791/dmxapi/v1",
+        )
+        self.assertEqual(
+            route_state.provider_proxy_base_url(8791, "ucloud"),
+            "http://127.0.0.1:8791/ucloud/v1",
+        )
+        self.assertEqual(
+            route_state.provider_proxy_base_url(8791, "aihubmix"),
+            "http://127.0.0.1:8791/aihubmix/v1",
+        )
+        with self.assertRaises(errors.InstallError):
+            route_state.provider_proxy_base_url(8791, "other")
+
     def test_rewrites_and_reads_routes_without_touching_other_lines(self):
         config = (
             '[model_providers.DMX1]\nbase_url = "https://www.dmxapi.cn/v1"\n'
             'wire_api = "responses"\n'
         )
         rewritten, changed = route_state.rewrite_base_url(
-            config, "dmxapi", route_state.proxy_base_url(8791)
+            config, "dmxapi", route_state.legacy_dmx_proxy_base_url(8791)
         )
         self.assertEqual(changed, 1)
         self.assertIn('base_url = "http://127.0.0.1:8791/v1"', rewritten)
@@ -58,12 +78,26 @@ class TestConfigRewrite(unittest.TestCase):
         )
         enabled = 'base_url = "http://127.0.0.1:8791/v1"\n'
         self.assertEqual(
-            route_state.rewrite_base_url(enabled, "dmxapi", route_state.proxy_base_url(8791)),
+            route_state.rewrite_base_url(
+                enabled, "dmxapi", route_state.legacy_dmx_proxy_base_url(8791)
+            ),
             (enabled, 0),
         )
 
 
 class TestRouteStateFailures(unittest.TestCase):
+    def test_new_direct_state_uses_schema_v3_but_keeps_bounded_legacy_route(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = install_context(Path(tmp))
+            state = route_state.make_install_state(
+                ctx,
+                backup_path=f"{ctx.codex_config}.bak-1",
+                direct_text="direct",
+                enabled_text="enabled",
+            )
+            self.assertEqual(state["schema_version"], 3)
+            self.assertEqual(state["proxy_url"], "http://127.0.0.1:8791/v1")
+
     def test_rejects_unsafe_upstream_urls(self):
         invalid = (
             "",
@@ -89,7 +123,7 @@ class TestRouteStateFailures(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ctx = install_context(Path(tmp))
             direct = 'base_url = "https://www.dmxapi.cn/v1"\n'
-            enabled = f'base_url = "{route_state.proxy_base_url(ctx.port)}"\n'
+            enabled = f'base_url = "{route_state.legacy_dmx_proxy_base_url(ctx.port)}"\n'
             codex = route_state.make_install_state(
                 ctx,
                 backup_path=f"{ctx.codex_config}.bak-1",
@@ -113,6 +147,7 @@ class TestRouteStateFailures(unittest.TestCase):
                 "enabled_sha256": (codex, None, "short"),
                 "aigw_config_path": (aigw, "relative.toml"),
                 "aigw_account": (aigw, None, ""),
+                "provider_route": (aigw, None, "unknown"),
                 "direct_url": (aigw, None, "file:///tmp/upstream"),
             }
             for field, (template, *values) in mutations.items():
@@ -124,12 +159,39 @@ class TestRouteStateFailures(unittest.TestCase):
                         route_state.write_install_state(ctx, template | {field: value})
 
             with self.assertRaises(errors.InstallError):
+                route_state.write_install_state(
+                    ctx,
+                    aigw | {"proxy_url": route_state.provider_proxy_base_url(ctx.port, "ucloud")},
+                )
+            with self.assertRaises(errors.InstallError):
+                route_state.write_install_state(
+                    ctx,
+                    aigw | {"schema_version": 1},
+                )
+            with self.assertRaises(errors.InstallError):
                 route_state.make_aigw_install_state(
                     ctx,
                     aigw_config_path=str(Path(tmp) / "aigw.toml"),
                     account="",
                     direct_url="https://www.dmxapi.cn/v1",
                 )
+
+    def test_aigw_provider_route_requires_a_valid_aigw_state(self):
+        self.assertEqual(
+            route_state.aigw_provider_route({"schema_version": 2, "route_mode": "aigw_endpoint"}),
+            "dmxapi",
+        )
+        for state in (
+            {"schema_version": 3, "route_mode": "codex_config"},
+            {"schema_version": 3, "route_mode": "aigw_endpoint"},
+            {
+                "schema_version": 3,
+                "route_mode": "aigw_endpoint",
+                "provider_route": "unknown",
+            },
+        ):
+            with self.subTest(state=state), self.assertRaises(errors.InstallError):
+                route_state.aigw_provider_route(state)
 
     def test_missing_or_untrusted_state_is_not_authority(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -174,7 +236,7 @@ class TestRouteStateFailures(unittest.TestCase):
                 config = Path(ctx.codex_config)
                 config.parent.mkdir(parents=True)
                 direct = 'base_url = "https://www.dmxapi.cn/v1"\n'
-                enabled = f'base_url = "{route_state.proxy_base_url(ctx.port)}"\n'
+                enabled = f'base_url = "{route_state.legacy_dmx_proxy_base_url(ctx.port)}"\n'
                 config.write_text(enabled, encoding="utf-8")
                 backup = Path(f"{ctx.codex_config}.bak-1")
                 if backup_text is not None:
@@ -206,12 +268,39 @@ class TestRouteStateFailures(unittest.TestCase):
                 config.write_text(text, encoding="utf-8")
                 self.assertEqual(route_state.aigw_route_status(ctx, state, str(config)), "drifted")
 
+    def test_schema_v2_aigw_status_recognizes_legacy_proxy_and_direct_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = install_context(root)
+            config = root / "aigw.toml"
+            state = {
+                "schema_version": 2,
+                "route_mode": "aigw_endpoint",
+                "aigw_config_path": str(config.resolve()),
+                "aigw_account": "dmxapi",
+                "proxy_url": "http://127.0.0.1:8791/v1",
+                "direct_url": "https://www.dmxapi.cn/v1",
+            }
+            for endpoint, expected in (
+                ("http://127.0.0.1:8791/v1", "enabled"),
+                ("https://www.dmxapi.cn/v1", "disabled"),
+                ("http://127.0.0.1:8791/dmxapi/v1", "drifted"),
+            ):
+                with self.subTest(endpoint=endpoint):
+                    config.write_text(
+                        f"[accounts.dmxapi.endpoints]\nopenai_responses = {endpoint!r}\n",
+                        encoding="utf-8",
+                    )
+                    self.assertEqual(
+                        route_state.aigw_route_status(ctx, state, str(config)), expected
+                    )
+
     def test_rejects_unreconstructable_and_foreign_transitions(self):
         with tempfile.TemporaryDirectory() as tmp:
             ctx = install_context(Path(tmp))
             config = Path(ctx.codex_config)
             config.parent.mkdir(parents=True)
-            proxy_url = route_state.proxy_base_url(ctx.port)
+            proxy_url = route_state.legacy_dmx_proxy_base_url(ctx.port)
             for direct, enabled_sha256 in (
                 ('base_url = "https://other.example/v1"\n', None),
                 ('base_url = "https://www.dmxapi.cn/v1"\n', "0" * 64),
@@ -246,7 +335,10 @@ class TestManagedRouteState(RouteTestCase):
                 "feature = true\n"
                 'api_key = "do-not-copy-into-state"\n'
             )
-            enabled = direct.replace("https://www.dmxapi.cn/v1", route_state.proxy_base_url(8791))
+            enabled = direct.replace(
+                "https://www.dmxapi.cn/v1",
+                route_state.legacy_dmx_proxy_base_url(8791),
+            )
             ctx, config, route = self.route(Path(tmp), direct, enabled)
             route_state.write_install_state(ctx, route)
             persisted = Path(route_state.install_state_path(ctx)).read_text(encoding="utf-8")
@@ -328,44 +420,208 @@ class TestManagedRouteState(RouteTestCase):
             route_state.set_proxy_route(ctx, route, enabled=False)
             self.assertEqual(config.read_text(), direct)
 
-    def test_loads_v1_direct_route_state_for_in_place_upgrade(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            direct = 'base_url = "https://www.dmxapi.cn/v1"\n'
-            enabled = 'base_url = "http://127.0.0.1:8791/v1"\n'
-            ctx, config, legacy = self.route(Path(tmp), direct, enabled)
-            legacy["schema_version"] = 1
-            legacy.pop("route_mode")
-            state_path = Path(route_state.install_state_path(ctx))
-            state_path.parent.mkdir(parents=True, exist_ok=True)
-            state_path.write_text(json.dumps(legacy), encoding="utf-8")
-            loaded = route_state.load_install_state(ctx)
-            self.assertIsNotNone(loaded)
-            route_state.set_proxy_route(ctx, loaded, enabled=False)
-            self.assertEqual(config.read_text(), direct)
+    def test_loads_v1_and_v2_direct_route_state_for_in_place_upgrade(self):
+        for schema_version in (1, 2):
+            with self.subTest(schema_version=schema_version), tempfile.TemporaryDirectory() as tmp:
+                direct = 'base_url = "https://www.dmxapi.cn/v1"\n'
+                enabled = 'base_url = "http://127.0.0.1:8791/v1"\n'
+                ctx, config, legacy = self.route(Path(tmp), direct, enabled)
+                legacy["schema_version"] = schema_version
+                if schema_version == 1:
+                    legacy.pop("route_mode")
+                state_path = Path(route_state.install_state_path(ctx))
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+                state_path.write_text(json.dumps(legacy), encoding="utf-8")
+                loaded = route_state.load_install_state(ctx)
+                self.assertIsNotNone(loaded)
+                route_state.set_proxy_route(ctx, loaded, enabled=False)
+                self.assertEqual(config.read_text(), direct)
 
 
 class TestAIGWRouteControl(unittest.TestCase):
     def _context(self, root: Path):
         return install_context(root)
 
-    def _aigw_config(self, root: Path, endpoint: str) -> Path:
+    def _aigw_config(self, root: Path, endpoint: str, *, account: str = "dmxapi") -> Path:
         path = root / "aigw.toml"
         path.write_text(
-            f"[accounts.dmx.endpoints]\nopenai_responses = {endpoint!r}\n",
+            f"[accounts.{account}.endpoints]\nopenai_responses = {endpoint!r}\n",
             encoding="utf-8",
         )
         return path
+
+    def test_adopts_provider_scoped_aigw_endpoint_and_writes_schema_v3(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._context(root)
+            proxy_url = "http://127.0.0.1:8791/dmxapi/v1"
+            config_path = self._aigw_config(root, proxy_url)
+
+            with mock.patch.object(control, "_aigw_config_path", return_value=str(config_path)):
+                state = control.adopt_aigw_route(
+                    ctx,
+                    account="dmxapi",
+                    direct_url="https://www.dmxapi.cn/v1",
+                    provider_route="dmxapi",
+                )
+
+            self.assertEqual(state["schema_version"], 3)
+            self.assertEqual(state["provider_route"], "dmxapi")
+            self.assertEqual(state["proxy_url"], proxy_url)
+            self.assertEqual(route_state.aigw_route_status(ctx, state, str(config_path)), "enabled")
+
+    def test_adopt_migrates_legacy_schema_v2_aigw_state_to_scoped_schema_v3(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._context(root)
+            config_path = self._aigw_config(root, "http://127.0.0.1:8791/dmxapi/v1")
+            legacy = {
+                "schema_version": 2,
+                "route_mode": "aigw_endpoint",
+                "aigw_config_path": str(config_path.resolve()),
+                "aigw_account": "dmxapi",
+                "proxy_url": "http://127.0.0.1:8791/v1",
+                "direct_url": "https://www.dmxapi.cn/v1",
+            }
+            state_path = Path(route_state.install_state_path(ctx))
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(json.dumps(legacy), encoding="utf-8")
+            self.assertEqual(route_state.load_install_state(ctx), legacy)
+
+            with mock.patch.object(control, "_aigw_config_path", return_value=str(config_path)):
+                migrated = control.adopt_aigw_route(
+                    ctx,
+                    account="dmxapi",
+                    direct_url="https://www.dmxapi.cn/v1",
+                    provider_route="dmxapi",
+                )
+
+            self.assertEqual(migrated["schema_version"], 3)
+            self.assertEqual(migrated["provider_route"], "dmxapi")
+            self.assertEqual(migrated["proxy_url"], "http://127.0.0.1:8791/dmxapi/v1")
+
+    def test_adopt_refuses_legacy_endpoint_until_aigw_projects_scoped_route(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._context(root)
+            config_path = self._aigw_config(root, "http://127.0.0.1:8791/v1")
+            legacy = {
+                "schema_version": 2,
+                "route_mode": "aigw_endpoint",
+                "aigw_config_path": str(config_path.resolve()),
+                "aigw_account": "dmxapi",
+                "proxy_url": "http://127.0.0.1:8791/v1",
+                "direct_url": "https://www.dmxapi.cn/v1",
+            }
+            route_state.write_install_state(ctx, legacy)
+
+            with (
+                mock.patch.object(control, "_aigw_config_path", return_value=str(config_path)),
+                mock.patch.object(control, "_set_aigw_account_endpoint") as update,
+                self.assertRaises(errors.InstallError),
+            ):
+                control.adopt_aigw_route(
+                    ctx,
+                    account="dmxapi",
+                    direct_url="https://www.dmxapi.cn/v1",
+                    provider_route="dmxapi",
+                )
+
+            update.assert_not_called()
+            self.assertEqual(route_state.load_install_state(ctx), legacy)
+
+    def test_schema_v2_aigw_state_cannot_enable_legacy_route(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = self._context(root)
+            config_path = self._aigw_config(root, "https://www.dmxapi.cn/v1")
+            legacy = {
+                "schema_version": 2,
+                "route_mode": "aigw_endpoint",
+                "aigw_config_path": str(config_path.resolve()),
+                "aigw_account": "dmxapi",
+                "proxy_url": "http://127.0.0.1:8791/v1",
+                "direct_url": "https://www.dmxapi.cn/v1",
+            }
+            with (
+                mock.patch.object(control, "_set_aigw_account_endpoint") as update,
+                self.assertRaises(errors.InstallError),
+            ):
+                control.set_aigw_route(ctx, legacy, enabled=True)
+            update.assert_not_called()
+
+    def test_control_context_reads_custom_port_from_provider_scoped_state(self):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(os.environ, {"CODEX_HOME": str(Path(tmp) / ".codex")}, clear=False),
+        ):
+            state_path = Path(tmp) / ".codex" / "dmx-proxy" / route_state.STATE_FILENAME
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(
+                json.dumps({"proxy_url": "http://127.0.0.1:8801/dmxapi/v1"}),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(control._context().port, 8801)
+
+    def test_control_context_rejects_untrusted_loopback_url_shapes(self):
+        invalid = (
+            "https://127.0.0.1:8801/dmxapi/v1",
+            "http://localhost:8801/dmxapi/v1",
+            "http://user@127.0.0.1:8801/dmxapi/v1",
+            "http://127.0.0.1:8801/other/v1",
+            "http://127.0.0.1:8801/dmxapi/v1?query=yes",
+            "http://127.0.0.1:8801/dmxapi/v1#fragment",
+            "http://127.0.0.1/dmxapi/v1",
+            "http://127.0.0.1:0/dmxapi/v1",
+            "http://127.0.0.1:not-a-port/dmxapi/v1",
+        )
+        for proxy_url in invalid:
+            with (
+                self.subTest(proxy_url=proxy_url),
+                tempfile.TemporaryDirectory() as tmp,
+                mock.patch.dict(os.environ, {"CODEX_HOME": str(Path(tmp) / ".codex")}, clear=False),
+            ):
+                state_path = Path(tmp) / ".codex" / "dmx-proxy" / route_state.STATE_FILENAME
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+                state_path.write_text(json.dumps({"proxy_url": proxy_url}), encoding="utf-8")
+                self.assertEqual(control._context().port, 8791)
+
+    def test_cli_defaults_adopt_to_dmxapi_account_and_route(self):
+        ctx = self._context(Path(tempfile.mkdtemp()))
+        state = {
+            "aigw_config_path": "/tmp/aigw.toml",
+            "route_mode": "aigw_endpoint",
+        }
+        with (
+            mock.patch.object(sys, "argv", ["control.py", "adopt-aigw", "--json"]),
+            mock.patch.object(control, "_context", return_value=ctx),
+            mock.patch.object(route_state, "load_install_state", return_value=None),
+            mock.patch.object(control, "adopt_aigw_route", return_value=state) as adopt,
+            mock.patch.object(route_state, "aigw_route_status", return_value="enabled"),
+            mock.patch("builtins.print"),
+        ):
+            control.main()
+
+        adopt.assert_called_once_with(
+            ctx,
+            account="dmxapi",
+            direct_url="https://www.dmxapi.cn/v1",
+            provider_route="dmxapi",
+        )
 
     def test_adopt_then_switches_aigw_managed_endpoint_via_aigw_cli(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             ctx = self._context(root)
-            config_path = self._aigw_config(root, route_state.proxy_base_url(ctx.port))
+            config_path = self._aigw_config(
+                root, route_state.provider_proxy_base_url(ctx.port, "dmxapi")
+            )
 
             with mock.patch.object(control, "_aigw_config_path", return_value=str(config_path)):
                 state = control.adopt_aigw_route(
                     ctx,
-                    account="dmx",
+                    account="dmxapi",
                     direct_url="https://www.dmxapi.cn/v1",
                 )
             self.assertEqual(route_state.aigw_route_status(ctx, state, str(config_path)), "enabled")
@@ -375,7 +631,7 @@ class TestAIGWRouteControl(unittest.TestCase):
             def update_endpoint(account, endpoint):
                 calls.append((account, endpoint))
                 config_path.write_text(
-                    f"[accounts.dmx.endpoints]\nopenai_responses = {endpoint!r}\n",
+                    f"[accounts.dmxapi.endpoints]\nopenai_responses = {endpoint!r}\n",
                     encoding="utf-8",
                 )
 
@@ -391,8 +647,8 @@ class TestAIGWRouteControl(unittest.TestCase):
             self.assertEqual(
                 calls,
                 [
-                    ("dmx", "https://www.dmxapi.cn/v1"),
-                    ("dmx", route_state.proxy_base_url(ctx.port)),
+                    ("dmxapi", "https://www.dmxapi.cn/v1"),
+                    ("dmxapi", route_state.provider_proxy_base_url(ctx.port, "dmxapi")),
                 ],
             )
 
@@ -405,7 +661,7 @@ class TestAIGWRouteControl(unittest.TestCase):
                 with self.assertRaises(errors.InstallError):
                     control.adopt_aigw_route(
                         ctx,
-                        account="dmx",
+                        account="dmxapi",
                         direct_url="https://www.dmxapi.cn/v1",
                     )
 
@@ -417,7 +673,7 @@ class TestAIGWRouteControl(unittest.TestCase):
             state = route_state.make_aigw_install_state(
                 ctx,
                 aigw_config_path=str(config_path),
-                account="dmx",
+                account="dmxapi",
                 direct_url="https://www.dmxapi.cn/v1",
             )
             with mock.patch.object(control, "_set_aigw_account_endpoint"):
@@ -448,14 +704,14 @@ class TestUninstallSafety(RouteTestCase):
             ctx = install_context(root)
             aigw_config = root / "aigw.toml"
             aigw_config.write_text(
-                "[accounts.dmx.endpoints]\n"
-                f"openai_responses = {route_state.proxy_base_url(ctx.port)!r}\n",
+                "[accounts.dmxapi.endpoints]\n"
+                f"openai_responses = {route_state.provider_proxy_base_url(ctx.port, 'dmxapi')!r}\n",
                 encoding="utf-8",
             )
             state = route_state.make_aigw_install_state(
                 ctx,
                 aigw_config_path=str(aigw_config),
-                account="dmx",
+                account="dmxapi",
                 direct_url="https://www.dmxapi.cn/v1",
             )
             route_state.write_install_state(ctx, state)
@@ -463,7 +719,7 @@ class TestUninstallSafety(RouteTestCase):
             def disable_aigw(_ctx, _state, *, enabled):
                 self.assertFalse(enabled)
                 aigw_config.write_text(
-                    "[accounts.dmx.endpoints]\nopenai_responses = 'https://www.dmxapi.cn/v1'\n",
+                    "[accounts.dmxapi.endpoints]\nopenai_responses = 'https://www.dmxapi.cn/v1'\n",
                     encoding="utf-8",
                 )
 

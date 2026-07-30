@@ -20,10 +20,11 @@ from codex_dmx_proxy import errors
 
 
 STATE_FILENAME = "install-state.json"
-STATE_SCHEMA_VERSION = 2
+STATE_SCHEMA_VERSION = 3
 AUXILIARY_STATE_FILES = (STATE_FILENAME,)
 AIGW_PROVIDER_BEGIN = "# >>> AIGW managed provider >>>"
 AIGW_PROVIDER_END = "# <<< AIGW managed provider <<<"
+PROVIDER_ROUTES = frozenset(("dmxapi", "ucloud", "aihubmix"))
 _BASEURL_RE = re.compile(
     r'^(?P<indent>\s*)base_url\s*=\s*(?P<q>["\'])(?P<url>.*?)(?P=q)\s*(?P<comment>#.*)?$'
 )
@@ -72,9 +73,16 @@ def rewrite_base_url(config_text: str, old_host_substr: str, new_base_url: str) 
     return "".join(out_lines), changed
 
 
-def proxy_base_url(port: int) -> str:
-    """Return the loopback Responses base URL for one validated listener port."""
+def legacy_dmx_proxy_base_url(port: int) -> str:
+    """Return the bounded unscoped DMX migration URL used by direct Codex mode."""
     return f"http://127.0.0.1:{port}/v1"
+
+
+def provider_proxy_base_url(port: int, provider_route: str) -> str:
+    """Return one canonical provider-scoped loopback Responses base URL."""
+    if provider_route not in PROVIDER_ROUTES:
+        raise errors.InstallError("provider route must be dmxapi, ucloud, or aihubmix")
+    return f"http://127.0.0.1:{port}/{provider_route}/v1"
 
 
 def normalize_upstream_url(value: str) -> str:
@@ -167,7 +175,7 @@ def make_install_state(
         "route_mode": "codex_config",
         "config_path": os.path.abspath(ctx.codex_config),
         "backup_path": os.path.abspath(backup_path),
-        "proxy_url": proxy_base_url(ctx.port),
+        "proxy_url": legacy_dmx_proxy_base_url(ctx.port),
         "source_host_substr": source_host_substr,
         "direct_sha256": _sha256_text(direct_text),
         "enabled_sha256": _sha256_text(enabled_text),
@@ -180,16 +188,19 @@ def make_aigw_install_state(
     aigw_config_path: str,
     account: str,
     direct_url: str,
+    provider_route: str = "dmxapi",
 ) -> dict:
     """Construct an AIGW-owned endpoint route record without retaining secrets."""
     if not isinstance(account, str) or not account:
         raise errors.InstallError("AIGW account must be non-empty")
+    proxy_url = provider_proxy_base_url(ctx.port, provider_route)
     return {
         "schema_version": STATE_SCHEMA_VERSION,
         "route_mode": "aigw_endpoint",
         "aigw_config_path": os.path.abspath(aigw_config_path),
         "aigw_account": account,
-        "proxy_url": proxy_base_url(ctx.port),
+        "provider_route": provider_route,
+        "proxy_url": proxy_url,
         "direct_url": normalize_upstream_url(direct_url),
     }
 
@@ -200,17 +211,17 @@ def _valid_install_state(ctx: installation.InstallContext, state: object) -> boo
     state = cast(Mapping[str, object], state)
     schema_version = state.get("schema_version")
     route_mode = state.get("route_mode")
-    # v1 contained only direct Codex-config state. Accept it as a read-only
-    # migration shape so an installed v1.0.2 payload can still disable/uninstall
-    # an earlier managed route; every newly written state uses schema v2.
+    # v1 contained only direct Codex-config state. v2 added AIGW state but could
+    # represent only the unscoped DMX migration URL. Both remain read-only
+    # migration shapes; every newly written state uses schema v3.
     if schema_version == 1 and route_mode is None:
         route_mode = "codex_config"
-    elif schema_version != STATE_SCHEMA_VERSION:
+    elif schema_version not in (2, STATE_SCHEMA_VERSION):
         return False
     if route_mode == "codex_config":
         if state.get("config_path") != os.path.abspath(ctx.codex_config):
             return False
-        if state.get("proxy_url") != proxy_base_url(ctx.port):
+        if state.get("proxy_url") != legacy_dmx_proxy_base_url(ctx.port):
             return False
         backup = state.get("backup_path")
         if not isinstance(backup, str) or not backup.startswith(
@@ -229,15 +240,26 @@ def _valid_install_state(ctx: installation.InstallContext, state: object) -> boo
             and len(enabled_sha256) == 64
         )
     if route_mode == "aigw_endpoint":
+        if schema_version == 1:
+            return False
         aigw_config_path = state.get("aigw_config_path")
         aigw_account = state.get("aigw_account")
         direct_url = state.get("direct_url")
+        if schema_version == 2:
+            proxy_url_is_valid = state.get("proxy_url") == legacy_dmx_proxy_base_url(ctx.port)
+        else:
+            provider_route = state.get("provider_route")
+            proxy_url_is_valid = (
+                isinstance(provider_route, str)
+                and provider_route in PROVIDER_ROUTES
+                and state.get("proxy_url") == provider_proxy_base_url(ctx.port, provider_route)
+            )
         return (
             isinstance(aigw_config_path, str)
             and os.path.isabs(aigw_config_path)
             and isinstance(aigw_account, str)
             and bool(aigw_account)
-            and state.get("proxy_url") == proxy_base_url(ctx.port)
+            and proxy_url_is_valid
             and isinstance(direct_url, str)
             and _is_valid_upstream_url(direct_url)
         )
@@ -320,11 +342,26 @@ def aigw_route_status(ctx: installation.InstallContext, state: dict, config_path
             endpoint = aigw_endpoint(fh.read(), state["aigw_account"])
     except OSError:
         return "drifted"
-    if endpoint == state["proxy_url"]:
+    if state.get("schema_version") == 2:
+        if endpoint == legacy_dmx_proxy_base_url(ctx.port):
+            return "enabled"
+    elif endpoint == provider_proxy_base_url(ctx.port, aigw_provider_route(state)):
         return "enabled"
     if endpoint == state["direct_url"]:
         return "disabled"
     return "drifted"
+
+
+def aigw_provider_route(state: Mapping[str, object]) -> str:
+    """Return the provider route represented by one validated AIGW state."""
+    if state.get("route_mode") != "aigw_endpoint":
+        raise errors.InstallError("route state is not AIGW-managed")
+    if state.get("schema_version") == 2:
+        return "dmxapi"
+    provider_route = state.get("provider_route")
+    if not isinstance(provider_route, str) or provider_route not in PROVIDER_ROUTES:
+        raise errors.InstallError("AIGW route state has no valid provider route")
+    return provider_route
 
 
 def set_proxy_route(ctx: installation.InstallContext, state: dict | None, *, enabled: bool) -> None:

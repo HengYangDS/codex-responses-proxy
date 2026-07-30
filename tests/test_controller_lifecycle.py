@@ -26,6 +26,55 @@ from tests.test_payload_transactions import begin_transaction, released_fixture 
 
 
 class TestControllerLifecycle(unittest.TestCase):
+    def test_installed_status_reports_provider_scoped_aigw_route_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ctx = install_context(root)
+            transaction = begin_transaction(ctx, released_fixture())
+            transaction.commit_projection()
+            transaction.finalize({"pid": 1})
+
+            codex_config = Path(ctx.codex_config)
+            codex_config.parent.mkdir(parents=True, exist_ok=True)
+            codex_config.write_text(
+                f"{route_state.AIGW_PROVIDER_BEGIN}\n"
+                "[model_providers.aigw]\n"
+                'base_url = "http://127.0.0.1:8791/dmxapi/v1"\n'
+                f"{route_state.AIGW_PROVIDER_END}\n",
+                encoding="utf-8",
+            )
+            aigw_config = root / "aigw.toml"
+            aigw_config.write_text(
+                "[accounts.dmxapi.endpoints]\n"
+                "openai_responses = 'http://127.0.0.1:8791/dmxapi/v1'\n",
+                encoding="utf-8",
+            )
+            route_state.write_install_state(
+                ctx,
+                route_state.make_aigw_install_state(
+                    ctx,
+                    aigw_config_path=str(aigw_config),
+                    account="dmxapi",
+                    direct_url="https://www.dmxapi.cn/v1",
+                    provider_route="dmxapi",
+                ),
+            )
+
+            installed_control = Path(ctx.install_dir) / "control.py"
+            env = dict(os.environ, CODEX_HOME=str(root / ".codex"))
+            result = subprocess.run(
+                [sys.executable, str(installed_control), "status", "--json"],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            evidence = json.loads(result.stdout)
+            self.assertEqual(evidence["route_authority"], "aigw")
+            self.assertEqual(evidence["route_mode"], "aigw_endpoint")
+            self.assertEqual(evidence["route"], "enabled")
+
     def test_control_status_enable_disable_uses_installed_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
