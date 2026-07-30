@@ -7,6 +7,15 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.41] - 2026-07-30
+
+### Fixed
+
+- Verify recovery as two simultaneous projections: the old listener's frozen
+  serving identity and the newer candidate manifest already committed on disk.
+  This makes preserved cross-version transactions recoverable without weakening
+  snapshot, process, or publication checks.
+
 ## [1.0.40] - 2026-07-30
 
 ### Fixed

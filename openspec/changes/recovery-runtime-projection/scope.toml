@@ -1,0 +1,12 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "VERSION",
+  "codex_dmx_proxy/release/transaction.py",
+  "tests/test_payload_transactions.py",
+  "openspec/changes/recovery-runtime-projection/**",
+  "openspec/changes/archive/*-recovery-runtime-projection/**",
+  "openspec/specs/runtime-upgrade/**",
+  "evidence/claims/recovery-runtime-projection-20260730.toml",
+  "evidence/chronicle/recovery-runtime-projection-20260730/**",
+]
