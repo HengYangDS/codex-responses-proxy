@@ -1,0 +1,45 @@
+[claim]
+id = "provider-scoped-route-state-20260731"
+subject = "codex-dmx-proxy:provider-portable-responses"
+state = "active"
+summary = "Local evidence binds provider-scoped schema-v3 AIGW route state for v1.0.44."
+
+[evidence]
+dated = "evidence/chronicle/provider-scoped-route-state-20260731/2026-07-31.md"
+sha256 = "794e6147f11d29cbd955faa84f5fc37792b0867f62f6e24ed5a2f2679c904e8a"
+evidence_ids = ["evidence:provider-scoped-route-state-20260731"]
+binding = "live schema-v2 route drift, focused TDD repair, and local source verification for the untagged v1.0.44 train"
+verifier = "digest_only"
+tests = [
+  "python3.14 -m unittest tests.test_route_management -v",
+  "python3.14 -m unittest tests.test_controller_lifecycle -v",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh",
+  "python3.12 scripts/run-python-tests.py --compile",
+  "python3.13 scripts/run-python-tests.py --compile",
+  "python3.14 scripts/run-python-tests.py --compile",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "historical"
+
+[boundary]
+owner = "codex-dmx-proxy"
+scope = "Local source-repair evidence only; hosted CI, dual-Forge publication, installation, live schema migration, AIGW switching, and original-conversation acceptance remain external."
+
+[carriers]
+openspec = "openspec/changes/archive/2026-07-31-provider-scoped-route-state"
+fallback = "Keep the released v1.0.43 runtime and canonical scoped AIGW endpoints unchanged until fixed v1.0.44 publication and protocol-v2 installation are proved."
+kill_signal = "Any new AIGW state records or emits unscoped /v1, any provider route is inferred or unbounded, or route migration edits conversation storage."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "control.py",
+  "install.py",
+  "codex_dmx_proxy/route/management.py",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/test_controller_lifecycle.py",
+  "tests/test_route_management.py",
+]

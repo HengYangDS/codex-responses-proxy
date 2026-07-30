@@ -19,6 +19,10 @@ shared headings even when a historical tag exists only on the other Forge.
 - Preserve the same assistant carrier through the bounded DMX empty-response
   retry and insert explicit portable markers for root-only agent or tool
   ciphertext instead of emitting empty replay items.
+- Record AIGW route state as schema v3 with an explicit `dmxapi`, `ucloud`, or
+  `aihubmix` provider route and its matching scoped loopback endpoint. Keep the
+  unscoped `/v1` URL bounded to direct-Codex compatibility, migrate schema-v2
+  state only through `adopt-aigw`, and parse scoped custom ports structurally.
 
 ## [1.0.43] - 2026-07-30
 
