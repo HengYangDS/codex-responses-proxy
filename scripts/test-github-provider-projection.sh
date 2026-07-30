@@ -14,6 +14,7 @@ home="$tmp/home"
 global_config="$tmp/global.gitconfig"
 key="$tmp/signing"
 signing_wrapper="$tmp/signing-wrapper"
+signing_log="$tmp/signing.log"
 mock_ssh="$tmp/mock-ssh"
 mkdir -p "$home" "$tmp/allowed"
 : > "$global_config"
@@ -23,6 +24,7 @@ printf 'heng.yang.ds@hotmail.com namespaces="git" %s\n' "$public" > "$tmp/allowe
 printf 'hengyang.2003@tsinghua.org.cn namespaces="git" %s\n' "$public" > "$tmp/allowed/github"
 cat > "$signing_wrapper" <<'EOF'
 #!/bin/sh
+printf '%s\n' "$*" >> "${DMX_TEST_SIGNING_LOG:?}"
 exec /usr/bin/ssh-keygen "$@"
 EOF
 chmod +x "$signing_wrapper"
@@ -91,10 +93,16 @@ git -C "$source" remote add github git@github.com:test/codex-dmx-proxy.git
     DMX_TEST_GITHUB_REMOTE="$remote" \
     GIT_SSH_COMMAND="$mock_ssh" \
     DMX_GITHUB_SIGNING_KEY="$key.pub" \
+    DMX_TEST_SIGNING_LOG="$signing_log" \
     DMX_GITHUB_SSH_SIGNING_PROGRAM="$signing_wrapper" \
     DMX_GITHUB_REMOTE=github \
     sh "$script" --branch main
 ) >/dev/null
+
+[ "$(grep -c -- '-Y sign' "$signing_log")" -eq 2 ] || {
+  echo 'GitHub projection did not sign each rewritten commit exactly once' >&2
+  exit 1
+}
 
 [ "$(git -C "$source" rev-parse HEAD)" = "$source_head_before" ] || { echo 'projection rewrote canonical HEAD' >&2; exit 1; }
 [ "$(git -C "$source" for-each-ref --format='%(refname) %(objectname)' | LC_ALL=C sort)" = "$source_refs_before" ] || { echo 'projection rewrote canonical refs' >&2; exit 1; }

@@ -111,9 +111,10 @@ the signed annotated tag object and its verified publication chain.
 
 Recovery remains source-side and publication-gated. The installer may restore
 only the exact retained rollback snapshot while the live accepting listener's
-release, serving digest, receipt digest, manifest digest, and idle handoff state
-match that prior projection, and the PID is uniquely bound to the installed
-entrypoint. It then begins a new admitted release transaction.
+frozen release, serving digest, and receipt digest match that prior projection;
+its reported manifest digest matches the fully verified candidate projection
+committed on disk; its handoff state is idle; and the PID is uniquely bound to
+the installed entrypoint. It then begins a new admitted release transaction.
 An explicitly authorized protocol-v2 bootstrap binds one idle
 accepting listener to its exact installed entrypoint before termination and
 must prove either the released successor or the restored prior runtime.

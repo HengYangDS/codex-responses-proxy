@@ -7,6 +7,15 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.42] - 2026-07-30
+
+### Fixed
+
+- Align all canonical recovery contracts with the released two-projection
+  identity model: rollback serving identity plus committed candidate manifest.
+- Admit each provider signing key once per complete history projection instead
+  of starting a Keychain-backed agent for every rewritten commit.
+
 ## [1.0.41] - 2026-07-30
 
 ### Fixed

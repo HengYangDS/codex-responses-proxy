@@ -20,20 +20,22 @@ arbitrary upgrade payload.
 ### Requirement: Recovery binds the live prior runtime
 
 The installer SHALL restore a retained rollback snapshot only while the live
-accepting listener matches that snapshot's release, serving digest, receipt
-digest, manifest digest, and idle handoff state, and is the sole PID bound to
-the installed entrypoint.
+accepting listener's frozen release, serving digest, and receipt match that
+snapshot; its reported manifest digest matches the fully verified candidate
+projection committed on disk; and it is the sole idle PID bound to the installed
+entrypoint.
 
-#### Scenario: Runtime and rollback agree
+#### Scenario: Runtime, rollback, and candidate agree
 
-- **WHEN** the canonical recovery journal, rollback bytes, and live prior
-  listener identities agree
+- **WHEN** the canonical recovery journal and rollback bytes match the live
+  prior listener while the installed candidate matches its reported manifest
 - **THEN** the prior projection is restored and the retained transaction is
   removed before a new release transaction begins
 
-#### Scenario: Runtime and rollback disagree
+#### Scenario: Either projection disagrees
 
-- **WHEN** any bound runtime identity differs or cannot be read
+- **WHEN** any bound runtime identity, candidate manifest identity, or unique
+  process proof differs or cannot be read
 - **THEN** recovery fails closed and retains the transaction
 
 ### Requirement: Cross-version successor identity
@@ -103,4 +105,3 @@ prior accepting runtime.
 - **WHEN** termination, supervision replacement, or successor proof fails
 - **THEN** the installer restores the prior projection and reports failure unless
   the prior accepting runtime is also proved
-

@@ -1,0 +1,20 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "VERSION",
+  "README.md",
+  "docs/governance/release-and-change-policy.md",
+  "docs/operations/forge-operations.md",
+  "openspec/changes/recovery-contract-and-signing-efficiency/**",
+  "openspec/changes/archive/*-recovery-contract-and-signing-efficiency/**",
+  "openspec/specs/runtime-upgrade/**",
+  "scripts/run-provider-projection.sh",
+  "scripts/project-gitlab-forge.sh",
+  "scripts/project-github-forge.sh",
+  "scripts/test-gitlab-provider-projection.sh",
+  "scripts/test-github-provider-projection.sh",
+  "scripts/check_release_metadata.py",
+  "scripts/test_release_metadata.py",
+  "evidence/claims/recovery-contract-and-signing-efficiency-20260730.toml",
+  "evidence/chronicle/recovery-contract-and-signing-efficiency-20260730/**",
+]
