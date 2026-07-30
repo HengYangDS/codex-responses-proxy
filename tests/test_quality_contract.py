@@ -368,6 +368,13 @@ class TestRunnerContracts(unittest.TestCase):
         pipeline = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         self.assertIn("--root-user-action=ignore", pipeline)
 
+    def test_quality_runner_resolves_the_required_tool_beyond_a_foreign_venv(self) -> None:
+        source = (ROOT / "scripts" / "run-python-quality.sh").read_text(encoding="utf-8")
+        self.assertIn("resolve_versioned_tool", source)
+        self.assertIn("for directory in $PATH", source)
+        self.assertIn('ruff_path=$(resolve_versioned_tool "$ruff" "ruff 0.16.0"', source)
+        self.assertIn('ty_path=$(resolve_versioned_tool "$ty" "ty 0.0.64"', source)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

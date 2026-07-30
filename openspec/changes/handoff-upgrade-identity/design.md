@@ -49,6 +49,9 @@ either the successor or the restored prior runtime.
   every other state remains blocked.
 - **More manifest I/O in the old process** -> bounded to one local handoff
   request and the small declared runtime inventory.
+- **External proof runner prepends its own virtual environment** -> the
+  repository quality entry resolves a bare tool name to the first PATH candidate
+  with the exact required version, while an explicit path remains authoritative.
 
 ## Migration Plan
 

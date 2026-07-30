@@ -15,8 +15,10 @@ paths = [
   "evidence/chronicle/handoff-upgrade-identity-20260730/**",
   "install.py",
   "openspec/**",
+  "scripts/run-python-quality.sh",
   "tests/test_handoff_protocol.py",
   "tests/test_handoff_runtime.py",
   "tests/test_payload_transactions.py",
+  "tests/test_quality_contract.py",
   "tests/test_release_installation.py",
 ]
