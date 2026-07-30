@@ -72,7 +72,7 @@ class EmptyResponseTransportTests(unittest.TestCase):
     def test_classified_477_dispatches_policy_fallback_once(self):
         body = semantic_body()
         sanitized, _ = rewrite.sanitize_responses_body(body)
-        fallback, _ = policy.build_fallback(sanitized)
+        fallback, _ = policy.build_fallback(cast("bytes", sanitized))
 
         with tempfile.TemporaryDirectory() as tmp:
             port, received, cleanup = serve_proxy([(477, EMPTY_RESPONSE), (200, SUCCESS)], tmp)
@@ -84,7 +84,7 @@ class EmptyResponseTransportTests(unittest.TestCase):
 
         self.assertEqual(received, [sanitized, fallback])
 
-    def test_unsafe_projection_returns_503_without_a_fallback_upstream_call(self):
+    def test_unsafe_projection_returns_local_400_without_an_upstream_call(self):
         body = self._body({"stream": False, "input": [{"type": "future_item"}]})
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -94,12 +94,12 @@ class EmptyResponseTransportTests(unittest.TestCase):
             finally:
                 cleanup()
 
-        self.assertEqual(code, 503)
-        self.assertEqual(headers["Retry-After"], "3")
-        self.assertEqual(json.loads(raw)["error"]["code"], "dmx_empty_response_exhausted")
-        self.assertEqual(len(received), 1)
+        self.assertEqual(code, 400)
+        self.assertIsNone(headers.get("Retry-After"))
+        self.assertEqual(json.loads(raw)["error"]["code"], "provider_portable_projection_rejected")
+        self.assertEqual(received, [])
 
-    def test_unknown_search_history_uses_strict_dialogue_fallback(self):
+    def test_search_history_is_removed_before_dmx_fallback(self):
         payload = {
             "previous_response_id": "stale",
             "prompt_cache_key": "stale-cache",
@@ -114,7 +114,8 @@ class EmptyResponseTransportTests(unittest.TestCase):
             ],
         }
         body = self._body(payload)
-        expected, _ = policy.recover_dialogue(body, rejection_reason="unknown_item_type")
+        sanitized, _ = rewrite.sanitize_responses_body(body)
+        expected, _ = policy.build_fallback(cast("bytes", sanitized))
         with tempfile.TemporaryDirectory() as tmp:
             port, received, cleanup = serve_proxy([(477, EMPTY_RESPONSE), (200, SUCCESS)], tmp)
             try:
@@ -122,16 +123,23 @@ class EmptyResponseTransportTests(unittest.TestCase):
                     self.assertEqual(response.read(), SUCCESS)
             finally:
                 cleanup()
-        self.assertEqual(received[1], expected)
+        self.assertEqual(received, [sanitized, expected])
+        forwarded = json.loads(received[0])
+        self.assertNotIn("previous_response_id", forwarded)
+        self.assertNotIn("prompt_cache_key", forwarded)
+        self.assertFalse(
+            {"web_search_call", "tool_search_call", "tool_search_output"}
+            & {item["type"] for item in forwarded["input"]}
+        )
 
-    def test_rejected_projection_returns_503_without_an_upstream_fallback(self):
+    def test_rejected_projection_returns_400_without_an_upstream_fallback(self):
         cases = (
             (
                 [
                     {"type": "future_item", "opaque": "x"},
                     {"type": "message", "role": "user", "content": "current"},
                 ],
-                1,
+                "unknown_item_type",
             ),
             (
                 [
@@ -142,10 +150,10 @@ class EmptyResponseTransportTests(unittest.TestCase):
                         "content": [{"type": "input_image", "image_url": "x"}],
                     },
                 ],
-                2,
+                "empty_portable_content",
             ),
         )
-        for items, attempts in cases:
+        for items, expected_reason in cases:
             with self.subTest(items=items), tempfile.TemporaryDirectory() as tmp:
                 state.reset_for_test()
                 port, received, cleanup = serve_proxy([(477, EMPTY_RESPONSE)] * 4, tmp)
@@ -153,10 +161,11 @@ class EmptyResponseTransportTests(unittest.TestCase):
                     code, _, raw = self._read_http_error(port, self._body({"input": items}))
                 finally:
                     cleanup()
-                self.assertEqual(
-                    (code, json.loads(raw)["error"]["attempts"], len(received)),
-                    (503, attempts, attempts),
-                )
+                self.assertEqual(code, 400)
+                error = json.loads(raw)["error"]
+                self.assertEqual(error["code"], "provider_portable_projection_rejected")
+                self.assertEqual(error["reason"], expected_reason)
+                self.assertEqual(received, [])
 
     def test_fallback_failure_is_terminal_after_exactly_two_upstream_attempts(self):
         body = self._body(
@@ -424,7 +433,7 @@ class EmptyResponseTransportTests(unittest.TestCase):
                 sock.sendall(
                     b"\r\n".join(
                         (
-                            b"POST /responses HTTP/1.1",
+                            b"POST /v1/responses HTTP/1.1",
                             f"Host: 127.0.0.1:{port}".encode(),
                             f"Content-Length: {len(body)}".encode(),
                             b"Connection: close",

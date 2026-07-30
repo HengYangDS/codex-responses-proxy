@@ -7,6 +7,19 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.43] - 2026-07-30
+
+### Fixed
+
+- Project every Responses replay request onto a provider-portable grammar,
+  removing stored item identifiers, reasoning/search state, and opaque agent or
+  tool ciphertext without changing Codex conversation storage.
+- Add fixed, isolated loopback routes for DMXAPI, UCloud/Azure, and AIHubMix;
+  keep DMX HTTP 477 recovery and cooldown scoped to DMXAPI.
+- Sanitize streamed opaque output, reject unproved replay structures locally,
+  validate upstream overrides as credential-free HTTPS origins, and isolate
+  test-only loopback upstream injection from the released runtime.
+
 ## [1.0.42] - 2026-07-30
 
 ### Fixed

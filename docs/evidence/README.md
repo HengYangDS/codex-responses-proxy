@@ -12,6 +12,13 @@ A claim is accepted only with its scope, verifier, evidence, and limit stated.
 - **User-visible evidence:** a successful response in the original failing
   conversation is distinct from transport health.
 
+Provider-portability acceptance requires the unchanged original conversation
+to complete at least two turns on each leg of
+`DMXAPI -> UCloud/Azure -> AIHubMix -> DMXAPI`. Before and after that sequence,
+record hashes and metadata for the relevant session JSONL, SQLite stores, and
+per-conversation model metadata. A proxy health check, direct endpoint smoke,
+or a new conversation cannot substitute for this evidence.
+
 Do not treat a green local process, a new clean conversation, or a generic log
 grep as proof that an historical conversation recovered. Keep transient 429,
 477, and upstream SSE failures separately classified from payload-schema fixes.

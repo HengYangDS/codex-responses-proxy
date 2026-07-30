@@ -1,0 +1,26 @@
+family = "runtime"
+primary_invariant = "A replay request contains only provider-portable dialogue and tool relationships before it crosses a provider boundary."
+routing_question = "Does this change alter Responses replay normalization, provider-scoped upstream routing, or opaque-output handling?"
+decision_axes = ["lifecycle", "surface", "authority"]
+boundary_rules = [
+  "Codex owns stored conversation state and per-conversation model metadata.",
+  "AIGW owns accounts, credentials, profile selection, storage policy, and client projection.",
+  "The proxy owns request-local portable replay, fixed upstream routing, and streamed ciphertext removal.",
+  "Unknown replay structures fail closed before upstream I/O.",
+  "Provider-specific recovery and cooldown never cross route boundaries.",
+]
+aliases = []
+
+[owner]
+package = "codex-dmx-proxy"
+scope = "Provider-portable Responses replay across DMXAPI, UCloud/Azure, and AIHubMix"
+
+[recommended_facets]
+lifecycle = ["request", "stream", "installation", "release"]
+surface = ["listener", "compatibility", "test", "docs", "openspec"]
+authority = ["source", "test", "docs", "openspec", "claim", "evidence"]
+
+[proof_profile]
+default_command = "ethos prove --json"
+executed_command = "ethos prove --execute --expect-head <head> --json"
+required_gates = ["python-quality", "platform-matrix"]
