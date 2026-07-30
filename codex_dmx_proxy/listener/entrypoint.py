@@ -45,6 +45,12 @@ def release_receipt_sha256() -> str | None:
     return None if _LOADED_PAYLOAD is None else _LOADED_PAYLOAD.release_receipt_sha256
 
 
+def payload_manifest_sha256() -> str | None:
+    """Return the manifest identity frozen before listener startup."""
+
+    return None if _LOADED_PAYLOAD is None else _LOADED_PAYLOAD.manifest_sha256
+
+
 def release_version() -> str:
     """Return the release identity frozen with the serving payload."""
 
@@ -63,6 +69,8 @@ def _handoff_context() -> handoff.Context:
         release_version=release_version,
         serving_payload_sha256=serving_payload_sha256,
         release_receipt_sha256=release_receipt_sha256,
+        payload_manifest_sha256=payload_manifest_sha256,
+        committed_payload=lambda: identity.committed_payload(Path(__file__)),
         response_gate_lock=state.response_gate_lock(),
         draining=state.is_draining,
         active_responses=state.active_responses,

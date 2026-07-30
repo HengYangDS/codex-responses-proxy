@@ -20,8 +20,10 @@ sys.path.insert(0, str(ROOT))
 from codex_dmx_proxy import installation  # noqa: E402
 from codex_dmx_proxy import errors  # noqa: E402
 from codex_dmx_proxy.release import admission as release_admission  # noqa: E402
+from codex_dmx_proxy.release import inventory  # noqa: E402
 from codex_dmx_proxy.release import projection as payload_projection  # noqa: E402
 from codex_dmx_proxy.release import transaction as payload_transaction  # noqa: E402
+from codex_dmx_proxy.listener import identity as listener_identity  # noqa: E402
 from tests.support.repository_fixtures import install_context  # noqa: E402
 from tests.support.repository_fixtures import write_retired_projection  # noqa: E402
 
@@ -137,6 +139,44 @@ class TestPayloadIdentity(unittest.TestCase):
         ok, detail = payload_projection.verify_payload_manifest(ctx)
         self.assertFalse(ok)
         self.assertEqual(detail, "serving payload aggregate mismatch")
+
+    def test_committed_successor_identity_is_independent_of_the_old_loaded_release(self) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        self._install(ctx, "1.2.3")
+
+        committed = listener_identity.committed_payload(Path(ctx.proxy_script))
+
+        self.assertIsNotNone(committed)
+        assert committed is not None
+        self.assertEqual(committed.release, "1.2.3")
+        self.assertEqual(
+            committed.handoff()["manifest_sha256"],
+            hashlib.sha256(Path(ctx.install_dir, "payload-manifest.json").read_bytes()).hexdigest(),
+        )
+
+        Path(ctx.install_dir, "VERSION").write_text("1.2.4\n", encoding="utf-8")
+        self.assertIsNone(listener_identity.committed_payload(Path(ctx.proxy_script)))
+
+        Path(ctx.install_dir, "VERSION").write_text("1.2.3\n", encoding="utf-8")
+        manifest_path = Path(ctx.install_dir, "payload-manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        cases = (
+            lambda value: value.__setitem__("schema_version", 1),
+            lambda value: value.__setitem__("files", []),
+            lambda value: value["files"].pop("control.py"),
+            lambda value: value["serving_files"].pop("VERSION"),
+            lambda value: value["files"].__setitem__("control.py", "0" * 64),
+            lambda value: value["serving_files"].__setitem__("VERSION", "0" * 64),
+            lambda value: value.__setitem__("release_receipt_sha256", "invalid"),
+        )
+        for mutate in cases:
+            with self.subTest(mutate=mutate):
+                broken = json.loads(json.dumps(manifest))
+                mutate(broken)
+                manifest_path.write_text(json.dumps(broken), encoding="utf-8")
+                self.assertIsNone(listener_identity.committed_payload(Path(ctx.proxy_script)))
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        self.assertIsNone(listener_identity.committed_payload(Path(ctx.install_dir, "control.py")))
 
     def test_purge_unlinks_only_manifest_owned_payload_and_preserves_unknown_content(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -762,6 +802,94 @@ class TestReceiptBoundPayloadTransaction(unittest.TestCase):
         self.assertEqual(journal["state"], "recovery_required")
         self.assertEqual(journal["reason"], "handoff outcome unknown")
         self.assertTrue(Path(payload_transaction.payload_transaction_dir(ctx), "rollback").is_dir())
+
+    def test_recovery_rollback_restores_previous_projection_and_removes_hold(self) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        self._finalize(ctx, "1.2.2")
+        previous = Path(ctx.install_dir, "VERSION").read_bytes()
+        candidate = begin_transaction(ctx, released_fixture("1.2.3"))
+        candidate.commit_projection()
+        candidate.preserve_for_recovery("handoff outcome unknown")
+        rollback = Path(payload_transaction.payload_transaction_dir(ctx), "rollback")
+        previous_identity = listener_identity.committed_payload(rollback / inventory.ENTRYPOINT)
+        assert previous_identity is not None
+        runtime = {
+            **previous_identity.handoff(),
+            "payload_manifest_sha256": previous_identity.manifest_sha256,
+            "accepting": True,
+            "handoff_state": "idle",
+        }
+        runtime.pop("manifest_sha256")
+
+        result = payload_transaction.rollback_recovery(ctx, runtime=runtime)
+
+        self.assertEqual(result["state"], "rolled_back")
+        self.assertEqual(Path(ctx.install_dir, "VERSION").read_bytes(), previous)
+        self.assertFalse(Path(payload_transaction.payload_transaction_dir(ctx)).exists())
+
+        invalid = (
+            {},
+            {
+                "schema_version": 0,
+                "state": "recovery_required",
+                "transaction_id": "x",
+                "version": "1.2.3",
+            },
+            {
+                "schema_version": 1,
+                "state": "committed",
+                "transaction_id": "x",
+                "version": "1.2.3",
+            },
+            {
+                "schema_version": 1,
+                "state": "recovery_required",
+                "transaction_id": 1,
+                "version": "1.2.3",
+            },
+            {
+                "schema_version": 1,
+                "state": "recovery_required",
+                "transaction_id": "x",
+                "version": 1,
+            },
+        )
+        for journal in invalid:
+            with self.subTest(journal=journal):
+                root = Path(payload_transaction.payload_transaction_dir(ctx))
+                root.mkdir()
+                Path(payload_transaction.transaction_journal_path(ctx)).write_bytes(
+                    payload_transaction.digest.canonical_json(journal)
+                )
+                with self.assertRaisesRegex(errors.InstallError, "unavailable or invalid"):
+                    payload_transaction.rollback_recovery(ctx, runtime=runtime)
+                for path in sorted(root.rglob("*"), reverse=True):
+                    path.unlink() if path.is_file() else path.rmdir()
+                root.rmdir()
+
+        candidate = begin_transaction(ctx, released_fixture("1.2.3"))
+        candidate.commit_projection()
+        candidate.preserve_for_recovery("handoff outcome unknown")
+        root = Path(payload_transaction.payload_transaction_dir(ctx))
+        rollback = root / "rollback"
+        previous_identity = listener_identity.committed_payload(rollback / inventory.ENTRYPOINT)
+        assert previous_identity is not None
+        runtime = {
+            **previous_identity.handoff(),
+            "payload_manifest_sha256": previous_identity.manifest_sha256,
+            "accepting": True,
+            "handoff_state": "idle",
+        }
+        runtime.pop("manifest_sha256")
+        with self.assertRaisesRegex(errors.InstallError, "does not match"):
+            payload_transaction.rollback_recovery(
+                ctx,
+                runtime={**runtime, "release": "wrong"},
+            )
+        (root / "rollback" / "VERSION").write_bytes(b"tampered\n")
+        with self.assertRaisesRegex(errors.InstallError, "runtime identity is invalid"):
+            payload_transaction.rollback_recovery(ctx, runtime=runtime)
+        self.assertTrue(root.exists())
 
     def test_transaction_status_projects_only_the_read_only_recovery_contract(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))

@@ -197,15 +197,20 @@ class TestParentHandoffStateMachine(HandoffTestCase):
             "release": entrypoint_module.release_version(),
             "serving_payload_sha256": entrypoint_module.serving_payload_sha256(),
             "release_receipt_sha256": entrypoint_module.release_receipt_sha256(),
-            "manifest_sha256": self.p.payload_manifest_sha256(self.context),
+            "manifest_sha256": self.context.payload_manifest_sha256(),
         }
+        committed = mock.Mock(handoff=lambda: expected)
+        object.__setattr__(self.context, "committed_payload", lambda: committed)
         self.assertTrue(self.p.disk_payload_matches_expected(expected, self.context))
         self.assertFalse(
             self.p.disk_payload_matches_expected({**expected, "release": "wrong"}, self.context)
         )
+        object.__setattr__(self.context, "committed_payload", lambda: None)
+        self.assertFalse(self.p.disk_payload_matches_expected(expected, self.context))
         missing_context = entrypoint_module._handoff_context()
         object.__setattr__(missing_context, "proxy_script", Path("/missing/proxy/dmx.py"))
-        self.assertIsNone(self.p.payload_manifest_sha256(missing_context))
+        object.__setattr__(missing_context, "payload_manifest_sha256", lambda: None)
+        self.assertIsNone(missing_context.payload_manifest_sha256())
 
         self.p._HANDOFF_SESSION.update(state="ready", transaction_id="txn-identity")
         identity = self.p.runtime_identity(self.context)

@@ -22,7 +22,18 @@ class LoadedPayloadIdentity:
     release: str
     serving_payload_sha256: str
     release_receipt_sha256: str
+    manifest_sha256: str
     root: Path
+
+    def handoff(self) -> dict[str, str]:
+        """Return the fields exchanged by protocol-v2 handoff."""
+
+        return {
+            "release": self.release,
+            "serving_payload_sha256": self.serving_payload_sha256,
+            "release_receipt_sha256": self.release_receipt_sha256,
+            "manifest_sha256": self.manifest_sha256,
+        }
 
 
 def freeze_loaded_payload(entrypoint: Path) -> LoadedPayloadIdentity | None:
@@ -68,7 +79,13 @@ def freeze_loaded_payload(entrypoint: Path) -> LoadedPayloadIdentity | None:
         release = (root / "VERSION").read_text(encoding="utf-8").strip()
         if not release or manifest.get("release") != release:
             return None
-        return LoadedPayloadIdentity(release, aggregate, receipt, root)
+        return LoadedPayloadIdentity(
+            release,
+            aggregate,
+            receipt,
+            digest.sha256_file(root / inventory.MANIFEST_FILENAME),
+            root,
+        )
     except (
         IndexError,
         OSError,
@@ -77,6 +94,58 @@ def freeze_loaded_payload(entrypoint: Path) -> LoadedPayloadIdentity | None:
         json.JSONDecodeError,
         digest.PayloadDigestError,
     ):
+        return None
+
+
+def committed_payload(entrypoint: Path) -> LoadedPayloadIdentity | None:
+    """Return the complete successor identity currently committed on disk."""
+
+    try:
+        entrypoint = entrypoint.resolve(strict=True)
+        root = entrypoint.parents[2]
+        if entrypoint != root / inventory.ENTRYPOINT:
+            return None
+        manifest = _read_manifest(root / inventory.MANIFEST_FILENAME)
+        if manifest.get("schema_version") != 2:
+            raise ValueError("installed manifest schema mismatch")
+        raw_files = manifest.get("files")
+        raw_serving = manifest.get("serving_files")
+        if not isinstance(raw_files, dict) or not isinstance(raw_serving, dict):
+            raise ValueError("installed manifest digest mapping is invalid")
+        files = cast("dict[str, str]", raw_files)
+        serving = cast("dict[str, str]", raw_serving)
+        if any(
+            not isinstance(path, str) or not isinstance(expected, str)
+            for mapping in (files, serving)
+            for path, expected in mapping.items()
+        ):
+            raise ValueError("installed manifest digest mapping is invalid")
+        if set(files) != set(inventory.RUNTIME_FILES) or set(serving) != set(
+            inventory.SERVING_FILES
+        ):
+            raise ValueError("installed inventory mismatch")
+        if any(digest.sha256_file(root / path) != expected for path, expected in files.items()):
+            raise ValueError("installed payload digest mismatch")
+        if any(files[path] != expected for path, expected in serving.items()):
+            raise ValueError("serving digest mismatch")
+        aggregate = inventory.serving_payload_sha256(serving)
+        receipt = cast("str", manifest["release_receipt_sha256"])
+        release = (root / "VERSION").read_text(encoding="utf-8").strip()
+        if (
+            manifest.get("release") != release
+            or manifest.get("serving_payload_sha256") != aggregate
+            or _SHA256.fullmatch(receipt) is None
+            or digest.sha256_file(root / inventory.RELEASE_RECEIPT_FILENAME) != receipt
+        ):
+            raise ValueError("installed successor identity mismatch")
+        return LoadedPayloadIdentity(
+            release,
+            aggregate,
+            receipt,
+            digest.sha256_file(root / inventory.MANIFEST_FILENAME),
+            root,
+        )
+    except (IndexError, KeyError, OSError, TypeError, ValueError, digest.PayloadDigestError):
         return None
 
 
