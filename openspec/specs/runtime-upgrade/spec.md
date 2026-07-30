@@ -27,8 +27,8 @@ entrypoint.
 
 #### Scenario: Runtime, rollback, and candidate agree
 
-- **WHEN** the canonical recovery journal and rollback bytes match the live
-  prior listener while the installed candidate matches its reported manifest
+- **WHEN** the rollback bytes match the listener's frozen serving identity and
+  the installed manifest matches the listener's reported manifest digest
 - **THEN** the prior projection is restored and the retained transaction is
   removed before a new release transaction begins
 
@@ -105,3 +105,4 @@ prior accepting runtime.
 - **WHEN** termination, supervision replacement, or successor proof fails
 - **THEN** the installer restores the prior projection and reports failure unless
   the prior accepting runtime is also proved
+
