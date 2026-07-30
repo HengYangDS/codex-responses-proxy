@@ -59,3 +59,16 @@ fallback warnings.
 - **WHEN** the repository-owned quality command succeeds in hosted CI
 - **THEN** no bytecode, coverage file, or Ruff cache remains in the checkout
 - **AND** the job log contains no pip root-user or Debian frontend warning.
+
+### Requirement: Platform-specific fixtures model only supported host semantics
+
+A test fixture that depends on host shell executable-bit semantics SHALL run
+only on hosts that implement those semantics, while each supported operating
+system SHALL continue running its product behavior matrix.
+
+#### Scenario: Windows runs the supported product matrix
+
+- **WHEN** the Windows matrix evaluates quality contracts
+- **THEN** POSIX shell lookup fixtures are not treated as Windows product behavior
+- **AND** all Windows product tests remain enabled.
+
