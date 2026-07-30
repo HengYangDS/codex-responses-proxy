@@ -7,6 +7,16 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-07-30
+
+### Fixed
+
+- Validate the quality gate through its semantic owner instead of requiring an
+  obsolete private shell pattern, preventing a correct exact-version resolver
+  from failing release metadata verification.
+- Run GitLab Debian dependency bootstrap explicitly noninteractively and
+  quietly, eliminating debconf frontend fallback warnings from release logs.
+
 ## [1.0.37] - 2026-07-30
 
 ### Fixed

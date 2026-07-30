@@ -13,13 +13,16 @@ stages:
   - verify
   - release
 
+variables:
+  DEBIAN_FRONTEND: noninteractive
+
 .python-verify:
   stage: verify
   image: python:${PYTHON_VERSION}-slim
   tags: [codex-dmx-proxy-gitlab-ci]
   before_script:
     - apt-get update -qq
-    - apt-get install -y --no-install-recommends git openssh-client
+    - apt-get install -qq -y --no-install-recommends git openssh-client
   script:
     - python --version
     - python scripts/run-python-tests.py --compile
@@ -46,7 +49,7 @@ verify-release-metadata:
     GIT_DEPTH: "0"
   before_script:
     - apt-get update -qq
-    - apt-get install -y --no-install-recommends git openssh-client
+    - apt-get install -qq -y --no-install-recommends git openssh-client
     # Shared runners can retain deleted tags in a reused checkout.  Fetching
     # with tag pruning makes the checker reason about the provider's current
     # release namespace, not runner-local history.
@@ -78,7 +81,7 @@ verify-release-tag:
     - if: '$CI_COMMIT_TAG'
   before_script:
     - apt-get update -qq
-    - apt-get install -y --no-install-recommends git openssh-client
+    - apt-get install -qq -y --no-install-recommends git openssh-client
     - git fetch --tags --force --prune --prune-tags origin
   script:
     - python scripts/check_release_metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
@@ -90,7 +93,7 @@ verify-python-quality:
   tags: [codex-dmx-proxy-gitlab-ci]
   before_script:
     - apt-get update -qq
-    - apt-get install -y --no-install-recommends git openssh-client
+    - apt-get install -qq -y --no-install-recommends git openssh-client
     - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore ruff==0.16.0 ty==0.0.64 coverage==7.13.5
   script:
     - PYTHON=python RUFF=ruff TY=ty sh scripts/run-python-quality.sh
@@ -111,7 +114,7 @@ publish-gitlab-release:
     - if: '$CI_COMMIT_TAG'
   before_script:
     - apt-get update -qq
-    - apt-get install -y --no-install-recommends curl git
+    - apt-get install -qq -y --no-install-recommends curl git
     - git fetch --tags --force --prune --prune-tags origin
   script:
     - python scripts/check_release_metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
