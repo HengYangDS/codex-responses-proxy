@@ -138,8 +138,9 @@ installer never downloads Python dependencies or collects credentials.
 If a prior source-side install retained an exact `recovery_required`
 transaction, a newer verified installer can use `--rollback-recovery` to
 restore that recorded prior projection only while the accepting listener still
-reports the same release, serving digest, receipt digest, manifest digest, and
-idle handoff state, and is the sole PID bound to the installed entrypoint. A
+reports the rollback release, serving digest, and receipt digest, reports the
+manifest digest of the fully verified candidate committed on disk, remains idle,
+and is the sole PID bound to the installed entrypoint. A
 protocol-v2 listener whose released upgrade logic is known unable to advance
 may then be replaced with the explicit `--force-v2-bootstrap` authorization.
 These options do not weaken live

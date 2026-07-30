@@ -330,6 +330,7 @@ def test_provider_projection_re_signs_every_commit() -> None:
     github = (ROOT / "scripts" / "project-github-forge.sh").read_text(encoding="utf-8")
     gitlab = (ROOT / "scripts" / "project-gitlab-forge.sh").read_text(encoding="utf-8")
     rewriter = (ROOT / "scripts" / "rewrite-provider-history.py").read_text(encoding="utf-8")
+    runner = (ROOT / "scripts" / "run-provider-projection.sh").read_text(encoding="utf-8")
     require(
         "filter-branch" not in github,
         "GitHub projection must not use signature-stripping filter-branch",
@@ -347,6 +348,17 @@ def test_provider_projection_re_signs_every_commit() -> None:
         rewriter,
         ("commit-tree", '"-S"', "verify-commit", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"),
         "provider history rewriter",
+    )
+    require_tokens(
+        runner,
+        (
+            'choices=("gitlab", "github")',
+            '"/usr/bin/ssh-add", "-T"',
+            '"/usr/bin/ssh-agent", "-s"',
+            '"--apple-use-keychain"',
+            '"/bin/kill", environment["SSH_AGENT_PID"]',
+        ),
+        "provider projection signing runner",
     )
 
 
