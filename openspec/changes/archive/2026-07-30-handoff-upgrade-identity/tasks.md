@@ -11,4 +11,4 @@
 ## 3. Release and closeout
 
 - [x] 3.1 Update version, changelog, docstrings, comments, and operator documentation.
-- [ ] 3.2 Run the full Python matrix, quality, ETHOS proof, dual-Forge publication, runtime recovery, records, and housekeeping.
+- [x] 3.2 Run the full Python matrix, quality, HEAD-bound ETHOS proof, and archive this implementation change. Dual-Forge publication, runtime recovery, records, and housekeeping remain separate external closeout transitions.
