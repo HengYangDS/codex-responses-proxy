@@ -6,7 +6,7 @@ summary = "Local evidence bounds the repair that rejects hidden Python diagnosti
 
 [evidence]
 dated = "evidence/chronicle/ci-log-hygiene-20260730/2026-07-30.md"
-sha256 = "1de2db7bbc6c65d7897bb433cd8ab97d2e304330fb108b50062af484044d86b5"
+sha256 = "127f693b43fe02dce05bed2788cf6de2f30f32fe823868868cbd6fe465560424"
 evidence_ids = ["evidence:ci-log-hygiene-20260730"]
 binding = "local diagnostic-cleanliness verification bound to the current repair scope"
 verifier = "digest_only"
@@ -25,7 +25,7 @@ owner = "codex-dmx-proxy"
 scope = "Local CI diagnostic repair evidence only; hosted CI, publication, installation, and runtime remain external."
 
 [carriers]
-openspec = "openspec/changes/ci-log-hygiene"
+openspec = "openspec/changes/archive/2026-07-30-ci-log-hygiene"
 fallback = "Retain v1.0.35 and reject publication until the clean-diagnostic candidate completes both Forge planes."
 kill_signal = "A successful test job can still emit an unhandled traceback or Python warning."
 
