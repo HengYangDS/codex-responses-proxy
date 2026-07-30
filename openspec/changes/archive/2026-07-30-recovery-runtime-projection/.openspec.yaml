@@ -1,1 +1,4 @@
 schema: spec-driven
+created: 2026-07-30
+goal: Recover preserved cross-version transactions by separating live runtime
+  identity from the committed candidate projection.
