@@ -13,7 +13,7 @@ resolve_versioned_tool() {
   label=$3
   case "$requested" in
     */*)
-      [ -x "$requested" ] && [ "$("$requested" --version)" = "$expected" ] || {
+      [ -x "$requested" ] && version_matches "$requested" "$expected" || {
         echo "$label ${expected#* } is required" >&2
         return 2
       }
@@ -25,7 +25,7 @@ resolve_versioned_tool() {
       for directory in $PATH; do
         [ -n "$directory" ] || directory=.
         candidate=$directory/$requested
-        if [ -x "$candidate" ] && [ "$("$candidate" --version 2>/dev/null)" = "$expected" ]; then
+        if [ -x "$candidate" ] && version_matches "$candidate" "$expected"; then
           IFS=$old_ifs
           printf '%s\n' "$candidate"
           return 0
@@ -35,6 +35,14 @@ resolve_versioned_tool() {
       echo "$label ${expected#* } is required" >&2
       return 2
       ;;
+  esac
+}
+
+version_matches() {
+  output=$("$1" --version 2>/dev/null) || return 1
+  case "$output" in
+    "$2"|"$2 "?*) return 0 ;;
+    *) return 1 ;;
   esac
 }
 
