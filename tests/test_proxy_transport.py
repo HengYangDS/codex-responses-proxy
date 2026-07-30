@@ -70,7 +70,7 @@ class TestProxyTransport(unittest.TestCase):
         received, payload = self.exchange([(400, response_failed), (200, success)], body)
         self.assertEqual(payload, success)
 
-        self.assertEqual(received[0], body)
+        self.assertEqual(received[0], rewrite.sanitize_responses_body(body)[0])
         self.assertEqual(len(received), 2)
         compact = json.loads(received[1])
         self.assertLess(len(received[1]), len(body))
@@ -112,7 +112,7 @@ class TestProxyTransport(unittest.TestCase):
         received, payload = self.exchange([(400, blocked), (200, success)], body)
         self.assertEqual(payload, success)
 
-        self.assertEqual(received[0], body)
+        self.assertEqual(received[0], rewrite.sanitize_responses_body(body)[0])
         self.assertEqual(len(received), 2)
         compact = json.loads(received[1])
         self.assertLess(len(received[1]), len(body))
@@ -194,7 +194,7 @@ class TestProxyTransport(unittest.TestCase):
             self.assertEqual(response.read(), success)
         logs = "\n".join(call.args[0] for call in log.call_args_list)
 
-        self.assertEqual(received[0], body)
+        self.assertEqual(received[0], rewrite.sanitize_responses_body(body)[0])
         self.assertEqual(len(received), 3)
         recovery = json.loads(received[2])
         self.assertNotIn("prompt_cache_key", recovery)
@@ -564,7 +564,14 @@ class TestProxyTransport(unittest.TestCase):
             {
                 "input": [
                     {
+                        "type": "custom_tool_call",
+                        "call_id": "image-call",
+                        "name": "inspect",
+                        "input": "{}",
+                    },
+                    {
                         "type": "custom_tool_call_output",
+                        "call_id": "image-call",
                         "output": [
                             {"type": "input_text", "text": "before"},
                             {"type": "input_image", "image_url": "/tmp/example.png"},
@@ -573,6 +580,7 @@ class TestProxyTransport(unittest.TestCase):
                     },
                     {
                         "type": "message",
+                        "role": "user",
                         "content": [
                             {"type": "input_image", "image_url": "https://example.test/valid.png"},
                             {
@@ -586,18 +594,18 @@ class TestProxyTransport(unittest.TestCase):
         ).encode()
 
         out, note = rewrite.sanitize_responses_body(body)
-        obj = json.loads(out)
+        obj = json.loads(cast("bytes", out))
 
         self.assertIn("local_image_items=2", note)
         self.assertEqual(
-            obj["input"][0]["output"],
+            obj["input"][1]["output"],
             [
                 {"type": "input_text", "text": "before"},
                 {"type": "input_text", "text": "after"},
             ],
         )
         self.assertEqual(
-            obj["input"][1]["content"],
+            obj["input"][2]["content"],
             [{"type": "input_image", "image_url": "https://example.test/valid.png"}],
         )
 
@@ -613,22 +621,29 @@ class TestProxyTransport(unittest.TestCase):
             {
                 "input": [
                     {
+                        "type": "custom_tool_call",
+                        "call_id": "image-call",
+                        "name": "inspect",
+                        "input": "{}",
+                    },
+                    {
                         "type": "custom_tool_call_output",
+                        "call_id": "image-call",
                         "output": [{"type": "input_image", "image_url": url} for url in bad_urls]
                         + [
                             {"type": "input_image", "image_url": "https://example.test/valid.png"},
                         ],
-                    }
+                    },
                 ],
             }
         ).encode()
 
         out, note = rewrite.sanitize_responses_body(body)
-        obj = json.loads(out)
+        obj = json.loads(cast("bytes", out))
 
         self.assertIn(f"local_image_items={len(bad_urls)}", note)
         self.assertEqual(
-            obj["input"][0]["output"],
+            obj["input"][1]["output"],
             [{"type": "input_image", "image_url": "https://example.test/valid.png"}],
         )
 

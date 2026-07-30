@@ -63,9 +63,16 @@ def serve_proxy(
     upstream = ThreadingHTTPServer(("127.0.0.1", 0), UpstreamHandler)
     upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
     upstream_thread.start()
-    old_upstream = response_transport.UPSTREAM
+    old_upstreams = (
+        response_transport.UPSTREAM,
+        response_transport.UCLOUD_UPSTREAM,
+        response_transport.AIHUBMIX_UPSTREAM,
+    )
     old_log_path = state.LOG_PATH
-    response_transport.UPSTREAM = f"http://127.0.0.1:{upstream.server_address[1]}"
+    test_upstream = f"http://127.0.0.1:{upstream.server_address[1]}"
+    response_transport.UPSTREAM = test_upstream
+    response_transport.UCLOUD_UPSTREAM = test_upstream
+    response_transport.AIHUBMIX_UPSTREAM = test_upstream
     state.LOG_PATH = str(Path(log_dir) / "proxy.log")
     server = proxy.create_server(("127.0.0.1", 0))
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -78,7 +85,11 @@ def serve_proxy(
         upstream.shutdown()
         upstream.server_close()
         upstream_thread.join(timeout=2)
-        response_transport.UPSTREAM = old_upstream
+        (
+            response_transport.UPSTREAM,
+            response_transport.UCLOUD_UPSTREAM,
+            response_transport.AIHUBMIX_UPSTREAM,
+        ) = old_upstreams
         state.LOG_PATH = old_log_path
 
     return server.server_address[1], received, cleanup
@@ -95,10 +106,10 @@ def running_proxy(responses: Sequence[ScriptedResponse]):
             cleanup()
 
 
-def request(proxy_port: int, body: bytes):
+def request(proxy_port: int, body: bytes, *, path: str = "/v1/responses"):
     """Post one Responses body to the loopback proxy without host proxies."""
     outbound = urllib.request.Request(
-        f"http://127.0.0.1:{proxy_port}/v1/responses",
+        f"http://127.0.0.1:{proxy_port}{path}",
         data=body,
         method="POST",
         headers={"Content-Type": "application/json"},

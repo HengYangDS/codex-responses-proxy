@@ -38,7 +38,16 @@ replayed Codex state, for example:
 - an explicit upstream `response_failed` execution rejection of replay context;
 - the exact observed `Invalid 'input'` union validation contract.
 
-The adapter removes only deterministically incompatible outbound replay state.
+Before every upstream attempt, the adapter projects replay onto a closed,
+provider-portable grammar. It removes provider response/conversation/cache
+bindings, reasoning and stored-item references, provider-issued item IDs,
+search state, and encrypted reasoning, agent, and tool-output content. It keeps
+text dialogue, agent author/recipient/phase context, complete function and
+custom-tool pairs, and replayable remote images. An encrypted-only retained
+agent or tool result receives an explicit omission marker; no ciphertext is
+claimed to be decrypted. Unknown or malformed replay structures return a local
+HTTP 400 before any upstream request.
+
 For an explicit upstream `response_failed` rejection, it first makes up to three
 strictly smaller fallbacks that each remove only the oldest contiguous,
 tool-pair-safe input prefix, retain the latest user context, and drop the stale
@@ -49,10 +58,7 @@ where present, plus the latest user request, without assistant or tool replay. I
 only sends that final request when it is safely smaller than the rejected replay.
 Exhaustion, loops, or unsafe failures are returned as standard retryable HTTP
 503 with `Retry-After: 3`, so the client may apply its own retry policy.
-It preserves valid typed encrypted-content blocks, complete tool calls and outputs,
-text, and remote image URLs whenever they remain in the pair-safe path. It is not a
-general request transformer or a replacement for an upstream service with persistent
-failures.
+It is not a replacement for an upstream service with persistent failures.
 
 When the upstream returns the complete observed HTTP 400 `validation_error`
 stating that `input` matched no expected variant, the proxy records one bounded
@@ -148,18 +154,22 @@ publication, source, payload, process, or successor proof.
 
 ### AIGW-managed routes
 
-When the active provider block is owned by AIGW, the installer deliberately
-does not write `config.toml`. Register the already approved AIGW account once:
+When provider blocks are owned by AIGW, the installer deliberately does not
+write them. After the released proxy is installed, AIGW projects each governed
+account to its fixed loopback namespace:
 
 ```bash
-python3 ~/.codex/dmx-proxy/control.py adopt-aigw \
-  --aigw-account dmx \
-  --direct-url https://www.dmxapi.cn/v1
+aigw account edit dmxapi --openai-url http://127.0.0.1:8791/dmxapi/v1
+aigw account edit ucloud --openai-url http://127.0.0.1:8791/ucloud/v1
+aigw account edit aihubmix --openai-url http://127.0.0.1:8791/aihubmix/v1
+aigw sync --dry-run --json
+aigw sync --json
 ```
 
-Thereafter, `enable` and `disable` ask AIGW's public CLI to update its canonical
-endpoint and synchronize the marked projections. The proxy never edits AIGW's
-configuration directly.
+The fixed namespaces map only to release-owned HTTPS origins; request headers,
+bodies, and query parameters cannot select another host. AIGW continues to own
+credentials, account selection, per-account Responses storage policy, and the
+set of projected Codex targets. The proxy never edits AIGW configuration.
 
 ### Apply a route change
 
@@ -331,17 +341,20 @@ same-payload `reload` does not change service configuration.
 ## Design
 
 ```text
-Codex -> 127.0.0.1:8791 -> verified Responses endpoint
-           |
-           +-- watchdog supervised by the native user service
+Codex/AIGW -> 127.0.0.1:8791/dmxapi/v1  -> DMXAPI
+           -> 127.0.0.1:8791/ucloud/v1  -> UCloud/Azure
+           -> 127.0.0.1:8791/aihubmix/v1 -> AIHubMix
+                      |
+                      +-- watchdog supervised by the native user service
 ```
 
 The proxy preserves end-to-end headers and credentials while normalizing
 transport-owned headers such as Host, Content-Length, and Accept-Encoding. For
-`POST /responses`, it may remove stale top-level reasoning replay items,
-unreplayable local images, malformed legacy encrypted-content shells, and
-`reasoning.encrypted_content` from `include`. It fails open: if a body cannot
-be parsed and safely reserialized, it forwards the original bytes unchanged.
+`POST /responses`, normal outbound projection removes every known
+provider-bound carrier. Request replay is fail-closed: malformed JSON, unknown
+item/content types, and invalid tool pairing return a bounded local HTTP 400.
+SSE rewriting is event-local and atomic; an event that cannot be safely parsed
+or serialized is relayed unchanged rather than partially mutated.
 
 Bounded retries apply only to explicitly classified upstream conditions. An
 ordinary client-side 400, an encrypted-content validation error, and unknown
@@ -351,7 +364,8 @@ rejections are returned unchanged.
 
 | Symptom | First check | Boundary |
 | --- | --- | --- |
-| Encrypted replay error | `control.py status --json` | Confirm a healthy listener and enabled route before investigating history. |
+| Missing `rs_` item or encrypted replay error | `control.py status --json` | Confirm the account uses its scoped proxy route. The normal request projection removes provider IDs and ciphertext without editing history. |
+| Error after provider switch | `aigw doctor --json` and `aigw sync --dry-run --json` | All switched Codex accounts must use `/dmxapi/v1`, `/ucloud/v1`, or `/aihubmix/v1`; a direct account endpoint bypasses portability. |
 | Upstream `response_failed` | `control.py status --json` | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
 | Exact `Invalid 'input'` validation error | `control.py status --json` | The proxy may send one current-dialogue fallback. Diagnostics contain only bounded type counts, pairing state, a categorical shape hash, and the first locally detectable incompatibility; no request values or unknown labels are logged. |
 | DMX HTTP 477 `empty_response` | `control.py status --json` | The proxy may send one dedicated semantic-preserving fallback. If projection is unsafe or that follow-up fails, both streaming and non-streaming requests receive standard HTTP 503 with `Retry-After: 3`; unrelated 477 responses remain unchanged. |

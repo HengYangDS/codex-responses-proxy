@@ -12,6 +12,7 @@ import json
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler
@@ -24,7 +25,43 @@ from codex_dmx_proxy.listener import rewrite
 from codex_dmx_proxy.listener import sse
 from codex_dmx_proxy.listener import state
 
-UPSTREAM = os.environ.get("DMX_UPSTREAM", "https://www.dmxapi.cn").rstrip("/")
+
+def validate_upstream_origin(name: str, value: str) -> str:
+    """Return one normalized, credential-free HTTPS origin or fail closed."""
+    message = f"{name} must be an absolute HTTPS origin"
+    if not value or any(character.isspace() for character in value):
+        raise ValueError(message)
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        _ = parsed.port
+    except ValueError:
+        raise ValueError(message) from None
+    if (
+        parsed.scheme.lower() != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in ("", "/")
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(message)
+    return f"https://{parsed.netloc}"
+
+
+DMXAPI_UPSTREAM = validate_upstream_origin(
+    "DMX_UPSTREAM_DMXAPI",
+    os.environ.get("DMX_UPSTREAM_DMXAPI", os.environ.get("DMX_UPSTREAM", "https://www.dmxapi.cn")),
+)
+UCLOUD_UPSTREAM = validate_upstream_origin(
+    "DMX_UPSTREAM_UCLOUD", os.environ.get("DMX_UPSTREAM_UCLOUD", "https://api.modelverse.cn")
+)
+AIHUBMIX_UPSTREAM = validate_upstream_origin(
+    "DMX_UPSTREAM_AIHUBMIX", os.environ.get("DMX_UPSTREAM_AIHUBMIX", "https://aihubmix.com")
+)
+# Retain the historical test/runtime name as the DMXAPI route owner.  The
+# canonical scoped route and the bounded migration route both read this value.
+UPSTREAM = DMXAPI_UPSTREAM
 UPSTREAM_TIMEOUT = float(os.environ.get("DMX_UPSTREAM_TIMEOUT", "900"))
 INPUT_VARIANT_DIALOGUE_SLOTS = 1
 _MAX_ATTEMPTS = 4
@@ -44,6 +81,38 @@ _HOP_BY_HOP = {
     "accept-encoding",
 }
 _DIRECT_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def _route_upstream(route: str) -> str:
+    return {
+        "dmxapi": UPSTREAM,
+        "ucloud": UCLOUD_UPSTREAM,
+        "aihubmix": AIHUBMIX_UPSTREAM,
+    }[route]
+
+
+def resolve_upstream(path: str) -> tuple[str, str] | None:
+    """Resolve one canonical loopback namespace to its fixed upstream URL."""
+    try:
+        parsed = urllib.parse.urlsplit(path)
+    except ValueError:
+        return None
+    if parsed.scheme or parsed.netloc or parsed.fragment:
+        return None
+    route = ""
+    forwarded = ""
+    for candidate in ("dmxapi", "ucloud", "aihubmix"):
+        prefix = f"/{candidate}/v1"
+        if parsed.path == prefix or parsed.path.startswith(prefix + "/"):
+            route = candidate
+            forwarded = parsed.path[len(f"/{candidate}") :]
+            break
+    if not route and (parsed.path == "/v1" or parsed.path.startswith("/v1/")):
+        route, forwarded = "dmxapi", parsed.path
+    if not route:
+        return None
+    query = f"?{parsed.query}" if parsed.query else ""
+    return route, _route_upstream(route) + forwarded + query
 
 
 def urlopen_direct(request: urllib.request.Request, timeout: float):
@@ -69,9 +138,12 @@ def _send_payload(
     handler.wfile.write(payload)
 
 
-def _json_error(message: str, error_type: str, code: str) -> bytes:
+def _json_error(message: str, error_type: str, code: str, *, reason: str | None = None) -> bytes:
+    error = {"message": message, "type": error_type, "code": code}
+    if reason is not None:
+        error["reason"] = reason
     return json.dumps(
-        {"error": {"message": message, "type": error_type, "code": code}},
+        {"error": error},
         separators=(",", ":"),
     ).encode()
 
@@ -120,6 +192,7 @@ class _Exchange:
     headers: dict[str, str]
     is_responses: bool
     attempt_body: bytes
+    route: str
     response_failed_stages: int = 0
     used_response_failed_compaction: bool = False
     compact_metrics: dict[str, Any] | None = None
@@ -139,7 +212,7 @@ class _Exchange:
 
     def log(self, event: str, detail: str = "") -> None:
         path = state.safe_request_path(self.handler.path)
-        state.log(f"req={self.request_id} event={event} {detail}path={path}")
+        state.log(f"req={self.request_id} event={event} route={self.route} {detail}path={path}")
 
     def accepted_recovery(self) -> None:
         if (
@@ -364,6 +437,8 @@ def _http_error(exchange: _Exchange, error: urllib.error.HTTPError, attempt: int
     finally:
         error.close()
     disposition = response_failed.retry_disposition(status_code, payload)
+    if status_code == 477 and exchange.route != "dmxapi":
+        disposition = ""
     exact = input_variant.is_exact_validation_error(status_code, payload)
     classification = _classification(status_code, payload, disposition, exact)
     state.record_upstream_classification(classification)
@@ -389,7 +464,7 @@ def _http_error(exchange: _Exchange, error: urllib.error.HTTPError, attempt: int
         )
         time.sleep(delay)
         return "retry"
-    if status_code == 477 and disposition == "full":
+    if exchange.route == "dmxapi" and status_code == 477 and disposition == "full":
         return "terminal" if _recover_empty_response(exchange) else "accepted"
     _relay_error(exchange.handler, status_code, headers, payload)
     state.record_failure(classification)
@@ -578,33 +653,86 @@ def _relay_body(exchange: _Exchange, response) -> None:
 def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
     """Relay one downstream request through bounded compatibility policies."""
     request_id = state.next_request_id()
+    resolved = resolve_upstream(handler.path)
+    if resolved is None:
+        state.record_counter("provider_route_rejected")
+        state.record_failure("provider_route_rejected")
+        _send_payload(
+            handler,
+            404,
+            _json_error(
+                "request path is not a configured provider route",
+                "invalid_request_error",
+                "provider_route_not_found",
+            ),
+        )
+        state.log(
+            f"req={request_id} event=provider_route_rejected "
+            f"path={state.safe_request_path(handler.path)}"
+        )
+        return
+    route, upstream_url = resolved
     length = int(handler.headers.get("Content-Length") or 0)
     body = handler.rfile.read(length) if length else b""
     is_responses = method == "POST" and "/responses" in handler.path
     note = ""
     if body and is_responses:
-        body, note = rewrite.sanitize_responses_body(body)
+        projected, note = rewrite.sanitize_responses_body(body)
         state.record_sanitization(note)
+        if projected is None:
+            reason = note.removeprefix("rejected ")
+            state.record_counter("provider_portable_projection_rejected")
+            state.record_failure("provider_portable_projection_rejected")
+            _send_payload(
+                handler,
+                400,
+                _json_error(
+                    "Responses replay contains an unproved provider-portable structure",
+                    "invalid_request_error",
+                    "provider_portable_projection_rejected",
+                    reason=reason,
+                ),
+            )
+            state.log(
+                f"req={request_id} event=provider_portable_projection_rejected "
+                f"route={route} reason={reason} "
+                f"path={state.safe_request_path(handler.path)}"
+            )
+            return
+        body = projected
         if len(body) >= 400_000:
             path = state.safe_request_path(handler.path)
-            state.log(f"req={request_id} event=large_request bytes={len(body)} path={path}")
+            state.log(
+                f"req={request_id} event=large_request route={route} bytes={len(body)} path={path}"
+            )
     headers = {
         name: value for name, value in handler.headers.items() if name.lower() not in _HOP_BY_HOP
     }
     headers["Accept-Encoding"] = "identity"
     if note:
         path = state.safe_request_path(handler.path)
-        state.log(f"req={request_id} event=request_sanitized method={method} {note} path={path}")
+        state.log(
+            f"req={request_id} event=request_sanitized route={route} "
+            f"method={method} {note} path={path}"
+        )
     if is_responses:
         state.record_counter("responses_received")
     exchange = _Exchange(
-        handler, method, request_id, body, UPSTREAM + handler.path, headers, is_responses, body
+        handler,
+        method,
+        request_id,
+        body,
+        upstream_url,
+        headers,
+        is_responses,
+        body,
+        route,
     )
     if not _admit(exchange):
         return
     acquired = is_responses
     try:
-        if is_responses:
+        if is_responses and route == "dmxapi":
             fingerprint = empty_response.policy_fingerprint(body)
             remaining = state.empty_response_cooldown_remaining(
                 fingerprint, cooldown_seconds=empty_response.COOLDOWN_SECONDS

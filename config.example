@@ -3,8 +3,13 @@
 # Every setting has a built-in default. Most installations should use install.py
 # arguments and leave the generated service definition unchanged.
 
-# Verified third-party upstream base URL.
-DMX_UPSTREAM=https://www.dmxapi.cn
+# Fixed provider upstream HTTPS origins. Values must be absolute HTTPS origins
+# without credentials, paths, queries, or fragments. DMX_UPSTREAM remains a
+# migration alias for DMX_UPSTREAM_DMXAPI only.
+DMX_UPSTREAM_DMXAPI=https://www.dmxapi.cn
+DMX_UPSTREAM_UCLOUD=https://api.modelverse.cn
+DMX_UPSTREAM_AIHUBMIX=https://aihubmix.com
+# DMX_UPSTREAM=https://www.dmxapi.cn
 
 # Loopback listener port.
 DMX_PROXY_PORT=8791
@@ -25,7 +30,7 @@ DMX_WATCHDOG_LOG_BACKUP_COUNT=2
 # Recommended override method:
 #   python3 install.py \
 #     --port 8801 \
-#     --upstream https://your.responses.endpoint \
+#     --upstream https://your.dmxapi.responses.origin \
 #     --proxy-log-max-bytes 4194304 \
 #     --proxy-log-backup-count 3 \
 #     --watchdog-log-max-bytes 524288 \

@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import unittest
 import unittest.mock
@@ -372,11 +373,43 @@ def start_real_proxy(
     extra_env: dict | None = None,
 ) -> subprocess.Popen:
     """Start an installed-like proxy and prove its listener became reachable."""
+    parsed_upstream = urllib.parse.urlsplit(upstream_url)
+    try:
+        upstream_port = parsed_upstream.port
+    except ValueError:
+        upstream_port = None
+    if (
+        parsed_upstream.scheme != "http"
+        or parsed_upstream.hostname != "127.0.0.1"
+        or upstream_port is None
+        or parsed_upstream.path not in ("", "/")
+        or parsed_upstream.query
+        or parsed_upstream.fragment
+        or parsed_upstream.username is not None
+        or parsed_upstream.password is not None
+    ):
+        raise ValueError("real proxy tests require an owned loopback HTTP upstream")
+
+    hook_dir = Path(ctx.home) / ".codex-dmx-proxy-test-hooks"
+    hook_dir.mkdir(parents=True, exist_ok=True)
+    (hook_dir / "sitecustomize.py").write_text(
+        "# Test-only process injection for the owned loopback upstream.\n"
+        "import os\n"
+        "from codex_dmx_proxy.listener import responses\n"
+        "responses.DMXAPI_UPSTREAM = os.environ['DMX_TEST_HTTP_UPSTREAM']\n"
+        "responses.UPSTREAM = responses.DMXAPI_UPSTREAM\n",
+        encoding="utf-8",
+    )
     env = dict(os.environ)
     env["DMX_PROXY_HOST"] = "127.0.0.1"
     env["DMX_PROXY_PORT"] = str(ctx.port)
-    env["DMX_UPSTREAM"] = upstream_url
+    env["DMX_UPSTREAM"] = "https://test.invalid"
+    env["DMX_TEST_HTTP_UPSTREAM"] = upstream_url
     env["DMX_PROXY_LOG"] = str(log_path)
+    python_path = [str(hook_dir), ctx.install_dir]
+    if inherited_python_path := env.get("PYTHONPATH"):
+        python_path.append(inherited_python_path)
+    env["PYTHONPATH"] = os.pathsep.join(python_path)
     if extra_env:
         env.update(extra_env)
     process = subprocess.Popen(

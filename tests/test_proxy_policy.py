@@ -64,16 +64,16 @@ class TestProxySanitize(unittest.TestCase):
         body = _body(
             [
                 {"type": "reasoning", "encrypted_content": "gAAAA_secret"},
-                {"type": "message", "content": "hello"},
+                {"type": "message", "role": "user", "content": "hello"},
             ],
             include=["reasoning.encrypted_content", "other"],
         )
         out, _ = rewrite.sanitize_responses_body(body)
-        obj = json.loads(out)
-        self.assertEqual(obj["input"], [{"type": "message", "content": "hello"}])
+        obj = json.loads(cast("bytes", out))
+        self.assertEqual(obj["input"], [{"type": "message", "role": "user", "content": "hello"}])
         self.assertNotIn("reasoning.encrypted_content", obj["include"])
 
-    def test_preserves_required_agent_message_encrypted_content(self):
+    def test_projects_agent_message_and_removes_encrypted_content(self):
         body = json.dumps(
             {
                 "input": [
@@ -99,25 +99,29 @@ class TestProxySanitize(unittest.TestCase):
         ).encode()
 
         out, note = rewrite.sanitize_responses_body(body)
-        obj = json.loads(out)
+        obj = json.loads(cast("bytes", out))
 
         self.assertEqual(len(obj["input"]), 1)  # replayed reasoning still dropped
-        encrypted = obj["input"][0]["content"][1]
-        self.assertEqual(encrypted["type"], "encrypted_content")
+        agent = obj["input"][0]
+        self.assertEqual((agent["role"], agent["phase"]), ("assistant", "commentary"))
         self.assertEqual(
-            encrypted["encrypted_content"],
-            "required_agent_message_payload",
+            json.loads(agent["content"][0]["text"]),
+            {"type": "agent_message", "author": "agent", "recipient": "user"},
         )
-        self.assertIn("agent_message_encrypted=1", note)
-        self.assertIn("malformed_encrypted_blocks=0", note)
+        self.assertEqual(agent["content"][1], {"type": "input_text", "text": "reply"})
+        self.assertNotIn("required_agent_message_payload", cast("bytes", out).decode())
+        self.assertIn("encrypted_blocks=1", note)
+        self.assertIn("reasoning_items=1", note)
         self.assertNotIn("reasoning.encrypted_content", obj["include"])
 
-    def test_drops_only_legacy_encrypted_content_blocks_missing_payload(self):
+    def test_removes_all_agent_ciphertext_blocks(self):
         body = json.dumps(
             {
                 "input": [
                     {
                         "type": "agent_message",
+                        "author": "agent",
+                        "recipient": "user",
                         "content": [
                             {"type": "input_text", "text": "before"},
                             {"type": "encrypted_content"},
@@ -133,22 +137,19 @@ class TestProxySanitize(unittest.TestCase):
         ).encode()
 
         out, note = rewrite.sanitize_responses_body(body)
-        obj = json.loads(out)
+        obj = json.loads(cast("bytes", out))
 
-        self.assertIn("malformed_encrypted_blocks=1", note)
+        self.assertIn("encrypted_blocks=2", note)
         self.assertEqual(
-            obj["input"][0]["content"],
+            obj["input"][0]["content"][1:],
             [
                 {"type": "input_text", "text": "before"},
-                {
-                    "type": "encrypted_content",
-                    "encrypted_content": "valid_required_payload",
-                },
                 {"type": "input_text", "text": "after"},
             ],
         )
+        self.assertNotIn("valid_required_payload", cast("bytes", out).decode())
 
-    def test_keeps_unrelated_encrypted_content_shape_outside_legacy_content_lists(self):
+    def test_rejects_unknown_fields_that_resemble_encrypted_content(self):
         body = json.dumps(
             {
                 "input": [
@@ -162,10 +163,10 @@ class TestProxySanitize(unittest.TestCase):
 
         out, note = rewrite.sanitize_responses_body(body)
 
-        self.assertEqual(out, body)
-        self.assertIn("clean", note)
+        self.assertIsNone(out)
+        self.assertEqual(note, "rejected unknown_call_field")
 
-    def test_sanitize_sse_event_strips_reasoning_but_keeps_agent_message_payload(self):
+    def test_sanitize_sse_event_strips_reasoning_and_agent_ciphertext(self):
         raw = (
             b"event: response.completed\n"
             b'data: {"type":"response.completed","response":{"output":['
@@ -177,9 +178,12 @@ class TestProxySanitize(unittest.TestCase):
         out, removed = rewrite.sanitize_sse_event(raw)
         event = json.loads(out.split(b"data: ", 1)[1])
         output = event["response"]["output"]
-        self.assertEqual(removed, 1)
+        self.assertEqual(removed, 2)
         self.assertNotIn("encrypted_content", output[0])
-        self.assertEqual(output[1]["content"][0]["encrypted_content"], "required")
+        self.assertEqual(
+            output[1]["content"],
+            [{"type": "input_text", "text": rewrite.OPAQUE_CONTENT_MARKER}],
+        )
 
     def test_retry_disposition_classifies_gateway_and_terminal_failures(self):
         cases = (
@@ -413,18 +417,18 @@ class TestProxySanitize(unittest.TestCase):
                 "log_retention_discarded_oversized_bytes=8192", log_path.read_text(encoding="utf-8")
             )
 
-    def test_fail_open_on_non_json(self):
+    def test_fail_closed_on_non_json(self):
         raw = b"not json at all"
         out, note = rewrite.sanitize_responses_body(raw)
-        self.assertEqual(out, raw)  # unchanged
-        self.assertIn("passthrough", note)
+        self.assertIsNone(out)
+        self.assertEqual(note, "rejected invalid_json")
 
-    def test_fail_open_on_json_values_that_are_not_response_objects(self):
+    def test_fail_closed_on_json_values_that_are_not_response_objects(self):
         for raw in (b"[]", b"null", b'"text"'):
             with self.subTest(raw=raw):
                 out, note = rewrite.sanitize_responses_body(raw)
-                self.assertEqual(out, raw)
-                self.assertIn("passthrough", note)
+                self.assertIsNone(out)
+                self.assertEqual(note, "rejected request_not_object")
 
     def test_sse_sanitizer_passes_non_json_and_non_target_events_unchanged(self):
         events = (
@@ -436,12 +440,15 @@ class TestProxySanitize(unittest.TestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(rewrite.sanitize_sse_event(raw), (raw, 0))
 
-    def test_request_sanitizer_fails_open_when_mutation_cannot_be_serialized(self):
-        raw = b'{"input":[{"type":"reasoning","encrypted_content":"opaque"}]}'
+    def test_request_sanitizer_fails_closed_when_mutation_cannot_be_serialized(self):
+        raw = (
+            b'{"input":[{"type":"reasoning","encrypted_content":"opaque"},'
+            b'{"type":"message","role":"user","content":"continue"}]}'
+        )
         with mock.patch.object(rewrite.json, "dumps", side_effect=TypeError("unsupported")):
             out, note = rewrite.sanitize_responses_body(raw)
-        self.assertEqual(out, raw)
-        self.assertIn("passthrough", note)
+        self.assertIsNone(out)
+        self.assertEqual(note, "rejected serialization_failed")
 
     def test_sse_sanitizer_fails_open_when_mutation_cannot_be_serialized(self):
         raw = (
@@ -451,10 +458,12 @@ class TestProxySanitize(unittest.TestCase):
         with mock.patch.object(rewrite.json, "dumps", side_effect=TypeError("unsupported")):
             self.assertEqual(rewrite.sanitize_sse_event(raw), (raw, 0))
 
-    def test_deep_request_and_sse_projection_fail_open(self):
+    def test_deep_request_fails_closed_and_sse_projection_remains_atomic(self):
         nested = '{"x":' * 496 + "0" + "}" * 496
         request = ('{"input":[{"type":"message","role":"user","content":' + nested + "}]}").encode()
-        self.assertEqual(rewrite.sanitize_responses_body(request)[0], request)
+        projected, note = rewrite.sanitize_responses_body(request)
+        self.assertIsNone(projected)
+        self.assertTrue(note.startswith("rejected "), note)
 
         event = (
             "data: "
