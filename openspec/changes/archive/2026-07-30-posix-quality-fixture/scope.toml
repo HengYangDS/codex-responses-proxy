@@ -5,4 +5,5 @@ paths = [
   "openspec/changes/posix-quality-fixture/**",
   "openspec/changes/archive/2026-07-30-posix-quality-fixture/**",
   "tests/test_quality_contract.py",
+  "openspec/specs/ci-diagnostics/**",
 ]
