@@ -1,0 +1,47 @@
+[claim]
+id = "ci-log-hygiene-20260730"
+subject = "codex-dmx-proxy:ci-log-hygiene"
+state = "active"
+summary = "Local evidence bounds the repair that rejects hidden Python diagnostics in successful test jobs."
+
+[evidence]
+dated = "evidence/chronicle/ci-log-hygiene-20260730/2026-07-30.md"
+sha256 = "1de2db7bbc6c65d7897bb433cd8ab97d2e304330fb108b50062af484044d86b5"
+evidence_ids = ["evidence:ci-log-hygiene-20260730"]
+binding = "local diagnostic-cleanliness verification bound to the current repair scope"
+verifier = "digest_only"
+tests = [
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" scripts/run-python-tests.py --compile; done",
+  "python3 scripts/check_release_metadata.py --prepare-release",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "historical"
+
+[boundary]
+owner = "codex-dmx-proxy"
+scope = "Local CI diagnostic repair evidence only; hosted CI, publication, installation, and runtime remain external."
+
+[carriers]
+openspec = "openspec/changes/ci-log-hygiene"
+fallback = "Retain v1.0.35 and reject publication until the clean-diagnostic candidate completes both Forge planes."
+kill_signal = "A successful test job can still emit an unhandled traceback or Python warning."
+
+[promotion]
+targets = [
+  ".ethos/profile.toml",
+  ".github/workflows/verify.yml",
+  ".gitlab-ci.yml",
+  "CHANGELOG.md",
+  "VERSION",
+  "codex_dmx_proxy/deployment/handoff.py",
+  "docs/governance/release-and-change-policy.md",
+  "openspec/specs/ci-diagnostics/spec.md",
+  "scripts/run-python-quality.sh",
+  "scripts/run-python-tests.py",
+  "tests/support/handoff.py",
+  "tests/test_handoff_controller.py",
+  "tests/test_quality_contract.py",
+]

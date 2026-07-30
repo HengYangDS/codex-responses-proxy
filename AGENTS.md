@@ -9,6 +9,8 @@ of Codex conversation history or AIGW configuration.
 - Project overview and setup: [README](README.md)
 - Contribution and verification workflow: [CONTRIBUTING](CONTRIBUTING.md)
 - Documentation root: [docs/README](docs/README.md)
+- ETHOS adoption profile: [.ethos/profile.toml](.ethos/profile.toml)
+- Active specification changes: [OpenSpec](openspec/)
 - Authority and runtime boundary: [architecture](docs/architecture/authority-and-runtime-boundary.md)
 - Change and release policy: [governance](docs/governance/release-and-change-policy.md)
 - Durable boundary decision: [ADR-0001](docs/decisions/0001-control-plane-data-plane-boundary.md)
@@ -49,8 +51,7 @@ python scripts/check_markdown_presentation.py
 python scripts/test_release_metadata.py
 PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh
 for py in python3.12 python3.13 python3.14; do
-  "$py" -m compileall -q codex_dmx_proxy watchdog install.py uninstall.py control.py governance.py tests scripts
-  "$py" scripts/run-python-tests.py
+  "$py" scripts/run-python-tests.py --compile
 done
 ```
 
