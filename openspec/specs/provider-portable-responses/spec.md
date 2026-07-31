@@ -34,12 +34,10 @@ SHALL leave provider-neutral generation settings unchanged.
 
 The proxy SHALL preserve textual system, developer, user, and assistant
 dialogue; agent author, recipient, and phase context; and complete
-function/custom-tool call-output pairs. Textual assistant and synthesized-agent
-history SHALL use the provider-neutral Easy Input Message string carrier rather
-than an incomplete output-message object. System, developer, and user dialogue
-and tool-output lists SHALL retain input-content grammar. Provider-issued item
-IDs, statuses, annotations, and opaque internal metadata SHALL NOT be required
-to preserve those relationships.
+function/custom-tool call-output pairs. Assistant and synthesized-agent history
+SHALL use provider-neutral Easy Input Message strings. System, developer, user,
+and tool-output lists SHALL use input-content grammar. Provider IDs, statuses,
+annotations, and opaque metadata SHALL NOT be required.
 
 #### Scenario: Text and paired calls are replayed
 

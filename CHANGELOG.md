@@ -7,6 +7,15 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [1.0.45] - 2026-07-31
+
+### Fixed
+
+- Preserve correctly paired function and custom-tool history when a tool
+  returned no textual output by projecting one explicit empty-result marker in
+  the outbound request copy, while retaining the local rejection of empty
+  ordinary dialogue and every malformed or unpaired replay shape.
+
 ## [1.0.44] - 2026-07-30
 
 ### Fixed

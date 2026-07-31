@@ -58,10 +58,13 @@ part of the payload transaction or its rollback authority.
 Before remote I/O, `codex_dmx_proxy.listener.rewrite` projects Responses replay
 onto a closed portable grammar. Provider continuation IDs, stored-item
 references, reasoning/search state, provider item IDs, and opaque ciphertext
-are removed. Text and complete call/output relationships remain. Unknown or
-malformed replay fails locally; DMX HTTP 477 recovery and cooldown apply only
-after that projection and only on the DMXAPI route. Stream sanitization prevents
-new provider ciphertext from re-entering later replay.
+are removed. Text and complete call/output relationships remain. A correctly
+paired tool result whose exact value is the empty string is represented by one
+fixed plaintext empty-result marker in the outbound request copy; ordinary
+empty dialogue remains invalid. Unknown or malformed replay fails locally; DMX
+HTTP 477 recovery and cooldown apply only after that projection and only on the
+DMXAPI route. Stream sanitization prevents new provider ciphertext from
+re-entering later replay.
 
 The pure policy in `codex_dmx_proxy/compatibility/input_variant.py` owns the exact observed
 Responses input-union failure. Transport orchestration may invoke that policy
