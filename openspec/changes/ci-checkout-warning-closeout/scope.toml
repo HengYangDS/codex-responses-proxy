@@ -1,0 +1,11 @@
+schema_version = 1
+paths = [
+  ".github/workflows/release.yml",
+  ".github/workflows/verify.yml",
+  "evidence/claims/ci-log-hygiene-20260730.toml",
+  "evidence/chronicle/ci-log-hygiene-20260730/**",
+  "openspec/changes/ci-checkout-warning-closeout/**",
+  "openspec/changes/archive/2026-07-31-ci-checkout-warning-closeout/**",
+  "openspec/specs/ci-diagnostics/**",
+  "scripts/test-github-actions-contract.sh",
+]

@@ -3,13 +3,17 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 workflow="$root/.github/workflows/verify.yml"
+release_workflow="$root/.github/workflows/release.yml"
 
 [ -f "$workflow" ] || { echo "GitHub Actions verification workflow is missing" >&2; exit 1; }
-python3 - "$workflow" <<'PYTHON'
+[ -f "$release_workflow" ] || { echo "GitHub Actions release workflow is missing" >&2; exit 1; }
+python3 - "$workflow" "$release_workflow" <<'PYTHON'
 from pathlib import Path
+import re
 import sys
 
 text = Path(sys.argv[1]).read_text(encoding="utf-8")
+release_text = Path(sys.argv[2]).read_text(encoding="utf-8")
 required = [
     "name: Verify", "push:", "workflow_dispatch:", "branches: [main]", 'tags: ["v*"]',
     "permissions:\n  contents: read",
@@ -88,6 +92,66 @@ if governance_block.index(tag_check) > governance_block.rindex(branch_check):
     raise SystemExit("governance ref dispatch must select tag validation before branch fallback")
 if "secrets:" in windows_block or "permissions:" in windows_block:
     raise SystemExit("Windows verification must inherit the read-only, secret-free workflow contract")
+retained_ref = "refs/codex-dmx-proxy/runner-checkout-retained"
+retain_name = "- name: Retain pre-checkout HEAD"
+cleanup_name = "- name: Drop retained pre-checkout HEAD"
+
+
+def job_blocks(workflow_text: str) -> dict[str, str]:
+    matches = list(re.finditer(r"(?m)^  ([a-z0-9-]+):\n", workflow_text))
+    return {
+        match.group(1): workflow_text[match.start() : matches[index + 1].start()]
+        if index + 1 < len(matches)
+        else workflow_text[match.start() :]
+        for index, match in enumerate(matches)
+    }
+
+
+self_hosted = {
+    f"verify:{name}": block
+    for name, block in job_blocks(text).items()
+    if "runs-on: [self-hosted," in block
+}
+self_hosted.update(
+    {
+        f"release:{name}": block
+        for name, block in job_blocks(release_text).items()
+        if "runs-on: [self-hosted," in block
+    }
+)
+if set(self_hosted) != {
+    "verify:python",
+    "verify:governance",
+    "verify:python-quality",
+    "release:verify-and-publish",
+}:
+    raise SystemExit(f"unexpected self-hosted checkout owners: {sorted(self_hosted)}")
+for owner, block in self_hosted.items():
+    checkout_positions = [match.start() for match in re.finditer(r"- uses: actions/checkout@", block)]
+    retain_positions = [match.start() for match in re.finditer(re.escape(retain_name), block)]
+    cleanup_positions = [match.start() for match in re.finditer(re.escape(cleanup_name), block)]
+    if not checkout_positions or not (
+        len(checkout_positions) == len(retain_positions) == len(cleanup_positions)
+    ):
+        raise SystemExit(f"{owner} must bracket every checkout with one retain and cleanup step")
+    for retain, checkout, cleanup in zip(retain_positions, checkout_positions, cleanup_positions):
+        if not retain < checkout < cleanup:
+            raise SystemExit(f"{owner} checkout retention steps are out of order")
+    for token in (
+        retained_ref,
+        'git update-ref -d "$ref"',
+        'git rev-parse --verify HEAD',
+        'git update-ref "$ref" HEAD',
+        "if: always()",
+        "git update-ref -d refs/codex-dmx-proxy/runner-checkout-retained",
+    ):
+        if token not in block:
+            raise SystemExit(f"{owner} checkout retention contract is missing {token!r}")
+if retained_ref in windows_block or retain_name in windows_block or cleanup_name in windows_block:
+    raise SystemExit("hosted Windows checkout must not receive self-hosted retention state")
+for forbidden in ("git config --global", "GIT_ADVICE", "advice.detachedHead"):
+    if forbidden in text or forbidden in release_text:
+        raise SystemExit(f"GitHub workflows must not suppress Git diagnostics with {forbidden!r}")
 for retired in (
     "tests/test_package.py",
     "tests/test_empty_response_recovery.py",
