@@ -26,7 +26,7 @@ owner = "codex-dmx-proxy"
 scope = "The dated Chronicle covers one observed hosted checkout warning and local workflow-contract proof; post-fix hosted CI, publication, installation, runtime, and immutable reclose remain external until refreshed."
 
 [carriers]
-openspec = "openspec/changes/ci-checkout-warning-closeout"
+openspec = "openspec/changes/archive/2026-07-31-ci-checkout-warning-closeout"
 fallback = "Revert the workflow commit if checkout or hosted verification regresses; no runner-global or installed-runtime state needs rollback."
 kill_signal = "A successful job can emit an actual prohibited diagnostic, the abandoned-commit warning recurs, or the temporary checkout ref survives the job."
 
