@@ -8,7 +8,7 @@ summary = "Local evidence bounds the repair for cross-version protocol-v2 succes
 dated = "evidence/chronicle/handoff-upgrade-identity-20260730/2026-07-30.md"
 sha256 = "747b9a61e3c4d5653c1f86133bfd63ba1174afe1507d4caa98f9d58e14adc789"
 evidence_ids = ["evidence:handoff-upgrade-identity-20260730"]
-binding = "live 1.0.35 to 1.0.36 failure plus the locally verified 1.0.37 repair scope"
+binding = "live 1.0.35 to 1.0.36 failure and the dated local 1.0.37 repair observation"
 verifier = "digest_only"
 tests = [
   "PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh",
