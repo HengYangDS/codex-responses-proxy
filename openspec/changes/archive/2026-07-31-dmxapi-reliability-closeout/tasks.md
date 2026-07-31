@@ -17,29 +17,31 @@
 - [x] 2.3 Prove unknown content, bad pairing, and empty
   dialogue remain fail-closed.
 
-## 3. Repository and release proof
+## 3. Source proof and lifecycle transfer
 
 - [x] 3.1 Update canonical documentation and patch-release metadata to match the
   implemented behavior.
 - [x] 3.2 Run focused tests, release checks, Markdown, Ruff, format, types,
   structure, docstrings, independent statement/branch coverage, Python
   3.12-3.14 behavior, OpenSpec, and HEAD-bound ETHOS proof.
-- [ ] 3.3 Continue from the archived carrier: land through candidate and
-  accepted roles; publish independent signed
-  GitLab and GitHub histories, current-main CI, tag CI, releases, and tree
-  parity.
-- [ ] 3.4 Continue from the archived carrier: transactionally install only the
-  published release and prove listener,
-  receipt, manifest, serving digest, route authority, and accepting state.
+- [x] 3.3 Transfer candidate/accepted landing, independent signed GitLab and
+  GitHub histories, current-main CI, tag CI, formal Releases, and tree parity to
+  the owner-bound post-archive continuation without claiming those external
+  transitions in this source carrier.
+- [x] 3.4 Transfer formal-release installation and listener, receipt, manifest,
+  serving-digest, route-authority, and accepting-state proof to the same
+  owner-bound continuation without claiming an installed release here.
 
-## 4. Runtime and closeout
+## Post-archive operational order
 
-- [ ] 4.1 Complete the requested DMXAPI continuity rounds and the unchanged
-  conversation provider sequence without the rejection reason or a
-  proxy-generated bounded-retry 503.
-- [ ] 4.2 Scan authoritative CI logs for traceback, ignored exceptions,
-  SocketServer banners, Python warnings, pip root warnings, and debconf warnings.
-- [ ] 4.3 Close the claim, archive the Change, and create a verified metadata-only
-  reclose record that supersedes the premature `v1.0.42` record.
-- [ ] 4.4 Retire only lanes with owner-bound authorization and represented
-  content; finish repository-family and temporary-residue housekeeping.
+These are external lifecycle and acceptance transitions, not incomplete
+OpenSpec Change tasks. Their current truth is established only by ETHOS, Forge,
+installation, runtime, and repository-family evidence at execution time:
+
+1. Land the proven source through candidate and accepted roles.
+2. Publish and verify the independent GitLab and GitHub release planes.
+3. Install only the verified dual-Forge release and prove runtime identity.
+4. Run the requested DMXAPI continuity rounds.
+5. Scan authoritative CI and runtime logs for prohibited diagnostics.
+6. Reclose the claim and immutable repository-family record.
+7. Retire only owner-authorized, represented lanes and clean owned residue.
