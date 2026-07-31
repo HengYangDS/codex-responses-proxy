@@ -22,21 +22,25 @@
 - [x] 3.1 Run GitHub/GitLab provider and release contracts, strict OpenSpec,
   Markdown, release metadata, Ruff, format, types, structure, docstrings,
   statement and branch coverage above 95%, and Python 3.12-3.14 matrices.
-- [ ] 3.2 Run the changed-scope plan, parity, exact-HEAD ETHOS executed proof,
-  signed commit verification, candidate landing, and accepted-root closeout.
+- [x] 3.2 Run the changed-scope plan, retain the declared generic parity state,
+  and complete exact-HEAD ETHOS executed proof plus signed commit verification.
+- [x] 3.3 Transfer candidate landing, accepted-root closeout, hosted Forge
+  verification, runtime refresh, corrective record creation, and lane retirement
+  to the post-archive operational sequence without claiming them here.
 
-## 4. External acceptance and terminal closeout
+## Post-archive operational sequence
 
-- [ ] 4.1 Project independent signed GitLab and GitHub `main` histories with the
-  required provider email identities and wait for exact-tip default-branch CI.
-- [ ] 4.2 Scan all successful current jobs for actual traceback, ignored
-  exception, SocketServer banner, Python warning, abandoned-commit warning, pip
-  root warning, and debconf warning.
-- [ ] 4.3 Refresh `v1.0.45` publication, release-asset, installed-governance,
-  listener, manifest, receipt, serving-digest, route-authority, and bounded
-  reliability evidence without republishing or reinstalling an unchanged
-  release.
-- [ ] 4.4 Archive this change, update the existing Claim and Chronicle to the
-  latest facts, create and verify the immutable corrective record, update the
-  records index, remove only owned transient residue, and retire this sole own
-  lane.
+These are external lifecycle transitions, not incomplete OpenSpec Change
+tasks. Their truth must be established from fresh local, Forge, runtime, and
+repository-family evidence:
+
+1. Land the proven source through candidate and accepted roles.
+2. Project independent signed GitLab and GitHub `main` histories and wait for
+   exact-tip default-branch CI.
+3. Scan every successful current job for prohibited diagnostics.
+4. Refresh `v1.0.45` publication, asset, installation, runtime, route, and
+   bounded-reliability evidence without republishing or reinstalling the
+   unchanged release.
+5. Reclose the Claim and Chronicle, create and verify the immutable corrective
+   record, update the records index, remove only owned transient residue, and
+   retire this sole own lane.
