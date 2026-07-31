@@ -1,0 +1,40 @@
+[claim]
+id = "post-release-main-validation-20260731"
+subject = "codex-dmx-proxy:ci-diagnostics"
+state = "active"
+summary = "Local evidence records GitLab post-release main dispatch against the existing VERSION tag state."
+
+[evidence]
+dated = "evidence/chronicle/post-release-main-validation-20260731/2026-07-31.md"
+sha256 = "609c82fae4a304b5cf9afc1e3ad4112fece899bf248fb6d4e1c144ce89c32081"
+evidence_ids = ["evidence:post-release-main-validation-20260731"]
+binding = "GitLab pipeline 3959 diagnosis, three-way metadata dispatch TDD, and local source verification for post-release v1.0.45 main"
+verifier = "digest_only"
+tests = [
+  "python3.14 scripts/test_release_metadata.py",
+  "python3.14 scripts/check_release_metadata.py --provider gitlab",
+  "python3.14 scripts/check_markdown_presentation.py",
+  "PYTHON=python3.12 RUFF=<ruff-0.16.0> TY=<ty-0.0.64> sh scripts/run-python-quality.sh",
+  "python3.13 scripts/run-python-tests.py --compile",
+  "python3.14 scripts/run-python-tests.py --compile",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "historical"
+
+[boundary]
+owner = "codex-dmx-proxy"
+scope = "Local GitLab metadata-dispatch evidence only; hosted CI, publication continuity, runtime, repository-family records, and lane retirement remain external."
+
+[carriers]
+openspec = "openspec/changes/archive/2026-07-31-post-release-main-validation"
+fallback = "Keep the immutable v1.0.45 publication and reject the main projection until ordinary provider validation passes after tag refresh."
+kill_signal = "An untagged main commit with an existing exact VERSION tag is again evaluated as a pending duplicate release."
+
+[promotion]
+targets = [
+  ".gitlab-ci.yml",
+  "openspec/specs/ci-diagnostics/spec.md",
+  "scripts/test_release_metadata.py",
+]

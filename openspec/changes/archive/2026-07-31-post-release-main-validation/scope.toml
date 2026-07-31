@@ -1,0 +1,8 @@
+schema_version = 1
+paths = [
+  ".gitlab-ci.yml",
+  "evidence/claims/post-release-main-validation-20260731.toml",
+  "evidence/chronicle/post-release-main-validation-20260731/**",
+  "openspec/**",
+  "scripts/test_release_metadata.py",
+]
