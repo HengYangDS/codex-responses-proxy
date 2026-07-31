@@ -6,9 +6,9 @@ summary = "Local evidence binds the empty-tool-output repair to its narrow proje
 
 [evidence]
 dated = "evidence/chronicle/dmxapi-reliability-closeout-20260731/2026-07-31.md"
-sha256 = "d75cf110ac893209eb0a2625b1d2002fd3e2145ed3d3681bd30149fb0edb0f41"
+sha256 = "790e479f86d154d086f7aa1fb689c8005c76e98a2e64928b255f9d7992d37e36"
 evidence_ids = ["evidence:dmxapi-reliability-closeout-20260731"]
-binding = "released v1.0.44 observation plus locally verified v1.0.45 source repair"
+binding = "released v1.0.44 observation plus HEAD-bound v1.0.45 source proof at 2f1f57f907976dffac2317f75bcd42962721fd98"
 verifier = "digest_only"
 tests = [
   "for py in python3.12 python3.13 python3.14; do PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS=error \"$py\" tests/test_provider_portable_responses.py; done",
@@ -21,11 +21,12 @@ tests = [
 ]
 
 [evidence.freshness]
-mode = "historical"
+mode = "head_bound"
+head = "2f1f57f907976dffac2317f75bcd42962721fd98"
 
 [boundary]
 owner = "codex-dmx-proxy"
-scope = "Observed replay failure and local source verification only; HEAD-bound proof, hosted CI, publication, installation, continuity, and closeout remain later stages."
+scope = "Observed replay failure and HEAD-bound source proof only; hosted CI, publication, installation, continuity, and closeout remain later stages."
 
 [carriers]
 openspec = "openspec/changes/dmxapi-reliability-closeout"
