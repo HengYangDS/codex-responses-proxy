@@ -1,0 +1,44 @@
+[claim]
+id = "dmxapi-reliability-closeout-20260731"
+subject = "codex-dmx-proxy:provider-portable-responses"
+state = "active"
+summary = "Local evidence binds the empty-tool-output repair to its narrow projection owner and fail-closed boundaries."
+
+[evidence]
+dated = "evidence/chronicle/dmxapi-reliability-closeout-20260731/2026-07-31.md"
+sha256 = "d75cf110ac893209eb0a2625b1d2002fd3e2145ed3d3681bd30149fb0edb0f41"
+evidence_ids = ["evidence:dmxapi-reliability-closeout-20260731"]
+binding = "released v1.0.44 observation plus locally verified v1.0.45 source repair"
+verifier = "digest_only"
+tests = [
+  "for py in python3.12 python3.13 python3.14; do PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS=error \"$py\" tests/test_provider_portable_responses.py; done",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" scripts/run-python-tests.py --compile; done",
+  "python3.12 scripts/check_release_metadata.py --prepare-release",
+  "python3.12 scripts/check_markdown_presentation.py",
+  "python3.12 scripts/test_release_metadata.py",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "historical"
+
+[boundary]
+owner = "codex-dmx-proxy"
+scope = "Observed replay failure and local source verification only; HEAD-bound proof, hosted CI, publication, installation, continuity, and closeout remain later stages."
+
+[carriers]
+openspec = "openspec/changes/dmxapi-reliability-closeout"
+fallback = "Retain the serving v1.0.44 payload until a later signed release completes source, Forge, installation, and continuity gates."
+kill_signal = "Empty ordinary dialogue becomes accepted, an invalid pair reaches upstream, or empty_text_content remains after deployment."
+
+[promotion]
+targets = [
+  "README.md",
+  "CHANGELOG.md",
+  "VERSION",
+  "codex_dmx_proxy/listener/rewrite.py",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/test_provider_portable_responses.py",
+]

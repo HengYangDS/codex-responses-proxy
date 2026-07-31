@@ -43,10 +43,12 @@ provider-portable grammar. It removes provider response/conversation/cache
 bindings, reasoning and stored-item references, provider-issued item IDs,
 search state, and encrypted reasoning, agent, and tool-output content. It keeps
 text dialogue, agent author/recipient/phase context, complete function and
-custom-tool pairs, and replayable remote images. An encrypted-only retained
-agent or tool result receives an explicit omission marker; no ciphertext is
-claimed to be decrypted. Unknown or malformed replay structures return a local
-HTTP 400 before any upstream request.
+custom-tool pairs, and replayable remote images. A correctly paired tool result
+with no textual output receives an explicit empty-result marker; an
+encrypted-only retained agent or tool result receives a distinct omission
+marker, and no ciphertext is claimed to be decrypted. Empty ordinary dialogue
+and unknown or malformed replay structures return a local HTTP 400 before any
+upstream request.
 
 For an explicit upstream `response_failed` rejection, it first makes up to three
 strictly smaller fallbacks that each remove only the oldest contiguous,

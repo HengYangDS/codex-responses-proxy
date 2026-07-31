@@ -194,6 +194,68 @@ class ProviderPortableRequestTests(unittest.TestCase):
 
         self.assertEqual(json.loads(cast("bytes", projected_raw)), {"input": "hello"})
 
+    def test_marks_paired_empty_tool_outputs_without_admitting_empty_dialogue(self) -> None:
+        cases = (
+            ("function_call", "arguments", "function_call_output"),
+            ("custom_tool_call", "input", "custom_tool_call_output"),
+        )
+        for call_type, argument_field, output_type in cases:
+            with self.subTest(call_type=call_type):
+                projected_raw, note = rewrite.sanitize_responses_body(
+                    _body(
+                        {
+                            "input": [
+                                {
+                                    "type": call_type,
+                                    "call_id": "empty-result",
+                                    "name": "bounded-test-tool",
+                                    argument_field: "{}",
+                                },
+                                {
+                                    "type": output_type,
+                                    "call_id": "empty-result",
+                                    "output": "",
+                                },
+                            ]
+                        }
+                    )
+                )
+
+                self.assertIsNotNone(projected_raw, note)
+                projected = json.loads(cast("bytes", projected_raw))["input"]
+                self.assertEqual(projected[0]["call_id"], projected[1]["call_id"])
+                self.assertEqual(projected[1]["output"], rewrite.EMPTY_TOOL_OUTPUT_MARKER)
+                self.assertIn("empty_tool_outputs=1", note)
+
+        projected, note = rewrite.sanitize_responses_body(
+            _body({"input": [{"type": "message", "role": "assistant", "content": ""}]})
+        )
+        self.assertIsNone(projected)
+        self.assertEqual(note, "rejected empty_text_content")
+
+        for label, output in (("missing", None), ("null", None)):
+            item = {"type": "function_call_output", "call_id": "empty-result"}
+            if label == "null":
+                item["output"] = output
+            projected, note = rewrite.sanitize_responses_body(
+                _body(
+                    {
+                        "input": [
+                            {
+                                "type": "function_call",
+                                "call_id": "empty-result",
+                                "name": "bounded-test-tool",
+                                "arguments": "{}",
+                            },
+                            item,
+                        ]
+                    }
+                )
+            )
+            with self.subTest(output=label):
+                self.assertIsNone(projected)
+                self.assertEqual(note, "rejected invalid_content")
+
     def test_normalizes_typed_dialogue_content_by_projected_role(self) -> None:
         raw = _body(
             {

@@ -1,0 +1,14 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "codex_dmx_proxy/listener/rewrite.py",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "evidence/claims/dmxapi-reliability-closeout-20260731.toml",
+  "evidence/chronicle/dmxapi-reliability-closeout-20260731/**",
+  "openspec/changes/dmxapi-reliability-closeout/**",
+  "openspec/changes/archive/2026-07-31-dmxapi-reliability-closeout/**",
+  "openspec/specs/provider-portable-responses/**",
+  "tests/test_provider_portable_responses.py",
+]

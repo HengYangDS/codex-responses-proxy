@@ -16,6 +16,7 @@ from typing import cast
 type JsonObject = dict[str, object]
 
 OPAQUE_CONTENT_MARKER = "[opaque provider content omitted: not portable across providers]"
+EMPTY_TOOL_OUTPUT_MARKER = "[tool returned no textual output]"
 
 _PROVIDER_BINDINGS = ("previous_response_id", "conversation", "prompt_cache_key")
 _VALID_ROLES = frozenset(("user", "assistant", "developer", "system"))
@@ -418,12 +419,22 @@ def _project_output(
     if "encrypted_content" in item and not isinstance(root_value, str):
         _reject("invalid_encrypted_content")
     root_ciphertext = int(isinstance(root_value, str))
-    output, changed, encrypted, markers, local_images = _project_input_content(
-        raw_output,
-        allow_images=True,
-        encrypted_marker=True,
-        root_ciphertext=root_ciphertext,
-    )
+    empty_tool_outputs = int(raw_output == "" and not root_ciphertext)
+    if empty_tool_outputs:
+        output, changed, encrypted, markers, local_images = (
+            EMPTY_TOOL_OUTPUT_MARKER,
+            True,
+            0,
+            0,
+            0,
+        )
+    else:
+        output, changed, encrypted, markers, local_images = _project_input_content(
+            raw_output,
+            allow_images=True,
+            encrypted_marker=True,
+            root_ciphertext=root_ciphertext,
+        )
     outputs.add(valid_call_id)
     projected: JsonObject = {"type": item_type, "call_id": valid_call_id, "output": output}
     if caller is not None:
@@ -434,6 +445,7 @@ def _project_output(
         "encrypted_blocks": encrypted,
         "omission_markers": markers,
         "local_image_items": local_images,
+        "empty_tool_outputs": empty_tool_outputs,
     }
 
 
@@ -449,6 +461,7 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
         "encrypted_blocks": 0,
         "omission_markers": 0,
         "local_image_items": 0,
+        "empty_tool_outputs": 0,
         "changed_items": 0,
     }
     for raw_item in items:
@@ -512,6 +525,7 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes | None, str]:
         "encrypted_blocks": 0,
         "omission_markers": 0,
         "local_image_items": 0,
+        "empty_tool_outputs": 0,
         "changed_items": 0,
     }
     try:
@@ -544,6 +558,7 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes | None, str]:
         f"encrypted_blocks={metrics['encrypted_blocks']} "
         f"omission_markers={metrics['omission_markers']} "
         f"local_image_items={metrics['local_image_items']} "
+        f"empty_tool_outputs={metrics['empty_tool_outputs']} "
         f"include_trimmed={include_trimmed}"
     )
 
