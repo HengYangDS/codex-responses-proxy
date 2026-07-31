@@ -21,7 +21,7 @@
 
 - [x] 3.1 Update canonical documentation and patch-release metadata to match the
   implemented behavior.
-- [ ] 3.2 Run focused tests, release checks, Markdown, Ruff, format, types,
+- [x] 3.2 Run focused tests, release checks, Markdown, Ruff, format, types,
   structure, docstrings, independent statement/branch coverage, Python
   3.12-3.14 behavior, OpenSpec, and HEAD-bound ETHOS proof.
 - [ ] 3.3 Land through candidate and accepted roles; publish independent signed
