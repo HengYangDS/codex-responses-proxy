@@ -2,13 +2,13 @@
 id = "release-gate-contract-repair-20260730"
 subject = "codex-dmx-proxy:ci-diagnostics"
 state = "active"
-summary = "Local evidence binds semantic release-gate validation and warning-free GitLab dependency bootstrap."
+summary = "Dated local evidence records release-gate checks and GitLab dependency-bootstrap diagnostics."
 
 [evidence]
 dated = "evidence/chronicle/release-gate-contract-repair-20260730/2026-07-30.md"
 sha256 = "b088174ad50b43ae982f2928105f759af5bceea7556a1d011b47bb115322652b"
 evidence_ids = ["evidence:release-gate-contract-repair-20260730"]
-binding = "local release-gate and diagnostic-cleanliness verification for v1.0.38"
+binding = "dated local release-gate and diagnostic-cleanliness checks for v1.0.38"
 verifier = "digest_only"
 tests = [
   "PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh",
@@ -26,7 +26,7 @@ owner = "codex-dmx-proxy"
 scope = "Local release-gate repair evidence only; hosted CI, publication, installation, and runtime acceptance remain external."
 
 [carriers]
-openspec = "openspec/changes/release-gate-contract-repair"
+openspec = "openspec/changes/archive/2026-07-30-release-gate-contract-repair"
 fallback = "Retain the serving v1.0.35 runtime and the exact recovery transaction until a later release completes both Forge planes."
 kill_signal = "A release gate still depends on private implementation text or a hosted dependency bootstrap emits an unhandled warning."
 

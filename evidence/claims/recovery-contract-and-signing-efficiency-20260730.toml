@@ -26,7 +26,7 @@ owner = "codex-dmx-proxy"
 scope = "Local contract and projection evidence only; hosted CI, publication, installation, and runtime acceptance remain external."
 
 [carriers]
-openspec = "openspec/changes/recovery-contract-and-signing-efficiency"
+openspec = "openspec/changes/archive/2026-07-30-recovery-contract-and-signing-efficiency"
 fallback = "Use the existing low-level provider projection scripts with a caller-owned exact-key agent."
 kill_signal = "Canonical recovery prose again conflates rollback and candidate manifest identity, or provider projection starts one agent per commit."
 
