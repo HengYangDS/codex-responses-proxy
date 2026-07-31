@@ -45,7 +45,7 @@ export GIT_CONFIG_GLOBAL="$global_config"
 git config --file "$global_config" url."https://github.com.invalid/".insteadOf git@github.com:
 
 git init -q --bare "$remote"
-git init -q -b main "$source"
+git init -q -b dev "$source"
 git -C "$source" config user.name 'Yang HENG'
 git -C "$source" config user.email 'heng.yang.ds@hotmail.com'
 git -C "$source" config user.useConfigOnly true
@@ -69,14 +69,14 @@ FILTER_BRANCH_SQUELCH_WARNING=1 git -C "$bootstrap" filter-branch -f --env-filte
   GIT_AUTHOR_EMAIL="hengyang.2003@tsinghua.org.cn"
   GIT_COMMITTER_NAME="Yang HENG"
   GIT_COMMITTER_EMAIL="hengyang.2003@tsinghua.org.cn"
-' -- main >/dev/null 2>&1
+' -- dev >/dev/null 2>&1
 git -C "$bootstrap" for-each-ref --format='%(refname)' refs/original/ | while IFS= read -r ref; do
   git -C "$bootstrap" update-ref -d "$ref"
 done
 git -C "$bootstrap" -c user.name='Yang HENG' -c user.email=hengyang.2003@tsinghua.org.cn \
   -c gpg.format=ssh -c user.signingkey="$key" tag -s -a v1.0.0 -m 'GitHub release identity'
 git -C "$bootstrap" remote set-url origin "file://$remote"
-git -C "$bootstrap" -c core.hooksPath=/dev/null push -q origin main refs/tags/v1.0.0
+git -C "$bootstrap" -c core.hooksPath=/dev/null push -q origin dev:main refs/tags/v1.0.0
 remote_tag_before=$(git -C "$remote" rev-parse refs/tags/v1.0.0)
 
 printf 'second\n' >> "$source/README.md"
@@ -96,7 +96,7 @@ git -C "$source" remote add github git@github.com:test/codex-dmx-proxy.git
     DMX_TEST_SIGNING_LOG="$signing_log" \
     DMX_GITHUB_SSH_SIGNING_PROGRAM="$signing_wrapper" \
     DMX_GITHUB_REMOTE=github \
-    sh "$script" --branch main
+    sh "$script"
 ) >/dev/null
 
 [ "$(grep -c -- '-Y sign' "$signing_log")" -eq 2 ] || {
@@ -117,5 +117,25 @@ for commit in $(git -C "$remote" rev-list main); do
   git -C "$remote" -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="$tmp/allowed/github" \
     verify-commit "$commit" >/dev/null
 done
+
+runner_stdout="$tmp/runner.stdout"
+runner_stderr="$tmp/runner.stderr"
+agent_socket="/tmp/codex-dmx-proxy-provider-agent.$$.sock"
+(
+  eval "$(/usr/bin/ssh-agent -a "$agent_socket" -s)" >/dev/null
+  trap '/usr/bin/ssh-agent -k >/dev/null; rm -f "$agent_socket"' EXIT HUP INT TERM
+  ssh-add "$key" >/dev/null 2>&1
+  set +e
+  DMX_GITHUB_SIGNING_KEY="$key.pub" \
+    python3 "$root/scripts/run-provider-projection.sh" github --invalid \
+    >"$runner_stdout" 2>"$runner_stderr"
+  status=$?
+  set -e
+  [ "$status" -eq 2 ] || { echo "provider runner changed child exit status: $status" >&2; exit 1; }
+)
+if grep -E 'Traceback|CalledProcessError' "$runner_stdout" "$runner_stderr" >/dev/null; then
+  echo 'provider runner leaked a Python traceback for child failure' >&2
+  exit 1
+fi
 
 echo 'GitHub provider projection isolation contract: OK'

@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-07-31
+goal: Bind GitHub projection to the explicit canonical source ref and keep
+  wrapper failures traceback-free.
