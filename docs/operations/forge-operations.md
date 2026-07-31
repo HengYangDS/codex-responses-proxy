@@ -35,6 +35,13 @@ overwrites provider-native tags. Historical tags and Releases remain immutable
 evidence of their original commit objects; a later normalized branch does not
 retroactively change those records.
 
+The supported GitHub command freezes the current clean accepted `HEAD` by
+default and recreates only the remote `main` target. `--source-ref <ref>` may
+bind another explicit canonical commit when required; source selection never
+depends on, creates, or moves a local `main` branch. A rejected projection keeps
+the child command's diagnostic and exit status without adding a Python
+traceback.
+
 The runner admits the exact provider signing key once per projection command.
 It reuses a caller-owned agent only when that exact key is already loaded;
 otherwise it creates one disposable agent, loads only that provider key through

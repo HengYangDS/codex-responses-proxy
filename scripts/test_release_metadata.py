@@ -360,6 +360,23 @@ def test_provider_projection_re_signs_every_commit() -> None:
         ),
         "provider projection signing runner",
     )
+    require_tokens(
+        github,
+        (
+            "source_ref",
+            "target_branch=main",
+            'git rev-parse --verify --end-of-options "$source_ref^{commit}"',
+        ),
+        "GitHub provider source contract",
+    )
+    require(
+        "--branch" not in github, "GitHub projection must not overload source and target branch"
+    )
+    require_tokens(
+        runner,
+        ("except subprocess.CalledProcessError as exc", "raise SystemExit(exc.returncode)"),
+        "provider projection failure boundary",
+    )
 
 
 def test_prune_tags_removes_deleted_remote_tag() -> None:

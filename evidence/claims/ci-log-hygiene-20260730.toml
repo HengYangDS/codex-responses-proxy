@@ -2,11 +2,11 @@
 id = "ci-log-hygiene-20260730"
 subject = "codex-dmx-proxy:ci-log-hygiene"
 state = "active"
-summary = "Dated evidence bounds successful-job diagnostic integrity through Python execution and reused self-hosted checkout."
+summary = "Dated evidence bounds successful-job diagnostic integrity through Python execution, checkout, and provider projection."
 
 [evidence]
 dated = "evidence/chronicle/ci-log-hygiene-20260730/2026-07-31.md"
-sha256 = "4142555531b3a9273f57262a0661e92ac0b6e6e004d790ee12325151c8500336"
+sha256 = "58bcb8fc7a69174e207285d274f89479ad2ac99eb4497235eeac2415a2fef42d"
 evidence_ids = ["evidence:ci-log-hygiene-20260730"]
 binding = "current hosted-defect observation and local TDD mechanism proof for reused GitHub self-hosted checkout"
 verifier = "digest_only"
@@ -26,7 +26,7 @@ owner = "codex-dmx-proxy"
 scope = "The dated Chronicle covers one observed hosted checkout warning and local workflow-contract proof; post-fix hosted CI, publication, installation, runtime, and immutable reclose remain external until refreshed."
 
 [carriers]
-openspec = "openspec/changes/archive/2026-07-31-ci-checkout-warning-closeout"
+openspec = "openspec/changes/provider-projection-source-contract"
 fallback = "Revert the workflow commit if checkout or hosted verification regresses; no runner-global or installed-runtime state needs rollback."
 kill_signal = "A successful job can emit an actual prohibited diagnostic, the abandoned-commit warning recurs, or the temporary checkout ref survives the job."
 
