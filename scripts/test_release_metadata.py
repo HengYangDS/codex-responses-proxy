@@ -453,7 +453,7 @@ def test_github_release_metadata_is_strict() -> None:
 
 
 def test_gitlab_release_metadata_gate_selects_validation_by_ref() -> None:
-    """Require complete history and branch/tag-specific metadata validation."""
+    """Require tag, published-main, and pending-main metadata validation."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     block = ci_block(ci, "verify-release-metadata:", "\n\nverify-release-tag:")
@@ -463,14 +463,18 @@ def test_gitlab_release_metadata_gate_selects_validation_by_ref() -> None:
         (
             'if [ -n "${CI_COMMIT_TAG:-}" ]; then',
             'python scripts/check_release_metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"',
+            'elif git show-ref --verify --quiet "refs/tags/v$(cat VERSION)"; then',
+            "python scripts/check_release_metadata.py --provider gitlab",
             "else",
             "python scripts/check_release_metadata.py --provider gitlab --prepare-release",
         ),
         "GitLab release metadata ref dispatch",
     )
     require(
-        block.index('--tag "$CI_COMMIT_TAG"') < block.index("--prepare-release"),
-        "GitLab release metadata must select tag validation before the branch fallback",
+        block.index('--tag "$CI_COMMIT_TAG"')
+        < block.index('show-ref --verify --quiet "refs/tags/v$(cat VERSION)"')
+        < block.index("--prepare-release"),
+        "GitLab release metadata modes are not ordered by exact release state",
     )
 
 
