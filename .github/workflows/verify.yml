@@ -24,10 +24,23 @@ jobs:
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
     steps:
+      - name: Retain pre-checkout HEAD
+        run: |
+          set -euo pipefail
+          ref=refs/codex-dmx-proxy/runner-checkout-retained
+          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+          git update-ref -d "$ref"
+          git rev-parse --verify HEAD >/dev/null 2>&1 || exit 0
+          git update-ref "$ref" HEAD
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
+      - name: Drop retained pre-checkout HEAD
+        if: always()
+        run: |
+          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+          git update-ref -d refs/codex-dmx-proxy/runner-checkout-retained
       - name: Compile and test
         run: |
           set -euo pipefail
@@ -64,10 +77,23 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]
     timeout-minutes: 15
     steps:
+      - name: Retain pre-checkout HEAD
+        run: |
+          set -euo pipefail
+          ref=refs/codex-dmx-proxy/runner-checkout-retained
+          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+          git update-ref -d "$ref"
+          git rev-parse --verify HEAD >/dev/null 2>&1 || exit 0
+          git update-ref "$ref" HEAD
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
           fetch-depth: 0
           fetch-tags: true
+      - name: Drop retained pre-checkout HEAD
+        if: always()
+        run: |
+          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+          git update-ref -d refs/codex-dmx-proxy/runner-checkout-retained
       - name: Fetch the exact annotated tag object
         if: github.ref_type == 'tag'
         run: |
@@ -101,7 +127,20 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]
     timeout-minutes: 15
     steps:
+      - name: Retain pre-checkout HEAD
+        run: |
+          set -euo pipefail
+          ref=refs/codex-dmx-proxy/runner-checkout-retained
+          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+          git update-ref -d "$ref"
+          git rev-parse --verify HEAD >/dev/null 2>&1 || exit 0
+          git update-ref "$ref" HEAD
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - name: Drop retained pre-checkout HEAD
+        if: always()
+        run: |
+          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+          git update-ref -d refs/codex-dmx-proxy/runner-checkout-retained
       - name: Verify lint, format, types, structure, docstrings, and product branch coverage
         run: |
           set -euo pipefail

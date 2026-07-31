@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-07-31
+goal: Retain the previous detached runner HEAD only for checkout, then remove
+  the temporary ref without changing runner-global Git configuration.
