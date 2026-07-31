@@ -2,13 +2,13 @@
 id = "dmxapi-reliability-closeout-20260731"
 subject = "codex-dmx-proxy:provider-portable-responses"
 state = "active"
-summary = "Local evidence binds the empty-tool-output repair to its narrow projection owner and fail-closed boundaries."
+summary = "Dated evidence records the empty-tool-output repair, v1.0.45 release, installed runtime, and bounded continuity observations."
 
 [evidence]
 dated = "evidence/chronicle/dmxapi-reliability-closeout-20260731/2026-07-31.md"
-sha256 = "790e479f86d154d086f7aa1fb689c8005c76e98a2e64928b255f9d7992d37e36"
+sha256 = "e1ff022fba7cd01df9c5dc949c63be034f3cb552c85c5fdba4afb36b44f33b2b"
 evidence_ids = ["evidence:dmxapi-reliability-closeout-20260731"]
-binding = "released v1.0.44 observation plus historical v1.0.45 source proof at 2f1f57f907976dffac2317f75bcd42962721fd98"
+binding = "historical source, dual-Forge release, installation, and runtime observations for v1.0.45 at tree a5c3e878139e7d817b0649fca04364a38ba3722c"
 verifier = "digest_only"
 tests = [
   "for py in python3.12 python3.13 python3.14; do PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS=error \"$py\" tests/test_provider_portable_responses.py; done",
@@ -18,6 +18,9 @@ tests = [
   "python3.12 scripts/check_markdown_presentation.py",
   "python3.12 scripts/test_release_metadata.py",
   "openspec validate --all --strict --json",
+  "ethos quality claims --json",
+  "ethos quality evidence-freshness --json",
+  "python3.14 ~/.codex/dmx-proxy/control.py status --json",
 ]
 
 [evidence.freshness]
@@ -25,12 +28,12 @@ mode = "historical"
 
 [boundary]
 owner = "codex-dmx-proxy"
-scope = "Observed replay failure and historical commit-bound source proof only; hosted CI, publication, installation, continuity, and closeout remain later stages."
+scope = "Dated observations cover source gates, Forge APIs and CI, installed runtime status, and continued user-visible task interaction; they do not establish zero runtime failures or correlate private conversation content to individual request IDs."
 
 [carriers]
 openspec = "openspec/changes/archive/2026-07-31-dmxapi-reliability-closeout"
-fallback = "Retain the serving v1.0.44 payload until a later signed release completes source, Forge, installation, and continuity gates."
-kill_signal = "Empty ordinary dialogue becomes accepted, an invalid pair reaches upstream, or empty_text_content remains after deployment."
+fallback = "Keep the installed v1.0.45 payload and signed release receipts; restore the exact transaction-bound predecessor if runtime identity or reliability counters regress."
+kill_signal = "Empty ordinary dialogue becomes accepted, an invalid pair reaches upstream, empty_text_content recurs, or bounded 503 responses return after deployment."
 
 [promotion]
 targets = [

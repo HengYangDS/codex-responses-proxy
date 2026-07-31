@@ -8,7 +8,7 @@ summary = "Local evidence binds the two-projection recovery repair."
 dated = "evidence/chronicle/recovery-runtime-projection-20260730/2026-07-30.md"
 sha256 = "ed06f40d221b854b61552dc6405701ac1ef0fc5e0f56bc1be9a2f8c33949b73f"
 evidence_ids = ["evidence:recovery-runtime-projection-20260730"]
-binding = "retained 1.0.35 runtime and committed 1.0.36 disk projection plus locally verified 1.0.41 repair"
+binding = "retained 1.0.35 runtime, committed 1.0.36 disk projection, and dated local 1.0.41 repair observations"
 verifier = "digest_only"
 tests = [
   "python3 -m unittest tests.test_payload_transactions",
@@ -25,7 +25,7 @@ owner = "codex-dmx-proxy"
 scope = "Local recovery-contract evidence only; hosted CI, publication, installation, and runtime acceptance remain external."
 
 [carriers]
-openspec = "openspec/changes/recovery-runtime-projection"
+openspec = "openspec/changes/archive/2026-07-30-recovery-runtime-projection"
 fallback = "Keep the old listener serving and preserve the recovery transaction."
 kill_signal = "A valid old runtime plus committed candidate projection remains impossible to recover."
 
