@@ -2,18 +2,19 @@
 id = "ci-log-hygiene-20260730"
 subject = "codex-dmx-proxy:ci-log-hygiene"
 state = "active"
-summary = "Local evidence bounds the repair that rejects hidden Python diagnostics in successful test jobs."
+summary = "Dated evidence bounds successful-job diagnostic integrity through Python execution and reused self-hosted checkout."
 
 [evidence]
-dated = "evidence/chronicle/ci-log-hygiene-20260730/2026-07-30.md"
-sha256 = "127f693b43fe02dce05bed2788cf6de2f30f32fe823868868cbd6fe465560424"
+dated = "evidence/chronicle/ci-log-hygiene-20260730/2026-07-31.md"
+sha256 = "4142555531b3a9273f57262a0661e92ac0b6e6e004d790ee12325151c8500336"
 evidence_ids = ["evidence:ci-log-hygiene-20260730"]
-binding = "local diagnostic-cleanliness verification bound to the current repair scope"
+binding = "current hosted-defect observation and local TDD mechanism proof for reused GitHub self-hosted checkout"
 verifier = "digest_only"
 tests = [
   "PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh",
   "for py in python3.12 python3.13 python3.14; do \"$py\" scripts/run-python-tests.py --compile; done",
-  "python3 scripts/check_release_metadata.py --prepare-release",
+  "sh scripts/test-github-actions-contract.sh",
+  "python3 scripts/check_release_metadata.py --provider gitlab",
   "openspec validate --all --strict --json",
 ]
 
@@ -22,26 +23,17 @@ mode = "historical"
 
 [boundary]
 owner = "codex-dmx-proxy"
-scope = "Local CI diagnostic repair evidence only; hosted CI, publication, installation, and runtime remain external."
+scope = "The dated Chronicle covers one observed hosted checkout warning and local workflow-contract proof; post-fix hosted CI, publication, installation, runtime, and immutable reclose remain external until refreshed."
 
 [carriers]
-openspec = "openspec/changes/archive/2026-07-30-ci-log-hygiene"
-fallback = "Retain v1.0.35 and reject publication until the clean-diagnostic candidate completes both Forge planes."
-kill_signal = "A successful test job can still emit an unhandled traceback or Python warning."
+openspec = "openspec/changes/ci-checkout-warning-closeout"
+fallback = "Revert the workflow commit if checkout or hosted verification regresses; no runner-global or installed-runtime state needs rollback."
+kill_signal = "A successful job can emit an actual prohibited diagnostic, the abandoned-commit warning recurs, or the temporary checkout ref survives the job."
 
 [promotion]
 targets = [
-  ".ethos/profile.toml",
+  ".github/workflows/release.yml",
   ".github/workflows/verify.yml",
-  ".gitlab-ci.yml",
-  "CHANGELOG.md",
-  "VERSION",
-  "codex_dmx_proxy/deployment/handoff.py",
-  "docs/governance/release-and-change-policy.md",
   "openspec/specs/ci-diagnostics/spec.md",
-  "scripts/run-python-quality.sh",
-  "scripts/run-python-tests.py",
-  "tests/support/handoff.py",
-  "tests/test_handoff_controller.py",
-  "tests/test_quality_contract.py",
+  "scripts/test-github-actions-contract.sh",
 ]
