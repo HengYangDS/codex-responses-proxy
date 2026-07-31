@@ -24,10 +24,12 @@
 - [x] 3.2 Run focused tests, release checks, Markdown, Ruff, format, types,
   structure, docstrings, independent statement/branch coverage, Python
   3.12-3.14 behavior, OpenSpec, and HEAD-bound ETHOS proof.
-- [ ] 3.3 Land through candidate and accepted roles; publish independent signed
+- [ ] 3.3 Continue from the archived carrier: land through candidate and
+  accepted roles; publish independent signed
   GitLab and GitHub histories, current-main CI, tag CI, releases, and tree
   parity.
-- [ ] 3.4 Transactionally install only the published release and prove listener,
+- [ ] 3.4 Continue from the archived carrier: transactionally install only the
+  published release and prove listener,
   receipt, manifest, serving digest, route authority, and accepting state.
 
 ## 4. Runtime and closeout
