@@ -229,6 +229,7 @@ class ForgeAdapterContracts(unittest.TestCase):
             },
         ]
         with (
+            mock.patch.object(github.hosted, "executable", return_value="gh"),
             mock.patch.object(github, "_api", side_effect=responses[:2]),
             mock.patch.object(
                 github,
@@ -251,6 +252,7 @@ class ForgeAdapterContracts(unittest.TestCase):
             )
         responses[0] = {"object": {"type": "tag", "sha": "c" * 40}}
         with (
+            mock.patch.object(github.hosted, "executable", return_value="gh"),
             mock.patch.object(github, "_api", side_effect=responses[:1]),
             self.assertRaises(github.GitHubProofError),
         ):

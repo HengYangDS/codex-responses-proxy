@@ -556,6 +556,7 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
     require_tokens(
         block,
         (
+            'GIT_DEPTH: "0"',
             "python tools/quality/tests.py",
             f"{APT_INSTALL} git openssh-client",
         ),

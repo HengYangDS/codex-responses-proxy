@@ -19,6 +19,10 @@ variables:
 .python-verify:
   stage: verify
   image: python:${PYTHON_VERSION}-slim
+  variables:
+    # The canonical test inventory includes release chronology contracts.
+    # Every matrix interpreter therefore needs the same complete Git history.
+    GIT_DEPTH: "0"
   before_script:
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends git openssh-client
