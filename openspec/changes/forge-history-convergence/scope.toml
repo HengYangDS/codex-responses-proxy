@@ -1,0 +1,8 @@
+schema_version = 1
+paths = [
+  "docs/governance/release-and-change-policy.md",
+  "evidence/claims/ci-log-hygiene-20260730.toml",
+  "openspec/changes/forge-history-convergence/**",
+  "openspec/changes/archive/*-forge-history-convergence/**",
+  "openspec/specs/ci-diagnostics/**",
+]

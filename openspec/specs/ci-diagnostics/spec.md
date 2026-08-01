@@ -143,56 +143,68 @@ inputs are unavailable.
 - **THEN** the direct projector or tagger can sign without a maintainer-specific
   path, password prompt, Keychain bridge, private PTY, or temporary agent.
 
-### Requirement: Provider projection separates source and target authority
+### Requirement: Provider identities are independent
 
-Forge publication SHALL project one accepted content history into independent
-GitLab and GitHub commit identity domains. GitLab commits SHALL use the selected
-GitLab email and trust anchor. GitHub commits SHALL use the selected GitHub email
-and trust anchor while preserving the canonical ordered tree history, messages,
-dates, and parent topology. Publication SHALL be append-only and SHALL NOT force
-update either target. Expected child failures SHALL preserve their exit status
-without emitting a Python traceback.
+GitLab SHALL retain accepted commits in its verified identity domain. GitHub
+SHALL use its verified identity domain for an equivalent projection.
 
-#### Scenario: Accepted source is dev
+#### Scenario: Forge emails differ
 
-- **WHEN** the clean canonical checkout is attached to `dev` and its current
-  `HEAD` is selected for GitHub projection
-- **THEN** GitHub `main` receives the equivalent GitHub-identity history
-- **AND** its tip tree and ordered tree history equal the canonical source
-- **AND** no canonical ref or existing provider tag is moved or rewritten.
+- **WHEN** the two Forges require different verified emails
+- **THEN** their commit IDs differ
+- **AND** their corresponding trees are equal.
 
-#### Scenario: Different verified emails publish equivalent content
+### Requirement: Projection continuity is append-only
 
-- **WHEN** accepted GitLab source and GitHub require different verified emails
-- **THEN** their `main` commit IDs differ
-- **AND** their tip tree and ordered tree history are equal
-- **AND** every commit verifies under its own Forge email and trust anchor.
+A provider projection SHALL preserve messages, dates, ordered trees, and parent
+topology after its admitted base and SHALL only fast-forward the target.
 
-#### Scenario: GitHub already contains an admitted projection
+#### Scenario: GitHub already has an admitted base
 
-- **WHEN** a later canonical GitLab commit is projected
-- **THEN** the existing GitHub tip remains an ancestor of the new GitHub tip
-- **AND** only the missing canonical descendants are projected
-- **AND** the command emits an explicit source-to-provider mapping receipt.
+- **WHEN** accepted source advances after the mapped GitHub tip
+- **THEN** only missing descendants are projected
+- **AND** the old GitHub tip remains an ancestor of the new tip.
 
-#### Scenario: Target history cannot be mapped uniquely
+### Requirement: Projection requires one lineage match
 
-- **WHEN** the target tip has no unique identity-neutral canonical match
+The projector SHALL require exactly one identity-neutral source match for an
+existing provider tip before creating commits or updating refs.
+
+#### Scenario: A target match is absent or ambiguous
+
+- **WHEN** the provider tip has zero or multiple source matches
 - **THEN** projection fails before any ref update
-- **AND** it offers no force or history-rewrite escape.
+- **AND** it offers no force or rewrite escape.
 
-#### Scenario: Projection command rejects its invocation
+### Requirement: Projection failures retain bounded diagnostics
 
-- **WHEN** a provider projection child returns a nonzero status with its own
-  diagnostic
-- **THEN** the signing runner exits with that status
-- **AND** it does not append `Traceback` or `CalledProcessError` output.
+The publication runner SHALL return a failed child status without adding a
+Python exception traceback.
 
-#### Scenario: Active GitLab signing key advances
+#### Scenario: A projection child rejects its invocation
 
-- **WHEN** a provider-registered GitLab signing key replaces an unrecoverable
-  predecessor for new projection commits and tags
-- **THEN** the runner, projection, tag command, OpenSSH agent capability, and
-  committed trust anchor select the same public-key fingerprint
-- **AND** predecessor anchors remain available to verify immutable history.
+- **WHEN** the child exits nonzero with its own diagnostic
+- **THEN** the runner returns that status
+- **AND** it emits no `Traceback` or `CalledProcessError` text.
 
+### Requirement: Unpublished canonical descendants may converge
+
+Accepted descendants not present on either Forge SHALL be replayed onto the
+exact GitLab tip only after that tip has one identity-neutral accepted match.
+
+#### Scenario: Accepted and GitLab histories are disconnected
+
+- **WHEN** the histories match uniquely before unpublished accepted commits
+- **THEN** only those descendants are replayed and re-signed
+- **AND** duplicate-history merges and force updates remain forbidden.
+
+### Requirement: Active GitLab signing key advances explicitly
+
+New GitLab commits and tags SHALL use the selected registered fingerprint while
+predecessor trust anchors remain available for immutable history.
+
+#### Scenario: The active key changes
+
+- **WHEN** a registered successor key is selected
+- **THEN** runner, projection, tag command, agent, and trust input agree
+- **AND** older reachable commits remain verifiable.
