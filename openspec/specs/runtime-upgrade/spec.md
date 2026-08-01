@@ -8,14 +8,21 @@ protocol-v2 upgrades.
 ### Requirement: Source-side upgrade authority
 
 Released-payload mutation SHALL remain owned by the source-side installer after
-publication and signed-source admission; installed control must not accept an
-arbitrary upgrade payload.
+signed-source admission; installed control must not accept an arbitrary upgrade
+payload. Forge publication evidence SHALL NOT be an installation input.
 
 #### Scenario: Different release requested
 
 - **WHEN** an operator needs to install payload bytes from a different release
 - **THEN** the operation runs through the source-side installer and its release
   transaction rather than installed control
+
+#### Scenario: One signed release source selected
+
+- **WHEN** an operator installs an exact signed release checkout under an
+  external trust anchor
+- **THEN** installation requires no GitLab, GitHub, hosted-CI, or release-record
+  credential or coordinate
 
 ### Requirement: Recovery binds the live prior runtime
 
@@ -105,4 +112,3 @@ prior accepting runtime.
 - **WHEN** termination, supervision replacement, or successor proof fails
 - **THEN** the installer restores the prior projection and reports failure unless
   the prior accepting runtime is also proved
-

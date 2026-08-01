@@ -3,6 +3,7 @@ primary_invariant = "A cross-version handoff proves the committed successor payl
 routing_question = "Does this change alter released-payload handoff, recovery, or runtime acceptance?"
 decision_axes = ["lifecycle", "surface", "authority"]
 boundary_rules = [
+  "Installation consumes one signed release source and never depends on Forge publication evidence.",
   "The old listener validates committed successor bytes before preparing a child.",
   "The child independently freezes and echoes the same successor identity.",
   "Recovery restores only an exact retained rollback snapshot before a new release transaction begins.",
@@ -11,7 +12,7 @@ boundary_rules = [
 aliases = []
 
 [owner]
-package = "codex-dmx-proxy"
+package = "codex-responses-proxy"
 scope = "Cross-version protocol-v2 released-payload upgrade and recovery"
 
 [recommended_facets]

@@ -4,117 +4,101 @@ Status: canonical.
 
 ## Model
 
-GitLab and GitHub are independent, complete forge planes. They preserve the
-same source trees, parent topology, messages, author dates, committer dates, and
-release version while retaining separate provider-signed commit histories,
-signed tags, CI execution, and release records. GitLab is the canonical source
-checkout; GitHub is its provider-identity projection. Neither forge is a mere
-backup or source snapshot.
+GitLab and GitHub are independent identity and publication planes for one
+forward-only content history. Product source owns no Forge URL, organization, account, author,
+credential, trust anchor, or signing key. Repository-local remotes select the
+transport target; protected execution inputs select publication actors and
+trust.
 
-Every reachable commit on a provider `main` has one provider-native author and
-committer identity and a signature accepted by that provider's tracked trust
-anchor. The Forge UI must consequently report those commits as `Verified`.
-Contributor views are projections of this complete commit-history invariant;
-they are not repaired by profile aliases or display-name changes.
+A canonical GitLab commit is created once in an isolated development lane,
+reviewed, tested, and signed before it lands. GitLab publishes that object.
+GitHub appends an independently signed identity projection with equal trees,
+messages, dates, and parent topology. Neither operation force-pushes a branch,
+imports provider-native tag objects, or edits existing remote commits. A remote
+without one unique canonical tree-history match is a human-governed migration
+condition, not permission for automation to guess or rewrite history.
 
-## Synchronization
+## Execution inputs
 
-Normalize GitLab history from a clean source checkout, then project GitHub:
+Publication operators provide untracked identity and trust inputs outside the
+repository. `CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS` and
+`CODEX_RESPONSES_PROXY_GITHUB_COMMIT_ALLOWED_SIGNERS` may admit multiple authorized
+keys, but every current commit must carry its Forge's selected actor email. These
+provider-specific commit identities are provenance, not product defaults.
 
-```bash
-scripts/run-provider-projection.sh gitlab
-scripts/run-provider-projection.sh github
+Forge-native tag actors remain separate. An untracked TOML publication context
+contains one record per Forge:
+
+```toml
+[gitlab]
+actor-name = "publication actor"
+actor-email = "verified-address@example.test"
+active-signing-fingerprint = "SHA256:..."
 ```
 
-Each command builds a fresh isolated clone and uses
-`scripts/rewrite-provider-history.py` to recreate every reachable commit with
-the provider identity and SSH signature. The rewriter preserves tree, parent
-shape, message bytes, author date, and committer date, then verifies every
-rewritten commit before `main` changes under an exact remote-tip lease. It never
-overwrites provider-native tags. Historical tags and Releases remain immutable
-evidence of their original commit objects; a later normalized branch does not
-retroactively change those records.
+Select it through `CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT`. Select tag trust
+through `CODEX_RESPONSES_PROXY_GITLAB_ALLOWED_SIGNERS`,
+`CODEX_RESPONSES_PROXY_GITHUB_ALLOWED_SIGNERS`, or the exact command-specific
+anchor input. These files are deployment identity/trust projections and are
+ignored by Git. They must never become product defaults.
 
-The supported GitHub command freezes the current clean accepted `HEAD` by
-default and recreates only the remote `main` target. `--source-ref <ref>` may
-bind another explicit canonical commit when required; source selection never
-depends on, creates, or moves a local `main` branch. A rejected projection keeps
-the child command's diagnostic and exit status without adding a Python
-traceback.
+## Branch publication
 
-The runner admits the exact provider signing key once per projection command.
-It reuses a caller-owned agent only when that exact key is already loaded;
-otherwise it creates one disposable agent, loads only that provider key through
-the configured askpass bridge, executes the isolated projection, and terminates
-only the agent it created. Per-commit signatures remain independent; repeated
-per-commit Keychain agent creation is not part of the supported workflow.
+From a clean accepted checkout, project both identity domains through one direct
+semantic entrypoint:
+
+```bash
+CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS="$GITLAB_COMMIT_ANCHOR" \
+CODEX_RESPONSES_PROXY_GITHUB_COMMIT_ALLOWED_SIGNERS="$GITHUB_COMMIT_ANCHOR" \
+  sh tools/forge/project.sh --provider gitlab --source-ref HEAD \
+  --map-output "$GITLAB_MAPPING"
+
+CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS="$GITLAB_COMMIT_ANCHOR" \
+CODEX_RESPONSES_PROXY_GITHUB_COMMIT_ALLOWED_SIGNERS="$GITHUB_COMMIT_ANCHOR" \
+  sh tools/forge/project.sh --provider github --source-ref HEAD \
+  --map-output "$GITHUB_MAPPING"
+```
+
+The command verifies canonical source against GitLab identity and trust, reads
+only the selected repository-local remote, uses an isolated clone with ambient
+global Git configuration disabled, and performs an ordinary fast-forward,
+forward-only push.
+GitHub maps the current verified tip to exactly one canonical commit and creates
+only missing descendants. Rejection leaves source and remote refs unchanged.
+
+## Release tags
+
+Each Forge owns an immutable signed annotated tag and formal Release record for
+the same version and tree. Commit and tag objects differ because identity and
+trust planes differ. Tag commands consume the
+same external publication context and require the exact active key to already
+be available through the standard OpenSSH agent interface. They never read a
+password, start an agent, access a personal key path, or retry authentication.
 
 ## Parity audit
 
-Run the read-only audit from the canonical checkout whenever a release is
-considered or housekeeping is performed:
+Run the read-only audit with explicit context and anchors:
 
 ```bash
-python3 scripts/audit-dual-forge-parity.py --json
+python3 tools/forge/audit.py \
+  --gitlab-commit-anchor "$GITLAB_COMMIT_ANCHOR" \
+  --github-commit-anchor "$GITHUB_COMMIT_ANCHOR" \
+  --gitlab-author-email "$GITLAB_AUTHOR_EMAIL" \
+  --github-author-email "$GITHUB_AUTHOR_EMAIL" \
+  --gitlab-tag-anchor "$GITLAB_TAG_ANCHOR" \
+  --github-tag-anchor "$GITHUB_TAG_ANCHOR" \
+  --json
 ```
 
-It uses isolated temporary clones to inspect provider-native tags and verifies:
+It verifies distinct `main` commit IDs, equal tip and ordered tree histories,
+provider-scoped commit identity and trust, overlapping provider-native tag
+signatures and trees, and unexpected branches/worktrees.
+It never pushes, deletes, rewrites, or creates refs. A failed audit proves only
+divergence or incomplete housekeeping.
 
-- GitLab/GitHub `main` tree equality;
-- provider-specific author and committer identity domains;
-- a provider-trusted signature on every reachable commit;
-- overlapping provider-native tag signatures and trees; and
-- absence of non-`main` local or remote branches, plus the current worktree
-  inventory.
+## Authentication and runners
 
-It never pushes, deletes, rewrites, or creates refs. A failed audit is evidence
-of divergence or incomplete housekeeping, not permission to force convergence.
-
-## Release behavior
-
-GitHub verification and release share one repository-scoped local registration:
-`codex-dmx-proxy-github-macos-arm64`. It accepts only trusted `main`, tag, and
-manual workflow revisions; pull-request workflow code does not run on that
-host. Its LaunchAgent, work directory, cache, and registration are a
-repository-scoped evidence boundary and may not serve another repository or
-any GitLab job. A successful separate GitHub-hosted `windows-2025` matrix
-proves the Python `socket.share()`/`socket.fromshare()` process contract for this
-repository; it does not prove an actual user's Windows Scheduled Task host or
-system-wide configuration. GitLab uses its separate project-scoped Docker
-runner selected by `codex-dmx-proxy-gitlab-ci`.
-
-The GitLab tag pipeline and GitHub tag workflow independently verify the
-provider-specific tag signature and create a formal release record. GitHub's
-read-only hosted gate admits the trusted Release job only after the exact tag
-Verify workflow succeeds, so their single trusted repository runner cannot be
-occupied by a release job waiting for its own verifier. Existing
-legacy tags are retained as historical evidence; no release claim for them is
-upgraded retroactively. New release tags must be signed under the active
-provider identity. GitHub tag minting starts from a clean canonical GitLab
-`main` whose exact signed GitLab tag binds `HEAD`. It then fetches the complete
-remote GitHub tag namespace into an isolated checkout, requires the GitHub
-`main` tip to have the same tree, validates the new tag in the GitHub provider
-namespace, and pushes only that tag. It never imports or rewrites GitLab tag
-objects in GitHub.
-
-Publication verification accepts explicit Git remotes without selecting an
-authentication mechanism. Its isolated, noninteractive Git environment clears
-ambient Git configuration and injected credential helpers; API authentication
-remains with `glab` and `gh`. Prefer SSH remotes backed by caller-owned OpenSSH
-configuration or an agent, and never embed a token or password in a remote URL.
-
-## Provider identities
-
-GitLab provenance uses `Yang HENG <heng.yang.ds@hotmail.com>`. GitHub provenance
-uses `Yang HENG <hengyang.2003@tsinghua.org.cn>`. Author and committer must both
-match the relevant identity for every reachable commit. The same signing key
-may be bound to distinct provider identities, but each provider verifies every
-commit and tag against its own committed allowed-signers file.
-
-## Local signing bridge
-
-`scripts/tag-github-release.sh` uses `DMX_GITHUB_SSH_SIGNING_PROGRAM` when it
-is explicitly set; otherwise it uses Git's configured `gpg.ssh.program`. On
-this workstation that setting is a Keychain-aware bridge, so an isolated tag
-clone can sign without assuming its parent shell inherited `SSH_AUTH_SOCK`.
-The command fails closed if no executable signing program is configured.
+Git transport and API authentication are caller-owned external concerns.
+Prefer SSH remotes backed by caller-owned OpenSSH configuration or an agent;
+never embed tokens or passwords in URLs. Runner labels, executable paths, and
+installation roots are adopter deployment policy, not product truth.

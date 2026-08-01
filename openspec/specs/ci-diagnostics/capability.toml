@@ -10,7 +10,7 @@ boundary_rules = [
 aliases = []
 
 [owner]
-package = "codex-dmx-proxy"
+package = "codex-responses-proxy"
 scope = "Python diagnostic integrity across tests, quality gates, and Forge projections"
 
 [recommended_facets]

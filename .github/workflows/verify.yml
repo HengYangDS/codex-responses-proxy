@@ -16,37 +16,25 @@ concurrency:
 jobs:
   python:
     name: Python ${{ matrix.python-version }}
-    # This self-hosted runner accepts only trusted main, tag, and manual revisions.
-    runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]
+    runs-on: macos-15
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
     steps:
-      - name: Retain pre-checkout HEAD
-        run: |
-          set -euo pipefail
-          ref=refs/codex-dmx-proxy/runner-checkout-retained
-          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
-          git update-ref -d "$ref"
-          git rev-parse --verify HEAD >/dev/null 2>&1 || exit 0
-          git update-ref "$ref" HEAD
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
-      - name: Drop retained pre-checkout HEAD
-        if: always()
-        run: |
-          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
-          git update-ref -d refs/codex-dmx-proxy/runner-checkout-retained
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
       - name: Compile and test
         run: |
           set -euo pipefail
-          python="/opt/homebrew/bin/python${{ matrix.python-version }}"
-          test -x "$python"
-          "$python" scripts/run-python-tests.py --compile
+          python --version
+          python tools/quality/tests.py --compile
 
   python-windows:
     name: Python ${{ matrix.python-version }} (Windows)
@@ -69,31 +57,20 @@ jobs:
         run: |
           set -euo pipefail
           python --version
-          python scripts/run-python-tests.py --compile
+          python tools/quality/tests.py --compile
 
   governance:
     name: Governance and presentation
-    # This self-hosted runner accepts only trusted main, tag, and manual revisions.
-    runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Retain pre-checkout HEAD
-        run: |
-          set -euo pipefail
-          ref=refs/codex-dmx-proxy/runner-checkout-retained
-          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
-          git update-ref -d "$ref"
-          git rev-parse --verify HEAD >/dev/null 2>&1 || exit 0
-          git update-ref "$ref" HEAD
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
           fetch-depth: 0
           fetch-tags: true
-      - name: Drop retained pre-checkout HEAD
-        if: always()
-        run: |
-          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
-          git update-ref -d refs/codex-dmx-proxy/runner-checkout-retained
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
       - name: Fetch the exact annotated tag object
         if: github.ref_type == 'tag'
         run: |
@@ -105,55 +82,40 @@ jobs:
       - name: Verify release and source contracts
         run: |
           set -euo pipefail
-          python=/opt/homebrew/bin/python3.14
-          test -x "$python"
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            "$python" scripts/check_release_metadata.py --provider github --tag "$GITHUB_REF_NAME"
+            python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"
           else
-            "$python" scripts/check_release_metadata.py --provider github
+            python tools/release/metadata.py --provider github
           fi
-          "$python" scripts/check_markdown_presentation.py
-          "$python" scripts/check_quality.py
-          sh scripts/test-github-actions-contract.sh
-          sh scripts/test-github-release-workflow.sh
-          sh scripts/test-github-provider-projection.sh
-          sh scripts/test-gitlab-provider-projection.sh
-          sh scripts/test-gitlab-tagging.sh
-          sh scripts/test-github-tagging.sh
-          sh scripts/test-publish-gitlab-release.sh
+          python tools/quality/markdown.py
+          python tools/quality/repository.py
+          sh tests/forge/contracts/test-github-actions.sh
+          sh tests/forge/contracts/test-github-release.sh
+          sh tests/forge/contracts/test-gitlab-tagging.sh
+          sh tests/forge/contracts/test-github-tagging.sh
+          sh tests/release/contracts/test-publish-gitlab.sh
 
   python-quality:
     name: Python quality
-    runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Retain pre-checkout HEAD
-        run: |
-          set -euo pipefail
-          ref=refs/codex-dmx-proxy/runner-checkout-retained
-          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
-          git update-ref -d "$ref"
-          git rev-parse --verify HEAD >/dev/null 2>&1 || exit 0
-          git update-ref "$ref" HEAD
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
-      - name: Drop retained pre-checkout HEAD
-        if: always()
-        run: |
-          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
-          git update-ref -d refs/codex-dmx-proxy/runner-checkout-retained
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
       - name: Verify lint, format, types, structure, docstrings, and product branch coverage
         run: |
           set -euo pipefail
-          python=/opt/homebrew/bin/python3.12
-          tools="$RUNNER_TEMP/codex-dmx-proxy-quality-tools"
-          "$python" -m venv "$tools"
+          tools="$RUNNER_TEMP/codex-responses-proxy-quality-tools"
+          python -m venv "$tools"
           "$tools/bin/python" -m pip install --disable-pip-version-check --no-cache-dir \
-            ruff==0.16.0 ty==0.0.64 coverage==7.13.5
+            ruff==0.16.1 ty==0.0.65 coverage==7.13.5
           ruff="$tools/bin/ruff"
           ty="$tools/bin/ty"
-          test "$($ruff --version)" = "ruff 0.16.0"
+          test "$($ruff --version)" = "ruff 0.16.1"
           case "$($ty --version)" in
-            "ty 0.0.64"|"ty 0.0.64 "*) ;;
+            "ty 0.0.65"|"ty 0.0.65 "*) ;;
             *) exit 1 ;;
           esac
-          PYTHON="$tools/bin/python" RUFF="$ruff" TY="$ty" sh scripts/run-python-quality.sh
+          PYTHON="$tools/bin/python" RUFF="$ruff" TY="$ty" sh tools/quality/run.sh

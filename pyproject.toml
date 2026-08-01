@@ -1,4 +1,4 @@
-[tool.codex-dmx-proxy]
+[tool.codex-responses-proxy]
 distribution = "runtime-files"
 requires-python = ">=3.12"
 version-source = "VERSION"
@@ -16,11 +16,11 @@ select = ["E4", "E7", "E9", "F"]
 ignore = ["E402"]
 
 [tool.ty.environment]
-extra-paths = [".", "scripts", "tests"]
+extra-paths = [".", "tools", "tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["codex_dmx_proxy"]
+source = ["codex_responses_proxy"]
 omit = ["*/__init__.py"]
 
 [tool.coverage.report]
@@ -29,8 +29,11 @@ precision = 2
 fail_under = 95
 exclude_also = ["if __name__ == .__main__.:"]
 
-[tool.codex-dmx-proxy.quality]
+[tool.codex-responses-proxy.quality]
 logic-max-statements = 600
 test-max-statements = 800
-source-roots = ["*.py", "codex_dmx_proxy", "watchdog", "scripts"]
+module-max-eloc = 600
+function-max-eloc = 120
+max-nesting-depth = 8
+source-roots = ["codex_responses_proxy", "tools"]
 test-roots = ["tests"]

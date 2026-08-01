@@ -1,0 +1,16 @@
+schema_version = 1
+paths = [
+  "CONTRIBUTING.md",
+  "docs/governance/release-and-change-policy.md",
+  "docs/operations/forge-operations.md",
+  "evidence/claims/ci-log-hygiene-20260730.toml",
+  "openspec/changes/forge-identity-projection/**",
+  "openspec/changes/archive/*-forge-identity-projection/**",
+  "openspec/specs/ci-diagnostics/**",
+  "tests/forge/**",
+  "tests/governance/test_repository.py",
+  "tests/quality/test_contract.py",
+  "tests/release/test_metadata.py",
+  "tools/forge/**",
+  "tools/release/metadata.py",
+]

@@ -1,8 +1,8 @@
 [claim]
 id = "handoff-upgrade-identity-20260730"
 subject = "codex-dmx-proxy:runtime-upgrade"
-state = "active"
-summary = "Local evidence bounds the repair for cross-version protocol-v2 successor identity and recovery."
+state = "superseded"
+summary = "Superseded by the provider-neutral Codex Responses Proxy terminal product change; historical evidence remains immutable. Local evidence bounds the repair for cross-version protocol-v2 successor identity and recovery."
 
 [evidence]
 dated = "evidence/chronicle/handoff-upgrade-identity-20260730/2026-07-30.md"
