@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ntpath
 import os
 import sys
 import unittest
@@ -62,6 +63,29 @@ class TestRuntimeContext(unittest.TestCase):
         self.assertEqual(environment[config.PROXY_LOG_ENV], "/var/state/proxy/proxy.log")
         self.assertEqual(environment[config.RESPONSES_MAX_CONCURRENCY_ENV], "19")
         self.assertEqual(environment[config.UPSTREAM_TIMEOUT_ENV], "45.0")
+
+    def test_posix_projection_is_not_reinterpreted_by_a_windows_host(self):
+        projected = context.RuntimeContext(
+            home="/home/team",
+            install_dir="/opt/proxy",
+            proxy_script="/opt/proxy/listener.py",
+            watchdog_script="/opt/proxy/watchdog.py",
+            python="/opt/python",
+            log_dir="/var/state/proxy",
+        )
+        with (
+            mock.patch.object(config.os, "path", ntpath),
+            mock.patch.object(config, "home_dir", return_value="/portable/home"),
+            mock.patch.object(config, "data_dir", return_value="/portable/payload"),
+            mock.patch.object(config, "state_dir", return_value="/portable/state"),
+        ):
+            environment = projected.service_environment()
+            created = context.create(python="/portable/python")
+        self.assertEqual(environment[config.PROXY_LOG_ENV], "/var/state/proxy/proxy.log")
+        self.assertEqual(
+            created.proxy_script,
+            "/portable/payload/codex_responses_proxy/listener/entrypoint.py",
+        )
 
     def test_context_rejects_invalid_cli_overrides(self):
         invalid = (

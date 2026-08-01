@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import math
+import ntpath
 import os
+import posixpath
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import PurePosixPath, PureWindowsPath
 
 HOME_ENV = "CODEX_RESPONSES_PROXY_HOME"
 STATE_HOME_ENV = "CODEX_RESPONSES_PROXY_STATE_HOME"
@@ -81,13 +83,23 @@ def home_dir() -> str:
     return os.path.expanduser("~")
 
 
+def path_join(root: str, *parts: str) -> str:
+    """Join an owned path without reinterpreting its existing platform syntax."""
+
+    if PureWindowsPath(root).drive or "\\" in root:
+        return ntpath.join(root, *parts)
+    return posixpath.join(root, *parts)
+
+
 def _absolute_override(source: Mapping[str, str], name: str) -> str | None:
     raw = source.get(name)
     if not raw:
         return None
     if raw == "~" or raw.startswith(("~/", "~\\")):
         home = source.get("HOME") or source.get("USERPROFILE") or home_dir()
-        raw = os.path.join(home, raw[2:]) if len(raw) > 1 else home
+        raw = path_join(home, raw[2:].replace("\\", "/")) if len(raw) > 1 else home
+    if PurePosixPath(raw).is_absolute() or PureWindowsPath(raw).is_absolute():
+        return raw
     return os.path.abspath(raw)
 
 
@@ -99,12 +111,12 @@ def data_dir(environment: Mapping[str, str] | None = None) -> str:
         return override
     home = home_dir()
     if os.name == "nt":
-        base = source.get("LOCALAPPDATA", os.path.join(home, "AppData", "Local"))
-        return os.path.join(base, "codex-responses-proxy")
+        base = source.get("LOCALAPPDATA", path_join(home, "AppData", "Local"))
+        return path_join(base, "codex-responses-proxy")
     if sys.platform == "darwin":
-        return os.path.join(home, "Library", "Application Support", "codex-responses-proxy")
-    base = source.get("XDG_DATA_HOME", os.path.join(home, ".local", "share"))
-    return os.path.join(base, "codex-responses-proxy")
+        return path_join(home, "Library", "Application Support", "codex-responses-proxy")
+    base = source.get("XDG_DATA_HOME", path_join(home, ".local", "share"))
+    return path_join(base, "codex-responses-proxy")
 
 
 def state_dir(environment: Mapping[str, str] | None = None) -> str:
@@ -115,12 +127,12 @@ def state_dir(environment: Mapping[str, str] | None = None) -> str:
         return override
     home = home_dir()
     if os.name == "nt":
-        base = source.get("LOCALAPPDATA", os.path.join(home, "AppData", "Local"))
-        return os.path.join(base, "codex-responses-proxy", "state")
+        base = source.get("LOCALAPPDATA", path_join(home, "AppData", "Local"))
+        return path_join(base, "codex-responses-proxy", "state")
     if sys.platform == "darwin":
-        return os.path.join(home, "Library", "Logs", "codex-responses-proxy")
-    base = source.get("XDG_STATE_HOME", os.path.join(home, ".local", "state"))
-    return os.path.join(base, "codex-responses-proxy")
+        return path_join(home, "Library", "Logs", "codex-responses-proxy")
+    base = source.get("XDG_STATE_HOME", path_join(home, ".local", "state"))
+    return path_join(base, "codex-responses-proxy")
 
 
 def listener_host() -> str:
@@ -170,14 +182,14 @@ def proxy_log_path(environment: Mapping[str, str] | None = None) -> str:
     """Return the proxy log path owned by the portable state root."""
 
     source = os.environ if environment is None else environment
-    return source.get(PROXY_LOG_ENV, str(Path(state_dir(source)) / "proxy.log"))
+    return source.get(PROXY_LOG_ENV, path_join(state_dir(source), "proxy.log"))
 
 
 def watchdog_log_path(environment: Mapping[str, str] | None = None) -> str:
     """Return the watchdog log path owned by the portable state root."""
 
     source = os.environ if environment is None else environment
-    return source.get(WATCHDOG_LOG_ENV, str(Path(state_dir(source)) / "watchdog.log"))
+    return source.get(WATCHDOG_LOG_ENV, path_join(state_dir(source), "watchdog.log"))
 
 
 def load(environment: Mapping[str, str] | None = None) -> Settings:

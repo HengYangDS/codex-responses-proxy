@@ -415,15 +415,22 @@ def start_real_proxy(
     env["PYTHONPATH"] = os.pathsep.join(python_path)
     if extra_env:
         env.update(extra_env)
-    process = subprocess.Popen(
-        [ctx.python, ctx.proxy_script],
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    if not wait_until(lambda: proxy_is_up(ctx.port), timeout=10):
+    with log_path.open("ab") as diagnostic:
+        process = subprocess.Popen(
+            [ctx.python, ctx.proxy_script],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=diagnostic,
+        )
+    if not wait_until(lambda: process.poll() is not None or proxy_is_up(ctx.port), timeout=30):
         terminate_process(process)
         raise RuntimeError("real proxy subprocess did not bind its listening socket in time")
+    if process.poll() is not None:
+        detail = log_path.read_text(encoding="utf-8", errors="replace")[-2000:].strip()
+        raise RuntimeError(
+            "real proxy subprocess exited before binding its listening socket"
+            + (f": {detail}" if detail else "")
+        )
     return process
 
 

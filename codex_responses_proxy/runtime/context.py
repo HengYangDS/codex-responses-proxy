@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 from codex_responses_proxy import errors
@@ -41,8 +40,8 @@ class RuntimeContext:
             config.PROXY_PORT_ENV: str(self.port),
             config.PROXY_PYTHON_ENV: self.python,
             config.PROXY_SCRIPT_ENV: self.proxy_script,
-            config.PROXY_LOG_ENV: os.path.join(self.log_dir, "proxy.log"),
-            config.WATCHDOG_LOG_ENV: os.path.join(self.log_dir, "watchdog.log"),
+            config.PROXY_LOG_ENV: config.path_join(self.log_dir, "proxy.log"),
+            config.WATCHDOG_LOG_ENV: config.path_join(self.log_dir, "watchdog.log"),
             config.PROXY_LOG_MAX_BYTES_ENV: str(self.proxy_log_max_bytes),
             config.PROXY_LOG_BACKUP_COUNT_ENV: str(self.proxy_log_backup_count),
             config.WATCHDOG_LOG_MAX_BYTES_ENV: str(self.watchdog_log_max_bytes),
@@ -87,10 +86,10 @@ def create(
     return RuntimeContext(
         home=config.home_dir(),
         install_dir=install_dir,
-        proxy_script=os.path.join(
+        proxy_script=config.path_join(
             install_dir, "codex_responses_proxy", "listener", "entrypoint.py"
         ),
-        watchdog_script=os.path.join(
+        watchdog_script=config.path_join(
             install_dir, "codex_responses_proxy", "supervision", "watchdog.py"
         ),
         python=python,
