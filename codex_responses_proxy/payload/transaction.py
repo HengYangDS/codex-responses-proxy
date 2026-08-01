@@ -23,31 +23,12 @@ from codex_responses_proxy.payload import (
     digest,
     inventory,
     migration,
+    owned_files,
     projection,
     rollback as payload_rollback,
     source,
     state,
 )
-
-
-RUNTIME_PAYLOAD_FILES = inventory.RUNTIME_FILES
-SERVING_PAYLOAD_FILES = inventory.SERVING_FILES
-TRANSACTION_JOURNAL_FILENAME = state.TRANSACTION_JOURNAL_FILENAME
-INSTALLED_RELEASE_STATE_SCHEMA = state.INSTALLED_RELEASE_STATE_SCHEMA
-TRANSACTION_JOURNAL_SCHEMA = state.TRANSACTION_JOURNAL_SCHEMA
-_RETIRED_INSTALL_DIRECTORIES = projection._RETIRED_INSTALL_DIRECTORIES
-_OWNED_PAYLOAD_FILES = projection._OWNED_PAYLOAD_FILES
-
-
-payload_transaction_dir = state.transaction_root
-
-
-_remove_legacy_captures = migration.remove_legacy_captures
-
-
-installed_release_state_path = state.installed_path
-transaction_journal_path = state.journal_path
-transaction_status = state.status
 
 
 def rollback_recovery(
@@ -57,17 +38,17 @@ def rollback_recovery(
 ) -> dict[str, object]:
     """Restore one exact retained transaction bound to its prior live runtime."""
 
-    journal = projection._read_canonical_json(
-        transaction_journal_path(ctx), "payload transaction journal"
+    journal = owned_files.read_canonical_json(
+        state.journal_path(ctx), "payload transaction journal"
     )
     if (
-        journal.get("schema_version") != TRANSACTION_JOURNAL_SCHEMA
+        journal.get("schema_version") != state.TRANSACTION_JOURNAL_SCHEMA
         or journal.get("state") != "recovery_required"
         or not isinstance(journal.get("transaction_id"), str)
         or not isinstance(journal.get("version"), str)
     ):
         raise errors.InstallError("payload recovery transaction is unavailable or invalid")
-    rollback = payload_transaction_dir(ctx) / "rollback"
+    rollback = state.transaction_root(ctx) / "rollback"
     previous = identity.committed_payload(rollback / inventory.ENTRYPOINT)
     if previous is None:
         raise errors.InstallError("payload recovery rollback runtime identity is invalid")
@@ -168,7 +149,7 @@ class PayloadTransaction:
 
         if self._state != "prepared":
             raise errors.InstallError("payload transaction is not prepared")
-        rollback = payload_transaction_dir(self._ctx) / "rollback"
+        rollback = state.transaction_root(self._ctx) / "rollback"
         rollback.mkdir(mode=0o700)
         mutated = False
         try:
@@ -187,7 +168,7 @@ class PayloadTransaction:
             if not ok:
                 raise errors.InstallError(f"committed payload integrity check failed: {detail}")
             self._state = "committed"
-            _write_journal(
+            state.write_journal(
                 self._ctx,
                 transaction_id=self._transaction_id,
                 version=self._version,
@@ -213,16 +194,16 @@ class PayloadTransaction:
 
         if self._state != "committed":
             raise errors.InstallError("payload transaction is not committed")
-        state = {
-            "schema_version": INSTALLED_RELEASE_STATE_SCHEMA,
+        installed = {
+            "schema_version": state.INSTALLED_RELEASE_STATE_SCHEMA,
             "version": self._version,
             "receipt_sha256": self._receipt_sha256,
             "transaction_id": self._transaction_id,
             "runtime": dict(runtime or {}),
         }
-        projection._atomic_write_bytes(
-            installed_release_state_path(self._ctx),
-            digest.canonical_json(state),
+        owned_files.write_bytes(
+            state.installed_path(self._ctx),
+            digest.canonical_json(installed),
             mode=0o600,
         )
         self._state = "finalized"
@@ -233,7 +214,7 @@ class PayloadTransaction:
 
         if self._state == "rolled_back":
             return
-        rollback = payload_transaction_dir(self._ctx) / "rollback"
+        rollback = state.transaction_root(self._ctx) / "rollback"
         if rollback.exists():
             payload_rollback.restore_snapshot(self._ctx, rollback)
         elif self._fresh:
@@ -247,7 +228,7 @@ class PayloadTransaction:
         if self._state != "committed":
             raise errors.InstallError("only a committed transaction can require recovery")
         self._state = "recovery_required"
-        _write_journal(
+        state.write_journal(
             self._ctx,
             transaction_id=self._transaction_id,
             version=self._version,
@@ -264,7 +245,7 @@ def begin_transaction(
 ) -> PayloadTransaction:
     """Claim one admitted release and create its private transaction journal."""
 
-    root = payload_transaction_dir(ctx)
+    root = state.transaction_root(ctx)
     if root.exists() or root.is_symlink():
         raise errors.InstallError(f"payload transaction path already exists: {root}")
     try:
@@ -272,9 +253,9 @@ def begin_transaction(
     except source.PayloadSourceError as exc:
         raise errors.InstallError(str(exc)) from exc
     payload_candidate.validate(blobs, version, receipt_sha256, receipt)
-    previous = _read_installed_release_state(ctx)
+    previous = state.read_installed(ctx)
     if previous is not None:
-        comparison = _compare_versions(version, _require_state_version(previous))
+        comparison = state.compare_versions(version, state.require_version(previous))
         if comparison < 0:
             raise errors.InstallError("released payload downgrade is refused")
         if comparison == 0:
@@ -284,7 +265,7 @@ def begin_transaction(
     root.parent.mkdir(parents=True, exist_ok=True)
     root.mkdir(mode=0o700)
     transaction_id = uuid.uuid4().hex
-    _write_journal(
+    state.write_journal(
         ctx,
         transaction_id=transaction_id,
         version=version,
@@ -305,7 +286,7 @@ def begin_transaction(
 
 
 def _remove_transaction_root(ctx: runtime_context.RuntimeContext) -> None:
-    root = payload_transaction_dir(ctx)
+    root = state.transaction_root(ctx)
     if not root.exists():
         return
     try:
@@ -314,11 +295,3 @@ def _remove_transaction_root(ctx: runtime_context.RuntimeContext) -> None:
         raise errors.InstallError(f"payload transaction cleanup failed: {exc}") from exc
     if root.exists():
         raise errors.InstallError("payload transaction cleanup did not remove the transaction")
-
-
-_write_journal = state.write_journal
-
-
-_read_installed_release_state = state.read_installed
-_require_state_version = state.require_version
-_compare_versions = state.compare_versions

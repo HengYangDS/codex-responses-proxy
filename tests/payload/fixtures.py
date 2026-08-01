@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 from unittest import mock
 
+from codex_responses_proxy.payload import digest as payload_digest
 from codex_responses_proxy.payload import projection as payload_projection
 from codex_responses_proxy.payload import source as payload_source
 from codex_responses_proxy.payload import transaction as payload_transaction
@@ -51,9 +52,7 @@ def released_fixture(version: str = "1.2.3") -> payload_source.ReleasedPayload:
     candidate.peek_blobs.return_value = blobs
     candidate.receipt = receipt
     candidate.version = version
-    candidate.receipt_sha256 = hashlib.sha256(
-        payload_transaction.digest.canonical_json(receipt)
-    ).hexdigest()
+    candidate.receipt_sha256 = hashlib.sha256(payload_digest.canonical_json(receipt)).hexdigest()
     return cast("payload_source.ReleasedPayload", candidate)
 
 

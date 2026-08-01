@@ -19,7 +19,7 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.runtime import context as runtime_context
 from codex_responses_proxy.supervision import process  # noqa: E402
 from codex_responses_proxy.deployment import handoff  # noqa: E402
-from codex_responses_proxy.payload import projection, transaction  # noqa: E402
+from codex_responses_proxy.payload import projection, state as payload_state  # noqa: E402
 from codex_responses_proxy.supervision.select import adapter  # noqa: E402
 
 
@@ -70,7 +70,7 @@ def status(ctx: runtime_context.RuntimeContext) -> dict:
         "service": service,
         "listener_pids": process.verified_proxy_listener_pids(ctx),
         "runtime": _runtime_metrics(ctx),
-        "payload_transaction": transaction.transaction_status(ctx),
+        "payload_transaction": payload_state.status(ctx),
     }
 
 

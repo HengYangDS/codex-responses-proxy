@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy.payload import inventory  # noqa: E402
+from codex_responses_proxy.payload import state as payload_state  # noqa: E402
 from codex_responses_proxy.payload import source as payload_source  # noqa: E402
 from codex_responses_proxy.release import admission as release_admission  # noqa: E402
 from codex_responses_proxy.payload import projection as payload_projection
@@ -214,23 +215,17 @@ class TestReleasedSourceProjectionPipeline(unittest.TestCase):
         ok, detail = payload_projection.verify_payload_manifest(install)
         self.assertTrue(ok, detail)
 
-        journal = json.loads(
-            Path(payload_transaction.transaction_journal_path(install)).read_text(encoding="utf-8")
-        )
+        journal = json.loads(Path(payload_state.journal_path(install)).read_text(encoding="utf-8"))
 
         runtime = {"pid": 1234, "accepting": True}
         transaction.finalize(runtime)
 
-        state = json.loads(
-            Path(payload_transaction.installed_release_state_path(install)).read_text(
-                encoding="utf-8"
-            )
-        )
+        state = json.loads(Path(payload_state.installed_path(install)).read_text(encoding="utf-8"))
         self.assertEqual(state["version"], self.version)
         self.assertEqual(state["receipt_sha256"], admitted.receipt_sha256)
         self.assertEqual(state["transaction_id"], journal["transaction_id"])
         self.assertEqual(state["runtime"], runtime)
-        self.assertFalse(Path(payload_transaction.payload_transaction_dir(install)).exists())
+        self.assertFalse(Path(payload_state.transaction_root(install)).exists())
 
 
 if __name__ == "__main__":

@@ -16,8 +16,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy.payload import identity as listener_identity  # noqa: E402
+from codex_responses_proxy.payload import digest as payload_digest  # noqa: E402
 from codex_responses_proxy.payload import projection as payload_projection  # noqa: E402
-from codex_responses_proxy.payload import transaction as payload_transaction  # noqa: E402
 from codex_responses_proxy import errors  # noqa: E402
 from tests.deployment.fixtures import install_context  # noqa: E402
 from tests.payload.fixtures import install_payload, released_fixture  # noqa: E402
@@ -154,7 +154,7 @@ class TestPayloadIdentity(unittest.TestCase):
             },
         }
         (install / payload_projection.PAYLOAD_MANIFEST_FILENAME).write_bytes(
-            payload_transaction.digest.canonical_json(manifest)
+            payload_digest.canonical_json(manifest)
         )
 
         with self.assertRaisesRegex(errors.InstallError, "file set is unsupported"):
