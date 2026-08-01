@@ -315,6 +315,9 @@ class ScriptedUpstream:
         self.server = _DisconnectAwareHTTPServer(("127.0.0.1", 0), Handler)
         self.port = self.server.server_address[1]
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def start(self) -> None:
+        """Start serving after any subprocess that must avoid a threaded fork."""
         self.thread.start()
 
     def push(self, behavior: UpstreamBehavior) -> None:
@@ -328,9 +331,11 @@ class ScriptedUpstream:
 
     def close(self) -> None:
         """Stop the server and join its owned thread."""
-        self.server.shutdown()
+        if self.thread.is_alive():
+            self.server.shutdown()
         self.server.server_close()
-        self.thread.join(timeout=2)
+        if self.thread.ident is not None:
+            self.thread.join(timeout=2)
 
 
 def write_installed_payload(

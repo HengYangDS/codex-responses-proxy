@@ -38,6 +38,14 @@ SUCCESSOR_TIMEOUT = 20
 class TestRealSubprocessHandoffIntegration(unittest.TestCase):
     """Exercise the complete rolling handoff against owned loopback processes."""
 
+    def test_scripted_upstream_starts_only_after_the_proxy_child_is_spawned(self) -> None:
+        upstream = ScriptedUpstream()
+        self.addCleanup(upstream.close)
+
+        self.assertFalse(upstream.thread.is_alive())
+        upstream.start()
+        self.assertTrue(upstream.thread.is_alive())
+
     def test_initial_proxy_spawn_avoids_multithreaded_posix_fork(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -165,6 +173,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         log_path = root / "proxy.log"
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=log_path)
         self.addCleanup(lambda: terminate_process(old))
+        upstream.start()
 
         status_code, before = http_json(port, "/healthz")
         self.assertEqual(status_code, 200)
@@ -196,6 +205,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         )
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=root / "proxy.log")
         self.addCleanup(lambda: terminate_process(old))
+        upstream.start()
 
         first = installed_expected_metadata(ctx, "txn-repeat-1")
         status_code, _ready = http_json(
@@ -259,6 +269,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         log_path = root / "proxy.log"
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=log_path)
         self.addCleanup(lambda: terminate_process(old))
+        upstream.start()
 
         held = {}
 
@@ -324,6 +335,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         log_path = root / "proxy.log"
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=log_path)
         self.addCleanup(lambda: terminate_process(old))
+        upstream.start()
 
         def hold_stream():
             try:

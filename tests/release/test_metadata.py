@@ -557,6 +557,8 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
         block,
         (
             'GIT_DEPTH: "0"',
+            "git fetch --unshallow --tags --force origin",
+            "git fetch --tags --force origin",
             "python tools/quality/tests.py",
             f"{APT_INSTALL} git openssh-client",
         ),
