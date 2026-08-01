@@ -33,6 +33,10 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ### Fixed
 
+- Preserve the payload-free Codex 0.146 `compaction_trigger` request control
+  through provider-portable replay projection, while continuing to reject
+  unknown control fields before upstream I/O. This prevents short conversations
+  from failing at their first automatic remote-compaction boundary.
 - Preserve valid replay semantics without changing Codex JSONL, SQLite,
   historical messages, stored item identifiers, or model metadata. Provider
   neutral projection now owns the single replay grammar; the DMXAPI policy owns

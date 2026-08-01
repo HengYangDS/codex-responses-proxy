@@ -178,6 +178,35 @@ class ProviderPortableRequestTests(unittest.TestCase):
         self.assertIn("provider_bindings=3", note)
         self.assertIn("reasoning_items=1", note)
 
+    def test_preserves_remote_compaction_trigger_as_a_request_control(self) -> None:
+        raw = _body(
+            {
+                "input": [
+                    {"type": "message", "role": "user", "content": "compact this"},
+                    {"type": "compaction_trigger"},
+                ]
+            }
+        )
+
+        projection = rewrite.sanitize_responses_body(raw)
+
+        self.assertEqual(
+            json.loads(cast("bytes", projection.body))["input"],
+            [
+                {"type": "message", "role": "user", "content": "compact this"},
+                {"type": "compaction_trigger"},
+            ],
+        )
+        self.assertEqual(projection.status, "projected")
+
+    def test_rejects_compaction_trigger_with_unknown_fields(self) -> None:
+        projection = rewrite.sanitize_responses_body(
+            _body({"input": [{"type": "compaction_trigger", "unexpected": True}]})
+        )
+
+        self.assertIsNone(projection.body)
+        self.assertEqual(projection.diagnostic(), "rejected unknown_compaction_trigger_field")
+
     def test_preserves_clean_string_input_while_removing_top_level_bindings(self) -> None:
         raw = _body(
             {
