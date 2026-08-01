@@ -34,6 +34,15 @@ setting unchanged. Every bounded recovery request SHALL preserve `store=false`.
   does not manufacture a continuation identifier, stored item, or decrypted
   value.
 
+#### Scenario: Codex requests remote compaction
+
+- **WHEN** Codex 0.146 or later appends the payload-free
+  `{"type":"compaction_trigger"}` request control to portable dialogue
+- **THEN** the projection preserves that exact control item for the upstream
+  Responses compaction request
+- **AND** any additional field on that control is rejected locally as an
+  unproved request shape.
+
 ### Requirement: Portable dialogue and tool relationships are preserved
 
 The proxy SHALL preserve textual system, developer, user, and assistant
