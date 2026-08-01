@@ -93,9 +93,14 @@ verify-release-tag:
 verify-python-quality:
   stage: verify
   image: python:3.12-slim
+  variables:
+    # The canonical quality suite also executes release chronology tests.
+    # Keep this checkout equivalent to every other full-suite job.
+    GIT_DEPTH: "0"
   before_script:
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends git openssh-client
+    - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
     - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore ruff==0.16.1 ty==0.0.65 coverage==7.13.5
   script:
     - PYTHON=python RUFF=ruff TY=ty sh tools/quality/run.sh

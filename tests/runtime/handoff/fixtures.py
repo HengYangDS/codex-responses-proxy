@@ -414,6 +414,11 @@ def start_real_proxy(
     env["CODEX_RESPONSES_PROXY_PROXY_HOST"] = "127.0.0.1"
     env["CODEX_RESPONSES_PROXY_PROXY_PORT"] = str(ctx.port)
     env["CODEX_RESPONSES_PROXY_PROXY_LOG"] = str(log_path)
+    # The temporary payload must not inherit a live test host's product state.
+    # Without this boundary, a listener can resume a stale handoff transaction
+    # from the operator's installed runtime instead of serving the fixture.
+    env["CODEX_RESPONSES_PROXY_HOME"] = ctx.install_dir
+    env["CODEX_RESPONSES_PROXY_STATE_HOME"] = str(log_path.parent / "state")
     python_path = [ctx.install_dir]
     if inherited_python_path := env.get("PYTHONPATH"):
         python_path.append(inherited_python_path)
@@ -426,11 +431,15 @@ def start_real_proxy(
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=diagnostic,
-            close_fds=os.name == "nt",
+            close_fds=True,
         )
     if not wait_until(lambda: process.poll() is not None or proxy_is_up(ctx.port), timeout=30):
         terminate_process(process)
-        raise RuntimeError("real proxy subprocess did not bind its listening socket in time")
+        detail = log_path.read_text(encoding="utf-8", errors="replace")[-2000:].strip()
+        raise RuntimeError(
+            "real proxy subprocess did not bind its listening socket in time"
+            + (f": {detail}" if detail else "")
+        )
     if process.poll() is not None:
         detail = log_path.read_text(encoding="utf-8", errors="replace")[-2000:].strip()
         raise RuntimeError(
