@@ -42,7 +42,7 @@ fast-user-switch logon of the standard account.
 | --- | --- |
 | (a) Auto-start at logon under the standard user | On logon the watchdog `pythonw` appeared owned by the standard user, and the proxy was spawned as its direct child, also owned by the standard user. |
 | (b) Non-elevated least-privilege token | Both the watchdog and proxy reported `TokenIsElevated=0` with `ElevationType=1` (Default; no split token). |
-| Route rewrite | The standard user's `config.toml` `base_url` pointed at the loopback listener. |
+| Consumer endpoint | The standard user's client independently pointed at the loopback listener; the proxy did not write that configuration. |
 | Listener | The proxy owned the loopback listener on the configured port. |
 | Idempotent self-heal | While the watchdog was alive, the task's last result was the `IgnoreNew` duplicate-instance rejection (`0x800710E0`), i.e. a re-fire is a no-op. |
 

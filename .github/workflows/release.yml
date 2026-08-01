@@ -66,27 +66,16 @@ jobs:
   verify-and-publish:
     name: Verify tag and publish record
     needs: require-verify
-    # This repository-scoped runner accepts only trusted tag and manual release revisions.
-    runs-on: [self-hosted, macOS, ARM64, codex-dmx-proxy-github-macos-arm64]
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Retain pre-checkout HEAD
-        run: |
-          set -euo pipefail
-          ref=refs/codex-dmx-proxy/runner-checkout-retained
-          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
-          git update-ref -d "$ref"
-          git rev-parse --verify HEAD >/dev/null 2>&1 || exit 0
-          git update-ref "$ref" HEAD
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
-      - name: Drop retained pre-checkout HEAD
-        if: always()
-        run: |
-          git rev-parse --git-dir >/dev/null 2>&1 || exit 0
-          git update-ref -d refs/codex-dmx-proxy/runner-checkout-retained
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
       - name: Fetch the exact annotated tag object
         env:
           SELECTED_TAG: ${{ github.ref_name }}
@@ -102,15 +91,19 @@ jobs:
       - name: Verify provider-native release tag
         env:
           SELECTED_TAG: ${{ github.ref_name }}
+          CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST }}
         run: |
           set -euo pipefail
-          python=/opt/homebrew/bin/python3.14
-          test -x "$python"
           case "$SELECTED_TAG" in v*) ;; *) echo "release requires a v* tag" >&2; exit 2 ;; esac
           test "$SELECTED_TAG" = "$(git describe --tags --exact-match HEAD)"
-          sh scripts/check-release-tag-signature.sh . "$SELECTED_TAG" github
-          "$python" scripts/check_release_metadata.py --provider github --tag "$SELECTED_TAG"
-          "$python" scripts/check_markdown_presentation.py
+          test -n "$CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST"
+          anchor="$RUNNER_TEMP/github-tag-allowed-signers"
+          printf '%s\n' "$CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST" > "$anchor"
+          chmod 600 "$anchor"
+          CODEX_RESPONSES_PROXY_RELEASE_ALLOWED_SIGNERS="$anchor" \
+            sh tools/forge/check-tag-signature.sh . "$SELECTED_TAG" github
+          python tools/release/metadata.py --provider github --tag "$SELECTED_TAG"
+          python tools/quality/markdown.py
       - name: Publish or verify exact GitHub release record
         env:
           GH_TOKEN: ${{ github.token }}
@@ -132,7 +125,7 @@ jobs:
               print("missing")
               raise SystemExit(0)
           release = matches[0]
-          expected = {"tag_name": tag, "name": f"Codex DMX Proxy {tag}", "draft": False, "prerelease": False}
+          expected = {"tag_name": tag, "name": f"Codex Responses Proxy {tag}", "draft": False, "prerelease": False}
           if (any(release.get(key) != value for key, value in expected.items())
                   or not isinstance(release.get("id"), int)
                   or not release.get("published_at")):
@@ -165,6 +158,16 @@ jobs:
               raise SystemExit("GitHub release tag does not resolve to the checked-out commit")
           PY
           if [ "$verdict" = missing ]; then
+            assets="$RUNNER_TEMP/release-assets"
+            python tools/release/assets.py --output "$assets"
             gh release create "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" \
-              --verify-tag --title "Codex DMX Proxy $SELECTED_TAG" --generate-notes
+              --verify-tag --title "Codex Responses Proxy $SELECTED_TAG" --generate-notes \
+              "$assets/codex-responses-proxy-${SELECTED_TAG#v}.tar.gz" \
+              "$assets/SHA256SUMS"
           fi
+          downloaded="$RUNNER_TEMP/downloaded-assets"
+          mkdir -p "$downloaded"
+          gh release download "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" --dir "$downloaded" \
+            --pattern "codex-responses-proxy-${SELECTED_TAG#v}.tar.gz" --pattern SHA256SUMS
+          test "$(find "$downloaded" -type f | wc -l | tr -d ' ')" = 2
+          (cd "$downloaded" && sha256sum --check SHA256SUMS)

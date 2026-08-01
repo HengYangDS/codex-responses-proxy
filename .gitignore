@@ -33,3 +33,8 @@ Thumbs.db
 # ETHOS host-local coordination state
 .ethos/state/*
 !.ethos/state/.gitignore
+
+# Publication execution context (identity and trust are not product source)
+packaging/release/publication-context.toml
+packaging/release/*-allowed-signers
+packaging/release/commit-allowed-signers

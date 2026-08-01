@@ -1,0 +1,11 @@
+version = 1
+
+[providers.aihubmix]
+base_url = "https://aihubmix.com/v1"
+
+[providers.dmxapi]
+base_url = "https://www.dmxapi.cn/v1"
+policy = "dmxapi"
+
+[providers.ucloud]
+base_url = "https://api.modelverse.cn/v1"

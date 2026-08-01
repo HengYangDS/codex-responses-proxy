@@ -1,12 +1,12 @@
-# Contributing to Codex DMX Proxy
+# Contributing to Codex Responses Proxy
 
 ## Scope and boundaries
 
-Keep changes within the proxy's data-plane and lifecycle responsibilities. Do
-not make AIGW manage the proxy process. Do not make the proxy directly rewrite AIGW-owned
-marked configuration. Any explicit compatibility bridge must invoke AIGW's public
-command and verify its resulting canonical state. Do not alter Codex sessions, archives, SQLite, or model
-metadata as a workaround for upstream replay incompatibility.
+Keep changes within the proxy's data-plane and lifecycle responsibilities.
+AIGW may select the proxy as an ordinary HTTP endpoint, but neither product
+owns the other's process, configuration, or lifecycle. The proxy must not read
+or rewrite AIGW or client configuration. Do not alter Codex sessions, archives,
+SQLite, or model metadata as a workaround for upstream replay incompatibility.
 
 ## Local workflow
 
@@ -15,12 +15,12 @@ repository has no third-party runtime dependency; ordinary reading and editing
 requires no local installer beyond a supported Python interpreter.
 
 ```bash
-python scripts/check_release_metadata.py --prepare-release
-python scripts/check_markdown_presentation.py
-python scripts/test_release_metadata.py
-PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh
+python tools/release/metadata.py --prepare-release
+python tools/quality/markdown.py
+python tests/release/test_metadata.py
+PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh
 for py in python3.12 python3.13 python3.14; do
-  "$py" scripts/run-python-tests.py --compile
+  "$py" tools/quality/tests.py --compile
 done
 ```
 
@@ -28,13 +28,30 @@ Add a failing regression before production behavior changes. Tests must not
 require real user credentials, a live third-party endpoint, or a mutation of
 `~/.codex`.
 
+## Provider extensions
+
+`codex_responses_proxy/providers/manifest.toml` is the provider registry. An
+ordinary OpenAI-compatible Responses endpoint requires only one `[providers.<slug>]` table with its
+`base_url`; do not add a Python branch, inventory entry, environment variable,
+installer option, or release-script case. Only a real provider-specific wire
+contract may add `policy = "<slug>"` and one matching module under
+`codex_responses_proxy/providers/policies/`. The loader validates that module
+against the closed policy protocol, and the release inventory derives its file
+from the validated manifest. Keep provider policy modules pure: no HTTP
+dispatch, mutable runtime state, credentials, host paths, or Forge identity.
+The released manifest is also the installed runtime's sole provider registry:
+there is no environment or installer override that can create a second
+authority. Every request selects an explicit `/<provider>/v1` namespace;
+unscoped `/v1` is rejected rather than silently choosing a provider.
+
 The quality command enforces aggregate, statement, and measured branch coverage
 independently at 95% or higher. No one result substitutes for either independent
-result emitted by `scripts/check_branch_coverage.py`.
+result emitted by `tools/quality/branch_coverage.py`.
 
-`scripts/observe-reliability.py` is source-side observation only. It accepts a
-supplied secret-free `control.py status --json` snapshot and may write an
-explicit operator-selected baseline file. It must not contact an endpoint,
+`tools/reliability/observe.py` is source-side observation only. It accepts a
+supplied secret-free
+`python3 -m codex_responses_proxy.commands.control status --json` snapshot and
+may write an explicit operator-selected baseline file. It must not contact an endpoint,
 read configuration, retain payloads, or invoke lifecycle control. Tests must
 cover a first-window baseline, runtime restart/identity boundary, upstream and
 local failure classes, the exact input-variant classification threshold, and
@@ -58,31 +75,31 @@ must equal the UTC date of that GitLab tag's creation. GitHub may retain
 canonical or legacy headings absent from its own tag namespace, but every
 GitHub-native tag still requires a heading; its independently signed native
 date does not rewrite GitLab chronology.
-`python scripts/check_release_metadata.py --provider gitlab --prepare-release`
+`python tools/release/metadata.py --provider gitlab --prepare-release`
 enforces the GitLab candidate. GitHub main uses ordinary `--provider github`
 validation so a dated candidate remains valid after its preparation day; exact
 tag verification adds `--tag v<VERSION>`. Do not write an inferred or planned
 release into `CHANGELOG.md`.
 
-GitLab **Project Name** is the human-facing `Codex DMX Proxy`; its stable clone
-**Path** remains `codex-dmx-proxy`. Never change the Path as a cosmetic rename.
+GitLab **Project Name** is the human-facing `Codex Responses Proxy`; its stable clone
+**Path** remains `codex-responses-proxy`. Never change the Path as a cosmetic rename.
 
 ## Forge discipline
 
-GitLab and GitHub are independent release planes. GitLab provenance uses
-`heng.yang.ds@hotmail.com`; the GitHub projection uses
-`hengyang.2003@tsinghua.org.cn`. Do not copy provider-native tags between
-forges. Every reachable commit must use the relevant provider identity for both
-author and committer and must be `Verified` under that provider trust anchor.
-Use `sh scripts/project-gitlab-forge.sh` to normalize the complete GitLab DAG,
-then `sh scripts/project-github-forge.sh` for GitHub. Both commands rewrite only
-an isolated clone, preserve source tree/topology/message/date semantics, retain
-provider-specific tags, verify every commit, and update `main` under a lease.
+GitLab and GitHub publish one ordered source-tree history through different
+verified identity domains. Create and land the canonical GitLab commit with its
+GitLab author, committer, and trusted signature. Then run
+`sh tools/forge/project.sh --provider gitlab` and
+`sh tools/forge/project.sh --provider github`. The GitHub projection preserves
+trees, messages, dates, and parent topology while using the GitHub actor email
+and trust anchor. Both updates are ordinary forward-only pushes; neither copies
+tags, force-pushes, or rewrites an existing remote commit. Ambiguous divergence
+requires an explicit recorded migration decision.
 
-Create a GitLab release tag only through `sh scripts/tag-gitlab-release.sh
-v<VERSION>`. It pins the GitLab identity and its tracked signing key explicitly,
-so a GitHub conditional Git identity cannot sign a GitLab tag by mistake. After
-GitLab tag publication and its CI evidence, run `sh scripts/tag-github-release.sh
+Create a GitLab release tag only through `sh tools/release/tag-gitlab.sh
+v<VERSION>`. It binds the caller-provided GitLab tag actor to the selected
+OpenSSH-agent fingerprint, so a GitHub tag identity cannot sign it by mistake. After
+GitLab tag publication and its CI evidence, run `sh tools/release/tag-github.sh
 v<VERSION>` from the clean canonical GitLab `main`. The command first proves
 that the exact signed GitLab tag binds `HEAD`, then fetches the complete GitHub
 tag namespace into an isolated GitHub checkout, creates and validates the

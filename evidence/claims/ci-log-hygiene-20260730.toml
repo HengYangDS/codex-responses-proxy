@@ -1,8 +1,8 @@
 [claim]
 id = "ci-log-hygiene-20260730"
-subject = "codex-dmx-proxy:ci-log-hygiene"
+subject = "codex-responses-proxy:product-convergence"
 state = "active"
-summary = "Dated evidence bounds successful-job diagnostic integrity through Python execution, checkout, and provider projection."
+summary = "The active terminal Claim binds the provider-neutral product convergence; the dated CI observation remains its immutable evidence seed. Dated evidence bounds successful-job diagnostic integrity through Python execution, checkout, and provider projection."
 
 [evidence]
 dated = "evidence/chronicle/ci-log-hygiene-20260730/2026-07-31.md"
@@ -11,10 +11,10 @@ evidence_ids = ["evidence:ci-log-hygiene-20260730"]
 binding = "current hosted-defect observation and local TDD mechanism proof for reused GitHub self-hosted checkout"
 verifier = "digest_only"
 tests = [
-  "PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh",
-  "for py in python3.12 python3.13 python3.14; do \"$py\" scripts/run-python-tests.py --compile; done",
-  "sh scripts/test-github-actions-contract.sh",
-  "python3 scripts/check_release_metadata.py --provider gitlab",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+  "sh tests/forge/contracts/test-github-actions.sh",
+  "python3 tools/release/metadata.py --provider gitlab",
   "openspec validate --all --strict --json",
 ]
 
@@ -22,11 +22,11 @@ tests = [
 mode = "historical"
 
 [boundary]
-owner = "codex-dmx-proxy"
+owner = "codex-responses-proxy"
 scope = "The dated Chronicle covers one observed hosted checkout warning and local workflow-contract proof; post-fix hosted CI, publication, installation, runtime, and immutable reclose remain external until refreshed."
 
 [carriers]
-openspec = "openspec/changes/provider-projection-source-contract"
+openspec = "openspec/changes/archive/2026-08-01-forge-identity-projection"
 fallback = "Revert the workflow commit if checkout or hosted verification regresses; no runner-global or installed-runtime state needs rollback."
 kill_signal = "A successful job can emit an actual prohibited diagnostic, the abandoned-commit warning recurs, or the temporary checkout ref survives the job."
 
@@ -35,5 +35,5 @@ targets = [
   ".github/workflows/release.yml",
   ".github/workflows/verify.yml",
   "openspec/specs/ci-diagnostics/spec.md",
-  "scripts/test-github-actions-contract.sh",
+  "tests/forge/contracts/test-github-actions.sh",
 ]

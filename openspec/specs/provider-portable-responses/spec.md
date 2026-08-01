@@ -12,7 +12,8 @@ Before upstream I/O, the proxy SHALL remove provider-bound continuation state,
 stored-item references, replayed reasoning items, reasoning ciphertext, and
 encrypted agent or tool-output content from each Responses request. The
 projection SHALL also remove the request for `reasoning.encrypted_content` and
-SHALL leave provider-neutral generation settings unchanged.
+SHALL set `store=false` while leaving every other provider-neutral generation
+setting unchanged. Every bounded recovery request SHALL preserve `store=false`.
 
 #### Scenario: A stored conversation changes provider
 
@@ -22,13 +23,16 @@ SHALL leave provider-neutral generation settings unchanged.
 - **THEN** none of that provider-bound state is sent to the selected upstream
 - **AND** the current request is carried by the remaining portable dialogue and
   tool history.
+- **AND** the upstream receives `store=false` and no provider-issued response,
+  conversation, or item identity.
 
 #### Scenario: A new request has no replay state
 
 - **WHEN** a valid Responses request contains only provider-neutral input and
   generation settings
-- **THEN** the projection preserves those semantics without manufacturing a
-  continuation identifier, stored item, or decrypted value.
+- **THEN** the projection preserves those semantics, sets `store=false`, and
+  does not manufacture a continuation identifier, stored item, or decrypted
+  value.
 
 ### Requirement: Portable dialogue and tool relationships are preserved
 
@@ -72,22 +76,20 @@ annotations, and opaque metadata SHALL NOT be required.
 - **AND** it does not claim to have decrypted or reconstructed the omitted
   result.
 
-#### Scenario: Classified DMX fallback retains role-valid content
+#### Scenario: Classified DMX retry preserves the projected bytes
 
 - **WHEN** the normal provider-portable request receives the exact classified
-  DMX empty-response error and the proxy performs its one bounded fallback
-- **THEN** assistant, synthesized-agent, and opaque-reasoning dialogue retains
-  the assistant string carrier while instruction, user, and tool-output content
-  remains input content
-- **AND** the fallback does not recreate the rejected assistant typed-block
-  shape.
+  DMX empty-response error
+- **THEN** the proxy retries the current projected attempt bytes exactly once
+- **AND** it does not rebuild replay, restore an older request body, or recreate
+  a provider-bound assistant typed-block shape.
 
-#### Scenario: Classified DMX fallback retains replayable input images
+#### Scenario: Classified DMX retry retains replayable input images
 
 - **WHEN** the normal portable request contains a validated remote
   `input_image` in system, developer, user, or tool-output input content and
   receives the exact classified DMX empty-response error
-- **THEN** the one bounded fallback preserves that image on input grammar
+- **THEN** the byte-identical retry preserves that image on input grammar
 - **AND** it does not turn valid non-text input into a local exhausted 503.
 
 ### Requirement: Paired empty tool results remain explicit
@@ -211,63 +213,22 @@ DMXAPI again.
 - **AND** acceptance evidence confirms the session files and model metadata
   were not modified by the repair.
 
-### Requirement: AIGW route state uses canonical provider-scoped endpoints
+### Requirement: Client endpoint ownership is external
 
-The proxy SHALL bind every newly written AIGW route-state record to one explicit
-provider route from `dmxapi`, `ucloud`, or `aihubmix`, separately from the AIGW
-account identifier. The recorded proxy URL SHALL equal the scoped loopback base
-for that route and installed listener port. New AIGW state and transitions SHALL
-NOT record or emit the unscoped `/v1` endpoint; that endpoint MAY remain only as
-the bounded direct-Codex compatibility and migration route.
+The proxy SHALL expose provider-scoped loopback Responses endpoints without
+reading, writing, backing up, or restoring AIGW or client configuration. It
+SHALL NOT execute an AIGW command or persist consumer route state.
 
-#### Scenario: A canonical scoped AIGW route is adopted
+#### Scenario: A consumer selects a provider endpoint
 
-- **WHEN** the canonical AIGW account endpoint equals the exact scoped loopback
-  base selected by an explicit provider route, or equals the exact recorded
-  direct URL
-- **THEN** `adopt-aigw` atomically records schema-v3 state with the separate
-  account, provider route, scoped proxy URL, and direct URL
-- **AND** the proxy does not edit AIGW configuration or infer the provider route
-  from the account name.
+- **WHEN** AIGW or another client selects `/dmxapi/v1`, `/ucloud/v1`, or
+  `/aihubmix/v1` through its own control plane
+- **THEN** the proxy serves that data-plane request without depending on the
+  consumer package, configuration path, credential store, or projection model.
 
-#### Scenario: Legacy AIGW state is migrated
+#### Scenario: The proxy is installed or removed
 
-- **WHEN** a valid schema-v2 AIGW record contains the historical unscoped DMX
-  proxy URL and AIGW has already projected the selected account to its canonical
-  scoped endpoint
-- **THEN** the existing `adopt-aigw` command is the sole proxy-owned migration
-  entry that replaces the record with validated schema-v3 state
-- **AND** no enable, adoption, or migration transition writes `/v1` back into
-  the canonical AIGW endpoint.
-
-#### Scenario: A legacy or unrelated canonical endpoint is not guessed
-
-- **WHEN** the canonical AIGW endpoint is still the unscoped migration URL or is
-  neither the exact direct URL nor the selected provider-scoped URL
-- **THEN** adoption fails closed and preserves the prior proxy-owned state
-- **AND** the operator must use AIGW's public lifecycle for any endpoint change
-  before retrying adoption.
-
-#### Scenario: A managed AIGW route is toggled
-
-- **WHEN** validated schema-v3 state authorizes enable or disable
-- **THEN** enable delegates the exact scoped proxy URL and disable delegates the
-  exact recorded direct URL through AIGW's public CLI
-- **AND** canonical AIGW state is re-read and verified before success is
-  reported.
-
-#### Scenario: Direct Codex compatibility remains bounded
-
-- **WHEN** an exact managed `codex_config` route uses the historical unscoped
-  `/v1` endpoint
-- **THEN** its existing hash-bound disable and uninstall restoration remain
-  available as the bounded direct-Codex compatibility path
-- **AND** that state is never treated as provider-scoped AIGW authority.
-
-#### Scenario: Scoped state uses a non-default listener port
-
-- **WHEN** validated state contains a canonical scoped loopback URL with an
-  explicit supported port
-- **THEN** installed control discovers the port by parsing the URL structure
-- **AND** credentials, another host, an unknown route, query, fragment, or an
-  invalid port grants no route authority.
+- **WHEN** installation, status, reload, or uninstall runs
+- **THEN** only the proxy's released payload, product-owned state, listener,
+  and native supervision are observed or mutated
+- **AND** consumer endpoint configuration is unchanged.

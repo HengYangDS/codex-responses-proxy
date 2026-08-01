@@ -1,16 +1,9 @@
-# Codex DMX Proxy
+# Codex Responses Proxy
 
-[![GitLab pipeline](http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-dmx-proxy/badges/main/pipeline.svg)](http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-dmx-proxy/-/pipelines)
-[![GitHub verification](https://github.com/HengYangDS/codex-dmx-proxy/actions/workflows/verify.yml/badge.svg)](https://github.com/HengYangDS/codex-dmx-proxy/actions/workflows/verify.yml)
+Licensed under [MIT](LICENSE). Forge coordinates and publication actors are
+deployment context, not product identity.
 
-| Project identity | Value |
-| --- | --- |
-| **GitLab Project Name** | `Codex DMX Proxy` |
-| **GitLab repository path** | `codex-dmx-proxy` |
-| **GitHub repository** | `HengYangDS/codex-dmx-proxy` |
-| **License** | [MIT](LICENSE) |
-
-Codex DMX Proxy is a local, loopback-only compatibility adapter for third-party
+Codex Responses Proxy is a local, loopback-only compatibility adapter for third-party
 OpenAI Responses endpoints. It repairs replay incompatibilities at the network
 edge without rewriting Codex conversations, SQLite state, JSONL archives, or
 per-conversation model selection.
@@ -20,8 +13,8 @@ It is intentionally narrow:
 - **Codex Desktop** owns conversations and the model selected for each one.
 - **AIGW** owns provider configuration, credentials, endpoint selection, and
   projection to Codex profiles.
-- **Codex DMX Proxy** owns outbound Responses compatibility, its released
-  payload and deployment, native supervision, and its reversible route adapter.
+- **Codex Responses Proxy** owns outbound Responses compatibility, its released
+  payload and deployment, and native supervision.
 
 ## When to use it
 
@@ -33,8 +26,8 @@ replayed Codex state, for example:
   replay block;
 - a local image reference that the upstream endpoint cannot fetch;
 - a transient `invalid_payload`, gateway timeout, or pre-content SSE interruption;
-- a classified DMX HTTP 477 `empty_response` (one precise,
-  semantic-preserving recovery);
+- a classified DMX HTTP 477 `empty_response` (one exact retry of the already
+  projected request);
 - an explicit upstream `response_failed` execution rejection of replay context;
 - the exact observed `Invalid 'input'` union validation contract.
 
@@ -48,7 +41,16 @@ with no textual output receives an explicit empty-result marker; an
 encrypted-only retained agent or tool result receives a distinct omission
 marker, and no ciphertext is claimed to be decrypted. Empty ordinary dialogue
 and unknown or malformed replay structures return a local HTTP 400 before any
-upstream request.
+upstream request. The outbound copy always uses `store=false`; continuity comes
+from projected dialogue and complete tool relationships, never from a third-
+party provider's stored response or item IDs.
+
+DMX HTTP 477 handling does not own another replay grammar. When the exact
+`empty_response` contract matches, the proxy retries the current upstream
+attempt bytes once. Those bytes have already passed the provider-neutral
+projection, including any earlier bounded `response_failed` compaction. The
+retry therefore cannot restore provider IDs, ciphertext, search state, or an
+older, larger request body.
 
 For an explicit upstream `response_failed` rejection, it first makes up to three
 strictly smaller fallbacks that each remove only the oldest contiguous,
@@ -79,54 +81,44 @@ neither surface records message values or unknown names.
 
 - Python 3.12 or later; the runtime uses only the Python standard library.
 - Git and OpenSSH, including `ssh-keygen`, for source and signature verification.
-- A Codex installation that has already created `~/.codex/config.toml`.
 - A verified third-party Responses endpoint. The adapter never stores an API key.
-- Authenticated network access to both configured Forge APIs and Git remotes.
-- The repository-tracked GitLab and GitHub signer policies, plus an independent
-  absolute release trust-anchor file stored outside this checkout.
+- One exact signed release checkout and its absolute trust-anchor file stored
+  outside that checkout. Installation does not require Forge credentials.
 
 ## Install
 
 Installation is a post-release operation. Start from the exact clean checkout
 whose `HEAD` is the signed annotated `v<VERSION>` tag. The installer requires
-that clean state before live publication verification, checks it again on
-released-source admission, and repeats the check before minting the payload
-capability. Before invoking it, you may run the evidence-only command against
-both independent Forge planes and retain its JSON result for audit:
+that clean state before admission and repeats the check before minting the
+payload capability. Release operators independently verify both Forge planes
+and may retain the verifier's JSON result as publication evidence:
 
 ```bash
-python3 scripts/verify-publication-proof.py \
+python3 tools/release/verify.py \
   --tag "v$(cat VERSION)" \
   --gitlab-remote "$GITLAB_REMOTE" \
   --gitlab-api-base "$GITLAB_API_BASE" \
   --gitlab-repo "$GITLAB_REPOSITORY" \
   --github-remote "$GITHUB_REMOTE" \
-  --github-repo HengYangDS/codex-dmx-proxy \
-  --gitlab-anchor packaging/release/gitlab-allowed-signers \
-  --github-anchor packaging/release/github-allowed-signers \
-  --json > /secure-local/codex-dmx-publication-proof.json
+  --github-repo "$GITHUB_REPOSITORY" \
+  --gitlab-anchor "$GITLAB_ANCHOR" \
+  --github-anchor "$GITHUB_ANCHOR" \
+  --policy "$PUBLICATION_JOB_POLICY" \
+  --json > "$PUBLICATION_EVIDENCE_PATH"
 ```
 
 The verifier fails closed unless both provider-native signed tags, required CI
-jobs, and formal Release records bind to the same source tree. The two committed
-allowed-signers files are provider-specific publication policy. They do not
-replace the installer's independent release trust anchor, which must be an
-absolute regular file outside the checkout. JSON is evidence only and cannot
-authorize installation. The installer performs the same live verification
-in-process before it mints a one-use capability. Install the verified release
-with the complete verifier inputs:
+jobs, and formal Release records bind to the same source tree. Job policy and
+Forge trust anchors are explicit operator inputs outside the checkout; neither
+is product source. They do not replace the installer's independent release
+trust anchor, which must be an absolute regular file outside the checkout. JSON
+is evidence only and cannot authorize installation. Installation consumes one
+selected signed release source and has no GitLab, GitHub, CI, or release-record
+dependency:
 
 ```bash
-python3 install.py \
-  --tag "v$(cat VERSION)" \
-  --gitlab-remote "$GITLAB_REMOTE" \
-  --gitlab-api-base "$GITLAB_API_BASE" \
-  --gitlab-repo "$GITLAB_REPOSITORY" \
-  --github-remote "$GITHUB_REMOTE" \
-  --github-repo HengYangDS/codex-dmx-proxy \
-  --gitlab-anchor packaging/release/gitlab-allowed-signers \
-  --github-anchor packaging/release/github-allowed-signers \
-  --trust-anchor "$DMX_RELEASE_TRUST_ANCHOR"
+python3 -m codex_responses_proxy.commands.install \
+  --trust-anchor "$CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR"
 ```
 
 On Windows, replace `python3` with `py -3`.
@@ -154,24 +146,25 @@ may then be replaced with the explicit `--force-v2-bootstrap` authorization.
 These options do not weaken live
 publication, source, payload, process, or successor proof.
 
-### AIGW-managed routes
+### Client endpoint configuration
 
-When provider blocks are owned by AIGW, the installer deliberately does not
-write them. After the released proxy is installed, AIGW projects each governed
-account to its fixed loopback namespace:
+The installer never reads or writes AIGW or client configuration. After the
+released proxy is installed, a consumer may select its fixed loopback namespace
+through that consumer's own control plane. For example, AIGW may project:
 
 ```bash
-aigw account edit dmxapi --openai-url http://127.0.0.1:8791/dmxapi/v1
-aigw account edit ucloud --openai-url http://127.0.0.1:8791/ucloud/v1
-aigw account edit aihubmix --openai-url http://127.0.0.1:8791/aihubmix/v1
+port="${CODEX_RESPONSES_PROXY_PROXY_PORT:-8791}"
+aigw account edit dmxapi --openai-url "http://127.0.0.1:${port}/dmxapi/v1"
+aigw account edit ucloud --openai-url "http://127.0.0.1:${port}/ucloud/v1"
+aigw account edit aihubmix --openai-url "http://127.0.0.1:${port}/aihubmix/v1"
 aigw sync --dry-run --json
 aigw sync --json
 ```
 
-The fixed namespaces map only to release-owned HTTPS origins; request headers,
+The fixed namespaces map only to manifest-owned HTTPS origins; request headers,
 bodies, and query parameters cannot select another host. AIGW continues to own
-credentials, account selection, per-account Responses storage policy, and the
-set of projected Codex targets. The proxy never edits AIGW configuration.
+credentials, account selection, storage policy, and client projection. The two
+products have no package, process, filesystem, or configuration dependency.
 
 ### Apply a route change
 
@@ -183,30 +176,21 @@ a route change.
 ## Operate
 
 ```bash
-# Read-only runtime evidence
-python3 ~/.codex/dmx-proxy/control.py status --json
-
-# Toggle a managed route without uninstalling the payload
-python3 ~/.codex/dmx-proxy/control.py enable
-python3 ~/.codex/dmx-proxy/control.py disable
+# Read-only runtime evidence from the installed product directory
+python3 -m codex_responses_proxy.commands.control status --json
 
 # Hand off one verified protocol-v2 listener without closing its socket
-python3 ~/.codex/dmx-proxy/control.py reload --json
+python3 -m codex_responses_proxy.commands.control reload --json
 
-# Read-only payload and loaded-listener provenance evidence
-python3 ~/.codex/dmx-proxy/governance.py --json
-
-# Remove the service and restore the exact adopted managed route
-python3 uninstall.py
+# Remove the product-owned service
+python3 -m codex_responses_proxy.commands.uninstall
 
 # Also remove the generated runtime payload
-python3 uninstall.py --purge
+python3 -m codex_responses_proxy.commands.uninstall --purge
 ```
 
-Uninstall first attempts the recorded route restoration unless `--keep-config`
-is selected. That step preserves drifted or unverifiable configuration and is
-not an all-or-nothing transaction with later cleanup. Before any payload
-mutation, native service removal must report `absent`, and every watchdog and
+Uninstall never reads or changes consumer endpoint configuration. Before any
+payload mutation, native service removal must report `absent`, and every watchdog and
 listener selected for termination must be an exact Python process whose
 `argv[1]` resolves to this installation's script. Identity is re-read
 immediately before signalling and boundedly rechecked afterwards; PID reuse
@@ -225,17 +209,18 @@ lease; a pre-finalize failure resumes the old process only after the child is
 confirmed exited. An unconfirmed abort fails closed rather than risking two
 accepting processes.
 
-Changing payload bytes is exclusively a source-side `install.py` operation from
-an independently verified release. For a current protocol-v2 listener, that
+Changing payload bytes is exclusively a source-side
+`python3 -m codex_responses_proxy.commands.install` operation from an independently
+verified release. For a current protocol-v2 listener, that
 source-side transaction uses the same handoff protocol after committing the
 admitted release projection. Installed control exposes no arbitrary stage path,
 release upgrade, or controller-only partial apply.
 
-`governance.py --json` is read-only. It reports manifest integrity, route
-authority, verified listener identity, and the startup-frozen aggregate SHA-256
-of the loaded serving payload when
-the loopback listener is reachable. It does not inspect or change AIGW settings,
-Codex conversation state, credentials, or the proxy lifecycle.
+`python3 -m codex_responses_proxy.commands.control status --json` reports
+manifest integrity, verified listener identity, transaction state, and the
+startup-frozen aggregate SHA-256 of the loaded serving payload when the loopback
+listener is reachable. It does not
+inspect AIGW settings, client configuration, conversation state, or credentials.
 
 ### Reliability evidence
 
@@ -258,15 +243,15 @@ The loopback-only
 `POST /control/handoff` endpoint and its child pipe protocol are lifecycle
 internals, not general APIs.
 The loopback-only `POST /control/drain` and `DELETE /control/drain`
-endpoints are lifecycle internals used by `control.py`, not general APIs.
+endpoints are lifecycle internals used by the installed control command, not general APIs.
 
 For a repeatable, privacy-bounded trend decision, use the source-side observer
 with two or more comparable snapshots. It consumes the JSON that `status`
 already emits; it neither contacts the listener nor changes its lifecycle:
 
 ```bash
-python3 control.py status --json > /tmp/dmx-status.json
-python3 scripts/observe-reliability.py \
+python3 -m codex_responses_proxy.commands.control status --json > /tmp/dmx-status.json
+python3 tools/reliability/observe.py \
   --status-file /tmp/dmx-status.json \
   --state /secure-local/dmx-reliability-baseline.json
 ```
@@ -322,14 +307,8 @@ become an unbounded second logging channel.
 Set a durable retention policy at installation time:
 
 ```bash
-python3 install.py \
-  --tag "v$(cat VERSION)" \
-  --gitlab-remote "$GITLAB_REMOTE" --gitlab-api-base "$GITLAB_API_BASE" \
-  --gitlab-repo "$GITLAB_REPOSITORY" --github-remote "$GITHUB_REMOTE" \
-  --github-repo HengYangDS/codex-dmx-proxy \
-  --gitlab-anchor packaging/release/gitlab-allowed-signers \
-  --github-anchor packaging/release/github-allowed-signers \
-  --trust-anchor "$DMX_RELEASE_TRUST_ANCHOR" \
+python3 -m codex_responses_proxy.commands.install \
+  --trust-anchor "$CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR" \
   --proxy-log-max-bytes 4194304 \
   --proxy-log-backup-count 3 \
   --watchdog-log-max-bytes 524288 \
@@ -337,15 +316,15 @@ python3 install.py \
 ```
 
 The selected bounds are rendered into the native user service. Changing them
-requires another released, publication-proven source-side installation; a
+requires another signed-release source-side installation; a
 same-payload `reload` does not change service configuration.
 
 ## Design
 
 ```text
-Codex/AIGW -> 127.0.0.1:8791/dmxapi/v1  -> DMXAPI
-           -> 127.0.0.1:8791/ucloud/v1  -> UCloud/Azure
-           -> 127.0.0.1:8791/aihubmix/v1 -> AIHubMix
+Codex/AIGW -> 127.0.0.1:<configured-port>/dmxapi/v1  -> DMXAPI
+           -> 127.0.0.1:<configured-port>/ucloud/v1  -> UCloud/Azure
+           -> 127.0.0.1:<configured-port>/aihubmix/v1 -> AIHubMix
                       |
                       +-- watchdog supervised by the native user service
 ```
@@ -366,17 +345,17 @@ rejections are returned unchanged.
 
 | Symptom | First check | Boundary |
 | --- | --- | --- |
-| Missing `rs_` item or encrypted replay error | `control.py status --json` | Confirm the account uses its scoped proxy route. The normal request projection removes provider IDs and ciphertext without editing history. |
-| Error after provider switch | `aigw doctor --json` and `aigw sync --dry-run --json` | All switched Codex accounts must use `/dmxapi/v1`, `/ucloud/v1`, or `/aihubmix/v1`; a direct account endpoint bypasses portability. |
-| Upstream `response_failed` | `control.py status --json` | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
-| Exact `Invalid 'input'` validation error | `control.py status --json` | The proxy may send one current-dialogue fallback. Diagnostics contain only bounded type counts, pairing state, a categorical shape hash, and the first locally detectable incompatibility; no request values or unknown labels are logged. |
-| DMX HTTP 477 `empty_response` | `control.py status --json` | The proxy may send one dedicated semantic-preserving fallback. If projection is unsafe or that follow-up fails, both streaming and non-streaming requests receive standard HTTP 503 with `Retry-After: 3`; unrelated 477 responses remain unchanged. |
-| SSE closes before completion | `control.py status --json` | The proxy retries only before sending substantive bytes downstream. If that bounded pre-content budget is exhausted, it returns retryable HTTP 503 with `Retry-After: 3` rather than an empty successful stream. |
-| Need current reliability evidence | `control.py status --json` | Inspect the secret-free `runtime` snapshot; it proves listener-local counters, not recovery of a historical conversation. |
-| Need a windowed incident decision | `scripts/observe-reliability.py --status-file <snapshot> --state <baseline>` | Compare only the same running payload; the tool is read-only and never reloads the listener. |
+| Missing `rs_` item or encrypted replay error | `python3 -m codex_responses_proxy.commands.control status --json` | Confirm the account uses its scoped proxy route. The normal request projection removes provider IDs and ciphertext without editing history. |
+| Error after provider switch | Consumer control-plane diagnostics | The consumer must select one manifest-defined scoped route; a direct upstream endpoint bypasses portability. AIGW is one optional control plane, not a proxy dependency. |
+| Upstream `response_failed` | `python3 -m codex_responses_proxy.commands.control status --json` | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
+| Exact `Invalid 'input'` validation error | `python3 -m codex_responses_proxy.commands.control status --json` | The proxy may send one current-dialogue fallback. Diagnostics contain only bounded type counts, pairing state, a categorical shape hash, and the first locally detectable incompatibility; no request values or unknown labels are logged. |
+| DMX HTTP 477 `empty_response` | `python3 -m codex_responses_proxy.commands.control status --json` | The proxy retries the already projected current attempt bytes exactly once. If that retry fails, both streaming and non-streaming requests receive standard HTTP 503 with `Retry-After: 3`; unrelated 477 responses remain unchanged. |
+| SSE closes before completion | `python3 -m codex_responses_proxy.commands.control status --json` | The proxy retries only before sending substantive bytes downstream. If that bounded pre-content budget is exhausted, it returns retryable HTTP 503 with `Retry-After: 3` rather than an empty successful stream. |
+| Need current reliability evidence | `python3 -m codex_responses_proxy.commands.control status --json` | Inspect the secret-free `runtime` snapshot; it proves listener-local counters, not recovery of a historical conversation. |
+| Need a windowed incident decision | `tools/reliability/observe.py --status-file <snapshot> --state <baseline>` | Compare only the same running payload; the tool is read-only and never reloads the listener. |
 | Client ignores a route change | Client configuration lifecycle | A running client may need its normal reload; the proxy does not restart it. |
 
-Logs are written under `~/.codex/log/`. They record bounded operational facts:
+Logs are written under the platform-native `codex-responses-proxy` state directory. They record bounded operational facts:
 stable classifications, request identifiers, sanitized paths, byte lengths,
 recovery stages, and exact retained/dropped item counts. Input diagnostics use
 bucketed counts and closed labels. The proxy does not persist request bodies,
@@ -389,30 +368,26 @@ The generated service supplies safe defaults. Use install arguments rather than
 editing a generated service definition:
 
 ```bash
-python3 install.py \
-  --tag "v$(cat VERSION)" \
-  --gitlab-remote "$GITLAB_REMOTE" --gitlab-api-base "$GITLAB_API_BASE" \
-  --gitlab-repo "$GITLAB_REPOSITORY" --github-remote "$GITHUB_REMOTE" \
-  --github-repo HengYangDS/codex-dmx-proxy \
-  --gitlab-anchor packaging/release/gitlab-allowed-signers \
-  --github-anchor packaging/release/github-allowed-signers \
-  --trust-anchor "$DMX_RELEASE_TRUST_ANCHOR" \
-  --port 8801 \
-  --upstream https://your.responses.endpoint
+python3 -m codex_responses_proxy.commands.install \
+  --trust-anchor "$CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR" \
+  --port 8801
 ```
 
-See [`config.example`](config.example) for the supported environment variables.
+Portable data, state, listener, timeout, concurrency, and log-retention
+settings are declared and validated by
+`codex_responses_proxy.runtime.config`. Normal installations persist explicit
+installer arguments into native supervision; environment overrides are for
+direct runtime composition and tests, not a second configuration file.
 
 ## Verify a source checkout
 
 ```bash
-python3 scripts/check_release_metadata.py --prepare-release
-python3 scripts/check_markdown_presentation.py
-python3 scripts/test_release_metadata.py
-PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh
+python3 tools/release/metadata.py --prepare-release
+python3 tools/quality/markdown.py
+python3 tests/release/test_metadata.py
+PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh
 for py in python3.12 python3.13 python3.14; do
-  "$py" -m compileall -q codex_dmx_proxy watchdog install.py uninstall.py control.py governance.py tests scripts
-  "$py" scripts/run-python-tests.py
+  "$py" tools/quality/tests.py --compile
 done
 ```
 
