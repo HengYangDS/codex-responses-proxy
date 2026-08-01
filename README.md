@@ -250,10 +250,12 @@ with two or more comparable snapshots. It consumes the JSON that `status`
 already emits; it neither contacts the listener nor changes its lifecycle:
 
 ```bash
-python3 -m codex_responses_proxy.commands.control status --json > /tmp/dmx-status.json
+status_file="$(mktemp)"
+python3 -m codex_responses_proxy.commands.control status --json > "$status_file"
 python3 tools/reliability/observe.py \
-  --status-file /tmp/dmx-status.json \
-  --state /secure-local/dmx-reliability-baseline.json
+  --status-file "$status_file" \
+  --state "$CODEX_RESPONSES_PROXY_OBSERVER_STATE"
+rm -f "$status_file"
 ```
 
 The first snapshot establishes a baseline and returns `observe`, not an

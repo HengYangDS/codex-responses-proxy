@@ -25,7 +25,8 @@ from codex_responses_proxy.listener import entrypoint as proxy
 from codex_responses_proxy.transport import exchange as upstream_exchange
 from codex_responses_proxy.transport import responses
 from codex_responses_proxy.replay import request as rewrite
-from codex_responses_proxy.runtime import state
+from codex_responses_proxy.runtime import admission, logging, telemetry
+from codex_responses_proxy.transport import cooldown
 from codex_responses_proxy.transport import sse
 from tests.listener.proxy_fixture import request, running_proxy
 
@@ -132,12 +133,14 @@ class InputTransportContracts(unittest.TestCase):
     """Exercise the recovery boundary through real loopback HTTP servers."""
 
     def setUp(self) -> None:
-        old_log_path = state.LOG_PATH
+        old_log_path = logging.LOG_PATH
         self._log_directory = tempfile.TemporaryDirectory()
-        state.LOG_PATH = str(Path(self._log_directory.name) / "proxy.log")
+        logging.LOG_PATH = str(Path(self._log_directory.name) / "proxy.log")
         self.addCleanup(self._log_directory.cleanup)
-        self.addCleanup(setattr, state, "LOG_PATH", old_log_path)
-        state.reset_for_test()
+        self.addCleanup(setattr, logging, "LOG_PATH", old_log_path)
+        admission.reset_for_test()
+        telemetry.reset_for_test()
+        cooldown.reset_for_test()
 
     @staticmethod
     def _status_snapshot() -> dict[str, object]:
@@ -230,7 +233,7 @@ class InputTransportContracts(unittest.TestCase):
             with request(port, body) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.read(), success)
-            logs = Path(state.LOG_PATH).read_text(encoding="utf-8")
+            logs = Path(logging.LOG_PATH).read_text(encoding="utf-8")
 
         self.assertEqual(len(received), 2)
         self.assertNotIn("opaque-upstream-request-id", logs)
@@ -263,7 +266,7 @@ class InputTransportContracts(unittest.TestCase):
 
         self.assertEqual(len(received), 1)
         forwarded = json.loads(received[0])
-        expected = json.loads(cast("bytes", rewrite.sanitize_responses_body(body)[0]))
+        expected = json.loads(cast("bytes", rewrite.sanitize_responses_body(body).body))
         self.assertEqual(forwarded, expected)
         counters, classifications = self._status_maps()
         self.assertEqual(counters["input_variant_dialogue_recovery_attempts"], 0)
@@ -292,7 +295,9 @@ class InputTransportContracts(unittest.TestCase):
         }
         for label, (status_code, terminal_body, classification) in terminal_errors.items():
             with self.subTest(label=label):
-                state.reset_for_test()
+                admission.reset_for_test()
+                telemetry.reset_for_test()
+                cooldown.reset_for_test()
                 body = _request_body()
                 with running_proxy([(400, EXACT_ERROR), (status_code, terminal_body)]) as (
                     port,
@@ -344,7 +349,7 @@ class InputTransportContracts(unittest.TestCase):
                     str(len(json.dumps(payload, separators=(",", ":")).encode())),
                 )
                 self.assertEqual(payload["error"]["code"], "input_variant_recovery_transport_error")
-            logs = Path(state.LOG_PATH).read_text(encoding="utf-8")
+            logs = Path(logging.LOG_PATH).read_text(encoding="utf-8")
 
         self.assertEqual(calls, 2)
         self.assertEqual(len(received), 1)
@@ -406,7 +411,7 @@ class InputTransportContracts(unittest.TestCase):
             with request(port, body) as response:
                 self.assertEqual(response.status, 200)
                 downstream = response.read()
-            logs = Path(state.LOG_PATH).read_text(encoding="utf-8")
+            logs = Path(logging.LOG_PATH).read_text(encoding="utf-8")
 
         self.assertEqual(len(received), 2)
         self.assertEqual(downstream.count(b'"type":"response.created"'), 1)
@@ -446,7 +451,9 @@ class InputTransportContracts(unittest.TestCase):
         )
         results = []
         for upstream, terminal, detail, error_type in cases:
-            state.reset_for_test()
+            admission.reset_for_test()
+            telemetry.reset_for_test()
+            cooldown.reset_for_test()
             handler = _MemoryHandler()
             result = sse._read_one_stream(handler, upstream, "/v1/responses", 1, lambda: None)
             results.append(
@@ -475,7 +482,9 @@ class InputTransportContracts(unittest.TestCase):
         self.assertTrue(result["pre_content_exhausted"])
         self.assertEqual(result["attempts"], 1)
 
-        state.reset_for_test()
+        admission.reset_for_test()
+        telemetry.reset_for_test()
+        cooldown.reset_for_test()
         handler = _MemoryHandler()
         result = sse.relay(
             handler,
@@ -492,12 +501,14 @@ class InputTransportContracts(unittest.TestCase):
     def test_direct_relay_covers_queue_timeout_and_transport_exhaustion(self) -> None:
         body = json.dumps({"input": []}).encode()
         handler = _MemoryHandler(body)
-        with mock.patch.object(state, "admit_response", return_value=("timeout", 0)):
+        with mock.patch.object(admission, "admit_response", return_value=("timeout", 0)):
             responses.relay(handler, "POST")
         self.assertEqual(handler.statuses, [503])
         self.assertIn(b"timed out waiting", handler.output())
 
-        state.reset_for_test()
+        admission.reset_for_test()
+        telemetry.reset_for_test()
+        cooldown.reset_for_test()
         handler = _MemoryHandler(path="/dmxapi/v1/health")
         with mock.patch.object(upstream_exchange, "urlopen_direct", side_effect=OSError("private")):
             responses.relay(handler, "GET")
@@ -541,15 +552,19 @@ class InputTransportContracts(unittest.TestCase):
             responses.relay(handler, "POST")
         self.assertEqual(handler.statuses, [200])
 
-        state.reset_for_test()
+        admission.reset_for_test()
+        telemetry.reset_for_test()
+        cooldown.reset_for_test()
         body = json.dumps({"input": []}).encode()
         handler = _MemoryHandler(body)
-        with mock.patch.object(state, "empty_response_cooldown_remaining", return_value=1.0):
+        with mock.patch.object(cooldown, "remaining", return_value=1.0):
             responses.relay(handler, "POST")
         self.assertEqual(handler.statuses, [503])
         self.assertIn(b"dmx_empty_response_exhausted", handler.output())
 
-        state.reset_for_test()
+        admission.reset_for_test()
+        telemetry.reset_for_test()
+        cooldown.reset_for_test()
         handler = _MemoryHandler(body)
         with (
             mock.patch.object(upstream_exchange, "INPUT_VARIANT_DIALOGUE_SLOTS", -4),

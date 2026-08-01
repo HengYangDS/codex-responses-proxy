@@ -1,0 +1,15 @@
+schema_version = 1
+paths = [
+  "AGENTS.md",
+  "CHANGELOG.md",
+  "CONTRIBUTING.md",
+  "README.md",
+  "codex_responses_proxy/**",
+  "docs/**",
+  "evidence/chronicle/runtime-semantic-owners-20260801/**",
+  "evidence/claims/runtime-semantic-owners-20260801.toml",
+  "openspec/**",
+  "pyproject.toml",
+  "tests/**",
+  "tools/**",
+]

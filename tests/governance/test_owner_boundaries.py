@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
 
 from codex_responses_proxy.listener import control, server  # noqa: E402
 from codex_responses_proxy.payload import digest, identity, inventory  # noqa: E402
+from codex_responses_proxy.replay import request as replay_request  # noqa: E402
 from codex_responses_proxy.supervision import select as service_selection  # noqa: E402
 from codex_responses_proxy.transport import responses, sse  # noqa: E402
 
@@ -137,6 +138,53 @@ class ProxyOwnerBoundaryContracts(unittest.TestCase):
                 any(isinstance(node, (ast.Import, ast.ImportFrom)) for node in ast.walk(tree)),
                 relative,
             )
+
+    def test_runtime_state_is_split_into_concrete_semantic_owners(self) -> None:
+        self.assertFalse((PACKAGE / "runtime" / "state.py").exists())
+        owners = {
+            "runtime/admission.py": "admit_response",
+            "runtime/logging.py": "log",
+            "runtime/telemetry.py": "record_counter",
+            "transport/cooldown.py": "remember_failure",
+        }
+        for relative, public_symbol in owners.items():
+            with self.subTest(relative=relative):
+                source = (PACKAGE / relative).read_text(encoding="utf-8")
+                tree = ast.parse(source)
+                definitions = {
+                    node.name
+                    for node in tree.body
+                    if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                }
+                self.assertIn(public_symbol, definitions)
+
+        offenders = []
+        for path in sorted(PACKAGE.rglob("*.py")):
+            if path.name == "__init__.py":
+                continue
+            source = path.read_text(encoding="utf-8")
+            if "codex_responses_proxy.runtime import state" in source:
+                offenders.append(path.relative_to(PACKAGE).as_posix())
+        self.assertEqual(offenders, [])
+
+    def test_replay_projection_returns_structured_metrics(self) -> None:
+        result = replay_request.sanitize_responses_body(
+            json.dumps(
+                {
+                    "store": True,
+                    "previous_response_id": "rs_private",
+                    "input": [
+                        {"type": "reasoning", "encrypted_content": "private"},
+                        {"type": "message", "role": "user", "content": "hello"},
+                    ],
+                }
+            ).encode()
+        )
+        self.assertIsInstance(result, replay_request.ProjectionResult)
+        self.assertEqual(result.status, "projected")
+        self.assertEqual(result.metrics.reasoning_items, 1)
+        self.assertEqual(result.metrics.provider_bindings, 1)
+        self.assertNotIn("private", result.diagnostic())
 
     def test_server_bindings_are_required_and_immutable(self) -> None:
         bindings = server.Bindings(
@@ -294,8 +342,8 @@ class ProxyOwnerBoundaryContracts(unittest.TestCase):
         proxy = object.__new__(server.ResilientProxyServer)
         with (
             mock.patch("http.server.ThreadingHTTPServer.process_request_thread") as process,
-            mock.patch.object(server.state, "begin_handler") as begin,
-            mock.patch.object(server.state, "end_handler") as end,
+            mock.patch.object(server.admission, "begin_handler") as begin,
+            mock.patch.object(server.admission, "end_handler") as end,
         ):
             server.ResilientProxyServer.process_request_thread(proxy, None, None)
             begin.assert_called_once()
@@ -306,7 +354,7 @@ class ProxyOwnerBoundaryContracts(unittest.TestCase):
                 server.ResilientProxyServer.process_request_thread(proxy, None, None)
             self.assertEqual(end.call_count, 2)
 
-        with mock.patch.object(server.state, "log") as log:
+        with mock.patch.object(server.logging, "log") as log:
             try:
                 raise BrokenPipeError("closed")
             except BrokenPipeError:

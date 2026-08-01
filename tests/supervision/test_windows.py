@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy import errors
+from codex_responses_proxy.runtime import context as runtime_context
 from codex_responses_proxy.supervision import windows
 from tests.deployment.fixtures import platform_context
 from tests.supervision.fixtures import completed as _completed
@@ -30,7 +31,7 @@ class TestWindowsLifecycle(unittest.TestCase):
                 windows.install(ctx)
             self.assertEqual(
                 invoked.call_args_list[-1].args[0],
-                ["schtasks", "/run", "/tn", windows.TASK_NAME],
+                ["schtasks", "/run", "/tn", runtime_context.SERVICE_ID],
             )
             self.assertEqual(
                 Path(windows._launcher_path(ctx)).read_text(encoding="utf-8"),

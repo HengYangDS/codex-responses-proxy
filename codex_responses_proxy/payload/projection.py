@@ -18,10 +18,6 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.runtime import context as runtime_context
 from codex_responses_proxy.payload import digest, inventory, owned_files
 
-RUNTIME_PAYLOAD_FILES = inventory.RUNTIME_FILES
-SERVING_PAYLOAD_FILES = inventory.SERVING_FILES
-PAYLOAD_MANIFEST_FILENAME = inventory.MANIFEST_FILENAME
-RELEASE_RECEIPT_FILENAME = inventory.RELEASE_RECEIPT_FILENAME
 PAYLOAD_MANIFEST_SCHEMA_VERSION = 2
 _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _RETIRED_MANIFEST_SCHEMAS = {1, 2}
@@ -83,7 +79,7 @@ class HistoricalProjection:
 
 def payload_manifest_path(ctx: runtime_context.RuntimeContext) -> Path:
     """Return the installed runtime payload manifest path."""
-    return Path(ctx.install_dir, PAYLOAD_MANIFEST_FILENAME)
+    return Path(ctx.install_dir, inventory.MANIFEST_FILENAME)
 
 
 def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str, ...]:
@@ -96,7 +92,7 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
     """
 
     install = Path(ctx.install_dir)
-    manifest_path = install / PAYLOAD_MANIFEST_FILENAME
+    manifest_path = install / inventory.MANIFEST_FILENAME
     if manifest_path.is_symlink():
         raise errors.InstallError("installed payload manifest is a symlink")
     if not manifest_path.exists():
@@ -106,7 +102,7 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
     current = (
         manifest.get("schema_version") == PAYLOAD_MANIFEST_SCHEMA_VERSION
         and isinstance(files, dict)
-        and set(files) == set(RUNTIME_PAYLOAD_FILES)
+        and set(files) == set(inventory.RUNTIME_FILES)
     )
     if current:
         ok, detail = verify_payload_manifest(ctx)
@@ -114,7 +110,7 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
             raise errors.InstallError(f"installed payload integrity check failed: {detail}")
         owned = set(owned_files.OWNED_PAYLOAD_FILES)
     else:
-        owned = set(verify_historical_projection(ctx).files) | {PAYLOAD_MANIFEST_FILENAME}
+        owned = set(verify_historical_projection(ctx).files) | {inventory.MANIFEST_FILENAME}
     for relative in owned:
         owned_files.regular_file(install, relative, "installed payload purge")
     for relative in sorted(owned, key=lambda value: len(PurePosixPath(value).parts), reverse=True):
@@ -142,12 +138,12 @@ def _payload_relative_paths(root: str) -> list[str]:
     """Return the declared executable payload, not arbitrary deployment residue."""
     missing = [
         relative
-        for relative in RUNTIME_PAYLOAD_FILES
+        for relative in inventory.RUNTIME_FILES
         if not os.path.isfile(os.path.join(root, relative))
     ]
     if missing:
         raise errors.InstallError("installed payload is incomplete: " + ", ".join(missing))
-    return list(RUNTIME_PAYLOAD_FILES)
+    return list(inventory.RUNTIME_FILES)
 
 
 def serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
@@ -158,7 +154,7 @@ def serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
     component makes the aggregate independent of mapping order and prevents
     boundary ambiguity.
     """
-    expected = set(SERVING_PAYLOAD_FILES)
+    expected = set(inventory.SERVING_FILES)
     if set(file_digests) != expected:
         raise errors.InstallError("serving payload file set mismatch")
     try:
@@ -172,7 +168,7 @@ def manifest_for_digests(
 ) -> dict[str, Any]:
     """Build the canonical current manifest from exact runtime-file digests."""
 
-    serving_files = {relative: file_digests[relative] for relative in SERVING_PAYLOAD_FILES}
+    serving_files = {relative: file_digests[relative] for relative in inventory.SERVING_FILES}
     return {
         "schema_version": PAYLOAD_MANIFEST_SCHEMA_VERSION,
         "release": version,
@@ -209,7 +205,7 @@ def verify_historical_projection(ctx: runtime_context.RuntimeContext) -> Histori
 def _historical_manifest_files(install: Path) -> tuple[dict[str, Any], dict[str, str]]:
     """Verify historical manifest bytes and return the parsed manifest and files."""
 
-    manifest_path = install / PAYLOAD_MANIFEST_FILENAME
+    manifest_path = install / inventory.MANIFEST_FILENAME
     if not manifest_path.exists():
         raise errors.InstallError("retired installed payload manifest is required")
     manifest = owned_files.read_json_object(manifest_path, "retired installed payload manifest")
@@ -307,7 +303,7 @@ def _write_payload_manifest_for_fixture(
 
     paths = _payload_relative_paths(ctx.install_dir)
     digests = {relative: digest.sha256_file(Path(ctx.install_dir, relative)) for relative in paths}
-    serving = {relative: digests[relative] for relative in SERVING_PAYLOAD_FILES}
+    serving = {relative: digests[relative] for relative in inventory.SERVING_FILES}
     manifest: dict[str, Any] = {
         "schema_version": PAYLOAD_MANIFEST_SCHEMA_VERSION,
         "release": Path(ctx.install_dir, "VERSION").read_text(encoding="utf-8").strip(),
@@ -358,7 +354,7 @@ def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, 
     expected_files = _payload_relative_paths(ctx.install_dir)
     if sorted(files) != sorted(expected_files):
         return False, "manifest file set mismatch"
-    if sorted(serving_files) != sorted(SERVING_PAYLOAD_FILES):
+    if sorted(serving_files) != sorted(inventory.SERVING_FILES):
         return False, "manifest serving file set mismatch"
     for relative, expected in files.items():
         if not isinstance(expected, str) or len(expected) != 64:
@@ -379,7 +375,7 @@ def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, 
         return False, str(exc)
     if aggregate != actual_aggregate:
         return False, "serving payload aggregate mismatch"
-    receipt_path = os.path.join(ctx.install_dir, RELEASE_RECEIPT_FILENAME)
+    receipt_path = os.path.join(ctx.install_dir, inventory.RELEASE_RECEIPT_FILENAME)
     if receipt_digest is not None:
         if not isinstance(receipt_digest, str) or len(receipt_digest) != 64:
             return False, "release receipt digest is invalid"

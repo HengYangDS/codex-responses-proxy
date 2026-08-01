@@ -145,6 +145,14 @@ class QualityPolicyContracts(unittest.TestCase):
                 "control.py": "def main():\n    return 0\n",
                 "codex_responses_proxy/__init__.py": "from .runtime import state\n",
                 "codex_responses_proxy/common/value.py": "VALUE = 1\n",
+                "codex_responses_proxy/listener/__init__.py": "",
+                "codex_responses_proxy/listener/private.py": "_VALUE = 1\n",
+                "codex_responses_proxy/listener/forward.py": (
+                    "from codex_responses_proxy.listener import private\nPUBLIC = private._VALUE\n"
+                ),
+                "codex_responses_proxy/listener/direct.py": (
+                    "from codex_responses_proxy.listener.private import _VALUE\nPUBLIC = _VALUE\n"
+                ),
                 "codex_responses_proxy/runtime/state.py": (
                     "from codex_responses_proxy.transport import relay\n"
                 ),
@@ -167,6 +175,29 @@ class QualityPolicyContracts(unittest.TestCase):
         self.assertIn("architecture_root_implementation:control.py", gaps)
         self.assertIn("architecture_init_behavior:codex_responses_proxy/__init__.py", gaps)
         self.assertIn("architecture_forbidden_package:common", gaps)
+        self.assertIn(
+            "architecture_package_declaration_missing:codex_responses_proxy/listener/__init__.py",
+            gaps,
+        )
+        self.assertIn(
+            "architecture_private_cross_module:"
+            "codex_responses_proxy/listener/forward.py:2:private._VALUE",
+            gaps,
+        )
+        self.assertIn(
+            "architecture_forwarding_alias:"
+            "codex_responses_proxy/listener/forward.py:2:private._VALUE",
+            gaps,
+        )
+        self.assertIn(
+            "architecture_private_cross_module:codex_responses_proxy/listener/direct.py:1:_VALUE",
+            gaps,
+        )
+        self.assertIn(
+            "architecture_forwarding_alias:codex_responses_proxy/listener/direct.py:2:_VALUE",
+            gaps,
+        )
+        self.assertIn("architecture_retired_module:codex_responses_proxy/runtime/state.py", gaps)
         self.assertIn("architecture_disallowed_edge:runtime->transport", gaps)
         self.assertIn("architecture_cycle:runtime,transport", gaps)
         self.assertIn("architecture_retired_source_root:codex_dmx_proxy", gaps)

@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy.payload import identity as listener_identity  # noqa: E402
 from codex_responses_proxy.payload import digest as payload_digest  # noqa: E402
+from codex_responses_proxy.payload import inventory
 from codex_responses_proxy.payload import projection as payload_projection  # noqa: E402
 from codex_responses_proxy import errors  # noqa: E402
 from tests.deployment.fixtures import install_context  # noqa: E402
@@ -32,12 +33,8 @@ class TestPayloadIdentity(unittest.TestCase):
         manifest = json.loads(
             Path(payload_projection.payload_manifest_path(ctx)).read_text(encoding="utf-8")
         )
-        self.assertEqual(
-            sorted(manifest["files"]), sorted(payload_projection.RUNTIME_PAYLOAD_FILES)
-        )
-        self.assertEqual(
-            sorted(manifest["serving_files"]), sorted(payload_projection.SERVING_PAYLOAD_FILES)
-        )
+        self.assertEqual(sorted(manifest["files"]), sorted(inventory.RUNTIME_FILES))
+        self.assertEqual(sorted(manifest["serving_files"]), sorted(inventory.SERVING_FILES))
         self.assertEqual(
             manifest["serving_payload_sha256"],
             payload_projection.serving_payload_sha256(manifest["serving_files"]),
@@ -131,7 +128,7 @@ class TestPayloadIdentity(unittest.TestCase):
         self.assertEqual(remaining, ("operator-note.txt",))
         self.assertEqual(unknown.read_text(encoding="utf-8"), "keep\n")
         self.assertFalse(Path(payload_projection.payload_manifest_path(ctx)).exists())
-        for relative in payload_projection.RUNTIME_PAYLOAD_FILES:
+        for relative in inventory.RUNTIME_FILES:
             self.assertFalse((install / relative).exists())
 
     def test_purge_rejects_manifest_claims_outside_historical_inventory(self) -> None:
@@ -153,9 +150,7 @@ class TestPayloadIdentity(unittest.TestCase):
                 for relative, content in claimed.items()
             },
         }
-        (install / payload_projection.PAYLOAD_MANIFEST_FILENAME).write_bytes(
-            payload_digest.canonical_json(manifest)
-        )
+        (install / inventory.MANIFEST_FILENAME).write_bytes(payload_digest.canonical_json(manifest))
 
         with self.assertRaisesRegex(errors.InstallError, "file set is unsupported"):
             payload_projection.purge_installed_projection(ctx)
@@ -184,7 +179,7 @@ class TestPayloadIdentity(unittest.TestCase):
     def test_serving_payload_identity_is_order_independent_and_length_delimited(self) -> None:
         digests = {
             relative: hashlib.sha256(relative.encode("utf-8")).hexdigest()
-            for relative in payload_projection.SERVING_PAYLOAD_FILES
+            for relative in inventory.SERVING_FILES
         }
         reverse_order = dict(reversed(tuple(digests.items())))
         self.assertEqual(
@@ -192,7 +187,7 @@ class TestPayloadIdentity(unittest.TestCase):
             payload_projection.serving_payload_sha256(reverse_order),
         )
         changed = dict(digests)
-        changed[payload_projection.SERVING_PAYLOAD_FILES[-1]] = "0" * 64
+        changed[inventory.SERVING_FILES[-1]] = "0" * 64
         self.assertNotEqual(
             payload_projection.serving_payload_sha256(digests),
             payload_projection.serving_payload_sha256(changed),

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from codex_responses_proxy.runtime import context as runtime_context
+from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.supervision import linux, macos, windows
 from tests.deployment.fixtures import platform_context
 from tests.supervision.fixtures import assert_fragments as _assert_fragments
@@ -34,8 +34,8 @@ RestartSec=3
 WantedBy=default.target
 ExecStart=/usr/bin/python3.12
 Environment=CODEX_RESPONSES_PROXY_PROXY_PORT=8791
-Environment=CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES={runtime_context.DEFAULT_PROXY_LOG_MAX_BYTES}
-Environment=CODEX_RESPONSES_PROXY_WATCHDOG_LOG_BACKUP_COUNT={runtime_context.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT}
+Environment=CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES={runtime_config.DEFAULT_PROXY_LOG_MAX_BYTES}
+Environment=CODEX_RESPONSES_PROXY_WATCHDOG_LOG_BACKUP_COUNT={runtime_config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT}
 Environment=CODEX_RESPONSES_PROXY_PROXY_LOG=/home/tester/.local/state/codex-responses-proxy/proxy.log
 Environment=CODEX_RESPONSES_PROXY_WATCHDOG_LOG=/home/tester/.local/state/codex-responses-proxy/watchdog.log""".splitlines()
 WINDOWS_TASK_CONTAINS = f"""<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
@@ -54,8 +54,8 @@ run-watchdog.pyw""".splitlines()
 WINDOWS_LAUNCHER_CONTAINS = f"""'CODEX_RESPONSES_PROXY_PROXY_PORT'] = '8801'
 'CODEX_RESPONSES_PROXY_PROXY_PYTHON'] = '/usr/bin/python3.12'
 'CODEX_RESPONSES_PROXY_PROXY_SCRIPT'] = '/home/tester/.local/share/codex-responses-proxy/codex_responses_proxy/listener/entrypoint.py'
-'CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES'] = '{runtime_context.DEFAULT_PROXY_LOG_MAX_BYTES}'
-'CODEX_RESPONSES_PROXY_WATCHDOG_LOG_BACKUP_COUNT'] = '{runtime_context.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT}'
+'CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES'] = '{runtime_config.DEFAULT_PROXY_LOG_MAX_BYTES}'
+'CODEX_RESPONSES_PROXY_WATCHDOG_LOG_BACKUP_COUNT'] = '{runtime_config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT}'
 'CODEX_RESPONSES_PROXY_PROXY_LOG'] = '/home/tester/.local/state/codex-responses-proxy/proxy.log'
 'CODEX_RESPONSES_PROXY_WATCHDOG_LOG'] = '/home/tester/.local/state/codex-responses-proxy/watchdog.log'
 runpy.run_path('/home/tester/.local/share/codex-responses-proxy/watchdog/watchdog.py', run_name='__main__')""".splitlines()

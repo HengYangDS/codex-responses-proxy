@@ -10,12 +10,6 @@ from codex_responses_proxy.runtime import config
 
 
 SERVICE_ID = "codex-responses-proxy.watchdog"
-LABEL = SERVICE_ID
-DEFAULT_PORT = config.DEFAULT_PORT
-DEFAULT_PROXY_LOG_MAX_BYTES = config.DEFAULT_PROXY_LOG_MAX_BYTES
-DEFAULT_PROXY_LOG_BACKUP_COUNT = config.DEFAULT_PROXY_LOG_BACKUP_COUNT
-DEFAULT_WATCHDOG_LOG_MAX_BYTES = config.DEFAULT_WATCHDOG_LOG_MAX_BYTES
-DEFAULT_WATCHDOG_LOG_BACKUP_COUNT = config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT
 
 
 @dataclass(slots=True)
@@ -28,11 +22,11 @@ class RuntimeContext:
     watchdog_script: str
     python: str
     log_dir: str
-    port: int = DEFAULT_PORT
-    proxy_log_max_bytes: int = DEFAULT_PROXY_LOG_MAX_BYTES
-    proxy_log_backup_count: int = DEFAULT_PROXY_LOG_BACKUP_COUNT
-    watchdog_log_max_bytes: int = DEFAULT_WATCHDOG_LOG_MAX_BYTES
-    watchdog_log_backup_count: int = DEFAULT_WATCHDOG_LOG_BACKUP_COUNT
+    port: int = config.DEFAULT_PORT
+    proxy_log_max_bytes: int = config.DEFAULT_PROXY_LOG_MAX_BYTES
+    proxy_log_backup_count: int = config.DEFAULT_PROXY_LOG_BACKUP_COUNT
+    watchdog_log_max_bytes: int = config.DEFAULT_WATCHDOG_LOG_MAX_BYTES
+    watchdog_log_backup_count: int = config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT
     responses_max_concurrency: int = config.DEFAULT_RESPONSES_MAX_CONCURRENCY
     responses_queue_timeout: float = config.DEFAULT_RESPONSES_QUEUE_TIMEOUT
     upstream_timeout: float = config.DEFAULT_UPSTREAM_TIMEOUT
@@ -81,11 +75,11 @@ def validate_log_retention(value: int, *, name: str, minimum: int, maximum: int)
 def create(
     *,
     python: str,
-    port: int = DEFAULT_PORT,
-    proxy_log_max_bytes: int = DEFAULT_PROXY_LOG_MAX_BYTES,
-    proxy_log_backup_count: int = DEFAULT_PROXY_LOG_BACKUP_COUNT,
-    watchdog_log_max_bytes: int = DEFAULT_WATCHDOG_LOG_MAX_BYTES,
-    watchdog_log_backup_count: int = DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
+    port: int = config.DEFAULT_PORT,
+    proxy_log_max_bytes: int = config.DEFAULT_PROXY_LOG_MAX_BYTES,
+    proxy_log_backup_count: int = config.DEFAULT_PROXY_LOG_BACKUP_COUNT,
+    watchdog_log_max_bytes: int = config.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
+    watchdog_log_backup_count: int = config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
 ) -> RuntimeContext:
     """Validate command inputs and project all product-owned paths once."""
 

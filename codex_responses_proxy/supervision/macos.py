@@ -46,13 +46,13 @@ def _environment_xml(ctx: runtime_context.RuntimeContext) -> str:
 
 
 def _plist_path(ctx: runtime_context.RuntimeContext) -> str:
-    return os.path.join(ctx.home, "Library", "LaunchAgents", f"{runtime_context.LABEL}.plist")
+    return os.path.join(ctx.home, "Library", "LaunchAgents", f"{runtime_context.SERVICE_ID}.plist")
 
 
 def render_plist(ctx: runtime_context.RuntimeContext) -> str:
     """Render the launchd property list for this installation's watchdog."""
     return PLIST_TEMPLATE.format(
-        label=runtime_context.LABEL,
+        label=runtime_context.SERVICE_ID,
         python=ctx.python,
         watchdog=ctx.watchdog_script,
         environment=_environment_xml(ctx),
@@ -89,7 +89,7 @@ def uninstall(ctx: runtime_context.RuntimeContext) -> None:
             detail = unloaded.stderr.strip() or unloaded.stdout.strip()
             raise errors.InstallError(f"launchctl unload failed: {detail}")
         listed = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
-        if listed.returncode or runtime_context.LABEL in listed.stdout:
+        if listed.returncode or runtime_context.SERVICE_ID in listed.stdout:
             raise errors.InstallError("launchd watchdog remains registered after unload")
         os.remove(plist)
 
@@ -100,6 +100,6 @@ def status(ctx: runtime_context.RuntimeContext) -> str:
     if not os.path.exists(plist):
         return "absent"
     r = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
-    if runtime_context.LABEL in r.stdout:
+    if runtime_context.SERVICE_ID in r.stdout:
         return "running"
     return "installed"

@@ -7,7 +7,7 @@ import json
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Protocol
 
-from codex_responses_proxy.runtime import state
+from codex_responses_proxy.runtime import logging, telemetry
 from codex_responses_proxy.transport import sse
 from codex_responses_proxy.providers import registry as provider_registry
 
@@ -138,7 +138,9 @@ def relay_sse(exchange: Exchange, response) -> None:
     except (BrokenPipeError, ConnectionResetError):
         exchange.log("downstream_client_closed")
     except Exception as error:
-        exchange.log("stream_handler_exception", f"exception={state.safe_exception_label(error)} ")
+        exchange.log(
+            "stream_handler_exception", f"exception={logging.safe_exception_label(error)} "
+        )
 
 
 def _read_chunk(response) -> tuple[bytes, bool]:
@@ -162,9 +164,11 @@ def relay_body(exchange: Exchange, response) -> None:
                 break
         exchange.handler.wfile.write(b"0\r\n\r\n")
         if exchange.is_responses:
-            state.record_counter("responses_completed")
+            telemetry.record_counter("responses_completed")
         exchange.input_variant_accepted()
     except (BrokenPipeError, ConnectionResetError):
         exchange.log("downstream_client_closed")
     except Exception as error:
-        exchange.log("stream_handler_exception", f"exception={state.safe_exception_label(error)} ")
+        exchange.log(
+            "stream_handler_exception", f"exception={logging.safe_exception_label(error)} "
+        )

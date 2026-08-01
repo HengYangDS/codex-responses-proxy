@@ -11,7 +11,8 @@ from typing import Any
 
 from codex_responses_proxy.recovery import input_variant
 from codex_responses_proxy.recovery import response_failed
-from codex_responses_proxy.runtime import state
+from codex_responses_proxy.runtime import logging, telemetry
+from codex_responses_proxy.transport import cooldown
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.transport import relay as downstream
@@ -79,8 +80,8 @@ class Exchange:
         )
 
     def log(self, event: str, detail: str = "") -> None:
-        path = state.safe_request_path(self.handler.path)
-        state.log(
+        path = logging.safe_request_path(self.handler.path)
+        logging.log(
             f"req={self.request_id} event={event} provider={self.profile.name} {detail}path={path}"
         )
 
@@ -90,7 +91,7 @@ class Exchange:
             and self.used_response_failed_dialogue
             and self.dialogue_metrics
         ):
-            state.record_counter("response_failed_dialogue_recovery_accepted")
+            telemetry.record_counter("response_failed_dialogue_recovery_accepted")
             m = self.dialogue_metrics
             self.log(
                 "response_failed_dialogue_recovery_accepted",
@@ -100,7 +101,7 @@ class Exchange:
                 f"pair_safe_stages={self.response_failed_stages} ",
             )
         elif self.used_response_failed_compaction and self.compact_metrics:
-            state.record_counter("response_failed_compaction_accepted")
+            telemetry.record_counter("response_failed_compaction_accepted")
             m = self.compact_metrics
             self.log(
                 "response_failed_compact_recovery_accepted",
@@ -111,7 +112,7 @@ class Exchange:
     def input_variant_accepted(self) -> None:
         if not (self.used_input_variant_dialogue and self.input_variant_metrics):
             return
-        state.record_counter("input_variant_dialogue_recovery_accepted")
+        telemetry.record_counter("input_variant_dialogue_recovery_accepted")
         m = self.input_variant_metrics
         self.log(
             "input_variant_dialogue_recovery_accepted",
@@ -121,8 +122,8 @@ class Exchange:
         )
 
     def input_variant_exhausted(self, detail: str) -> None:
-        state.record_counter("input_variant_dialogue_recovery_exhausted")
-        state.record_failure("input_variant_dialogue_recovery_exhausted")
+        telemetry.record_counter("input_variant_dialogue_recovery_exhausted")
+        telemetry.record_failure("input_variant_dialogue_recovery_exhausted")
         self.log("input_variant_dialogue_recovery_exhausted", detail)
 
 
@@ -154,7 +155,7 @@ def _recover_input_variant(exchange: Exchange) -> bool:
     recovery, metrics = _input_variant_recovery(exchange.body)
     if recovery is None or metrics is None:
         return False
-    state.record_counter("input_variant_dialogue_recovery_attempts")
+    telemetry.record_counter("input_variant_dialogue_recovery_attempts")
     exchange.used_input_variant_dialogue = True
     exchange.input_variant_metrics = metrics
     previous_bytes = len(exchange.attempt_body)
@@ -175,7 +176,7 @@ def _recover_response_failed(exchange: Exchange, status_code: int, disposition: 
     if exchange.response_failed_stages < response_failed.MAX_STAGES:
         compact, metrics = response_failed.compact_request(exchange.attempt_body)
         if compact is not None and metrics is not None:
-            state.record_counter("response_failed_compaction_attempts")
+            telemetry.record_counter("response_failed_compaction_attempts")
             exchange.response_failed_stages += 1
             metrics["stage"] = exchange.response_failed_stages
             exchange.compact_metrics = metrics
@@ -196,7 +197,7 @@ def _recover_response_failed(exchange: Exchange, status_code: int, disposition: 
     recovery, metrics = response_failed.recover_dialogue(exchange.body)
     if recovery is None or metrics is None:
         return False
-    state.record_counter("response_failed_dialogue_recovery_attempts")
+    telemetry.record_counter("response_failed_dialogue_recovery_attempts")
     exchange.used_response_failed_dialogue = True
     exchange.dialogue_metrics = metrics
     previous_bytes = len(exchange.attempt_body)
@@ -212,8 +213,8 @@ def _recover_response_failed(exchange: Exchange, status_code: int, disposition: 
 
 
 def _exhaust_response_failed(exchange: Exchange) -> None:
-    state.record_counter("response_failed_recovery_exhausted")
-    state.record_failure("response_failed_recovery_exhausted")
+    telemetry.record_counter("response_failed_recovery_exhausted")
+    telemetry.record_failure("response_failed_recovery_exhausted")
     attempts = exchange.response_failed_stages + int(exchange.used_response_failed_dialogue) + 1
     downstream.send_payload(
         exchange.handler, 503, response_failed.exhausted_payload(attempts), retry_after="3"
@@ -231,9 +232,9 @@ def _reject_empty_response(
     policy = exchange.profile.empty_response
     if policy is None:
         raise RuntimeError("empty-response recovery requires a provider policy")
-    state.record_counter("empty_response_recovery_exhausted")
-    state.record_failure("empty_response_recovery_exhausted")
-    state.remember_empty_response_failure(
+    telemetry.record_counter("empty_response_recovery_exhausted")
+    telemetry.record_failure("empty_response_recovery_exhausted")
+    cooldown.remember_failure(
         fingerprint,
         capacity=policy.COOLDOWN_CAPACITY,
         cooldown_seconds=policy.COOLDOWN_SECONDS,
@@ -247,7 +248,7 @@ def _retry_empty_response(exchange: Exchange) -> bool:
     if policy is None:
         return False
     fingerprint = policy.policy_fingerprint(exchange.body)
-    state.record_counter("empty_response_retry_attempts")
+    telemetry.record_counter("empty_response_retry_attempts")
     exchange.log(
         "empty_response_retry",
         f"bytes={len(exchange.attempt_body)} policy={policy.POLICY_VERSION} ",
@@ -274,10 +275,10 @@ def _retry_empty_response(exchange: Exchange) -> bool:
             fingerprint,
             2,
             "empty_response_retry_failed",
-            f"exception={state.safe_exception_label(error)} attempts=2 ",
+            f"exception={logging.safe_exception_label(error)} attempts=2 ",
         )
         return True
-    state.record_counter("empty_response_retry_accepted")
+    telemetry.record_counter("empty_response_retry_accepted")
     exchange.log("empty_response_retry_accepted")
     exchange.response = exchange_response
     return False
@@ -294,7 +295,7 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
     disposition = "full" if empty else portable
     exact = input_variant.is_exact_validation_error(status_code, payload)
     classification = _classification(status_code, payload, disposition, exact, empty)
-    state.record_upstream_classification(classification)
+    telemetry.record_upstream_classification(classification)
     if exchange.used_input_variant_dialogue:
         exchange.input_variant_exhausted(f"upstream_status={status_code} ")
         downstream.relay_error(exchange.handler, status_code, headers, payload)
@@ -320,7 +321,7 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
     if empty:
         return "terminal" if _retry_empty_response(exchange) else "accepted"
     downstream.relay_error(exchange.handler, status_code, headers, payload)
-    state.record_failure(classification)
+    telemetry.record_failure(classification)
     exchange.log(
         "upstream_http_terminal",
         f"status={status_code} response_bytes={len(payload)} attempts={attempt + 1} ",
@@ -330,7 +331,7 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
 
 def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
     if exchange.used_input_variant_dialogue:
-        exchange.input_variant_exhausted(f"exception={state.safe_exception_label(error)} ")
+        exchange.input_variant_exhausted(f"exception={logging.safe_exception_label(error)} ")
         downstream.send_payload(
             exchange.handler,
             502,
@@ -344,11 +345,11 @@ def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
     if attempt < _MAX_ATTEMPTS - 1:
         exchange.log(
             "upstream_transport_retry",
-            f"attempt={attempt + 1} exception={state.safe_exception_label(error)} ",
+            f"attempt={attempt + 1} exception={logging.safe_exception_label(error)} ",
         )
         time.sleep(_BACKOFFS[min(attempt, len(_BACKOFFS) - 1)])
         return "retry"
-    state.record_failure("upstream_transport_error")
+    telemetry.record_failure("upstream_transport_error")
     downstream.send_payload(
         exchange.handler,
         502,
@@ -360,7 +361,7 @@ def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
     )
     exchange.log(
         "upstream_transport_exhausted",
-        f"exception={state.safe_exception_label(error)} ",
+        f"exception={logging.safe_exception_label(error)} ",
     )
     return "terminal"
 
@@ -386,7 +387,7 @@ def open_upstream(exchange: Exchange):
             return None
         exchange.accepted_recovery()
         return response
-    state.record_failure("upstream_transport_error")
+    telemetry.record_failure("upstream_transport_error")
     downstream.send_payload(
         exchange.handler,
         502,

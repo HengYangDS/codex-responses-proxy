@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 from codex_responses_proxy.deployment import handoff
 from codex_responses_proxy import errors
 from codex_responses_proxy.supervision import process
+from codex_responses_proxy.payload import inventory
 from codex_responses_proxy.payload import projection as payload_projection
 from tests.runtime.handoff.fixtures import Response
 from tests.runtime.handoff.fixtures import expected_metadata
@@ -141,7 +142,7 @@ class TestControllerHandoffWiring(unittest.TestCase):
 
     def test_expected_metadata_reads_and_validates_each_release_identity(self):
         root = Path(self.tempdir.name)
-        manifest_path = root / payload_projection.PAYLOAD_MANIFEST_FILENAME
+        manifest_path = root / inventory.MANIFEST_FILENAME
 
         with self.assertRaisesRegex(errors.InstallError, "VERSION"):
             handoff.expected_metadata(str(root))

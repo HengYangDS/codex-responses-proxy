@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy import errors
+from codex_responses_proxy.payload import inventory
 from codex_responses_proxy.payload import projection as payload_projection
 from codex_responses_proxy.payload import rollback as payload_rollback
 from codex_responses_proxy.payload import digest as payload_digest
@@ -137,11 +138,11 @@ class TestPayloadMigration(unittest.TestCase):
             if relative not in retired:
                 raise AssertionError(f"not a historical schema-2 path: {relative}")
             target.write_bytes(content)
-        manifest = json.loads((install / payload_projection.PAYLOAD_MANIFEST_FILENAME).read_text())
+        manifest = json.loads((install / inventory.MANIFEST_FILENAME).read_text())
         manifest["files"].update(
             {relative: hashlib.sha256(content).hexdigest() for relative, content in files.items()}
         )
-        (install / payload_projection.PAYLOAD_MANIFEST_FILENAME).write_text(
+        (install / inventory.MANIFEST_FILENAME).write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         return ctx, begin_transaction(ctx, released_fixture())
@@ -315,7 +316,7 @@ class TestPayloadMigration(unittest.TestCase):
                 marker.write_bytes(b"untouched\n")
                 (install / "VERSION").write_bytes(b"1.0.27\n")
                 if manifest is not None:
-                    (install / payload_projection.PAYLOAD_MANIFEST_FILENAME).write_bytes(
+                    (install / inventory.MANIFEST_FILENAME).write_bytes(
                         payload_digest.canonical_json(manifest)
                     )
                 transaction = begin_transaction(ctx, released_fixture())
@@ -346,7 +347,7 @@ class TestPayloadMigration(unittest.TestCase):
                         relative: hashlib.sha256(b"owned\n").hexdigest(),
                     },
                 }
-                (install / payload_projection.PAYLOAD_MANIFEST_FILENAME).write_bytes(
+                (install / inventory.MANIFEST_FILENAME).write_bytes(
                     payload_digest.canonical_json(manifest)
                 )
                 transaction = begin_transaction(ctx, released_fixture())
@@ -364,7 +365,7 @@ class TestPayloadMigration(unittest.TestCase):
             path.unlink()
         (install / "proxy").rmdir()
         (install / "proxy").symlink_to(external, target_is_directory=True)
-        manifest_path = install / payload_projection.PAYLOAD_MANIFEST_FILENAME
+        manifest_path = install / inventory.MANIFEST_FILENAME
         manifest = json.loads(manifest_path.read_text())
         manifest["files"]["proxy/dmx_responses_proxy.py"] = hashlib.sha256(
             b"external\n"

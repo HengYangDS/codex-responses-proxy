@@ -79,7 +79,7 @@ class TestLinuxLifecycle(unittest.TestCase):
         self.assertFalse(issubclass(errors.ManualStartRequired, errors.InstallError))
         with _temporary_context("install_dir") as ctx:
             wrapper = linux._cron_wrapper_path(ctx)
-            existing = f"@reboot {wrapper} # {runtime_context.LABEL}\n@reboot /keep-me\n"
+            existing = f"@reboot {wrapper} # {runtime_context.SERVICE_ID}\n@reboot /keep-me\n"
             with (
                 mock.patch.object(linux.shutil, "which", return_value="crontab"),
                 mock.patch.object(
@@ -94,7 +94,7 @@ class TestLinuxLifecycle(unittest.TestCase):
             self.assertIn('export CODEX_RESPONSES_PROXY_PROXY_PORT="8791"', text)
             _assert_executable_mode(self, Path(wrapper).stat().st_mode & 0o777)
             installed = invoked.call_args_list[1].kwargs["input"]
-            self.assertEqual(installed.count(runtime_context.LABEL), 1)
+            self.assertEqual(installed.count(runtime_context.SERVICE_ID), 1)
             self.assertIn("@reboot /keep-me", installed)
             popen.assert_called_once()
 
@@ -119,7 +119,7 @@ class TestLinuxLifecycle(unittest.TestCase):
     def test_uninstall_and_status(self):
         with _temporary_context("home") as ctx:
             unit = Path(linux._unit_path(ctx))
-            owned = f"@reboot /owned # {runtime_context.LABEL}\n@reboot /keep-me\n"
+            owned = f"@reboot /owned # {runtime_context.SERVICE_ID}\n@reboot /keep-me\n"
             _set_file(unit, "unit")
             with (
                 mock.patch.object(linux.shutil, "which", return_value="crontab"),
@@ -164,7 +164,7 @@ class TestLinuxLifecycle(unittest.TestCase):
             for systemd, executable, output, expected in (
                 (True, "crontab", "active\n", "running"),
                 (True, "crontab", "inactive\n", "installed"),
-                (False, "crontab", f"@reboot x # {runtime_context.LABEL}\n", "installed"),
+                (False, "crontab", f"@reboot x # {runtime_context.SERVICE_ID}\n", "installed"),
                 (False, "crontab", "@reboot /other\n", "absent"),
                 (False, None, "", "absent"),
             ):
@@ -189,7 +189,7 @@ class TestLinuxLifecycle(unittest.TestCase):
                 linux.uninstall(ctx)
             self.assertTrue(unit.exists())
 
-            owned = f"@reboot /owned # {runtime_context.LABEL}\n"
+            owned = f"@reboot /owned # {runtime_context.SERVICE_ID}\n"
             with (
                 mock.patch.object(linux.shutil, "which", return_value="crontab"),
                 mock.patch.object(
