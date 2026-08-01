@@ -62,7 +62,10 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
                 )
 
         self.assertIs(started, child)
-        self.assertIs(popen.call_args.kwargs.get("close_fds", True), False)
+        self.assertIs(
+            popen.call_args.kwargs.get("close_fds", True),
+            sys.platform == "win32",
+        )
 
     def _installed_fixture(
         self, *, release: str, port: int, upstream_url: str
