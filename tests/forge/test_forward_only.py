@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -123,7 +124,7 @@ class ProviderProjectionTests(unittest.TestCase):
         run("git", "config", "user.signingkey", str(gitlab_key), cwd=source)
         (source / "README.md").write_text("one\n", encoding="utf-8")
         (source / "tools" / "forge").mkdir(parents=True)
-        for name in ("context.sh", "project.sh"):
+        for name in ("context.sh", "history.py", "project.sh"):
             source_file = ROOT / "tools" / "forge" / name
             if source_file.exists():
                 shutil.copy2(source_file, source / "tools" / "forge")
@@ -153,6 +154,7 @@ class ProviderProjectionTests(unittest.TestCase):
 
         return {
             **agent,
+            "PYTHON": sys.executable,
             "CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT": str(fixture["context"]),
             "CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS": str(fixture["gitlab_anchor"]),
             "CODEX_RESPONSES_PROXY_GITHUB_COMMIT_ALLOWED_SIGNERS": str(fixture["github_anchor"]),
@@ -276,6 +278,73 @@ class ProviderProjectionTests(unittest.TestCase):
                 projection = json.loads(mapping.read_text(encoding="utf-8"))
                 self.assertEqual(old_tip, projection["base_projected_commit"])
                 self.assertEqual(1, len(projection["created"]))
+
+    def test_incremental_projection_fingerprints_each_history_commit_once(self) -> None:
+        """Keep incremental history matching linear in both commit histories."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixture = self.fixture(root)
+            source = fixture["source"]
+            github_remote = fixture["github_remote"]
+            for index in range(6):
+                (source / f"history-{index}.txt").write_text(f"{index}\n", encoding="utf-8")
+                run("git", "add", ".", cwd=source)
+                run("git", "commit", "-qS", "-m", f"history {index}", cwd=source)
+            with ssh_agent(root, fixture["gitlab_key"], fixture["github_key"]) as agent:
+                environment = self.environment(fixture, agent)
+                run(
+                    "sh",
+                    "tools/forge/project.sh",
+                    "--provider",
+                    "github",
+                    cwd=source,
+                    env=environment,
+                )
+                old_tip = run(
+                    "git", "rev-parse", "refs/heads/main", cwd=github_remote
+                ).stdout.strip()
+                (source / "successor.txt").write_text("successor\n", encoding="utf-8")
+                run("git", "add", ".", cwd=source)
+                run("git", "commit", "-qS", "-m", "one successor", cwd=source)
+
+                command_log = root / "git-commands.log"
+                bin_dir = root / "bin"
+                bin_dir.mkdir()
+                git_wrapper = bin_dir / "git"
+                git_wrapper.write_text(
+                    "#!/bin/sh\n"
+                    'printf "%s\\n" "$*" >>"$GIT_COMMAND_LOG"\n'
+                    f'exec "{shutil.which("git")}" "$@"\n',
+                    encoding="utf-8",
+                )
+                git_wrapper.chmod(0o755)
+                mapping = root / "linear-map.json"
+                result = run(
+                    "sh",
+                    "tools/forge/project.sh",
+                    "--provider",
+                    "github",
+                    "--map-output",
+                    str(mapping),
+                    cwd=source,
+                    env={
+                        **environment,
+                        "GIT_COMMAND_LOG": str(command_log),
+                        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+                    },
+                )
+
+            self.assertNotIn("Traceback", result.stderr)
+            commands = command_log.read_text(encoding="utf-8").splitlines()
+            message_reads = sum("cat-file commit " in command for command in commands)
+            batch_reads = sum("cat-file --batch" in command for command in commands)
+            self.assertEqual(2, batch_reads)
+            projection = json.loads(mapping.read_text(encoding="utf-8"))
+            self.assertEqual(1, len(projection["created"]))
+            self.assertEqual(len(projection["created"]), message_reads)
+            new_tip = run("git", "rev-parse", "refs/heads/main", cwd=github_remote).stdout.strip()
+            run("git", "merge-base", "--is-ancestor", old_tip, new_tip, cwd=github_remote)
 
     def test_untrusted_canonical_commit_is_rejected_without_ref_change(self) -> None:
         """Reject source history outside canonical GitLab identity and trust."""

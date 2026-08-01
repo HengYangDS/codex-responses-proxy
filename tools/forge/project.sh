@@ -49,6 +49,7 @@ git diff --quiet && git diff --cached --quiet || {
 }
 
 script_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+python_bin=${PYTHON:-python3}
 # shellcheck source=tools/forge/context.sh
 . "$script_root/context.sh"
 load_publication_context "$provider"
@@ -122,7 +123,7 @@ write_map() {
   base_projected=$3
   [ -n "$map_output" ] || return 0
   mkdir -p "$(dirname -- "$map_output")"
-  python3 - "$provider" "$source" "$projected" "$source_tree" "$base_source" "$base_projected" \
+  "$python_bin" - "$provider" "$source" "$projected" "$source_tree" "$base_source" "$base_projected" \
     "$map_rows" "$created_rows" "$map_output" <<'PY'
 import json
 import os
@@ -173,61 +174,28 @@ fi
 
 select_agent_signing_key "$workspace/signing-key.pub"
 
-commit_fingerprint() {
-  repository_path=$1
-  commit=$2
-  message_file="$workspace/fingerprint-message"
-  parent_count=$(git -C "$repository_path" show -s --format=%P "$commit" | awk '{print NF}')
-  git -C "$repository_path" cat-file commit "$commit" | sed '1,/^$/d' >"$message_file"
-  {
-    printf 'parents=%s\n' "$parent_count"
-    git -C "$repository_path" show -s --format='%T%n%aI%n%cI' "$commit"
-    printf '%s\n' '---message---'
-    cat "$message_file"
-  } | git hash-object --stdin
-}
-
 canonical_commits=$(git -C "$repository" rev-list --reverse --topo-order "$source")
+canonical_commit_list="$workspace/canonical-commits.txt"
+printf '%s\n' "$canonical_commits" >"$canonical_commit_list"
 base_source=
 base_projected=
 if [ -n "$remote_tip" ]; then
-  for commit in $(git -C "$repository" rev-list "$remote_tip"); do
+  projected_commits=$(git -C "$repository" rev-list "$remote_tip")
+  for commit in $projected_commits; do
     commit_email_and_signature_are_valid "$repository" "$commit" "$publication_email" "$provider_anchor" || {
       echo "existing GitHub identity or signature is invalid: $commit" >&2
       exit 1
     }
   done
-  remote_fingerprint=$(commit_fingerprint "$repository" "$remote_tip")
-  matches=
-  for canonical_commit in $canonical_commits; do
-    [ "$(commit_fingerprint "$repository" "$canonical_commit")" = "$remote_fingerprint" ] || continue
-    matches="${matches}${matches:+
-}$canonical_commit"
-  done
-  match_count=$(printf '%s\n' "$matches" | awk 'NF {count++} END {print count + 0}')
-  [ "$match_count" -eq 1 ] || {
-    echo "GitHub branch tree diverges from canonical history; found $match_count identity-neutral matches" >&2
-    exit 1
-  }
-  base_source=$matches
+  projected_commit_list="$workspace/projected-commits.txt"
+  joined_map="$workspace/joined-map.tsv"
+  printf '%s\n' "$projected_commits" >"$projected_commit_list"
+  base_source=$("$python_bin" "$script_root/history.py" \
+    --repository "$repository" \
+    --canonical "$canonical_commit_list" --projected "$projected_commit_list" \
+    --remote-commit "$remote_tip" --output "$joined_map")
   base_projected=$remote_tip
-
-  for canonical_commit in $canonical_commits; do
-    canonical_fingerprint=$(commit_fingerprint "$repository" "$canonical_commit")
-    projected_matches=
-    for projected_commit in $(git -C "$repository" rev-list "$remote_tip"); do
-      [ "$(commit_fingerprint "$repository" "$projected_commit")" = "$canonical_fingerprint" ] || continue
-      projected_matches="${projected_matches}${projected_matches:+
-}$projected_commit"
-    done
-    projected_count=$(printf '%s\n' "$projected_matches" | awk 'NF {count++} END {print count + 0}')
-    [ "$projected_count" -le 1 ] || {
-      echo "canonical commit has ambiguous GitHub history matches: $canonical_commit" >&2
-      exit 1
-    }
-    [ "$projected_count" -eq 1 ] || continue
-    printf '%s\t%s\n' "$canonical_commit" "$projected_matches" >>"$map_rows"
-  done
+  cat "$joined_map" >>"$map_rows"
 fi
 
 lookup_projected_parent() {

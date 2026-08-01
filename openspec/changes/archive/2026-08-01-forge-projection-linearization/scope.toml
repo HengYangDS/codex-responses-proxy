@@ -1,0 +1,11 @@
+schema_version = 1
+paths = [
+  "evidence/claims/ci-log-hygiene-20260730.toml",
+  "openspec/changes/forge-projection-linearization/**",
+  "openspec/changes/archive/*-forge-projection-linearization/**",
+  "openspec/specs/ci-diagnostics/**",
+  "tests/forge/test_forward_only.py",
+  "tests/forge/test_history.py",
+  "tools/forge/history.py",
+  "tools/forge/project.sh",
+]
