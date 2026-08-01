@@ -1,6 +1,6 @@
 schema: spec-driven
 context: |
-  Codex DMX Proxy is a runtime-files compatibility adapter for third-party
+  Codex Responses Proxy is a runtime-files compatibility adapter for third-party
   Responses endpoints. VERSION owns release identity. Python support is 3.12,
   3.13, and 3.14. GitLab and GitHub are independent publication planes.
 rules:

@@ -1,8 +1,8 @@
 [claim]
 id = "provider-portable-assistant-content-20260731"
 subject = "codex-dmx-proxy:provider-portable-responses"
-state = "active"
-summary = "Local evidence binds role-correct provider-portable assistant replay for v1.0.44."
+state = "superseded"
+summary = "Superseded by the provider-neutral Codex Responses Proxy terminal product change; historical evidence remains immutable. Local evidence binds role-correct provider-portable assistant replay for v1.0.44."
 
 [evidence]
 dated = "evidence/chronicle/provider-portable-assistant-content-20260731/2026-07-31.md"

@@ -1,8 +1,8 @@
 [claim]
 id = "recovery-contract-and-signing-efficiency-20260730"
 subject = "codex-dmx-proxy:runtime-upgrade"
-state = "active"
-summary = "Local evidence binds recovery prose and command-scoped provider signing."
+state = "superseded"
+summary = "Superseded by the provider-neutral Codex Responses Proxy terminal product change; historical evidence remains immutable. Local evidence binds recovery prose and command-scoped provider signing."
 
 [evidence]
 dated = "evidence/chronicle/recovery-contract-and-signing-efficiency-20260730/2026-07-30.md"

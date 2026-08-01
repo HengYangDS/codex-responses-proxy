@@ -4,7 +4,7 @@ Status: canonical.
 
 ## Purpose
 
-Codex DMX Proxy is a local data-plane adapter. It removes narrowly defined,
+Codex Responses Proxy is a local data-plane adapter. It removes narrowly defined,
 third-party-incompatible replay artifacts from outbound `/responses` requests.
 It does not own conversation history, account credentials, provider routing
 policy, or publication truth.
@@ -16,16 +16,20 @@ Codex Desktop        -> per-conversation model selection and transcript state
 AIGW CLI             -> marked provider configuration and multi-profile projection
 GitLab + GitHub      -> independent signed tags, CI, and Release records
 Released checkout    -> source admission and payload lifecycle composition
-Installed control    -> read-only evidence, route control, same-payload reload
+Installed control    -> read-only evidence and same-payload reload
 Listener             -> loopback Responses compatibility and handoff state
 ```
 
 The proxy transforms requests only at the network edge. It must never repair a
 conversation by mutating session JSONL, SQLite state, archives, or model
-metadata. AIGW-owned marked provider blocks remain immutable to proxy route
-commands.
+metadata. The proxy has no command that reads or changes AIGW or client
+configuration.
 
-The listener exposes three canonical data-plane namespaces:
+The released provider manifest defines the listener's data-plane namespaces
+and is the installed runtime's sole provider authority. Runtime environment
+variables cannot replace it. The listener accepts only explicit
+`/<provider>/v1` routes; unscoped `/v1` has no implicit provider meaning.
+The current release declares:
 
 ```text
 /dmxapi/v1  -> release-owned DMXAPI HTTPS origin
@@ -33,32 +37,25 @@ The listener exposes three canonical data-plane namespaces:
 /aihubmix/v1 -> release-owned AIHubMix HTTPS origin
 ```
 
-AIGW selects one namespace through its account endpoint and supplies that
-account's credential. The listener strips only the provider path prefix and
-does not accept an upstream host from a request header or body. Environment
-overrides are service-owner inputs and must be credential-free absolute HTTPS
-origins.
+A consumer selects one namespace through its own endpoint configuration and
+supplies that account's credential. The listener strips only the selected
+provider path prefix and does not accept an upstream host from a request header
+or body. `codex_responses_proxy/providers/manifest.toml` is the single owner of provider
+names, HTTPS origins, the default route, and optional wire-policy slugs; there is no installer-level
+upstream override or parallel service variable. Adding an ordinary provider is
+one manifest table. A genuinely provider-specific wire extension adds one
+module under `codex_responses_proxy/providers/policies/` and names it from that
+table; the registry and release inventory contain no provider-name switch or
+second policy list.
 
-Proxy-owned reversible AIGW route state mirrors that namespace explicitly.
-Schema v3 records the AIGW account identifier separately from one closed
-`dmxapi`, `ucloud`, or `aihubmix` provider route and requires `proxy_url` to be
-the corresponding loopback base at the installed listener port. The unscoped
-`/v1` URL remains only for the bounded direct-Codex compatibility path; it is
-not a canonical AIGW endpoint and new AIGW state never records or emits it.
-
-Historical schema-v2 AIGW state remains readable but cannot re-enable the
-unscoped route. After AIGW's public CLI and sync lifecycle have projected the
-selected account to either its exact direct URL or canonical scoped proxy URL,
-installed `control.py adopt-aigw` is the sole proxy-state migration entry. It
-atomically replaces only `install-state.json`, verifies the canonical AIGW
-endpoint, and never edits AIGW configuration. Route-state migration therefore
-follows successful released-payload installation and runtime proof; it is not
-part of the payload transaction or its rollback authority.
-
-Before remote I/O, `codex_dmx_proxy.listener.rewrite` projects Responses replay
-onto a closed portable grammar. Provider continuation IDs, stored-item
-references, reasoning/search state, provider item IDs, and opaque ciphertext
-are removed. Text and complete call/output relationships remain. A correctly
+Before remote I/O, `codex_responses_proxy.replay.request` projects Responses
+replay onto a closed portable grammar. `codex_responses_proxy.replay.event`
+removes provider ciphertext from complete downstream SSE events. The semantic
+`codex_responses_proxy.transport` package then separates request admission and
+route selection, upstream recovery state, and downstream HTTP/SSE relay; no
+listener-level forwarding facade remains. Provider continuation IDs, stored-item
+references, reasoning/search state, provider item IDs, and opaque ciphertext are
+removed. Text and complete call/output relationships remain. A correctly
 paired tool result whose exact value is the empty string is represented by one
 fixed plaintext empty-result marker in the outbound request copy; ordinary
 empty dialogue remains invalid. Unknown or malformed replay fails locally; DMX
@@ -66,7 +63,7 @@ HTTP 477 recovery and cooldown apply only after that projection and only on the
 DMXAPI route. Stream sanitization prevents new provider ciphertext from
 re-entering later replay.
 
-The pure policy in `codex_dmx_proxy/compatibility/input_variant.py` owns the exact observed
+The pure policy in `codex_responses_proxy/recovery/input_variant.py` owns the exact observed
 Responses input-union failure. Transport orchestration may invoke that policy
 once to construct a strictly smaller network request from the latest system,
 developer, and user messages plus top-level instructions. No stored transcript
@@ -75,20 +72,18 @@ reconnect policy.
 
 ## Released-source admission
 
-Installation is permitted only after the source-side installer itself verifies
-the provider-native signed GitLab and GitHub tags, required hosted CI jobs,
-formal Release records, and common source tree. The evidence-only
-`scripts/verify-publication-proof.py` exposes the same observation without
-minting reusable authority. The installer requires a clean checkout before that
-live observation; admission checks clean state again, then verifies that `HEAD`
-is the exact signed annotated `v<VERSION>` tag under an external allowed-signers
-anchor.
+Release governance verifies provider-native tags, hosted CI, formal Release
+records, and common source tree independently of installation. The evidence-only
+`tools/release/verify.py` owns that observation. The installer
+consumes one selected release source, requires a clean checkout, and verifies
+that `HEAD` is the exact signed annotated `v<VERSION>` tag under the caller's
+external allowed-signers anchor.
 
-`codex_dmx_proxy.release.admission` reads immutable Git objects rather than
+`codex_responses_proxy.release.admission` reads immutable Git objects rather than
 working-tree payload bytes and returns an opaque, immutable, one-use release
-capability. That capability binds the tag object, commit, tree, dual-Forge
-publication evidence, payload blobs and modes, aggregate serving-payload digest,
-and canonical receipt. Before minting, admission compares the frozen `HEAD`, tag
+capability. That capability binds the tag object, commit, tree, payload blobs
+and modes, aggregate serving-payload digest, and canonical receipt. Before
+minting, admission compares the frozen `HEAD`, tag
 object, tag commit, tree, and object format, requires clean state a final time,
 and compares the same identity again. Dirty state or a clean ref move is rejected
 rather than admitted. Git verification ignores global, system, and `GIT_*`
@@ -98,21 +93,27 @@ installed controller cannot create that capability.
 
 ## Payload transaction and provenance
 
-`codex_dmx_proxy.release.projection` owns the installed manifest schema,
-integrity reader, exact historical inventories, and manifest-bounded purge. The
-manifest covers only declared executable files and records release identity,
+The payload package separates one lifecycle by reason to change:
+
+- `inventory` owns the released and installed file sets;
+- `projection` owns manifest integrity, exact historical inventories, and
+  manifest-bounded purge;
+- `candidate` validates and materializes one admitted candidate;
+- `rollback` owns the exact prior-payload snapshot and restoration;
+- `migration` removes only admitted retired privacy and executable residue;
+- `state` persists the transaction journal and installed-release state;
+- `transaction` coordinates those owners through the single-use state machine.
+
+The manifest covers only declared executable files and records release identity,
 per-file digests, the canonical aggregate serving-payload digest, and the
-release-receipt digest. `codex_dmx_proxy.release.transaction` consumes the
-capability once and owns the private sibling transaction, exact rollback
-snapshot, commit, installed-release state, and recovery-required journal while
-composing projection writes. Configuration, backups, logs, request data,
-credentials, and route state remain outside both owners.
+release-receipt digest. Configuration, backups, logs, request data, credentials,
+and consumer endpoint state remain outside all payload owners.
 
 The sibling transaction is private coordination state for the installer, not a
 cryptographic evidence carrier. Its permissions isolate other local users; a
 process already running as the same operating-system user is outside this
-rollback-integrity threat boundary. Forge signatures, release admission, and the
-installed manifest remain the authenticity evidence.
+rollback-integrity threat boundary. The admitted signature, release receipt, and
+installed manifest remain the installation authenticity evidence.
 
 Cleanup follows the same ownership boundary. Exact retired raw-capture files are
 deleted without being read and are never copied into rollback. Retired
@@ -127,26 +128,38 @@ projection. If a committed handoff outcome cannot be proved, the transaction is
 preserved as recovery-required rather than guessed successful or rolled back
 blindly.
 
-`control.py status --json` and portable `governance.py --json` are read-only
-views of installed integrity, route authority, listener identity, transaction
-state, and startup-frozen runtime identity. `codex_dmx_proxy` is the single
-product root: `compatibility` owns pure provider recovery, `listener` owns the
-serving process, `release` owns source and payload identity, `deployment` owns
-release application, `route` owns reversible route state, and `supervision`
-owns native user services. Package initializers are declarations, not facades.
+`python3 -m codex_responses_proxy.commands.control status --json` is the
+read-only view of installed integrity, listener identity, transaction state, and
+startup-frozen runtime identity. `codex_responses_proxy` is the single product
+root:
+
+- `commands` owns human-invoked lifecycle entrypoints;
+- `runtime` owns portable paths and validated process-local settings;
+- `providers` owns the provider manifest and true provider-specific wire deltas;
+- `replay` owns the provider-neutral portable replay grammar;
+- `recovery` owns provider-neutral request-local recovery policies;
+- `transport` owns upstream exchange and downstream HTTP/SSE relay;
+- `listener` owns the serving process and socket handoff;
+- `payload` owns installed identity, inventory, projection, and transactions;
+- `release` owns signed source admission and publication observation;
+- `deployment` owns application of an admitted payload; and
+- `supervision` owns native user services and owned processes.
+
+Package initializers are declarations, not facades.
 
 ## Lifecycle ownership
 
-Installed `control.py reload` is same-payload only. It verifies the installed
-manifest and receipt, prepares a non-accepting protocol-v2 child, stops the old
+Installed `python3 -m codex_responses_proxy.commands.control reload` is
+same-payload only. It verifies the installed manifest and receipt, prepares a non-accepting protocol-v2 child, stops the old
 accept loop before `COMMIT`, and proves PID, transaction, release, aggregate
 payload, receipt, manifest, and accepting state before `FINALIZE`. The listening
 socket remains open. Accepted handlers drain to zero or the bounded lease; a
 pre-finalize failure resumes old admission only after child exit is confirmed.
 An unconfirmed abort fails closed.
 
-A different release is installed only by source-side `install.py`. After release
-admission and transaction commit, `codex_dmx_proxy.deployment.apply` uses the same
+A different release is installed only by source-side
+`python3 -m codex_responses_proxy.commands.install`. After release admission and
+transaction commit, `codex_responses_proxy.deployment.apply` uses the same
 protocol-v2 handoff owner and runtime identity proof. Installed control exposes
 no arbitrary stage-path upgrade or controller-only partial apply.
 
@@ -165,9 +178,7 @@ old owned projection, reinstalls supervision with the historical entrypoint, and
 must prove one accepting historical listener; otherwise rollback is explicitly
 reported as failed.
 
-Uninstall keeps route restoration separate from destructive cleanup: drift or a
-failed delegated restore preserves configuration, but does not by itself make
-the later service-removal sequence atomic. Payload mutation begins only after
+Uninstall never reads or changes consumer configuration. Payload mutation begins only after
 the native service reports `absent` and exact owned watchdog and listener
 processes are proved gone. Ownership requires a Python command whose resolved
 `argv[1]` equals the installed script; identity is re-read before signalling and

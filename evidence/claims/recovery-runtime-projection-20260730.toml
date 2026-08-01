@@ -1,8 +1,8 @@
 [claim]
 id = "recovery-runtime-projection-20260730"
 subject = "codex-dmx-proxy:runtime-upgrade"
-state = "active"
-summary = "Local evidence binds the two-projection recovery repair."
+state = "superseded"
+summary = "Superseded by the provider-neutral Codex Responses Proxy terminal product change; historical evidence remains immutable. Local evidence binds the two-projection recovery repair."
 
 [evidence]
 dated = "evidence/chronicle/recovery-runtime-projection-20260730/2026-07-30.md"

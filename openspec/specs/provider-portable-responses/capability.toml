@@ -12,7 +12,7 @@ boundary_rules = [
 aliases = []
 
 [owner]
-package = "codex-dmx-proxy"
+package = "codex-responses-proxy"
 scope = "Provider-portable Responses replay across DMXAPI, UCloud/Azure, and AIHubMix"
 
 [recommended_facets]

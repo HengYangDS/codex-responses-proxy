@@ -1,8 +1,8 @@
 [claim]
 id = "post-release-main-validation-20260731"
 subject = "codex-dmx-proxy:ci-diagnostics"
-state = "active"
-summary = "Local evidence records GitLab post-release main dispatch against the existing VERSION tag state."
+state = "superseded"
+summary = "Superseded by the provider-neutral Codex Responses Proxy terminal product change; historical evidence remains immutable. Local evidence records GitLab post-release main dispatch against the existing VERSION tag state."
 
 [evidence]
 dated = "evidence/chronicle/post-release-main-validation-20260731/2026-07-31.md"

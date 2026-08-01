@@ -7,6 +7,41 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-01
+
+### Changed
+
+- Rename the product and Python namespace from the DMX-specific Codex DMX
+  Proxy to Codex Responses Proxy. The data plane now serves ordinary Responses
+  endpoints through a provider manifest, so adding a gateway is a bounded
+  provider-policy change rather than a product-wide special case.
+- Make the product boundary explicit and enforceable: AIGW owns credentials,
+  endpoint selection, and client projection; the proxy owns only Responses
+  compatibility, its released payload, native supervision, status, and
+  same-payload reload. Installation and removal no longer read, rewrite, or
+  restore Codex or AIGW configuration.
+- Replace the legacy Codex-private runtime layout and DMX-specific service
+  identity with portable product-owned data, state, log, and supervision
+  locations on macOS, Linux, and Windows.
+- Remove the unscoped `/v1` compatibility route and runtime provider-manifest
+  override. The release-owned manifest is now the sole provider authority, and
+  every request selects an explicit `/<provider>/v1` namespace.
+- Supersede the provider-specific commit-history rewriting model recorded for
+  1.0.29. Version 2 uses one immutable, contributor-signed commit graph on both
+  Forges; only native tag and Release actors are Forge-specific, and all
+  identity and trust inputs remain external to product source.
+
+### Fixed
+
+- Preserve valid replay semantics without changing Codex JSONL, SQLite,
+  historical messages, stored item identifiers, or model metadata. Provider
+  neutral projection now owns the single replay grammar; the DMXAPI policy owns
+  only exact HTTP 477 classification, one byte-identical retry of the current
+  projected attempt, cooldown identity, and terminal 503 normalization.
+- Include the provider manifest in every released payload, digest, handoff,
+  installation, and recovery identity so runtime behavior cannot drift from
+  the admitted release.
+
 ## [1.0.45] - 2026-07-31
 
 ### Fixed
@@ -134,7 +169,7 @@ shared headings even when a historical tag exists only on the other Forge.
   proof. A failed successor now restores old owned bytes, old supervision, and
   accepting historical runtime proof; an unproven restoration fails explicitly.
   Force mode still cannot bypass manifest or process-identity verification.
-- Validate types with current stable `ty 0.0.64` across local and both Forge
+- Validate types with current stable `ty 0.0.65` across local and both Forge
   quality gates.
 
 ## [1.0.34] - 2026-07-29

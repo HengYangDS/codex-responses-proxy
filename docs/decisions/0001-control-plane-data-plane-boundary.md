@@ -13,7 +13,7 @@ recovery, and ambiguous rollback responsibility.
 ## Decision
 
 AIGW owns marked provider blocks, credentials, endpoint selection, and
-configuration projection. Codex DMX Proxy owns outbound replay sanitization,
+configuration projection. Codex Responses Proxy owns outbound replay sanitization,
 its executable payload, and its listener/watchdog lifecycle. The installed
 proxy is generated from source and verified with a manifest. The proxy never
 writes an AIGW-owned configuration file. An explicitly adopted

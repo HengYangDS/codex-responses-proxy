@@ -1,4 +1,4 @@
-profile_id = "codex-dmx-proxy"
+profile_id = "codex-responses-proxy"
 
 [openspec]
 material_paths = [
@@ -8,11 +8,11 @@ material_paths = [
   "CHANGELOG.md",
   "CONTRIBUTING.md",
   "VERSION",
-  "codex_dmx_proxy/**",
+  "codex_responses_proxy/**",
   "docs/governance/**",
   "openspec/**",
   "pyproject.toml",
-  "scripts/**",
+  "tools/**",
   "tests/**",
   "watchdog/**",
   "*.py",
@@ -31,7 +31,7 @@ kind = "static"
 command = [
   "sh",
   "-c",
-  "PYTHON=python3.12 RUFF=ruff TY=ty sh scripts/run-python-quality.sh",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
 ]
 dimensions = ["static-analysis", "types", "structure", "coverage"]
 execution_mode = "subprocess"
@@ -46,7 +46,7 @@ kind = "test"
 command = [
   "sh",
   "-c",
-  "for py in python3.12 python3.13 python3.14; do \"$py\" scripts/run-python-tests.py --compile || exit; done",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile || exit; done",
 ]
 dimensions = ["behavior", "test", "platform"]
 execution_mode = "subprocess"
