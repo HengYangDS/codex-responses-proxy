@@ -16,9 +16,9 @@ from typing import Callable
 from typing import Mapping
 from typing import cast
 
-from codex_responses_proxy.runtime import state
 from codex_responses_proxy.listener.handoff import protocol as handoff_protocol
 from codex_responses_proxy.listener.handoff import transaction as handoff
+from codex_responses_proxy.runtime import admission
 
 
 @dataclass(frozen=True)
@@ -50,17 +50,17 @@ def send_status(handler: BaseHTTPRequestHandler, bindings: Bindings) -> None:
 
 def set_drain(handler: BaseHTTPRequestHandler, enabled: bool) -> None:
     """Toggle Responses admission for an authorized loopback controller."""
-    if not state.is_loopback_client(handler.client_address[0]):
+    if not admission.is_loopback_client(handler.client_address[0]):
         handler.send_error(403, "drain control is available only from loopback")
         return
     lease = handler.headers.get("X-Codex-Responses-Proxy-Drain-Lease-Seconds") if enabled else None
-    payload = state.set_draining(enabled, lease_seconds=lease)
+    payload = admission.set_draining(enabled, lease_seconds=lease)
     _write_json(handler, 200, payload)
 
 
 def prepare_handoff(handler: BaseHTTPRequestHandler, bindings: Bindings) -> None:
     """Prepare one replacement and acknowledge READY before crossing COMMIT."""
-    if not state.is_loopback_client(handler.client_address[0]):
+    if not admission.is_loopback_client(handler.client_address[0]):
         handler.send_error(403, "handoff control is available only from loopback")
         return
     try:
@@ -111,7 +111,7 @@ def prepare_handoff(handler: BaseHTTPRequestHandler, bindings: Bindings) -> None
         return
     try:
         timeout_seconds = min(120.0, max(0.1, float(request.get("timeout_seconds", 30.0))))
-        lease_seconds = state.bounded_drain_lease_seconds(request.get("lease_seconds"))
+        lease_seconds = admission.bounded_drain_lease_seconds(request.get("lease_seconds"))
         server = cast(ThreadingHTTPServer, handler.server)
         prepared = handoff.prepare(
             server,

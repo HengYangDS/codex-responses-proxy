@@ -52,7 +52,7 @@ class TestMacosLifecycle(unittest.TestCase):
             for exists, listing, expected in (
                 (False, "", "absent"),
                 (True, "other", "installed"),
-                (True, runtime_context.LABEL, "running"),
+                (True, runtime_context.SERVICE_ID, "running"),
             ):
                 _set_file(plist, "plist" if exists else None)
                 with mock.patch.object(

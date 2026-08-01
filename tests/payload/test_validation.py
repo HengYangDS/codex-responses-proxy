@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.payload import candidate as payload_candidate
+from codex_responses_proxy.payload import inventory
 from codex_responses_proxy.payload import projection as payload_projection
 from codex_responses_proxy.payload import rollback as payload_rollback
 from codex_responses_proxy.payload import source as payload_source
@@ -115,7 +116,7 @@ class TestPayloadValidation(unittest.TestCase):
     def test_digest_boundary_and_retired_residue_types_fail_closed(self) -> None:
         valid = {
             relative: hashlib.sha256(relative.encode()).hexdigest()
-            for relative in payload_projection.SERVING_PAYLOAD_FILES
+            for relative in inventory.SERVING_FILES
         }
         with self.assertRaisesRegex(errors.InstallError, "file set mismatch"):
             payload_projection.serving_payload_sha256({})
@@ -182,9 +183,7 @@ class TestPayloadValidation(unittest.TestCase):
                 "manifest file set mismatch",
             ),
             (
-                lambda value: value["serving_files"].pop(
-                    payload_projection.SERVING_PAYLOAD_FILES[-1]
-                ),
+                lambda value: value["serving_files"].pop(inventory.SERVING_FILES[-1]),
                 "manifest serving file set mismatch",
             ),
             (lambda value: value["files"].update({"VERSION": "short"}), "invalid digest"),
@@ -242,7 +241,7 @@ class TestPayloadValidation(unittest.TestCase):
         self.assertIn("payload unavailable", detail)
 
         ctx, _, _ = installed()
-        receipt = Path(ctx.install_dir, payload_projection.RELEASE_RECEIPT_FILENAME)
+        receipt = Path(ctx.install_dir, inventory.RELEASE_RECEIPT_FILENAME)
         receipt.unlink()
         ok, detail = payload_projection.verify_payload_manifest(ctx)
         self.assertFalse(ok)

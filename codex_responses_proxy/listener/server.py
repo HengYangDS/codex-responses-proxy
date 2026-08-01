@@ -14,8 +14,8 @@ from http.server import ThreadingHTTPServer
 from typing import Any
 
 from codex_responses_proxy.listener import control
+from codex_responses_proxy.runtime import admission, logging
 from codex_responses_proxy.transport import responses
-from codex_responses_proxy.runtime import state
 
 
 @dataclass(frozen=True)
@@ -61,18 +61,20 @@ class ResilientProxyServer(ThreadingHTTPServer):
         return request, address
 
     def process_request_thread(self, request: Any, client_address: Any) -> None:
-        state.begin_handler()
+        admission.begin_handler()
         try:
             super().process_request_thread(request, client_address)
         finally:
-            state.end_handler()
+            admission.end_handler()
 
     def handle_error(self, request: Any, client_address: Any) -> None:
         import sys
 
         error = sys.exception()
         if isinstance(error, (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)):
-            state.log(f"client_closed_mid_request exception={state.safe_exception_label(error)}")
+            logging.log(
+                f"client_closed_mid_request exception={logging.safe_exception_label(error)}"
+            )
             return
         super().handle_error(request, client_address)
 

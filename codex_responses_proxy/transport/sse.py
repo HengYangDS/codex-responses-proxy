@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any, Protocol, TypedDict
 
 from codex_responses_proxy.replay import event as replay_event
-from codex_responses_proxy.runtime import state
+from codex_responses_proxy.runtime import logging, telemetry
 from codex_responses_proxy.runtime import config as runtime_config
 
 
@@ -181,10 +181,10 @@ def _read_one_stream(
     if terminal_event in _CLEAN_TERMINALS:
         flush_prelude()
     if stripped_keys:
-        state.record_counter("encrypted_sse_keys_stripped", stripped_keys)
-        state.log(
+        telemetry.record_counter("encrypted_sse_keys_stripped", stripped_keys)
+        logging.log(
             f"req={request_id} event=sse_sanitized encrypted_events={stripped_events} "
-            f"encrypted_keys={stripped_keys} path={state.safe_request_path(path)}"
+            f"encrypted_keys={stripped_keys} path={logging.safe_request_path(path)}"
         )
     detail = terminal_event.rpartition(".")[2] if terminal_event else upstream_detail
     return {
@@ -225,22 +225,22 @@ def relay(
             break
         if attempt == max_attempts - 1:
             break
-        state.record_counter("streams_pre_content_reconnect_attempts")
+        telemetry.record_counter("streams_pre_content_reconnect_attempts")
         why = terminal or result["detail"]
-        state.log(
+        logging.log(
             f"req={request_id} event=sse_pre_content_reconnect reason={why} "
             f"events={result['events']} attempt={attempt + 1}/{max_attempts - 1} "
-            f"path={state.safe_request_path(path)}"
+            f"path={logging.safe_request_path(path)}"
         )
         time.sleep(backoffs[min(attempt, len(backoffs) - 1)])
         assert reopen is not None
         try:
             current = reopen()
         except Exception as error:
-            state.log(
+            logging.log(
                 f"req={request_id} event=sse_reconnect_failed "
-                f"exception={state.safe_exception_label(error)} "
-                f"path={state.safe_request_path(path)}"
+                f"exception={logging.safe_exception_label(error)} "
+                f"path={logging.safe_request_path(path)}"
             )
             break
     pre_content_exhausted = not headers_sent
@@ -248,31 +248,31 @@ def relay(
         handler.wfile.write(b"0\r\n\r\n")
     assert result is not None
     if result["terminal"] == "response.completed":
-        state.record_counter("streams_completed")
-        state.record_counter("responses_completed")
+        telemetry.record_counter("streams_completed")
+        telemetry.record_counter("responses_completed")
     elif result["terminal"] == "response.incomplete":
-        state.record_counter("streams_incomplete")
-        state.record_failure("stream_response_incomplete")
+        telemetry.record_counter("streams_incomplete")
+        telemetry.record_failure("stream_response_incomplete")
     else:
-        state.record_counter("streams_failed")
+        telemetry.record_counter("streams_failed")
         detail = result["detail"]
         if pre_content_exhausted:
-            state.record_counter("streams_pre_content_exhausted")
-            state.record_failure("stream_pre_content_exhausted")
+            telemetry.record_counter("streams_pre_content_exhausted")
+            telemetry.record_failure("stream_pre_content_exhausted")
         else:
-            state.record_failure(f"stream_{detail}")
-    safe_path = state.safe_request_path(path)
+            telemetry.record_failure(f"stream_{detail}")
+    safe_path = logging.safe_request_path(path)
     if result["terminal"]:
-        state.log(
+        logging.log(
             f"req={request_id} event=sse_terminal terminal={result['terminal']} "
             f"events={result['events']} path={safe_path}"
         )
     else:
         detail = result["detail"]
         error = result["error"]
-        state.log(
+        logging.log(
             f"req={request_id} event=sse_end_without_terminal detail={detail} "
-            f"exception={state.safe_exception_label(error) if error else 'none'} "
+            f"exception={logging.safe_exception_label(error) if error else 'none'} "
             f"events={result['events']} path={safe_path}"
         )
     return {

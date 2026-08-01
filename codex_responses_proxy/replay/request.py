@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import urllib.parse
+from dataclasses import dataclass
 from typing import cast
 
 type JsonObject = dict[str, object]
@@ -95,6 +96,55 @@ _OUTPUT_FIELDS = frozenset(
 
 class ProjectionRejected(ValueError):
     """A replay structure has no proved provider-portable representation."""
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionMetrics:
+    """Secret-free aggregate changes made by one replay projection."""
+
+    provider_bindings: int = 0
+    reasoning_items: int = 0
+    reference_items: int = 0
+    search_items: int = 0
+    item_ids: int = 0
+    encrypted_blocks: int = 0
+    omission_markers: int = 0
+    local_image_items: int = 0
+    empty_tool_outputs: int = 0
+    changed_items: int = 0
+    store_normalized: bool = False
+    include_trimmed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionResult:
+    """Immutable replay outcome with data separate from diagnostics."""
+
+    body: bytes | None
+    status: str
+    metrics: ProjectionMetrics = ProjectionMetrics()
+    reason: str | None = None
+
+    def diagnostic(self) -> str:
+        """Project the structured outcome into one bounded operational note."""
+        if self.status == "rejected":
+            return f"rejected {self.reason or 'unknown'}"
+        if self.status == "clean":
+            return "clean portable_replay"
+        metrics = self.metrics
+        return (
+            f"projected provider_bindings={metrics.provider_bindings} "
+            f"reasoning_items={metrics.reasoning_items} "
+            f"reference_items={metrics.reference_items} "
+            f"search_items={metrics.search_items} "
+            f"item_ids={metrics.item_ids} "
+            f"encrypted_blocks={metrics.encrypted_blocks} "
+            f"omission_markers={metrics.omission_markers} "
+            f"local_image_items={metrics.local_image_items} "
+            f"empty_tool_outputs={metrics.empty_tool_outputs} "
+            f"store_normalized={metrics.store_normalized} "
+            f"include_trimmed={metrics.include_trimmed}"
+        )
 
 
 def _reject(reason: str) -> None:
@@ -493,14 +543,14 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
     return projected, metrics
 
 
-def sanitize_responses_body(raw: bytes) -> tuple[bytes | None, str]:
-    """Return portable request bytes or one bounded fail-closed reason."""
+def sanitize_responses_body(raw: bytes) -> ProjectionResult:
+    """Return portable request data and typed secret-free projection metrics."""
     try:
         payload = json.loads(raw)
     except (TypeError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
-        return None, "rejected invalid_json"
+        return ProjectionResult(None, "rejected", reason="invalid_json")
     if not isinstance(payload, dict):
-        return None, "rejected request_not_object"
+        return ProjectionResult(None, "rejected", reason="request_not_object")
 
     candidate = cast(JsonObject, dict(payload))
     store_normalized = candidate.get("store") is not False
@@ -513,7 +563,7 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes | None, str]:
     include = candidate.get("include")
     if include is not None:
         if not isinstance(include, list) or any(not isinstance(value, str) for value in include):
-            return None, "rejected invalid_include"
+            return ProjectionResult(None, "rejected", reason="invalid_include")
         trimmed = [value for value in include if value != "reasoning.encrypted_content"]
         include_trimmed = len(trimmed) != len(include)
         candidate["include"] = trimmed
@@ -540,7 +590,7 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes | None, str]:
             _reject("invalid_input")
     except (ProjectionRejected, RecursionError) as exc:
         reason = "projection_depth_exceeded" if isinstance(exc, RecursionError) else str(exc)
-        return None, f"rejected {reason}"
+        return ProjectionResult(None, "rejected", reason=reason)
 
     changed = bool(
         store_normalized
@@ -550,21 +600,26 @@ def sanitize_responses_body(raw: bytes) -> tuple[bytes | None, str]:
         or candidate != payload
     )
     if not changed:
-        return raw, "clean portable_replay"
+        return ProjectionResult(raw, "clean")
     try:
         encoded = json.dumps(candidate, ensure_ascii=False, separators=(",", ":")).encode()
     except (TypeError, ValueError, RecursionError, UnicodeError):
-        return None, "rejected serialization_failed"
-    return encoded, (
-        f"projected provider_bindings={provider_bindings} "
-        f"reasoning_items={metrics['reasoning_items']} "
-        f"reference_items={metrics['reference_items']} "
-        f"search_items={metrics['search_items']} "
-        f"item_ids={metrics['item_ids']} "
-        f"encrypted_blocks={metrics['encrypted_blocks']} "
-        f"omission_markers={metrics['omission_markers']} "
-        f"local_image_items={metrics['local_image_items']} "
-        f"empty_tool_outputs={metrics['empty_tool_outputs']} "
-        f"store_normalized={store_normalized} "
-        f"include_trimmed={include_trimmed}"
+        return ProjectionResult(None, "rejected", reason="serialization_failed")
+    return ProjectionResult(
+        encoded,
+        "projected",
+        ProjectionMetrics(
+            provider_bindings=provider_bindings,
+            reasoning_items=metrics["reasoning_items"],
+            reference_items=metrics["reference_items"],
+            search_items=metrics["search_items"],
+            item_ids=metrics["item_ids"],
+            encrypted_blocks=metrics["encrypted_blocks"],
+            omission_markers=metrics["omission_markers"],
+            local_image_items=metrics["local_image_items"],
+            empty_tool_outputs=metrics["empty_tool_outputs"],
+            changed_items=metrics["changed_items"],
+            store_normalized=store_normalized,
+            include_trimmed=include_trimmed,
+        ),
     )

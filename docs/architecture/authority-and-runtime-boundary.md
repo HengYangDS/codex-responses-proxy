@@ -40,9 +40,10 @@ The current release declares:
 A consumer selects one namespace through its own endpoint configuration and
 supplies that account's credential. The listener strips only the selected
 provider path prefix and does not accept an upstream host from a request header
-or body. `codex_responses_proxy/providers/manifest.toml` is the single owner of provider
-names, HTTPS origins, the default route, and optional wire-policy slugs; there is no installer-level
-upstream override or parallel service variable. Adding an ordinary provider is
+or body. `codex_responses_proxy/providers/manifest.toml` is the single owner of
+provider names, HTTPS origins, and optional wire-policy slugs. There is no
+default route, installer-level upstream override, or parallel service variable.
+Adding an ordinary provider is
 one manifest table. A genuinely provider-specific wire extension adds one
 module under `codex_responses_proxy/providers/policies/` and names it from that
 table; the registry and release inventory contain no provider-name switch or
@@ -51,9 +52,9 @@ second policy list.
 Before remote I/O, `codex_responses_proxy.replay.request` projects Responses
 replay onto a closed portable grammar. `codex_responses_proxy.replay.event`
 removes provider ciphertext from complete downstream SSE events. The semantic
-`codex_responses_proxy.transport` package then separates request admission and
-route selection, upstream recovery state, and downstream HTTP/SSE relay; no
-listener-level forwarding facade remains. Provider continuation IDs, stored-item
+packages then separate runtime admission, telemetry, and safe logging from
+transport route selection, bounded cooldown, upstream exchange, and downstream
+HTTP/SSE relay; no mixed state or listener forwarding facade remains. Provider continuation IDs, stored-item
 references, reasoning/search state, provider item IDs, and opaque ciphertext are
 removed. Text and complete call/output relationships remain. A correctly
 paired tool result whose exact value is the empty string is represented by one
@@ -134,11 +135,12 @@ startup-frozen runtime identity. `codex_responses_proxy` is the single product
 root:
 
 - `commands` owns human-invoked lifecycle entrypoints;
-- `runtime` owns portable paths and validated process-local settings;
+- `runtime` owns portable paths, validated settings, admission, telemetry, and
+  secret-safe logging;
 - `providers` owns the provider manifest and true provider-specific wire deltas;
 - `replay` owns the provider-neutral portable replay grammar;
 - `recovery` owns provider-neutral request-local recovery policies;
-- `transport` owns upstream exchange and downstream HTTP/SSE relay;
+- `transport` owns bounded cooldown, upstream exchange, and downstream HTTP/SSE relay;
 - `listener` owns the serving process and socket handoff;
 - `payload` owns installed identity, inventory, projection, and transactions;
 - `release` owns signed source admission and publication observation;

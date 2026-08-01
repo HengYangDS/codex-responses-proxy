@@ -119,7 +119,9 @@ class ProviderPortableRequestTests(unittest.TestCase):
             }
         )
 
-        projected_raw, note = rewrite.sanitize_responses_body(raw)
+        _projection = rewrite.sanitize_responses_body(raw)
+        projected_raw = _projection.body
+        note = _projection.diagnostic()
 
         self.assertIsNotNone(projected_raw, note)
         projected = json.loads(cast("bytes", projected_raw))
@@ -185,7 +187,9 @@ class ProviderPortableRequestTests(unittest.TestCase):
             }
         )
 
-        projected_raw, _note = rewrite.sanitize_responses_body(raw)
+        _projection = rewrite.sanitize_responses_body(raw)
+        projected_raw = _projection.body
+        _note = _projection.diagnostic()
 
         self.assertEqual(
             json.loads(cast("bytes", projected_raw)),
@@ -199,7 +203,9 @@ class ProviderPortableRequestTests(unittest.TestCase):
                 if supplied is not None:
                     payload["store"] = supplied
 
-                projected_raw, note = rewrite.sanitize_responses_body(_body(payload))
+                _projection = rewrite.sanitize_responses_body(_body(payload))
+                projected_raw = _projection.body
+                note = _projection.diagnostic()
 
                 self.assertEqual(
                     json.loads(cast("bytes", projected_raw)),
@@ -215,7 +221,7 @@ class ProviderPortableRequestTests(unittest.TestCase):
         )
         for call_type, argument_field, output_type in cases:
             with self.subTest(call_type=call_type):
-                projected_raw, note = rewrite.sanitize_responses_body(
+                _projection = rewrite.sanitize_responses_body(
                     _body(
                         {
                             "input": [
@@ -234,6 +240,8 @@ class ProviderPortableRequestTests(unittest.TestCase):
                         }
                     )
                 )
+                projected_raw = _projection.body
+                note = _projection.diagnostic()
 
                 self.assertIsNotNone(projected_raw, note)
                 projected = json.loads(cast("bytes", projected_raw))["input"]
@@ -241,9 +249,11 @@ class ProviderPortableRequestTests(unittest.TestCase):
                 self.assertEqual(projected[1]["output"], rewrite.EMPTY_TOOL_OUTPUT_MARKER)
                 self.assertIn("empty_tool_outputs=1", note)
 
-        projected, note = rewrite.sanitize_responses_body(
+        _projection = rewrite.sanitize_responses_body(
             _body({"input": [{"type": "message", "role": "assistant", "content": ""}]})
         )
+        projected = _projection.body
+        note = _projection.diagnostic()
         self.assertIsNone(projected)
         self.assertEqual(note, "rejected empty_text_content")
 
@@ -251,7 +261,7 @@ class ProviderPortableRequestTests(unittest.TestCase):
             item = {"type": "function_call_output", "call_id": "empty-result"}
             if label == "null":
                 item["output"] = output
-            projected, note = rewrite.sanitize_responses_body(
+            _projection = rewrite.sanitize_responses_body(
                 _body(
                     {
                         "input": [
@@ -266,6 +276,8 @@ class ProviderPortableRequestTests(unittest.TestCase):
                     }
                 )
             )
+            projected = _projection.body
+            note = _projection.diagnostic()
             with self.subTest(output=label):
                 self.assertIsNone(projected)
                 self.assertEqual(note, "rejected invalid_content")
@@ -317,7 +329,9 @@ class ProviderPortableRequestTests(unittest.TestCase):
             }
         )
 
-        projected_raw, note = rewrite.sanitize_responses_body(raw)
+        _projection = rewrite.sanitize_responses_body(raw)
+        projected_raw = _projection.body
+        note = _projection.diagnostic()
 
         self.assertIsNotNone(projected_raw, note)
         content = [item["content"] for item in json.loads(cast("bytes", projected_raw))["input"]]
@@ -367,7 +381,9 @@ class ProviderPortableRequestTests(unittest.TestCase):
         }
         for name, raw in cases.items():
             with self.subTest(name=name):
-                projected, note = rewrite.sanitize_responses_body(raw)
+                _projection = rewrite.sanitize_responses_body(raw)
+                projected = _projection.body
+                note = _projection.diagnostic()
                 self.assertIsNone(projected)
                 self.assertTrue(note.startswith("rejected "), note)
 

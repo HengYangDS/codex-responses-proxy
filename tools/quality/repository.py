@@ -23,6 +23,7 @@ _FORBIDDEN_PACKAGES = frozenset({"common", "helpers", "lib", "shared", "support"
 _FOREIGN_PRODUCT_IMPORTS = frozenset({"aigw", "aigw_cli"})
 _FOREIGN_PRODUCT_LITERAL = re.compile(r"(?<![A-Za-z0-9])aigw(?:-cli)?(?![A-Za-z0-9])", re.I)
 _RETIRED_SOURCE_ROOTS = frozenset({"codex_dmx_proxy", "watchdog"})
+_RETIRED_MODULES = frozenset({"codex_responses_proxy/runtime/state.py"})
 _ALLOWED_PACKAGE_EDGES = {
     "commands": frozenset({"deployment", "payload", "release", "runtime", "supervision"}),
     "deployment": frozenset({"payload", "runtime", "supervision"}),
@@ -393,6 +394,67 @@ def _foreign_product_gaps(root: Path, package: Path) -> list[str]:
     return gaps
 
 
+def _semantic_owner_gaps(root: Path, package: Path) -> list[str]:
+    """Reject hidden peer APIs, forwarding aliases, and undeclared packages."""
+
+    gaps: list[str] = []
+    for relative in sorted(_RETIRED_MODULES):
+        path = root / relative
+        if path.exists() or path.is_symlink():
+            gaps.append(f"architecture_retired_module:{relative}")
+    for path in sorted(package.rglob("*.py")):
+        relative = path.relative_to(root).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        if path.name == "__init__.py" and ast.get_docstring(tree, clean=False) is None:
+            gaps.append(f"architecture_package_declaration_missing:{relative}")
+        peer_modules: set[str] = set()
+        peer_symbols: set[str] = set()
+        current_package = path.parent.relative_to(root).as_posix().replace("/", ".")
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module == current_package:
+                    peer_modules.update(alias.asname or alias.name for alias in node.names)
+                elif node.module.startswith(f"{current_package}."):
+                    for alias in node.names:
+                        peer_symbols.add(alias.asname or alias.name)
+                        if alias.name.startswith("_"):
+                            gaps.append(
+                                f"architecture_private_cross_module:{relative}:"
+                                f"{node.lineno}:{alias.name}"
+                            )
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith(f"{current_package}."):
+                        peer_modules.add(alias.asname or alias.name.rsplit(".", 1)[-1])
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id in peer_modules
+                and node.attr.startswith("_")
+            ):
+                gaps.append(
+                    f"architecture_private_cross_module:{relative}:"
+                    f"{node.lineno}:{node.value.id}.{node.attr}"
+                )
+        for node in tree.body:
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            if (
+                isinstance(value, ast.Attribute)
+                and isinstance(value.value, ast.Name)
+                and value.value.id in peer_modules
+            ):
+                gaps.append(
+                    f"architecture_forwarding_alias:{relative}:"
+                    f"{node.lineno}:{value.value.id}.{value.attr}"
+                )
+            elif isinstance(value, ast.Name) and value.id in peer_symbols:
+                gaps.append(f"architecture_forwarding_alias:{relative}:{node.lineno}:{value.id}")
+    return gaps
+
+
 def architecture_gaps(root: Path = ROOT) -> list[str]:
     """Enforce the semantic-to-physical product dependency contract."""
 
@@ -430,6 +492,7 @@ def architecture_gaps(root: Path = ROOT) -> list[str]:
         f"architecture_cycle:{','.join(component)}" for component in _dependency_cycles(edges)
     )
     gaps.extend(_foreign_product_gaps(root, package))
+    gaps.extend(_semantic_owner_gaps(root, package))
     return sorted(gaps)
 
 

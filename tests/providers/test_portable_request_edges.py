@@ -59,7 +59,9 @@ class ProviderPortableRequestEdgeTests(unittest.TestCase):
             }
         )
 
-        projected_raw, note = rewrite.sanitize_responses_body(raw)
+        _projection = rewrite.sanitize_responses_body(raw)
+        projected_raw = _projection.body
+        note = _projection.diagnostic()
 
         self.assertIsNotNone(projected_raw, note)
         projected = json.loads(cast("bytes", projected_raw))
@@ -101,7 +103,9 @@ class ProviderPortableRequestEdgeTests(unittest.TestCase):
             }
         )
 
-        projected_raw, note = rewrite.sanitize_responses_body(raw)
+        _projection = rewrite.sanitize_responses_body(raw)
+        projected_raw = _projection.body
+        note = _projection.diagnostic()
 
         self.assertIsNotNone(projected_raw, note)
         agent, _call, output = json.loads(cast("bytes", projected_raw))["input"]
@@ -120,7 +124,7 @@ class ProviderPortableRequestEdgeTests(unittest.TestCase):
 
         for content in ("", None):
             with self.subTest(root_only_agent_content=content):
-                projected_raw, note = rewrite.sanitize_responses_body(
+                _projection = rewrite.sanitize_responses_body(
                     _body(
                         {
                             "input": [
@@ -135,6 +139,8 @@ class ProviderPortableRequestEdgeTests(unittest.TestCase):
                         }
                     )
                 )
+                projected_raw = _projection.body
+                note = _projection.diagnostic()
                 self.assertIsNotNone(projected_raw, note)
                 projected = json.loads(cast("bytes", projected_raw))["input"][0]
                 self.assertTrue(projected["content"].endswith(rewrite.OPAQUE_CONTENT_MARKER))

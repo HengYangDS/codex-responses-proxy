@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-08-01
+goal: Make runtime state and replay results follow concrete semantic ownership.
