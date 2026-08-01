@@ -52,15 +52,19 @@ and formal Release record.
 ## Independent Forge publication proof
 
 GitLab and GitHub are equal, independent publication planes. Each owns its
-signed tag object, hosted CI execution, and Release record, while both publish
-the same forward-only ordered tree history through provider-specific commit identities.
+signed tag object, hosted CI execution, Release record, verified commit email,
+and signing trust. GitLab `main` carries the accepted canonical commits. GitHub
+`main` is an append-only identity projection with equivalent ordered trees,
+messages, dates, and parent topology after its admitted base.
 
-Commit history is immutable collaboration evidence, not a provider-specific
-projection. Every accepted commit is authored and signed once before landing;
-publication may only fast-forward `main`. Automation must not recreate the DAG,
-change attribution, or force-update a branch. Existing commits, tags, and
-Release objects remain historical evidence. Divergence requires an explicit
-migration decision outside ordinary release automation.
+Published history is immutable within each Forge: ordinary publication only
+fast-forwards `main` and never changes an existing commit, tag, Release, or
+evidence record. When a disconnected GitLab tip has exactly one
+identity-neutral match in accepted history, an explicit migration may replay
+only unpublished accepted descendants onto that exact tip and re-sign them in
+the GitLab identity domain. It must not merge duplicate identity-equivalent
+histories or force-update either Forge. After convergence, ordinary GitLab and
+GitHub projection resumes from the unique admitted base.
 
 `tools/release/verify.py` is the in-repository, read-only verifier.
 It fetches each exact tag into isolation, verifies each provider signature under

@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-01
+goal: Make GitLab main a forward-only ancestor, remove OpenSpec diagnostic
+  noise, and preserve immutable provider-native histories.
