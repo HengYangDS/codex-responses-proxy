@@ -9,7 +9,7 @@ from typing import Any
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.runtime import context as runtime_context
-from codex_responses_proxy.payload import digest, inventory, projection
+from codex_responses_proxy.payload import digest, inventory, owned_files
 
 TRANSACTION_JOURNAL_FILENAME = "transaction.json"
 INSTALLED_RELEASE_STATE_SCHEMA = 1
@@ -37,7 +37,7 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object] | None:
     path = journal_path(ctx)
     if not path.exists():
         return None
-    journal = projection._read_canonical_json(path, "payload transaction journal")
+    journal = owned_files.read_canonical_json(path, "payload transaction journal")
     allowed = ("transaction_id", "version", "receipt_sha256", "state", "fresh")
     return {key: journal[key] for key in allowed if key in journal}
 
@@ -63,7 +63,7 @@ def write_journal(
     }
     if reason is not None:
         journal["reason"] = reason
-    projection._atomic_write_bytes(journal_path(ctx), digest.canonical_json(journal), mode=0o600)
+    owned_files.write_bytes(journal_path(ctx), digest.canonical_json(journal), mode=0o600)
 
 
 def read_installed(ctx: runtime_context.RuntimeContext) -> dict[str, Any] | None:
@@ -71,7 +71,7 @@ def read_installed(ctx: runtime_context.RuntimeContext) -> dict[str, Any] | None
     path = installed_path(ctx)
     if not path.exists():
         return None
-    state = projection._read_canonical_json(path, "installed release state")
+    state = owned_files.read_canonical_json(path, "installed release state")
     if state.get("schema_version") != INSTALLED_RELEASE_STATE_SCHEMA:
         raise errors.InstallError("installed release state schema is unsupported")
     return state

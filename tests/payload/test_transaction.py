@@ -19,7 +19,9 @@ from codex_responses_proxy.payload import identity as listener_identity
 from codex_responses_proxy.payload import inventory
 from codex_responses_proxy.payload import projection as payload_projection
 from codex_responses_proxy.payload import source as payload_source
+from codex_responses_proxy.payload import digest as payload_digest
 from codex_responses_proxy.payload import transaction as payload_transaction
+from codex_responses_proxy.payload import state as payload_state
 from tests.deployment.fixtures import install_context
 from tests.payload.fixtures import begin_transaction, install_payload, released_fixture
 
@@ -34,7 +36,7 @@ class TestPayloadTransaction(unittest.TestCase):
 
     def test_transaction_status_is_absent_without_a_journal(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
-        self.assertIsNone(payload_transaction.transaction_status(ctx))
+        self.assertIsNone(payload_state.status(ctx))
 
     def test_fresh_commit_writes_manifest_receipt_and_pending_journal_then_finalize_state(
         self,
@@ -48,20 +50,16 @@ class TestPayloadTransaction(unittest.TestCase):
         self.assertTrue(
             Path(ctx.install_dir, payload_projection.RELEASE_RECEIPT_FILENAME).is_file()
         )
-        journal = json.loads(
-            Path(payload_transaction.transaction_journal_path(ctx)).read_text(encoding="utf-8")
-        )
+        journal = json.loads(Path(payload_state.journal_path(ctx)).read_text(encoding="utf-8"))
         self.assertEqual(journal["state"], "committed")
-        self.assertFalse(Path(payload_transaction.installed_release_state_path(ctx)).exists())
+        self.assertFalse(Path(payload_state.installed_path(ctx)).exists())
 
         transaction.finalize({"pid": 123, "accepting": True})
 
-        state = json.loads(
-            Path(payload_transaction.installed_release_state_path(ctx)).read_text(encoding="utf-8")
-        )
+        state = json.loads(Path(payload_state.installed_path(ctx)).read_text(encoding="utf-8"))
         self.assertEqual(state["version"], "1.2.3")
         self.assertEqual(state["receipt_sha256"], transaction.receipt_sha256)
-        self.assertFalse(Path(payload_transaction.payload_transaction_dir(ctx)).exists())
+        self.assertFalse(Path(payload_state.transaction_root(ctx)).exists())
 
     def test_failed_commit_rolls_back_before_propagating(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -78,7 +76,7 @@ class TestPayloadTransaction(unittest.TestCase):
         ):
             transaction.commit_projection()
         self.assertEqual(Path(ctx.install_dir, "VERSION").read_bytes(), before)
-        self.assertFalse(Path(payload_transaction.payload_transaction_dir(ctx)).exists())
+        self.assertFalse(Path(payload_state.transaction_root(ctx)).exists())
 
     def test_upgrade_rollback_restores_payload_receipt_and_installed_state_exactly(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -91,7 +89,7 @@ class TestPayloadTransaction(unittest.TestCase):
                 payload_projection.RELEASE_RECEIPT_FILENAME,
             )
         }
-        before_state = Path(payload_transaction.installed_release_state_path(ctx)).read_bytes()
+        before_state = Path(payload_state.installed_path(ctx)).read_bytes()
 
         second = begin_transaction(ctx, released_fixture("1.2.3"))
         second.commit_projection()
@@ -99,10 +97,8 @@ class TestPayloadTransaction(unittest.TestCase):
 
         for relative, content in before.items():
             self.assertEqual(Path(ctx.install_dir, relative).read_bytes(), content)
-        self.assertEqual(
-            Path(payload_transaction.installed_release_state_path(ctx)).read_bytes(), before_state
-        )
-        self.assertFalse(Path(payload_transaction.payload_transaction_dir(ctx)).exists())
+        self.assertEqual(Path(payload_state.installed_path(ctx)).read_bytes(), before_state)
+        self.assertFalse(Path(payload_state.transaction_root(ctx)).exists())
 
     def test_upgrade_rollback_preserves_unknown_retired_content(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -130,7 +126,7 @@ class TestPayloadTransaction(unittest.TestCase):
             ):
                 begin_transaction(ctx, released_fixture(version))
             self.assertEqual(Path(ctx.install_dir, "VERSION").read_bytes(), marker)
-            self.assertFalse(Path(payload_transaction.payload_transaction_dir(ctx)).exists())
+            self.assertFalse(Path(payload_state.transaction_root(ctx)).exists())
 
     def test_preserve_for_recovery_keeps_journal_and_rollback_visible(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -140,12 +136,10 @@ class TestPayloadTransaction(unittest.TestCase):
 
         transaction.preserve_for_recovery("handoff outcome unknown")
 
-        journal = json.loads(
-            Path(payload_transaction.transaction_journal_path(ctx)).read_text(encoding="utf-8")
-        )
+        journal = json.loads(Path(payload_state.journal_path(ctx)).read_text(encoding="utf-8"))
         self.assertEqual(journal["state"], "recovery_required")
         self.assertEqual(journal["reason"], "handoff outcome unknown")
-        self.assertTrue(Path(payload_transaction.payload_transaction_dir(ctx), "rollback").is_dir())
+        self.assertTrue(Path(payload_state.transaction_root(ctx), "rollback").is_dir())
 
     def test_recovery_rollback_restores_previous_projection_and_removes_hold(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -154,7 +148,7 @@ class TestPayloadTransaction(unittest.TestCase):
         candidate = begin_transaction(ctx, released_fixture("1.2.3"))
         candidate.commit_projection()
         candidate.preserve_for_recovery("handoff outcome unknown")
-        rollback = Path(payload_transaction.payload_transaction_dir(ctx), "rollback")
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
         previous_identity = listener_identity.committed_payload(rollback / inventory.ENTRYPOINT)
         candidate_identity = listener_identity.committed_payload(Path(ctx.proxy_script))
         assert previous_identity is not None
@@ -171,7 +165,7 @@ class TestPayloadTransaction(unittest.TestCase):
 
         self.assertEqual(result["state"], "rolled_back")
         self.assertEqual(Path(ctx.install_dir, "VERSION").read_bytes(), previous)
-        self.assertFalse(Path(payload_transaction.payload_transaction_dir(ctx)).exists())
+        self.assertFalse(Path(payload_state.transaction_root(ctx)).exists())
 
         invalid = (
             {},
@@ -202,10 +196,10 @@ class TestPayloadTransaction(unittest.TestCase):
         )
         for journal in invalid:
             with self.subTest(journal=journal):
-                root = Path(payload_transaction.payload_transaction_dir(ctx))
+                root = Path(payload_state.transaction_root(ctx))
                 root.mkdir()
-                Path(payload_transaction.transaction_journal_path(ctx)).write_bytes(
-                    payload_transaction.digest.canonical_json(journal)
+                Path(payload_state.journal_path(ctx)).write_bytes(
+                    payload_digest.canonical_json(journal)
                 )
                 with self.assertRaisesRegex(errors.InstallError, "unavailable or invalid"):
                     payload_transaction.rollback_recovery(ctx, runtime=runtime)
@@ -216,7 +210,7 @@ class TestPayloadTransaction(unittest.TestCase):
         candidate = begin_transaction(ctx, released_fixture("1.2.3"))
         candidate.commit_projection()
         candidate.preserve_for_recovery("handoff outcome unknown")
-        root = Path(payload_transaction.payload_transaction_dir(ctx))
+        root = Path(payload_state.transaction_root(ctx))
         rollback = root / "rollback"
         previous_identity = listener_identity.committed_payload(rollback / inventory.ENTRYPOINT)
         candidate_identity = listener_identity.committed_payload(Path(ctx.proxy_script))
@@ -251,7 +245,7 @@ class TestPayloadTransaction(unittest.TestCase):
         transaction = begin_transaction(ctx, released_fixture("1.2.3"))
         transaction.commit_projection()
         transaction.preserve_for_recovery("handoff outcome unknown")
-        journal_path = Path(payload_transaction.transaction_journal_path(ctx))
+        journal_path = Path(payload_state.journal_path(ctx))
         journal = json.loads(journal_path.read_text(encoding="utf-8"))
         journal.update(
             {
@@ -264,10 +258,10 @@ class TestPayloadTransaction(unittest.TestCase):
                 ),
             }
         )
-        journal_path.write_bytes(payload_transaction.digest.canonical_json(journal))
+        journal_path.write_bytes(payload_digest.canonical_json(journal))
         before = journal_path.read_bytes()
 
-        evidence = payload_transaction.transaction_status(ctx)
+        evidence = payload_state.status(ctx)
 
         self.assertEqual(
             evidence,
@@ -297,8 +291,8 @@ class TestPayloadTransaction(unittest.TestCase):
         ):
             transaction.finalize({"pid": 123})
 
-        self.assertTrue(Path(payload_transaction.installed_release_state_path(ctx)).is_file())
-        self.assertTrue(Path(payload_transaction.transaction_journal_path(ctx)).is_file())
+        self.assertTrue(Path(payload_state.installed_path(ctx)).is_file())
+        self.assertTrue(Path(payload_state.journal_path(ctx)).is_file())
 
     def test_transaction_state_machine_rejects_invalid_order_and_duplicate_commit(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))

@@ -6,20 +6,17 @@ admits released source or owns transaction commit, rollback, or recovery state.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
-import stat
-import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.runtime import context as runtime_context
-from codex_responses_proxy.payload import digest, inventory
+from codex_responses_proxy.payload import digest, inventory, owned_files
 
 RUNTIME_PAYLOAD_FILES = inventory.RUNTIME_FILES
 SERVING_PAYLOAD_FILES = inventory.SERVING_FILES
@@ -27,7 +24,6 @@ PAYLOAD_MANIFEST_FILENAME = inventory.MANIFEST_FILENAME
 RELEASE_RECEIPT_FILENAME = inventory.RELEASE_RECEIPT_FILENAME
 PAYLOAD_MANIFEST_SCHEMA_VERSION = 2
 _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-_RETIRED_INSTALL_DIRECTORIES = ("platform_adapters", "proxy", "tests")
 _RETIRED_MANIFEST_SCHEMAS = {1, 2}
 _RETIRED_RUNTIME_FILES = {
     1: frozenset(
@@ -74,12 +70,6 @@ _RETIRED_RUNTIME_FILES = {
         }
     ),
 }
-_OWNED_PAYLOAD_METADATA = (
-    PAYLOAD_MANIFEST_FILENAME,
-    RELEASE_RECEIPT_FILENAME,
-    inventory.INSTALLED_RELEASE_STATE_FILENAME,
-)
-_OWNED_PAYLOAD_FILES = (*RUNTIME_PAYLOAD_FILES, *_OWNED_PAYLOAD_METADATA)
 
 
 @dataclass(frozen=True)
@@ -111,7 +101,7 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
         raise errors.InstallError("installed payload manifest is a symlink")
     if not manifest_path.exists():
         raise errors.InstallError("installed payload manifest is required")
-    manifest = _read_json_object(manifest_path, "installed payload manifest")
+    manifest = owned_files.read_json_object(manifest_path, "installed payload manifest")
     files = manifest.get("files")
     current = (
         manifest.get("schema_version") == PAYLOAD_MANIFEST_SCHEMA_VERSION
@@ -122,14 +112,14 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
         ok, detail = verify_payload_manifest(ctx)
         if not ok:
             raise errors.InstallError(f"installed payload integrity check failed: {detail}")
-        owned = set(_OWNED_PAYLOAD_FILES)
+        owned = set(owned_files.OWNED_PAYLOAD_FILES)
     else:
         owned = set(verify_historical_projection(ctx).files) | {PAYLOAD_MANIFEST_FILENAME}
     for relative in owned:
-        _regular_file(install, relative, "installed payload purge")
+        owned_files.regular_file(install, relative, "installed payload purge")
     for relative in sorted(owned, key=lambda value: len(PurePosixPath(value).parts), reverse=True):
         try:
-            _payload_path(install, relative).unlink()
+            owned_files.path(install, relative).unlink()
         except OSError as exc:
             raise errors.InstallError(f"installed payload purge failed: {relative}") from exc
     _remove_empty_owned_directories(install, owned)
@@ -137,8 +127,8 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
         relative
         for relative in owned
         if (
-            _payload_path(install, relative).exists()
-            or _payload_path(install, relative).is_symlink()
+            owned_files.path(install, relative).exists()
+            or owned_files.path(install, relative).is_symlink()
         )
     ]
     if residual_owned:
@@ -158,14 +148,6 @@ def _payload_relative_paths(root: str) -> list[str]:
     if missing:
         raise errors.InstallError("installed payload is incomplete: " + ", ".join(missing))
     return list(RUNTIME_PAYLOAD_FILES)
-
-
-def _sha256_file(path: str | Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
@@ -207,107 +189,6 @@ def manifest_bytes(manifest: Mapping[str, Any]) -> bytes:
     return (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
-def _real_parent(path: Path, root: Path) -> None:
-    """Create missing owned ancestors while refusing every symlink boundary."""
-
-    if root.is_symlink():
-        raise errors.InstallError("installed payload root is a symlink")
-    root.mkdir(parents=True, exist_ok=True)
-    if root.is_symlink() or not root.is_dir():
-        raise errors.InstallError("installed payload root is not a real directory")
-    current = root
-    try:
-        relatives = path.relative_to(root).parts[:-1]
-    except ValueError as exc:
-        raise errors.InstallError("owned path escapes its root") from exc
-    for part in relatives:
-        current /= part
-        try:
-            metadata = current.lstat()
-        except FileNotFoundError:
-            current.mkdir()
-            metadata = current.lstat()
-        if stat.S_ISLNK(metadata.st_mode):
-            raise errors.InstallError(
-                f"owned path has a symlink ancestor: {path.relative_to(root)}"
-            )
-        if not stat.S_ISDIR(metadata.st_mode):
-            raise errors.InstallError(
-                f"owned path ancestor is not a directory: {path.relative_to(root)}"
-            )
-
-
-def _atomic_write_bytes(
-    path: Path, content: bytes, *, mode: int = 0o644, root: Path | None = None
-) -> None:
-    root = root or path.parent
-    _real_parent(path, root)
-    if path.is_symlink() or path.exists() and not path.is_file():
-        raise errors.InstallError(f"owned path is not a regular file: {path.relative_to(root)}")
-    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}")
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        _real_parent(path, root)
-        if path.is_symlink() or path.exists() and not path.is_file():
-            raise errors.InstallError(f"owned path changed type: {path.relative_to(root)}")
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def _payload_path(root: Path, relative: str) -> Path:
-    return root.joinpath(*PurePosixPath(relative).parts)
-
-
-def _canonical_owned_path(value: object, label: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise errors.InstallError(f"{label} path must be a non-empty string")
-    path = PurePosixPath(value)
-    if (
-        path.is_absolute()
-        or PureWindowsPath(value).drive
-        or value.startswith("//")
-        or path.as_posix() != value
-        or value.endswith("/")
-        or "\\" in value
-        or any(part in {"", ".", ".."} for part in value.split("/"))
-    ):
-        raise errors.InstallError(f"{label} path is not canonical: {value!r}")
-    return value
-
-
-def _regular_file(root: Path, relative: str, label: str) -> Path:
-    """Resolve one owned leaf without traversing a symlink boundary."""
-
-    try:
-        if root.is_symlink() or not root.is_dir():
-            raise errors.InstallError(f"{label} root is not a real directory")
-        current = root
-        parts = PurePosixPath(relative).parts
-        for part in parts[:-1]:
-            current /= part
-            metadata = current.lstat()
-            if stat.S_ISLNK(metadata.st_mode):
-                raise errors.InstallError(f"{label} path has a symlink ancestor: {relative}")
-            if not stat.S_ISDIR(metadata.st_mode):
-                raise errors.InstallError(f"{label} path ancestor is not a directory: {relative}")
-        path = current / parts[-1]
-        metadata = path.lstat()
-    except FileNotFoundError as exc:
-        raise errors.InstallError(f"{label} file is unavailable: {relative}") from exc
-    except OSError as exc:
-        raise errors.InstallError(f"{label} path is unavailable: {relative}") from exc
-    if stat.S_ISLNK(metadata.st_mode):
-        raise errors.InstallError(f"{label} path is a symlink: {relative}")
-    if not stat.S_ISREG(metadata.st_mode):
-        raise errors.InstallError(f"{label} path is not a regular file: {relative}")
-    return path
-
-
 def verify_historical_projection(ctx: runtime_context.RuntimeContext) -> HistoricalProjection:
     """Verify one supported historical manifest, inventory, and entrypoint."""
 
@@ -321,7 +202,7 @@ def verify_historical_projection(ctx: runtime_context.RuntimeContext) -> Histori
     return HistoricalProjection(
         release=manifest["release"],
         files=frozenset(files),
-        entrypoint=str(_payload_path(Path(ctx.install_dir), entrypoint)),
+        entrypoint=str(owned_files.path(Path(ctx.install_dir), entrypoint)),
     )
 
 
@@ -331,7 +212,7 @@ def _historical_manifest_files(install: Path) -> tuple[dict[str, Any], dict[str,
     manifest_path = install / PAYLOAD_MANIFEST_FILENAME
     if not manifest_path.exists():
         raise errors.InstallError("retired installed payload manifest is required")
-    manifest = _read_json_object(manifest_path, "retired installed payload manifest")
+    manifest = owned_files.read_json_object(manifest_path, "retired installed payload manifest")
     schema = manifest.get("schema_version")
     if schema not in _RETIRED_MANIFEST_SCHEMAS:
         raise errors.InstallError("retired installed payload manifest schema is unsupported")
@@ -346,7 +227,7 @@ def _historical_manifest_files(install: Path) -> tuple[dict[str, Any], dict[str,
         raise errors.InstallError("retired installed payload manifest is incomplete")
     files: dict[str, str] = {}
     for raw_relative, raw_digest in raw_files.items():
-        relative = _canonical_owned_path(raw_relative, "retired manifest")
+        relative = owned_files.canonical_relative(raw_relative, "retired manifest")
         if not isinstance(raw_digest, str) or re.fullmatch(r"[0-9a-f]{64}", raw_digest) is None:
             raise errors.InstallError(f"retired installed payload digest is invalid: {relative}")
         if relative in files:
@@ -357,9 +238,9 @@ def _historical_manifest_files(install: Path) -> tuple[dict[str, Any], dict[str,
     if set(files) != set(_RETIRED_RUNTIME_FILES[schema]):
         raise errors.InstallError("retired installed payload manifest file set is unsupported")
     for relative, expected in files.items():
-        path = _regular_file(install, relative, "retired installed payload")
+        path = owned_files.regular_file(install, relative, "retired installed payload")
         try:
-            actual = _sha256_file(path)
+            actual = digest.sha256_file(path)
         except OSError as exc:
             raise errors.InstallError(
                 f"retired installed payload is unreadable: {relative}"
@@ -367,9 +248,9 @@ def _historical_manifest_files(install: Path) -> tuple[dict[str, Any], dict[str,
         if actual != expected:
             raise errors.InstallError(f"retired installed payload digest mismatch: {relative}")
     try:
-        version = _regular_file(install, "VERSION", "retired installed payload").read_text(
-            encoding="utf-8"
-        )
+        version = owned_files.regular_file(
+            install, "VERSION", "retired installed payload"
+        ).read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
         raise errors.InstallError("retired installed payload VERSION is unreadable") from exc
     if version != f"{release}\n":
@@ -385,7 +266,7 @@ def _remove_empty_owned_directories(install: Path, owned: set[str]) -> None:
         if parent != PurePosixPath(".")
     }
     for relative in sorted(directories, key=lambda value: len(value.parts), reverse=True):
-        directory = _payload_path(install, relative.as_posix())
+        directory = owned_files.path(install, relative.as_posix())
         if directory.is_symlink() or not directory.exists():
             continue
         if not directory.is_dir():
@@ -417,27 +298,6 @@ def _remaining_paths(install: Path) -> tuple[str, ...]:
     return remaining
 
 
-def _read_json_object(path: Path, label: str) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise errors.InstallError(f"{label} is unavailable or invalid") from exc
-    if not isinstance(value, dict):
-        raise errors.InstallError(f"{label} is not a JSON object")
-    return value
-
-
-def _read_canonical_json(path: Path, label: str) -> dict[str, Any]:
-    try:
-        content = path.read_bytes()
-        value = json.loads(content.decode("utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise errors.InstallError(f"{label} is unavailable or invalid") from exc
-    if not isinstance(value, dict) or digest.canonical_json(value) != content:
-        raise errors.InstallError(f"{label} is not canonical JSON")
-    return value
-
-
 def _write_payload_manifest_for_fixture(
     ctx: runtime_context.RuntimeContext,
     *,
@@ -446,9 +306,7 @@ def _write_payload_manifest_for_fixture(
     """Write the production manifest shape for a legacy installed fixture."""
 
     paths = _payload_relative_paths(ctx.install_dir)
-    digests = {
-        relative: _sha256_file(os.path.join(ctx.install_dir, relative)) for relative in paths
-    }
+    digests = {relative: digest.sha256_file(Path(ctx.install_dir, relative)) for relative in paths}
     serving = {relative: digests[relative] for relative in SERVING_PAYLOAD_FILES}
     manifest: dict[str, Any] = {
         "schema_version": PAYLOAD_MANIFEST_SCHEMA_VERSION,
@@ -460,7 +318,7 @@ def _write_payload_manifest_for_fixture(
     if release_receipt_sha256 is not None:
         manifest["release_receipt_sha256"] = release_receipt_sha256
     path = payload_manifest_path(ctx)
-    _atomic_write_bytes(path, manifest_bytes(manifest))
+    owned_files.write_bytes(path, manifest_bytes(manifest))
     return path
 
 
@@ -507,7 +365,7 @@ def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, 
             return False, f"invalid digest: {relative}"
         path = os.path.join(ctx.install_dir, *relative.split("/"))
         try:
-            actual = _sha256_file(path)
+            actual = digest.sha256_file(Path(path))
         except OSError as exc:
             return False, f"payload unavailable: {relative}: {exc}"
         if actual != expected:
@@ -526,7 +384,7 @@ def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, 
         if not isinstance(receipt_digest, str) or len(receipt_digest) != 64:
             return False, "release receipt digest is invalid"
         try:
-            actual_receipt = _sha256_file(receipt_path)
+            actual_receipt = digest.sha256_file(Path(receipt_path))
         except OSError as exc:
             return False, f"release receipt unavailable: {exc}"
         if actual_receipt != receipt_digest:

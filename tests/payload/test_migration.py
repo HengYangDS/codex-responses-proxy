@@ -17,7 +17,9 @@ sys.path.insert(0, str(ROOT))
 from codex_responses_proxy import errors
 from codex_responses_proxy.payload import projection as payload_projection
 from codex_responses_proxy.payload import rollback as payload_rollback
+from codex_responses_proxy.payload import digest as payload_digest
 from codex_responses_proxy.payload import transaction as payload_transaction
+from codex_responses_proxy.payload import state as payload_state
 from codex_responses_proxy.runtime import context as runtime_context
 from tests.deployment.fixtures import install_context, write_retired_projection
 from tests.payload.fixtures import begin_transaction, install_payload, released_fixture
@@ -52,7 +54,7 @@ class TestPayloadMigration(unittest.TestCase):
         with self.assertRaisesRegex(errors.InstallError, "hash mismatch"):
             transaction.commit_projection()
         self.assertEqual(unknown.read_bytes(), b"local\n")
-        self.assertFalse(Path(payload_transaction.payload_transaction_dir(ctx)).exists())
+        self.assertFalse(Path(payload_state.transaction_root(ctx)).exists())
 
     def _assert_pretty_legacy_manifest_is_accepted(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -88,14 +90,14 @@ class TestPayloadMigration(unittest.TestCase):
         first = begin_transaction(ctx, released_fixture())
         with self.assertRaisesRegex(errors.InstallError, "manifest is required"):
             first.commit_projection()
-        self.assertFalse(Path(payload_transaction.payload_transaction_dir(ctx)).exists())
+        self.assertFalse(Path(payload_state.transaction_root(ctx)).exists())
         marker.unlink()
         marker.parent.rmdir()
         begin_transaction(ctx, released_fixture()).rollback()
 
     def _assert_snapshot_paths_are_bounded(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
-        rollback = Path(payload_transaction.payload_transaction_dir(ctx), "rollback")
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
         rollback.mkdir(parents=True)
         for relative in ("unknown.py", "C:/escape.py", "//server/share.py"):
             snapshot = {
@@ -105,9 +107,7 @@ class TestPayloadMigration(unittest.TestCase):
                 "retired_owned_sha256": payload_rollback.path_set_sha256(set()),
                 "previous_owned": [],
             }
-            (rollback / "snapshot.json").write_bytes(
-                payload_transaction.digest.canonical_json(snapshot)
-            )
+            (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
             with self.assertRaisesRegex(errors.InstallError, "path|inventory"):
                 payload_rollback.restore_snapshot(ctx, rollback)
 
@@ -153,7 +153,7 @@ class TestPayloadMigration(unittest.TestCase):
         transaction.commit_projection()
         live = Path(ctx.install_dir, "codex_responses_proxy/commands/control.py")
         before = live.read_bytes()
-        Path(payload_transaction.payload_transaction_dir(ctx), "rollback", "VERSION").unlink()
+        Path(payload_state.transaction_root(ctx), "rollback", "VERSION").unlink()
         with self.assertRaisesRegex(errors.InstallError, "rollback.*unavailable"):
             transaction.rollback()
         self.assertEqual(live.read_bytes(), before)
@@ -191,7 +191,7 @@ class TestPayloadMigration(unittest.TestCase):
     def _assert_retired_snapshot_binds_owned_manifest(self) -> None:
         ctx, transaction = self._legacy_transaction({"proxy/dmx_responses_proxy.py": b"owned\n"})
         transaction.commit_projection()
-        rollback = Path(payload_transaction.payload_transaction_dir(ctx), "rollback")
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
         injected = rollback / "proxy" / "user.py"
         injected.parent.mkdir(parents=True, exist_ok=True)
         injected.write_bytes(b"injected\n")
@@ -202,7 +202,7 @@ class TestPayloadMigration(unittest.TestCase):
             "mode": 0o644,
         }
         snapshot["retired"].append("proxy/user.py")
-        snapshot_path.write_bytes(payload_transaction.digest.canonical_json(snapshot))
+        snapshot_path.write_bytes(payload_digest.canonical_json(snapshot))
         with self.assertRaisesRegex(errors.InstallError, "owned proof"):
             transaction.rollback()
         self.assertFalse(Path(ctx.install_dir, "proxy", "user.py").exists())
@@ -316,7 +316,7 @@ class TestPayloadMigration(unittest.TestCase):
                 (install / "VERSION").write_bytes(b"1.0.27\n")
                 if manifest is not None:
                     (install / payload_projection.PAYLOAD_MANIFEST_FILENAME).write_bytes(
-                        payload_transaction.digest.canonical_json(manifest)
+                        payload_digest.canonical_json(manifest)
                     )
                 transaction = begin_transaction(ctx, released_fixture())
                 with self.assertRaisesRegex(errors.InstallError, message):
@@ -347,7 +347,7 @@ class TestPayloadMigration(unittest.TestCase):
                     },
                 }
                 (install / payload_projection.PAYLOAD_MANIFEST_FILENAME).write_bytes(
-                    payload_transaction.digest.canonical_json(manifest)
+                    payload_digest.canonical_json(manifest)
                 )
                 transaction = begin_transaction(ctx, released_fixture())
                 with self.assertRaisesRegex(errors.InstallError, "path is not canonical"):
@@ -369,7 +369,7 @@ class TestPayloadMigration(unittest.TestCase):
         manifest["files"]["proxy/dmx_responses_proxy.py"] = hashlib.sha256(
             b"external\n"
         ).hexdigest()
-        manifest_path.write_bytes(payload_transaction.digest.canonical_json(manifest))
+        manifest_path.write_bytes(payload_digest.canonical_json(manifest))
         transaction = begin_transaction(ctx, released_fixture())
         with self.assertRaisesRegex(errors.InstallError, "symlink"):
             transaction.commit_projection()
@@ -401,7 +401,7 @@ class TestPayloadMigration(unittest.TestCase):
 
         self.assertEqual(marker.read_bytes(), b"existing live payload\n")
         self.assertTrue(capture.is_file())
-        self.assertFalse(Path(payload_transaction.payload_transaction_dir(ctx)).exists())
+        self.assertFalse(Path(payload_state.transaction_root(ctx)).exists())
 
         with (
             mock.patch.object(Path, "iterdir", autospec=True, side_effect=OSError("blocked")),

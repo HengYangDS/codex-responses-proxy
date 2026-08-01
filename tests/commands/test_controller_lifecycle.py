@@ -23,7 +23,8 @@ from codex_responses_proxy.commands import install  # noqa: E402
 from codex_responses_proxy.commands import uninstall  # noqa: E402
 from codex_responses_proxy import errors
 from codex_responses_proxy.supervision import process  # noqa: E402
-from codex_responses_proxy.payload import transaction as payload_transaction  # noqa: E402
+from codex_responses_proxy.payload import digest as payload_digest  # noqa: E402
+from codex_responses_proxy.payload import state as payload_state  # noqa: E402
 from tests.deployment.fixtures import install_context  # noqa: E402
 from tests.payload.fixtures import begin_transaction, released_fixture  # noqa: E402
 
@@ -301,7 +302,7 @@ class TestControllerLifecycle(unittest.TestCase):
             transaction = begin_transaction(ctx, released_fixture("1.2.3"))
             transaction.commit_projection()
             transaction.preserve_for_recovery("handoff outcome unknown")
-            journal_path = Path(payload_transaction.transaction_journal_path(ctx))
+            journal_path = Path(payload_state.journal_path(ctx))
             journal = json.loads(journal_path.read_text(encoding="utf-8"))
             journal.update(
                 {
@@ -314,7 +315,7 @@ class TestControllerLifecycle(unittest.TestCase):
                     ),
                 }
             )
-            journal_path.write_bytes(payload_transaction.digest.canonical_json(journal))
+            journal_path.write_bytes(payload_digest.canonical_json(journal))
             before = journal_path.read_bytes()
             installed_control = Path(ctx.install_dir) / "codex_responses_proxy/commands/control.py"
             env = dict(
