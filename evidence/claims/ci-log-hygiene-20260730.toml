@@ -2,18 +2,19 @@
 id = "ci-log-hygiene-20260730"
 subject = "codex-responses-proxy:product-convergence"
 state = "active"
-summary = "The active terminal Claim binds the provider-neutral product convergence; the dated CI observation remains its immutable evidence seed. Dated evidence bounds successful-job diagnostic integrity through Python execution, checkout, and provider projection."
+summary = "The active terminal Claim binds provider-neutral product convergence and the current linear Forge projection repair; the dated CI observation remains its immutable evidence seed. Dated evidence bounds successful-job diagnostic integrity through Python execution, checkout, and provider projection."
 
 [evidence]
 dated = "evidence/chronicle/ci-log-hygiene-20260730/2026-07-31.md"
 sha256 = "58bcb8fc7a69174e207285d274f89479ad2ac99eb4497235eeac2415a2fef42d"
 evidence_ids = ["evidence:ci-log-hygiene-20260730"]
-binding = "current hosted-defect observation and local TDD mechanism proof for reused GitHub self-hosted checkout"
+binding = "current hosted-defect observation, local checkout proof, and linear identity-projection TDD contract"
 verifier = "digest_only"
 tests = [
   "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
   "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
   "sh tests/forge/contracts/test-github-actions.sh",
+  "python3.12 -m unittest tests.forge.test_history tests.forge.test_forward_only",
   "python3 tools/release/metadata.py --provider gitlab",
   "openspec validate --all --strict --json",
 ]
@@ -23,17 +24,21 @@ mode = "historical"
 
 [boundary]
 owner = "codex-responses-proxy"
-scope = "The dated Chronicle covers one observed hosted checkout warning and local workflow-contract proof; post-fix hosted CI, publication, installation, runtime, and immutable reclose remain external until refreshed."
+scope = "The dated Chronicle covers one observed hosted checkout warning. Current local proof additionally covers exact identity-neutral fingerprint preservation, linear history matching, and bounded diagnostics; post-fix hosted CI, publication, installation, runtime, and immutable reclose remain external until refreshed."
 
 [carriers]
-openspec = "openspec/changes/forge-history-convergence"
-fallback = "Revert the workflow commit if checkout or hosted verification regresses; no runner-global or installed-runtime state needs rollback."
-kill_signal = "A successful job can emit an actual prohibited diagnostic, the abandoned-commit warning recurs, or the temporary checkout ref survives the job."
+openspec = "openspec/changes/forge-projection-linearization"
+fallback = "Revert the source commit before publication if checkout behavior or identity-neutral projection regresses; no runner-global or installed-runtime state needs rollback."
+kill_signal = "A successful job emits an actual prohibited diagnostic, checkout residue survives, history matching ceases to be linear, identity-neutral mapping becomes absent or ambiguous, or a target ref changes after a rejected projection."
 
 [promotion]
 targets = [
   ".github/workflows/release.yml",
   ".github/workflows/verify.yml",
   "openspec/specs/ci-diagnostics/spec.md",
+  "tests/forge/test_forward_only.py",
+  "tests/forge/test_history.py",
   "tests/forge/contracts/test-github-actions.sh",
+  "tools/forge/history.py",
+  "tools/forge/project.sh",
 ]
