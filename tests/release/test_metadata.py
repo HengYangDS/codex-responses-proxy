@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 import tempfile
@@ -601,7 +602,12 @@ def main() -> None:
     tag_exists = _run("git", "rev-parse", "--verify", f"refs/tags/v{version}").returncode == 0
     if heading in source and not tag_exists:
         expect_rejection(source, "an untagged pending release in ordinary verification")
-        subprocess.run([sys.executable, str(CHECKER), "--prepare-release"], cwd=ROOT, check=True)
+        args = (
+            ["--provider", "github"]
+            if os.environ.get("GITHUB_ACTIONS") == "true"
+            else ["--prepare-release"]
+        )
+        subprocess.run([sys.executable, str(CHECKER), *args], cwd=ROOT, check=True)
     else:
         subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT, check=True)
         if tag_exists:
