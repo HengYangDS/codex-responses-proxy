@@ -8,7 +8,7 @@ import io
 import re
 import tarfile
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import PurePosixPath, PureWindowsPath
 
 ARCHIVE_NAME = "codex-responses-proxy-{version}.tar.gz"
 CHECKSUM_NAME = "SHA256SUMS"
@@ -27,8 +27,16 @@ def archive_bytes(files: Mapping[str, bytes], version: str) -> bytes:
     with gzip.GzipFile(fileobj=output, mode="wb", compresslevel=9, mtime=0) as compressed:
         with tarfile.open(fileobj=compressed, mode="w") as archive:
             for relative, content in sorted(files.items()):
-                path = Path(relative)
-                if path.is_absolute() or ".." in path.parts or not path.parts:
+                path = PurePosixPath(relative)
+                windows_path = PureWindowsPath(relative)
+                if (
+                    path.is_absolute()
+                    or windows_path.is_absolute()
+                    or windows_path.drive
+                    or ".." in path.parts
+                    or ".." in windows_path.parts
+                    or not path.parts
+                ):
                     raise AssetError("release asset path escapes the source root")
                 info = tarfile.TarInfo(f"{prefix}/{path.as_posix()}")
                 info.size = len(content)
@@ -64,7 +72,7 @@ def parse_checksums(content: bytes) -> dict[str, str]:
         if len(parts) != 2 or not _DIGEST.fullmatch(parts[0]) or not parts[1]:
             raise AssetError("release checksum manifest is malformed")
         name = parts[1]
-        if Path(name).name != name or name in parsed:
+        if PurePosixPath(name).name != name or PureWindowsPath(name).name != name or name in parsed:
             raise AssetError("release checksum asset name is invalid or duplicated")
         parsed[name] = parts[0]
     if not parsed:

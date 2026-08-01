@@ -59,7 +59,7 @@ class ReleaseAssetContracts(unittest.TestCase):
     def test_invalid_paths_and_manifests_fail_closed(self) -> None:
         with self.assertRaises(assets.AssetError):
             assets.checksums({})
-        for path in ("../escape", "/absolute"):
+        for path in ("../escape", "..\\escape", "/absolute", "C:\\absolute"):
             with self.subTest(path=path), self.assertRaises(assets.AssetError):
                 assets.archive_bytes({path: b"x"}, "1.2.3")
         for manifest in (
