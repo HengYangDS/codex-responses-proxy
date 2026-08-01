@@ -308,17 +308,7 @@ class ProviderProjectionTests(unittest.TestCase):
                 run("git", "add", ".", cwd=source)
                 run("git", "commit", "-qS", "-m", "one successor", cwd=source)
 
-                command_log = root / "git-commands.log"
-                bin_dir = root / "bin"
-                bin_dir.mkdir()
-                git_wrapper = bin_dir / "git"
-                git_wrapper.write_text(
-                    "#!/bin/sh\n"
-                    'printf "%s\\n" "$*" >>"$GIT_COMMAND_LOG"\n'
-                    f'exec "{shutil.which("git")}" "$@"\n',
-                    encoding="utf-8",
-                )
-                git_wrapper.chmod(0o755)
+                trace_log = root / "git-trace2.jsonl"
                 mapping = root / "linear-map.json"
                 result = run(
                     "sh",
@@ -330,15 +320,18 @@ class ProviderProjectionTests(unittest.TestCase):
                     cwd=source,
                     env={
                         **environment,
-                        "GIT_COMMAND_LOG": str(command_log),
-                        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+                        "GIT_TRACE2_EVENT": str(trace_log),
                     },
                 )
 
             self.assertNotIn("Traceback", result.stderr)
-            commands = command_log.read_text(encoding="utf-8").splitlines()
-            message_reads = sum("cat-file commit " in command for command in commands)
-            batch_reads = sum("cat-file --batch" in command for command in commands)
+            starts = [
+                json.loads(line)["argv"]
+                for line in trace_log.read_text(encoding="utf-8").splitlines()
+                if json.loads(line).get("event") == "start"
+            ]
+            message_reads = sum("cat-file" in command and "commit" in command for command in starts)
+            batch_reads = sum("cat-file" in command and "--batch" in command for command in starts)
             self.assertEqual(2, batch_reads)
             projection = json.loads(mapping.read_text(encoding="utf-8"))
             self.assertEqual(1, len(projection["created"]))

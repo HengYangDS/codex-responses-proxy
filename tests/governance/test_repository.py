@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ntpath
 import sys
 import unittest
 from collections.abc import Mapping
@@ -87,6 +88,16 @@ class TestInstallationInputValidation(unittest.TestCase):
         }
         self.assertEqual(runtime_config.data_dir(environment), "/portable/home/payload")
         self.assertEqual(runtime_config.state_dir(environment), "/portable/home/state")
+
+    def test_posix_overrides_are_not_reinterpreted_by_a_windows_host(self):
+        environment = {
+            "HOME": "/portable/home",
+            runtime_config.HOME_ENV: "~/payload",
+            runtime_config.STATE_HOME_ENV: "/portable/state",
+        }
+        with mock.patch.object(runtime_config.os, "path", ntpath):
+            self.assertEqual(runtime_config.data_dir(environment), "/portable/home/payload")
+            self.assertEqual(runtime_config.state_dir(environment), "/portable/state")
 
     def test_service_projection_is_derived_from_one_runtime_contract(self):
         context = runtime_context.RuntimeContext(
