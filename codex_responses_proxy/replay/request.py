@@ -499,6 +499,17 @@ def _project_output(
     }
 
 
+def _project_compaction_trigger(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
+    _unknown_fields(item, frozenset(("type",)), "unknown_compaction_trigger_field")
+    return {"type": "compaction_trigger"}, {
+        "changed": 0,
+        "item_ids": 0,
+        "encrypted_blocks": 0,
+        "omission_markers": 0,
+        "local_image_items": 0,
+    }
+
+
 def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
     calls: dict[str, str] = {}
     outputs: set[str] = set()
@@ -533,6 +544,8 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
             value, item_metrics = _project_call(item, calls)
         elif item_type in _OUTPUT_CALL_TYPE:
             value, item_metrics = _project_output(item, calls, outputs)
+        elif item_type == "compaction_trigger":
+            value, item_metrics = _project_compaction_trigger(item)
         else:
             _reject("unknown_item_type")
         projected.append(value)
