@@ -421,6 +421,7 @@ def start_real_proxy(
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=diagnostic,
+            close_fds=os.name == "nt",
         )
     if not wait_until(lambda: process.poll() is not None or proxy_is_up(ctx.port), timeout=30):
         terminate_process(process)

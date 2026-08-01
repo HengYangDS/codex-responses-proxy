@@ -28,6 +28,7 @@ from tests.runtime.handoff.fixtures import terminate_owned_proxy
 from tests.runtime.handoff.fixtures import terminate_process
 from tests.runtime.handoff.fixtures import wait_until
 from tests.runtime.handoff.fixtures import write_installed_payload
+from tests.runtime.handoff import fixtures as handoff_fixtures
 from codex_responses_proxy.runtime import context as runtime_context
 from codex_responses_proxy.supervision import process
 
@@ -36,6 +37,32 @@ SUCCESSOR_TIMEOUT = 20
 
 class TestRealSubprocessHandoffIntegration(unittest.TestCase):
     """Exercise the complete rolling handoff against owned loopback processes."""
+
+    def test_initial_proxy_spawn_avoids_multithreaded_posix_fork(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            ctx = write_installed_payload(
+                root,
+                release="1.0.25",
+                port=free_port(),
+                upstream_url="http://127.0.0.1:43123",
+            )
+            child = mock.Mock()
+            child.poll.return_value = None
+            with (
+                mock.patch.object(
+                    handoff_fixtures.subprocess, "Popen", return_value=child
+                ) as popen,
+                mock.patch.object(handoff_fixtures, "proxy_is_up", return_value=True),
+            ):
+                started = start_real_proxy(
+                    ctx,
+                    upstream_url="http://127.0.0.1:43123",
+                    log_path=root / "proxy.log",
+                )
+
+        self.assertIs(started, child)
+        self.assertIs(popen.call_args.kwargs.get("close_fds", True), False)
 
     def _installed_fixture(
         self, *, release: str, port: int, upstream_url: str
