@@ -1,0 +1,39 @@
+[claim]
+id = "runtime-semantic-owners-20260801"
+subject = "codex-responses-proxy:runtime-semantic-owners"
+state = "active"
+summary = "Bind concrete runtime owners, structured replay metrics, identity-aware Forge parity, and their exact verification boundary."
+
+[evidence]
+dated = "evidence/chronicle/runtime-semantic-owners-20260801/2026-08-01.md"
+sha256 = "c570460f47d14cb83734945d08a7430894d41aa8dd1b07e19a05cf32c2e01fec"
+evidence_ids = ["evidence:runtime-semantic-owners-20260801"]
+binding = "TDD source repair and exact-tree verification"
+verifier = "digest_only"
+tests = [
+  "python3 tests/governance/test_owner_boundaries.py",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "historical"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Local source, tests, documentation, and exact-HEAD proof only until hosted CI, publication, installation, provider runtime, MCP, and original-conversation acceptance are separately verified."
+
+[carriers]
+openspec = "openspec/changes/archive/2026-08-01-runtime-semantic-owners"
+fallback = "Revert the atomic source commit before publication."
+kill_signal = "Any mixed state facade, diagnostic-string metrics protocol, private cross-module access, forwarding alias, or false Forge object-identity claim reappears."
+
+[promotion]
+targets = [
+  "codex_responses_proxy/runtime",
+  "codex_responses_proxy/transport/cooldown.py",
+  "codex_responses_proxy/replay/request.py",
+  "tools/quality/repository.py",
+  "tools/forge/project.sh",
+]

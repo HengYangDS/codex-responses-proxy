@@ -17,13 +17,14 @@ if str(PRODUCT_ROOT) not in sys.path:
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.runtime import context as runtime_context
+from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.supervision import process  # noqa: E402
 from codex_responses_proxy.deployment import handoff  # noqa: E402
 from codex_responses_proxy.payload import projection, state as payload_state  # noqa: E402
 from codex_responses_proxy.supervision.select import adapter  # noqa: E402
 
 
-def _context(port: int = runtime_context.DEFAULT_PORT) -> runtime_context.RuntimeContext:
+def _context(port: int = runtime_config.DEFAULT_PORT) -> runtime_context.RuntimeContext:
     """Project the installed product without consulting client configuration."""
 
     return runtime_context.create(python=sys.executable, port=port)
@@ -153,7 +154,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Control the installed Codex Responses Proxy.")
     parser.add_argument("command", choices=("status", "reload"))
-    parser.add_argument("--port", type=int, default=runtime_context.DEFAULT_PORT)
+    parser.add_argument("--port", type=int, default=runtime_config.DEFAULT_PORT)
     parser.add_argument("--json", action="store_true", dest="as_json")
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
     args = parser.parse_args()

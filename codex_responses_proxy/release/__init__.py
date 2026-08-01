@@ -1,1 +1,1 @@
-"""Published-source admission, installed projection, and payload transactions."""
+"""Published-source admission and release-side transaction orchestration."""

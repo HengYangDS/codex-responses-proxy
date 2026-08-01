@@ -23,7 +23,8 @@ if str(PRODUCT_ROOT) not in sys.path:
 
 from codex_responses_proxy.supervision.select import adapter  # noqa: E402
 from codex_responses_proxy.deployment import apply  # noqa: E402
-from codex_responses_proxy.runtime import context as runtime_context  # noqa: E402
+from codex_responses_proxy.runtime import context as runtime_context
+from codex_responses_proxy.runtime import config as runtime_config  # noqa: E402
 from codex_responses_proxy import errors  # noqa: E402
 from codex_responses_proxy.supervision import python as python_runtime  # noqa: E402
 from codex_responses_proxy.release import admission as release_admission  # noqa: E402
@@ -44,10 +45,10 @@ def _die(msg: str) -> None:
 def build_context(
     port: int,
     *,
-    proxy_log_max_bytes: int = runtime_context.DEFAULT_PROXY_LOG_MAX_BYTES,
-    proxy_log_backup_count: int = runtime_context.DEFAULT_PROXY_LOG_BACKUP_COUNT,
-    watchdog_log_max_bytes: int = runtime_context.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
-    watchdog_log_backup_count: int = runtime_context.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
+    proxy_log_max_bytes: int = runtime_config.DEFAULT_PROXY_LOG_MAX_BYTES,
+    proxy_log_backup_count: int = runtime_config.DEFAULT_PROXY_LOG_BACKUP_COUNT,
+    watchdog_log_max_bytes: int = runtime_config.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
+    watchdog_log_backup_count: int = runtime_config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
 ) -> runtime_context.RuntimeContext:
     """Project user-facing arguments into one portable deployment context."""
 
@@ -120,29 +121,29 @@ def install_release(
 def main() -> None:
     """Verify signed release source and install its product-owned runtime."""
     ap = argparse.ArgumentParser(description="Install Codex Responses Proxy.")
-    ap.add_argument("--port", type=int, default=runtime_context.DEFAULT_PORT)
+    ap.add_argument("--port", type=int, default=runtime_config.DEFAULT_PORT)
     ap.add_argument(
         "--proxy-log-max-bytes",
         type=int,
-        default=runtime_context.DEFAULT_PROXY_LOG_MAX_BYTES,
+        default=runtime_config.DEFAULT_PROXY_LOG_MAX_BYTES,
         help="maximum bytes retained in each proxy log segment",
     )
     ap.add_argument(
         "--proxy-log-backup-count",
         type=int,
-        default=runtime_context.DEFAULT_PROXY_LOG_BACKUP_COUNT,
+        default=runtime_config.DEFAULT_PROXY_LOG_BACKUP_COUNT,
         help="number of rotated proxy log segments to retain",
     )
     ap.add_argument(
         "--watchdog-log-max-bytes",
         type=int,
-        default=runtime_context.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
+        default=runtime_config.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
         help="maximum bytes retained in each watchdog log segment",
     )
     ap.add_argument(
         "--watchdog-log-backup-count",
         type=int,
-        default=runtime_context.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
+        default=runtime_config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
         help="number of rotated watchdog log segments to retain",
     )
     ap.add_argument(

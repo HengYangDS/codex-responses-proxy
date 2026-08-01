@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy.runtime import context as runtime_context  # noqa: E402
+from codex_responses_proxy.payload import inventory
 from codex_responses_proxy.payload import projection  # noqa: E402
 
 
@@ -83,7 +84,7 @@ def write_retired_projection(
             relative: hashlib.sha256(content).hexdigest() for relative, content in files.items()
         },
     }
-    (install / projection.PAYLOAD_MANIFEST_FILENAME).write_text(
+    (install / inventory.MANIFEST_FILENAME).write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     return files

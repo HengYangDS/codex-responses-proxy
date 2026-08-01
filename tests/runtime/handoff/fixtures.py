@@ -28,10 +28,11 @@ if str(ROOT) not in sys.path:
 
 from codex_responses_proxy.runtime import context as runtime_context  # noqa: E402
 from codex_responses_proxy.supervision import process  # noqa: E402
+from codex_responses_proxy.payload import inventory
 from codex_responses_proxy.payload import projection
 from codex_responses_proxy.listener import entrypoint as entrypoint_module  # noqa: E402
 from codex_responses_proxy.listener.handoff import transaction as handoff_module  # noqa: E402
-from codex_responses_proxy.runtime import state as runtime_state_module  # noqa: E402
+from codex_responses_proxy.runtime import admission as runtime_state_module  # noqa: E402
 from tests.deployment.fixtures import install_context  # noqa: E402
 
 
@@ -338,7 +339,7 @@ def write_installed_payload(
     """Build an installed-like temporary payload without touching the source tree."""
     ctx = install_context(root)
     install_dir = Path(ctx.install_dir)
-    for relative in projection.RUNTIME_PAYLOAD_FILES:
+    for relative in inventory.RUNTIME_FILES:
         source = ROOT / relative
         target = install_dir / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -350,7 +351,7 @@ def write_installed_payload(
     )
     (install_dir / "VERSION").write_text(release + "\n", encoding="utf-8")
     ctx.port = port
-    receipt = install_dir / projection.RELEASE_RECEIPT_FILENAME
+    receipt = install_dir / inventory.RELEASE_RECEIPT_FILENAME
     receipt.write_bytes(b'{"fixture":"handoff-subprocess"}\n')
     projection._write_payload_manifest_for_fixture(
         ctx,

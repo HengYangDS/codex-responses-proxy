@@ -20,8 +20,8 @@ if str(ROOT) not in sys.path:
 from codex_responses_proxy.listener import control, server
 from codex_responses_proxy.listener.handoff import transaction as handoff
 from codex_responses_proxy.payload import identity
+from codex_responses_proxy.runtime import admission, logging, telemetry
 from codex_responses_proxy.runtime import config as runtime_config
-from codex_responses_proxy.runtime import state
 from codex_responses_proxy.transport import exchange, sse
 
 _SERVER_INSTANCE: ThreadingHTTPServer | None = None
@@ -66,13 +66,13 @@ def _handoff_context() -> handoff.Context:
         release_receipt_sha256=release_receipt_sha256,
         payload_manifest_sha256=payload_manifest_sha256,
         committed_payload=lambda: identity.committed_payload(Path(__file__)),
-        response_gate_lock=state.response_gate_lock(),
-        draining=state.is_draining,
-        active_responses=state.active_responses,
-        active_handlers=state.active_handlers,
-        bounded_lease_seconds=state.bounded_drain_lease_seconds,
-        set_draining=state.set_draining,
-        log=state.log,
+        response_gate_lock=admission.response_gate_lock(),
+        draining=admission.is_draining,
+        active_responses=admission.active_responses,
+        active_handlers=admission.active_handlers,
+        bounded_lease_seconds=admission.bounded_drain_lease_seconds,
+        set_draining=admission.set_draining,
+        log=logging.log,
         server_factory=server.server_from_listener,
         set_server_instance=_set_server_instance,
     )
@@ -80,10 +80,11 @@ def _handoff_context() -> handoff.Context:
 
 def runtime_status() -> dict[str, object]:
     """Compose process-local state with rolling-handoff runtime identity."""
-    return state.status(
+    return telemetry.status(
         release=release_version(),
         serving_payload_sha256=serving_payload_sha256(),
         release_receipt_sha256=release_receipt_sha256(),
+        admission=admission.snapshot(),
         runtime_identity=handoff.runtime_identity(_handoff_context()),
     )
 
@@ -123,13 +124,13 @@ def main() -> None:
         or "--handoff-child" in sys.argv[1:]
     ):
         raise SystemExit(handoff.run_child(_handoff_context()))
-    state.log(
+    logging.log(
         f"starting codex-responses-proxy listener={host}:{port} "
-        f"responses_max_concurrency={state.RESPONSES_MAX_CONCURRENCY} "
+        f"responses_max_concurrency={admission.RESPONSES_MAX_CONCURRENCY} "
         f"upstream_timeout={exchange.UPSTREAM_TIMEOUT} "
         f"read_timeout={sse.UPSTREAM_READ_TIMEOUT} "
-        f"log_max_bytes={state.LOG_MAX_BYTES} "
-        f"log_backup_count={state.LOG_BACKUP_COUNT}"
+        f"log_max_bytes={logging.LOG_MAX_BYTES} "
+        f"log_backup_count={logging.LOG_BACKUP_COUNT}"
     )
     global _SERVER_INSTANCE
     server = create_server()

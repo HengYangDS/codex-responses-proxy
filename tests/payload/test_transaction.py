@@ -47,9 +47,7 @@ class TestPayloadTransaction(unittest.TestCase):
         transaction.commit_projection()
 
         self.assertTrue(Path(ctx.install_dir, "payload-manifest.json").is_file())
-        self.assertTrue(
-            Path(ctx.install_dir, payload_projection.RELEASE_RECEIPT_FILENAME).is_file()
-        )
+        self.assertTrue(Path(ctx.install_dir, inventory.RELEASE_RECEIPT_FILENAME).is_file())
         journal = json.loads(Path(payload_state.journal_path(ctx)).read_text(encoding="utf-8"))
         self.assertEqual(journal["state"], "committed")
         self.assertFalse(Path(payload_state.installed_path(ctx)).exists())
@@ -84,9 +82,9 @@ class TestPayloadTransaction(unittest.TestCase):
         before = {
             relative: Path(ctx.install_dir, relative).read_bytes()
             for relative in (
-                *payload_projection.RUNTIME_PAYLOAD_FILES,
-                payload_projection.PAYLOAD_MANIFEST_FILENAME,
-                payload_projection.RELEASE_RECEIPT_FILENAME,
+                *inventory.RUNTIME_FILES,
+                inventory.MANIFEST_FILENAME,
+                inventory.RELEASE_RECEIPT_FILENAME,
             )
         }
         before_state = Path(payload_state.installed_path(ctx)).read_bytes()

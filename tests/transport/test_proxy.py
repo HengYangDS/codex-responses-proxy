@@ -18,7 +18,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy.recovery import response_failed as response_failed_policy  # noqa: E402
-from codex_responses_proxy.runtime import state  # noqa: E402
+from codex_responses_proxy.runtime import admission, logging, telemetry  # noqa: E402
+from codex_responses_proxy.transport import cooldown  # noqa: E402
 from codex_responses_proxy.replay import request as rewrite  # noqa: E402
 from codex_responses_proxy.transport import exchange as upstream_exchange  # noqa: E402
 from tests.listener.proxy_fixture import running_proxy  # noqa: E402
@@ -32,7 +33,9 @@ class TestProxyTransport(unittest.TestCase):
         from codex_responses_proxy.listener import entrypoint as p
 
         self.p = p
-        state.reset_for_test()
+        admission.reset_for_test()
+        telemetry.reset_for_test()
+        cooldown.reset_for_test()
 
     def exchange(self, scripted, body):
         """Run one loopback exchange and return received requests and payload."""
@@ -70,7 +73,7 @@ class TestProxyTransport(unittest.TestCase):
         received, payload = self.exchange([(400, response_failed), (200, success)], body)
         self.assertEqual(payload, success)
 
-        self.assertEqual(received[0], rewrite.sanitize_responses_body(body)[0])
+        self.assertEqual(received[0], rewrite.sanitize_responses_body(body).body)
         self.assertEqual(len(received), 2)
         compact = json.loads(received[1])
         self.assertLess(len(received[1]), len(body))
@@ -112,7 +115,7 @@ class TestProxyTransport(unittest.TestCase):
         received, payload = self.exchange([(400, blocked), (200, success)], body)
         self.assertEqual(payload, success)
 
-        self.assertEqual(received[0], rewrite.sanitize_responses_body(body)[0])
+        self.assertEqual(received[0], rewrite.sanitize_responses_body(body).body)
         self.assertEqual(len(received), 2)
         compact = json.loads(received[1])
         self.assertLess(len(received[1]), len(body))
@@ -187,14 +190,14 @@ class TestProxyTransport(unittest.TestCase):
                 received,
             ),
             mock.patch.object(response_failed_policy, "MAX_STAGES", 1),
-            mock.patch.object(state, "log") as log,
+            mock.patch.object(logging, "log") as log,
             request(port, body) as response,
         ):
             self.assertEqual(response.status, 200)
             self.assertEqual(response.read(), success)
         logs = "\n".join(call.args[0] for call in log.call_args_list)
 
-        self.assertEqual(received[0], rewrite.sanitize_responses_body(body)[0])
+        self.assertEqual(received[0], rewrite.sanitize_responses_body(body).body)
         self.assertEqual(len(received), 3)
         recovery = json.loads(received[2])
         self.assertNotIn("prompt_cache_key", recovery)
@@ -357,9 +360,13 @@ class TestProxyTransport(unittest.TestCase):
         self.assertFalse(status["draining"])
 
     def test_drain_lease_expires_without_a_controller_rollback_request(self):
-        state.reset_for_test()
-        with mock.patch.object(state.time, "monotonic", side_effect=[10.0, 10.0, 12.1, 12.1, 12.1]):
-            started = state.set_draining(True, lease_seconds=2)
+        admission.reset_for_test()
+        telemetry.reset_for_test()
+        cooldown.reset_for_test()
+        with mock.patch.object(
+            admission.time, "monotonic", side_effect=[10.0, 10.0, 12.1, 12.1, 12.1]
+        ):
+            started = admission.set_draining(True, lease_seconds=2)
             expired = self.p.runtime_status()
         self.assertTrue(started["draining"])
         self.assertFalse(expired["draining"])
@@ -596,7 +603,9 @@ class TestProxyTransport(unittest.TestCase):
             }
         ).encode()
 
-        out, note = rewrite.sanitize_responses_body(body)
+        _projection = rewrite.sanitize_responses_body(body)
+        out = _projection.body
+        note = _projection.diagnostic()
         obj = json.loads(cast("bytes", out))
 
         self.assertIn("local_image_items=2", note)
@@ -641,7 +650,9 @@ class TestProxyTransport(unittest.TestCase):
             }
         ).encode()
 
-        out, note = rewrite.sanitize_responses_body(body)
+        _projection = rewrite.sanitize_responses_body(body)
+        out = _projection.body
+        note = _projection.diagnostic()
         obj = json.loads(cast("bytes", out))
 
         self.assertIn(f"local_image_items={len(bad_urls)}", note)

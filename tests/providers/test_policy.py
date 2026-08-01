@@ -19,7 +19,8 @@ if str(ROOT) not in sys.path:
 from codex_responses_proxy.recovery import response_failed  # noqa: E402
 from codex_responses_proxy.replay import event as replay_event  # noqa: E402
 from codex_responses_proxy.replay import request as rewrite  # noqa: E402
-from codex_responses_proxy.runtime import state  # noqa: E402
+from codex_responses_proxy.runtime import admission, logging, telemetry  # noqa: E402
+from codex_responses_proxy.transport import cooldown  # noqa: E402
 from codex_responses_proxy.providers.policies import dmxapi  # noqa: E402
 from tests.deployment.fixtures import assert_private_log_mode  # noqa: E402
 
@@ -49,7 +50,9 @@ class TestProxySanitize(unittest.TestCase):
         from codex_responses_proxy.listener import entrypoint as p
 
         self.p = p
-        state.reset_for_test()
+        admission.reset_for_test()
+        telemetry.reset_for_test()
+        cooldown.reset_for_test()
 
     def assert_rejected(self, function, fixtures):
         for raw, budget in fixtures:
@@ -70,7 +73,9 @@ class TestProxySanitize(unittest.TestCase):
             ],
             include=["reasoning.encrypted_content", "other"],
         )
-        out, _ = rewrite.sanitize_responses_body(body)
+        _projection = rewrite.sanitize_responses_body(body)
+        out = _projection.body
+        _ = _projection.diagnostic()
         obj = json.loads(cast("bytes", out))
         self.assertEqual(obj["input"], [{"type": "message", "role": "user", "content": "hello"}])
         self.assertNotIn("reasoning.encrypted_content", obj["include"])
@@ -100,7 +105,9 @@ class TestProxySanitize(unittest.TestCase):
             }
         ).encode()
 
-        out, note = rewrite.sanitize_responses_body(body)
+        _projection = rewrite.sanitize_responses_body(body)
+        out = _projection.body
+        note = _projection.diagnostic()
         obj = json.loads(cast("bytes", out))
 
         self.assertEqual(len(obj["input"]), 1)  # replayed reasoning still dropped
@@ -139,7 +146,9 @@ class TestProxySanitize(unittest.TestCase):
             }
         ).encode()
 
-        out, note = rewrite.sanitize_responses_body(body)
+        _projection = rewrite.sanitize_responses_body(body)
+        out = _projection.body
+        note = _projection.diagnostic()
         obj = json.loads(cast("bytes", out))
 
         self.assertIn("encrypted_blocks=2", note)
@@ -159,7 +168,9 @@ class TestProxySanitize(unittest.TestCase):
             }
         ).encode()
 
-        out, note = rewrite.sanitize_responses_body(body)
+        _projection = rewrite.sanitize_responses_body(body)
+        out = _projection.body
+        note = _projection.diagnostic()
 
         self.assertIsNone(out)
         self.assertEqual(note, "rejected unknown_call_field")
@@ -375,17 +386,17 @@ class TestProxySanitize(unittest.TestCase):
     def test_log_redacts_secrets_limits_line_length_and_removes_query_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "proxy.log"
-            old_log_path = state.LOG_PATH
-            state.LOG_PATH = str(log_path)
+            old_log_path = logging.LOG_PATH
+            logging.LOG_PATH = str(log_path)
             try:
-                state.log(
+                logging.log(
                     "authorization: Bearer super-secret-token "
                     "encrypted=gAAAA_replay_secret "
                     "x" * 2048
                 )
-                state.log(f"path={state.safe_request_path('/v1/responses?prompt=private')}")
+                logging.log(f"path={logging.safe_request_path('/v1/responses?prompt=private')}")
             finally:
-                state.LOG_PATH = old_log_path
+                logging.LOG_PATH = old_log_path
 
             text = log_path.read_text(encoding="utf-8")
             mode = log_path.stat().st_mode & 0o777
@@ -397,25 +408,25 @@ class TestProxySanitize(unittest.TestCase):
         assert_private_log_mode(self, mode)
         self.assertLessEqual(
             max(len(line.encode("utf-8")) for line in text.splitlines()),
-            state.LOG_LINE_MAX_BYTES + 96,
+            logging.LOG_LINE_MAX_BYTES + 96,
         )
 
     def test_log_rotation_discards_an_oversized_legacy_segment_without_reading_it(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "proxy.log"
             log_path.write_bytes(b"x" * 8192)
-            old_log_path = state.LOG_PATH
-            old_max = state.LOG_MAX_BYTES
-            old_backups = state.LOG_BACKUP_COUNT
-            state.LOG_PATH = str(log_path)
-            state.LOG_MAX_BYTES = 4096
-            state.LOG_BACKUP_COUNT = 1
+            old_log_path = logging.LOG_PATH
+            old_max = logging.LOG_MAX_BYTES
+            old_backups = logging.LOG_BACKUP_COUNT
+            logging.LOG_PATH = str(log_path)
+            logging.LOG_MAX_BYTES = 4096
+            logging.LOG_BACKUP_COUNT = 1
             try:
-                state.log("event=rotation_probe")
+                logging.log("event=rotation_probe")
             finally:
-                state.LOG_PATH = old_log_path
-                state.LOG_MAX_BYTES = old_max
-                state.LOG_BACKUP_COUNT = old_backups
+                logging.LOG_PATH = old_log_path
+                logging.LOG_MAX_BYTES = old_max
+                logging.LOG_BACKUP_COUNT = old_backups
 
             self.assertTrue(log_path.exists())
             self.assertLessEqual(log_path.stat().st_size, 4096)
@@ -426,14 +437,18 @@ class TestProxySanitize(unittest.TestCase):
 
     def test_fail_closed_on_non_json(self):
         raw = b"not json at all"
-        out, note = rewrite.sanitize_responses_body(raw)
+        _projection = rewrite.sanitize_responses_body(raw)
+        out = _projection.body
+        note = _projection.diagnostic()
         self.assertIsNone(out)
         self.assertEqual(note, "rejected invalid_json")
 
     def test_fail_closed_on_json_values_that_are_not_response_objects(self):
         for raw in (b"[]", b"null", b'"text"'):
             with self.subTest(raw=raw):
-                out, note = rewrite.sanitize_responses_body(raw)
+                _projection = rewrite.sanitize_responses_body(raw)
+                out = _projection.body
+                note = _projection.diagnostic()
                 self.assertIsNone(out)
                 self.assertEqual(note, "rejected request_not_object")
 
@@ -453,7 +468,9 @@ class TestProxySanitize(unittest.TestCase):
             b'{"type":"message","role":"user","content":"continue"}]}'
         )
         with mock.patch.object(rewrite.json, "dumps", side_effect=TypeError("unsupported")):
-            out, note = rewrite.sanitize_responses_body(raw)
+            _projection = rewrite.sanitize_responses_body(raw)
+            out = _projection.body
+            note = _projection.diagnostic()
         self.assertIsNone(out)
         self.assertEqual(note, "rejected serialization_failed")
 
@@ -468,7 +485,9 @@ class TestProxySanitize(unittest.TestCase):
     def test_deep_request_fails_closed_and_sse_projection_remains_atomic(self):
         nested = '{"x":' * 496 + "0" + "}" * 496
         request = ('{"input":[{"type":"message","role":"user","content":' + nested + "}]}").encode()
-        projected, note = rewrite.sanitize_responses_body(request)
+        _projection = rewrite.sanitize_responses_body(request)
+        projected = _projection.body
+        note = _projection.diagnostic()
         self.assertIsNone(projected)
         self.assertTrue(note.startswith("rejected "), note)
 

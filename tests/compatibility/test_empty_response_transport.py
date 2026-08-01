@@ -23,7 +23,8 @@ sys.path.insert(0, str(ROOT))
 from codex_responses_proxy.listener import entrypoint as proxy
 from codex_responses_proxy.providers.policies import dmxapi as policy
 from codex_responses_proxy.replay import request as rewrite
-from codex_responses_proxy.runtime import state
+from codex_responses_proxy.runtime import admission, telemetry
+from codex_responses_proxy.transport import cooldown
 from tests.compatibility.empty_response_fixture import EMPTY_RESPONSE
 from tests.compatibility.empty_response_fixture import SUCCESS
 from tests.compatibility.empty_response_fixture import UNKNOWN_477
@@ -37,14 +38,16 @@ class EmptyResponseTransportTests(unittest.TestCase):
     """Exercise one-shot recovery through real loopback HTTP boundaries."""
 
     def setUp(self) -> None:
-        state.reset_for_test()
+        admission.reset_for_test()
+        telemetry.reset_for_test()
+        cooldown.reset_for_test()
 
     _body = staticmethod(body)
     _request = staticmethod(request)
 
     @staticmethod
     def _remember_failure(key, *, now=None):
-        state.remember_empty_response_failure(
+        cooldown.remember_failure(
             key,
             capacity=policy.COOLDOWN_CAPACITY,
             cooldown_seconds=policy.COOLDOWN_SECONDS,
@@ -53,7 +56,7 @@ class EmptyResponseTransportTests(unittest.TestCase):
 
     @staticmethod
     def _cooldown_remaining(key, *, now=None):
-        return state.empty_response_cooldown_remaining(
+        return cooldown.remaining(
             key,
             cooldown_seconds=policy.COOLDOWN_SECONDS,
             now=now,
@@ -71,7 +74,9 @@ class EmptyResponseTransportTests(unittest.TestCase):
 
     def test_classified_477_dispatches_policy_fallback_once(self):
         body = semantic_body()
-        sanitized, _ = rewrite.sanitize_responses_body(body)
+        _projection = rewrite.sanitize_responses_body(body)
+        sanitized = _projection.body
+        _ = _projection.diagnostic()
 
         with tempfile.TemporaryDirectory() as tmp:
             port, received, cleanup = serve_proxy([(477, EMPTY_RESPONSE), (200, SUCCESS)], tmp)
@@ -103,7 +108,9 @@ class EmptyResponseTransportTests(unittest.TestCase):
                 ]
             }
         )
-        sanitized, note = rewrite.sanitize_responses_body(request_body)
+        _projection = rewrite.sanitize_responses_body(request_body)
+        sanitized = _projection.body
+        note = _projection.diagnostic()
         self.assertIsNotNone(sanitized, note)
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -140,7 +147,9 @@ class EmptyResponseTransportTests(unittest.TestCase):
                 ],
             }
         )
-        sanitized, note = rewrite.sanitize_responses_body(request_body)
+        _projection = rewrite.sanitize_responses_body(request_body)
+        sanitized = _projection.body
+        note = _projection.diagnostic()
         self.assertIsNotNone(sanitized, note)
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -186,7 +195,9 @@ class EmptyResponseTransportTests(unittest.TestCase):
             ],
         }
         body = self._body(payload)
-        sanitized, _ = rewrite.sanitize_responses_body(body)
+        _projection = rewrite.sanitize_responses_body(body)
+        sanitized = _projection.body
+        _ = _projection.diagnostic()
         with tempfile.TemporaryDirectory() as tmp:
             port, received, cleanup = serve_proxy([(477, EMPTY_RESPONSE), (200, SUCCESS)], tmp)
             try:
@@ -226,7 +237,9 @@ class EmptyResponseTransportTests(unittest.TestCase):
         )
         for items, expected_reason in cases:
             with self.subTest(items=items), tempfile.TemporaryDirectory() as tmp:
-                state.reset_for_test()
+                admission.reset_for_test()
+                telemetry.reset_for_test()
+                cooldown.reset_for_test()
                 port, received, cleanup = serve_proxy([(477, EMPTY_RESPONSE)] * 4, tmp)
                 try:
                     code, _, raw = self._read_http_error(port, self._body({"input": items}))
@@ -253,7 +266,9 @@ class EmptyResponseTransportTests(unittest.TestCase):
         )
         for second_status, second_payload in cases:
             with self.subTest(second_status=second_status):
-                state.reset_for_test()
+                admission.reset_for_test()
+                telemetry.reset_for_test()
+                cooldown.reset_for_test()
                 responses = [(477, EMPTY_RESPONSE), (second_status, second_payload)]
                 responses += [(second_status, second_payload)] * (3 * (second_status in (477, 500)))
                 with tempfile.TemporaryDirectory() as tmp:
@@ -369,18 +384,18 @@ class EmptyResponseTransportTests(unittest.TestCase):
 
         self._remember_failure("expires", now=100.0)
         self.assertGreater(self._cooldown_remaining("expires", now=100.1), 0)
-        self.assertTrue(state.has_empty_response_failure_for_test("expires"))
+        self.assertTrue(cooldown.has_failure_for_test("expires"))
         past_ttl = 100.0 + policy.COOLDOWN_SECONDS + 0.1
         self.assertEqual(self._cooldown_remaining("expires", now=past_ttl), 0)
         # The TTL purge is a real eviction, not merely a read-time comparison:
         # the reading call above must have removed the expired entry itself.
-        self.assertFalse(state.has_empty_response_failure_for_test("expires"))
+        self.assertFalse(cooldown.has_failure_for_test("expires"))
 
         # A stale entry is also purged by the next *write* to an unrelated key.
         self._remember_failure("stale", now=300.0)
         self._remember_failure("other", now=300.0 + policy.COOLDOWN_SECONDS + 0.1)
-        self.assertFalse(state.has_empty_response_failure_for_test("stale"))
-        self.assertTrue(state.has_empty_response_failure_for_test("other"))
+        self.assertFalse(cooldown.has_failure_for_test("stale"))
+        self.assertTrue(cooldown.has_failure_for_test("other"))
 
         def remember(index):
             key = f"key-{index}"
@@ -390,10 +405,10 @@ class EmptyResponseTransportTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=16) as executor:
             list(executor.map(remember, range(policy.COOLDOWN_CAPACITY + 100)))
         self.assertLessEqual(
-            state.empty_response_failure_count_for_test(),
+            cooldown.failure_count_for_test(),
             policy.COOLDOWN_CAPACITY,
         )
-        self.assertFalse(state.has_empty_response_failure_for_test("key-0"))
+        self.assertFalse(cooldown.has_failure_for_test("key-0"))
 
     def test_successful_fallback_does_not_enter_cooldown_and_metrics_are_secret_free(self):
         secret = "private-prompt-must-not-appear"

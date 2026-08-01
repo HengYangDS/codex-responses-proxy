@@ -1,1 +1,1 @@
-"""Validated configuration for the local proxy runtime."""
+"""Process configuration, admission, telemetry, and secret-safe logging."""

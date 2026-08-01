@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from codex_responses_proxy.runtime import state  # noqa: E402
+from codex_responses_proxy.runtime import admission, telemetry  # noqa: E402
+from codex_responses_proxy.transport import cooldown  # noqa: E402
 from tests.listener.proxy_fixture import request  # noqa: E402
 from tests.listener.proxy_fixture import running_proxy  # noqa: E402
 
@@ -24,7 +25,9 @@ def _body(payload: object) -> bytes:
 
 class ProviderRouteTests(unittest.TestCase):
     def setUp(self) -> None:
-        state.reset_for_test()
+        admission.reset_for_test()
+        telemetry.reset_for_test()
+        cooldown.reset_for_test()
 
     def test_all_three_routes_forward_the_same_portable_body(self) -> None:
         raw = _body(

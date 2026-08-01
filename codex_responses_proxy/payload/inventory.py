@@ -81,8 +81,11 @@ SERVING_MODULES = {
     **{relative: relative.removesuffix(".py").replace("/", ".") for relative in POLICY_FILES},
     "codex_responses_proxy/providers/registry.py": "codex_responses_proxy.providers.registry",
     "codex_responses_proxy/runtime/__init__.py": "codex_responses_proxy.runtime",
+    "codex_responses_proxy/runtime/admission.py": "codex_responses_proxy.runtime.admission",
     "codex_responses_proxy/runtime/config.py": "codex_responses_proxy.runtime.config",
-    "codex_responses_proxy/runtime/state.py": "codex_responses_proxy.runtime.state",
+    "codex_responses_proxy/runtime/logging.py": "codex_responses_proxy.runtime.logging",
+    "codex_responses_proxy/runtime/telemetry.py": "codex_responses_proxy.runtime.telemetry",
+    "codex_responses_proxy/transport/cooldown.py": "codex_responses_proxy.transport.cooldown",
 }
 SERVING_FILES = ("VERSION", PROVIDER_MANIFEST, ENTRYPOINT, *SERVING_MODULES)
 RUNTIME_FILES = (
@@ -117,7 +120,7 @@ RUNTIME_FILES = (
     "codex_responses_proxy/replay/event.py",
     "codex_responses_proxy/replay/request.py",
     "codex_responses_proxy/transport/sse.py",
-    "codex_responses_proxy/runtime/state.py",
+    "codex_responses_proxy/transport/cooldown.py",
     "codex_responses_proxy/providers/__init__.py",
     "codex_responses_proxy/providers/policies/__init__.py",
     *POLICY_FILES,
@@ -126,7 +129,10 @@ RUNTIME_FILES = (
     "codex_responses_proxy/payload/inventory.py",
     "codex_responses_proxy/payload/owned_files.py",
     "codex_responses_proxy/runtime/__init__.py",
+    "codex_responses_proxy/runtime/admission.py",
     "codex_responses_proxy/runtime/config.py",
+    "codex_responses_proxy/runtime/logging.py",
+    "codex_responses_proxy/runtime/telemetry.py",
     "codex_responses_proxy/payload/projection.py",
     "codex_responses_proxy/payload/source.py",
     "codex_responses_proxy/payload/candidate.py",

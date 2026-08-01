@@ -86,10 +86,10 @@ class TestReleasedSourceProjectionPipeline(unittest.TestCase):
         # source-only pre-projection closure.
         self.source_only = set(inventory.SOURCE_INSTALL_FILES)
         self.assertTrue(
-            self.source_only.isdisjoint(payload_projection.RUNTIME_PAYLOAD_FILES),
+            self.source_only.isdisjoint(inventory.RUNTIME_FILES),
             "source-side installer files must not leak into the installed runtime",
         )
-        for relative in (*payload_projection.RUNTIME_PAYLOAD_FILES, *self.source_only):
+        for relative in (*inventory.RUNTIME_FILES, *self.source_only):
             source = ROOT / relative
             target = self.repository / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -176,7 +176,7 @@ class TestReleasedSourceProjectionPipeline(unittest.TestCase):
     def test_signed_release_projects_only_runtime_and_finalizes_provenance(self) -> None:
         admitted = release_admission.admit(
             self.repository,
-            payload_paths=payload_projection.RUNTIME_PAYLOAD_FILES,
+            payload_paths=inventory.RUNTIME_FILES,
             trust_anchor=self.trust_anchor,
             git_path=self.git,
             ssh_keygen_path=self.ssh_keygen,
@@ -187,9 +187,9 @@ class TestReleasedSourceProjectionPipeline(unittest.TestCase):
         transaction.commit_projection()
 
         install_root = Path(install.install_dir)
-        expected_projection = set(payload_projection.RUNTIME_PAYLOAD_FILES) | {
-            payload_projection.PAYLOAD_MANIFEST_FILENAME,
-            payload_projection.RELEASE_RECEIPT_FILENAME,
+        expected_projection = set(inventory.RUNTIME_FILES) | {
+            inventory.MANIFEST_FILENAME,
+            inventory.RELEASE_RECEIPT_FILENAME,
         }
         actual_projection = {
             path.relative_to(install_root).as_posix()
@@ -200,16 +200,14 @@ class TestReleasedSourceProjectionPipeline(unittest.TestCase):
         for relative in self.source_only:
             self.assertFalse((install_root / relative).exists())
 
-        receipt_path = install_root / payload_projection.RELEASE_RECEIPT_FILENAME
+        receipt_path = install_root / inventory.RELEASE_RECEIPT_FILENAME
         manifest_path = Path(payload_projection.payload_manifest_path(install))
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(receipt, payload_source.plain_value(admitted.receipt))
         self.assertEqual(manifest["release"], self.version)
-        self.assertEqual(set(manifest["files"]), set(payload_projection.RUNTIME_PAYLOAD_FILES))
-        self.assertEqual(
-            set(manifest["serving_files"]), set(payload_projection.SERVING_PAYLOAD_FILES)
-        )
+        self.assertEqual(set(manifest["files"]), set(inventory.RUNTIME_FILES))
+        self.assertEqual(set(manifest["serving_files"]), set(inventory.SERVING_FILES))
         self.assertEqual(manifest["release_receipt_sha256"], admitted.receipt_sha256)
         self.assertEqual(manifest["serving_payload_sha256"], admitted.serving_payload_sha256)
         ok, detail = payload_projection.verify_payload_manifest(install)

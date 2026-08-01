@@ -370,7 +370,9 @@ class ProviderPortableRejectionTests(unittest.TestCase):
         }
         for name, (payload, expected_note) in cases.items():
             with self.subTest(name=name):
-                projected, note = rewrite.sanitize_responses_body(_body(payload))
+                _projection = rewrite.sanitize_responses_body(_body(payload))
+                projected = _projection.body
+                note = _projection.diagnostic()
                 self.assertIsNone(projected)
                 self.assertEqual(note, expected_note)
 

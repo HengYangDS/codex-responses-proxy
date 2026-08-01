@@ -23,7 +23,7 @@ from typing import TypeGuard
 from codex_responses_proxy.runtime import context as runtime_context
 from codex_responses_proxy import errors
 from codex_responses_proxy.supervision import process
-from codex_responses_proxy.payload import projection
+from codex_responses_proxy.payload import inventory
 
 HANDOFF_PROTOCOL_VERSION = 2
 _MAX_BODY_BYTES = 64 * 1024
@@ -90,7 +90,7 @@ def expected_metadata(root: str) -> dict:
     if not release:
         raise errors.InstallError("payload has no release version")
     try:
-        manifest_path = os.path.join(root, projection.PAYLOAD_MANIFEST_FILENAME)
+        manifest_path = os.path.join(root, inventory.MANIFEST_FILENAME)
         with open(manifest_path, encoding="utf-8") as handle:
             manifest = json.load(handle)
         serving_payload_sha256 = manifest["serving_payload_sha256"]

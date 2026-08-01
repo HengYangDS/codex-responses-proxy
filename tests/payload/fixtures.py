@@ -9,6 +9,7 @@ from typing import cast
 from unittest import mock
 
 from codex_responses_proxy.payload import digest as payload_digest
+from codex_responses_proxy.payload import inventory
 from codex_responses_proxy.payload import projection as payload_projection
 from codex_responses_proxy.payload import source as payload_source
 from codex_responses_proxy.payload import transaction as payload_transaction
@@ -32,17 +33,13 @@ def released_fixture(version: str = "1.2.3") -> payload_source.ReleasedPayload:
             content=content,
         )
 
-    blobs = tuple(map(blob, payload_projection.RUNTIME_PAYLOAD_FILES))
-    serving = {
-        item.path: item.sha256
-        for item in blobs
-        if item.path in payload_projection.SERVING_PAYLOAD_FILES
-    }
+    blobs = tuple(map(blob, inventory.RUNTIME_FILES))
+    serving = {item.path: item.sha256 for item in blobs if item.path in inventory.SERVING_FILES}
     receipt = {
         "schema_version": 1,
         "version": version,
         "serving_payload_sha256": payload_projection.serving_payload_sha256(serving),
-        "serving_files": list(payload_projection.SERVING_PAYLOAD_FILES),
+        "serving_files": list(inventory.SERVING_FILES),
         "payload": [
             dict(path=item.path, mode=item.mode, blob_oid=item.blob_oid, sha256=item.sha256)
             for item in blobs

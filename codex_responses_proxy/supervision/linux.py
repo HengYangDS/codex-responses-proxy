@@ -42,7 +42,9 @@ def _has_user_systemd() -> bool:
 
 
 def _unit_path(ctx: runtime_context.RuntimeContext) -> str:
-    return os.path.join(ctx.home, ".config", "systemd", "user", f"{runtime_context.LABEL}.service")
+    return os.path.join(
+        ctx.home, ".config", "systemd", "user", f"{runtime_context.SERVICE_ID}.service"
+    )
 
 
 def _cron_wrapper_path(ctx: runtime_context.RuntimeContext) -> str:
@@ -65,7 +67,7 @@ def _install_systemd(ctx: runtime_context.RuntimeContext) -> None:
         fh.write(render_unit(ctx))
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
     r = subprocess.run(
-        ["systemctl", "--user", "enable", "--now", f"{runtime_context.LABEL}.service"],
+        ["systemctl", "--user", "enable", "--now", f"{runtime_context.SERVICE_ID}.service"],
         capture_output=True,
         text=True,
     )
@@ -104,7 +106,7 @@ def _install_cron(ctx: runtime_context.RuntimeContext) -> None:
             f"Configure a user service or login hook for {wrapper}, then reinstall."
         )
     existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
-    marker = f"# {runtime_context.LABEL}"
+    marker = f"# {runtime_context.SERVICE_ID}"
     lines = [ln for ln in existing.splitlines() if marker not in ln and wrapper not in ln]
     lines.append(f"@reboot {wrapper}  {marker}")
     proc = subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n", text=True)
@@ -131,7 +133,7 @@ def uninstall(ctx: runtime_context.RuntimeContext) -> None:
         if not shutil.which("systemctl"):
             raise errors.InstallError("systemctl is unavailable; service removal is unproven")
         disabled = subprocess.run(
-            ["systemctl", "--user", "disable", "--now", f"{runtime_context.LABEL}.service"],
+            ["systemctl", "--user", "disable", "--now", f"{runtime_context.SERVICE_ID}.service"],
             capture_output=True,
             text=True,
         )
@@ -152,7 +154,7 @@ def uninstall(ctx: runtime_context.RuntimeContext) -> None:
         listed = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
         if listed.returncode not in (0, 1):
             raise errors.InstallError("crontab inventory failed")
-        marker = f"# {runtime_context.LABEL}"
+        marker = f"# {runtime_context.SERVICE_ID}"
         if marker in listed.stdout:
             lines = [line for line in listed.stdout.splitlines() if marker not in line]
             removed = subprocess.run(
@@ -179,13 +181,13 @@ def status(ctx: runtime_context.RuntimeContext) -> str:
     unit = _unit_path(ctx)
     if os.path.exists(unit):
         r = subprocess.run(
-            ["systemctl", "--user", "is-active", f"{runtime_context.LABEL}.service"],
+            ["systemctl", "--user", "is-active", f"{runtime_context.SERVICE_ID}.service"],
             capture_output=True,
             text=True,
         )
         return "running" if r.stdout.strip() == "active" else "installed"
     if shutil.which("crontab"):
         existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
-        if f"# {runtime_context.LABEL}" in existing:
+        if f"# {runtime_context.SERVICE_ID}" in existing:
             return "installed"
     return "absent"
