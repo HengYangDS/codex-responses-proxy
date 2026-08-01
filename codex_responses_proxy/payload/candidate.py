@@ -9,7 +9,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.payload import digest, inventory, projection, source
+from codex_responses_proxy.payload import digest, inventory, owned_files, projection, source
 from codex_responses_proxy.runtime import context as runtime_context
 
 _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
@@ -67,8 +67,8 @@ def reject_unowned_collisions(
     """Refuse to overwrite a candidate path not owned by the prior projection."""
 
     install = Path(ctx.install_dir)
-    for relative in projection._OWNED_PAYLOAD_FILES:
-        path = projection._payload_path(install, relative)
+    for relative in owned_files.OWNED_PAYLOAD_FILES:
+        path = owned_files.path(install, relative)
         if relative not in previous_owned and (path.exists() or path.is_symlink()):
             raise errors.InstallError(f"candidate unowned collision: {relative}")
 
@@ -85,20 +85,20 @@ def write_projection(
     install = Path(ctx.install_dir)
     for blob in blobs:
         target = install.joinpath(*PurePosixPath(blob.path).parts)
-        projection._atomic_write_bytes(
+        owned_files.write_bytes(
             target,
             blob.content,
             mode=0o755 if blob.mode == "100755" else 0o644,
             root=install,
         )
-        if projection._sha256_file(target) != blob.sha256:
+        if digest.sha256_file(target) != blob.sha256:
             raise errors.InstallError(f"installed payload digest mismatch: {blob.path}")
-    projection._atomic_write_bytes(
+    owned_files.write_bytes(
         install / inventory.MANIFEST_FILENAME,
         projection.manifest_bytes(manifest_for(version, blobs, receipt_sha256)),
         root=install,
     )
-    projection._atomic_write_bytes(
+    owned_files.write_bytes(
         install / inventory.RELEASE_RECEIPT_FILENAME,
         digest.canonical_json(_json_value(receipt)),
         mode=0o600,
@@ -110,8 +110,8 @@ def remove_projection(ctx: runtime_context.RuntimeContext) -> None:
     """Remove only files owned by an uncommitted fresh candidate."""
 
     install = Path(ctx.install_dir)
-    for relative in projection._OWNED_PAYLOAD_FILES:
-        projection._payload_path(install, relative).unlink(missing_ok=True)
+    for relative in owned_files.OWNED_PAYLOAD_FILES:
+        owned_files.path(install, relative).unlink(missing_ok=True)
 
 
 def _json_value(value: Any) -> Any:

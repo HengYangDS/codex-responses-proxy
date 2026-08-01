@@ -20,7 +20,9 @@ from codex_responses_proxy.payload import candidate as payload_candidate
 from codex_responses_proxy.payload import projection as payload_projection
 from codex_responses_proxy.payload import rollback as payload_rollback
 from codex_responses_proxy.payload import source as payload_source
-from codex_responses_proxy.payload import transaction as payload_transaction
+from codex_responses_proxy.payload import digest as payload_digest
+from codex_responses_proxy.payload import owned_files
+from codex_responses_proxy.payload import state as payload_state
 from codex_responses_proxy.runtime import context as runtime_context
 from tests.deployment.fixtures import install_context
 from tests.payload.fixtures import begin_transaction, released_fixture
@@ -31,7 +33,7 @@ class TestPayloadValidation(unittest.TestCase):
 
     def test_begin_rejects_existing_transaction_and_invalid_candidate_boundaries(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
-        transaction_root = Path(payload_transaction.payload_transaction_dir(ctx))
+        transaction_root = Path(payload_state.transaction_root(ctx))
         transaction_root.mkdir(parents=True)
         with self.assertRaisesRegex(errors.InstallError, "already exists"):
             begin_transaction(ctx, released_fixture())
@@ -135,12 +137,12 @@ class TestPayloadValidation(unittest.TestCase):
 
         transaction = begin_transaction(ctx, released_fixture())
         with (
-            mock.patch.object(payload_projection, "_sha256_file", return_value="0" * 64),
+            mock.patch.object(payload_digest, "sha256_file", return_value="0" * 64),
             self.assertRaisesRegex(errors.InstallError, "installed payload digest mismatch"),
         ):
             transaction.commit_projection()
 
-        rollback = Path(payload_transaction.payload_transaction_dir(ctx), "rollback")
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
         rollback.mkdir(parents=True)
         snapshot = {
             "schema_version": 2,
@@ -149,9 +151,7 @@ class TestPayloadValidation(unittest.TestCase):
             "retired_owned_sha256": payload_rollback.path_set_sha256({"proxy/owned.py"}),
             "previous_owned": ["proxy/owned.py"],
         }
-        (rollback / "snapshot.json").write_bytes(
-            payload_transaction.digest.canonical_json(snapshot)
-        )
+        (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
         with self.assertRaisesRegex(errors.InstallError, "rollback.*unavailable"):
             payload_rollback.restore_snapshot(ctx, rollback)
 
@@ -233,8 +233,8 @@ class TestPayloadValidation(unittest.TestCase):
 
         ctx, _, _ = installed()
         with mock.patch.object(
-            payload_projection,
-            "_sha256_file",
+            payload_digest,
+            "sha256_file",
             side_effect=OSError("blocked"),
         ):
             ok, detail = payload_projection.verify_payload_manifest(ctx)
@@ -254,21 +254,19 @@ class TestPayloadValidation(unittest.TestCase):
         path.parent.mkdir(parents=True)
         path.write_text('{"value": 1}', encoding="utf-8")
         with self.assertRaisesRegex(errors.InstallError, "not canonical JSON"):
-            payload_projection._read_canonical_json(path, "state")
+            owned_files.read_canonical_json(path, "state")
         path.write_bytes(b"\xff")
         with self.assertRaisesRegex(errors.InstallError, "unavailable or invalid"):
-            payload_projection._read_canonical_json(path, "state")
+            owned_files.read_canonical_json(path, "state")
 
-        installed_state = Path(payload_transaction.installed_release_state_path(ctx))
-        installed_state.write_bytes(
-            payload_transaction.digest.canonical_json({"schema_version": 99})
-        )
+        installed_state = Path(payload_state.installed_path(ctx))
+        installed_state.write_bytes(payload_digest.canonical_json({"schema_version": 99}))
         with self.assertRaisesRegex(errors.InstallError, "schema is unsupported"):
-            payload_transaction._read_installed_release_state(ctx)
+            payload_state.read_installed(ctx)
         with self.assertRaisesRegex(errors.InstallError, "state version is invalid"):
-            payload_transaction._require_state_version({"version": "latest"})
+            payload_state.require_version({"version": "latest"})
 
-        rollback = Path(payload_transaction.payload_transaction_dir(ctx), "rollback")
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
         rollback.mkdir(parents=True)
         cases = (
             ({"schema_version": 1, "present": {}}, "schema is unsupported"),
@@ -305,9 +303,7 @@ class TestPayloadValidation(unittest.TestCase):
         )
         for snapshot, message in cases:
             with self.subTest(message=message):
-                (rollback / "snapshot.json").write_bytes(
-                    payload_transaction.digest.canonical_json(snapshot)
-                )
+                (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
                 with self.assertRaisesRegex(errors.InstallError, message):
                     payload_rollback.restore_snapshot(ctx, rollback)
 

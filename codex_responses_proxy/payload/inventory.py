@@ -124,6 +124,7 @@ RUNTIME_FILES = (
     "codex_responses_proxy/providers/registry.py",
     "codex_responses_proxy/payload/digest.py",
     "codex_responses_proxy/payload/inventory.py",
+    "codex_responses_proxy/payload/owned_files.py",
     "codex_responses_proxy/runtime/__init__.py",
     "codex_responses_proxy/runtime/config.py",
     "codex_responses_proxy/payload/projection.py",

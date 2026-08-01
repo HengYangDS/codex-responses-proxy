@@ -1,0 +1,12 @@
+schema_version = 1
+paths = [
+  "codex_responses_proxy/commands/control.py",
+  "codex_responses_proxy/payload/**",
+  "openspec/changes/module-owner-boundaries/**",
+  "openspec/changes/archive/*-module-owner-boundaries/**",
+  "openspec/specs/runtime-upgrade/**",
+  "tests/commands/test_controller_lifecycle.py",
+  "tests/governance/test_owner_boundaries.py",
+  "tests/payload/**",
+  "tests/release/test_pipeline.py",
+]

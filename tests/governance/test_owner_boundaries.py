@@ -25,6 +25,65 @@ from codex_responses_proxy.transport import responses, sse  # noqa: E402
 
 
 class ProxyOwnerBoundaryContracts(unittest.TestCase):
+    def test_payload_modules_never_reach_into_peer_private_symbols(self) -> None:
+        payload = PACKAGE / "payload"
+        violations = []
+        for path in sorted(payload.glob("*.py")):
+            tree = ast.parse(path.read_text())
+            peers = {
+                alias.asname or alias.name
+                for node in tree.body
+                if isinstance(node, ast.ImportFrom)
+                and node.module == "codex_responses_proxy.payload"
+                for alias in node.names
+            }
+            violations.extend(
+                f"{path.relative_to(PACKAGE)}:{node.lineno}:{node.value.id}.{node.attr}"
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id in peers
+                and node.attr.startswith("_")
+            )
+        self.assertEqual(violations, [])
+
+    def test_payload_modules_never_forward_peer_symbols(self) -> None:
+        payload = PACKAGE / "payload"
+        violations = []
+        allowed = {
+            "projection.py": {
+                "RUNTIME_PAYLOAD_FILES",
+                "SERVING_PAYLOAD_FILES",
+                "PAYLOAD_MANIFEST_FILENAME",
+                "RELEASE_RECEIPT_FILENAME",
+            }
+        }
+        for path in sorted(payload.glob("*.py")):
+            tree = ast.parse(path.read_text())
+            peers = {
+                alias.asname or alias.name
+                for node in tree.body
+                if isinstance(node, ast.ImportFrom)
+                and node.module == "codex_responses_proxy.payload"
+                for alias in node.names
+            }
+            for node in tree.body:
+                if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                    continue
+                value = node.value
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                names = {target.id for target in targets if isinstance(target, ast.Name)}
+                if (
+                    isinstance(value, ast.Attribute)
+                    and isinstance(value.value, ast.Name)
+                    and value.value.id in peers
+                    and not names.issubset(allowed.get(path.name, set()))
+                ):
+                    violations.append(
+                        f"{path.relative_to(PACKAGE)}:{node.lineno}:{value.value.id}.{value.attr}"
+                    )
+        self.assertEqual(violations, [])
+
     def test_semantic_owners_expose_direct_runtime_surfaces(self) -> None:
         self.assertTrue(callable(sse.relay))
         self.assertTrue(callable(responses.relay))

@@ -6,7 +6,7 @@ import re
 from pathlib import Path, PurePosixPath
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.payload import projection, rollback
+from codex_responses_proxy.payload import digest, owned_files, rollback
 from codex_responses_proxy.runtime import context as runtime_context
 
 _LEGACY_CAPTURE_NAME = re.compile(r"^reject-[^/]+\.json$")
@@ -44,8 +44,8 @@ def remove_retired_paths(
         key=lambda value: len(PurePosixPath(value).parts),
         reverse=True,
     ):
-        path = projection._regular_file(install, relative, "retired installed payload")
-        if projection._sha256_file(path) != snapshot.present[relative][0]:
+        path = owned_files.regular_file(install, relative, "retired installed payload")
+        if digest.sha256_file(path) != snapshot.present[relative][0]:
             raise errors.InstallError(
                 f"retired installed payload changed after snapshot: {relative}"
             )
@@ -57,7 +57,7 @@ def remove_retired_paths(
 
 
 def _remove_empty_retired_directories(install: Path) -> None:
-    for relative in projection._RETIRED_INSTALL_DIRECTORIES:
+    for relative in owned_files.RETIRED_INSTALL_DIRECTORIES:
         root = install / relative
         if root.is_symlink() or not root.exists():
             continue
