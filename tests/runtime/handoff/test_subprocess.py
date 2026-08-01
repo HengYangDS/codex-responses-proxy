@@ -72,7 +72,15 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         self.assertIs(started, child)
         self.assertIs(
             popen.call_args.kwargs.get("close_fds", True),
-            sys.platform == "win32",
+            True,
+        )
+        self.assertEqual(
+            popen.call_args.kwargs["env"]["CODEX_RESPONSES_PROXY_HOME"],
+            ctx.install_dir,
+        )
+        self.assertEqual(
+            popen.call_args.kwargs["env"]["CODEX_RESPONSES_PROXY_STATE_HOME"],
+            str(root / "state"),
         )
 
     def _installed_fixture(
