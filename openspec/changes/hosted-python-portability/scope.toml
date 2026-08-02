@@ -1,0 +1,10 @@
+schema_version = 1
+paths = [
+  ".github/workflows/release.yml",
+  ".github/workflows/verify.yml",
+  ".gitlab-ci.yml",
+  "CHANGELOG.md",
+  "openspec/**",
+  "tests/forge/contracts/test-github-actions.sh",
+  "tests/release/test_metadata.py",
+]
