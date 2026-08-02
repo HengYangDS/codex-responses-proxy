@@ -6,7 +6,7 @@ summary = "Bind monotonic provider cooldown deadlines and unchanged original-thr
 
 [evidence]
 dated = "evidence/chronicle/ucloud-adaptive-backpressure-20260802/2026-08-02.md"
-sha256 = "3cf3cba27ba8cbcf4a237aa8c1359b51041930aa15a0634f8d0c159195e42220"
+sha256 = "56216208df5bf4db6b742c3263196393c27ed95680824606dce7f13c7ac9f723"
 evidence_ids = ["evidence:ucloud-adaptive-backpressure-20260802"]
 binding = "Current signed 2.0.2 base, focused RED/GREEN deadline contract, and pending exact-HEAD source proof"
 verifier = "digest_only"
@@ -26,7 +26,7 @@ owner = "codex-responses-proxy"
 scope = "Local source, tests, release metadata, and exact-HEAD proof only; hosted CI, signed publication, assets, installation, listener identity, provider behavior, and unchanged original-thread recovery remain external until separately verified."
 
 [carriers]
-openspec = "openspec/changes/ucloud-adaptive-backpressure"
+openspec = "openspec/changes/archive/2026-08-02-ucloud-adaptive-backpressure"
 fallback = "Revert the atomic source commit before publication; after publication use only the preceding signed release through the governed protocol-v2 rollback."
 kill_signal = "Any repeated or concurrent failure shortens an active cooldown deadline, leaks cooldown across keys, edits Codex session state, or reuses an existing release tag."
 
