@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-02
+goal: Keep GitLab chronology strict while making GitHub tag validation use its
+  own provider plane, then publish a new immutable patch release.

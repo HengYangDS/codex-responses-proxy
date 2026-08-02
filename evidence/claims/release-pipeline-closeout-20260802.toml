@@ -1,0 +1,36 @@
+[claim]
+id = "release-pipeline-closeout-20260802"
+subject = "codex-responses-proxy:ci-diagnostics"
+state = "active"
+summary = "Bind provider-native tag metadata diagnostics and the forward-only v2.0.2 release closeout."
+
+[evidence]
+dated = "evidence/chronicle/release-pipeline-closeout-20260802/2026-08-02.md"
+sha256 = "4626ce84bf7328552b81f5a00b57f2995d34b525e4c7b52c912522bfc37b0f66"
+evidence_ids = ["evidence:release-pipeline-closeout-20260802"]
+binding = "TDD reproduction and repair before exact-HEAD proof"
+verifier = "digest_only"
+tests = [
+  "GITHUB_ACTIONS=true GITHUB_REF_TYPE=tag GITHUB_REF_NAME=v2.0.1 python3 tests/release/test_metadata.py",
+  "openspec validate release-pipeline-closeout --strict --json",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Local source and planning evidence only; hosted CI, tag trust, publication, assets, installation, runtime, MCP, conversation, and housekeeping remain external until separately proved."
+
+[carriers]
+openspec = "openspec/changes/archive/2026-08-02-release-pipeline-closeout"
+fallback = "Revert the atomic repair before publication; after publication use only the governed signed-release rollback."
+kill_signal = "Any provider-native metadata invocation uses the wrong chronology or successful release CI contains an unhandled traceback or warning."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/specs/ci-diagnostics/spec.md",
+  "tests/release/test_metadata.py",
+]

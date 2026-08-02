@@ -626,7 +626,8 @@ def main() -> None:
         )
         subprocess.run([sys.executable, str(CHECKER), *args], cwd=ROOT, check=True)
     else:
-        subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT, check=True)
+        args = ["--provider", "github"] if os.environ.get("GITHUB_ACTIONS") == "true" else []
+        subprocess.run([sys.executable, str(CHECKER), *args], cwd=ROOT, check=True)
         if tag_exists:
             expect_rejection(
                 source, "a tagged release checked as a pending release", "--prepare-release"

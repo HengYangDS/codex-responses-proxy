@@ -1,0 +1,11 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "VERSION",
+  "evidence/claims/release-pipeline-closeout-20260802.toml",
+  "evidence/chronicle/release-pipeline-closeout-20260802/**",
+  "openspec/changes/release-pipeline-closeout/**",
+  "openspec/changes/archive/2026-08-02-release-pipeline-closeout/**",
+  "openspec/specs/ci-diagnostics/**",
+  "tests/release/test_metadata.py",
+]
