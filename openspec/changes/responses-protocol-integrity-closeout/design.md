@@ -46,6 +46,22 @@ Response-failed recovery reads a bounded structured error envelope. It does not
 change request semantics because arbitrary message prose happens to contain a
 known phrase.
 
+## Provider backpressure
+
+HTTP 429 is not a generic transient retry. The current upstream status, body,
+and eligible headers are relayed after one call and without proxy sleep. The
+transport records one absolute monotonic deadline under the selected provider's
+collision-free key. Before remote I/O, Responses admission consults that shared
+owner and returns local HTTP 429 while the provider remains in cooldown; another
+provider is unaffected.
+
+A valid delta-seconds or HTTP-date `Retry-After` determines the cooldown up to a
+five-minute cap. Missing, invalid, zero, or expired values use the release-owned
+five-second fallback. State is bounded, process-local, and cleared
+by restart. The default Responses concurrency is 8 and remains configurable
+through the validated runtime owner. This guardrail limits burst amplification;
+it neither guesses nor encodes a provider's unpublished quota.
+
 The product supports the Codex replay subset enumerated by source and tests.
 New item carriers require a failing portability test and an explicit grammar
 rule before admission; documentation must not call this subset the complete

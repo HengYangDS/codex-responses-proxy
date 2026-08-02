@@ -34,6 +34,9 @@ class AdmissionTests(unittest.TestCase):
         admission.reset_for_test()
         telemetry.reset_for_test()
 
+    def test_default_responses_concurrency_is_conservative(self) -> None:
+        self.assertEqual(admission.RESPONSES_MAX_CONCURRENCY, 8)
+
     def test_admission_is_bounded_and_fail_closed_during_drain_races(self) -> None:
         self.assertEqual(admission.admit_response(timeout=0), ("acquired", 1))
         self.assertEqual(admission.drain_snapshot(), (False, 0, 1))

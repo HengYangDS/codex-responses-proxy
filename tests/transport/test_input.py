@@ -544,6 +544,119 @@ class InputTransportContracts(unittest.TestCase):
         self.assertEqual(handler.statuses, [503])
         self.assertIn(b"dmx_empty_response_exhausted", handler.output())
 
+    def test_rate_limit_is_relayed_after_one_upstream_attempt_without_sleep(self) -> None:
+        payload = b'{"error":{"message":"provider concurrency limit reached"}}'
+        headers = Message()
+        headers["Content-Type"] = "application/json; charset=utf-8"
+        headers["Retry-After"] = "7"
+        headers["X-Request-Id"] = "rate-limit-request"
+
+        def rate_limited(*_args, **_kwargs):
+            raise urllib.error.HTTPError(
+                "https://upstream.test/v1/responses",
+                429,
+                "Too Many Requests",
+                headers,
+                io.BytesIO(payload),
+            )
+
+        handler = _MemoryHandler(json.dumps({"input": []}).encode(), path="/ucloud/v1/responses")
+        with (
+            mock.patch.object(
+                upstream_exchange, "urlopen_direct", side_effect=rate_limited
+            ) as open_,
+            mock.patch.object(upstream_exchange.time, "sleep", return_value=None) as sleep,
+        ):
+            responses.relay(handler, "POST")
+
+        self.assertEqual(open_.call_count, 1)
+        sleep.assert_not_called()
+        self.assertEqual(handler.statuses, [429])
+        self.assertEqual(handler.output(), payload)
+        self.assertIn(("Retry-After", "7"), handler.sent_headers)
+        self.assertIn(("X-Request-Id", "rate-limit-request"), handler.sent_headers)
+
+    def test_rate_limit_bypasses_even_a_broad_provider_wire_retry_policy(self) -> None:
+        payload = b'{"error":{"message":"provider concurrency limit reached"}}'
+        headers = Message()
+        headers["Content-Type"] = "application/json"
+        headers["Retry-After"] = "7"
+        policy = mock.Mock()
+        policy.request_fingerprint.return_value = "test-wire-fingerprint"
+        policy.is_retryable_failure.return_value = True
+        policy.POLICY_VERSION = "test-wire-policy"
+        profiles = dict(responses.PROVIDERS.profiles)
+        current = profiles["ucloud"]
+        profiles["ucloud"] = type(current)(current.name, current.base_url, policy)
+        registry = type(responses.PROVIDERS)(profiles)
+
+        def rate_limited(*_args, **_kwargs):
+            raise urllib.error.HTTPError(
+                "https://upstream.test/v1/responses",
+                429,
+                "Too Many Requests",
+                headers,
+                io.BytesIO(payload),
+            )
+
+        handler = _MemoryHandler(json.dumps({"input": []}).encode(), path="/ucloud/v1/responses")
+        with (
+            mock.patch.object(responses, "PROVIDERS", registry),
+            mock.patch.object(
+                upstream_exchange, "urlopen_direct", side_effect=rate_limited
+            ) as open_,
+            mock.patch.object(upstream_exchange.time, "sleep", return_value=None) as sleep,
+        ):
+            responses.relay(handler, "POST")
+
+        self.assertEqual(open_.call_count, 1)
+        sleep.assert_not_called()
+        self.assertEqual(handler.statuses, [429])
+        self.assertEqual(handler.output(), payload)
+
+    def test_rate_limit_cooldown_is_provider_scoped_and_skips_upstream(self) -> None:
+        payload = b'{"error":{"message":"provider concurrency limit reached"}}'
+        first = _MemoryHandler(json.dumps({"input": []}).encode(), path="/ucloud/v1/responses")
+        second = _MemoryHandler(json.dumps({"input": []}).encode(), path="/ucloud/v1/responses")
+        other = _MemoryHandler(json.dumps({"input": []}).encode(), path="/aihubmix/v1/responses")
+
+        with mock.patch.object(
+            upstream_exchange,
+            "urlopen_direct",
+            side_effect=[
+                _http_error(429, "Too Many Requests", payload),
+                _DirectResponse(b'{"id":"resp_other","status":"completed"}'),
+            ],
+        ) as open_:
+            responses.relay(first, "POST")
+            responses.relay(second, "POST")
+            responses.relay(other, "POST")
+
+        self.assertEqual(open_.call_count, 2)
+        self.assertEqual(first.statuses, [429])
+        self.assertEqual(second.statuses, [429])
+        self.assertIn(b"provider_rate_limit_cooldown", second.output())
+        self.assertIn(("Retry-After", "5"), second.sent_headers)
+        self.assertEqual(other.statuses, [200])
+        self.assertEqual(other.output(), b'{"id":"resp_other","status":"completed"}')
+
+    def test_rate_limit_cooldown_rejects_before_global_admission(self) -> None:
+        cooldown.remember_failure(
+            cooldown.provider_key("ucloud"),
+            cooldown_seconds=5,
+        )
+        handler = _MemoryHandler(json.dumps({"input": []}).encode(), path="/ucloud/v1/responses")
+        with (
+            mock.patch.object(admission, "admit_response") as admit,
+            mock.patch.object(upstream_exchange, "urlopen_direct") as open_,
+        ):
+            responses.relay(handler, "POST")
+
+        admit.assert_not_called()
+        open_.assert_not_called()
+        self.assertEqual(handler.statuses, [429])
+        self.assertIn(b"provider_rate_limit_cooldown", handler.output())
+
     def test_direct_relay_handles_large_request_cooldown_and_dead_loop(self) -> None:
         body = json.dumps({"input": "x" * 400_000}).encode()
         handler = _MemoryHandler(body)

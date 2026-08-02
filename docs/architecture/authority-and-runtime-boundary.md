@@ -158,6 +158,17 @@ root:
 
 Package initializers are declarations, not facades.
 
+Generic transport retries cover only the declared transient 5xx set. HTTP 429
+is terminal for the current proxy attempt: transport records an absolute
+deadline under a collision-free provider key and relays the first upstream
+response. The Responses entrypoint consults the same cooldown owner before
+remote I/O, returns local 429 while the deadline remains, and never applies one
+provider's state to another provider. A positive `Retry-After` is capped at five
+minutes; absent, invalid, zero, or expired timing uses the release-owned
+five-second fallback. Runtime configuration
+defaults Responses concurrency to 8 as a burst guardrail, not as a claim about
+any provider's undocumented quota.
+
 ## Lifecycle ownership
 
 Installed `python3 -m codex_responses_proxy.commands.control reload` is

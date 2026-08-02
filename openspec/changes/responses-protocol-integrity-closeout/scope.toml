@@ -6,6 +6,7 @@ paths = [
   "CHANGELOG.md",
   "CONTRIBUTING.md",
   "README.md",
+  "VERSION",
   "codex_responses_proxy/**",
   "docs/**",
   "evidence/**",

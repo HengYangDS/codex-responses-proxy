@@ -35,6 +35,8 @@ _COUNTERS = {
     "responses_rejected_while_draining": 0,
     "drain_leases_expired": 0,
     "responses_local_queue_timeouts": 0,
+    "provider_rate_limits": 0,
+    "provider_rate_limit_cooldown_hits": 0,
     "streams_completed": 0,
     "streams_incomplete": 0,
     "streams_failed": 0,
