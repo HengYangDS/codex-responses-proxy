@@ -52,9 +52,9 @@ class TestMacosLifecycle(unittest.TestCase):
         with _temporary_context("home") as ctx:
             ctx.log_dir = str(Path(ctx.home) / "state")
             rendered = macos.render_plist(ctx)
-        self.assertNotIn("<string>/dev/null</string>", rendered)
-        self.assertIn(f"<string>{ctx.log_dir}/watchdog.stdout.log</string>", rendered)
-        self.assertIn(f"<string>{ctx.log_dir}/watchdog.stderr.log</string>", rendered)
+            self.assertNotIn("<string>/dev/null</string>", rendered)
+            self.assertIn(f"<string>{Path(ctx.log_dir, 'watchdog.stdout.log')}</string>", rendered)
+            self.assertIn(f"<string>{Path(ctx.log_dir, 'watchdog.stderr.log')}</string>", rendered)
 
     def test_status_and_uninstall(self):
         with _temporary_context("home") as ctx:

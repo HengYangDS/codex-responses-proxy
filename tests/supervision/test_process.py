@@ -170,6 +170,22 @@ class TestProcessIdentity(unittest.TestCase):
         ):
             self.assertEqual(process.pids_naming_path("/installed/watchdog.py"), [8])
 
+    def test_non_darwin_path_inventory_does_not_requery_each_pid(self):
+        inventory = [
+            (7, "python /installed/proxy.py.backup"),
+            (8, 'python "/installed/proxy.py"'),
+            (9, "python /other.py"),
+        ]
+        with (
+            mock.patch.object(process.sys, "platform", "win32"),
+            mock.patch.object(process, "_process_inventory", return_value=inventory) as listed,
+            mock.patch.object(process, "process_argv") as queried,
+        ):
+            self.assertEqual(process.pids_naming_path("/installed/proxy.py"), [8])
+
+        listed.assert_called_once_with()
+        queried.assert_not_called()
+
     def test_exact_resolved_argument_identity(self):
         ctx = platform_context()
         script = os.path.abspath(ctx.proxy_script)
