@@ -657,6 +657,27 @@ class InputTransportContracts(unittest.TestCase):
         self.assertEqual(handler.statuses, [429])
         self.assertIn(b"provider_rate_limit_cooldown", handler.output())
 
+    def test_rate_limit_cooldown_is_rechecked_after_route_admission(self) -> None:
+        handler = _MemoryHandler(json.dumps({"input": []}).encode(), path="/ucloud/v1/responses")
+        checks = iter((False, True))
+        with (
+            mock.patch.object(
+                responses, "_cooldown_active", side_effect=lambda _exchange: next(checks)
+            ) as active,
+            mock.patch.object(admission, "admit_response", return_value=("acquired", 1)),
+            mock.patch.object(admission, "release_response_slot", return_value=0) as release,
+            mock.patch.object(
+                upstream_exchange,
+                "urlopen_direct",
+                side_effect=AssertionError("cooldown was not rechecked before upstream I/O"),
+            ) as open_,
+        ):
+            responses.relay(handler, "POST")
+
+        self.assertEqual(active.call_count, 2)
+        open_.assert_not_called()
+        release.assert_called_once_with("ucloud")
+
     def test_direct_relay_handles_large_request_cooldown_and_dead_loop(self) -> None:
         body = json.dumps({"input": "x" * 400_000}).encode()
         handler = _MemoryHandler(body)

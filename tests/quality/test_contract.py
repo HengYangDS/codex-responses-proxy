@@ -530,7 +530,7 @@ class TestRunnerContracts(unittest.TestCase):
 
     def test_quality_runner_uses_only_the_locked_repository_environment(self) -> None:
         source = (ROOT / "tools" / "quality" / "run.sh").read_text(encoding="utf-8")
-        self.assertIn('"$uv" sync --locked --only-group quality', source)
+        self.assertIn('"$uv" sync --quiet --locked --only-group quality', source)
         self.assertIn("UV_NO_PROGRESS=1", source)
         self.assertIn(".venv/bin", source)
         self.assertIn("PYTHONNOUSERSITE=1", source)

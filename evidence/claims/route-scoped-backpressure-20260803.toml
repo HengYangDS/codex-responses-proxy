@@ -1,0 +1,43 @@
+[claim]
+id = "route-scoped-backpressure-20260803"
+subject = "codex-responses-proxy:provider-route-backpressure"
+state = "active"
+summary = "Bind same-route single-flight, cross-route concurrency, and post-queue provider cooldown to the forward-only 2.0.6 candidate."
+
+[evidence]
+dated = "evidence/chronicle/route-scoped-backpressure-20260803/2026-08-03.md"
+sha256 = "299186ef95aa7708697154ed76fe0729a9aee83c4d2bd825009312de3e189294"
+evidence_ids = ["evidence:route-scoped-backpressure-20260803"]
+binding = "Incident containment, TDD, warning-free full quality, strict OpenSpec, Python 3.12-3.14 candidate proof, and terminal candidate housekeeping; hosted publication and runtime acceptance remain pending"
+verifier = "digest_only"
+tests = [
+  "python3.14 tests/runtime/test_admission.py",
+  "python3.14 tests/transport/test_input.py",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Source, tests, release metadata, exact-HEAD proof, independent Forge publication, transactional installation, live provider behavior, and unchanged original-task continuation are separate claims."
+
+[carriers]
+openspec = "openspec/changes/route-scoped-backpressure"
+fallback = "Keep the installed global concurrency at one until signed 2.0.6 passes every plane; after publication roll back only through the preceding signed release."
+kill_signal = "Same-route requests overlap provider I/O, different routes are globally serialized by the released design, cooldown is not rechecked after queue admission, HTTP 429 performs more than one upstream attempt, or Codex conversation state is modified."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "VERSION",
+  "codex_responses_proxy/runtime/admission.py",
+  "codex_responses_proxy/transport/responses.py",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/runtime/test_admission.py",
+  "tests/transport/test_input.py",
+]

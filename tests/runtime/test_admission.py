@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import unittest
 import sys
+import threading
 from pathlib import Path
 from typing import cast
 from unittest import mock
@@ -38,11 +39,11 @@ class AdmissionTests(unittest.TestCase):
         self.assertEqual(admission.RESPONSES_MAX_CONCURRENCY, 8)
 
     def test_admission_is_bounded_and_fail_closed_during_drain_races(self) -> None:
-        self.assertEqual(admission.admit_response(timeout=0), ("acquired", 1))
+        self.assertEqual(admission.admit_response("ucloud", timeout=0), ("acquired", 1))
         self.assertEqual(admission.drain_snapshot(), (False, 0, 1))
         self.assertTrue(admission.set_draining(True, lease_seconds=30)["draining"])
-        self.assertEqual(admission.admit_response(timeout=0), ("draining", 1))
-        self.assertEqual(admission.release_response_slot(), 0)
+        self.assertEqual(admission.admit_response("ucloud", timeout=0), ("draining", 1))
+        self.assertEqual(admission.release_response_slot("ucloud"), 0)
         admission.set_draining(False)
         for semaphore, expected in (
             (_Semaphore(False), ("timeout", 0)),
@@ -52,9 +53,34 @@ class AdmissionTests(unittest.TestCase):
                 self.subTest(expected=expected),
                 mock.patch.object(admission, "_RESPONSE_SEMAPHORE", semaphore),
             ):
-                self.assertEqual(admission.admit_response(timeout=0), expected)
+                self.assertEqual(admission.admit_response("ucloud", timeout=0), expected)
             self.assertEqual(semaphore.releases, expected == ("draining", 0))
             admission.set_draining(False)
+
+    def test_same_route_is_single_flight_while_distinct_routes_overlap(self) -> None:
+        self.assertEqual(admission.admit_response("ucloud", timeout=0), ("acquired", 1))
+        self.assertEqual(admission.admit_response("ucloud", timeout=0), ("timeout", 1))
+        self.assertEqual(admission.admit_response("aihubmix", timeout=0), ("acquired", 2))
+        self.assertEqual(admission.release_response_slot("aihubmix"), 1)
+        self.assertEqual(admission.release_response_slot("ucloud"), 0)
+
+    def test_waiting_same_route_acquires_after_release(self) -> None:
+        self.assertEqual(admission.admit_response("ucloud", timeout=0), ("acquired", 1))
+        acquired = threading.Event()
+        result: list[tuple[str, int]] = []
+
+        def wait_for_route() -> None:
+            result.append(admission.admit_response("ucloud", timeout=1))
+            acquired.set()
+
+        waiter = threading.Thread(target=wait_for_route)
+        waiter.start()
+        self.assertFalse(acquired.wait(0.05))
+        self.assertEqual(admission.release_response_slot("ucloud"), 0)
+        self.assertTrue(acquired.wait(1))
+        waiter.join()
+        self.assertEqual(result, [("acquired", 1)])
+        self.assertEqual(admission.release_response_slot("ucloud"), 0)
 
     def test_handlers_ids_loopback_and_lease_bounds_are_total(self) -> None:
         self.assertEqual((admission.next_request_id(), admission.next_request_id()), (1, 2))

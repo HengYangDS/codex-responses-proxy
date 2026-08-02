@@ -7,6 +7,18 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.6] - 2026-08-02
+
+### Fixed
+
+- Serialize active Responses exchanges within each configured provider route
+  while preserving cross-route concurrency inside the existing global bound.
+  A queued request rechecks provider cooldown before remote I/O, closing the
+  concurrent burst window after an upstream HTTP 429 without adding retries.
+- Run the native Darwin process-argument integration contract only on Darwin;
+  Linux CI no longer invokes a nonexistent `sysctl` symbol through a mocked
+  platform value.
+
 ## [2.0.5] - 2026-08-02
 
 ### Fixed

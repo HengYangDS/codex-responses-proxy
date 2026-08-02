@@ -25,7 +25,7 @@ def resolve_upstream(path: str) -> tuple[str, str] | None:
 def _admit(exchange: upstream_exchange.Exchange) -> bool:
     if not exchange.is_responses:
         return True
-    verdict, active_now = admission.admit_response()
+    verdict, active_now = admission.admit_response(exchange.profile.name)
     if verdict == "draining":
         telemetry.record_counter("responses_rejected_while_draining")
         telemetry.record_failure("draining")
@@ -185,6 +185,8 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
         return
     acquired = is_responses
     try:
+        if _cooldown_active(exchange):
+            return
         response = upstream_exchange.open_upstream(exchange)
         if response is None:
             return
@@ -197,7 +199,7 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
             downstream.relay_body(exchange, response)
     finally:
         if acquired:
-            active_now = admission.release_response_slot()
+            active_now = admission.release_response_slot(exchange.profile.name)
             exchange.log(
                 "responses_slot_released",
                 f"active={active_now}/{admission.RESPONSES_MAX_CONCURRENCY} ",
