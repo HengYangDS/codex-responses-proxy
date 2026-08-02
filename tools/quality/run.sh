@@ -1,52 +1,23 @@
 #!/bin/sh
-# Run the repository-owned Python quality gate used by both Forge projections.
+# Reproduce the complete quality gate in the repository-owned locked environment.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-python=${PYTHON:-python3}
-ruff=${RUFF:-ruff}
-ty=${TY:-ty}
-
-resolve_versioned_tool() {
-  requested=$1
-  expected=$2
-  label=$3
-  case "$requested" in
-    */*)
-      [ -x "$requested" ] && version_matches "$requested" "$expected" || {
-        echo "$label ${expected#* } is required" >&2
-        return 2
-      }
-      printf '%s\n' "$requested"
-      ;;
-    *)
-      old_ifs=$IFS
-      IFS=:
-      for directory in $PATH; do
-        [ -n "$directory" ] || directory=.
-        candidate=$directory/$requested
-        if [ -x "$candidate" ] && version_matches "$candidate" "$expected"; then
-          IFS=$old_ifs
-          printf '%s\n' "$candidate"
-          return 0
-        fi
-      done
-      IFS=$old_ifs
-      echo "$label ${expected#* } is required" >&2
-      return 2
-      ;;
-  esac
-}
-
-version_matches() {
-  output=$("$1" --version 2>/dev/null) || return 1
-  case "$output" in
-    "$2"|"$2 "?*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 cd "$root"
+
+uv=${UV:-uv}
+quality_python=${PYTHON:-python3.12}
+export PYTHONNOUSERSITE=1 UV_NO_PROGRESS=1
+
+"$uv" sync --locked --only-group quality --python "$quality_python" --no-install-project
+
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) bin=.venv/Scripts ;;
+  *) bin=.venv/bin ;;
+esac
+python=$bin/python
+ruff=$bin/ruff
+ty=$bin/ty
 
 if [ -z "${COVERAGE_FILE:-}" ]; then
   coverage_dir=$(mktemp -d "${TMPDIR:-/tmp}/codex-responses-proxy-coverage.XXXXXX")
@@ -55,70 +26,30 @@ if [ -z "${COVERAGE_FILE:-}" ]; then
   trap 'rm -rf "$coverage_dir"' EXIT HUP INT TERM
 fi
 
-python_path=$(command -v "$python") || {
-  echo "Python quality interpreter is unavailable: $python" >&2
-  exit 2
-}
-quality_requirements=tools/quality/requirements.txt
-required_version() {
-  awk -F '==' -v name="$1" '
-    $1 == name && NF == 2 { count += 1; version = $2 }
-    END {
-      if (count != 1 || version == "") exit 2
-      print version
-    }
-  ' "$quality_requirements"
-}
-ruff_version=$(required_version ruff) || {
-  echo "quality dependency SSOT is invalid: ruff" >&2
-  exit 2
-}
-ty_version=$(required_version ty) || {
-  echo "quality dependency SSOT is invalid: ty" >&2
-  exit 2
-}
-coverage_required=$(required_version coverage) || {
-  echo "quality dependency SSOT is invalid: coverage" >&2
-  exit 2
-}
-ruff_path=$(resolve_versioned_tool "$ruff" "ruff $ruff_version" "Ruff") || exit $?
-ty_path=$(resolve_versioned_tool "$ty" "ty $ty_version" "ty") || exit $?
-coverage_version=$("$python_path" -m coverage --version 2>/dev/null | sed -n '1p') || {
-  echo "coverage.py is unavailable to $python" >&2
-  exit 2
-}
-[ "$coverage_version" = "Coverage.py, version $coverage_required with C extension" ] || {
-  echo "coverage.py $coverage_required is required" >&2
-  exit 2
-}
 set -- $(
-  "$python_path" - <<'PY'
+  "$python" - <<'PY'
 import tomllib
 from pathlib import Path
 
 policy = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["tool"]["codex-responses-proxy"]["quality"]
 for key in ("source-roots", "test-roots"):
-    for path in policy[key]:
-        print(path)
+    print(*policy[key], sep="\n")
 PY
 )
 
-# Ruff owns repository-wide deterministic source shape, including tests and
-# governance scripts. The structural audit, type checker, and coverage gate own
-# their narrower semantic scopes below.
-"$ruff_path" check --no-cache .
-"$ruff_path" format --no-cache --check .
-"$python_path" tools/quality/portability.py
-"$python_path" tools/quality/repository.py
-"$ty_path" check \
-  --python "$python_path" \
+"$ruff" check --no-cache .
+"$ruff" format --no-cache --check .
+"$python" tools/quality/portability.py
+"$python" tools/quality/repository.py
+"$ty" check \
+  --python "$python" \
   --python-version 3.12 \
   --python-platform all \
   --error-on-warning \
   --no-progress \
   "$@"
 
-"$python_path" -m coverage erase
-"$python_path" tools/quality/tests.py --coverage
-"$python_path" -m coverage report
-"$python_path" tools/quality/branch_coverage.py
+"$python" -m coverage erase
+"$python" tools/quality/tests.py --coverage
+"$python" -m coverage report
+"$python" tools/quality/branch_coverage.py

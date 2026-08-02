@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 
+from codex_responses_proxy.runtime import config
 from codex_responses_proxy.runtime import context as runtime_context
 from codex_responses_proxy import errors
 
@@ -26,9 +27,9 @@ PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
   <key>ThrottleInterval</key>
   <integer>5</integer>
   <key>StandardOutPath</key>
-  <string>/dev/null</string>
+  <string>{stdout_log}</string>
   <key>StandardErrorPath</key>
-  <string>/dev/null</string>
+  <string>{stderr_log}</string>
   <key>EnvironmentVariables</key>
   <dict>
 {environment}
@@ -50,11 +51,13 @@ def _plist_path(ctx: runtime_context.RuntimeContext) -> str:
 
 
 def render_plist(ctx: runtime_context.RuntimeContext) -> str:
-    """Render the launchd property list for this installation's watchdog."""
+    """Render a watchdog service whose pre-logging failures remain visible."""
     return PLIST_TEMPLATE.format(
         label=runtime_context.SERVICE_ID,
         python=ctx.python,
         watchdog=ctx.watchdog_script,
+        stdout_log=config.path_join(ctx.log_dir, "watchdog.stdout.log"),
+        stderr_log=config.path_join(ctx.log_dir, "watchdog.stderr.log"),
         environment=_environment_xml(ctx),
     )
 
@@ -62,6 +65,7 @@ def render_plist(ctx: runtime_context.RuntimeContext) -> str:
 def install(ctx: runtime_context.RuntimeContext) -> None:
     """Install and bootstrap the macOS launchd watchdog service."""
     plist = _plist_path(ctx)
+    os.makedirs(ctx.log_dir, mode=0o700, exist_ok=True)
     os.makedirs(os.path.dirname(plist), exist_ok=True)
     with open(plist, "w", encoding="utf-8") as fh:
         fh.write(render_plist(ctx))

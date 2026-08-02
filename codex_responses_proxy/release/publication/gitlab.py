@@ -231,9 +231,10 @@ def collect(
         release_assets.ARCHIVE_NAME.format(version=tag.removeprefix("v")),
         release_assets.CHECKSUM_NAME,
     }
+    glab = hosted.executable("glab", GitLabProofError)
     selected_assets = {
         str(link.get("name")): hosted.api_bytes(
-            ("curl", "--fail", "--silent", "--show-error", "--location", str(link.get("url"))),
+            (glab, "api", "--method", "GET", str(link.get("url"))),
             unavailable="GitLab release asset is unavailable",
             error_type=GitLabProofError,
         )

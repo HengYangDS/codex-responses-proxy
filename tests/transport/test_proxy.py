@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy.recovery import response_failed as response_failed_policy  # noqa: E402
-from codex_responses_proxy.runtime import admission, logging, telemetry  # noqa: E402
+from codex_responses_proxy.runtime import admission, operational_log, telemetry  # noqa: E402
 from codex_responses_proxy.transport import cooldown  # noqa: E402
 from codex_responses_proxy.replay import request as rewrite  # noqa: E402
 from codex_responses_proxy.transport import exchange as upstream_exchange  # noqa: E402
@@ -190,7 +190,7 @@ class TestProxyTransport(unittest.TestCase):
                 received,
             ),
             mock.patch.object(response_failed_policy, "MAX_STAGES", 1),
-            mock.patch.object(logging, "log") as log,
+            mock.patch.object(operational_log, "log") as log,
             request(port, body) as response,
         ):
             self.assertEqual(response.status, 200)

@@ -11,7 +11,7 @@ from typing import Any
 
 from codex_responses_proxy.recovery import input_variant
 from codex_responses_proxy.recovery import response_failed
-from codex_responses_proxy.runtime import logging, telemetry
+from codex_responses_proxy.runtime import operational_log, telemetry
 from codex_responses_proxy.transport import cooldown
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.runtime import config as runtime_config
@@ -80,8 +80,8 @@ class Exchange:
         )
 
     def log(self, event: str, detail: str = "") -> None:
-        path = logging.safe_request_path(self.handler.path)
-        logging.log(
+        path = operational_log.safe_request_path(self.handler.path)
+        operational_log.log(
             f"req={self.request_id} event={event} provider={self.profile.name} {detail}path={path}"
         )
 
@@ -275,7 +275,7 @@ def _retry_wire_failure(exchange: Exchange) -> bool:
             fingerprint,
             2,
             "wire_failure_retry_failed",
-            f"exception={logging.safe_exception_label(error)} attempts=2 ",
+            f"exception={operational_log.safe_exception_label(error)} attempts=2 ",
         )
         return True
     telemetry.record_counter("wire_failure_retry_accepted")
@@ -343,7 +343,9 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
 
 def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
     if exchange.used_input_variant_dialogue:
-        exchange.input_variant_exhausted(f"exception={logging.safe_exception_label(error)} ")
+        exchange.input_variant_exhausted(
+            f"exception={operational_log.safe_exception_label(error)} "
+        )
         downstream.send_payload(
             exchange.handler,
             502,
@@ -357,7 +359,7 @@ def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
     if attempt < _MAX_ATTEMPTS - 1:
         exchange.log(
             "upstream_transport_retry",
-            f"attempt={attempt + 1} exception={logging.safe_exception_label(error)} ",
+            f"attempt={attempt + 1} exception={operational_log.safe_exception_label(error)} ",
         )
         time.sleep(_BACKOFFS[min(attempt, len(_BACKOFFS) - 1)])
         return "retry"
@@ -373,7 +375,7 @@ def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
     )
     exchange.log(
         "upstream_transport_exhausted",
-        f"exception={logging.safe_exception_label(error)} ",
+        f"exception={operational_log.safe_exception_label(error)} ",
     )
     return "terminal"
 

@@ -83,7 +83,7 @@ SERVING_MODULES = {
     "codex_responses_proxy/runtime/__init__.py": "codex_responses_proxy.runtime",
     "codex_responses_proxy/runtime/admission.py": "codex_responses_proxy.runtime.admission",
     "codex_responses_proxy/runtime/config.py": "codex_responses_proxy.runtime.config",
-    "codex_responses_proxy/runtime/logging.py": "codex_responses_proxy.runtime.logging",
+    "codex_responses_proxy/runtime/operational_log.py": "codex_responses_proxy.runtime.operational_log",
     "codex_responses_proxy/runtime/telemetry.py": "codex_responses_proxy.runtime.telemetry",
     "codex_responses_proxy/transport/cooldown.py": "codex_responses_proxy.transport.cooldown",
 }
@@ -131,7 +131,7 @@ RUNTIME_FILES = (
     "codex_responses_proxy/runtime/__init__.py",
     "codex_responses_proxy/runtime/admission.py",
     "codex_responses_proxy/runtime/config.py",
-    "codex_responses_proxy/runtime/logging.py",
+    "codex_responses_proxy/runtime/operational_log.py",
     "codex_responses_proxy/runtime/telemetry.py",
     "codex_responses_proxy/payload/projection.py",
     "codex_responses_proxy/payload/source.py",
@@ -143,7 +143,7 @@ RUNTIME_FILES = (
     "codex_responses_proxy/supervision/__init__.py",
     "codex_responses_proxy/supervision/linux.py",
     "codex_responses_proxy/supervision/macos.py",
-    "codex_responses_proxy/supervision/select.py",
+    "codex_responses_proxy/supervision/native_service.py",
     "codex_responses_proxy/supervision/windows.py",
     "codex_responses_proxy/supervision/watchdog.py",
 )

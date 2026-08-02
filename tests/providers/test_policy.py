@@ -19,7 +19,7 @@ if str(ROOT) not in sys.path:
 from codex_responses_proxy.recovery import response_failed  # noqa: E402
 from codex_responses_proxy.replay import response as replay_response  # noqa: E402
 from codex_responses_proxy.replay import request as rewrite  # noqa: E402
-from codex_responses_proxy.runtime import admission, logging, telemetry  # noqa: E402
+from codex_responses_proxy.runtime import admission, operational_log, telemetry  # noqa: E402
 from codex_responses_proxy.transport import cooldown  # noqa: E402
 from codex_responses_proxy.providers.policies import dmxapi  # noqa: E402
 from tests.deployment.fixtures import assert_private_log_mode  # noqa: E402
@@ -407,17 +407,19 @@ class TestProxySanitize(unittest.TestCase):
     def test_log_redacts_secrets_limits_line_length_and_removes_query_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "proxy.log"
-            old_log_path = logging.LOG_PATH
-            logging.LOG_PATH = str(log_path)
+            old_log_path = operational_log.LOG_PATH
+            operational_log.LOG_PATH = str(log_path)
             try:
-                logging.log(
+                operational_log.log(
                     "authorization: Bearer super-secret-token "
                     "encrypted=gAAAA_replay_secret "
                     "x" * 2048
                 )
-                logging.log(f"path={logging.safe_request_path('/v1/responses?prompt=private')}")
+                operational_log.log(
+                    f"path={operational_log.safe_request_path('/v1/responses?prompt=private')}"
+                )
             finally:
-                logging.LOG_PATH = old_log_path
+                operational_log.LOG_PATH = old_log_path
 
             text = log_path.read_text(encoding="utf-8")
             mode = log_path.stat().st_mode & 0o777
@@ -429,25 +431,25 @@ class TestProxySanitize(unittest.TestCase):
         assert_private_log_mode(self, mode)
         self.assertLessEqual(
             max(len(line.encode("utf-8")) for line in text.splitlines()),
-            logging.LOG_LINE_MAX_BYTES + 96,
+            operational_log.LOG_LINE_MAX_BYTES + 96,
         )
 
     def test_log_rotation_discards_an_oversized_legacy_segment_without_reading_it(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "proxy.log"
             log_path.write_bytes(b"x" * 8192)
-            old_log_path = logging.LOG_PATH
-            old_max = logging.LOG_MAX_BYTES
-            old_backups = logging.LOG_BACKUP_COUNT
-            logging.LOG_PATH = str(log_path)
-            logging.LOG_MAX_BYTES = 4096
-            logging.LOG_BACKUP_COUNT = 1
+            old_log_path = operational_log.LOG_PATH
+            old_max = operational_log.LOG_MAX_BYTES
+            old_backups = operational_log.LOG_BACKUP_COUNT
+            operational_log.LOG_PATH = str(log_path)
+            operational_log.LOG_MAX_BYTES = 4096
+            operational_log.LOG_BACKUP_COUNT = 1
             try:
-                logging.log("event=rotation_probe")
+                operational_log.log("event=rotation_probe")
             finally:
-                logging.LOG_PATH = old_log_path
-                logging.LOG_MAX_BYTES = old_max
-                logging.LOG_BACKUP_COUNT = old_backups
+                operational_log.LOG_PATH = old_log_path
+                operational_log.LOG_MAX_BYTES = old_max
+                operational_log.LOG_BACKUP_COUNT = old_backups
 
             self.assertTrue(log_path.exists())
             self.assertLessEqual(log_path.stat().st_size, 4096)

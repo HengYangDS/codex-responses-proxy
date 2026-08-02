@@ -47,7 +47,7 @@ repair a replay issue.
 python tools/release/metadata.py --prepare-release
 python tools/quality/markdown.py
 python tests/release/test_metadata.py
-PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh
+PYTHON=python3.12 sh tools/quality/run.sh
 for py in python3.12 python3.13 python3.14; do
   "$py" tools/quality/tests.py --compile
 done

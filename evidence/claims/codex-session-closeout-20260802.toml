@@ -1,0 +1,44 @@
+[claim]
+id = "codex-session-closeout-20260802"
+subject = "codex-responses-proxy:runtime-upgrade"
+state = "active"
+summary = "Bind native supervision, quality, release verification, and configurable-port repairs to the forward-only 2.0.5 source candidate."
+
+[evidence]
+dated = "evidence/chronicle/codex-session-closeout-20260802/2026-08-02.md"
+sha256 = "38af63eeea038e44283768f9b9ddd890c5702954b4cedfe704862e20bf8b346c"
+evidence_ids = ["evidence:codex-session-closeout-20260802"]
+binding = "Signed source repairs, focused regressions, strict OpenSpec, and pending exact-HEAD source proof"
+verifier = "digest_only"
+tests = [
+  "python3.12 tests/supervision/test_services.py",
+  "python3.12 tests/supervision/test_macos.py",
+  "openspec validate --all --strict --json",
+  "PYTHON=python3.12 UV=uv sh tools/quality/run.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Local source and exact-HEAD proof only; hosted CI, Forge publication, signed installation, runtime, original-task recovery, and housekeeping remain external until separately verified."
+
+[carriers]
+openspec = "openspec/changes/archive/2026-08-02-codex-session-closeout"
+fallback = "Revert the source candidate before publication; after publication use only the preceding signed release through the transactional installer."
+kill_signal = "Any session-data mutation, hard-coded dual listener, unauthenticated private-asset claim, unobservable launchd crash loop, or unproved completion claim remains."
+
+[promotion]
+targets = [
+  "codex_responses_proxy/supervision",
+  "codex_responses_proxy/runtime",
+  "codex_responses_proxy/release",
+  "tests",
+  ".github",
+  ".gitlab-ci.yml",
+  "uv.lock",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "openspec/specs/ci-diagnostics/spec.md",
+]

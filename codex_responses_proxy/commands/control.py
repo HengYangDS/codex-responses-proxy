@@ -21,7 +21,7 @@ from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.supervision import process  # noqa: E402
 from codex_responses_proxy.deployment import handoff  # noqa: E402
 from codex_responses_proxy.payload import projection, state as payload_state  # noqa: E402
-from codex_responses_proxy.supervision.select import adapter  # noqa: E402
+from codex_responses_proxy.supervision.native_service import adapter  # noqa: E402
 
 
 def _context(port: int = runtime_config.DEFAULT_PORT) -> runtime_context.RuntimeContext:

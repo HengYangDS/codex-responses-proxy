@@ -28,7 +28,8 @@ CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES
 CODEX_RESPONSES_PROXY_WATCHDOG_LOG_BACKUP_COUNT
 CODEX_RESPONSES_PROXY_PROXY_LOG
 CODEX_RESPONSES_PROXY_WATCHDOG_LOG
-<string>/dev/null</string>""".splitlines()
+/home/tester/.local/state/codex-responses-proxy/watchdog.stdout.log
+/home/tester/.local/state/codex-responses-proxy/watchdog.stderr.log""".splitlines()
 LINUX_CONTAINS = f"""Restart=always
 RestartSec=3
 WantedBy=default.target
