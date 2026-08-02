@@ -240,6 +240,9 @@ class HistoryIndexTests(unittest.TestCase):
         identity_neutral_headers = subprocess.check_output(
             ["git", "-C", repository, "show", "-s", "--format=%T%n%aI%n%cI", commit]
         )
+        # Supported Git versions render exact UTC either as ``Z`` or ``+00:00``.
+        # Canonicalize only complete timestamp lines; all other oracle bytes stay raw.
+        identity_neutral_headers = identity_neutral_headers.replace(b"+00:00\n", b"Z\n")
         raw = subprocess.check_output(["git", "-C", repository, "cat-file", "commit", commit])
         message = raw.split(b"\n\n", 1)[1]
         payload = (

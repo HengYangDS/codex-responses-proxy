@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-01
+goal: Keep hosted Python matrix verification stable across Git versions without
+  changing projection semantics.
