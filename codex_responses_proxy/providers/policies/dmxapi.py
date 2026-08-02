@@ -1,4 +1,4 @@
-"""DMX HTTP 477 classification, cooldown identity, and terminal response."""
+"""DMX HTTP 477 wire classification, cooldown identity, and exhaustion."""
 
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ import hashlib
 import json
 
 POLICY_VERSION = "empty-response-retry-v1"
-COOLDOWN_SECONDS = 30
-COOLDOWN_CAPACITY = 1024
+FAILURE_COOLDOWN_SECONDS = 30
+FAILURE_CACHE_CAPACITY = 1024
 
 
-def is_classified_error(status: int, payload: bytes) -> bool:
+def is_retryable_failure(status: int, payload: bytes) -> bool:
     """Return whether an upstream response is the exact DMX empty-response error."""
     if status != 477:
         return False
@@ -41,6 +41,6 @@ def exhausted_payload(attempts: int) -> bytes:
     ).encode()
 
 
-def policy_fingerprint(request: bytes) -> str:
+def request_fingerprint(request: bytes) -> str:
     """Return a policy-versioned identity for one normalized request."""
     return hashlib.sha256(POLICY_VERSION.encode() + request).hexdigest()

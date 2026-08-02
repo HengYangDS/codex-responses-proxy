@@ -16,14 +16,14 @@ concurrency:
 jobs:
   python:
     name: Python ${{ matrix.python-version }}
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ["3.12.13", "3.13.14", "3.14.6"]
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -43,9 +43,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ["3.12.13", "3.13.14", "3.14.6"]
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -64,13 +64,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: "3.14.6"
       - name: Fetch the exact annotated tag object
         if: github.ref_type == 'tag'
         run: |
@@ -100,22 +100,24 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.13"
       - name: Verify lint, format, types, structure, docstrings, and product branch coverage
         run: |
           set -euo pipefail
           tools="$RUNNER_TEMP/codex-responses-proxy-quality-tools"
           python -m venv "$tools"
           "$tools/bin/python" -m pip install --disable-pip-version-check --no-cache-dir \
-            ruff==0.16.1 ty==0.0.65 coverage==7.13.5
+            --requirement tools/quality/requirements.txt
+          RUFF_VERSION=$(sed -n 's/^ruff==//p' tools/quality/requirements.txt)
+          TY_VERSION=$(sed -n 's/^ty==//p' tools/quality/requirements.txt)
           ruff="$tools/bin/ruff"
           ty="$tools/bin/ty"
-          test "$($ruff --version)" = "ruff 0.16.1"
+          test "$($ruff --version)" = "ruff $RUFF_VERSION"
           case "$($ty --version)" in
-            "ty 0.0.65"|"ty 0.0.65 "*) ;;
+            "ty $TY_VERSION"|"ty $TY_VERSION "*) ;;
             *) exit 1 ;;
           esac
           PYTHON="$tools/bin/python" RUFF="$ruff" TY="$ty" sh tools/quality/run.sh

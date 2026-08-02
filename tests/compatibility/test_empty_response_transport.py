@@ -49,8 +49,8 @@ class EmptyResponseTransportTests(unittest.TestCase):
     def _remember_failure(key, *, now=None):
         cooldown.remember_failure(
             key,
-            capacity=policy.COOLDOWN_CAPACITY,
-            cooldown_seconds=policy.COOLDOWN_SECONDS,
+            capacity=policy.FAILURE_CACHE_CAPACITY,
+            cooldown_seconds=policy.FAILURE_COOLDOWN_SECONDS,
             now=now,
         )
 
@@ -58,7 +58,7 @@ class EmptyResponseTransportTests(unittest.TestCase):
     def _cooldown_remaining(key, *, now=None):
         return cooldown.remaining(
             key,
-            cooldown_seconds=policy.COOLDOWN_SECONDS,
+            cooldown_seconds=policy.FAILURE_COOLDOWN_SECONDS,
             now=now,
         )
 
@@ -295,7 +295,7 @@ class EmptyResponseTransportTests(unittest.TestCase):
         self.assertEqual(raw, UNKNOWN_477)
         projected = self._body({"stream": False, "input": [], "store": False})
         self.assertEqual(received, [projected])
-        key = policy.policy_fingerprint(projected)
+        key = policy.request_fingerprint(projected)
         self.assertEqual(self._cooldown_remaining(key, now=100.0), 0)
 
     def test_streaming_request_recovers_only_before_any_sse_bytes(self):
@@ -360,7 +360,7 @@ class EmptyResponseTransportTests(unittest.TestCase):
         self.assertEqual(len(received), 2)
         status = proxy.runtime_status()
         self.assertEqual(
-            cast("dict[str, int]", status["counters"])["empty_response_cooldown_hits"], 1
+            cast("dict[str, int]", status["counters"])["wire_failure_cooldown_hits"], 1
         )
 
     def test_cooldown_ttl_capacity_and_concurrent_access_are_bounded(self):
@@ -376,8 +376,8 @@ class EmptyResponseTransportTests(unittest.TestCase):
                 "input": [{"type": "message", "role": "user", "content": "same"}],
             }
         )
-        first_key = policy.policy_fingerprint(first)
-        second_key = policy.policy_fingerprint(second)
+        first_key = policy.request_fingerprint(first)
+        second_key = policy.request_fingerprint(second)
         self._remember_failure(first_key, now=10.0)
         self.assertGreater(self._cooldown_remaining(first_key, now=10.1), 0)
         self.assertEqual(self._cooldown_remaining(second_key, now=10.1), 0)
@@ -385,7 +385,7 @@ class EmptyResponseTransportTests(unittest.TestCase):
         self._remember_failure("expires", now=100.0)
         self.assertGreater(self._cooldown_remaining("expires", now=100.1), 0)
         self.assertTrue(cooldown.has_failure_for_test("expires"))
-        past_ttl = 100.0 + policy.COOLDOWN_SECONDS + 0.1
+        past_ttl = 100.0 + policy.FAILURE_COOLDOWN_SECONDS + 0.1
         self.assertEqual(self._cooldown_remaining("expires", now=past_ttl), 0)
         # The TTL purge is a real eviction, not merely a read-time comparison:
         # the reading call above must have removed the expired entry itself.
@@ -393,7 +393,7 @@ class EmptyResponseTransportTests(unittest.TestCase):
 
         # A stale entry is also purged by the next *write* to an unrelated key.
         self._remember_failure("stale", now=300.0)
-        self._remember_failure("other", now=300.0 + policy.COOLDOWN_SECONDS + 0.1)
+        self._remember_failure("other", now=300.0 + policy.FAILURE_COOLDOWN_SECONDS + 0.1)
         self.assertFalse(cooldown.has_failure_for_test("stale"))
         self.assertTrue(cooldown.has_failure_for_test("other"))
 
@@ -403,10 +403,10 @@ class EmptyResponseTransportTests(unittest.TestCase):
             return self._cooldown_remaining(key, now=200.0)
 
         with ThreadPoolExecutor(max_workers=16) as executor:
-            list(executor.map(remember, range(policy.COOLDOWN_CAPACITY + 100)))
+            list(executor.map(remember, range(policy.FAILURE_CACHE_CAPACITY + 100)))
         self.assertLessEqual(
             cooldown.failure_count_for_test(),
-            policy.COOLDOWN_CAPACITY,
+            policy.FAILURE_CACHE_CAPACITY,
         )
         self.assertFalse(cooldown.has_failure_for_test("key-0"))
 
@@ -427,14 +427,14 @@ class EmptyResponseTransportTests(unittest.TestCase):
             finally:
                 cleanup()
 
-        key = policy.policy_fingerprint(body)
+        key = policy.request_fingerprint(body)
         self.assertEqual(self._cooldown_remaining(key), 0)
         status = proxy.runtime_status()
         self.assertEqual(
-            cast("dict[str, int]", status["counters"])["empty_response_retry_attempts"], 1
+            cast("dict[str, int]", status["counters"])["wire_failure_retry_attempts"], 1
         )
         self.assertEqual(
-            cast("dict[str, int]", status["counters"])["empty_response_retry_accepted"], 1
+            cast("dict[str, int]", status["counters"])["wire_failure_retry_accepted"], 1
         )
         self.assertNotIn(secret, json.dumps(status))
         self.assertNotIn(key, json.dumps(status))
@@ -466,14 +466,14 @@ class EmptyResponseTransportTests(unittest.TestCase):
         self.assertEqual(len(received), 5)
         status = proxy.runtime_status()
         self.assertEqual(
-            cast("dict[str, int]", status["counters"])["empty_response_retry_attempts"], 1
+            cast("dict[str, int]", status["counters"])["wire_failure_retry_attempts"], 1
         )
         self.assertEqual(
-            cast("dict[str, int]", status["counters"])["empty_response_retry_accepted"], 1
+            cast("dict[str, int]", status["counters"])["wire_failure_retry_accepted"], 1
         )
 
     def test_fallback_follows_response_failed_recovery_without_metric_overlap(self):
-        error = b'{"error":{"code":"response_failed"}}'
+        error = b'{"error":{"type":"new_api_error","code":"response_failed"}}'
         body = self._body(
             {
                 "input": [
@@ -498,8 +498,8 @@ class EmptyResponseTransportTests(unittest.TestCase):
         self.assertEqual(received[2], received[1])
         self.assertEqual(counters["response_failed_compaction_attempts"], 1)
         self.assertEqual(counters["response_failed_compaction_accepted"], 0)
-        self.assertEqual(counters["empty_response_retry_attempts"], 1)
-        self.assertEqual(counters["empty_response_retry_accepted"], 1)
+        self.assertEqual(counters["wire_failure_retry_attempts"], 1)
+        self.assertEqual(counters["wire_failure_retry_accepted"], 1)
 
     def test_downstream_disconnect_releases_response_slot(self):
         body = self._body(
@@ -550,7 +550,7 @@ class EmptyResponseTransportTests(unittest.TestCase):
 
         self.assertEqual(len(received), 2)
         self.assertEqual(proxy.runtime_status()["active_responses"], 0)
-        self.assertEqual(self._cooldown_remaining(policy.policy_fingerprint(body)), 0)
+        self.assertEqual(self._cooldown_remaining(policy.request_fingerprint(body)), 0)
 
 
 if __name__ == "__main__":

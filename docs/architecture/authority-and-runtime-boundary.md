@@ -28,13 +28,14 @@ configuration.
 The released provider manifest defines the listener's data-plane namespaces
 and is the installed runtime's sole provider authority. Runtime environment
 variables cannot replace it. The listener accepts only explicit
-`/<provider>/v1` routes; unscoped `/v1` has no implicit provider meaning.
+`/<provider>/v1/responses` routes; unscoped `/v1` has no implicit provider
+meaning and unrelated provider endpoints are outside this product.
 The current release declares:
 
 ```text
-/dmxapi/v1  -> release-owned DMXAPI HTTPS origin
-/ucloud/v1  -> release-owned UCloud/Azure HTTPS origin
-/aihubmix/v1 -> release-owned AIHubMix HTTPS origin
+/dmxapi/v1/responses  -> release-owned DMXAPI Responses endpoint
+/ucloud/v1/responses  -> release-owned UCloud/Azure Responses endpoint
+/aihubmix/v1/responses -> release-owned AIHubMix Responses endpoint
 ```
 
 A consumer selects one namespace through its own endpoint configuration and
@@ -50,8 +51,13 @@ table; the registry and release inventory contain no provider-name switch or
 second policy list.
 
 Before remote I/O, `codex_responses_proxy.replay.request` projects Responses
-replay onto a closed portable grammar. `codex_responses_proxy.replay.event`
-removes provider ciphertext from complete downstream SSE events. The semantic
+replay onto a closed portable grammar. `codex_responses_proxy.replay.response`
+owns the matching provider-neutral output projection for both complete SSE
+events and successful non-stream JSON. Non-stream transport buffers at most
+eight MiB before commitment and admits only structurally proved `completed` or
+`incomplete` Response documents with no unknown residual ciphertext; empty,
+truncated, oversized, malformed, or non-terminal HTTP 2xx bodies fail locally
+without committing partial bytes. The semantic
 packages then separate runtime admission, telemetry, and safe logging from
 transport route selection, bounded cooldown, upstream exchange, and downstream
 HTTP/SSE relay; no mixed state or listener forwarding facade remains. Provider continuation IDs, stored-item
@@ -61,8 +67,11 @@ paired tool result whose exact value is the empty string is represented by one
 fixed plaintext empty-result marker in the outbound request copy; ordinary
 empty dialogue remains invalid. Unknown or malformed replay fails locally; DMX
 HTTP 477 recovery and cooldown apply only after that projection and only on the
-DMXAPI route. Stream sanitization prevents new provider ciphertext from
-re-entering later replay.
+DMXAPI route. The optional `WirePolicy` contract contains that real provider
+delta; ordinary providers need only one manifest table. Structured error type
+and code fields, not incidental message prose, admit request-changing recovery.
+Output projection prevents new provider ciphertext from re-entering later
+replay.
 
 The pure policy in `codex_responses_proxy/recovery/input_variant.py` owns the exact observed
 Responses input-union failure. Transport orchestration may invoke that policy

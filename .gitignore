@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 .ruff_cache/
 .venv/
+uv.lock
 .coverage
 coverage.xml
 htmlcov/

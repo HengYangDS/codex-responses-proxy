@@ -1,0 +1,16 @@
+schema_version = 1
+paths = [
+  ".github/**",
+  ".gitlab-ci.yml",
+  "AGENTS.md",
+  "CHANGELOG.md",
+  "CONTRIBUTING.md",
+  "README.md",
+  "codex_responses_proxy/**",
+  "docs/**",
+  "evidence/**",
+  "openspec/**",
+  "pyproject.toml",
+  "tests/**",
+  "tools/**",
+]
