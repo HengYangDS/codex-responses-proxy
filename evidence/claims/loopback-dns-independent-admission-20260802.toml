@@ -1,0 +1,37 @@
+[claim]
+id = "loopback-dns-independent-admission-20260802"
+subject = "codex-responses-proxy:runtime-upgrade"
+state = "active"
+summary = "Bind DNS-independent fresh and handoff-adopted loopback listener admission to its exact local verification boundary."
+
+[evidence]
+dated = "evidence/chronicle/loopback-dns-independent-admission-20260802/2026-08-02.md"
+sha256 = "d1b4d5ab91ecd88de8942a6cdce30c4d1a9f9c5cc81ccc57b03a433c6f4d07dd"
+evidence_ids = ["evidence:loopback-dns-independent-admission-20260802"]
+binding = "Observed hosted macOS stall, source repair, and local supported-interpreter verification"
+verifier = "digest_only"
+tests = [
+  "python3.14 -m unittest tests.governance.test_owner_boundaries.ProxyOwnerBoundaryContracts.test_server_hardening_and_handoff_listener_adoption",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
+  "openspec validate loopback-dns-independent-admission --strict --no-interactive",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Local listener source, tests, documentation, and OpenSpec evidence only; exact-HEAD proof, hosted CI, publication, installation, provider runtime, 429 runtime containment, MCP, original-conversation acceptance, and housekeeping remain unproved."
+
+[carriers]
+openspec = "openspec/changes/loopback-dns-independent-admission"
+fallback = "Revert the atomic listener source and governance commits before publication."
+kill_signal = "Fresh or adopted loopback listener admission consults DNS, reports an unbound identity, or still stalls on a supported host."
+
+[promotion]
+targets = [
+  "codex_responses_proxy/listener/server.py",
+  "tests/governance/test_owner_boundaries.py",
+  "openspec/specs/runtime-upgrade/spec.md",
+]
