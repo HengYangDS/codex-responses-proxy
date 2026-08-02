@@ -11,6 +11,9 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ### Fixed
 
+- Bind the loopback listener without a reverse-DNS/FQDN lookup. Listener
+  admission no longer stalls on hosts whose local DNS is slow or unavailable,
+  including hosted macOS verification runners.
 - Select supported Python 3.12, 3.13, and 3.14 lines in hosted CI instead of
   pinning platform-specific patch builds that are not published for every
   runner image.
