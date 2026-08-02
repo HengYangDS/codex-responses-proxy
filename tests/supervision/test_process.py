@@ -154,6 +154,16 @@ class TestProcessIdentity(unittest.TestCase):
                 (10, "powershell -Command Write-Output /installed/watchdog.py"),
                 (11, "python -c print /installed/watchdog.py"),
             ],
+        ), mock.patch.object(
+            process,
+            "process_argv",
+            side_effect=[
+                ["python", "/installed/watchdog.py.backup"],
+                ["python", "/installed/watchdog.py"],
+                ["powershell", "-Command", "Write-Output /installed/watchdog.py"],
+                ["powershell", "-Command", "Write-Output", "/installed/watchdog.py"],
+                ["python", "-c", "print", "/installed/watchdog.py"],
+            ],
         ):
             self.assertEqual(process.pids_naming_path("/installed/watchdog.py"), [8])
 
@@ -190,8 +200,8 @@ class TestProcessIdentity(unittest.TestCase):
             mock.patch.object(process, "listener_pids", return_value=[7, 8]),
             mock.patch.object(
                 process,
-                "process_command",
-                side_effect=[f"python {script}.backup", f'python "{script}"'],
+                "process_argv",
+                side_effect=[["python", f"{script}.backup"], ["python", script]],
             ),
         ):
             self.assertEqual(process.verified_proxy_listener_pids(ctx), [8])
@@ -200,8 +210,8 @@ class TestProcessIdentity(unittest.TestCase):
             mock.patch.object(process, "listener_pids", return_value=[7, 8]),
             mock.patch.object(
                 process,
-                "process_command",
-                side_effect=[f'python "{legacy}"', f'python "{script}"'],
+                "process_argv",
+                side_effect=[["python", legacy], ["python", script]],
             ),
         ):
             self.assertEqual(process.verified_listener_pids(ctx.port, legacy), [7])
@@ -258,6 +268,51 @@ class TestProcessIdentity(unittest.TestCase):
             self.assertEqual(process.command_argv("native command"), [])
 
     def test_process_command_and_windows_executable_suffix(self):
+        with (
+            mock.patch.object(process.sys, "platform", "darwin"),
+            mock.patch.object(
+                process,
+                "_darwin_process_argv",
+                return_value=[
+                    "/usr/bin/python3",
+                    "/Users/tester/Library/Application Support/proxy.py",
+                ],
+            ) as invoked,
+        ):
+            self.assertEqual(
+                process.process_argv(17),
+                [
+                    "/usr/bin/python3",
+                    "/Users/tester/Library/Application Support/proxy.py",
+                ],
+            )
+        invoked.assert_called_once_with(17)
+
+        with tempfile.TemporaryDirectory(prefix="responses proxy argv ") as directory:
+            script = Path(directory, "listener entrypoint.py")
+            script.write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
+            child = subprocess.Popen([sys.executable, str(script)])
+            try:
+                with mock.patch.object(process.sys, "platform", "darwin"):
+                    argv = process.process_argv(child.pid)
+                self.assertEqual(argv, [sys.executable, str(script)])
+                self.assertTrue(process.pid_names_path(child.pid, str(script)))
+                self.assertIn(child.pid, process.pids_naming_path(str(script)))
+            finally:
+                child.terminate()
+                child.wait(timeout=5)
+
+        script = "/Users/tester/Library/Application Support/proxy.py"
+        with (
+            mock.patch.object(process, "listener_pids", return_value=[17]),
+            mock.patch.object(
+                process,
+                "process_argv",
+                return_value=["/usr/bin/python3", script],
+            ),
+        ):
+            self.assertEqual(process.verified_listener_pids(8792, script), [17])
+
         with (
             mock.patch.object(process.os, "name", "nt"),
             mock.patch.object(

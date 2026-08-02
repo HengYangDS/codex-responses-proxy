@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import ctypes
+import ctypes.util
 import os
 import re
 import shlex
+import struct
 import subprocess
+import sys
 import time
 from ctypes import wintypes
 from dataclasses import dataclass
@@ -72,6 +75,44 @@ def process_command(pid: int) -> str:
         ).stdout.strip()
     except OSError:
         return ""
+
+
+def process_argv(pid: int) -> list[str]:
+    """Return the native argv for one process without guessing shell quoting."""
+
+    if sys.platform == "darwin":
+        return _darwin_process_argv(pid)
+    return command_argv(process_command(pid))
+
+
+def _darwin_process_argv(pid: int) -> list[str]:
+    """Read ``kern.procargs2`` so paths containing spaces retain argv identity."""
+
+    try:
+        library = ctypes.util.find_library("c")
+        if not library:
+            return []
+        libc = ctypes.CDLL(library, use_errno=True)
+        mib = (ctypes.c_int * 3)(1, 49, pid)
+        size = ctypes.c_size_t()
+        if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) != 0 or size.value < 5:
+            return []
+        buffer = ctypes.create_string_buffer(size.value)
+        if libc.sysctl(mib, 3, buffer, ctypes.byref(size), None, 0) != 0:
+            return []
+        count = struct.unpack("=i", buffer.raw[:4])[0]
+        if count <= 0:
+            return []
+        fields = buffer.raw[4 : size.value].split(b"\0")
+        index = 1
+        while index < len(fields) and not fields[index]:
+            index += 1
+        arguments = fields[index : index + count]
+        if len(arguments) != count or any(not value for value in arguments):
+            return []
+        return [value.decode(sys.getfilesystemencoding()) for value in arguments]
+    except (OSError, UnicodeError, ValueError, struct.error):
+        return []
 
 
 def _process_inventory() -> list[tuple[int, str]]:
@@ -160,15 +201,21 @@ def command_names_path(command: str, expected_path: str) -> bool:
 def pid_names_path(pid: int, expected_path: str) -> bool:
     """Re-read ``pid`` and prove that one argument is the exact expected path."""
 
-    return command_names_path(process_command(pid), expected_path)
+    argv = process_argv(pid)
+    executable = os.path.basename(argv[0]).lower() if argv else ""
+    if executable.endswith(".exe"):
+        executable = executable[:-4]
+    if len(argv) < 2 or re.fullmatch(r"python(?:w|3(?:\.\d+)?)?", executable) is None:
+        return False
+    expected = os.path.normcase(os.path.realpath(os.path.abspath(expected_path)))
+    argument = os.path.normcase(os.path.realpath(os.path.abspath(argv[1])))
+    return argument == expected
 
 
 def pids_naming_path(expected_path: str) -> list[int]:
     """Return process IDs whose argv exactly names ``expected_path``."""
 
-    return [
-        pid for pid, command in _process_inventory() if command_names_path(command, expected_path)
-    ]
+    return [pid for pid, _command in _process_inventory() if pid_names_path(pid, expected_path)]
 
 
 def verified_listener_pids(port: int, expected_path: str) -> list[int]:

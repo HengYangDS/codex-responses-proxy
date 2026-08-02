@@ -456,8 +456,8 @@ class TestReleasedDeployment(unittest.TestCase):
             mock.patch.object(process, "listener_pids", return_value=[111]),
             mock.patch.object(
                 process,
-                "process_command",
-                return_value=f'{self.ctx.python} "{legacy_script}"',
+                "process_argv",
+                return_value=[self.ctx.python, legacy_script],
             ),
         ):
             listener = apply.prove_legacy_quiet_window(
