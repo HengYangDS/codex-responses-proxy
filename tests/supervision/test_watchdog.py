@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -28,6 +29,25 @@ def load_watchdog(name):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+class TestWatchdogEntrypoint(unittest.TestCase):
+    def test_direct_script_load_bootstraps_package_root(self):
+        watchdog_path = ROOT / "codex_responses_proxy" / "supervision" / "watchdog.py"
+        probe = (
+            "import runpy, sys; "
+            f"sys.path.insert(0, {str(watchdog_path.parent)!r}); "
+            f"runpy.run_path({str(watchdog_path)!r}, run_name='_watchdog_import_probe_')"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            completed = subprocess.run(
+                [sys.executable, "-I", "-c", probe],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
 class TestWatchdogLogging(unittest.TestCase):

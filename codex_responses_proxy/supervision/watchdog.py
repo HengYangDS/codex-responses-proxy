@@ -10,9 +10,16 @@ secret-safe; request payloads never cross this boundary.
 from __future__ import annotations
 
 import os
+import sys
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(os.path.dirname(_HERE))
+sys.path[:] = [entry for entry in sys.path if os.path.abspath(entry) != _HERE]
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 import re
 import stat
-import sys
 import time
 import socket
 import subprocess
@@ -25,7 +32,6 @@ from codex_responses_proxy.runtime import config as runtime_config
 SETTINGS = runtime_config.load()
 HOST, PORT = SETTINGS.listener
 PYTHON = os.environ.get(runtime_config.PROXY_PYTHON_ENV, sys.executable)
-_HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.environ.get(
     runtime_config.PROXY_SCRIPT_ENV,
     os.path.join(os.path.dirname(_HERE), "listener", "entrypoint.py"),
