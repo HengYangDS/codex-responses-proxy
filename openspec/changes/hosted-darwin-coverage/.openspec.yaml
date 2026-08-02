@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-08-03
+goal: Make Darwin native argv coverage deterministic on every supported test host.

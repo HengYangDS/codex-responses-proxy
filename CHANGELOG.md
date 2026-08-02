@@ -7,6 +7,14 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.7] - 2026-08-02
+
+### Fixed
+
+- Exercise the successful Darwin native-argument parser with a synthetic
+  `sysctl` contract on every host, so Linux quality jobs retain branch coverage
+  above 95 percent while the real process integration remains Darwin-only.
+
 ## [2.0.6] - 2026-08-02
 
 ### Fixed
@@ -18,6 +26,12 @@ shared headings even when a historical tag exists only on the other Forge.
 - Run the native Darwin process-argument integration contract only on Darwin;
   Linux CI no longer invokes a nonexistent `sysctl` symbol through a mocked
   platform value.
+
+### Release history
+
+- Retain the signed `v2.0.6` tags and failed hosted GitLab jobs as immutable
+  evidence. `v2.0.6` was not eligible for installation; `v2.0.7` is the
+  forward-only publication candidate carrying the portable coverage repair.
 
 ## [2.0.5] - 2026-08-02
 
