@@ -23,8 +23,21 @@ None.
 
 ### Modified Capabilities
 
-- `ci-diagnostics`: hosted verification must start on every supported operating
-  system without depending on a patch build absent from that platform.
+- `ci-diagnostics`: subject=hosted Python support-line portability;
+  reuse=extend; change=modify; require hosted verification to start on every
+  supported operating system without depending on a patch build absent from
+  that platform; facet:lifecycle=validation,release;
+  facet:surface=ci,test,openspec;
+  facet:authority=package-metadata,workflow,test,forge.
+
+## Out of Scope
+
+- Changing runtime Python support, product behavior, dependencies, provider
+  routes, installation, or consumer configuration.
+- Selecting arbitrary `latest`, weakening the 3.12/3.13/3.14 matrix, or changing
+  source, action, dependency, asset, or signed-Git reproducibility.
+- Treating local matrix success as hosted CI, publication, installation, runtime,
+  MCP, or original-conversation acceptance evidence.
 
 ## Impact
 

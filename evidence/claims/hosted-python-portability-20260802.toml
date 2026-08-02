@@ -1,0 +1,39 @@
+[claim]
+id = "hosted-python-portability-20260802"
+subject = "codex-responses-proxy:ci-diagnostics"
+state = "active"
+summary = "Bind supported Python minor lines to cross-platform hosted verification without volatile patch pins."
+
+[evidence]
+dated = "evidence/chronicle/hosted-python-portability-20260802/2026-08-02.md"
+sha256 = "f4e991786611352939f9600e78461ccd00eccc385e30b08d8631529184241da0"
+evidence_ids = ["evidence:hosted-python-portability-20260802"]
+binding = "Observed Windows setup failure and exact-HEAD supported-interpreter local matrix"
+verifier = "digest_only"
+tests = [
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Observed hosted setup defect and local supported-interpreter evidence only; final exact-HEAD quality proof, green hosted CI, publication, installation, runtime, MCP, original-conversation acceptance, and housekeeping remain unproved."
+
+[carriers]
+openspec = "openspec/changes/hosted-python-portability"
+fallback = "Revert the CI-line selection commit before publication if an official Forge cannot resolve a supported minor line."
+kill_signal = "A hosted workflow reintroduces a platform-specific Python patch pin, narrows the supported matrix, or treats a setup-only result as product proof."
+
+[promotion]
+targets = [
+  ".github/workflows/verify.yml",
+  ".github/workflows/release.yml",
+  ".gitlab-ci.yml",
+  "tests/forge/contracts/test-github-actions.sh",
+  "tests/release/test_metadata.py",
+  "openspec/specs/ci-diagnostics/spec.md",
+]
