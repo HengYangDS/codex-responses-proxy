@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any, Protocol, TypedDict
 
 from codex_responses_proxy.replay import response as replay_response
-from codex_responses_proxy.runtime import logging, telemetry
+from codex_responses_proxy.runtime import operational_log, telemetry
 from codex_responses_proxy.runtime import config as runtime_config
 
 
@@ -182,9 +182,9 @@ def _read_one_stream(
         flush_prelude()
     if stripped_keys:
         telemetry.record_counter("encrypted_sse_keys_stripped", stripped_keys)
-        logging.log(
+        operational_log.log(
             f"req={request_id} event=sse_sanitized encrypted_events={stripped_events} "
-            f"encrypted_keys={stripped_keys} path={logging.safe_request_path(path)}"
+            f"encrypted_keys={stripped_keys} path={operational_log.safe_request_path(path)}"
         )
     detail = terminal_event.rpartition(".")[2] if terminal_event else upstream_detail
     return {
@@ -227,20 +227,20 @@ def relay(
             break
         telemetry.record_counter("streams_pre_content_reconnect_attempts")
         why = terminal or result["detail"]
-        logging.log(
+        operational_log.log(
             f"req={request_id} event=sse_pre_content_reconnect reason={why} "
             f"events={result['events']} attempt={attempt + 1}/{max_attempts - 1} "
-            f"path={logging.safe_request_path(path)}"
+            f"path={operational_log.safe_request_path(path)}"
         )
         time.sleep(backoffs[min(attempt, len(backoffs) - 1)])
         assert reopen is not None
         try:
             current = reopen()
         except Exception as error:
-            logging.log(
+            operational_log.log(
                 f"req={request_id} event=sse_reconnect_failed "
-                f"exception={logging.safe_exception_label(error)} "
-                f"path={logging.safe_request_path(path)}"
+                f"exception={operational_log.safe_exception_label(error)} "
+                f"path={operational_log.safe_request_path(path)}"
             )
             break
     pre_content_exhausted = not headers_sent
@@ -261,18 +261,18 @@ def relay(
             telemetry.record_failure("stream_pre_content_exhausted")
         else:
             telemetry.record_failure(f"stream_{detail}")
-    safe_path = logging.safe_request_path(path)
+    safe_path = operational_log.safe_request_path(path)
     if result["terminal"]:
-        logging.log(
+        operational_log.log(
             f"req={request_id} event=sse_terminal terminal={result['terminal']} "
             f"events={result['events']} path={safe_path}"
         )
     else:
         detail = result["detail"]
         error = result["error"]
-        logging.log(
+        operational_log.log(
             f"req={request_id} event=sse_end_without_terminal detail={detail} "
-            f"exception={logging.safe_exception_label(error) if error else 'none'} "
+            f"exception={operational_log.safe_exception_label(error) if error else 'none'} "
             f"events={result['events']} path={safe_path}"
         )
     return {

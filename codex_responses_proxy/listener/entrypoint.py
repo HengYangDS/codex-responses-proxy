@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
 from codex_responses_proxy.listener import control, server
 from codex_responses_proxy.listener.handoff import transaction as handoff
 from codex_responses_proxy.payload import identity
-from codex_responses_proxy.runtime import admission, logging, telemetry
+from codex_responses_proxy.runtime import admission, operational_log, telemetry
 from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.transport import exchange, sse
 
@@ -72,7 +72,7 @@ def _handoff_context() -> handoff.Context:
         active_handlers=admission.active_handlers,
         bounded_lease_seconds=admission.bounded_drain_lease_seconds,
         set_draining=admission.set_draining,
-        log=logging.log,
+        log=operational_log.log,
         server_factory=server.server_from_listener,
         set_server_instance=_set_server_instance,
     )
@@ -124,13 +124,13 @@ def main() -> None:
         or "--handoff-child" in sys.argv[1:]
     ):
         raise SystemExit(handoff.run_child(_handoff_context()))
-    logging.log(
+    operational_log.log(
         f"starting codex-responses-proxy listener={host}:{port} "
         f"responses_max_concurrency={admission.RESPONSES_MAX_CONCURRENCY} "
         f"upstream_timeout={exchange.UPSTREAM_TIMEOUT} "
         f"read_timeout={sse.UPSTREAM_READ_TIMEOUT} "
-        f"log_max_bytes={logging.LOG_MAX_BYTES} "
-        f"log_backup_count={logging.LOG_BACKUP_COUNT}"
+        f"log_max_bytes={operational_log.LOG_MAX_BYTES} "
+        f"log_backup_count={operational_log.LOG_BACKUP_COUNT}"
     )
     global _SERVER_INSTANCE
     server = create_server()

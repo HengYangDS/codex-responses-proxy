@@ -91,13 +91,13 @@ def write_retired_projection(
     return files
 
 
-def write_v2_0_0_projection(ctx: runtime_context.RuntimeContext) -> dict[str, bytes]:
-    """Write the exact v2.0.0 protocol-v2 inventory with deterministic bytes."""
+def write_supported_predecessor_projection(
+    ctx: runtime_context.RuntimeContext,
+) -> dict[str, bytes]:
+    """Write the exact installed projection accepted for direct upgrade."""
 
-    files = set(inventory.RUNTIME_FILES)
-    files.remove("codex_responses_proxy/replay/response.py")
-    files.add("codex_responses_proxy/replay/event.py")
-    version = "2.0.0"
+    version = projection.SUPPORTED_PREDECESSOR_RELEASE
+    files, serving_paths = projection._SUPPORTED_PREDECESSOR_INVENTORIES[version]
     contents = {
         relative: (f"{version}\n".encode() if relative == "VERSION" else f"{relative}\n".encode())
         for relative in files
@@ -107,14 +107,11 @@ def write_v2_0_0_projection(ctx: runtime_context.RuntimeContext) -> dict[str, by
         target = install / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
-    serving_paths = set(inventory.SERVING_FILES)
-    serving_paths.remove("codex_responses_proxy/replay/response.py")
-    serving_paths.add("codex_responses_proxy/replay/event.py")
     serving = {
         relative: hashlib.sha256(contents[relative]).hexdigest() for relative in serving_paths
     }
     receipt = payload_digest.canonical_json(
-        {"schema_version": 1, "version": version, "fixture": "exact-v2.0.0"}
+        {"schema_version": 1, "version": version, "fixture": "supported-predecessor"}
     )
     receipt_sha256 = hashlib.sha256(receipt).hexdigest()
     manifest = {
@@ -137,7 +134,7 @@ def write_v2_0_0_projection(ctx: runtime_context.RuntimeContext) -> dict[str, by
                 "schema_version": 1,
                 "version": version,
                 "receipt_sha256": receipt_sha256,
-                "transaction_id": "fixture-v2-0-0",
+                "transaction_id": "fixture-supported-predecessor",
                 "runtime": {"release": version},
             }
         )

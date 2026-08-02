@@ -107,17 +107,5 @@ jobs:
       - name: Verify lint, format, types, structure, docstrings, and product branch coverage
         run: |
           set -euo pipefail
-          tools="$RUNNER_TEMP/codex-responses-proxy-quality-tools"
-          python -m venv "$tools"
-          "$tools/bin/python" -m pip install --disable-pip-version-check --no-cache-dir \
-            --requirement tools/quality/requirements.txt
-          RUFF_VERSION=$(sed -n 's/^ruff==//p' tools/quality/requirements.txt)
-          TY_VERSION=$(sed -n 's/^ty==//p' tools/quality/requirements.txt)
-          ruff="$tools/bin/ruff"
-          ty="$tools/bin/ty"
-          test "$($ruff --version)" = "ruff $RUFF_VERSION"
-          case "$($ty --version)" in
-            "ty $TY_VERSION"|"ty $TY_VERSION "*) ;;
-            *) exit 1 ;;
-          esac
-          PYTHON="$tools/bin/python" RUFF="$ruff" TY="$ty" sh tools/quality/run.sh
+          python -m pip install --disable-pip-version-check --no-cache-dir uv==0.12.1
+          PYTHON=python sh tools/quality/run.sh

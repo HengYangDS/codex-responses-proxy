@@ -44,7 +44,7 @@ class TestListenerEntrypoint(unittest.TestCase):
             mock.patch.object(entrypoint, "configure_http_surface") as configure,
             mock.patch.object(entrypoint, "create_server", return_value=listener),
             mock.patch.object(entrypoint, "_handoff_context", return_value=context),
-            mock.patch.object(entrypoint.logging, "log") as log,
+            mock.patch.object(entrypoint.operational_log, "log") as log,
             mock.patch.object(
                 entrypoint.handoff,
                 "serve_with_resume",

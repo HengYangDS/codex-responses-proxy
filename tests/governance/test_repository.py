@@ -200,6 +200,14 @@ class TestInstallationInputValidation(unittest.TestCase):
 
 
 class TestGovernanceMetadata(unittest.TestCase):
+    def test_product_module_names_do_not_shadow_the_standard_library(self):
+        collisions = sorted(
+            path.relative_to(ROOT).as_posix()
+            for path in (ROOT / "codex_responses_proxy").rglob("*.py")
+            if path.stem != "__init__" and path.stem in sys.stdlib_module_names
+        )
+        self.assertEqual(collisions, [])
+
     def test_listener_port_literals_have_one_production_owner(self):
         production = ROOT / "codex_responses_proxy"
         owner = production / "runtime" / "config.py"

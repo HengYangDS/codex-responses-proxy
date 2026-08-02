@@ -21,7 +21,7 @@ PRODUCT_ROOT = Path(__file__).resolve().parents[2]
 if str(PRODUCT_ROOT) not in sys.path:
     sys.path.insert(0, str(PRODUCT_ROOT))
 
-from codex_responses_proxy.supervision.select import adapter  # noqa: E402
+from codex_responses_proxy.supervision.native_service import adapter  # noqa: E402
 from codex_responses_proxy.deployment import apply  # noqa: E402
 from codex_responses_proxy.runtime import context as runtime_context
 from codex_responses_proxy.runtime import config as runtime_config  # noqa: E402

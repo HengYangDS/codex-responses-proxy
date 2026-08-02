@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any, Protocol
 
 from codex_responses_proxy.replay import response as replay_response
-from codex_responses_proxy.runtime import logging, telemetry
+from codex_responses_proxy.runtime import operational_log, telemetry
 from codex_responses_proxy.transport import sse
 from codex_responses_proxy.providers import registry as provider_registry
 
@@ -135,7 +135,7 @@ def relay_sse(exchange: Exchange, response) -> None:
         exchange.log("downstream_client_closed")
     except Exception as error:
         exchange.log(
-            "stream_handler_exception", f"exception={logging.safe_exception_label(error)} "
+            "stream_handler_exception", f"exception={operational_log.safe_exception_label(error)} "
         )
 
 
@@ -164,7 +164,7 @@ def relay_body(exchange: Exchange, response) -> None:
         exchange.log("downstream_client_closed")
     except Exception as error:
         exchange.log(
-            "stream_handler_exception", f"exception={logging.safe_exception_label(error)} "
+            "stream_handler_exception", f"exception={operational_log.safe_exception_label(error)} "
         )
 
 
@@ -208,7 +208,7 @@ def relay_responses_json(exchange: Exchange, response) -> None:
         _invalid_responses_success(exchange, "invalid_terminal_json")
         return
     except Exception as error:
-        _invalid_responses_success(exchange, logging.safe_exception_label(error))
+        _invalid_responses_success(exchange, operational_log.safe_exception_label(error))
         return
 
     send_payload(exchange.handler, response.status, payload)

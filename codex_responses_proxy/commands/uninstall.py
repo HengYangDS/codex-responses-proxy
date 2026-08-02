@@ -17,7 +17,7 @@ from codex_responses_proxy.runtime import context as runtime_context
 from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.supervision import process  # noqa: E402
 from codex_responses_proxy.payload import projection  # noqa: E402
-from codex_responses_proxy.supervision.select import adapter  # noqa: E402
+from codex_responses_proxy.supervision.native_service import adapter  # noqa: E402
 
 
 class ServiceAdapter(Protocol):

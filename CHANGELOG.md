@@ -16,8 +16,17 @@ shared headings even when a historical tag exists only on the other Forge.
   spaces are now discovered, handed off, and terminated by exact resolved
   entrypoint identity.
 - Bootstrap the package root before a watchdog launched as a direct script
-  imports the runtime package, preventing the sibling `select.py` module from
-  shadowing Python's standard-library `select` module.
+  imports the runtime package. Rename runtime modules that collided with the
+  Python standard library, removing the collision class rather than retaining a
+  bootstrap-only workaround.
+- Persist watchdog pre-logging failures to a bounded product-state stderr file
+  and create its parent directory before launchd registration, so first-install
+  crash loops are observable instead of silently discarded.
+- Verify private GitLab Release assets through the authenticated `glab api`
+  transport while retaining byte-for-byte cross-Forge asset comparison.
+- Replace ambient PATH and user-site quality tools with a repository-owned,
+  `uv.lock`-pinned `.venv`; both Forge projections invoke the same gate, and
+  statement and branch coverage remain strictly above 95 percent.
 
 ## [2.0.4] - 2026-08-02
 

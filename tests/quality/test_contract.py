@@ -14,18 +14,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
 from typing import Iterator
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-
-
-def _quality_versions() -> dict[str, str]:
-    """Read exact quality tool versions from their single repository owner."""
-    return dict(
-        line.split("==", maxsplit=1)
-        for line in (ROOT / "tools" / "quality" / "requirements.txt")
-        .read_text(encoding="utf-8")
-        .splitlines()
-    )
 
 
 def _load(name: str, relative: str) -> ModuleType:
@@ -524,94 +515,46 @@ class TestRunnerContracts(unittest.TestCase):
         self.assertIn("codex_responses_proxy", runner.COMPILE_TARGETS)
         self.assertIn("sys.pycache_prefix", inspect.getsource(runner.compile_sources))
 
-    def test_gitlab_quality_install_declares_the_container_root_policy(self) -> None:
-        pipeline = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-        self.assertIn("--root-user-action=ignore", pipeline)
-        self.assertIn("DEBIAN_FRONTEND: noninteractive", pipeline)
-        self.assertNotIn("apt-get install -y ", pipeline)
+    def test_quality_environment_is_repository_owned_and_locked(self) -> None:
+        import tomllib
 
-    def test_quality_runner_resolves_the_required_tool_beyond_a_foreign_venv(self) -> None:
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertEqual(
+            metadata["dependency-groups"]["quality"],
+            ["coverage==7.15.2", "ruff==0.16.1", "ty==0.0.65"],
+        )
+        self.assertEqual(metadata["tool"]["uv"]["required-version"], "==0.12.1")
+        self.assertTrue((ROOT / "uv.lock").is_file())
+        self.assertFalse((ROOT / "tools" / "quality" / "requirements.txt").exists())
+        self.assertNotIn("uv.lock", (ROOT / ".gitignore").read_text(encoding="utf-8"))
+
+    def test_quality_runner_uses_only_the_locked_repository_environment(self) -> None:
         source = (ROOT / "tools" / "quality" / "run.sh").read_text(encoding="utf-8")
-        self.assertIn("resolve_versioned_tool", source)
-        self.assertIn("for directory in $PATH", source)
-        self.assertIn("quality_requirements=tools/quality/requirements.txt", source)
-        self.assertIn("required_version()", source)
-        self.assertIn('ruff_path=$(resolve_versioned_tool "$ruff" "ruff $ruff_version"', source)
-        self.assertIn('ty_path=$(resolve_versioned_tool "$ty" "ty $ty_version"', source)
-        self.assertIn("Coverage.py, version $coverage_required with C extension", source)
+        self.assertIn('"$uv" sync --locked --only-group quality', source)
+        self.assertIn("UV_NO_PROGRESS=1", source)
+        self.assertIn(".venv/bin", source)
+        self.assertIn("PYTHONNOUSERSITE=1", source)
+        for forbidden in ("for directory in $PATH", "requirements.txt", "pip install"):
+            self.assertNotIn(forbidden, source)
 
-    @unittest.skipUnless(os.name == "posix", "models POSIX shell executable lookup")
-    def test_quality_runner_skips_an_earlier_wrong_tool_version(self) -> None:
-        versions = _quality_versions()
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            foreign, required = root / "foreign", root / "required"
-            foreign.mkdir()
-            required.mkdir()
-            executables = {
-                root
-                / "python": f"if [ \"$1 $2 $3\" = '-m coverage --version' ]; then echo 'Coverage.py, version {versions['coverage']} with C extension'; elif [ \"$#\" = 1 ] && [ \"$1\" = '-' ]; then printf 'codex_responses_proxy\\ntests\\n'; fi",
-                root
-                / "ruff": f"[ \"${{1:-}}\" = --version ] && echo 'ruff {versions['ruff']}'; exit 0",
-                foreign / "ty": "[ \"${1:-}\" = --version ] && echo 'ty 0.0.63'; exit 0",
-                required
-                / "ty": f"[ \"${{1:-}}\" = --version ] && echo 'ty {versions['ty']}'; exit 0",
-            }
-            for path, body in executables.items():
-                path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
-                path.chmod(0o755)
-            completed = subprocess.run(
-                ["sh", str(ROOT / "tools/quality/run.sh")],
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
-                check=False,
-                env=os.environ
-                | {
-                    "PATH": f"{foreign}:{required}:{os.environ['PATH']}",
-                    "PYTHON": str(root / "python"),
-                    "RUFF": str(root / "ruff"),
-                    "TY": "ty",
-                },
-            )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
+    def test_successful_tests_emit_only_progress_and_summary(self) -> None:
+        runner = self._runner()
+        result = subprocess.CompletedProcess(
+            [sys.executable, "tests/test_example.py"],
+            0,
+            stdout=b"verbose success output\n",
+            stderr=b"",
+        )
+        with mock.patch.object(runner.subprocess, "run", return_value=result):
+            completed = runner.run_tests(["tests/test_example.py"])
+        self.assertEqual(completed, [])
 
-    @unittest.skipUnless(os.name == "posix", "models POSIX shell executable lookup")
-    def test_quality_runner_accepts_metadata_but_rejects_version_prefixes(self) -> None:
-        versions = _quality_versions()
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            misleading, required = root / "misleading", root / "required"
-            misleading.mkdir()
-            required.mkdir()
-            executables = {
-                root
-                / "python": f"if [ \"$1 $2 $3\" = '-m coverage --version' ]; then echo 'Coverage.py, version {versions['coverage']} with C extension'; elif [ \"$#\" = 1 ] && [ \"$1\" = '-' ]; then printf 'codex_responses_proxy\\ntests\\n'; fi",
-                root
-                / "ruff": f"[ \"${{1:-}}\" = --version ] && echo 'ruff {versions['ruff']}'; exit 0",
-                misleading
-                / "ty": f"[ \"${{1:-}}\" = --version ] && echo 'ty {versions['ty']}0'; exit 0",
-                required
-                / "ty": f"[ \"${{1:-}}\" = --version ] && echo 'ty {versions['ty']} (stable build)'; exit 0",
-            }
-            for path, body in executables.items():
-                path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
-                path.chmod(0o755)
-            completed = subprocess.run(
-                ["sh", str(ROOT / "tools/quality/run.sh")],
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
-                check=False,
-                env=os.environ
-                | {
-                    "PATH": f"{misleading}:{required}:{os.environ['PATH']}",
-                    "PYTHON": str(root / "python"),
-                    "RUFF": str(root / "ruff"),
-                    "TY": "ty",
-                },
-            )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
+    def test_forge_quality_jobs_use_the_locked_runner(self) -> None:
+        github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
+        gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+        for source in (github, gitlab):
+            self.assertIn("sh tools/quality/run.sh", source)
+            self.assertNotIn("tools/quality/requirements.txt", source)
 
 
 if __name__ == "__main__":

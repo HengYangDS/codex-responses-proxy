@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
 
-from codex_responses_proxy.runtime import logging
+from codex_responses_proxy.runtime import operational_log
 from codex_responses_proxy.transport import responses as response_transport
 from codex_responses_proxy.listener import entrypoint as proxy
 from codex_responses_proxy.providers import registry as provider_registry
@@ -78,8 +78,8 @@ def serve_proxy(
             "aihubmix": provider_registry.Profile("aihubmix", test_upstream),
         },
     )
-    old_log_path = logging.LOG_PATH
-    logging.LOG_PATH = str(Path(log_dir) / "proxy.log")
+    old_log_path = operational_log.LOG_PATH
+    operational_log.LOG_PATH = str(Path(log_dir) / "proxy.log")
     server = proxy.create_server(("127.0.0.1", 0))
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
@@ -92,7 +92,7 @@ def serve_proxy(
         upstream.server_close()
         upstream_thread.join(timeout=2)
         response_transport.PROVIDERS = old_registry
-        logging.LOG_PATH = old_log_path
+        operational_log.LOG_PATH = old_log_path
 
     return server.server_address[1], received, cleanup
 
