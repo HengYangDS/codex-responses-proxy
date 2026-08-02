@@ -28,6 +28,8 @@ replayed Codex state, for example:
 - a transient `invalid_payload`, gateway timeout, or pre-content SSE interruption;
 - a classified DMX HTTP 477 `empty_response` (one exact retry of the already
   projected request);
+- an upstream HTTP 429 rate limit (no proxy retry; the first response is relayed
+  and only that provider enters a bounded process-local cooldown);
 - an explicit upstream `response_failed` execution rejection of replay context;
 - the exact observed `Invalid 'input'` union validation contract.
 
@@ -75,6 +77,16 @@ Incidental message prose does not trigger semantic recovery. Exhaustion, loops,
 or unsafe failures are returned as standard retryable HTTP
 503 with `Retry-After: 3`, so the client may apply its own retry policy.
 It is not a replacement for an upstream service with persistent failures.
+
+HTTP 429 is outside the generic transient retry loop. The proxy relays the first
+rate-limit status, body, and eligible headers without sleeping or opening a
+second upstream request for that client attempt. A valid `Retry-After` sets a
+process-local cooldown for only the selected provider, capped at five minutes;
+an absent, invalid, zero, or expired value uses a five-second fallback. Requests
+arriving during that cooldown receive local HTTP 429 without upstream I/O, while
+other providers remain independent. The default Responses concurrency is 8 and
+remains configurable through the validated runtime setting; it is a burst
+guardrail, not a claim about a provider's undocumented quota.
 
 When the upstream returns the complete observed HTTP 400 `validation_error`
 stating that `input` matched no expected variant, the proxy records one bounded

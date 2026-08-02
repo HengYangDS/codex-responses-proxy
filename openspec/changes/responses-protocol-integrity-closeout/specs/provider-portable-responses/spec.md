@@ -82,3 +82,44 @@ sufficient to activate semantic recovery.
 - **WHEN** an upstream error message contains a known phrase but its structured
   type and code do not match the recovery contract
 - **THEN** the proxy relays or classifies the error without changing replay.
+
+### Requirement: Provider rate limits do not multiply across retry layers
+
+For an upstream HTTP 429, the proxy SHALL make no additional upstream attempt
+for the current client request. It SHALL relay the first upstream status, body,
+and eligible non-hop-by-hop headers unchanged, SHALL NOT sleep before that
+relay, and SHALL record a bounded provider-scoped cooldown. A valid upstream
+`Retry-After` SHALL determine the cooldown up to five minutes; a value above
+that bound SHALL be capped, while an omitted, invalid, zero, or expired value
+SHALL use a five-second fallback. The
+default Responses concurrency SHALL be 8 and configurable through the validated
+runtime owner without claiming an undocumented provider quota.
+
+#### Scenario: A provider returns a rate limit
+
+- **WHEN** one provider Responses attempt returns HTTP 429
+- **THEN** the proxy relays that exact status, body, and eligible headers after
+  exactly one upstream call
+- **AND** it performs neither the generic proxy retry sleep nor another upstream
+  request for that client attempt.
+
+#### Scenario: The provider supplies bounded retry timing
+
+- **WHEN** a provider returns HTTP 429 with valid delta-seconds or HTTP-date
+  `Retry-After` no greater than five minutes
+- **THEN** later Responses for only that provider receive local HTTP 429 until
+  the interpreted process-local deadline expires
+- **AND** the original response retains the provider's exact header.
+
+#### Scenario: The provider supplies no usable retry timing
+
+- **WHEN** a provider omits `Retry-After` or supplies an invalid, zero, or
+  expired value
+- **THEN** later Responses for that provider receive local HTTP 429 for the
+  five-second fallback without opening an upstream connection
+- **AND** another configured provider remains unaffected.
+
+#### Scenario: The provider supplies excessive retry timing
+
+- **WHEN** a provider supplies a positive `Retry-After` above five minutes
+- **THEN** the process-local cooldown is capped at five minutes.

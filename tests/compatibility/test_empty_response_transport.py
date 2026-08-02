@@ -56,11 +56,7 @@ class EmptyResponseTransportTests(unittest.TestCase):
 
     @staticmethod
     def _cooldown_remaining(key, *, now=None):
-        return cooldown.remaining(
-            key,
-            cooldown_seconds=policy.FAILURE_COOLDOWN_SECONDS,
-            now=now,
-        )
+        return cooldown.remaining(key, now=now)
 
     def _read_http_error(self, port, request_body):
         with self.assertRaises(urllib.error.HTTPError) as raised:

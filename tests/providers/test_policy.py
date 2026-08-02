@@ -196,6 +196,7 @@ class TestProxySanitize(unittest.TestCase):
 
     def test_retry_disposition_classifies_gateway_and_terminal_failures(self):
         cases = (
+            (429, b"rate limited", ""),
             (524, b"gateway timeout", "full"),
             (477, b'{"error":{"type":"dmx_api_error","code":"empty_response"}}', ""),
             (477, b'{"error":"unprocessable"}', ""),
