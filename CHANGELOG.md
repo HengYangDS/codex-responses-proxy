@@ -16,6 +16,11 @@ shared headings even when a historical tag exists only on the other Forge.
   verify the Darwin default state root without depending on the CI host. Linux
   quality jobs therefore retain branch coverage above 95 percent while real
   process integration remains Darwin-only.
+- Render launchd test expectations with native path semantics and reuse the
+  already-collected process command inventory on Windows and Linux. Windows
+  handoff verification no longer launches one PowerShell/CIM query per host PID,
+  while Darwin retains native argv identity and every signal path still
+  revalidates the live PID immediately before mutation.
 
 ## [2.0.6] - 2026-08-02
 
