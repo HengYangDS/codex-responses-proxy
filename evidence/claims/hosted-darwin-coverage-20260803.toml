@@ -1,0 +1,38 @@
+[claim]
+id = "hosted-darwin-coverage-20260803"
+subject = "codex-responses-proxy:ci-diagnostics"
+state = "active"
+summary = "Bind host-independent Darwin argv decoding coverage to the forward-only 2.0.7 candidate."
+
+[evidence]
+dated = "evidence/chronicle/hosted-darwin-coverage-20260803/2026-08-03.md"
+sha256 = "af926f344335fc1af0200e854e7eebd935390bd164dd4eec3426d0e14c734ff9"
+evidence_ids = ["evidence:hosted-darwin-coverage-20260803"]
+binding = "Observed GitLab 2.0.6 branch-coverage failure, portable synthetic decoder contract, full quality above both floors, and Python 3.12-3.14 candidate proof"
+verifier = "digest_only"
+tests = [
+  "python3.12 -m unittest tests.supervision.test_process -v",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Portable test evidence and release metadata only; hosted publication, installation, runtime acceptance, original-task continuation, and housekeeping remain separate claims."
+
+[carriers]
+openspec = "openspec/changes/hosted-darwin-coverage"
+fallback = "Retain installed 2.0.4 with global concurrency one until a newer signed release passes both Forge planes."
+kill_signal = "Any supported host again skips the successful native decoder contract, Linux calls Darwin sysctl, branch coverage is not above 95 percent, or failed release history is rewritten."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/specs/ci-diagnostics/spec.md",
+  "tests/supervision/test_process.py",
+]
