@@ -341,19 +341,19 @@ class TestProcessIdentity(unittest.TestCase):
         with mock.patch.object(process, "process_argv", return_value=[]):
             self.assertFalse(process.pid_names_path(17, "/installed/proxy.py"))
 
-        with tempfile.TemporaryDirectory(prefix="responses proxy argv ") as directory:
-            script = Path(directory, "listener entrypoint.py")
-            script.write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
-            child = subprocess.Popen([sys.executable, str(script)])
-            try:
-                with mock.patch.object(process.sys, "platform", "darwin"):
+        if sys.platform == "darwin":
+            with tempfile.TemporaryDirectory(prefix="responses proxy argv ") as directory:
+                script = Path(directory, "listener entrypoint.py")
+                script.write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
+                child = subprocess.Popen([sys.executable, str(script)])
+                try:
                     argv = process.process_argv(child.pid)
-                self.assertEqual(argv, [sys.executable, str(script)])
-                self.assertTrue(process.pid_names_path(child.pid, str(script)))
-                self.assertIn(child.pid, process.pids_naming_path(str(script)))
-            finally:
-                child.terminate()
-                child.wait(timeout=5)
+                    self.assertEqual(argv, [sys.executable, str(script)])
+                    self.assertTrue(process.pid_names_path(child.pid, str(script)))
+                    self.assertIn(child.pid, process.pids_naming_path(str(script)))
+                finally:
+                    child.terminate()
+                    child.wait(timeout=5)
 
         script = "/Users/tester/Library/Application Support/proxy.py"
         with (

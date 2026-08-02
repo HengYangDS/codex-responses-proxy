@@ -9,7 +9,7 @@ uv=${UV:-uv}
 quality_python=${PYTHON:-python3.12}
 export PYTHONNOUSERSITE=1 UV_NO_PROGRESS=1
 
-"$uv" sync --locked --only-group quality --python "$quality_python" --no-install-project
+"$uv" sync --quiet --locked --only-group quality --python "$quality_python" --no-install-project
 
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*) bin=.venv/Scripts ;;
