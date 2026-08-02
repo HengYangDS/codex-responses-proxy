@@ -1,0 +1,44 @@
+[claim]
+id = "v2-current-install-migration-20260802"
+subject = "codex-responses-proxy:runtime-upgrade"
+state = "active"
+summary = "Bind exact v2.0.0 installed-projection migration and the single configurable 8792 default to the forward-only v2.0.4 candidate."
+
+[evidence]
+dated = "evidence/chronicle/v2-current-install-migration-20260802/2026-08-02.md"
+sha256 = "2c7ab0fa8a1bca20b2b585406d48b44e06e74811f47fc54dd43c81abe0bc7437"
+evidence_ids = ["evidence:v2-current-install-migration-20260802"]
+binding = "Exact live v2.0.0 read-only admission, migration RED/GREEN tests, rollback proof, and complete local quality matrix"
+verifier = "digest_only"
+tests = [
+  "python3.14 -m unittest tests.payload.test_migration tests.payload.test_validation tests.runtime.test_context tests.governance.test_repository",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+  "openspec validate v2-current-install-migration --strict",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Local source, historical installation admission, tests, release metadata, and exact-HEAD proof only; AIGW route, hosted publication, installation switch, original-task recovery, Codex Desktop, and global housekeeping remain external until separately proved."
+
+[carriers]
+openspec = "openspec/changes/v2-current-install-migration"
+fallback = "Revert the atomic source and governance commits before publication; after publication use only the preceding signed release through the governed protocol-v2 rollback."
+kill_signal = "Any unknown schema-2 projection is admitted, v2.0.0 metadata loses exact binding, rollback invents finalized state, a production port literal is copied outside runtime.config, or Codex conversation storage is modified."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "codex_responses_proxy/payload/projection.py",
+  "codex_responses_proxy/payload/rollback.py",
+  "codex_responses_proxy/runtime/config.py",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "tests/payload/test_migration.py",
+  "tests/payload/test_validation.py",
+  "tests/runtime/test_context.py",
+]

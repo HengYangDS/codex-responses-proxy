@@ -8,10 +8,13 @@ paths = [
   "codex_responses_proxy/runtime/config.py",
   "docs/architecture/authority-and-runtime-boundary.md",
   "docs/governance/release-and-change-policy.md",
+  "evidence/claims/v2-current-install-migration-20260802.toml",
+  "evidence/chronicle/v2-current-install-migration-20260802/**",
   "openspec/changes/v2-current-install-migration/**",
   "openspec/specs/runtime-upgrade/spec.md",
   "tests/deployment/fixtures.py",
   "tests/governance/test_repository.py",
   "tests/payload/test_migration.py",
+  "tests/payload/test_validation.py",
   "tests/runtime/test_context.py",
 ]
