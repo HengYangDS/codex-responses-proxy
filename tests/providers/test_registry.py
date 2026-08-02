@@ -22,12 +22,12 @@ from codex_responses_proxy.providers import registry  # noqa: E402
 
 def _policy_source(version: str) -> str:
     return (
-        "COOLDOWN_CAPACITY = 1\n"
-        "COOLDOWN_SECONDS = 1\n"
+        "FAILURE_CACHE_CAPACITY = 1\n"
+        "FAILURE_COOLDOWN_SECONDS = 1\n"
         f"POLICY_VERSION = {version!r}\n"
-        "def is_classified_error(status, payload): return False\n"
+        "def is_retryable_failure(status, payload): return False\n"
         "def exhausted_payload(attempts): return b'{}'\n"
-        f"def policy_fingerprint(raw): return {version!r}\n"
+        f"def request_fingerprint(raw): return {version!r}\n"
     )
 
 
@@ -115,7 +115,7 @@ class ProviderRegistryTests(unittest.TestCase):
                     "[providers.dmxapi]\nbase_url = 'https://x.test/v1/'\npolicy = 'dmxapi'\n",
                 )
             )
-        self.assertIsNotNone(loaded.profiles["dmxapi"].empty_response)
+        self.assertIsNotNone(loaded.profiles["dmxapi"].wire_policy)
         with self.assertRaises(ValueError):
             registry.load(Path("does-not-exist.toml"))
 
@@ -130,7 +130,7 @@ class ProviderRegistryTests(unittest.TestCase):
             )
         self.assertEqual(tuple(loaded.profiles), ("new-gateway",))
         self.assertEqual(loaded.profiles["new-gateway"].base_url, "https://gateway.example/v1")
-        self.assertIsNone(loaded.profiles["new-gateway"].empty_response)
+        self.assertIsNone(loaded.profiles["new-gateway"].wire_policy)
 
     def test_special_policy_is_one_module_plus_one_manifest_declaration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -142,7 +142,7 @@ class ProviderRegistryTests(unittest.TestCase):
                     "policy = 'dmxapi'\n",
                 )
             )
-        policy = loaded.profiles["gateway"].empty_response
+        policy = loaded.profiles["gateway"].wire_policy
         self.assertIsNotNone(policy)
         assert policy is not None
         self.assertEqual(policy.POLICY_VERSION, "empty-response-retry-v1")
@@ -189,8 +189,8 @@ class ProviderRegistryTests(unittest.TestCase):
                 root, "second_policy_fixture", {"shared": _policy_source("second")}
             ):
                 second = registry.load(root / "codex_responses_proxy/providers/manifest.toml")
-        first_policy = first.profiles["gateway"].empty_response
-        second_policy = second.profiles["gateway"].empty_response
+        first_policy = first.profiles["gateway"].wire_policy
+        second_policy = second.profiles["gateway"].wire_policy
         assert first_policy is not None and second_policy is not None
         self.assertEqual(
             (first_policy.POLICY_VERSION, second_policy.POLICY_VERSION), ("first", "second")
@@ -230,12 +230,12 @@ class ProviderRegistryTests(unittest.TestCase):
                 fake = ModuleType(f"{prefix}.escape")
                 fake.__file__ = str(outside)
                 fake.__dict__.update(
-                    COOLDOWN_CAPACITY=1,
-                    COOLDOWN_SECONDS=1,
+                    FAILURE_CACHE_CAPACITY=1,
+                    FAILURE_COOLDOWN_SECONDS=1,
                     POLICY_VERSION="escape",
-                    is_classified_error=lambda status, payload: False,
+                    is_retryable_failure=lambda status, payload: False,
                     exhausted_payload=lambda attempts: b"{}",
-                    policy_fingerprint=lambda raw: "escape",
+                    request_fingerprint=lambda raw: "escape",
                 )
                 with (
                     mock.patch.dict(sys.modules, {fake.__name__: fake}),
@@ -288,14 +288,24 @@ class ProviderRegistryTests(unittest.TestCase):
             (routes.profiles["alpha"], "https://alpha.example/v1/responses"),
         )
         self.assertEqual(
-            routes.resolve("/beta/v1/models?limit=1"),
-            (routes.profiles["beta"], "https://beta.example/v1/models?limit=1"),
+            routes.resolve("/beta/v1/responses?include=usage"),
+            (routes.profiles["beta"], "https://beta.example/v1/responses?include=usage"),
         )
         for path in (
             "/v1/responses",
             "/unknown/v1/responses",
             "/alpha/other",
             "/beta/v2/responses",
+            "/beta/v1/models",
+            "/beta/v1/responsesx",
+            "/beta/v1//responses",
+            "/beta/v1/../admin",
+            "/beta/v1/%2e%2e/admin",
+            "/beta/v1/responses%2fextra",
+            "/beta/v1/responses#fragment",
+            "//beta/v1/responses",
+            "https://beta.example/v1/responses",
+            "http://[invalid",
         ):
             with self.subTest(path=path):
                 self.assertIsNone(routes.resolve(path))

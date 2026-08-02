@@ -18,6 +18,16 @@ from typing import Iterator
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _quality_versions() -> dict[str, str]:
+    """Read exact quality tool versions from their single repository owner."""
+    return dict(
+        line.split("==", maxsplit=1)
+        for line in (ROOT / "tools" / "quality" / "requirements.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    )
+
+
 def _load(name: str, relative: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, ROOT / relative)
     if spec is None or spec.loader is None:
@@ -101,7 +111,9 @@ class QualityPolicyContracts(unittest.TestCase):
             "tools",
             "tests",
         ).stdout
-        expected_untracked = sorted(path.decode() for path in untracked.split(b"\0") if path)
+        expected_untracked = sorted(
+            path.decode() for path in untracked.split(b"\0") if path.endswith(b".py")
+        )
         expected_gaps = []
         missing = sorted(
             path.decode()
@@ -522,11 +534,15 @@ class TestRunnerContracts(unittest.TestCase):
         source = (ROOT / "tools" / "quality" / "run.sh").read_text(encoding="utf-8")
         self.assertIn("resolve_versioned_tool", source)
         self.assertIn("for directory in $PATH", source)
-        self.assertIn('ruff_path=$(resolve_versioned_tool "$ruff" "ruff 0.16.1"', source)
-        self.assertIn('ty_path=$(resolve_versioned_tool "$ty" "ty 0.0.65"', source)
+        self.assertIn("quality_requirements=tools/quality/requirements.txt", source)
+        self.assertIn("required_version()", source)
+        self.assertIn('ruff_path=$(resolve_versioned_tool "$ruff" "ruff $ruff_version"', source)
+        self.assertIn('ty_path=$(resolve_versioned_tool "$ty" "ty $ty_version"', source)
+        self.assertIn("Coverage.py, version $coverage_required with C extension", source)
 
     @unittest.skipUnless(os.name == "posix", "models POSIX shell executable lookup")
     def test_quality_runner_skips_an_earlier_wrong_tool_version(self) -> None:
+        versions = _quality_versions()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             foreign, required = root / "foreign", root / "required"
@@ -534,10 +550,12 @@ class TestRunnerContracts(unittest.TestCase):
             required.mkdir()
             executables = {
                 root
-                / "python": "if [ \"$1 $2 $3\" = '-m coverage --version' ]; then echo 'Coverage.py, version 7.13.5 with C extension'; elif [ \"$#\" = 1 ] && [ \"$1\" = '-' ]; then printf 'codex_responses_proxy\\ntests\\n'; fi",
-                root / "ruff": "[ \"${1:-}\" = --version ] && echo 'ruff 0.16.1'; exit 0",
+                / "python": f"if [ \"$1 $2 $3\" = '-m coverage --version' ]; then echo 'Coverage.py, version {versions['coverage']} with C extension'; elif [ \"$#\" = 1 ] && [ \"$1\" = '-' ]; then printf 'codex_responses_proxy\\ntests\\n'; fi",
+                root
+                / "ruff": f"[ \"${{1:-}}\" = --version ] && echo 'ruff {versions['ruff']}'; exit 0",
                 foreign / "ty": "[ \"${1:-}\" = --version ] && echo 'ty 0.0.63'; exit 0",
-                required / "ty": "[ \"${1:-}\" = --version ] && echo 'ty 0.0.65'; exit 0",
+                required
+                / "ty": f"[ \"${{1:-}}\" = --version ] && echo 'ty {versions['ty']}'; exit 0",
             }
             for path, body in executables.items():
                 path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
@@ -560,6 +578,7 @@ class TestRunnerContracts(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "posix", "models POSIX shell executable lookup")
     def test_quality_runner_accepts_metadata_but_rejects_version_prefixes(self) -> None:
+        versions = _quality_versions()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             misleading, required = root / "misleading", root / "required"
@@ -567,11 +586,13 @@ class TestRunnerContracts(unittest.TestCase):
             required.mkdir()
             executables = {
                 root
-                / "python": "if [ \"$1 $2 $3\" = '-m coverage --version' ]; then echo 'Coverage.py, version 7.13.5 with C extension'; elif [ \"$#\" = 1 ] && [ \"$1\" = '-' ]; then printf 'codex_responses_proxy\\ntests\\n'; fi",
-                root / "ruff": "[ \"${1:-}\" = --version ] && echo 'ruff 0.16.1'; exit 0",
-                misleading / "ty": "[ \"${1:-}\" = --version ] && echo 'ty 0.0.650'; exit 0",
+                / "python": f"if [ \"$1 $2 $3\" = '-m coverage --version' ]; then echo 'Coverage.py, version {versions['coverage']} with C extension'; elif [ \"$#\" = 1 ] && [ \"$1\" = '-' ]; then printf 'codex_responses_proxy\\ntests\\n'; fi",
+                root
+                / "ruff": f"[ \"${{1:-}}\" = --version ] && echo 'ruff {versions['ruff']}'; exit 0",
+                misleading
+                / "ty": f"[ \"${{1:-}}\" = --version ] && echo 'ty {versions['ty']}0'; exit 0",
                 required
-                / "ty": "[ \"${1:-}\" = --version ] && echo 'ty 0.0.65 (stable build)'; exit 0",
+                / "ty": f"[ \"${{1:-}}\" = --version ] && echo 'ty {versions['ty']} (stable build)'; exit 0",
             }
             for path, body in executables.items():
                 path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")

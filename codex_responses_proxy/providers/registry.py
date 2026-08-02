@@ -16,28 +16,28 @@ _NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 POLICY_PACKAGE = "codex_responses_proxy.providers.policies"
 
 
-class EmptyResponsePolicy(Protocol):
-    """Optional provider-specific empty-response recovery contract."""
+class WirePolicy(Protocol):
+    """Optional provider-specific wire outcome contract."""
 
     __name__: str
-    COOLDOWN_CAPACITY: int
-    COOLDOWN_SECONDS: int
+    FAILURE_CACHE_CAPACITY: int
+    FAILURE_COOLDOWN_SECONDS: int
     POLICY_VERSION: str
 
-    def is_classified_error(self, status: int, payload: bytes) -> bool: ...
+    def is_retryable_failure(self, status: int, payload: bytes) -> bool: ...
 
     def exhausted_payload(self, attempts: int) -> bytes: ...
 
-    def policy_fingerprint(self, raw: bytes) -> str: ...
+    def request_fingerprint(self, raw: bytes) -> str: ...
 
 
 _POLICY_MEMBERS = (
-    "COOLDOWN_CAPACITY",
-    "COOLDOWN_SECONDS",
+    "FAILURE_CACHE_CAPACITY",
+    "FAILURE_COOLDOWN_SECONDS",
     "POLICY_VERSION",
-    "is_classified_error",
+    "is_retryable_failure",
     "exhausted_payload",
-    "policy_fingerprint",
+    "request_fingerprint",
 )
 
 
@@ -47,7 +47,7 @@ class Profile:
 
     name: str
     base_url: str
-    empty_response: EmptyResponsePolicy | None = None
+    wire_policy: WirePolicy | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +57,7 @@ class Registry:
     profiles: Mapping[str, Profile]
 
     def resolve(self, path: str) -> tuple[Profile, str] | None:
-        """Resolve a canonical provider route to its upstream URL."""
+        """Resolve one exact provider-scoped Responses target."""
 
         try:
             parsed = urllib.parse.urlsplit(path)
@@ -66,13 +66,13 @@ class Registry:
         if parsed.scheme or parsed.netloc or parsed.fragment:
             return None
         parts = parsed.path.split("/")
-        if len(parts) >= 3 and parts[1] in self.profiles and parts[2] == "v1":
-            profile = self.profiles[parts[1]]
-            suffix = parsed.path[len(f"/{profile.name}/v1") :]
-        else:
+        if len(parts) != 4 or parts[0] or parts[2:] != ["v1", "responses"]:
+            return None
+        profile = self.profiles.get(parts[1])
+        if profile is None or urllib.parse.quote(parsed.path, safe="/-._~") != parsed.path:
             return None
         query = f"?{parsed.query}" if parsed.query else ""
-        return profile, profile.base_url + suffix + query
+        return profile, profile.base_url + "/responses" + query
 
 
 def default_manifest_path() -> Path:
@@ -101,8 +101,8 @@ def load(path: str | Path | None = None) -> Registry:
         for name, raw in raw_profiles.items():
             profile = _profile(name, raw)
             profiles[name] = profile
-            if profile.empty_response is not None:
-                loaded_modules.add(profile.empty_response.__name__)
+            if profile.wire_policy is not None:
+                loaded_modules.add(profile.wire_policy.__name__)
     except ValueError:
         for module_name in loaded_modules:
             sys.modules.pop(module_name, None)
@@ -129,7 +129,7 @@ def _profile(name: object, raw: object) -> Profile:
     )
 
 
-def _load_policy(name: str) -> EmptyResponsePolicy:
+def _load_policy(name: str) -> WirePolicy:
     """Load one closed wire-policy module from the selected policy package."""
 
     package = POLICY_PACKAGE
@@ -164,7 +164,7 @@ def _load_policy(name: str) -> EmptyResponsePolicy:
     ):
         sys.modules.pop(module_name, None)
         raise ValueError(f"provider policy {name!r} does not implement the wire-policy contract")
-    return cast(EmptyResponsePolicy, module)
+    return cast(WirePolicy, module)
 
 
 def policy_module_names(registry: Registry) -> tuple[str, ...]:
@@ -175,7 +175,7 @@ def policy_module_names(registry: Registry) -> tuple[str, ...]:
             {
                 policy.__name__
                 for profile in registry.profiles.values()
-                if (policy := profile.empty_response) is not None
+                if (policy := profile.wire_policy) is not None
             }
         )
     )

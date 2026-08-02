@@ -7,6 +7,7 @@ import json
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Protocol
 
+from codex_responses_proxy.replay import response as replay_response
 from codex_responses_proxy.runtime import logging, telemetry
 from codex_responses_proxy.transport import sse
 from codex_responses_proxy.providers import registry as provider_registry
@@ -24,6 +25,7 @@ HOP_BY_HOP = {
     "content-length",
     "accept-encoding",
 }
+MAX_RESPONSES_JSON_BYTES = 8 * 1024 * 1024
 
 
 class Exchange(Protocol):
@@ -76,20 +78,16 @@ def json_error(message: str, error_type: str, code: str, *, reason: str | None =
     ).encode()
 
 
-def send_empty_response_exhausted(
+def send_wire_failure_exhausted(
     handler: BaseHTTPRequestHandler,
-    policy: provider_registry.EmptyResponsePolicy,
+    policy: provider_registry.WirePolicy,
     attempts: int,
 ) -> None:
-    """Normalize exhausted provider recovery to retryable HTTP 503."""
-
     """Emit one provider-policy empty-response exhaustion."""
     send_payload(handler, 503, policy.exhausted_payload(attempts), retry_after="3")
 
 
 def relay_error(handler: BaseHTTPRequestHandler, status: int, headers, payload: bytes) -> None:
-    """Relay one buffered upstream error without hop-by-hop headers."""
-
     """Relay one bounded upstream HTTP error."""
     handler.send_response(status)
     for name, value in headers.items():
@@ -110,8 +108,6 @@ def _send_stream_headers(handler: BaseHTTPRequestHandler, response) -> None:
 
 
 def relay_sse(exchange: Exchange, response) -> None:
-    """Relay an SSE response with bounded pre-content reconnection."""
-
     """Relay one Responses SSE stream with bounded pre-content recovery."""
 
     def reopen():
@@ -151,8 +147,6 @@ def _read_chunk(response) -> tuple[bytes, bool]:
 
 
 def relay_body(exchange: Exchange, response) -> None:
-    """Relay a non-SSE response as a bounded chunked downstream body."""
-
     """Relay one length-unknown upstream body as chunked downstream data."""
     _send_stream_headers(exchange.handler, response)
     try:
@@ -172,3 +166,54 @@ def relay_body(exchange: Exchange, response) -> None:
         exchange.log(
             "stream_handler_exception", f"exception={logging.safe_exception_label(error)} "
         )
+
+
+def _invalid_responses_success(exchange: Exchange, reason: str) -> None:
+    telemetry.record_counter("invalid_responses_success_bodies")
+    telemetry.record_failure("invalid_responses_success_body")
+    send_payload(
+        exchange.handler,
+        503,
+        json_error(
+            "Upstream returned an invalid successful Responses body; retry the turn",
+            "upstream_unavailable",
+            "invalid_responses_success_body",
+            reason=reason,
+        ),
+        retry_after="3",
+    )
+    exchange.log("invalid_responses_success_body", f"reason={reason} ")
+
+
+def relay_responses_json(exchange: Exchange, response) -> None:
+    """Project one complete non-stream Responses body before commitment."""
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        while True:
+            chunk, incomplete = _read_chunk(response)
+            if chunk:
+                chunks.append(chunk)
+                total += len(chunk)
+                if total > MAX_RESPONSES_JSON_BYTES:
+                    _invalid_responses_success(exchange, "response_too_large")
+                    return
+            if incomplete:
+                _invalid_responses_success(exchange, "incomplete_read")
+                return
+            if not chunk:
+                break
+        payload, removed = replay_response.sanitize_json_response(b"".join(chunks))
+    except ValueError:
+        _invalid_responses_success(exchange, "invalid_terminal_json")
+        return
+    except Exception as error:
+        _invalid_responses_success(exchange, logging.safe_exception_label(error))
+        return
+
+    send_payload(exchange.handler, response.status, payload)
+    if removed:
+        telemetry.record_counter("encrypted_response_keys_stripped", removed)
+        exchange.log("response_sanitized", f"encrypted_keys={removed} ")
+    telemetry.record_counter("responses_completed")
+    exchange.input_variant_accepted()

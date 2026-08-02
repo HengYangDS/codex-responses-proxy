@@ -112,6 +112,24 @@ class ProviderRouteTests(unittest.TestCase):
                     self.assertEqual(error.code, expected_code)
             self.assertEqual(received, [])
 
+    def test_empty_request_and_ambiguous_routes_never_reach_upstream(self) -> None:
+        valid = _body({"input": [{"type": "message", "role": "user", "content": "hello"}]})
+        cases = (
+            ("/ucloud/v1/responses", b"", 400),
+            ("/ucloud/v1/models", valid, 404),
+            ("/ucloud/v1/responsesx", valid, 404),
+            ("/ucloud/v1//responses", valid, 404),
+            ("/ucloud/v1/../admin", valid, 404),
+            ("/ucloud/v1/%2e%2e/admin", valid, 404),
+        )
+        with running_proxy([]) as (port, received):
+            for path, body, status in cases:
+                with self.subTest(path=path), self.assertRaises(urllib.error.HTTPError) as raised:
+                    request(port, body, path=path)
+                with raised.exception as error:
+                    self.assertEqual(error.code, status)
+            self.assertEqual(received, [])
+
     def test_dmx_empty_response_cooldown_does_not_block_ucloud(self) -> None:
         empty = _body(
             {

@@ -118,7 +118,7 @@ class TestReliabilityWindowPolicy(ObserverCase):
             _status(
                 counters={"streams_failed": 7},
                 upstream={"empty_response": 23},
-                last_failure="upstream_empty_response_exhausted",
+                last_failure="wire_failure_recovery_exhausted",
             ),
             observed_at_unix=1000,
         )

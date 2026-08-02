@@ -2,7 +2,7 @@
 
 The module owns SSE framing, lazy downstream commitment, bounded pre-content
 reconnects, and stream outcome accounting. JSON event mutation is delegated to
-:mod:`codex_responses_proxy.replay.event`; request admission and upstream
+:mod:`codex_responses_proxy.replay.response`; request admission and upstream
 orchestration remain in :mod:`codex_responses_proxy.transport.responses`.
 """
 
@@ -16,7 +16,7 @@ from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Protocol, TypedDict
 
-from codex_responses_proxy.replay import event as replay_event
+from codex_responses_proxy.replay import response as replay_response
 from codex_responses_proxy.runtime import logging, telemetry
 from codex_responses_proxy.runtime import config as runtime_config
 
@@ -140,7 +140,7 @@ def _read_one_stream(
 
     def process_event(event: bytes) -> None:
         nonlocal stripped_events, stripped_keys, event_count, terminal_event
-        sanitized, removed = replay_event.sanitize_sse_event(event)
+        sanitized, removed = replay_response.sanitize_sse_event(event)
         if removed:
             stripped_events += 1
             stripped_keys += removed

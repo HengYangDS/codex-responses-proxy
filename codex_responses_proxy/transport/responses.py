@@ -89,9 +89,9 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
     profile = PROVIDERS.profiles[route]
     length = int(handler.headers.get("Content-Length") or 0)
     body = handler.rfile.read(length) if length else b""
-    is_responses = method == "POST" and "/responses" in handler.path
+    is_responses = method == "POST"
     note = ""
-    if body and is_responses:
+    if is_responses:
         projection = replay_request.sanitize_responses_body(body)
         note = projection.diagnostic()
         telemetry.record_sanitization(projection.metrics)
@@ -151,15 +151,17 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
         return
     acquired = is_responses
     try:
-        policy = profile.empty_response
+        policy = profile.wire_policy
         if is_responses and policy is not None:
-            fingerprint = policy.policy_fingerprint(body)
-            remaining = cooldown.remaining(fingerprint, cooldown_seconds=policy.COOLDOWN_SECONDS)
+            fingerprint = policy.request_fingerprint(body)
+            remaining = cooldown.remaining(
+                fingerprint, cooldown_seconds=policy.FAILURE_COOLDOWN_SECONDS
+            )
             if remaining > 0:
-                telemetry.record_counter("empty_response_cooldown_hits")
-                telemetry.record_failure("empty_response_cooldown_hit")
-                downstream.send_empty_response_exhausted(handler, policy, 0)
-                exchange.log("empty_response_cooldown_hit", f"remaining_seconds={remaining:.1f} ")
+                telemetry.record_counter("wire_failure_cooldown_hits")
+                telemetry.record_failure("wire_failure_cooldown_hit")
+                downstream.send_wire_failure_exhausted(handler, policy, 0)
+                exchange.log("wire_failure_cooldown_hit", f"remaining_seconds={remaining:.1f} ")
                 return
         response = upstream_exchange.open_upstream(exchange)
         if response is None:
@@ -167,6 +169,8 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
         content_type = response.headers.get("Content-Type", "")
         if is_responses and "text/event-stream" in content_type.lower():
             downstream.relay_sse(exchange, response)
+        elif is_responses:
+            downstream.relay_responses_json(exchange, response)
         else:
             downstream.relay_body(exchange, response)
     finally:

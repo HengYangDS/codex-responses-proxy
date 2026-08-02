@@ -27,6 +27,7 @@ from codex_responses_proxy.transport import responses
 from codex_responses_proxy.replay import request as rewrite
 from codex_responses_proxy.runtime import admission, logging, telemetry
 from codex_responses_proxy.transport import cooldown
+from codex_responses_proxy.transport import relay as downstream
 from codex_responses_proxy.transport import sse
 from tests.listener.proxy_fixture import request, running_proxy
 
@@ -278,7 +279,7 @@ class InputTransportContracts(unittest.TestCase):
                 477,
                 b'{"error":{"message":"official provider returned an empty response",'
                 b'"type":"dmx_api_error","code":"empty_response"}}',
-                "empty_response",
+                "wire_policy_failure",
             ),
             "response-failed": (
                 400,
@@ -314,7 +315,7 @@ class InputTransportContracts(unittest.TestCase):
                 counters, classifications = self._status_maps()
                 self.assertEqual(counters["input_variant_dialogue_recovery_attempts"], 1)
                 self.assertEqual(counters["input_variant_dialogue_recovery_exhausted"], 1)
-                self.assertEqual(counters["empty_response_retry_attempts"], 0)
+                self.assertEqual(counters["wire_failure_retry_attempts"], 0)
                 self.assertEqual(counters["response_failed_compaction_attempts"], 0)
                 self.assertEqual(counters["response_failed_dialogue_recovery_attempts"], 0)
                 self.assertEqual(counters["streams_pre_content_reconnect_attempts"], 0)
@@ -509,7 +510,7 @@ class InputTransportContracts(unittest.TestCase):
         admission.reset_for_test()
         telemetry.reset_for_test()
         cooldown.reset_for_test()
-        handler = _MemoryHandler(path="/dmxapi/v1/health")
+        handler = _MemoryHandler(path="/dmxapi/v1/responses")
         with mock.patch.object(upstream_exchange, "urlopen_direct", side_effect=OSError("private")):
             responses.relay(handler, "GET")
         self.assertEqual(handler.statuses, [502])
@@ -517,7 +518,7 @@ class InputTransportContracts(unittest.TestCase):
 
     def test_direct_relay_covers_retry_and_fallback_transport_failure(self) -> None:
         transient = _http_error(503, "failure", b"temporary")
-        success = _DirectResponse(b"ok")
+        success = _DirectResponse(b'{"id":"resp_ok","status":"completed"}')
         handler = _MemoryHandler(json.dumps({"input": []}).encode())
         with (
             mock.patch.object(
@@ -527,7 +528,7 @@ class InputTransportContracts(unittest.TestCase):
         ):
             responses.relay(handler, "POST")
         self.assertEqual(handler.statuses, [200])
-        self.assertIn(b"ok", handler.output())
+        self.assertIn(b"resp_ok", handler.output())
 
         empty = (
             b'{"error":{"message":"official provider returned an empty response",'
@@ -547,7 +548,9 @@ class InputTransportContracts(unittest.TestCase):
         body = json.dumps({"input": "x" * 400_000}).encode()
         handler = _MemoryHandler(body)
         with mock.patch.object(
-            upstream_exchange, "urlopen_direct", return_value=_DirectResponse(b"ok")
+            upstream_exchange,
+            "urlopen_direct",
+            return_value=_DirectResponse(b'{"id":"resp_large","status":"completed"}'),
         ):
             responses.relay(handler, "POST")
         self.assertEqual(handler.statuses, [200])
@@ -575,6 +578,48 @@ class InputTransportContracts(unittest.TestCase):
         self.assertEqual(handler.statuses, [502])
         self.assertIn(b"upstream_transport_error", handler.output())
 
+    def test_direct_transport_terminal_branches_emit_bounded_results(self) -> None:
+        handler = _MemoryHandler()
+        exchange = mock.Mock(
+            handler=handler,
+            is_responses=True,
+            used_input_variant_dialogue=False,
+        )
+        exchange.profile.wire_policy = None
+
+        with self.assertRaisesRegex(RuntimeError, "wire recovery requires a provider policy"):
+            upstream_exchange._reject_wire_failure(exchange, "fingerprint", 2, "event", "")
+        self.assertFalse(upstream_exchange._retry_wire_failure(exchange))
+
+        outcome = upstream_exchange._transport_error(exchange, OSError("private"), 3)
+        self.assertEqual(outcome, "terminal")
+        self.assertEqual(handler.statuses, [502])
+        self.assertIn(b"upstream_transport_error", handler.output())
+
+    def test_direct_non_responses_body_covers_empty_and_terminal_chunks(self) -> None:
+        handler = _MemoryHandler(path="/dmxapi/v1/health")
+        exchange = mock.Mock(handler=handler, is_responses=True)
+        exchange.input_variant_accepted = mock.Mock()
+        downstream.relay_body(exchange, _DirectResponse(b"", b""))
+        self.assertEqual(handler.statuses, [200])
+        self.assertEqual(handler.output(), b"0\r\n\r\n")
+        exchange.input_variant_accepted.assert_called_once_with()
+
+        admission.reset_for_test()
+        telemetry.reset_for_test()
+        handler = _MemoryHandler(path="/dmxapi/v1/health")
+        exchange = mock.Mock(handler=handler, is_responses=True)
+        exchange.input_variant_accepted = mock.Mock()
+        downstream.relay_body(
+            exchange,
+            _DirectResponse(b"partial", http.client.IncompleteRead(b"terminal")),
+        )
+        self.assertIn(b"partial", handler.output())
+        self.assertIn(b"terminal", handler.output())
+        counters = cast("dict[str, int]", self._status_snapshot()["counters"])
+        self.assertEqual(counters["responses_completed"], 1)
+        exchange.input_variant_accepted.assert_called_once_with()
+
     def test_direct_sse_relay_flushes_completed_prelude(self) -> None:
         handler = _MemoryHandler()
         sent = 0
@@ -598,7 +643,7 @@ class InputTransportContracts(unittest.TestCase):
 
     def test_direct_non_sse_stream_handles_incomplete_and_writer_failures(self) -> None:
         partial = http.client.IncompleteRead(b"partial")
-        handler = _MemoryHandler(path="/dmxapi/v1/health")
+        handler = _MemoryHandler(path="/dmxapi/v1/responses")
         with mock.patch.object(
             upstream_exchange, "urlopen_direct", return_value=_DirectResponse(partial)
         ):
@@ -608,7 +653,7 @@ class InputTransportContracts(unittest.TestCase):
 
         statuses = []
         for error in (BrokenPipeError(), RuntimeError("private")):
-            handler = _MemoryHandler(path="/dmxapi/v1/health")
+            handler = _MemoryHandler(path="/dmxapi/v1/responses")
             handler.wfile = mock.Mock()
             handler.wfile.write.side_effect = error
             with mock.patch.object(
@@ -617,6 +662,73 @@ class InputTransportContracts(unittest.TestCase):
                 responses.relay(handler, "GET")
             statuses.append(handler.statuses)
         self.assertEqual(statuses, [[200], [200]])
+
+    def test_non_stream_responses_strip_ciphertext_before_downstream_commit(self) -> None:
+        upstream = json.dumps(
+            {
+                "id": "resp_provider_bound",
+                "status": "completed",
+                "output": [
+                    {"type": "reasoning", "encrypted_content": "reasoning-secret"},
+                    {
+                        "type": "agent_message",
+                        "content": [
+                            {"type": "encrypted_content", "encrypted_content": "agent-secret"},
+                            {"type": "output_text", "text": "visible"},
+                        ],
+                    },
+                ],
+            },
+            separators=(",", ":"),
+        ).encode()
+        handler = _MemoryHandler(json.dumps({"input": []}).encode())
+        with mock.patch.object(
+            upstream_exchange, "urlopen_direct", return_value=_DirectResponse(upstream)
+        ):
+            responses.relay(handler, "POST")
+
+        self.assertEqual(handler.statuses, [200])
+        self.assertNotIn(b"secret", handler.output())
+        self.assertIn(b"visible", handler.output())
+
+    def test_empty_responses_request_fails_before_upstream_io(self) -> None:
+        handler = _MemoryHandler(b"")
+
+        with mock.patch.object(upstream_exchange, "urlopen_direct") as opened:
+            responses.relay(handler, "POST")
+
+        self.assertEqual(handler.statuses, [400])
+        self.assertIn(b"provider_portable_projection_rejected", handler.output())
+        opened.assert_not_called()
+
+    def test_invalid_successful_responses_fail_before_downstream_commit(self) -> None:
+        invalid = (
+            _DirectResponse(b""),
+            _DirectResponse(http.client.IncompleteRead(b'{"status":"completed"')),
+            _DirectResponse(b"not-json"),
+            _DirectResponse(b'{"id":"resp","status":"in_progress","output":[]}'),
+        )
+        for upstream in invalid:
+            with self.subTest(upstream=upstream):
+                admission.reset_for_test()
+                handler = _MemoryHandler(json.dumps({"input": []}).encode())
+                with mock.patch.object(upstream_exchange, "urlopen_direct", return_value=upstream):
+                    responses.relay(handler, "POST")
+                self.assertEqual(handler.statuses, [503])
+                self.assertIn(b"invalid_responses_success_body", handler.output())
+
+    def test_oversized_successful_response_fails_before_downstream_commit(self) -> None:
+        handler = _MemoryHandler(json.dumps({"input": []}).encode())
+        upstream = _DirectResponse(b'{"status":"completed","output":"', b"x" * 64, b'"}')
+
+        with (
+            mock.patch.object(upstream_exchange, "urlopen_direct", return_value=upstream),
+            mock.patch.object(downstream, "MAX_RESPONSES_JSON_BYTES", 32),
+        ):
+            responses.relay(handler, "POST")
+
+        self.assertEqual(handler.statuses, [503])
+        self.assertIn(b"response_too_large", handler.output())
 
 
 if __name__ == "__main__":

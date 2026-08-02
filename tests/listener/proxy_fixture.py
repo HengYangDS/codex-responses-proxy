@@ -72,7 +72,7 @@ def serve_proxy(
             "dmxapi": provider_registry.Profile(
                 "dmxapi",
                 test_upstream,
-                cast(provider_registry.EmptyResponsePolicy, dmxapi_policy),
+                cast(provider_registry.WirePolicy, dmxapi_policy),
             ),
             "ucloud": provider_registry.Profile("ucloud", test_upstream),
             "aihubmix": provider_registry.Profile("aihubmix", test_upstream),

@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy.recovery import response_failed  # noqa: E402
-from codex_responses_proxy.replay import event as replay_event  # noqa: E402
+from codex_responses_proxy.replay import response as replay_response  # noqa: E402
 from codex_responses_proxy.replay import request as rewrite  # noqa: E402
 from codex_responses_proxy.runtime import admission, logging, telemetry  # noqa: E402
 from codex_responses_proxy.transport import cooldown  # noqa: E402
@@ -184,7 +184,7 @@ class TestProxySanitize(unittest.TestCase):
             b'"encrypted_content":"required"}]}'
             b"]}}\n\n"
         )
-        out, removed = replay_event.sanitize_sse_event(raw)
+        out, removed = replay_response.sanitize_sse_event(raw)
         event = json.loads(out.split(b"data: ", 1)[1])
         output = event["response"]["output"]
         self.assertEqual(removed, 2)
@@ -200,25 +200,45 @@ class TestProxySanitize(unittest.TestCase):
             (477, b'{"error":{"type":"dmx_api_error","code":"empty_response"}}', ""),
             (477, b'{"error":"unprocessable"}', ""),
             (477, b'{"error":{"type":"other_gateway","code":"empty_response"}}', ""),
-            (400, b'{"error":{"code":"response_failed"}}', "full"),
+            (
+                400,
+                b'{"error":{"type":"new_api_error","code":"response_failed"}}',
+                "full",
+            ),
             (418, b"teapot", ""),
             (400, b"invalid_encrypted_content", ""),
             (400, b"could not be verified", ""),
-            (400, b'{"code":"invalid_prompt"} request blocked', "full"),
-            (400, b"invalid_payload", "once"),
-            (400, b"does not match the expected schema", "once"),
+            (
+                400,
+                b'{"error":{"message":"Request blocked. (fixture)",'
+                b'"type":"invalid_request_error","code":"invalid_prompt"}}',
+                "full",
+            ),
+            (
+                400,
+                b'{"error":{"type":"invalid_request_error","code":"invalid_payload"}}',
+                "once",
+            ),
         )
         for status, payload, expected in cases:
             with self.subTest(status=status, payload=payload):
                 self.assertEqual(response_failed.retry_disposition(status, payload), expected)
         self.assertEqual(json.loads(response_failed.exhausted_payload(4))["error"]["attempts"], 4)
 
+    def test_recovery_is_not_triggered_by_incidental_error_prose(self) -> None:
+        prose_only = (
+            b'{"error":{"message":"response_failed and request blocked are documentation text",'
+            b'"type":"invalid_request_error","code":"ordinary_error"}}'
+        )
+
+        self.assertEqual(response_failed.retry_disposition(400, prose_only), "")
+
     def test_dmxapi_policy_owns_the_http_477_empty_response_extension(self):
         exact = b'{"error":{"type":"dmx_api_error","code":"empty_response"}}'
 
-        self.assertTrue(dmxapi.is_classified_error(477, exact))
-        self.assertFalse(dmxapi.is_classified_error(477, b'{"error":"unprocessable"}'))
-        self.assertFalse(dmxapi.is_classified_error(400, exact))
+        self.assertTrue(dmxapi.is_retryable_failure(477, exact))
+        self.assertFalse(dmxapi.is_retryable_failure(477, b'{"error":"unprocessable"}'))
+        self.assertFalse(dmxapi.is_retryable_failure(400, exact))
 
     def test_response_failed_compaction_keeps_complete_tool_pairs_and_latest_user(self):
         """Fallback removes only an old prefix; no retained output is orphaned."""
@@ -460,7 +480,7 @@ class TestProxySanitize(unittest.TestCase):
         )
         for raw in events:
             with self.subTest(raw=raw):
-                self.assertEqual(replay_event.sanitize_sse_event(raw), (raw, 0))
+                self.assertEqual(replay_response.sanitize_sse_event(raw), (raw, 0))
 
     def test_request_sanitizer_fails_closed_when_mutation_cannot_be_serialized(self):
         raw = (
@@ -480,7 +500,7 @@ class TestProxySanitize(unittest.TestCase):
             b'{"type":"reasoning","encrypted_content":"opaque"}]}}\n\n'
         )
         with mock.patch.object(rewrite.json, "dumps", side_effect=TypeError("unsupported")):
-            self.assertEqual(replay_event.sanitize_sse_event(raw), (raw, 0))
+            self.assertEqual(replay_response.sanitize_sse_event(raw), (raw, 0))
 
     def test_deep_request_fails_closed_and_sse_projection_remains_atomic(self):
         nested = '{"x":' * 496 + "0" + "}" * 496
@@ -498,7 +518,7 @@ class TestProxySanitize(unittest.TestCase):
             + "}" * 997
             + "\n\n"
         ).encode()
-        self.assertEqual(replay_event.sanitize_sse_event(event), (event, 0))
+        self.assertEqual(replay_response.sanitize_sse_event(event), (event, 0))
 
     def test_response_failed_pair_boundary_ignores_non_object_items(self):
         items: list[object] = [

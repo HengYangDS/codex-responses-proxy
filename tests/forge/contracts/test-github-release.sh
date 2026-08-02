@@ -31,7 +31,7 @@ required = [
     "sleep 10",
     "needs: require-verify",
     "runs-on: ubuntu-24.04",
-    "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     'git fetch --force --no-tags origin "+refs/tags/$SELECTED_TAG:refs/tags/$SELECTED_TAG"',
     'git cat-file -t "refs/tags/$SELECTED_TAG"',
     'target=$(git rev-parse "refs/tags/$SELECTED_TAG^{commit}")',
