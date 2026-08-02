@@ -6,7 +6,7 @@ summary = "Bind the Git-version-neutral UTC oracle to exact-HEAD local verificat
 
 [evidence]
 dated = "evidence/chronicle/forge-utc-fingerprint-oracle-20260802/2026-08-02.md"
-sha256 = "1a8f56bb6f5d9d64bebe511d05cd8cc0c73f08e3a2412c05a9d1f47a35212849"
+sha256 = "b399cfc7aca675924d1a07bb2813d1c3efbaebe4f39e9f3017717ed6ed0abe3b"
 evidence_ids = ["evidence:forge-utc-fingerprint-oracle-20260802"]
 binding = "Committed oracle normalization and exact-HEAD Python 3.12-3.14 local verification"
 verifier = "digest_only"
@@ -25,7 +25,7 @@ owner = "codex-responses-proxy"
 scope = "Exact-HEAD local oracle and quality evidence only; hosted CI, publication, installation, runtime, MCP, original-conversation acceptance, and housekeeping remain unproved."
 
 [carriers]
-openspec = "openspec/changes/forge-utc-fingerprint-oracle"
+openspec = "openspec/changes/archive/2026-08-02-forge-utc-fingerprint-oracle"
 fallback = "Revert the oracle-only commit before publication if a supported Git version contradicts the canonical timestamp rule."
 kill_signal = "Any non-timestamp fingerprint byte is normalized, production fingerprint semantics change, or hosted CI remains divergent."
 
