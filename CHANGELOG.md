@@ -7,6 +7,19 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+### Fixed
+
+- Project successful non-stream Responses atomically with the same
+  provider-neutral ciphertext rules as SSE, and fail locally before downstream
+  commitment on empty, truncated, malformed, failed, or otherwise non-terminal
+  HTTP 2xx bodies.
+- Reject empty Responses request bodies and ambiguous provider request targets
+  before upstream I/O. Only exact `/<provider>/v1/responses` routes with an
+  optional query are admitted.
+- Replace the DMX-shaped registry interface with one optional `WirePolicy`
+  boundary and admit request-changing `response_failed` recovery only from
+  structured error fields, never incidental human-readable prose.
+
 ## [2.0.0] - 2026-08-02
 
 ### Changed

@@ -225,6 +225,28 @@ class ProviderPortableRequestTests(unittest.TestCase):
             {"input": "hello", "store": False},
         )
 
+    def test_preserves_bare_compaction_trigger_as_portable_control_input(self) -> None:
+        projection = rewrite.sanitize_responses_body(
+            _body(
+                {
+                    "input": [
+                        {"type": "compaction_trigger"},
+                        {"type": "message", "role": "user", "content": "continue"},
+                    ]
+                }
+            )
+        )
+
+        self.assertIsNotNone(projection.body, projection.diagnostic())
+        projected = json.loads(cast("bytes", projection.body))
+        self.assertEqual(
+            projected["input"],
+            [
+                {"type": "compaction_trigger"},
+                {"type": "message", "role": "user", "content": "continue"},
+            ],
+        )
+
     def test_forces_stateless_responses_even_when_store_is_absent_or_true(self) -> None:
         for supplied in (False, True, None):
             with self.subTest(store=supplied):

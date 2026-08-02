@@ -51,11 +51,13 @@ _COUNTERS = {
     "encrypted_replayed_reasoning_items_stripped": 0,
     "encrypted_content_blocks_stripped": 0,
     "encrypted_sse_keys_stripped": 0,
+    "encrypted_response_keys_stripped": 0,
+    "invalid_responses_success_bodies": 0,
     "unreplayable_images_stripped": 0,
-    "empty_response_retry_attempts": 0,
-    "empty_response_retry_accepted": 0,
-    "empty_response_recovery_exhausted": 0,
-    "empty_response_cooldown_hits": 0,
+    "wire_failure_retry_attempts": 0,
+    "wire_failure_retry_accepted": 0,
+    "wire_failure_recovery_exhausted": 0,
+    "wire_failure_cooldown_hits": 0,
 }
 _UPSTREAM_CLASSIFICATIONS: dict[str, int] = {}
 _LAST_FAILURE: dict[str, object] | None = None

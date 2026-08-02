@@ -59,14 +59,36 @@ python_path=$(command -v "$python") || {
   echo "Python quality interpreter is unavailable: $python" >&2
   exit 2
 }
-ruff_path=$(resolve_versioned_tool "$ruff" "ruff 0.16.1" "Ruff") || exit $?
-ty_path=$(resolve_versioned_tool "$ty" "ty 0.0.65" "ty") || exit $?
+quality_requirements=tools/quality/requirements.txt
+required_version() {
+  awk -F '==' -v name="$1" '
+    $1 == name && NF == 2 { count += 1; version = $2 }
+    END {
+      if (count != 1 || version == "") exit 2
+      print version
+    }
+  ' "$quality_requirements"
+}
+ruff_version=$(required_version ruff) || {
+  echo "quality dependency SSOT is invalid: ruff" >&2
+  exit 2
+}
+ty_version=$(required_version ty) || {
+  echo "quality dependency SSOT is invalid: ty" >&2
+  exit 2
+}
+coverage_required=$(required_version coverage) || {
+  echo "quality dependency SSOT is invalid: coverage" >&2
+  exit 2
+}
+ruff_path=$(resolve_versioned_tool "$ruff" "ruff $ruff_version" "Ruff") || exit $?
+ty_path=$(resolve_versioned_tool "$ty" "ty $ty_version" "ty") || exit $?
 coverage_version=$("$python_path" -m coverage --version 2>/dev/null | sed -n '1p') || {
   echo "coverage.py is unavailable to $python" >&2
   exit 2
 }
-[ "$coverage_version" = "Coverage.py, version 7.13.5 with C extension" ] || {
-  echo "coverage.py 7.13.5 is required" >&2
+[ "$coverage_version" = "Coverage.py, version $coverage_required with C extension" ] || {
+  echo "coverage.py $coverage_required is required" >&2
   exit 2
 }
 set -- $(

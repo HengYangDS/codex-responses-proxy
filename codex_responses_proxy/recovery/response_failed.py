@@ -71,14 +71,26 @@ def retry_disposition(code: int, err_body: bytes) -> str:
         return "full"
     if code != 400:
         return ""
-    lower_body = err_body.lower()
-    if b"invalid_encrypted_content" in lower_body or b"could not be verified" in lower_body:
+    try:
+        document = json.loads(err_body)
+    except (TypeError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
         return ""
-    if b"response_failed" in lower_body or b"openai responses stream failed" in lower_body:
+    error = document.get("error") if isinstance(document, dict) else None
+    if not isinstance(error, dict):
+        return ""
+    error_type = error.get("type")
+    error_code = error.get("code")
+    if error_code == "response_failed" and isinstance(error_type, str) and error_type:
         return "full"
-    if b'"code":"invalid_prompt"' in lower_body and b"request blocked" in lower_body:
+    message = error.get("message")
+    if (
+        error_code == "invalid_prompt"
+        and error_type == "invalid_request_error"
+        and isinstance(message, str)
+        and message.startswith("Request blocked.")
+    ):
         return "full"
-    if b"invalid_payload" in lower_body or b"does not match the expected schema" in lower_body:
+    if error_code == "invalid_payload":
         return "once"
     return ""
 

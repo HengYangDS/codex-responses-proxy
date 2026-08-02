@@ -172,7 +172,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
     def test_old_pid_serves_before_handoff_and_child_pid_serves_after(self):
         upstream = ScriptedUpstream()
         self.addCleanup(upstream.close)
-        upstream.push((200, b'{"id":"ok"}'))
+        upstream.push((200, b'{"id":"ok","status":"completed"}'))
 
         port = free_port()
         root, ctx = self._installed_fixture(
@@ -261,7 +261,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         def long_response(handler):
             started.set()
             release.wait(timeout=10)
-            payload = b'{"id":"finished-late"}'
+            payload = b'{"id":"finished-late","status":"completed"}'
             handler.send_response(200)
             handler.send_header("Content-Type", "application/json")
             handler.send_header("Content-Length", str(len(payload)))
@@ -307,13 +307,13 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
         # The queue is now empty (the held request already popped its own
         # behavior before blocking on ``release``), so pushing exactly one new
         # behavior now deterministically belongs to the next request only.
-        upstream.push((200, b'{"id":"new-via-child"}'))
+        upstream.push((200, b'{"id":"new-via-child","status":"completed"}'))
         new_body = json.loads(self._post_responses(port, timeout=10))
         self.assertEqual(new_body.get("id"), "new-via-child")
 
         release.set()
         holder.join(timeout=15)
-        self.assertEqual(held.get("body"), b'{"id":"finished-late"}')
+        self.assertEqual(held.get("body"), b'{"id":"finished-late","status":"completed"}')
         self.assertTrue(
             wait_until(lambda: old.poll() is not None, timeout=10),
             "old process did not exit after the held response completed",
@@ -330,9 +330,10 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
             never_release.wait(timeout=6)  # bounded so the test itself cannot hang
             handler.send_response(200)
             handler.send_header("Content-Type", "application/json")
-            handler.send_header("Content-Length", "2")
+            payload = b'{"status":"completed"}'
+            handler.send_header("Content-Length", str(len(payload)))
             handler.end_headers()
-            handler.wfile.write(b"{}")
+            handler.wfile.write(payload)
 
         upstream.push(never_finishes)
 
@@ -374,7 +375,7 @@ class TestRealSubprocessHandoffIntegration(unittest.TestCase):
 
         # Deterministic: the held request's behavior was already popped before
         # it blocked, so this new push belongs solely to the queued request below.
-        upstream.push((200, b'{"id":"via-child-while-old-held"}'))
+        upstream.push((200, b'{"id":"via-child-while-old-held","status":"completed"}'))
         queued_body = json.loads(self._post_responses(port, timeout=10))
         self.assertEqual(queued_body.get("id"), "via-child-while-old-held")
 

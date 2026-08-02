@@ -1,4 +1,4 @@
-"""Remove provider ciphertext from complete downstream Responses SSE events."""
+"""Project complete downstream Responses JSON and SSE payloads."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from codex_responses_proxy.replay.request import OPAQUE_CONTENT_MARKER
 type JsonObject = dict[str, object]
 
 _OUTPUT_ITEM_TYPES = frozenset(("function_call_output", "custom_tool_call_output"))
+_JSON_TERMINALS = frozenset(("completed", "incomplete"))
 
 
 def _semantically_empty_stream_content(value: object) -> bool:
@@ -79,6 +80,16 @@ def _strip_provider_ciphertext(obj: object) -> int:
     return removed
 
 
+def _contains_provider_ciphertext(obj: object) -> bool:
+    if isinstance(obj, dict):
+        return "encrypted_content" in obj or any(
+            _contains_provider_ciphertext(value) for value in obj.values()
+        )
+    if isinstance(obj, list):
+        return any(_contains_provider_ciphertext(value) for value in obj)
+    return False
+
+
 def sanitize_sse_event(raw_event: bytes) -> tuple[bytes, int]:
     """Remove provider ciphertext atomically from one complete SSE event."""
     if b"encrypted_content" not in raw_event:
@@ -102,3 +113,19 @@ def sanitize_sse_event(raw_event: bytes) -> tuple[bytes, int]:
                 return raw_event, 0
         out_lines.append(line)
     return b"".join(out_lines), removed_total
+
+
+def sanitize_json_response(raw_response: bytes) -> tuple[bytes, int]:
+    """Project one complete terminal non-stream Response JSON document."""
+    try:
+        obj = json.loads(raw_response)
+    except (TypeError, ValueError, RecursionError, UnicodeError) as exc:
+        raise ValueError("invalid_responses_success_body") from exc
+    if not isinstance(obj, dict) or obj.get("status") not in _JSON_TERMINALS:
+        raise ValueError("invalid_responses_success_body")
+    removed = _strip_provider_ciphertext(obj)
+    if _contains_provider_ciphertext(obj):
+        raise ValueError("unproved_provider_ciphertext")
+    if not removed:
+        return raw_response, 0
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode(), removed

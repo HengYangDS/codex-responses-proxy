@@ -145,18 +145,21 @@ without returning request text, credentials, or encrypted payloads.
 - **THEN** the request is rejected rather than silently deleting, reordering,
   or inventing tool history.
 
-### Requirement: Three canonical routes use a fixed upstream allowlist
+### Requirement: Provider routes admit only exact Responses targets
 
-The listener SHALL expose provider-scoped loopback namespaces for `dmxapi`,
-`ucloud`, and `aihubmix`. Each namespace SHALL resolve only to its release-owned
-HTTPS upstream mapping, strip only its own route prefix, and forward the
-remaining path and query. A downstream request SHALL NOT supply or override an
-upstream URL or host.
+The listener SHALL expose provider-scoped loopback Responses targets for
+`dmxapi`, `ucloud`, and `aihubmix`. Each namespace SHALL resolve only exact
+`/<provider>/v1/responses` targets with an optional query to its release-owned
+HTTPS upstream mapping. Encoded path material, dot segments, duplicate
+separators, lookalike suffixes, fragments, absolute targets, and unrelated
+endpoints SHALL be rejected locally. A downstream request SHALL NOT supply or
+override an upstream URL or host.
 
 #### Scenario: AIGW selects each governed provider
 
 - **WHEN** AIGW sends otherwise equivalent Requests traffic to
-  `/dmxapi/v1`, `/ucloud/v1`, or `/aihubmix/v1`
+  `/dmxapi/v1/responses`, `/ucloud/v1/responses`, or
+  `/aihubmix/v1/responses`
 - **THEN** the proxy sends it only to the matching DMXAPI, UCloud/Azure, or
   AIHubMix HTTPS upstream
 - **AND** credentials continue to come from the AIGW-managed client request.
@@ -203,6 +206,41 @@ rewrite was partially applied.
   tool-output blocks
 - **THEN** downstream receives the plaintext and no effective encrypted block
 - **AND** later Codex replay cannot send that ciphertext to another provider.
+
+### Requirement: Non-stream Responses are projected before commitment
+
+Successful non-stream Responses SHALL be buffered within an eight-MiB limit
+before downstream HTTP commitment, required to be a valid `completed` or
+`incomplete` Response JSON document, and projected with the same
+provider-ciphertext rules as SSE. Empty, truncated, oversized, malformed,
+failed, or otherwise non-terminal HTTP 2xx bodies SHALL produce a local
+retryable failure without committing partial upstream bytes.
+
+#### Scenario: A successful JSON response contains provider ciphertext
+
+- **WHEN** a terminal non-stream Response contains visible output plus opaque
+  reasoning, agent, or tool-output ciphertext
+- **THEN** downstream receives the visible output without the ciphertext
+- **AND** the response is committed with a correct bounded content length.
+
+#### Scenario: HTTP 2xx does not contain a proved terminal Response
+
+- **WHEN** the body is empty, truncated, malformed, failed, in progress, or
+  missing a terminal status
+- **THEN** downstream receives a local retryable failure
+- **AND** no upstream success status or partial body has been committed.
+
+### Requirement: Request-changing recovery uses structured errors
+
+Recovery that changes the projected request SHALL be admitted only from a
+bounded structured error contract. Human-readable message text alone SHALL NOT
+activate compaction, dialogue recovery, or schema fallback.
+
+#### Scenario: Error prose contains a known phrase
+
+- **WHEN** a structured error has an unrelated type or code but its message
+  mentions `response_failed`, `request blocked`, or another recovery phrase
+- **THEN** the proxy relays or classifies it without changing replay.
 
 ### Requirement: Conversation state remains owned by Codex
 

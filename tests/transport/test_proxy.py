@@ -278,7 +278,7 @@ class TestProxyTransport(unittest.TestCase):
         self.assertEqual(json.loads(received[0]), {**json.loads(body), "store": False})
 
     def test_runtime_metrics_classify_recovery_without_retaining_request_content(self):
-        response_failed = b'{"error":{"code":"response_failed"}}'
+        response_failed = b'{"error":{"type":"new_api_error","code":"response_failed"}}'
         success = b'{"id":"resp_recovered","status":"completed"}'
         body = json.dumps(
             {

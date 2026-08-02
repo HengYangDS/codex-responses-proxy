@@ -132,7 +132,7 @@ def _classification(
     payload: bytes,
     disposition: str,
     exact: bool,
-    empty: bool,
+    wire_failure: bool,
 ) -> str:
     lower = payload.lower()
     blocked = all(map(lower.__contains__, (b'"code":"invalid_prompt"', b"request blocked")))
@@ -141,8 +141,8 @@ def _classification(
         (False, 400, "full", False): "response_failed",
         (False, 400, "full", True): "blocked_invalid_prompt",
     }.get((exact, status_code, disposition, blocked))
-    if empty:
-        return "empty_response"
+    if wire_failure:
+        return "wire_policy_failure"
     return special or "_".join(filter(None, (f"http_{status_code}", disposition)))
 
 
@@ -226,31 +226,31 @@ def _exhaust_response_failed(exchange: Exchange) -> None:
     )
 
 
-def _reject_empty_response(
+def _reject_wire_failure(
     exchange: Exchange, fingerprint: str, attempts: int, event: str, detail: str
 ) -> None:
-    policy = exchange.profile.empty_response
+    policy = exchange.profile.wire_policy
     if policy is None:
-        raise RuntimeError("empty-response recovery requires a provider policy")
-    telemetry.record_counter("empty_response_recovery_exhausted")
-    telemetry.record_failure("empty_response_recovery_exhausted")
+        raise RuntimeError("wire recovery requires a provider policy")
+    telemetry.record_counter("wire_failure_recovery_exhausted")
+    telemetry.record_failure("wire_failure_recovery_exhausted")
     cooldown.remember_failure(
         fingerprint,
-        capacity=policy.COOLDOWN_CAPACITY,
-        cooldown_seconds=policy.COOLDOWN_SECONDS,
+        capacity=policy.FAILURE_CACHE_CAPACITY,
+        cooldown_seconds=policy.FAILURE_COOLDOWN_SECONDS,
     )
-    downstream.send_empty_response_exhausted(exchange.handler, policy, attempts)
+    downstream.send_wire_failure_exhausted(exchange.handler, policy, attempts)
     exchange.log(event, detail)
 
 
-def _retry_empty_response(exchange: Exchange) -> bool:
-    policy = exchange.profile.empty_response
+def _retry_wire_failure(exchange: Exchange) -> bool:
+    policy = exchange.profile.wire_policy
     if policy is None:
         return False
-    fingerprint = policy.policy_fingerprint(exchange.body)
-    telemetry.record_counter("empty_response_retry_attempts")
+    fingerprint = policy.request_fingerprint(exchange.body)
+    telemetry.record_counter("wire_failure_retry_attempts")
     exchange.log(
-        "empty_response_retry",
+        "wire_failure_retry",
         f"bytes={len(exchange.attempt_body)} policy={policy.POLICY_VERSION} ",
     )
     try:
@@ -261,25 +261,25 @@ def _retry_empty_response(exchange: Exchange) -> bool:
             status = error.code
         finally:
             error.close()
-        _reject_empty_response(
+        _reject_wire_failure(
             exchange,
             fingerprint,
             2,
-            "empty_response_retry_failed",
+            "wire_failure_retry_failed",
             f"upstream_status={status} attempts=2 ",
         )
         return True
     except Exception as error:
-        _reject_empty_response(
+        _reject_wire_failure(
             exchange,
             fingerprint,
             2,
-            "empty_response_retry_failed",
+            "wire_failure_retry_failed",
             f"exception={logging.safe_exception_label(error)} attempts=2 ",
         )
         return True
-    telemetry.record_counter("empty_response_retry_accepted")
-    exchange.log("empty_response_retry_accepted")
+    telemetry.record_counter("wire_failure_retry_accepted")
+    exchange.log("wire_failure_retry_accepted")
     exchange.response = exchange_response
     return False
 
@@ -290,11 +290,11 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
     finally:
         error.close()
     portable = response_failed.retry_disposition(status_code, payload)
-    policy = exchange.profile.empty_response
-    empty = policy is not None and policy.is_classified_error(status_code, payload)
-    disposition = "full" if empty else portable
+    policy = exchange.profile.wire_policy
+    wire_failure = policy is not None and policy.is_retryable_failure(status_code, payload)
+    disposition = "full" if wire_failure else portable
     exact = input_variant.is_exact_validation_error(status_code, payload)
-    classification = _classification(status_code, payload, disposition, exact, empty)
+    classification = _classification(status_code, payload, disposition, exact, wire_failure)
     telemetry.record_upstream_classification(classification)
     if exchange.used_input_variant_dialogue:
         exchange.input_variant_exhausted(f"upstream_status={status_code} ")
@@ -304,7 +304,7 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
         return "retry"
     if _recover_response_failed(exchange, status_code, disposition):
         return "retry"
-    if exchange.is_responses and status_code == 400 and disposition == "full":
+    if exchange.is_responses and status_code == 400 and portable == "full":
         _exhaust_response_failed(exchange)
         return "terminal"
     retry_ceiling = 1 if disposition == "once" else _MAX_ATTEMPTS - 1
@@ -318,8 +318,8 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
         )
         time.sleep(delay)
         return "retry"
-    if empty:
-        return "terminal" if _retry_empty_response(exchange) else "accepted"
+    if wire_failure:
+        return "terminal" if _retry_wire_failure(exchange) else "accepted"
     downstream.relay_error(exchange.handler, status_code, headers, payload)
     telemetry.record_failure(classification)
     exchange.log(

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from codex_responses_proxy.replay import event as rewrite  # noqa: E402
+from codex_responses_proxy.replay import response as rewrite  # noqa: E402
 
 
 def _body(payload: object) -> bytes:
@@ -239,6 +239,66 @@ class ProviderPortableStreamTests(unittest.TestCase):
         rewritten, removed = rewrite.sanitize_sse_event(event)
 
         self.assertEqual((rewritten, removed), (event, 0))
+
+    def test_projects_non_stream_response_with_the_same_ciphertext_rules(self) -> None:
+        raw = _body(
+            {
+                "id": "resp_provider_bound",
+                "status": "completed",
+                "output": [
+                    {"type": "reasoning", "encrypted_content": "reasoning-secret"},
+                    {
+                        "type": "agent_message",
+                        "content": [
+                            {"type": "encrypted_content", "encrypted_content": "agent-secret"},
+                            {"type": "output_text", "text": "visible"},
+                        ],
+                    },
+                ],
+            }
+        )
+
+        projected, removed = rewrite.sanitize_json_response(raw)
+
+        self.assertEqual(removed, 2)
+        self.assertNotIn(b"secret", projected)
+        response = json.loads(projected)
+        self.assertEqual(response["status"], "completed")
+        self.assertNotIn("encrypted_content", response["output"][0])
+        self.assertEqual(
+            response["output"][1]["content"], [{"type": "output_text", "text": "visible"}]
+        )
+
+    def test_non_stream_response_requires_valid_terminal_json(self) -> None:
+        invalid = (
+            b"",
+            b"not-json",
+            _body([]),
+            _body({"id": "resp_missing_status", "output": []}),
+            _body({"id": "resp_running", "status": "in_progress", "output": []}),
+            _body({"id": "resp_failed", "status": "failed", "output": []}),
+        )
+
+        for raw in invalid:
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                rewrite.sanitize_json_response(raw)
+
+    def test_non_stream_response_rejects_unproved_ciphertext_carriers(self) -> None:
+        raw = _body(
+            {
+                "id": "resp_future",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "future_output_item",
+                        "encrypted_content": "provider-secret",
+                    }
+                ],
+            }
+        )
+
+        with self.assertRaisesRegex(ValueError, "unproved_provider_ciphertext"):
+            rewrite.sanitize_json_response(raw)
 
 
 if __name__ == "__main__":

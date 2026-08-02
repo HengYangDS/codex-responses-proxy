@@ -45,6 +45,16 @@ upstream request. The outbound copy always uses `store=false`; continuity comes
 from projected dialogue and complete tool relationships, never from a third-
 party provider's stored response or item IDs.
 
+Only exact `/<provider>/v1/responses` request targets are admitted. Encoded path
+material, dot segments, duplicate separators, lookalike suffixes, absolute
+targets, fragments, and unrelated endpoints are rejected before remote I/O.
+Successful non-stream Responses are buffered within an eight-MiB integrity
+limit before downstream commitment,
+required to be valid terminal JSON (`completed` or `incomplete`), and projected
+with the same ciphertext-removal rules as SSE. Unknown residual ciphertext,
+empty, truncated, oversized, malformed, or non-terminal HTTP 2xx bodies become
+a local retryable 503; partial success bytes are never committed.
+
 DMX HTTP 477 handling does not own another replay grammar. When the exact
 `empty_response` contract matches, the proxy retries the current upstream
 attempt bytes once. Those bytes have already passed the provider-neutral
@@ -52,7 +62,8 @@ projection, including any earlier bounded `response_failed` compaction. The
 retry therefore cannot restore provider IDs, ciphertext, search state, or an
 older, larger request body.
 
-For an explicit upstream `response_failed` rejection, it first makes up to three
+For a structured upstream error whose `type` is present and whose `code` is
+exactly `response_failed`, it first makes up to three
 strictly smaller fallbacks that each remove only the oldest contiguous,
 tool-pair-safe input prefix, retain the latest user context, and drop the stale
 `prompt_cache_key` from fallback requests only. If the upstream explicitly rejects
@@ -60,7 +71,8 @@ those pair-safe fallbacks as well, the proxy may make one final dialogue-only
 request: the latest developer or system instruction before the active request,
 where present, plus the latest user request, without assistant or tool replay. It
 only sends that final request when it is safely smaller than the rejected replay.
-Exhaustion, loops, or unsafe failures are returned as standard retryable HTTP
+Incidental message prose does not trigger semantic recovery. Exhaustion, loops,
+or unsafe failures are returned as standard retryable HTTP
 503 with `Retry-After: 3`, so the client may apply its own retry policy.
 It is not a replacement for an upstream service with persistent failures.
 
