@@ -186,6 +186,21 @@ class TestProcessIdentity(unittest.TestCase):
         listed.assert_called_once_with()
         queried.assert_not_called()
 
+    def test_darwin_path_inventory_requeries_each_pid(self):
+        inventory = [(7, "stale"), (8, "stale")]
+        with (
+            mock.patch.object(process.sys, "platform", "darwin"),
+            mock.patch.object(process, "_process_inventory", return_value=inventory) as listed,
+            mock.patch.object(process, "pid_names_path", side_effect=(False, True)) as queried,
+        ):
+            self.assertEqual(process.pids_naming_path("/installed/proxy.py"), [8])
+
+        listed.assert_called_once_with()
+        self.assertEqual(
+            queried.call_args_list,
+            [mock.call(7, "/installed/proxy.py"), mock.call(8, "/installed/proxy.py")],
+        )
+
     def test_exact_resolved_argument_identity(self):
         ctx = platform_context()
         script = os.path.abspath(ctx.proxy_script)
