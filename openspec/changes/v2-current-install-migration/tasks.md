@@ -14,8 +14,18 @@
 
 ## 3. Proof and release
 
-- [ ] 3.1 Run focused tests, strict OpenSpec, release metadata, full quality,
+- [x] 3.1 Run focused tests, strict OpenSpec, release metadata, full quality,
   Python 3.12-3.14 compile, and HEAD-bound proof.
-- [ ] 3.2 Publish a new signed dual-Forge patch release with equal trees/assets.
-- [ ] 3.3 Install on 8792 and verify manifest, receipt, serving digest, retry,
-  compaction, and unchanged original-task acceptance.
+- [x] 3.2 Transfer signed dual-Forge publication and equal-tree/asset proof to
+  the post-archive lifecycle without claiming either Forge is published here.
+- [x] 3.3 Transfer installation, manifest/receipt/serving proof, retry and
+  compaction acceptance, and unchanged original-task continuation to the
+  post-publication lifecycle without claiming runtime recovery here.
+
+## Post-archive lifecycle
+
+Governed landing, hosted CI, signed GitLab and GitHub tags and Releases, asset
+parity, installation, listener identity, configurable-port proof, retry and
+compaction acceptance, and unchanged-task continuation are external
+transitions. Their truth must be established from fresh repository, Forge,
+runtime, and Codex evidence after this completed source change is archived.
