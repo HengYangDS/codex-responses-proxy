@@ -25,7 +25,7 @@ owner = "codex-responses-proxy"
 scope = "Portable test evidence and release metadata only; hosted publication, installation, runtime acceptance, original-task continuation, and housekeeping remain separate claims."
 
 [carriers]
-openspec = "openspec/changes/hosted-darwin-coverage"
+openspec = "openspec/changes/archive/2026-08-03-hosted-darwin-coverage"
 fallback = "Retain installed 2.0.4 with global concurrency one until a newer signed release passes both Forge planes."
 kill_signal = "Any supported host again skips the successful native decoder contract, Linux calls Darwin sysctl, branch coverage is not above 95 percent, or failed release history is rewritten."
 
