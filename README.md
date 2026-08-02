@@ -84,7 +84,8 @@ second upstream request for that client attempt. A valid `Retry-After` sets a
 process-local cooldown for only the selected provider, capped at five minutes;
 an absent, invalid, zero, or expired value uses a five-second fallback. Requests
 arriving during that cooldown receive local HTTP 429 without upstream I/O, while
-other providers remain independent. The default Responses concurrency is 8 and
+other providers remain independent. Overlapping failures can extend an active
+cooldown but cannot shorten it. The default Responses concurrency is 8 and
 remains configurable through the validated runtime setting; it is a burst
 guardrail, not a claim about a provider's undocumented quota.
 

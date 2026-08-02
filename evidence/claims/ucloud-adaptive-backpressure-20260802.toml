@@ -1,0 +1,41 @@
+[claim]
+id = "ucloud-adaptive-backpressure-20260802"
+subject = "codex-responses-proxy:provider-portable-responses"
+state = "active"
+summary = "Bind monotonic provider cooldown deadlines and unchanged original-thread acceptance to the forward-only 2.0.3 candidate."
+
+[evidence]
+dated = "evidence/chronicle/ucloud-adaptive-backpressure-20260802/2026-08-02.md"
+sha256 = "3cf3cba27ba8cbcf4a237aa8c1359b51041930aa15a0634f8d0c159195e42220"
+evidence_ids = ["evidence:ucloud-adaptive-backpressure-20260802"]
+binding = "Current signed 2.0.2 base, focused RED/GREEN deadline contract, and pending exact-HEAD source proof"
+verifier = "digest_only"
+tests = [
+  "python3.14 -m unittest tests.transport.test_cooldown -v",
+  "python3.14 -m unittest tests.transport.test_input tests.compatibility.test_empty_response_transport tests.transport.test_proxy",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+  "openspec validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Local source, tests, release metadata, and exact-HEAD proof only; hosted CI, signed publication, assets, installation, listener identity, provider behavior, and unchanged original-thread recovery remain external until separately verified."
+
+[carriers]
+openspec = "openspec/changes/ucloud-adaptive-backpressure"
+fallback = "Revert the atomic source commit before publication; after publication use only the preceding signed release through the governed protocol-v2 rollback."
+kill_signal = "Any repeated or concurrent failure shortens an active cooldown deadline, leaks cooldown across keys, edits Codex session state, or reuses an existing release tag."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "codex_responses_proxy/transport/cooldown.py",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/transport/test_cooldown.py",
+]

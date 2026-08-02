@@ -32,7 +32,7 @@ def remember_failure(
     moment = time.monotonic() if now is None else now
     with _FAILURES_LOCK:
         _purge_expired_locked(moment)
-        _FAILURES[key] = moment + cooldown_seconds
+        _FAILURES[key] = max(_FAILURES.get(key, moment), moment + cooldown_seconds)
         oldest = sorted(_FAILURES, key=_FAILURES.__getitem__)
         for oldest_key in oldest[: -max(1, capacity)]:
             del _FAILURES[oldest_key]
