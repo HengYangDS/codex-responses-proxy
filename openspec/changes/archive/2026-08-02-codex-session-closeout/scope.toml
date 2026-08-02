@@ -1,0 +1,22 @@
+schema_version = 1
+paths = [
+  ".ethos/**",
+  ".github/**",
+  ".gitlab-ci.yml",
+  "AGENTS.md",
+  "CHANGELOG.md",
+  "CONTRIBUTING.md",
+  "README.md",
+  "VERSION",
+  "codex_responses_proxy/**",
+  "docs/**",
+  "evidence/claims/codex-session-closeout-20260802.toml",
+  "evidence/chronicle/codex-session-closeout-20260802/**",
+  "openspec/changes/codex-session-closeout/**",
+  "openspec/changes/archive/*-codex-session-closeout/**",
+  "openspec/specs/**",
+  "pyproject.toml",
+  "tools/**",
+  "tests/**",
+  "uv.lock",
+]

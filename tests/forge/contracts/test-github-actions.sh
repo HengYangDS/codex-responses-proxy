@@ -40,8 +40,8 @@ required = [
     'python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"',
     'python tools/release/metadata.py --provider github',
     "python-quality:",
-    "tools/quality/requirements.txt",
-    "--requirement tools/quality/requirements.txt",
+    "uv==0.12.1",
+    "PYTHON=python sh tools/quality/run.sh",
     "tools/quality/run.sh",
     "tests/forge/contracts/test-gitlab-tagging.sh",
     "tests/forge/contracts/test-github-tagging.sh",
@@ -52,6 +52,9 @@ for token in required:
         raise SystemExit(f"GitHub Actions verification contract is missing {token!r}")
 if "contents: write" in text:
     raise SystemExit("verification workflow must use read-only repository permissions")
+for retired in ("tools/quality/requirements.txt", "RUFF_VERSION=", "TY_VERSION="):
+    if retired in text:
+        raise SystemExit(f"verification workflow retains retired quality setup: {retired!r}")
 if "pull_request:" in text or "pull_request_target:" in text:
     raise SystemExit("verification workflow must not execute pull-request workflow code")
 if "@main" in text or "@master" in text:

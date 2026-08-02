@@ -25,7 +25,7 @@ from codex_responses_proxy.listener import entrypoint as proxy
 from codex_responses_proxy.transport import exchange as upstream_exchange
 from codex_responses_proxy.transport import responses
 from codex_responses_proxy.replay import request as rewrite
-from codex_responses_proxy.runtime import admission, logging, telemetry
+from codex_responses_proxy.runtime import admission, operational_log, telemetry
 from codex_responses_proxy.transport import cooldown
 from codex_responses_proxy.transport import relay as downstream
 from codex_responses_proxy.transport import sse
@@ -134,11 +134,11 @@ class InputTransportContracts(unittest.TestCase):
     """Exercise the recovery boundary through real loopback HTTP servers."""
 
     def setUp(self) -> None:
-        old_log_path = logging.LOG_PATH
+        old_log_path = operational_log.LOG_PATH
         self._log_directory = tempfile.TemporaryDirectory()
-        logging.LOG_PATH = str(Path(self._log_directory.name) / "proxy.log")
+        operational_log.LOG_PATH = str(Path(self._log_directory.name) / "proxy.log")
         self.addCleanup(self._log_directory.cleanup)
-        self.addCleanup(setattr, logging, "LOG_PATH", old_log_path)
+        self.addCleanup(setattr, operational_log, "LOG_PATH", old_log_path)
         admission.reset_for_test()
         telemetry.reset_for_test()
         cooldown.reset_for_test()
@@ -234,7 +234,7 @@ class InputTransportContracts(unittest.TestCase):
             with request(port, body) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.read(), success)
-            logs = Path(logging.LOG_PATH).read_text(encoding="utf-8")
+            logs = Path(operational_log.LOG_PATH).read_text(encoding="utf-8")
 
         self.assertEqual(len(received), 2)
         self.assertNotIn("opaque-upstream-request-id", logs)
@@ -350,7 +350,7 @@ class InputTransportContracts(unittest.TestCase):
                     str(len(json.dumps(payload, separators=(",", ":")).encode())),
                 )
                 self.assertEqual(payload["error"]["code"], "input_variant_recovery_transport_error")
-            logs = Path(logging.LOG_PATH).read_text(encoding="utf-8")
+            logs = Path(operational_log.LOG_PATH).read_text(encoding="utf-8")
 
         self.assertEqual(calls, 2)
         self.assertEqual(len(received), 1)
@@ -412,7 +412,7 @@ class InputTransportContracts(unittest.TestCase):
             with request(port, body) as response:
                 self.assertEqual(response.status, 200)
                 downstream = response.read()
-            logs = Path(logging.LOG_PATH).read_text(encoding="utf-8")
+            logs = Path(operational_log.LOG_PATH).read_text(encoding="utf-8")
 
         self.assertEqual(len(received), 2)
         self.assertEqual(downstream.count(b'"type":"response.created"'), 1)

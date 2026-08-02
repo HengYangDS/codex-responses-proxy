@@ -23,6 +23,7 @@ from tests.supervision.fixtures import temporary_context as _temporary_context
 class TestMacosLifecycle(unittest.TestCase):
     def test_install(self):
         with _temporary_context("home") as ctx:
+            ctx.log_dir = str(Path(ctx.home) / "state")
             plist = macos._plist_path(ctx)
             with mock.patch.object(
                 macos.subprocess,
@@ -30,6 +31,7 @@ class TestMacosLifecycle(unittest.TestCase):
                 side_effect=[_completed(), _completed(), _completed()],
             ) as invoked:
                 macos.install(ctx)
+            self.assertTrue(Path(ctx.log_dir).is_dir())
             self.assertEqual(Path(plist).read_text(encoding="utf-8"), macos.render_plist(ctx))
             self.assertEqual(invoked.call_args_list[0].args[0], ["plutil", "-lint", plist])
             with (
@@ -45,6 +47,14 @@ class TestMacosLifecycle(unittest.TestCase):
                 self.assertRaisesRegex(errors.InstallError, "launchctl load failed: denied"),
             ):
                 macos.install(ctx)
+
+    def test_rendered_plist_captures_watchdog_stderr(self):
+        with _temporary_context("home") as ctx:
+            ctx.log_dir = str(Path(ctx.home) / "state")
+            rendered = macos.render_plist(ctx)
+        self.assertNotIn("<string>/dev/null</string>", rendered)
+        self.assertIn(f"<string>{ctx.log_dir}/watchdog.stdout.log</string>", rendered)
+        self.assertIn(f"<string>{ctx.log_dir}/watchdog.stderr.log</string>", rendered)
 
     def test_status_and_uninstall(self):
         with _temporary_context("home") as ctx:

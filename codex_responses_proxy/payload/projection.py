@@ -169,9 +169,33 @@ _V2_0_0_SERVING_FILES = frozenset(
 _PROTOCOL_V2_HISTORICAL_INVENTORIES = {
     "2.0.0": (_V2_0_0_RUNTIME_FILES, _V2_0_0_SERVING_FILES),
 }
+SUPPORTED_PREDECESSOR_RELEASE = "2.0.4"
+_PREDECESSOR_PATHS = {
+    "codex_responses_proxy/runtime/operational_log.py": (
+        "codex_responses_proxy/runtime/logging.py"
+    ),
+    "codex_responses_proxy/supervision/native_service.py": (
+        "codex_responses_proxy/supervision/select.py"
+    ),
+}
+
+
+def _predecessor_files(paths: tuple[str, ...]) -> frozenset[str]:
+    """Project the current inventory back to the one supported predecessor."""
+
+    return frozenset(_PREDECESSOR_PATHS.get(path, path) for path in paths)
+
+
+_SUPPORTED_PREDECESSOR_INVENTORIES = {
+    **_PROTOCOL_V2_HISTORICAL_INVENTORIES,
+    SUPPORTED_PREDECESSOR_RELEASE: (
+        _predecessor_files(inventory.RUNTIME_FILES),
+        _predecessor_files(inventory.SERVING_FILES),
+    ),
+}
 _HISTORICAL_RUNTIME_INVENTORIES = (
     *_RETIRED_RUNTIME_FILES.values(),
-    *(item[0] for item in _PROTOCOL_V2_HISTORICAL_INVENTORIES.values()),
+    *(item[0] for item in _SUPPORTED_PREDECESSOR_INVENTORIES.values()),
 )
 RETIRED_OWNED_FILES = (
     frozenset().union(*_HISTORICAL_RUNTIME_INVENTORIES).difference(inventory.RUNTIME_FILES)
@@ -351,8 +375,8 @@ def _historical_manifest_files(
         files[relative] = raw_digest
     if "VERSION" not in files:
         raise errors.InstallError("retired installed payload manifest has no VERSION")
-    protocol_v2 = _PROTOCOL_V2_HISTORICAL_INVENTORIES.get(release)
-    expected_files = protocol_v2[0] if schema == 2 and protocol_v2 is not None else None
+    predecessor = _SUPPORTED_PREDECESSOR_INVENTORIES.get(release)
+    expected_files = predecessor[0] if schema == 2 and predecessor is not None else None
     if expected_files is None and schema in _RETIRED_RUNTIME_FILES:
         expected_files = _RETIRED_RUNTIME_FILES[schema]
     if expected_files is None or set(files) != set(expected_files):
@@ -376,9 +400,9 @@ def _historical_manifest_files(
     if version != f"{release}\n":
         raise errors.InstallError("retired installed payload VERSION does not match manifest")
     metadata = {inventory.MANIFEST_FILENAME}
-    if protocol_v2 is not None:
+    if predecessor is not None:
         metadata.add(inventory.RELEASE_RECEIPT_FILENAME)
-        if _verify_protocol_v2_metadata(ctx, manifest, files, protocol_v2[1]):
+        if _verify_protocol_v2_metadata(ctx, manifest, files, predecessor[1]):
             metadata.add(inventory.INSTALLED_RELEASE_STATE_FILENAME)
     return manifest, files, frozenset(metadata)
 

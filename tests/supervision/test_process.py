@@ -272,6 +272,14 @@ class TestProcessIdentity(unittest.TestCase):
 
     def test_process_command_and_windows_executable_suffix(self):
         with (
+            mock.patch.object(process.sys, "platform", "linux"),
+            mock.patch.object(
+                process, "process_command", return_value="python /installed/proxy.py"
+            ),
+        ):
+            self.assertEqual(process.process_argv(17), ["python", "/installed/proxy.py"])
+
+        with (
             mock.patch.object(process.sys, "platform", "darwin"),
             mock.patch.object(
                 process,
@@ -290,6 +298,48 @@ class TestProcessIdentity(unittest.TestCase):
                 ],
             )
         invoked.assert_called_once_with(17)
+
+        with mock.patch.object(process.ctypes.util, "find_library", return_value=None):
+            self.assertEqual(process._darwin_process_argv(17), [])
+
+        class SysctlFailure:
+            def __init__(self, fail_call: int):
+                self.calls = 0
+                self.fail_call = fail_call
+
+            def sysctl(self, _mib, _count, _buffer, size, _new, _new_len):
+                self.calls += 1
+                if self.calls == self.fail_call:
+                    return 1
+                size._obj.value = 8
+                return 0
+
+        for fail_call in (1, 2):
+            with (
+                mock.patch.object(process.ctypes.util, "find_library", return_value="libc"),
+                mock.patch.object(process.ctypes, "CDLL", return_value=SysctlFailure(fail_call)),
+            ):
+                self.assertEqual(process._darwin_process_argv(17), [])
+
+        class EmptyArguments:
+            calls = 0
+
+            def sysctl(self, _mib, _count, buffer, size, _new, _new_len):
+                self.calls += 1
+                if self.calls == 1:
+                    size._obj.value = 8
+                else:
+                    buffer.raw = b"\x00" * 8
+                return 0
+
+        with (
+            mock.patch.object(process.ctypes.util, "find_library", return_value="libc"),
+            mock.patch.object(process.ctypes, "CDLL", return_value=EmptyArguments()),
+        ):
+            self.assertEqual(process._darwin_process_argv(17), [])
+
+        with mock.patch.object(process, "process_argv", return_value=[]):
+            self.assertFalse(process.pid_names_path(17, "/installed/proxy.py"))
 
         with tempfile.TemporaryDirectory(prefix="responses proxy argv ") as directory:
             script = Path(directory, "listener entrypoint.py")

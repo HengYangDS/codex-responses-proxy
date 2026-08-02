@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
 from codex_responses_proxy.listener import control, server  # noqa: E402
 from codex_responses_proxy.payload import digest, identity, inventory  # noqa: E402
 from codex_responses_proxy.replay import request as replay_request  # noqa: E402
-from codex_responses_proxy.supervision import select as service_selection  # noqa: E402
+from codex_responses_proxy.supervision import native_service  # noqa: E402
 from codex_responses_proxy.transport import responses, sse  # noqa: E402
 
 
@@ -143,7 +143,7 @@ class ProxyOwnerBoundaryContracts(unittest.TestCase):
         self.assertFalse((PACKAGE / "runtime" / "state.py").exists())
         owners = {
             "runtime/admission.py": "admit_response",
-            "runtime/logging.py": "log",
+            "runtime/operational_log.py": "log",
             "runtime/telemetry.py": "record_counter",
             "transport/cooldown.py": "remember_failure",
         }
@@ -365,7 +365,7 @@ class ProxyOwnerBoundaryContracts(unittest.TestCase):
                 server.ResilientProxyServer.process_request_thread(proxy, None, None)
             self.assertEqual(end.call_count, 2)
 
-        with mock.patch.object(server.logging, "log") as log:
+        with mock.patch.object(server.operational_log, "log") as log:
             try:
                 raise BrokenPipeError("closed")
             except BrokenPipeError:
@@ -387,12 +387,12 @@ class ProxyOwnerBoundaryContracts(unittest.TestCase):
             ("cygwin", "windows"),
         ):
             with self.subTest(platform=platform), mock.patch.object(sys, "platform", platform):
-                self.assertEqual(service_selection.adapter().__name__.rsplit(".", 1)[-1], expected)
+                self.assertEqual(native_service.adapter().__name__.rsplit(".", 1)[-1], expected)
         with (
             mock.patch.object(sys, "platform", "plan9"),
             self.assertRaisesRegex(RuntimeError, "unsupported platform: plan9"),
         ):
-            service_selection.adapter()
+            native_service.adapter()
 
 
 def _write_manifest(root: Path, manifest: object) -> None:

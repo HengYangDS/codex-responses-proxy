@@ -377,7 +377,10 @@ class ForgeAdapterContracts(unittest.TestCase):
                 "_api",
                 side_effect=[tag_record, pipeline],
             ),
-            mock.patch.object(gitlab.hosted, "api_bytes", side_effect=list(asset_bytes.values())),
+            mock.patch.object(gitlab.hosted, "executable", return_value="glab"),
+            mock.patch.object(
+                gitlab.hosted, "api_bytes", side_effect=list(asset_bytes.values())
+            ) as download,
             mock.patch.object(
                 gitlab,
                 "_api_pages",
@@ -392,6 +395,13 @@ class ForgeAdapterContracts(unittest.TestCase):
                 commit_oid=commit,
             )
         self.assertEqual(result["repository"], "group/repo")
+        self.assertEqual(
+            [call.args[0] for call in download.call_args_list],
+            [
+                ("glab", "api", "--method", "GET", f"https://gitlab.example/assets/{index}")
+                for index in range(1, 3)
+            ],
+        )
 
         with self.assertRaises(gitlab.GitLabProofError):
             self._normalize_gitlab(

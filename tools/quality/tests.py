@@ -122,6 +122,39 @@ def abnormal_output(stdout: bytes, stderr: bytes) -> bool:
     return ABNORMAL_OUTPUT.search(stdout + b"\n" + stderr) is not None
 
 
+def _replay(result: subprocess.CompletedProcess[bytes]) -> None:
+    """Replay captured diagnostics only for a rejected test process."""
+
+    sys.stdout.buffer.write(result.stdout)
+    sys.stdout.buffer.flush()
+    sys.stderr.buffer.write(result.stderr)
+    sys.stderr.buffer.flush()
+
+
+def run_tests(tests: list[str], *, coverage: bool = False) -> list[tuple[str, str]]:
+    """Run an ordered inventory with concise success output and complete failures."""
+
+    failures: list[tuple[str, str]] = []
+    environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PYTHONWARNINGS": "error"}
+    for index, test in enumerate(tests):
+        print(f"==> {test}", flush=True)
+        result = subprocess.run(
+            command_for(test, coverage=coverage, append=coverage and index > 0),
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            env=environment,
+        )
+        abnormal = result.returncode == 0 and abnormal_output(result.stdout, result.stderr)
+        if result.returncode or abnormal:
+            _replay(result)
+            failures.append(
+                (test, str(result.returncode) if result.returncode else "abnormal-output")
+            )
+    return failures
+
+
 def main() -> None:
     """Run every configured test and report all interpreter-bound failures."""
 
@@ -132,25 +165,7 @@ def main() -> None:
     failures: list[tuple[str, str]] = []
     if args.compile and not compile_sources():
         failures.append(("compile", "failed"))
-    environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PYTHONWARNINGS": "error"}
-    for index, test in enumerate(configured_tests()):
-        print(f"==> {test}", flush=True)
-        result = subprocess.run(
-            command_for(test, coverage=args.coverage, append=args.coverage and index > 0),
-            cwd=ROOT,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            env=environment,
-        )
-        sys.stdout.buffer.write(result.stdout)
-        sys.stdout.buffer.flush()
-        sys.stderr.buffer.write(result.stderr)
-        sys.stderr.buffer.flush()
-        if result.returncode:
-            failures.append((test, str(result.returncode)))
-        elif abnormal_output(result.stdout, result.stderr):
-            failures.append((test, "abnormal-output"))
+    failures.extend(run_tests(configured_tests(), coverage=args.coverage))
     if failures:
         detail = ", ".join(f"{test}={code}" for test, code in failures)
         raise SystemExit(f"canonical Python tests failed: {detail}")

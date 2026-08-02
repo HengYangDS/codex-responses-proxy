@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler
 
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.replay import request as replay_request
-from codex_responses_proxy.runtime import admission, logging, telemetry
+from codex_responses_proxy.runtime import admission, operational_log, telemetry
 from codex_responses_proxy.transport import cooldown
 from codex_responses_proxy.transport import exchange as upstream_exchange
 from codex_responses_proxy.transport import relay as downstream
@@ -114,9 +114,9 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
                 "provider_route_not_found",
             ),
         )
-        logging.log(
+        operational_log.log(
             f"req={request_id} event=provider_route_rejected "
-            f"path={logging.safe_request_path(handler.path)}"
+            f"path={operational_log.safe_request_path(handler.path)}"
         )
         return
     route, upstream_url = resolved
@@ -143,16 +143,16 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
                     reason=reason,
                 ),
             )
-            logging.log(
+            operational_log.log(
                 f"req={request_id} event=provider_portable_projection_rejected "
                 f"provider={profile.name} reason={reason} "
-                f"path={logging.safe_request_path(handler.path)}"
+                f"path={operational_log.safe_request_path(handler.path)}"
             )
             return
         body = projection.body
         if len(body) >= 400_000:
-            path = logging.safe_request_path(handler.path)
-            logging.log(
+            path = operational_log.safe_request_path(handler.path)
+            operational_log.log(
                 f"req={request_id} event=large_request provider={profile.name} "
                 f"bytes={len(body)} path={path}"
             )
@@ -163,8 +163,8 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
     }
     headers["Accept-Encoding"] = "identity"
     if note:
-        path = logging.safe_request_path(handler.path)
-        logging.log(
+        path = operational_log.safe_request_path(handler.path)
+        operational_log.log(
             f"req={request_id} event=request_sanitized provider={profile.name} "
             f"method={method} {note} path={path}"
         )
