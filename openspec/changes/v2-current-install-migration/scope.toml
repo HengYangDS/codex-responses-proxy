@@ -1,0 +1,17 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "codex_responses_proxy/payload/projection.py",
+  "codex_responses_proxy/payload/rollback.py",
+  "codex_responses_proxy/runtime/config.py",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "docs/governance/release-and-change-policy.md",
+  "openspec/changes/v2-current-install-migration/**",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "tests/deployment/fixtures.py",
+  "tests/governance/test_repository.py",
+  "tests/payload/test_migration.py",
+  "tests/runtime/test_context.py",
+]

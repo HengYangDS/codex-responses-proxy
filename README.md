@@ -178,13 +178,17 @@ released proxy is installed, a consumer may select its fixed loopback namespace
 through that consumer's own control plane. For example, AIGW may project:
 
 ```bash
-port="${CODEX_RESPONSES_PROXY_PROXY_PORT:-8791}"
+port="${CODEX_RESPONSES_PROXY_PROXY_PORT:-8792}"
 aigw account edit dmxapi --openai-url "http://127.0.0.1:${port}/dmxapi/v1"
 aigw account edit ucloud --openai-url "http://127.0.0.1:${port}/ucloud/v1"
 aigw account edit aihubmix --openai-url "http://127.0.0.1:${port}/aihubmix/v1"
 aigw sync --dry-run --json
 aigw sync --json
 ```
+
+Port 8792 is only the product default. Installation, control, and removal accept
+an explicit `--port`, and the supervised runtime consumes
+`CODEX_RESPONSES_PROXY_PROXY_PORT`; no consumer is required to use 8792.
 
 The fixed namespaces map only to manifest-owned HTTPS origins; request headers,
 bodies, and query parameters cannot select another host. AIGW continues to own

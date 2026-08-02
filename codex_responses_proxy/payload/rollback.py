@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from codex_responses_proxy import errors
@@ -71,12 +71,8 @@ def write_snapshot(
             owned = historical.files
             if state.compare_versions(candidate_version, historical.release) < 0:
                 raise errors.InstallError("released payload downgrade is refused")
-            previous_owned = set(owned) | {inventory.MANIFEST_FILENAME}
-            retired_owned = {
-                relative
-                for relative in owned
-                if PurePosixPath(relative).parts[0] in owned_files.RETIRED_INSTALL_DIRECTORIES
-            }
+            previous_owned = set(owned) | set(historical.metadata)
+            retired_owned = previous_owned - current_owned
     for relative in sorted(previous_owned):
         source = owned_files.path(install, relative)
         if not source.exists() and not source.is_symlink():
@@ -141,10 +137,7 @@ def read_inventory(snapshot: Mapping[str, Any]) -> RollbackInventory:
         present[relative] = (metadata["sha256"], metadata["mode"])
     if not retired.issubset(present) or not retired.issubset(previous_owned):
         raise errors.InstallError("payload rollback retired inventory is incomplete")
-    if any(
-        PurePosixPath(relative).parts[0] not in owned_files.RETIRED_INSTALL_DIRECTORIES
-        for relative in retired
-    ):
+    if not retired.issubset(projection.RETIRED_OWNED_FILES):
         raise errors.InstallError("payload rollback retired inventory is invalid")
     if not set(present).issubset(previous_owned):
         raise errors.InstallError("payload rollback owned inventory is invalid")
