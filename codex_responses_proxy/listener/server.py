@@ -8,10 +8,11 @@ process bindings supplied by the executable entrypoint.
 from __future__ import annotations
 
 import socket
+import socketserver
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
-from typing import Any
+from typing import Any, cast
 
 from codex_responses_proxy.listener import control
 from codex_responses_proxy.runtime import admission, logging
@@ -52,7 +53,13 @@ class ResilientProxyServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def server_bind(self) -> None:
-        super().server_bind()
+        # This product is loopback-only.  HTTPServer.server_bind() performs a
+        # reverse/FQDN lookup solely to populate presentation attributes; that
+        # lookup can block listener admission on hosts with degraded DNS.
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = cast(str, host)
+        self.server_port = port
         _disable_nagle(self.socket)
 
     def get_request(self) -> tuple[socket.socket, object]:
@@ -130,4 +137,6 @@ def server_from_listener(listener: socket.socket) -> ResilientProxyServer:
     server.socket.close()
     server.socket = listener
     server.server_address = address
+    server.server_name = cast(str, address[0])
+    server.server_port = address[1]
     return server

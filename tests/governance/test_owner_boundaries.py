@@ -331,11 +331,22 @@ class ProxyOwnerBoundaryContracts(unittest.TestCase):
         connection.setsockopt.side_effect = OSError
         server._disable_nagle(connection)
 
+        with mock.patch.object(socket, "getfqdn", side_effect=AssertionError("DNS lookup")):
+            created = server.ResilientProxyServer(("127.0.0.1", 0), server.Handler)
+        try:
+            self.assertEqual(created.server_name, "127.0.0.1")
+            self.assertEqual(created.server_port, created.server_address[1])
+        finally:
+            created.server_close()
+
         listener = socket.socket()
         listener.bind(("127.0.0.1", 0))
-        adopted = server.server_from_listener(listener)
+        with mock.patch.object(socket, "getfqdn", side_effect=AssertionError("DNS lookup")):
+            adopted = server.server_from_listener(listener)
         self.assertIs(adopted.socket, listener)
         self.assertEqual(adopted.server_address, listener.getsockname())
+        self.assertEqual(adopted.server_name, "127.0.0.1")
+        self.assertEqual(adopted.server_port, adopted.server_address[1])
         adopted.server_close()
 
     def test_server_tracks_handlers_and_classifies_disconnects(self) -> None:
