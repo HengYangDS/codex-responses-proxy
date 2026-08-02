@@ -39,6 +39,14 @@ class TestInstallationInputValidation(unittest.TestCase):
                 ("Library/Application Support/codex-responses-proxy", "state"),
             ),
             (
+                {},
+                {"os.name": "posix", "sys.platform": "darwin"},
+                (
+                    "Library/Application Support/codex-responses-proxy",
+                    "Library/Logs/codex-responses-proxy",
+                ),
+            ),
+            (
                 {"LOCALAPPDATA": "/portable/local"},
                 {"os.name": "nt", "sys.platform": "win32"},
                 (

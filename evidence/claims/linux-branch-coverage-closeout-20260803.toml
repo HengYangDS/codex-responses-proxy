@@ -1,0 +1,38 @@
+[claim]
+id = "linux-branch-coverage-closeout-20260803"
+subject = "codex-responses-proxy:ci-diagnostics"
+state = "active"
+summary = "Bind deterministic cross-host native-parser coverage to the forward-only 2.0.7 candidate."
+
+[evidence]
+dated = "evidence/chronicle/linux-branch-coverage-closeout-20260803/2026-08-03.md"
+sha256 = "0a03a46173f610e554b446aa8f609438cb12ea5e78cec03ef2eb25db9a0e5846"
+evidence_ids = ["evidence:linux-branch-coverage-closeout-20260803"]
+binding = "Observed GitLab pipeline 4064 branch-coverage failure, portable default-path and malformed-payload contracts, clean Linux quality above both floors, and Python 3.12-3.14 candidate proof"
+verifier = "digest_only"
+tests = [
+  "python3.12 -m unittest tests.governance.test_repository tests.supervision.test_process -v",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+  "openspec validate --all --strict --concurrency 1 --json",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Portable test evidence and release metadata only; signed publication, installation, runtime acceptance, original-task continuation, and housekeeping remain separate claims."
+
+[carriers]
+openspec = "openspec/changes/archive/2026-08-03-linux-branch-coverage-closeout"
+fallback = "Retain installed 2.0.4 with global concurrency one until signed 2.0.7 passes both Forge planes."
+kill_signal = "A supported host skips the native-parser contracts, Linux calls Darwin sysctl, either coverage floor is not strictly above 95 percent, production runtime changes in this closeout, or failed release history is rewritten."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "openspec/specs/ci-diagnostics/spec.md",
+  "tests/governance/test_repository.py",
+  "tests/supervision/test_process.py",
+]

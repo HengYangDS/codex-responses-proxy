@@ -396,28 +396,44 @@ class TestProcessIdentity(unittest.TestCase):
         arguments = (b"/usr/bin/python3", b"/tmp/listener entrypoint.py")
 
         class DarwinArguments:
+            def __init__(self, payload: bytes):
+                self.payload = payload
+
             def sysctl(self, _mib, _count, buffer, size, _new, _new_len):
-                payload = (
-                    len(arguments).to_bytes(4, sys.byteorder, signed=True)
-                    + executable
-                    + b"\0\0"
-                    + b"\0".join(arguments)
-                    + b"\0"
-                )
                 if buffer is None:
-                    size._obj.value = len(payload)
+                    size._obj.value = len(self.payload)
                 else:
-                    buffer.raw = payload
+                    buffer.raw = self.payload
                 return 0
 
+        valid = (
+            len(arguments).to_bytes(4, sys.byteorder, signed=True)
+            + executable
+            + b"\0\0"
+            + b"\0".join(arguments)
+            + b"\0"
+        )
         with (
             mock.patch.object(process.ctypes.util, "find_library", return_value="libc"),
-            mock.patch.object(process.ctypes, "CDLL", return_value=DarwinArguments()),
+            mock.patch.object(process.ctypes, "CDLL", return_value=DarwinArguments(valid)),
         ):
             self.assertEqual(
                 process._darwin_process_argv(17),
                 [value.decode() for value in arguments],
             )
+
+        incomplete = (
+            len(arguments).to_bytes(4, sys.byteorder, signed=True)
+            + executable
+            + b"\0\0"
+            + arguments[0]
+            + b"\0\0"
+        )
+        with (
+            mock.patch.object(process.ctypes.util, "find_library", return_value="libc"),
+            mock.patch.object(process.ctypes, "CDLL", return_value=DarwinArguments(incomplete)),
+        ):
+            self.assertEqual(process._darwin_process_argv(17), [])
 
     def test_termination_rechecks_identity_and_proves_exit(self):
         for name, command in (
