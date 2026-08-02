@@ -16,7 +16,7 @@ from typing import Any
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.runtime import context as runtime_context
-from codex_responses_proxy.payload import digest, inventory, owned_files
+from codex_responses_proxy.payload import digest, inventory, owned_files, state
 
 PAYLOAD_MANIFEST_SCHEMA_VERSION = 2
 _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
@@ -66,6 +66,116 @@ _RETIRED_RUNTIME_FILES = {
         }
     ),
 }
+_V2_0_0_RUNTIME_FILES = frozenset(
+    {
+        "VERSION",
+        "codex_responses_proxy/providers/manifest.toml",
+        "codex_responses_proxy/commands/control.py",
+        "codex_responses_proxy/commands/__init__.py",
+        "codex_responses_proxy/__init__.py",
+        "codex_responses_proxy/errors.py",
+        "codex_responses_proxy/runtime/context.py",
+        "codex_responses_proxy/supervision/process.py",
+        "codex_responses_proxy/supervision/python.py",
+        "codex_responses_proxy/recovery/__init__.py",
+        "codex_responses_proxy/recovery/input_variant.py",
+        "codex_responses_proxy/recovery/response_failed.py",
+        "codex_responses_proxy/deployment/__init__.py",
+        "codex_responses_proxy/deployment/handoff.py",
+        "codex_responses_proxy/listener/__init__.py",
+        "codex_responses_proxy/listener/control.py",
+        "codex_responses_proxy/listener/entrypoint.py",
+        "codex_responses_proxy/listener/handoff/__init__.py",
+        "codex_responses_proxy/listener/handoff/protocol.py",
+        "codex_responses_proxy/listener/handoff/transaction.py",
+        "codex_responses_proxy/listener/server.py",
+        "codex_responses_proxy/payload/__init__.py",
+        "codex_responses_proxy/payload/identity.py",
+        "codex_responses_proxy/transport/__init__.py",
+        "codex_responses_proxy/transport/exchange.py",
+        "codex_responses_proxy/transport/relay.py",
+        "codex_responses_proxy/transport/responses.py",
+        "codex_responses_proxy/replay/__init__.py",
+        "codex_responses_proxy/replay/event.py",
+        "codex_responses_proxy/replay/request.py",
+        "codex_responses_proxy/transport/sse.py",
+        "codex_responses_proxy/transport/cooldown.py",
+        "codex_responses_proxy/providers/__init__.py",
+        "codex_responses_proxy/providers/policies/__init__.py",
+        "codex_responses_proxy/providers/policies/dmxapi.py",
+        "codex_responses_proxy/providers/registry.py",
+        "codex_responses_proxy/payload/digest.py",
+        "codex_responses_proxy/payload/inventory.py",
+        "codex_responses_proxy/payload/owned_files.py",
+        "codex_responses_proxy/runtime/__init__.py",
+        "codex_responses_proxy/runtime/admission.py",
+        "codex_responses_proxy/runtime/config.py",
+        "codex_responses_proxy/runtime/logging.py",
+        "codex_responses_proxy/runtime/telemetry.py",
+        "codex_responses_proxy/payload/projection.py",
+        "codex_responses_proxy/payload/source.py",
+        "codex_responses_proxy/payload/candidate.py",
+        "codex_responses_proxy/payload/migration.py",
+        "codex_responses_proxy/payload/rollback.py",
+        "codex_responses_proxy/payload/transaction.py",
+        "codex_responses_proxy/payload/state.py",
+        "codex_responses_proxy/supervision/__init__.py",
+        "codex_responses_proxy/supervision/linux.py",
+        "codex_responses_proxy/supervision/macos.py",
+        "codex_responses_proxy/supervision/select.py",
+        "codex_responses_proxy/supervision/windows.py",
+        "codex_responses_proxy/supervision/watchdog.py",
+    }
+)
+_V2_0_0_SERVING_FILES = frozenset(
+    {
+        "VERSION",
+        "codex_responses_proxy/providers/manifest.toml",
+        "codex_responses_proxy/listener/entrypoint.py",
+        "codex_responses_proxy/__init__.py",
+        "codex_responses_proxy/payload/__init__.py",
+        "codex_responses_proxy/payload/digest.py",
+        "codex_responses_proxy/payload/identity.py",
+        "codex_responses_proxy/payload/inventory.py",
+        "codex_responses_proxy/recovery/__init__.py",
+        "codex_responses_proxy/recovery/input_variant.py",
+        "codex_responses_proxy/recovery/response_failed.py",
+        "codex_responses_proxy/listener/__init__.py",
+        "codex_responses_proxy/listener/control.py",
+        "codex_responses_proxy/listener/handoff/__init__.py",
+        "codex_responses_proxy/listener/handoff/protocol.py",
+        "codex_responses_proxy/listener/handoff/transaction.py",
+        "codex_responses_proxy/listener/server.py",
+        "codex_responses_proxy/replay/__init__.py",
+        "codex_responses_proxy/replay/event.py",
+        "codex_responses_proxy/replay/request.py",
+        "codex_responses_proxy/transport/__init__.py",
+        "codex_responses_proxy/transport/exchange.py",
+        "codex_responses_proxy/transport/relay.py",
+        "codex_responses_proxy/transport/responses.py",
+        "codex_responses_proxy/transport/sse.py",
+        "codex_responses_proxy/providers/__init__.py",
+        "codex_responses_proxy/providers/policies/__init__.py",
+        "codex_responses_proxy/providers/policies/dmxapi.py",
+        "codex_responses_proxy/providers/registry.py",
+        "codex_responses_proxy/runtime/__init__.py",
+        "codex_responses_proxy/runtime/admission.py",
+        "codex_responses_proxy/runtime/config.py",
+        "codex_responses_proxy/runtime/logging.py",
+        "codex_responses_proxy/runtime/telemetry.py",
+        "codex_responses_proxy/transport/cooldown.py",
+    }
+)
+_PROTOCOL_V2_HISTORICAL_INVENTORIES = {
+    "2.0.0": (_V2_0_0_RUNTIME_FILES, _V2_0_0_SERVING_FILES),
+}
+_HISTORICAL_RUNTIME_INVENTORIES = (
+    *_RETIRED_RUNTIME_FILES.values(),
+    *(item[0] for item in _PROTOCOL_V2_HISTORICAL_INVENTORIES.values()),
+)
+RETIRED_OWNED_FILES = (
+    frozenset().union(*_HISTORICAL_RUNTIME_INVENTORIES).difference(inventory.RUNTIME_FILES)
+)
 
 
 @dataclass(frozen=True)
@@ -75,6 +185,7 @@ class HistoricalProjection:
     release: str
     files: frozenset[str]
     entrypoint: str
+    metadata: frozenset[str] = frozenset({inventory.MANIFEST_FILENAME})
 
 
 def payload_manifest_path(ctx: runtime_context.RuntimeContext) -> Path:
@@ -110,7 +221,8 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
             raise errors.InstallError(f"installed payload integrity check failed: {detail}")
         owned = set(owned_files.OWNED_PAYLOAD_FILES)
     else:
-        owned = set(verify_historical_projection(ctx).files) | {inventory.MANIFEST_FILENAME}
+        historical = verify_historical_projection(ctx)
+        owned = set(historical.files) | set(historical.metadata)
     for relative in owned:
         owned_files.regular_file(install, relative, "installed payload purge")
     for relative in sorted(owned, key=lambda value: len(PurePosixPath(value).parts), reverse=True):
@@ -188,9 +300,13 @@ def manifest_bytes(manifest: Mapping[str, Any]) -> bytes:
 def verify_historical_projection(ctx: runtime_context.RuntimeContext) -> HistoricalProjection:
     """Verify one supported historical manifest, inventory, and entrypoint."""
 
-    manifest, files = _historical_manifest_files(Path(ctx.install_dir))
+    manifest, files, metadata = _historical_manifest_files(ctx)
     entrypoint = next(
-        (relative for relative in ("proxy/dmx_responses_proxy.py",) if relative in files),
+        (
+            relative
+            for relative in (inventory.ENTRYPOINT, "proxy/dmx_responses_proxy.py")
+            if relative in files
+        ),
         "",
     )
     if not entrypoint:
@@ -199,12 +315,16 @@ def verify_historical_projection(ctx: runtime_context.RuntimeContext) -> Histori
         release=manifest["release"],
         files=frozenset(files),
         entrypoint=str(owned_files.path(Path(ctx.install_dir), entrypoint)),
+        metadata=metadata,
     )
 
 
-def _historical_manifest_files(install: Path) -> tuple[dict[str, Any], dict[str, str]]:
+def _historical_manifest_files(
+    ctx: runtime_context.RuntimeContext,
+) -> tuple[dict[str, Any], dict[str, str], frozenset[str]]:
     """Verify historical manifest bytes and return the parsed manifest and files."""
 
+    install = Path(ctx.install_dir)
     manifest_path = install / inventory.MANIFEST_FILENAME
     if not manifest_path.exists():
         raise errors.InstallError("retired installed payload manifest is required")
@@ -231,7 +351,11 @@ def _historical_manifest_files(install: Path) -> tuple[dict[str, Any], dict[str,
         files[relative] = raw_digest
     if "VERSION" not in files:
         raise errors.InstallError("retired installed payload manifest has no VERSION")
-    if set(files) != set(_RETIRED_RUNTIME_FILES[schema]):
+    protocol_v2 = _PROTOCOL_V2_HISTORICAL_INVENTORIES.get(release)
+    expected_files = protocol_v2[0] if schema == 2 and protocol_v2 is not None else None
+    if expected_files is None and schema in _RETIRED_RUNTIME_FILES:
+        expected_files = _RETIRED_RUNTIME_FILES[schema]
+    if expected_files is None or set(files) != set(expected_files):
         raise errors.InstallError("retired installed payload manifest file set is unsupported")
     for relative, expected in files.items():
         path = owned_files.regular_file(install, relative, "retired installed payload")
@@ -251,7 +375,66 @@ def _historical_manifest_files(install: Path) -> tuple[dict[str, Any], dict[str,
         raise errors.InstallError("retired installed payload VERSION is unreadable") from exc
     if version != f"{release}\n":
         raise errors.InstallError("retired installed payload VERSION does not match manifest")
-    return manifest, files
+    metadata = {inventory.MANIFEST_FILENAME}
+    if protocol_v2 is not None:
+        metadata.add(inventory.RELEASE_RECEIPT_FILENAME)
+        if _verify_protocol_v2_metadata(ctx, manifest, files, protocol_v2[1]):
+            metadata.add(inventory.INSTALLED_RELEASE_STATE_FILENAME)
+    return manifest, files, frozenset(metadata)
+
+
+def _verify_protocol_v2_metadata(
+    ctx: runtime_context.RuntimeContext,
+    manifest: Mapping[str, Any],
+    files: Mapping[str, str],
+    expected_serving_files: frozenset[str],
+) -> bool:
+    """Verify the complete metadata identity of one supported protocol-v2 release."""
+
+    serving = manifest.get("serving_files")
+    aggregate = manifest.get("serving_payload_sha256")
+    receipt_sha256 = manifest.get("release_receipt_sha256")
+    if (
+        not isinstance(serving, dict)
+        or set(serving) != set(expected_serving_files)
+        or not isinstance(aggregate, str)
+        or not isinstance(receipt_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", receipt_sha256) is None
+    ):
+        raise errors.InstallError("historical protocol-v2 manifest metadata is incomplete")
+    for relative, expected in serving.items():
+        if not isinstance(expected, str) or files.get(relative) != expected:
+            raise errors.InstallError("historical protocol-v2 serving identity does not match")
+    try:
+        actual_aggregate = digest.serving_payload_sha256(serving)
+    except digest.PayloadDigestError as exc:
+        raise errors.InstallError("historical protocol-v2 serving identity is invalid") from exc
+    if aggregate != actual_aggregate:
+        raise errors.InstallError("historical protocol-v2 serving aggregate does not match")
+    install = Path(ctx.install_dir)
+    receipt_path = owned_files.regular_file(
+        install, inventory.RELEASE_RECEIPT_FILENAME, "historical release receipt"
+    )
+    if digest.sha256_file(receipt_path) != receipt_sha256:
+        raise errors.InstallError("historical release receipt digest does not match")
+    receipt = owned_files.read_canonical_json(receipt_path, "historical release receipt")
+    if receipt.get("version") != manifest["release"]:
+        raise errors.InstallError("historical release receipt version does not match")
+    installed_path = state.installed_path(ctx)
+    if not installed_path.exists() and not installed_path.is_symlink():
+        return False
+    owned_files.regular_file(
+        install,
+        inventory.INSTALLED_RELEASE_STATE_FILENAME,
+        "historical installed release state",
+    )
+    installed = state.read_installed(ctx)
+    if installed is None or (
+        state.require_version(installed) != manifest["release"]
+        or installed.get("receipt_sha256") != receipt_sha256
+    ):
+        raise errors.InstallError("historical installed release state does not match")
+    return True
 
 
 def _remove_empty_owned_directories(install: Path, owned: set[str]) -> None:

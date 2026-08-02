@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy.runtime import context as runtime_context  # noqa: E402
+from codex_responses_proxy.payload import digest as payload_digest
 from codex_responses_proxy.payload import inventory
 from codex_responses_proxy.payload import projection  # noqa: E402
 
@@ -88,3 +89,57 @@ def write_retired_projection(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     return files
+
+
+def write_v2_0_0_projection(ctx: runtime_context.RuntimeContext) -> dict[str, bytes]:
+    """Write the exact v2.0.0 protocol-v2 inventory with deterministic bytes."""
+
+    files = set(inventory.RUNTIME_FILES)
+    files.remove("codex_responses_proxy/replay/response.py")
+    files.add("codex_responses_proxy/replay/event.py")
+    version = "2.0.0"
+    contents = {
+        relative: (f"{version}\n".encode() if relative == "VERSION" else f"{relative}\n".encode())
+        for relative in files
+    }
+    install = Path(ctx.install_dir)
+    for relative, content in contents.items():
+        target = install / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    serving_paths = set(inventory.SERVING_FILES)
+    serving_paths.remove("codex_responses_proxy/replay/response.py")
+    serving_paths.add("codex_responses_proxy/replay/event.py")
+    serving = {
+        relative: hashlib.sha256(contents[relative]).hexdigest() for relative in serving_paths
+    }
+    receipt = payload_digest.canonical_json(
+        {"schema_version": 1, "version": version, "fixture": "exact-v2.0.0"}
+    )
+    receipt_sha256 = hashlib.sha256(receipt).hexdigest()
+    manifest = {
+        "schema_version": 2,
+        "release": version,
+        "files": {
+            relative: hashlib.sha256(content).hexdigest() for relative, content in contents.items()
+        },
+        "serving_files": serving,
+        "serving_payload_sha256": payload_digest.serving_payload_sha256(serving),
+        "release_receipt_sha256": receipt_sha256,
+    }
+    (install / inventory.MANIFEST_FILENAME).write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    (install / inventory.RELEASE_RECEIPT_FILENAME).write_bytes(receipt)
+    (install / inventory.INSTALLED_RELEASE_STATE_FILENAME).write_bytes(
+        payload_digest.canonical_json(
+            {
+                "schema_version": 1,
+                "version": version,
+                "receipt_sha256": receipt_sha256,
+                "transaction_id": "fixture-v2-0-0",
+                "runtime": {"release": version},
+            }
+        )
+    )
+    return contents

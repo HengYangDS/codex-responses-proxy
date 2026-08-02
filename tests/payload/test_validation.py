@@ -145,12 +145,13 @@ class TestPayloadValidation(unittest.TestCase):
 
         rollback = Path(payload_state.transaction_root(ctx), "rollback")
         rollback.mkdir(parents=True)
+        retired = "proxy/dmx_responses_proxy.py"
         snapshot = {
             "schema_version": 2,
-            "present": {"proxy/owned.py": {"sha256": "0" * 64, "mode": 0o644}},
-            "retired": ["proxy/owned.py"],
-            "retired_owned_sha256": payload_rollback.path_set_sha256({"proxy/owned.py"}),
-            "previous_owned": ["proxy/owned.py"],
+            "present": {retired: {"sha256": "0" * 64, "mode": 0o644}},
+            "retired": [retired],
+            "retired_owned_sha256": payload_rollback.path_set_sha256({retired}),
+            "previous_owned": [retired],
         }
         (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
         with self.assertRaisesRegex(errors.InstallError, "rollback.*unavailable"):

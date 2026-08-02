@@ -200,6 +200,21 @@ class TestInstallationInputValidation(unittest.TestCase):
 
 
 class TestGovernanceMetadata(unittest.TestCase):
+    def test_listener_port_literals_have_one_production_owner(self):
+        production = ROOT / "codex_responses_proxy"
+        owner = production / "runtime" / "config.py"
+        owner_text = owner.read_text(encoding="utf-8")
+        self.assertEqual(owner_text.count("8792"), 1)
+        self.assertNotIn("8791", owner_text)
+        copied = []
+        for source in production.rglob("*.py"):
+            if source == owner:
+                continue
+            text = source.read_text(encoding="utf-8")
+            if "8791" in text or "8792" in text:
+                copied.append(source.relative_to(ROOT).as_posix())
+        self.assertEqual(copied, [])
+
     def test_current_surfaces_use_the_single_replay_owner_and_package_commands(self):
         """Reject retired artifacts and stale descriptions of the current product."""
         for retired in ("config.example", "evolution/ledger.toml"):

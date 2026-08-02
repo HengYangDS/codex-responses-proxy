@@ -22,12 +22,100 @@ from codex_responses_proxy.payload import digest as payload_digest
 from codex_responses_proxy.payload import transaction as payload_transaction
 from codex_responses_proxy.payload import state as payload_state
 from codex_responses_proxy.runtime import context as runtime_context
-from tests.deployment.fixtures import install_context, write_retired_projection
+from tests.deployment.fixtures import (
+    install_context,
+    write_retired_projection,
+    write_v2_0_0_projection,
+)
 from tests.payload.fixtures import begin_transaction, install_payload, released_fixture
 
 
 class TestPayloadMigration(unittest.TestCase):
     """Historical payload migration and rollback safety contracts."""
+
+    def _exact_v2_0_0(self) -> tuple[runtime_context.RuntimeContext, Path]:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        write_v2_0_0_projection(ctx)
+        return ctx, Path(ctx.install_dir)
+
+    def test_exact_v2_0_0_projection_upgrades_and_rolls_back(self) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        install = Path(ctx.install_dir)
+        previous = write_v2_0_0_projection(ctx)
+        retired = install / "codex_responses_proxy/replay/event.py"
+        successor = install / "codex_responses_proxy/replay/response.py"
+        receipt = install / inventory.RELEASE_RECEIPT_FILENAME
+        installed_state = install / inventory.INSTALLED_RELEASE_STATE_FILENAME
+        previous_receipt = receipt.read_bytes()
+        installed_state.unlink()
+
+        transaction = begin_transaction(ctx, released_fixture("2.0.4"))
+        transaction.commit_projection()
+
+        self.assertFalse(retired.exists())
+        self.assertTrue(successor.is_file())
+        transaction.rollback()
+        self.assertEqual(retired.read_bytes(), previous["codex_responses_proxy/replay/event.py"])
+        self.assertFalse(successor.exists())
+        self.assertEqual(receipt.read_bytes(), previous_receipt)
+        self.assertFalse(installed_state.exists())
+
+    def test_exact_v2_0_0_receipt_is_canonical_and_version_bound(self) -> None:
+        cases = (
+            ("noncanonical", None, "canonical"),
+            ("wrong-version", "9.9.9", "version"),
+        )
+        for name, version, message in cases:
+            with self.subTest(name=name):
+                ctx, install = self._exact_v2_0_0()
+                receipt_path = install / inventory.RELEASE_RECEIPT_FILENAME
+                receipt = json.loads(receipt_path.read_bytes())
+                if version is not None:
+                    receipt["version"] = version
+                    receipt_bytes = payload_digest.canonical_json(receipt)
+                else:
+                    receipt_bytes = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode()
+                receipt_path.write_bytes(receipt_bytes)
+                manifest_path = install / inventory.MANIFEST_FILENAME
+                manifest = json.loads(manifest_path.read_bytes())
+                manifest["release_receipt_sha256"] = hashlib.sha256(receipt_bytes).hexdigest()
+                manifest_path.write_bytes(payload_projection.manifest_bytes(manifest))
+
+                with self.assertRaisesRegex(errors.InstallError, message):
+                    payload_projection.verify_historical_projection(ctx)
+
+    def test_exact_v2_0_0_install_state_must_match_when_present(self) -> None:
+        cases = (
+            ("wrong-version", {"version": "9.9.9"}),
+            ("wrong-receipt", {"receipt_sha256": "0" * 64}),
+        )
+        for name, changes in cases:
+            with self.subTest(name=name):
+                ctx, install = self._exact_v2_0_0()
+                state_path = install / inventory.INSTALLED_RELEASE_STATE_FILENAME
+                installed = json.loads(state_path.read_bytes())
+                installed.update(changes)
+                state_path.write_bytes(payload_digest.canonical_json(installed))
+
+                with self.assertRaisesRegex(errors.InstallError, "installed release state"):
+                    payload_projection.verify_historical_projection(ctx)
+
+    def test_exact_v2_0_0_matching_install_state_is_owned(self) -> None:
+        ctx, _install = self._exact_v2_0_0()
+
+        historical = payload_projection.verify_historical_projection(ctx)
+
+        self.assertIn(inventory.INSTALLED_RELEASE_STATE_FILENAME, historical.metadata)
+
+    def test_unknown_schema_two_inventory_remains_rejected(self) -> None:
+        ctx, install = self._exact_v2_0_0()
+        manifest_path = install / inventory.MANIFEST_FILENAME
+        manifest = json.loads(manifest_path.read_bytes())
+        manifest["files"].pop("codex_responses_proxy/replay/event.py")
+        manifest_path.write_bytes(payload_projection.manifest_bytes(manifest))
+
+        with self.assertRaisesRegex(errors.InstallError, "file set is unsupported"):
+            payload_projection.verify_historical_projection(ctx)
 
     def test_retired_security_boundaries(self) -> None:
         cases = (
