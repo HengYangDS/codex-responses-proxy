@@ -6,9 +6,9 @@ summary = "Bind same-route single-flight, cross-route concurrency, and post-queu
 
 [evidence]
 dated = "evidence/chronicle/route-scoped-backpressure-20260803/2026-08-03.md"
-sha256 = "299186ef95aa7708697154ed76fe0729a9aee83c4d2bd825009312de3e189294"
+sha256 = "138e733400ad73ee7debd72eb61f154448c54bc6de13fb34a710c2e2ab362df1"
 evidence_ids = ["evidence:route-scoped-backpressure-20260803"]
-binding = "Incident containment, TDD, warning-free full quality, strict OpenSpec, Python 3.12-3.14 candidate proof, and terminal candidate housekeeping; hosted publication and runtime acceptance remain pending"
+binding = "Incident containment, TDD, warning-free full quality, strict OpenSpec, Python 3.12-3.14 candidate proof, signed implementation commit, HEAD-bound ETHOS proof, and archived repository change; hosted publication and runtime acceptance remain pending"
 verifier = "digest_only"
 tests = [
   "python3.14 tests/runtime/test_admission.py",
