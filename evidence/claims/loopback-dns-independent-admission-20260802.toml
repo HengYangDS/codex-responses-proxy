@@ -25,7 +25,7 @@ owner = "codex-responses-proxy"
 scope = "Local listener source, tests, documentation, and OpenSpec evidence only; exact-HEAD proof, hosted CI, publication, installation, provider runtime, 429 runtime containment, MCP, original-conversation acceptance, and housekeeping remain unproved."
 
 [carriers]
-openspec = "openspec/changes/loopback-dns-independent-admission"
+openspec = "openspec/changes/archive/2026-08-02-loopback-dns-independent-admission"
 fallback = "Revert the atomic listener source and governance commits before publication."
 kill_signal = "Fresh or adopted loopback listener admission consults DNS, reports an unbound identity, or still stalls on a supported host."
 
