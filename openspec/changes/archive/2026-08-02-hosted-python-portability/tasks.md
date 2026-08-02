@@ -6,4 +6,4 @@
 - [x] Replace GitLab patch pins with the same three support lines.
 - [x] Run the contract tests, complete interpreter matrix, and quality gate.
 - [x] Validate the complete change strictly before the exact signed commit.
-- [ ] Archive the change after the exact signed commit is proven.
+- [x] Archive the change after the exact signed commit is proven.
