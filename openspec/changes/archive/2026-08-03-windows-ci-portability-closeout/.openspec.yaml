@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-03
+goal: Close the Windows CI portability and process-inventory performance defects
+  that block publication of the already-proven route backpressure release.

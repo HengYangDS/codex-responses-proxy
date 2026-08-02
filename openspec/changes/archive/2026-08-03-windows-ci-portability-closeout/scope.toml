@@ -1,0 +1,12 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "codex_responses_proxy/supervision/process.py",
+  "openspec/changes/windows-ci-portability-closeout/**",
+  "openspec/changes/archive/2026-08-03-windows-ci-portability-closeout/**",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "evidence/claims/windows-ci-portability-closeout-20260803.toml",
+  "evidence/chronicle/windows-ci-portability-closeout-20260803/**",
+  "tests/supervision/test_macos.py",
+  "tests/supervision/test_process.py",
+]

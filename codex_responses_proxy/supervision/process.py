@@ -215,7 +215,10 @@ def pid_names_path(pid: int, expected_path: str) -> bool:
 def pids_naming_path(expected_path: str) -> list[int]:
     """Return process IDs whose argv exactly names ``expected_path``."""
 
-    return [pid for pid, _command in _process_inventory() if pid_names_path(pid, expected_path)]
+    inventory = _process_inventory()
+    if sys.platform == "darwin":
+        return [pid for pid, _command in inventory if pid_names_path(pid, expected_path)]
+    return [pid for pid, command in inventory if command_names_path(command, expected_path)]
 
 
 def verified_listener_pids(port: int, expected_path: str) -> list[int]:
