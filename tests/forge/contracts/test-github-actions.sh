@@ -23,7 +23,7 @@ required = [
     "runs-on: macos-26",
     "runs-on: ubuntu-24.04",
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-    "python-version: [\"3.12.13\", \"3.13.14\", \"3.14.6\"]",
+    'python-version: ["3.12", "3.13", "3.14"]',
     "python tools/quality/tests.py --compile",
     "python-windows:",
     "windows-2025",
@@ -68,7 +68,7 @@ if test_owner not in mac_block:
     raise SystemExit(f"macOS Python matrix must run {test_owner}")
 for token in (
     "runs-on: windows-2025",
-    'python-version: ["3.12.13", "3.13.14", "3.14.6"]',
+    'python-version: ["3.12", "3.13", "3.14"]',
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
     "shell: bash",
@@ -80,6 +80,11 @@ if rest.count("actions/setup-python@") != 3:
     raise SystemExit("macOS, governance, and quality jobs must each use pinned setup-python")
 if windows_block.count("actions/setup-python@") != 1:
     raise SystemExit("Windows verification must use exactly one pinned setup-python action")
+for patch_pin in ("3.12.", "3.13.", "3.14."):
+    if patch_pin in text or patch_pin in release_text:
+        raise SystemExit(
+            f"GitHub workflows must select supported Python lines, not patch releases: {patch_pin!r}"
+        )
 governance_end = text.index("\n  python-quality:", governance_start)
 governance_block = text[governance_start:governance_end]
 checkout_block = governance_block.split("- name: Verify release", 1)[0]

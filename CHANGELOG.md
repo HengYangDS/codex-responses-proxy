@@ -11,6 +11,9 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ### Fixed
 
+- Select supported Python 3.12, 3.13, and 3.14 lines in hosted CI instead of
+  pinning platform-specific patch builds that are not published for every
+  runner image.
 - Project successful non-stream Responses atomically with the same
   provider-neutral ciphertext rules as SSE, and fail locally before downstream
   commitment on empty, truncated, malformed, failed, or otherwise non-terminal
