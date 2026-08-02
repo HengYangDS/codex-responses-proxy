@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-02
+goal: Remove platform-fragile Python patch pins while preserving the 3.12, 3.13,
+  and 3.14 verification matrix.
