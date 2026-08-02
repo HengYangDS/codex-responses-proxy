@@ -12,6 +12,8 @@
   change to the post-archive lifecycle.
 - [x] 2.3 Bind the portable coverage result to the canonical CI diagnostics
   requirement, active claim, and dated Chronicle.
+- [x] 2.4 Cover the Darwin inventory revalidation outcome explicitly so Linux
+  and hosted runners both keep independent branch coverage above 95 percent.
 
 ## Post-archive lifecycle
 

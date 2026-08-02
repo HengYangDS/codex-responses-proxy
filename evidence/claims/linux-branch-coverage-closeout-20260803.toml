@@ -6,9 +6,9 @@ summary = "Bind deterministic cross-host native-parser coverage to the forward-o
 
 [evidence]
 dated = "evidence/chronicle/linux-branch-coverage-closeout-20260803/2026-08-03.md"
-sha256 = "0a03a46173f610e554b446aa8f609438cb12ea5e78cec03ef2eb25db9a0e5846"
+sha256 = "b45991331bfd7cb97e3d96496af088e1af586961bd9897208b4f1005d7f40bfe"
 evidence_ids = ["evidence:linux-branch-coverage-closeout-20260803"]
-binding = "Observed GitLab pipeline 4064 branch-coverage failure, portable default-path and malformed-payload contracts, clean Linux quality above both floors, and Python 3.12-3.14 candidate proof"
+binding = "Observed GitLab pipeline 4064 and GitHub run 30771814422 branch-coverage failures, deterministic native-parser and Darwin inventory contracts, clean quality above both floors, and Python 3.12-3.14 candidate proof"
 verifier = "digest_only"
 tests = [
   "python3.12 -m unittest tests.governance.test_repository tests.supervision.test_process -v",
