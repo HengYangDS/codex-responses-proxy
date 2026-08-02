@@ -7,6 +7,21 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-08-02
+
+### Fixed
+
+- Select GitHub's provider-native release chronology in every metadata-test
+  branch, including an already-tagged release checkout. This preserves strict
+  canonical GitLab history checks while preventing the `v2.0.1` GitHub tag job
+  from misclassifying provider-external tags and emitting a traceback.
+
+### Release history
+
+- Retain the signed `v2.0.1` tags and their failed hosted jobs as immutable
+  evidence. No `v2.0.1` provider Release was published or installed; `v2.0.2`
+  is the forward-only publication candidate carrying the repair.
+
 ## [2.0.1] - 2026-08-02
 
 ### Fixed
