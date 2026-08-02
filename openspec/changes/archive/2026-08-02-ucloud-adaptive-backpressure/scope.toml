@@ -7,5 +7,6 @@ paths = [
   "evidence/claims/ucloud-adaptive-backpressure-20260802.toml",
   "evidence/chronicle/ucloud-adaptive-backpressure-20260802/**",
   "openspec/changes/ucloud-adaptive-backpressure/**",
+  "openspec/specs/provider-portable-responses/spec.md",
   "tests/transport/test_cooldown.py",
 ]
