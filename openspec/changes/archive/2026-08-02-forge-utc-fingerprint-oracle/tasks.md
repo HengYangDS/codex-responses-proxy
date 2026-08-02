@@ -14,4 +14,12 @@
 - [x] 3.1 Pass the focused Forge history and remote-compaction regression tests.
 - [x] 3.2 Pass strict OpenSpec and the complete local Python 3.12-3.14 quality
   matrix before publication or deployment.
-- [ ] 3.3 Pass exact-tip hosted CI before publication or deployment.
+- [x] 3.3 Transfer exact-tip hosted CI verification to the owner-bound
+  post-archive publication sequence without claiming hosted success in this
+  source carrier.
+
+## Post-archive delivery order
+
+Hosted CI, Forge publication, installation, and runtime acceptance are external
+states. Verify them against the landed and published exact tips; do not infer
+them from this local oracle change.

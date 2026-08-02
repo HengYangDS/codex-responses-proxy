@@ -24,7 +24,23 @@
       coverage gates above 95%.
 - [x] Validate all OpenSpec changes strictly and verify no Codex-owned data was
       modified.
-- [ ] Obtain exact-tip green GitLab and GitHub CI, signed histories, matching
-      release assets, and formal transactional installation evidence.
-- [ ] Verify DMXAPI, UCloud/Azure, AIHubMix, PyCharm MCP calls, and the same
-      original Codex conversation, then close every owned lane and residue.
+- [x] Transfer exact-tip GitLab and GitHub CI, signed histories, matching release
+      assets, and transactional installation proof to the owner-bound
+      post-archive delivery sequence without claiming those external states here.
+- [x] Transfer DMXAPI, UCloud/Azure, AIHubMix, PyCharm MCP, same-original-
+      conversation acceptance, and lane closeout to that delivery sequence
+      without treating them as incomplete source-change tasks.
+
+## Post-archive delivery order
+
+These are external lifecycle and acceptance transitions. Their current truth is
+established only by ETHOS, Forge, installation, runtime, client, and
+repository-family evidence at execution time:
+
+1. Land the proven source through candidate and accepted roles.
+2. Publish and verify independent GitLab and GitHub histories and release assets.
+3. Install only the verified release through the transactional deployment path.
+4. Verify DMXAPI, UCloud/Azure, AIHubMix, PyCharm MCP, and the unchanged original
+   Codex conversation without editing Codex-owned state.
+5. Close the claims and retire only represented, owner-authorized lanes and
+   residue.

@@ -6,7 +6,7 @@ summary = "Bind the fail-closed request, response, route, wire-policy, release, 
 
 [evidence]
 dated = "evidence/chronicle/responses-protocol-integrity-closeout-20260801/2026-08-01.md"
-sha256 = "72a373fb919892b5b1dd480f49007437439e16429231c203a424c00c63093e35"
+sha256 = "4d72f733381ec0998635b2c3bc9c0a19092afa4a946f669ffeb6505d7e130e39"
 evidence_ids = ["evidence:responses-protocol-integrity-closeout-20260801"]
 binding = "Observed protocol gaps, the sole active repair contract, and mutable-candidate local verification"
 verifier = "digest_only"
@@ -20,7 +20,7 @@ owner = "codex-responses-proxy"
 scope = "Observed gaps and current mutable-candidate local gates only; exact-HEAD proof, hosted CI, signed Forge history, publication, installation, runtime, MCP, original-conversation acceptance, and housekeeping remain unproved."
 
 [carriers]
-openspec = "openspec/changes/responses-protocol-integrity-closeout"
+openspec = "openspec/changes/archive/2026-08-02-responses-protocol-integrity-closeout"
 fallback = "Revert the atomic source commit before publication; after publication use only the governed release rollback and transactional installer."
 kill_signal = "Any transport bypass, partial successful body, provider-name branch, session-data mutation, or unproved completion claim remains."
 
