@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-03
+goal: Serialize Responses requests per provider route while preserving
+  cross-route concurrency and rechecking provider cooldown after queue
+  admission.

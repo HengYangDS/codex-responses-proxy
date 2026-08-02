@@ -18,6 +18,7 @@ RESPONSES_QUEUE_TIMEOUT = SETTINGS.responses_queue_timeout
 _MIN_DRAIN_LEASE_SECONDS = 1
 _MAX_DRAIN_LEASE_SECONDS = 900
 _RESPONSE_SEMAPHORE = threading.BoundedSemaphore(RESPONSES_MAX_CONCURRENCY)
+_ROUTE_SEMAPHORES: dict[str, threading.BoundedSemaphore] = {}
 _RESPONSE_GATE_LOCK = threading.Lock()
 _ACTIVE_RESPONSES = 0
 _ACTIVE_HANDLERS = 0
@@ -134,34 +135,50 @@ def end_handler() -> int:
         return _ACTIVE_HANDLERS
 
 
-def admit_response(*, timeout: float | None = None) -> tuple[str, int]:
-    """Return ``acquired``, ``draining``, or ``timeout`` with active count."""
+def _route_semaphore(route: str) -> threading.BoundedSemaphore:
+    """Return the process-local single-flight gate for one provider route."""
+    with _RESPONSE_GATE_LOCK:
+        return _ROUTE_SEMAPHORES.setdefault(route, threading.BoundedSemaphore(1))
+
+
+def _remaining_timeout(deadline: float) -> float:
+    return max(0.0, deadline - time.monotonic())
+
+
+def admit_response(route: str, *, timeout: float | None = None) -> tuple[str, int]:
+    """Acquire route and global capacity, or return a bounded verdict."""
     global _ACTIVE_RESPONSES
+    wait = RESPONSES_QUEUE_TIMEOUT if timeout is None else timeout
+    deadline = time.monotonic() + wait
     with _RESPONSE_GATE_LOCK:
         _expire_drain_locked()
         if _DRAINING:
             return "draining", _ACTIVE_RESPONSES
-    acquired = _RESPONSE_SEMAPHORE.acquire(
-        timeout=RESPONSES_QUEUE_TIMEOUT if timeout is None else timeout
-    )
-    if not acquired:
+    route_semaphore = _route_semaphore(route)
+    if not route_semaphore.acquire(timeout=_remaining_timeout(deadline)):
+        return "timeout", active_responses()
+    if not _RESPONSE_SEMAPHORE.acquire(timeout=_remaining_timeout(deadline)):
+        route_semaphore.release()
         return "timeout", active_responses()
     with _RESPONSE_GATE_LOCK:
         _expire_drain_locked()
         if _DRAINING:
             _RESPONSE_SEMAPHORE.release()
+            route_semaphore.release()
             return "draining", _ACTIVE_RESPONSES
         _ACTIVE_RESPONSES += 1
         return "acquired", _ACTIVE_RESPONSES
 
 
-def release_response_slot() -> int:
-    """Release one active Responses slot and return the current active count."""
+def release_response_slot(route: str) -> int:
+    """Release global and provider-route capacity for one active response."""
     global _ACTIVE_RESPONSES
     with _RESPONSE_GATE_LOCK:
         _ACTIVE_RESPONSES = max(0, _ACTIVE_RESPONSES - 1)
         active = _ACTIVE_RESPONSES
+        route_semaphore = _ROUTE_SEMAPHORES[route]
     _RESPONSE_SEMAPHORE.release()
+    route_semaphore.release()
     return active
 
 
@@ -176,6 +193,7 @@ def reset_for_test() -> None:
     """Reset admission state for deterministic unit tests."""
     global _ACTIVE_RESPONSES, _ACTIVE_HANDLERS, _DRAINING
     global _DRAIN_GENERATION, _DRAIN_DEADLINE, _REQUEST_SEQUENCE, _RESPONSE_SEMAPHORE
+    global _ROUTE_SEMAPHORES
     with _RESPONSE_GATE_LOCK:
         _ACTIVE_RESPONSES = 0
         _ACTIVE_HANDLERS = 0
@@ -184,3 +202,4 @@ def reset_for_test() -> None:
         _DRAIN_DEADLINE = None
         _REQUEST_SEQUENCE = 0
         _RESPONSE_SEMAPHORE = threading.BoundedSemaphore(RESPONSES_MAX_CONCURRENCY)
+        _ROUTE_SEMAPHORES = {}
