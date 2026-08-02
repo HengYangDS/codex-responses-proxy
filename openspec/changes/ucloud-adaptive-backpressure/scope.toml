@@ -1,0 +1,11 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "codex_responses_proxy/transport/cooldown.py",
+  "evidence/claims/ucloud-adaptive-backpressure-20260802.toml",
+  "evidence/chronicle/ucloud-adaptive-backpressure-20260802/**",
+  "openspec/changes/ucloud-adaptive-backpressure/**",
+  "tests/transport/test_cooldown.py",
+]
