@@ -8,6 +8,8 @@ paths = [
   "evidence/claims/route-scoped-backpressure-20260803.toml",
   "evidence/chronicle/route-scoped-backpressure-20260803/**",
   "openspec/changes/route-scoped-backpressure/**",
+  "openspec/changes/archive/2026-08-03-route-scoped-backpressure",
+  "openspec/changes/archive/2026-08-03-route-scoped-backpressure/**",
   "openspec/specs/provider-portable-responses/spec.md",
   "tests/runtime/test_admission.py",
   "tests/supervision/test_process.py",
