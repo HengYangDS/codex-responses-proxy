@@ -7,7 +7,7 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-08-01
+## [2.0.0] - 2026-08-02
 
 ### Changed
 
