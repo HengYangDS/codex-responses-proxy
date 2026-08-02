@@ -7,6 +7,20 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-08-02
+
+### Fixed
+
+- Admit the exact installed v2.0.0 protocol-v2 projection, including deployments
+  created before `release-install-state.json` was finalized, while retaining
+  canonical receipt, release, full-inventory, per-file digest, serving aggregate,
+  and optional installed-state verification. Upgrade rollback restores both the
+  retired `replay/event.py` byte and the original absence of finalized state.
+- Make port 8792 the single runtime default without making it a fixed port.
+  Installer, control, and uninstall `--port` options and
+  `CODEX_RESPONSES_PROXY_PROXY_PORT` remain authoritative explicit overrides;
+  production code is checked against copied 8791 or 8792 literals.
+
 ## [2.0.3] - 2026-08-02
 
 ### Fixed

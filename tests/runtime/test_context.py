@@ -20,6 +20,22 @@ from codex_responses_proxy.runtime import config  # noqa: E402
 
 
 class TestRuntimeContext(unittest.TestCase):
+    def test_default_port_is_8792_and_explicit_override_remains_configurable(self):
+        self.assertEqual(config.DEFAULT_PORT, 8792)
+        self.assertEqual(config.listener_port({}), 8792)
+        self.assertEqual(config.listener_port({config.PROXY_PORT_ENV: "8808"}), 8808)
+
+        projected = context.RuntimeContext(
+            home="/home/team",
+            install_dir="/opt/proxy",
+            proxy_script="/opt/proxy/listener.py",
+            watchdog_script="/opt/proxy/watchdog.py",
+            python="/opt/python",
+            log_dir="/var/state/proxy",
+            port=8808,
+        )
+        self.assertEqual(projected.service_environment()[config.PROXY_PORT_ENV], "8808")
+
     def test_context_is_the_single_deployed_runtime_projection(self):
         with (
             mock.patch.object(config, "home_dir", return_value="/portable/home"),
