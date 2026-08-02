@@ -67,7 +67,7 @@ def _budget(raw: bytes, budget: int | None) -> int | None:
 
 def retry_disposition(code: int, err_body: bytes) -> str:
     """Return ``full``, ``once``, or an empty non-retry disposition."""
-    if code in (429, 500, 502, 503, 504, 524):
+    if code in (500, 502, 503, 504, 524):
         return "full"
     if code != 400:
         return ""

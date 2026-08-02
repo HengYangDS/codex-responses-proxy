@@ -64,6 +64,40 @@ def _admit(exchange: upstream_exchange.Exchange) -> bool:
     return True
 
 
+def _cooldown_active(exchange: upstream_exchange.Exchange) -> bool:
+    """Reject one Responses request while its provider policy is cooling down."""
+    if not exchange.is_responses:
+        return False
+    policy = exchange.profile.wire_policy
+    if policy is not None:
+        fingerprint = policy.request_fingerprint(exchange.body)
+        remaining = cooldown.remaining(fingerprint)
+        if remaining > 0:
+            telemetry.record_counter("wire_failure_cooldown_hits")
+            telemetry.record_failure("wire_failure_cooldown_hit")
+            downstream.send_wire_failure_exhausted(exchange.handler, policy, 0)
+            exchange.log("wire_failure_cooldown_hit", f"remaining_seconds={remaining:.1f} ")
+            return True
+    remaining = cooldown.remaining(cooldown.provider_key(exchange.profile.name))
+    if remaining <= 0:
+        return False
+    seconds = max(1, int(remaining + 0.999))
+    telemetry.record_counter("provider_rate_limit_cooldown_hits")
+    telemetry.record_failure("provider_rate_limit_cooldown")
+    downstream.send_payload(
+        exchange.handler,
+        429,
+        downstream.json_error(
+            "provider rate limit cooldown is active; retry the turn shortly",
+            "rate_limit_error",
+            "provider_rate_limit_cooldown",
+        ),
+        retry_after=str(seconds),
+    )
+    exchange.log("provider_rate_limit_cooldown", f"remaining_seconds={seconds} ")
+    return True
+
+
 def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
     """Relay one downstream request through bounded compatibility policies."""
     request_id = admission.next_request_id()
@@ -147,22 +181,10 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
         body,
         profile,
     )
-    if not _admit(exchange):
+    if _cooldown_active(exchange) or not _admit(exchange):
         return
     acquired = is_responses
     try:
-        policy = profile.wire_policy
-        if is_responses and policy is not None:
-            fingerprint = policy.request_fingerprint(body)
-            remaining = cooldown.remaining(
-                fingerprint, cooldown_seconds=policy.FAILURE_COOLDOWN_SECONDS
-            )
-            if remaining > 0:
-                telemetry.record_counter("wire_failure_cooldown_hits")
-                telemetry.record_failure("wire_failure_cooldown_hit")
-                downstream.send_wire_failure_exhausted(handler, policy, 0)
-                exchange.log("wire_failure_cooldown_hit", f"remaining_seconds={remaining:.1f} ")
-                return
         response = upstream_exchange.open_upstream(exchange)
         if response is None:
             return

@@ -7,6 +7,9 @@ events, but successful non-stream JSON responses bypass that projection. Empty,
 truncated, or malformed successful Responses bodies can also be committed as
 success, empty request bodies bypass local validation, and provider routes accept
 ambiguous suffixes outside the owned Responses endpoint.
+The generic retry loop also treats provider rate limits as transient failures,
+so one client attempt can multiply one upstream HTTP 429 into additional calls
+before the client's own retry policy runs.
 
 ## What changes
 
@@ -21,6 +24,11 @@ ambiguous suffixes outside the owned Responses endpoint.
   manifest-only.
 - Classify response-failed recovery from structured error fields rather than
   incidental prose and state the implemented Codex replay subset truthfully.
+- Treat HTTP 429 as terminal for the current proxy attempt, relay the first
+  upstream response, and apply bounded provider-scoped cooldown without remote
+  I/O for later requests during that window.
+- Default Responses concurrency to a conservative configurable guardrail without
+  encoding or claiming an undocumented provider quota.
 - Add behavior tests before implementation and retain ordinary non-Responses
   relay behavior.
 
@@ -28,7 +36,8 @@ ambiguous suffixes outside the owned Responses endpoint.
 
 This change does not edit Codex JSONL, SQLite, transcript history, stored items,
 conversation metadata, or model metadata. It does not add gateway routing,
-budget, rate-limit, or control-plane responsibilities.
+budget, quota allocation, persistent rate-limit state, or control-plane
+responsibilities.
 
 ## Capabilities
 
@@ -50,6 +59,8 @@ None.
 - Editing Codex JSONL, SQLite, historical messages, archived conversations,
   Responses item records, model choices, or model metadata.
 - Reading or writing AIGW configuration or credentials.
-- Becoming a general routing, budgeting, rate-limit, or cluster gateway.
+- Becoming a general routing, budgeting, quota, persistent rate-limit, or
+  cluster gateway.
+- Claiming an exact service quota that a provider has not published.
 - Claiming a complete OpenAI Responses grammar beyond the replay subset proven
   by source and tests.

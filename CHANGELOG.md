@@ -7,6 +7,8 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-08-02
+
 ### Fixed
 
 - Project successful non-stream Responses atomically with the same
@@ -19,6 +21,12 @@ shared headings even when a historical tag exists only on the other Forge.
 - Replace the DMX-shaped registry interface with one optional `WirePolicy`
   boundary and admit request-changing `response_failed` recovery only from
   structured error fields, never incidental human-readable prose.
+- Relay an upstream HTTP 429 after exactly one upstream call, preserve its body
+  and eligible headers, and apply a bounded process-local cooldown only to that
+  provider instead of multiplying throttling through the generic retry loop.
+- Reduce the default Responses concurrency from 64 to 8 as a conservative burst
+  guardrail. The validated environment override remains available; this default
+  does not claim any provider's unpublished quota.
 
 ## [2.0.0] - 2026-08-02
 

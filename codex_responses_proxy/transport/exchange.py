@@ -291,11 +291,23 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
         error.close()
     portable = response_failed.retry_disposition(status_code, payload)
     policy = exchange.profile.wire_policy
-    wire_failure = policy is not None and policy.is_retryable_failure(status_code, payload)
+    rate_limited = exchange.is_responses and status_code == 429
+    wire_failure = (
+        not rate_limited
+        and policy is not None
+        and policy.is_retryable_failure(status_code, payload)
+    )
     disposition = "full" if wire_failure else portable
     exact = input_variant.is_exact_validation_error(status_code, payload)
     classification = _classification(status_code, payload, disposition, exact, wire_failure)
     telemetry.record_upstream_classification(classification)
+    if rate_limited:
+        seconds = cooldown.retry_after_seconds(headers)
+        cooldown.remember_failure(
+            cooldown.provider_key(exchange.profile.name), cooldown_seconds=seconds
+        )
+        telemetry.record_counter("provider_rate_limits")
+        exchange.log("provider_rate_limit", f"cooldown_seconds={seconds} ")
     if exchange.used_input_variant_dialogue:
         exchange.input_variant_exhausted(f"upstream_status={status_code} ")
         downstream.relay_error(exchange.handler, status_code, headers, payload)
