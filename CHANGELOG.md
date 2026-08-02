@@ -7,6 +7,14 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-08-02
+
+### Fixed
+
+- Keep provider and request-fingerprint cooldown deadlines monotonic: a later
+  concurrent failure with a shorter delay can no longer replace a still-active
+  longer deadline and reopen upstream traffic prematurely.
+
 ## [2.0.2] - 2026-08-02
 
 ### Fixed

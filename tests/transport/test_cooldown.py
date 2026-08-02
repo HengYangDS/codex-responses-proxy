@@ -52,6 +52,11 @@ class CooldownTests(unittest.TestCase):
             with self.subTest(value=value[:20]):
                 self.assertEqual(cooldown.retry_after_seconds(headers, now=now), 300)
 
+    def test_later_shorter_failure_does_not_shorten_an_active_cooldown(self) -> None:
+        cooldown.remember_failure("provider:ucloud", cooldown_seconds=300, now=10.0)
+        cooldown.remember_failure("provider:ucloud", cooldown_seconds=5, now=11.0)
+        self.assertEqual(cooldown.remaining("provider:ucloud", now=12.0), 298.0)
+
 
 if __name__ == "__main__":
     unittest.main()
