@@ -12,8 +12,10 @@ shared headings even when a historical tag exists only on the other Forge.
 ### Fixed
 
 - Exercise the successful Darwin native-argument parser with a synthetic
-  `sysctl` contract on every host, so Linux quality jobs retain branch coverage
-  above 95 percent while the real process integration remains Darwin-only.
+  `sysctl` contract on every host, including incomplete-payload rejection, and
+  verify the Darwin default state root without depending on the CI host. Linux
+  quality jobs therefore retain branch coverage above 95 percent while real
+  process integration remains Darwin-only.
 
 ## [2.0.6] - 2026-08-02
 

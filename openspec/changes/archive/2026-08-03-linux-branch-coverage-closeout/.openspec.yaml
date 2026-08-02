@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-03
+goal: Keep hosted statement and branch coverage strictly above 95 percent on
+  every supported CI host.
