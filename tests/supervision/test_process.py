@@ -144,26 +144,29 @@ class TestProcessIdentity(unittest.TestCase):
         with mock.patch.object(process.subprocess, "run", side_effect=OSError):
             self.assertEqual(process._process_inventory(), [])
 
-        with mock.patch.object(
-            process,
-            "_process_inventory",
-            return_value=[
-                (7, "python /installed/watchdog.py.backup"),
-                (8, 'python "/installed/watchdog.py"'),
-                (9, "powershell -Command 'Write-Output /installed/watchdog.py'"),
-                (10, "powershell -Command Write-Output /installed/watchdog.py"),
-                (11, "python -c print /installed/watchdog.py"),
-            ],
-        ), mock.patch.object(
-            process,
-            "process_argv",
-            side_effect=[
-                ["python", "/installed/watchdog.py.backup"],
-                ["python", "/installed/watchdog.py"],
-                ["powershell", "-Command", "Write-Output /installed/watchdog.py"],
-                ["powershell", "-Command", "Write-Output", "/installed/watchdog.py"],
-                ["python", "-c", "print", "/installed/watchdog.py"],
-            ],
+        with (
+            mock.patch.object(
+                process,
+                "_process_inventory",
+                return_value=[
+                    (7, "python /installed/watchdog.py.backup"),
+                    (8, 'python "/installed/watchdog.py"'),
+                    (9, "powershell -Command 'Write-Output /installed/watchdog.py'"),
+                    (10, "powershell -Command Write-Output /installed/watchdog.py"),
+                    (11, "python -c print /installed/watchdog.py"),
+                ],
+            ),
+            mock.patch.object(
+                process,
+                "process_argv",
+                side_effect=[
+                    ["python", "/installed/watchdog.py.backup"],
+                    ["python", "/installed/watchdog.py"],
+                    ["powershell", "-Command", "Write-Output /installed/watchdog.py"],
+                    ["powershell", "-Command", "Write-Output", "/installed/watchdog.py"],
+                    ["python", "-c", "print", "/installed/watchdog.py"],
+                ],
+            ),
         ):
             self.assertEqual(process.pids_naming_path("/installed/watchdog.py"), [8])
 

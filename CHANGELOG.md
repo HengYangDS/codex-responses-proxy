@@ -7,6 +7,18 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.5] - 2026-08-02
+
+### Fixed
+
+- Preserve exact macOS process identity by reading native process arguments
+  instead of reparsing the lossy `ps` command string. Installed paths containing
+  spaces are now discovered, handed off, and terminated by exact resolved
+  entrypoint identity.
+- Bootstrap the package root before a watchdog launched as a direct script
+  imports the runtime package, preventing the sibling `select.py` module from
+  shadowing Python's standard-library `select` module.
+
 ## [2.0.4] - 2026-08-02
 
 ### Fixed
