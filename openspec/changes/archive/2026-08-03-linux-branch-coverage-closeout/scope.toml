@@ -4,6 +4,7 @@ paths = [
   "evidence/claims/linux-branch-coverage-closeout-20260803.toml",
   "evidence/chronicle/linux-branch-coverage-closeout-20260803/**",
   "openspec/changes/linux-branch-coverage-closeout/**",
+  "openspec/changes/archive/2026-08-03-linux-branch-coverage-closeout/**",
   "openspec/specs/ci-diagnostics/spec.md",
   "tests/governance/test_repository.py",
   "tests/supervision/test_process.py",
