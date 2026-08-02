@@ -24,7 +24,9 @@ None.
 
 - `ci-diagnostics`: require the Forge fingerprint oracle to treat Git's two
   strict-ISO UTC renderings as the same instant without weakening any other
-  identity-neutral fingerprint byte.
+  identity-neutral fingerprint byte; subject=Forge UTC fingerprint oracle;
+  reuse=extend; change=modify; facet:lifecycle=verification,ci,release;
+  facet:surface=test,openspec,ci; facet:authority=git,test,forge.
 
 ## Out of Scope
 

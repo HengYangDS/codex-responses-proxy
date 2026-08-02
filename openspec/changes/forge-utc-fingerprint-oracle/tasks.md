@@ -12,5 +12,6 @@
 ## 3. Proof
 
 - [x] 3.1 Pass the focused Forge history and remote-compaction regression tests.
-- [ ] 3.2 Pass strict OpenSpec, the complete local quality matrix, and hosted CI
-  before publication or deployment.
+- [x] 3.2 Pass strict OpenSpec and the complete local Python 3.12-3.14 quality
+  matrix before publication or deployment.
+- [ ] 3.3 Pass exact-tip hosted CI before publication or deployment.
