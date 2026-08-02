@@ -564,6 +564,20 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
         ),
         ".python-verify template",
     )
+    require_tokens(
+        ci,
+        (
+            'PYTHON_VERSION: "3.12"',
+            'PYTHON_VERSION: "3.13"',
+            'PYTHON_VERSION: "3.14"',
+        ),
+        "GitLab supported Python lines",
+    )
+    for patch_pin in ("3.12.", "3.13.", "3.14."):
+        require(
+            patch_pin not in ci,
+            f"GitLab CI must select supported Python lines, not patch releases: {patch_pin}",
+        )
 
 
 def test_python_quality_gate_is_cross_forge() -> None:
