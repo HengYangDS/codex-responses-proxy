@@ -438,6 +438,58 @@ class TestProxyTransport(unittest.TestCase):
             finally:
                 release.set()
 
+    def test_route_queue_timeout_reports_the_route_and_its_effective_width(self):
+        success = b'{"id":"resp_served","status":"completed"}'
+        body = json.dumps({"stream": False, "input": []}).encode()
+        started = threading.Event()
+        release = threading.Event()
+        worker_result = {}
+
+        scripted = {
+            "status": 200,
+            "content_type": "application/json",
+            "chunks": [success],
+            "started_event": started,
+            "release_event": release,
+        }
+        with running_proxy([scripted]) as (port, _received):
+
+            def request_in_flight():
+                try:
+                    with request(port, body) as response:
+                        worker_result["body"] = response.read()
+                except BaseException as exc:  # asserted below; never hide a worker failure
+                    worker_result["error"] = exc
+
+            worker = threading.Thread(target=request_in_flight)
+            worker.start()
+            try:
+                self.assertTrue(
+                    started.wait(timeout=2), "upstream never received the first Responses request"
+                )
+                with (
+                    mock.patch.object(admission, "RESPONSES_QUEUE_TIMEOUT", 0.05),
+                    self.assertRaises(urllib.error.HTTPError) as raised,
+                ):
+                    request(port, body)
+                with raised.exception:
+                    self.assertEqual(raised.exception.code, 503)
+                    payload = json.loads(raised.exception.read())
+            finally:
+                release.set()
+                worker.join(timeout=3)
+
+        self.assertNotIn("error", worker_result)
+        message = payload["error"]["message"]
+        self.assertIn("dmxapi", message)
+        self.assertIn("route limit 1", message)
+        self.assertNotIn(f"slot ({admission.RESPONSES_MAX_CONCURRENCY})", message)
+        self.assertEqual(payload["error"]["type"], "server_busy")
+        self.assertEqual(payload["error"]["code"], "local_queue_timeout")
+        status = self.p.runtime_status()
+        counters = cast("dict[str, int]", status["counters"])
+        self.assertEqual(counters["responses_local_queue_timeouts"], 1)
+
     def test_reconnects_a_pre_content_response_failed_stream(self):
         failed = {
             "chunks": [
