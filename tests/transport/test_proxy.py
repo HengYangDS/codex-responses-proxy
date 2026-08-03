@@ -488,6 +488,7 @@ class TestProxyTransport(unittest.TestCase):
         self.assertNotIn(f"slot ({admission.RESPONSES_MAX_CONCURRENCY})", message)
         self.assertEqual(payload["error"]["type"], "server_busy")
         self.assertEqual(payload["error"]["code"], "local_queue_timeout")
+        self.assertEqual(raised.exception.headers["Retry-After"], "5")
         status = self.p.runtime_status()
         counters = cast("dict[str, int]", status["counters"])
         self.assertEqual(counters["responses_local_queue_timeouts"], 1)
