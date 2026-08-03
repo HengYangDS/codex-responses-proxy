@@ -46,12 +46,13 @@ None.
 
 - Widening per-route single-flight above one, or adding a per-provider width
   knob. See [design.md](design.md).
-- Changing the released `responses_queue_timeout` default, which is already an
-  operator knob.
+- Changing the released `responses_queue_timeout` default in code. It is
+  already an operator knob, and a constant change would reach no installed
+  operator; this change documents how to apply the knob instead.
 - Changing provider quotas, client retry policy, credentials, URLs, or route
   configuration.
 - The AIGW `check` and `catalog` model-listing contract, which is owned by a
-  separate concurrent change.
+  separate concurrent change that rebases onto this one.
 - Editing Codex JSONL, SQLite, history, archives, or model metadata.
 
 ## Impact
@@ -59,4 +60,4 @@ None.
 Responses transport orchestration, the SSE relay, the named route-width
 constant, focused tests, the diagnosis table, and release notes are affected.
 No new dependency, daemon, configuration surface, or persistent state is added,
-and `VERSION` is unchanged.
+and `VERSION` is unchanged because the concurrent change owns the next bump.
