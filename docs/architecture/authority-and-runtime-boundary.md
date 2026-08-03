@@ -28,14 +28,18 @@ configuration.
 The released provider manifest defines the listener's data-plane namespaces
 and is the installed runtime's sole provider authority. Runtime environment
 variables cannot replace it. The listener accepts only explicit
-`/<provider>/v1/responses` routes; unscoped `/v1` has no implicit provider
+`POST /<provider>/v1/responses` routes and explicit read-only
+`GET /<provider>/v1/models` routes; unscoped `/v1` has no implicit provider
 meaning and unrelated provider endpoints are outside this product.
 The current release declares:
 
 ```text
 /dmxapi/v1/responses  -> release-owned DMXAPI Responses endpoint
+/dmxapi/v1/models     -> release-owned DMXAPI model catalog endpoint
 /ucloud/v1/responses  -> release-owned UCloud/Azure Responses endpoint
+/ucloud/v1/models     -> release-owned UCloud/Azure model catalog endpoint
 /aihubmix/v1/responses -> release-owned AIHubMix Responses endpoint
+/aihubmix/v1/models    -> release-owned AIHubMix model catalog endpoint
 ```
 
 A consumer selects one namespace through its own endpoint configuration and
@@ -49,6 +53,12 @@ one manifest table. A genuinely provider-specific wire extension adds one
 module under `codex_responses_proxy/providers/policies/` and names it from that
 table; the registry and release inventory contain no provider-name switch or
 second policy list.
+
+Only the Responses target enters replay projection, response projection,
+Responses admission, cooldown, retry, and provider-specific recovery. A model
+catalog target is a single transparent GET: it keeps client authentication,
+uses the same manifest-owned upstream origin, and relays the upstream status,
+eligible headers, and body without catalog parsing, filtering, or caching.
 
 Before remote I/O, `codex_responses_proxy.replay.request` projects Responses
 replay onto a closed portable grammar. `codex_responses_proxy.replay.response`

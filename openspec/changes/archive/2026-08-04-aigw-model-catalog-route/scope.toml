@@ -1,0 +1,20 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "codex_responses_proxy/providers/registry.py",
+  "codex_responses_proxy/transport/exchange.py",
+  "codex_responses_proxy/transport/relay.py",
+  "codex_responses_proxy/transport/responses.py",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "evidence/claims/aigw-model-catalog-route-20260803.toml",
+  "evidence/chronicle/aigw-model-catalog-route-20260803/**",
+  "openspec/changes/aigw-model-catalog-route/**",
+  "openspec/changes/archive/2026-08-03-aigw-model-catalog-route/**",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/listener/proxy_fixture.py",
+  "tests/providers/test_registry.py",
+  "tests/providers/test_routes.py",
+  "tests/transport/test_input.py",
+]

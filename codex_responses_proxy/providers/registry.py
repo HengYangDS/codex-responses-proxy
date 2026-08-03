@@ -56,8 +56,8 @@ class Registry:
 
     profiles: Mapping[str, Profile]
 
-    def resolve(self, path: str) -> tuple[Profile, str] | None:
-        """Resolve one exact provider-scoped Responses target."""
+    def resolve(self, path: str) -> tuple[Profile, str, str] | None:
+        """Resolve one exact provider-scoped supported target."""
 
         try:
             parsed = urllib.parse.urlsplit(path)
@@ -66,13 +66,22 @@ class Registry:
         if parsed.scheme or parsed.netloc or parsed.fragment:
             return None
         parts = parsed.path.split("/")
-        if len(parts) != 4 or parts[0] or parts[2:] != ["v1", "responses"]:
+        if (
+            len(parts) != 4
+            or parts[0]
+            or parts[2] != "v1"
+            or parts[3]
+            not in {
+                "models",
+                "responses",
+            }
+        ):
             return None
         profile = self.profiles.get(parts[1])
         if profile is None or urllib.parse.quote(parsed.path, safe="/-._~") != parsed.path:
             return None
         query = f"?{parsed.query}" if parsed.query else ""
-        return profile, profile.base_url + "/responses" + query
+        return profile, parts[3], profile.base_url + "/" + parts[3] + query
 
 
 def default_manifest_path() -> Path:
