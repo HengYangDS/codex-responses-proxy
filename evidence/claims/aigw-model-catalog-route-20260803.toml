@@ -1,0 +1,48 @@
+[claim]
+id = "aigw-model-catalog-route-20260803"
+subject = "codex-responses-proxy:provider-model-catalog-route"
+state = "active"
+summary = "Bind the closed provider-scoped AIGW model-catalog route to the 2.0.8 source candidate."
+
+[evidence]
+dated = "evidence/chronicle/aigw-model-catalog-route-20260803/2026-08-03.md"
+sha256 = "1dd03e4556be7b2b8a6f0cbc3dbfd194c3b8bf8b385f0ea78a57b739be66f138"
+evidence_ids = ["evidence:aigw-model-catalog-route-20260803"]
+binding = "Fresh loopback 404 diagnosis, closed GET /models implementation, focused contracts, locked full quality, Python 3.12-3.14 matrix, and strict OpenSpec validation; landing, publication, installation, and runtime acceptance remain separate."
+verifier = "digest_only"
+tests = [
+  "python3.14 -m unittest tests.transport.test_input tests.providers.test_registry tests.providers.test_routes tests.governance.test_owner_boundaries -v",
+  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+  "openspec validate aigw-model-catalog-route --strict",
+]
+
+[evidence.freshness]
+mode = "semantic_scope"
+head = "74ca0eb52cad200a2864736d39f57bb0e732dc7a"
+semantic_sha256 = "e3f74ce05d904d0de81107750da62936442a72e8741c5f34e4133d679721c44c"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Source route grammar, transport, tests, release metadata, documentation, OpenSpec, and dated evidence only; AIGW configuration, credentials, Forge publication, installation, runtime acceptance, and conversation recovery remain separate claims."
+
+[carriers]
+openspec = "openspec/changes/archive/2026-08-04-aigw-model-catalog-route"
+fallback = "Retain the verified 2.0.7 installed payload until a newer signed release completes transactional installation and fresh AIGW acceptance."
+kill_signal = "Any supported catalog target accepts a non-GET method or an unclosed path, mutates AIGW or conversation state, bypasses the manifest-owned upstream, performs Responses recovery policy, or fails to preserve authenticated upstream response semantics."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "VERSION",
+  "codex_responses_proxy/providers/registry.py",
+  "codex_responses_proxy/transport/exchange.py",
+  "codex_responses_proxy/transport/relay.py",
+  "codex_responses_proxy/transport/responses.py",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/listener/proxy_fixture.py",
+  "tests/providers/test_registry.py",
+  "tests/providers/test_routes.py",
+  "tests/transport/test_input.py",
+]

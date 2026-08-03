@@ -8,6 +8,7 @@ import sys
 import unittest
 import urllib.error
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -129,6 +130,74 @@ class ProviderRouteTests(unittest.TestCase):
                 with raised.exception as error:
                     self.assertEqual(error.code, status)
             self.assertEqual(received, [])
+
+    def test_all_three_catalog_routes_relay_exact_get_without_responses_policy(self) -> None:
+        catalog = _body(
+            {
+                "object": "list",
+                "data": [{"id": "gpt-5.6-terra", "object": "model"}],
+            }
+        )
+        captures: list[dict[str, object]] = []
+        with running_proxy([(200, catalog), (200, catalog), (200, catalog)], captures=captures) as (
+            port,
+            received,
+        ):
+            for route in ("dmxapi", "ucloud", "aihubmix"):
+                with (
+                    self.subTest(route=route),
+                    request(
+                        port,
+                        path=f"/{route}/v1/models?limit=1",
+                        method="GET",
+                        headers={"Authorization": "Bearer catalog-test"},
+                    ) as response,
+                ):
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.read(), catalog)
+
+        self.assertEqual(received, [b"", b"", b""])
+        self.assertEqual(len(captures), 3)
+        for capture in captures:
+            self.assertEqual(capture["method"], "GET")
+            self.assertEqual(capture["path"], "/models?limit=1")
+            self.assertEqual(capture["body"], b"")
+            headers = cast("dict[str, str]", capture["headers"])
+            self.assertEqual(headers["Authorization"], "Bearer catalog-test")
+
+    def test_catalog_rejects_non_get_or_non_catalog_targets_before_upstream(self) -> None:
+        valid = _body({"input": [{"type": "message", "role": "user", "content": "hello"}]})
+        cases = (
+            ("POST", "/ucloud/v1/models", valid),
+            ("GET", "/ucloud/v1/responses", b""),
+            ("GET", "/ucloud/v1/modelsx", b""),
+            ("GET", "/ucloud/v1//models", b""),
+            ("GET", "/ucloud/v1/%6dodels", b""),
+            ("GET", "/ucloud/v1/models%2fextra", b""),
+        )
+        with running_proxy([]) as (port, received):
+            for method, path, body in cases:
+                with (
+                    self.subTest(method=method, path=path),
+                    self.assertRaises(urllib.error.HTTPError) as raised,
+                ):
+                    request(port, body, path=path, method=method)
+                with raised.exception as error:
+                    self.assertEqual(error.code, 404)
+            self.assertEqual(received, [])
+
+    def test_catalog_http_error_relays_once_without_responses_retry_or_recovery(self) -> None:
+        failure = _body({"error": {"message": "temporarily unavailable", "type": "server_error"}})
+        captures: list[dict[str, object]] = []
+        with running_proxy([(503, failure)], captures=captures) as (port, received):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                request(port, path="/dmxapi/v1/models", method="GET")
+            with raised.exception as error:
+                self.assertEqual(error.code, 503)
+                self.assertEqual(error.read(), failure)
+
+        self.assertEqual(received, [b""])
+        self.assertEqual(len(captures), 1)
 
     def test_dmx_empty_response_cooldown_does_not_block_ucloud(self) -> None:
         empty = _body(

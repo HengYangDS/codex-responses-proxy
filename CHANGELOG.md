@@ -28,6 +28,11 @@ shared headings even when a historical tag exists only on the other Forge.
   install-time value, so exporting
   `CODEX_RESPONSES_PROXY_RESPONSES_QUEUE_TIMEOUT` in a shell never reaches a
   supervised listener; re-rendering the unit is the supported path.
+- Add the closed, read-only `GET /<provider>/v1/models` compatibility route
+  for DMXAPI, UCloud/Azure, and AIHubMix. Catalog requests retain client
+  authentication and relay their selected upstream response exactly once,
+  without entering Responses replay projection, admission, cooldown, retry, or
+  recovery.
 
 ## [2.0.7] - 2026-08-02
 

@@ -285,18 +285,25 @@ class ProviderRegistryTests(unittest.TestCase):
         )
         self.assertEqual(
             routes.resolve("/alpha/v1/responses"),
-            (routes.profiles["alpha"], "https://alpha.example/v1/responses"),
+            (routes.profiles["alpha"], "responses", "https://alpha.example/v1/responses"),
         )
         self.assertEqual(
             routes.resolve("/beta/v1/responses?include=usage"),
-            (routes.profiles["beta"], "https://beta.example/v1/responses?include=usage"),
+            (
+                routes.profiles["beta"],
+                "responses",
+                "https://beta.example/v1/responses?include=usage",
+            ),
+        )
+        self.assertEqual(
+            routes.resolve("/beta/v1/models?limit=10"),
+            (routes.profiles["beta"], "models", "https://beta.example/v1/models?limit=10"),
         )
         for path in (
             "/v1/responses",
             "/unknown/v1/responses",
             "/alpha/other",
             "/beta/v2/responses",
-            "/beta/v1/models",
             "/beta/v1/responsesx",
             "/beta/v1//responses",
             "/beta/v1/../admin",
