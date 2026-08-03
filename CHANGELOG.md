@@ -19,6 +19,10 @@ shared headings even when a historical tag exists only on the other Forge.
   abandoned or replaced. A stalled upstream that holds its socket open can no
   longer keep a provider-route admission slot past that deadline, which
   previously degraded into an unbounded series of per-read idle timeouts.
+- Advertise `Retry-After: 5` on the local queue-timeout 503 and document the
+  symptom. The response is retryable but its release time is bounded only by the
+  total upstream stream deadline, so the hint is a deliberate floor rather than
+  the transient-fault `Retry-After: 3` used by the upstream exhaustion paths.
 
 ## [2.0.7] - 2026-08-02
 

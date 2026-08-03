@@ -544,6 +544,7 @@ class InputTransportContracts(unittest.TestCase):
             responses.relay(handler, "POST")
         self.assertEqual(handler.statuses, [503])
         self.assertIn(b"timed out waiting", handler.output())
+        self.assertIn(("Retry-After", "5"), handler.sent_headers)
 
         admission.reset_for_test()
         telemetry.reset_for_test()
