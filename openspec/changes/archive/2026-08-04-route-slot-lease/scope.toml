@@ -8,6 +8,8 @@ paths = [
   "evidence/claims/route-slot-lease-20260804.toml",
   "evidence/chronicle/route-slot-lease-20260804/**",
   "openspec/changes/route-slot-lease/**",
+  "openspec/changes/archive/2026-08-04-route-slot-lease",
+  "openspec/changes/archive/2026-08-04-route-slot-lease/**",
   "openspec/specs/provider-portable-responses/spec.md",
   "tests/listener/proxy_fixture.py",
   "tests/transport/test_input.py",
