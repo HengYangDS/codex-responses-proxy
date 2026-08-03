@@ -23,6 +23,11 @@ shared headings even when a historical tag exists only on the other Forge.
   symptom. The response is retryable but its release time is bounded only by the
   total upstream stream deadline, so the hint is a deliberate floor rather than
   the transient-fault `Retry-After: 3` used by the upstream exhaustion paths.
+- Document how to actually apply the queue-timeout knob when legitimate long
+  turns keep exhausting the wait. The installed native unit pins the
+  install-time value, so exporting
+  `CODEX_RESPONSES_PROXY_RESPONSES_QUEUE_TIMEOUT` in a shell never reaches a
+  supervised listener; re-rendering the unit is the supported path.
 
 ## [2.0.7] - 2026-08-02
 

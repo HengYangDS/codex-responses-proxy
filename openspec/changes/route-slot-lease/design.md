@@ -50,14 +50,17 @@ duration. A slow but genuinely productive turn is still served — the observed
 ### Route width stays at one
 
 Raising `RESPONSES_MAX_PER_ROUTE` to two or three would reopen the burst window
-the predecessor closed. The cooldown map is populated only by `remember_failure`
-*after* an upstream HTTP 429 is observed, so at width two both simultaneously
-admitted same-route requests read `remaining() == 0` and both reach the
-provider — which is precisely the failure the predecessor's `## Why` describes.
-The post-queue cooldown recheck does not compensate: it protects a request that
-*waited*, and at width two the second request does not wait. A per-provider
-width knob is additionally rejected under the provider-manifest discipline,
-which forbids a new environment variable or branch per provider.
+the predecessor closed. Nothing populates the cooldown map until a wire failure
+has already been observed: `cooldown.remember_failure` has exactly two
+production callers, and both run after the exchange returns — the rate-limit
+path gated on `status_code == 429` and the non-429 wire-policy rejection. So at
+width two both simultaneously admitted same-route requests read
+`remaining() == 0` and both reach the provider — which is precisely the failure
+the predecessor's `## Why` describes. The post-queue cooldown recheck does not
+compensate: it protects a request that *waited*, and at width two the second
+request does not wait. A per-provider width knob is additionally rejected under
+the provider-manifest discipline, which forbids a new environment variable or
+branch per provider.
 
 The recurrence lever is therefore the existing operator knob
 `CODEX_RESPONSES_PROXY_RESPONSES_QUEUE_TIMEOUT`, whose released default is 120
@@ -65,8 +68,19 @@ seconds. Measured against 16836 recorded slot holds, 40 exceeded 120 seconds
 and 1 exceeded 300 seconds, so an operator who raises the queue timeout
 converts nearly every observed denial into a completed wait without weakening
 burst protection. A queued request holds no global slot, because the route
-semaphore is acquired first, so waiting is cheap. The released default is left
-unchanged here; retuning it is an operator decision, not a code change.
+semaphore is acquired first, so waiting is cheap.
+
+Raising the released default in code was evaluated and rejected, not merely
+deferred. `RuntimeContext.service_environment` projects the install-time value
+into the native unit unconditionally, and the ordinary in-place upgrade path
+never re-renders that unit, so a new constant would reach no already-installed
+operator — the exact population whose logs motivated it. Delivering it requires
+re-rendering the unit, which is the same operator act as setting the variable,
+so the code change buys nothing the existing knob does not. Suppressing the key
+when it equals the default would not help either: it cannot unwrite a line
+already on disk, it breaks the exact-key-set projection invariant, and it would
+let one installed unit mean different things across releases. What was missing
+was documentation of how to apply the knob, which this change supplies.
 
 ### The retry hint is a floor, not a prediction
 
@@ -87,6 +101,10 @@ slowly than either.
 - **Route saturation still denies work at width one** → accepted; the
   alternative reopens a closed rate-limit defect, and the queue timeout is a
   supported operator knob.
+- **The queue-timeout knob does not take effect by export alone** → under native
+  supervision the installed unit pins the install-time value, so the diagnosis
+  table names re-rendering the unit rather than leaving the operator to discover
+  that a shell export is ignored.
 
 ## Migration Plan
 
@@ -95,7 +113,11 @@ slowly than either.
 2. Implement each fix as one minimal change with focused GREEN between them.
 3. Run the full quality matrix, statement and branch coverage above 95%, and
    the Python 3.12-3.14 behavior gates.
-4. Land after the concurrent AIGW model-catalog change, which overlaps
-   `transport/responses.py`, `tests/transport/test_input.py`,
-   `tests/listener/proxy_fixture.py`, `CHANGELOG.md`, and `README.md`.
-   Rollback is reverting these commits; no state is migrated.
+4. Promote to `candidate/dev` as a fast-forward ahead of the concurrent AIGW
+   model-catalog change, on the owner's explicit instruction. That inverts the
+   order this plan first recorded. The consequence is carried by the AIGW lane,
+   which rebases onto the advanced `candidate/dev` and reconciles the five
+   overlapping files — `transport/responses.py`, `tests/transport/test_input.py`,
+   `tests/listener/proxy_fixture.py`, `CHANGELOG.md`, and `README.md` — and
+   still owns the `VERSION` bump. Rollback is reverting these commits; no state
+   is migrated.
