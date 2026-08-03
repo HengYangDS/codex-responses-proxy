@@ -1,0 +1,15 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "README.md",
+  "codex_responses_proxy/runtime/admission.py",
+  "codex_responses_proxy/transport/responses.py",
+  "codex_responses_proxy/transport/sse.py",
+  "evidence/claims/route-slot-lease-20260804.toml",
+  "evidence/chronicle/route-slot-lease-20260804/**",
+  "openspec/changes/route-slot-lease/**",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/listener/proxy_fixture.py",
+  "tests/transport/test_input.py",
+  "tests/transport/test_proxy.py",
+]

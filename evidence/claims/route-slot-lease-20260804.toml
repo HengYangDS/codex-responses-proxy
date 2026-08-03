@@ -1,0 +1,43 @@
+[claim]
+id = "route-slot-lease-20260804"
+subject = "codex-responses-proxy:provider-route-slot-lifetime"
+state = "active"
+summary = "Bind a total upstream stream deadline, upstream connection release, and a route-named retryable queue-timeout denial, while holding per-route single-flight at one."
+
+[evidence]
+dated = "evidence/chronicle/route-slot-lease-20260804/2026-08-04.md"
+sha256 = "92e86809e46cef82b06baba7ec3b1f0f81a8c5477dbe9ee2104e2de57c3ba1a9"
+evidence_ids = ["evidence:route-slot-lease-20260804"]
+binding = "Log census, TDD with observed RED, warning-free full quality above 95% statement and branch coverage, strict OpenSpec, and three implementation commits; landing order behind the concurrent AIGW model-catalog change and live route acceptance remain pending"
+verifier = "digest_only"
+tests = [
+  "python3.14 tests/transport/test_proxy.py",
+  "python3.14 tests/transport/test_input.py",
+  "PYTHON=python3.12 sh tools/quality/run.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+  "openspec validate route-slot-lease --strict",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "The AIGW check and catalog model-listing contract, the VERSION bump, any change to the released responses_queue_timeout default, hosted publication, and live provider acceptance are separate claims."
+
+[carriers]
+openspec = "openspec/changes/route-slot-lease"
+fallback = "Raise CODEX_RESPONSES_PROXY_RESPONSES_QUEUE_TIMEOUT from 120 toward 300 to absorb legitimate long holds; revert these three commits to restore prior stream behavior."
+kill_signal = "A route slot is held past the configured upstream timeout, an abandoned upstream response is left unclosed, the queue-timeout denial omits the route or its retry hint, per-route admission admits more than one exchange, or a legitimate completing turn is truncated inside the configured budget."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "README.md",
+  "codex_responses_proxy/runtime/admission.py",
+  "codex_responses_proxy/transport/responses.py",
+  "codex_responses_proxy/transport/sse.py",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/transport/test_input.py",
+  "tests/transport/test_proxy.py",
+]
