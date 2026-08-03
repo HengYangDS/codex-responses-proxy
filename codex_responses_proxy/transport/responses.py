@@ -51,7 +51,7 @@ def _admit(exchange: upstream_exchange.Exchange) -> bool:
             "server_busy",
             "local_queue_timeout",
         )
-        downstream.send_payload(exchange.handler, 503, payload)
+        downstream.send_payload(exchange.handler, 503, payload, retry_after="5")
         exchange.log("local_queue_timeout")
         return False
     exchange.log(
