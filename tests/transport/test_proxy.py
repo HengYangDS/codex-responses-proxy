@@ -6,11 +6,12 @@ from __future__ import annotations
 import json
 import sys
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +23,7 @@ from codex_responses_proxy.runtime import admission, operational_log, telemetry 
 from codex_responses_proxy.transport import cooldown  # noqa: E402
 from codex_responses_proxy.replay import request as rewrite  # noqa: E402
 from codex_responses_proxy.transport import exchange as upstream_exchange  # noqa: E402
+from codex_responses_proxy.transport import sse  # noqa: E402
 from tests.listener.proxy_fixture import running_proxy  # noqa: E402
 from tests.listener.proxy_fixture import request  # noqa: E402
 
@@ -489,6 +491,57 @@ class TestProxyTransport(unittest.TestCase):
         status = self.p.runtime_status()
         counters = cast("dict[str, int]", status["counters"])
         self.assertEqual(counters["responses_local_queue_timeouts"], 1)
+
+    def _relay_one_stalled_stream(self):
+        """Relay one committed stream whose upstream then goes silent forever."""
+        stall = threading.Event()
+        body = json.dumps({"stream": True, "input": []}).encode()
+        # One delta larger than the relay read size commits content downstream
+        # before the upstream goes silent, as a real streaming turn does.
+        delta = b'data: {"type":"response.output_text.delta","delta":"' + b"p" * 12_000 + b'"}\n\n'
+        scripted = {
+            "chunks": [b'data: {"type":"response.created"}\n\n', delta],
+            "stall_event": stall,
+        }
+        upstreams: list[Any] = []
+        read_one_stream = sse._read_one_stream
+
+        def capture(handler, response, *arguments):
+            upstreams.append(response)
+            return read_one_stream(handler, response, *arguments)
+
+        with (
+            running_proxy([scripted]) as (port, _received),
+            mock.patch.object(sse, "UPSTREAM_TIMEOUT", 0.5),
+            mock.patch.object(sse, "UPSTREAM_READ_TIMEOUT", 8.0),
+            mock.patch.object(sse, "_read_one_stream", capture),
+        ):
+            began = time.monotonic()
+            try:
+                with request(port, body) as response:
+                    payload = response.read()
+            finally:
+                elapsed = time.monotonic() - began
+                stall.set()
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(f"http://127.0.0.1:{port}/healthz") as health:
+                status = json.loads(health.read())
+        return payload, elapsed, status, upstreams
+
+    def test_a_stalled_committed_stream_ends_at_the_total_upstream_deadline(self):
+        payload, elapsed, status, _upstreams = self._relay_one_stalled_stream()
+
+        self.assertIn(b"p" * 4_000, payload)
+        self.assertLess(elapsed, 4.0, "stalled stream outlived the total upstream deadline")
+        self.assertEqual(status["active_responses"], 0)
+        last_failure = cast("dict[str, object]", status["last_failure"])
+        self.assertEqual(last_failure["classification"], "stream_deadline")
+
+    def test_an_abandoned_stalled_stream_releases_its_upstream_connection(self):
+        _payload, _elapsed, _status, upstreams = self._relay_one_stalled_stream()
+
+        self.assertEqual(len(upstreams), 1)
+        self.assertIsNone(upstreams[0].fp, "abandoned upstream response was left open")
 
     def test_reconnects_a_pre_content_response_failed_stream(self):
         failed = {

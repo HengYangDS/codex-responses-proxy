@@ -13,6 +13,7 @@ import json
 import socket
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Protocol, TypedDict
 
@@ -22,6 +23,7 @@ from codex_responses_proxy.runtime import config as runtime_config
 
 
 UPSTREAM_READ_TIMEOUT = runtime_config.load().upstream_read_timeout
+UPSTREAM_TIMEOUT = runtime_config.load().upstream_timeout
 _HELD_TYPES = (
     b'"type":"response.created"',
     b'"type": "response.created"',
@@ -40,6 +42,8 @@ class ResponseLike(Protocol):
     fp: Any
 
     def read(self, amount: int = -1) -> bytes: ...
+
+    def close(self) -> None: ...
 
 
 class StreamResult(TypedDict):
@@ -77,12 +81,12 @@ def exhausted_payload(attempts: int) -> bytes:
     ).encode()
 
 
-def _set_read_timeout(response: ResponseLike) -> None:
+def _set_read_timeout(response: ResponseLike, timeout: float) -> None:
     try:
-        response.fp.raw._sock.settimeout(UPSTREAM_READ_TIMEOUT)
+        response.fp.raw._sock.settimeout(timeout)
     except Exception:
         try:
-            response.fp.raw._fp.fp.raw._sock.settimeout(UPSTREAM_READ_TIMEOUT)
+            response.fp.raw._fp.fp.raw._sock.settimeout(timeout)
         except Exception:
             pass
 
@@ -99,14 +103,43 @@ def _terminal_type(event: bytes) -> str | None:
     )
 
 
+def _release_upstream(response: ResponseLike) -> None:
+    """Release one upstream connection the relay will never read from again.
+
+    A stream abandoned at its deadline, or replaced by a pre-content reconnect,
+    would otherwise hold its socket until garbage collection.
+    """
+    with suppress(Exception):
+        response.close()
+
+
+def _arm_read_budget(response: ResponseLike, deadline: float, armed: float | None) -> float | None:
+    """Clamp the per-read socket timeout to the remaining total-stream budget.
+
+    Returns the armed budget, or ``None`` once the total deadline has passed.
+    Re-arming as the deadline nears is what keeps a blocked read from
+    outliving it by a whole idle-read interval.
+    """
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return None
+    budget = min(UPSTREAM_READ_TIMEOUT, remaining)
+    if armed is None or budget < armed:
+        _set_read_timeout(response, budget)
+    return budget
+
+
 def _read_one_stream(
     handler: BaseHTTPRequestHandler,
     response: ResponseLike,
     path: str,
     request_id: int,
     on_first_write: Callable[[], None],
+    deadline: float | None = None,
 ) -> StreamResult:
     """Relay one upstream stream while withholding retry-safe prelude events."""
+    if deadline is None:
+        deadline = time.monotonic() + UPSTREAM_TIMEOUT
     buffer = b""
     stripped_events = stripped_keys = event_count = 0
     terminal_event = None
@@ -148,8 +181,12 @@ def _read_one_stream(
         terminal_event = _terminal_type(sanitized) or terminal_event
         emit(sanitized)
 
-    _set_read_timeout(response)
+    armed: float | None = None
     while True:
+        armed = _arm_read_budget(response, deadline, armed)
+        if armed is None:
+            upstream_detail = "deadline"
+            break
         try:
             chunk = response.read(8192)
         except http.client.IncompleteRead as error:
@@ -157,6 +194,8 @@ def _read_one_stream(
             upstream_detail = "incomplete_read"
         except (socket.timeout, TimeoutError) as error:
             upstream_detail, upstream_error = "timeout", error
+            if time.monotonic() >= deadline:
+                upstream_detail = "deadline"
             break
         except Exception as error:
             upstream_error = error
@@ -215,15 +254,17 @@ def relay(
 
     max_attempts = 6 if reopen is not None else 1
     backoffs = (1.0, 2.0, 4.0, 6.0, 8.0)
+    deadline = time.monotonic() + UPSTREAM_TIMEOUT
     current = response
     result: StreamResult | None = None
     attempt = 0
     for attempt in range(max_attempts):
-        result = _read_one_stream(handler, current, path, request_id, on_first_write)
+        result = _read_one_stream(handler, current, path, request_id, on_first_write, deadline)
+        _release_upstream(current)
         terminal = result["terminal"]
         if result["wrote_downstream"] or terminal in _CLEAN_TERMINALS:
             break
-        if attempt == max_attempts - 1:
+        if attempt == max_attempts - 1 or time.monotonic() >= deadline:
             break
         telemetry.record_counter("streams_pre_content_reconnect_attempts")
         why = terminal or result["detail"]

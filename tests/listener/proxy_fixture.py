@@ -46,13 +46,24 @@ def serve_proxy(
                 release = response.get("release_event")
                 if release is not None:
                     release.wait(timeout=5)
+                stall = response.get("stall_event")
                 self.send_response(status)
                 self.send_header("Content-Type", response.get("content_type", "text/event-stream"))
-                self.send_header("Connection", "close")
+                if stall is None:
+                    self.send_header("Connection", "close")
+                else:
+                    # Chunked framing lets a held-open stream deliver events
+                    # incrementally, the way a real SSE upstream does.
+                    self.send_header("Transfer-Encoding", "chunked")
                 self.end_headers()
                 for chunk in chunks:
+                    if stall is not None:
+                        chunk = b"%X\r\n%s\r\n" % (len(chunk), chunk)
                     self.wfile.write(chunk)
                     self.wfile.flush()
+                if stall is not None:
+                    stall.wait(timeout=10)
+                    self.wfile.write(b"0\r\n\r\n")
                 self.close_connection = True
                 return
             status, payload = response
