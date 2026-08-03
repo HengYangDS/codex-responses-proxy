@@ -21,7 +21,10 @@ ScriptedResponse = tuple[int, bytes] | dict[str, Any]
 
 
 def serve_proxy(
-    responses: Sequence[ScriptedResponse], log_dir: str | Path
+    responses: Sequence[ScriptedResponse],
+    log_dir: str | Path,
+    *,
+    captures: list[dict[str, object]] | None = None,
 ) -> tuple[int, list[bytes], Callable[[], None]]:
     """Start scripted loopback servers and return port, bodies, and cleanup."""
     scripted = list(responses)
@@ -32,9 +35,22 @@ def serve_proxy(
         def log_message(self, format: str, *args: Any) -> None:
             del format, args
 
-        def do_POST(self) -> None:
+        def _receive(self) -> bytes:
             length = int(self.headers.get("Content-Length", "0"))
-            received.append(self.rfile.read(length))
+            body = self.rfile.read(length)
+            received.append(body)
+            if captures is not None:
+                captures.append(
+                    {
+                        "method": self.command,
+                        "path": self.path,
+                        "headers": dict(self.headers.items()),
+                        "body": body,
+                    }
+                )
+            return body
+
+        def _reply(self) -> None:
             with scripted_lock:
                 response = scripted.pop(0)
             if isinstance(response, dict):
@@ -73,6 +89,14 @@ def serve_proxy(
             self.end_headers()
             self.wfile.write(payload)
 
+        def do_POST(self) -> None:
+            self._receive()
+            self._reply()
+
+        def do_GET(self) -> None:
+            self._receive()
+            self._reply()
+
     upstream = ThreadingHTTPServer(("127.0.0.1", 0), UpstreamHandler)
     upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
     upstream_thread.start()
@@ -109,22 +133,34 @@ def serve_proxy(
 
 
 @contextlib.contextmanager
-def running_proxy(responses: Sequence[ScriptedResponse]):
+def running_proxy(
+    responses: Sequence[ScriptedResponse], *, captures: list[dict[str, object]] | None = None
+):
     """Yield a scripted loopback proxy and always release both servers."""
     with tempfile.TemporaryDirectory() as log_dir:
-        port, received, cleanup = serve_proxy(responses, log_dir)
+        port, received, cleanup = serve_proxy(responses, log_dir, captures=captures)
         try:
             yield port, received
         finally:
             cleanup()
 
 
-def request(proxy_port: int, body: bytes, *, path: str = "/dmxapi/v1/responses"):
-    """Post one Responses body to the loopback proxy without host proxies."""
+def request(
+    proxy_port: int,
+    body: bytes = b"",
+    *,
+    path: str = "/dmxapi/v1/responses",
+    method: str = "POST",
+    headers: dict[str, str] | None = None,
+):
+    """Send one loopback request without host proxies."""
+    request_headers = {"Content-Type": "application/json"}
+    if headers:
+        request_headers.update(headers)
     outbound = urllib.request.Request(
         f"http://127.0.0.1:{proxy_port}{path}",
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json"},
+        data=body if body else None,
+        method=method,
+        headers=request_headers,
     )
     return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(outbound)

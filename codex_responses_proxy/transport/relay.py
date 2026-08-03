@@ -168,6 +168,23 @@ def relay_body(exchange: Exchange, response) -> None:
         )
 
 
+def relay_readonly_body(handler: BaseHTTPRequestHandler, response) -> None:
+    """Relay one non-Responses body without replay or recovery side effects."""
+    _send_stream_headers(handler, response)
+    try:
+        while True:
+            chunk, terminal = _read_chunk(response)
+            if chunk:
+                handler.wfile.write(b"%X\r\n%s\r\n" % (len(chunk), chunk))
+            if not chunk or terminal:
+                break
+        handler.wfile.write(b"0\r\n\r\n")
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+    except Exception:
+        pass
+
+
 def _invalid_responses_success(exchange: Exchange, reason: str) -> None:
     telemetry.record_counter("invalid_responses_success_bodies")
     telemetry.record_failure("invalid_responses_success_body")

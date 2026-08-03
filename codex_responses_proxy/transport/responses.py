@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import urllib.error
 from http.server import BaseHTTPRequestHandler
 
 from codex_responses_proxy.providers import registry as provider_registry
@@ -14,11 +15,11 @@ from codex_responses_proxy.transport import relay as downstream
 PROVIDERS = provider_registry.load()
 
 
-def resolve_upstream(path: str) -> tuple[str, str] | None:
+def resolve_upstream(path: str) -> tuple[str, str, str] | None:
     """Resolve one configured provider namespace without provider branching."""
 
     resolved = PROVIDERS.resolve(path)
-    return None if resolved is None else (resolved[0].name, resolved[1])
+    return None if resolved is None else (resolved[0].name, resolved[1], resolved[2])
 
 
 def _admit(exchange: upstream_exchange.Exchange) -> bool:
@@ -95,13 +96,13 @@ def _cooldown_active(exchange: upstream_exchange.Exchange) -> bool:
     return True
 
 
-def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
-    """Relay one downstream request through bounded compatibility policies."""
-    request_id = admission.next_request_id()
-    resolved = resolve_upstream(handler.path)
-    if resolved is None:
-        telemetry.record_counter("provider_route_rejected")
-        telemetry.record_failure("provider_route_rejected")
+def _reject_route(
+    handler: BaseHTTPRequestHandler, request_id: int, method: str | None = None
+) -> None:
+    """Return one local closed-route rejection without upstream I/O."""
+    telemetry.record_counter("provider_route_rejected")
+    telemetry.record_failure("provider_route_rejected")
+    if method is None:
         downstream.send_payload(
             handler,
             404,
@@ -116,57 +117,134 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
             f"path={operational_log.safe_request_path(handler.path)}"
         )
         return
-    route, upstream_url = resolved
-    profile = PROVIDERS.profiles[route]
-    length = int(handler.headers.get("Content-Length") or 0)
-    body = handler.rfile.read(length) if length else b""
-    is_responses = method == "POST"
-    note = ""
-    if is_responses:
-        projection = replay_request.sanitize_responses_body(body)
-        note = projection.diagnostic()
-        telemetry.record_sanitization(projection.metrics)
-        if projection.body is None:
-            reason = projection.reason or "unknown"
-            telemetry.record_counter("provider_portable_projection_rejected")
-            telemetry.record_failure("provider_portable_projection_rejected")
-            downstream.send_payload(
-                handler,
-                400,
-                downstream.json_error(
-                    "Responses replay contains an unproved provider-portable structure",
-                    "invalid_request_error",
-                    "provider_portable_projection_rejected",
-                    reason=reason,
-                ),
-            )
-            operational_log.log(
-                f"req={request_id} event=provider_portable_projection_rejected "
-                f"provider={profile.name} reason={reason} "
-                f"path={operational_log.safe_request_path(handler.path)}"
-            )
-            return
-        body = projection.body
-        if len(body) >= 400_000:
-            path = operational_log.safe_request_path(handler.path)
-            operational_log.log(
-                f"req={request_id} event=large_request provider={profile.name} "
-                f"bytes={len(body)} path={path}"
-            )
+    downstream.send_payload(
+        handler,
+        404,
+        downstream.json_error(
+            "request method is not supported for the configured provider route",
+            "invalid_request_error",
+            "provider_route_method_not_allowed",
+        ),
+    )
+    operational_log.log(
+        f"req={request_id} event=provider_route_method_rejected "
+        f"method={method} path={operational_log.safe_request_path(handler.path)}"
+    )
+
+
+def _request_headers(handler: BaseHTTPRequestHandler) -> dict[str, str]:
+    """Return one upstream header projection shared by the closed routes."""
     headers = {
         name: value
         for name, value in handler.headers.items()
         if name.lower() not in downstream.HOP_BY_HOP
     }
     headers["Accept-Encoding"] = "identity"
+    return headers
+
+
+def _project_responses_request(
+    handler: BaseHTTPRequestHandler,
+    request_id: int,
+    profile: provider_registry.Profile,
+    method: str,
+) -> bytes | None:
+    """Read and validate one Responses body before compatibility transport."""
+    length = int(handler.headers.get("Content-Length") or 0)
+    projection = replay_request.sanitize_responses_body(
+        handler.rfile.read(length) if length else b""
+    )
+    telemetry.record_sanitization(projection.metrics)
+    if projection.body is None:
+        reason = projection.reason or "unknown"
+        telemetry.record_counter("provider_portable_projection_rejected")
+        telemetry.record_failure("provider_portable_projection_rejected")
+        downstream.send_payload(
+            handler,
+            400,
+            downstream.json_error(
+                "Responses replay contains an unproved provider-portable structure",
+                "invalid_request_error",
+                "provider_portable_projection_rejected",
+                reason=reason,
+            ),
+        )
+        operational_log.log(
+            f"req={request_id} event=provider_portable_projection_rejected "
+            f"provider={profile.name} reason={reason} "
+            f"path={operational_log.safe_request_path(handler.path)}"
+        )
+        return None
+    body, note = projection.body, projection.diagnostic()
+    if len(body) >= 400_000:
+        operational_log.log(
+            f"req={request_id} event=large_request provider={profile.name} "
+            f"bytes={len(body)} path={operational_log.safe_request_path(handler.path)}"
+        )
     if note:
-        path = operational_log.safe_request_path(handler.path)
         operational_log.log(
             f"req={request_id} event=request_sanitized provider={profile.name} "
-            f"method={method} {note} path={path}"
+            f"method={method} {note} path={operational_log.safe_request_path(handler.path)}"
         )
-    if is_responses:
-        telemetry.record_counter("responses_received")
+    return body
+
+
+def _relay_catalog(
+    handler: BaseHTTPRequestHandler,
+    request_id: int,
+    profile: provider_registry.Profile,
+    upstream_url: str,
+    headers: dict[str, str],
+) -> None:
+    """Relay one model catalog read exactly once without Responses policy."""
+    try:
+        response = upstream_exchange.open_readonly(upstream_url, "GET", headers)
+    except urllib.error.HTTPError as error:
+        try:
+            payload, status, upstream_headers = error.read(), error.code, error.headers
+        finally:
+            error.close()
+        downstream.relay_error(handler, status, upstream_headers, payload)
+        telemetry.record_failure(f"catalog_http_{status}")
+        detail = f"status={status} response_bytes={len(payload)} "
+        operational_log.log(
+            f"req={request_id} event=catalog_http_terminal provider={profile.name} {detail}"
+            f"path={operational_log.safe_request_path(handler.path)}"
+        )
+        return
+    except Exception as error:
+        telemetry.record_failure("catalog_transport_error")
+        downstream.send_payload(
+            handler,
+            502,
+            downstream.json_error(
+                "Upstream model catalog transport failed; retry discovery shortly",
+                "upstream_unavailable",
+                "catalog_transport_error",
+            ),
+        )
+        operational_log.log(
+            f"req={request_id} event=catalog_transport_error provider={profile.name} "
+            f"exception={operational_log.safe_exception_label(error)} "
+            f"path={operational_log.safe_request_path(handler.path)}"
+        )
+        return
+    downstream.relay_readonly_body(handler, response)
+
+
+def _relay_responses(
+    handler: BaseHTTPRequestHandler,
+    method: str,
+    request_id: int,
+    profile: provider_registry.Profile,
+    upstream_url: str,
+    headers: dict[str, str],
+) -> None:
+    """Project and relay one Responses request through its bounded policy."""
+    body = _project_responses_request(handler, request_id, profile, method)
+    if body is None:
+        return
+    telemetry.record_counter("responses_received")
     exchange = upstream_exchange.Exchange(
         handler,
         method,
@@ -174,13 +252,12 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
         body,
         upstream_url,
         headers,
-        is_responses,
+        True,
         body,
         profile,
     )
     if _cooldown_active(exchange) or not _admit(exchange):
         return
-    acquired = is_responses
     try:
         if _cooldown_active(exchange):
             return
@@ -188,16 +265,35 @@ def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
         if response is None:
             return
         content_type = response.headers.get("Content-Type", "")
-        if is_responses and "text/event-stream" in content_type.lower():
+        if "text/event-stream" in content_type.lower():
             downstream.relay_sse(exchange, response)
-        elif is_responses:
-            downstream.relay_responses_json(exchange, response)
         else:
-            downstream.relay_body(exchange, response)
+            downstream.relay_responses_json(exchange, response)
     finally:
-        if acquired:
-            active_now = admission.release_response_slot(exchange.profile.name)
-            exchange.log(
-                "responses_slot_released",
-                f"active={active_now}/{admission.RESPONSES_MAX_CONCURRENCY} ",
-            )
+        active_now = admission.release_response_slot(exchange.profile.name)
+        exchange.log(
+            "responses_slot_released",
+            f"active={active_now}/{admission.RESPONSES_MAX_CONCURRENCY} ",
+        )
+
+
+def relay(handler: BaseHTTPRequestHandler, method: str) -> None:
+    """Relay one request through one exact provider-scoped compatibility route."""
+    request_id = admission.next_request_id()
+    resolved = resolve_upstream(handler.path)
+    if resolved is None:
+        _reject_route(handler, request_id)
+        return
+    route, resource, upstream_url = resolved
+    is_responses, is_catalog = (
+        method == "POST" and resource == "responses",
+        method == "GET" and resource == "models",
+    )
+    if not (is_responses or is_catalog):
+        _reject_route(handler, request_id, method)
+        return
+    profile, headers = PROVIDERS.profiles[route], _request_headers(handler)
+    if is_catalog:
+        _relay_catalog(handler, request_id, profile, upstream_url, headers)
+        return
+    _relay_responses(handler, method, request_id, profile, upstream_url, headers)

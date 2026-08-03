@@ -29,6 +29,14 @@ def urlopen_direct(request: urllib.request.Request, timeout: float):
     return _DIRECT_OPENER.open(request, timeout=timeout)
 
 
+def open_readonly(url: str, method: str, headers: dict[str, str]):
+    """Open one non-Responses request exactly once without recovery policy."""
+    request = urllib.request.Request(url, method=method)
+    for name, value in headers.items():
+        request.add_header(name, value)
+    return urlopen_direct(request, timeout=UPSTREAM_TIMEOUT)
+
+
 def _request(url: str, body: bytes, method: str, headers: dict[str, str]) -> urllib.request.Request:
     request = urllib.request.Request(url, data=body or None, method=method)
     for name, value in headers.items():

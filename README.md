@@ -47,11 +47,14 @@ upstream request. The outbound copy always uses `store=false`; continuity comes
 from projected dialogue and complete tool relationships, never from a third-
 party provider's stored response or item IDs.
 
-Only exact `/<provider>/v1/responses` request targets are admitted. Encoded path
-material, dot segments, duplicate separators, lookalike suffixes, absolute
-targets, fragments, and unrelated endpoints are rejected before remote I/O.
-Successful non-stream Responses are buffered within an eight-MiB integrity
-limit before downstream commitment,
+Only exact `POST /<provider>/v1/responses` targets and exact read-only
+`GET /<provider>/v1/models` targets are admitted. A model-catalog request is
+relayed once to the same manifest-owned upstream without request or response
+projection, Responses admission, cooldown, retry, or provider-policy recovery.
+Encoded path material, dot segments, duplicate separators, lookalike suffixes,
+absolute targets, fragments, unsupported methods, and unrelated endpoints are
+rejected before remote I/O. Successful non-stream Responses are buffered within
+an eight-MiB integrity limit before downstream commitment,
 required to be valid terminal JSON (`completed` or `incomplete`), and projected
 with the same ciphertext-removal rules as SSE. Unknown residual ciphertext,
 empty, truncated, oversized, malformed, or non-terminal HTTP 2xx bodies become
