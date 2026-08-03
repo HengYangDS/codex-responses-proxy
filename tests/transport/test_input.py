@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler
 import socket
 import sys
 import tempfile
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -128,6 +129,9 @@ class _DirectResponse:
         if isinstance(item, BaseException):
             raise item
         return item
+
+    def close(self) -> None:
+        self.fp = None
 
 
 class InputTransportContracts(unittest.TestCase):
@@ -468,6 +472,40 @@ class InputTransportContracts(unittest.TestCase):
         counters = cast("dict[str, int]", self._status_snapshot()["counters"])
         self.assertEqual(counters["encrypted_sse_keys_stripped"], 1)
         self.assertNotIn(b"secret", handler.output())
+
+    def test_direct_sse_read_stops_before_reading_past_the_total_deadline(self) -> None:
+        handler = _MemoryHandler()
+        upstream = _DirectResponse(b'data: {"type":"response.created"}\n\n')
+
+        result = sse._read_one_stream(
+            handler,
+            upstream,
+            "/v1/responses",
+            1,
+            lambda: None,
+            time.monotonic() - 1,
+        )
+
+        self.assertEqual(result["detail"], "deadline")
+        self.assertEqual(result["events"], 0)
+        self.assertFalse(result["wrote_downstream"])
+
+    def test_direct_sse_relay_does_not_reopen_a_stream_past_the_total_deadline(self) -> None:
+        handler = _MemoryHandler()
+        reopen = mock.Mock(side_effect=AssertionError("reopened past the total deadline"))
+
+        with mock.patch.object(sse, "UPSTREAM_TIMEOUT", 0.0):
+            result = sse.relay(
+                handler,
+                _DirectResponse(b'data: {"type":"response.created"}\n\n'),
+                "/v1/responses",
+                1,
+                reopen=reopen,
+            )
+
+        reopen.assert_not_called()
+        self.assertTrue(result["pre_content_exhausted"])
+        self.assertEqual(result["attempts"], 1)
 
     def test_direct_sse_relay_handles_reopen_failure_and_incomplete_terminal(self) -> None:
         failed = _DirectResponse(b'data: {"type":"response.failed"}\n\n')

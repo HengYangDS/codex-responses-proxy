@@ -7,6 +7,19 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+### Fixed
+
+- Name the provider route and both admission limits in the local queue-timeout
+  error instead of the process-wide concurrency gauge. A saturated
+  single-flight route now reports which route is busy and that its own limit is
+  one, so the message can no longer be read as eight concurrent requests when
+  only one is in flight.
+- Bound one streaming turn by the configured upstream timeout as a total
+  wall-clock deadline, and release an upstream connection once its stream is
+  abandoned or replaced. A stalled upstream that holds its socket open can no
+  longer keep a provider-route admission slot past that deadline, which
+  previously degraded into an unbounded series of per-read idle timeouts.
+
 ## [2.0.7] - 2026-08-02
 
 ### Fixed
