@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from http.server import BaseHTTPRequestHandler
 
 from codex_responses_proxy.providers import registry as provider_registry
@@ -44,16 +43,14 @@ def _admit(exchange: upstream_exchange.Exchange) -> bool:
     if verdict == "timeout":
         telemetry.record_counter("responses_local_queue_timeouts")
         telemetry.record_failure("local_queue_timeout")
-        payload = json.dumps(
-            {
-                "error": {
-                    "message": (
-                        "local proxy overloaded: timed out waiting for "
-                        f"responses concurrency slot ({admission.RESPONSES_MAX_CONCURRENCY})"
-                    )
-                }
-            }
-        ).encode()
+        payload = downstream.json_error(
+            "local proxy overloaded: timed out waiting for a responses slot on "
+            f"provider route {exchange.profile.name} "
+            f"(route limit {admission.RESPONSES_MAX_PER_ROUTE}, "
+            f"process limit {admission.RESPONSES_MAX_CONCURRENCY}); retry the turn",
+            "server_busy",
+            "local_queue_timeout",
+        )
         downstream.send_payload(exchange.handler, 503, payload)
         exchange.log("local_queue_timeout")
         return False

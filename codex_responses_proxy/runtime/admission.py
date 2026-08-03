@@ -15,6 +15,7 @@ from codex_responses_proxy.runtime import telemetry
 SETTINGS = runtime_config.load()
 RESPONSES_MAX_CONCURRENCY = SETTINGS.responses_max_concurrency
 RESPONSES_QUEUE_TIMEOUT = SETTINGS.responses_queue_timeout
+RESPONSES_MAX_PER_ROUTE = 1
 _MIN_DRAIN_LEASE_SECONDS = 1
 _MAX_DRAIN_LEASE_SECONDS = 900
 _RESPONSE_SEMAPHORE = threading.BoundedSemaphore(RESPONSES_MAX_CONCURRENCY)
@@ -138,7 +139,9 @@ def end_handler() -> int:
 def _route_semaphore(route: str) -> threading.BoundedSemaphore:
     """Return the process-local single-flight gate for one provider route."""
     with _RESPONSE_GATE_LOCK:
-        return _ROUTE_SEMAPHORES.setdefault(route, threading.BoundedSemaphore(1))
+        return _ROUTE_SEMAPHORES.setdefault(
+            route, threading.BoundedSemaphore(RESPONSES_MAX_PER_ROUTE)
+        )
 
 
 def _remaining_timeout(deadline: float) -> float:
