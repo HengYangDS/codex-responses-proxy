@@ -25,6 +25,9 @@
   Python 3.12-3.14 compile gates.
 - [x] 3.3 Record the rejected route-width widening, its evidence, and the
   operator queue-timeout lever in design, claim, and chronicle.
+- [x] 3.4 Document how the queue-timeout knob is actually applied under native
+  supervision, after confirming that raising the released default in code would
+  reach no already-installed operator.
 
 ## 4. Post-archive acceptance boundary
 
@@ -33,9 +36,13 @@ claim evidence after this repository change is archived. They are not
 planning-artifact completion criteria and must not be marked complete by
 OpenSpec archival.
 
-- The concurrent AIGW model-catalog change overlaps five files here and must
-  land first; this branch is rebased onto it rather than merged ahead of it.
+- This branch was promoted to `candidate/dev` ahead of the concurrent AIGW
+  model-catalog change on the owner's explicit instruction, inverting the order
+  first recorded here. The AIGW lane rebases onto the advanced `candidate/dev`,
+  reconciles the five overlapping files, and still owns the `VERSION` bump; the
+  release-train identity rule stays unsatisfied until that bump lands.
 - The reported `gpt-5.6` route must complete a turn that previously denied, and
   the total-deadline bound must not truncate a legitimate long turn.
-- Any change to the released `responses_queue_timeout` default is a separate
-  decision with its own evidence.
+- Raising the released `responses_queue_timeout` default was evaluated and
+  rejected on evidence, not deferred. Revisiting it requires first deciding how
+  a changed default would reach an already-installed unit.
