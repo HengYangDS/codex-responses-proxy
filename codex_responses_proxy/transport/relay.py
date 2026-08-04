@@ -56,12 +56,15 @@ def send_payload(
     *,
     content_type: str = "application/json",
     retry_after: str | None = None,
+    close: bool = False,
 ) -> None:
     """Send one length-delimited local response."""
     handler.send_response(status)
     handler.send_header("Content-Type", content_type)
     if retry_after:
         handler.send_header("Retry-After", retry_after)
+    if close:
+        handler.send_header("Connection", "close")
     handler.send_header("Content-Length", str(len(payload)))
     handler.end_headers()
     handler.wfile.write(payload)

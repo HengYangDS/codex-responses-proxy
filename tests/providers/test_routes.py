@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 
 from codex_responses_proxy.runtime import admission, telemetry  # noqa: E402
 from codex_responses_proxy.transport import cooldown  # noqa: E402
+from tests.listener.proxy_fixture import raw_exchange  # noqa: E402
 from tests.listener.proxy_fixture import request  # noqa: E402
 from tests.listener.proxy_fixture import running_proxy  # noqa: E402
 
@@ -129,6 +130,40 @@ class ProviderRouteTests(unittest.TestCase):
                     request(port, body, path=path)
                 with raised.exception as error:
                     self.assertEqual(error.code, status)
+            self.assertEqual(received, [])
+
+    def test_a_rejected_route_never_answers_twice_from_its_unread_body(self) -> None:
+        body = _body({"input": "hello"})
+        for path, method in (("/unknown/v1/responses", b"POST"), ("/ucloud/v1/models", b"POST")):
+            with self.subTest(path=path), running_proxy([]) as (port, received):
+                wire = raw_exchange(
+                    port,
+                    method + b" " + path.encode() + b" HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                    b"Content-Type: application/json\r\n"
+                    b"Content-Length: "
+                    + str(len(body)).encode()
+                    + b"\r\n\r\n"
+                    + body
+                    # A persistent client sends its next request on the same
+                    # connection; the rejected body must not be parsed as one.
+                    + b"GET /healthz HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+                )
+                self.assertEqual(wire.count(b"HTTP/1.1 "), 1)
+                self.assertIn(b"HTTP/1.1 404 ", wire)
+                self.assertNotIn(b"HTTP/1.1 400 ", wire)
+                self.assertEqual(received, [])
+
+    def test_a_locally_answered_request_whose_body_was_read_stays_reusable(self) -> None:
+        with running_proxy([]) as (port, received):
+            wire = raw_exchange(
+                port,
+                b"POST /ucloud/v1/responses HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                b"Content-Type: application/json\r\nContent-Length: 0\r\n\r\n"
+                b"GET /healthz HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+            )
+            self.assertIn(b"HTTP/1.1 400 ", wire)
+            self.assertIn(b"HTTP/1.1 200 ", wire)
+            self.assertEqual(wire.count(b"HTTP/1.1 "), 2)
             self.assertEqual(received, [])
 
     def test_all_three_catalog_routes_relay_exact_get_without_responses_policy(self) -> None:
