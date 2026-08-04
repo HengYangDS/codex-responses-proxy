@@ -3,6 +3,8 @@ paths = [
   "evidence/claims/terminal-product-closeout-20260802.toml",
   "evidence/chronicle/terminal-product-closeout-20260802/**",
   "noxfile.py",
+  "openspec/changes/archive/2026-08-04-annotated-tag-push-admission/tasks.md",
+  "openspec/changes/archive/2026-08-04-verification-surface-separation/**",
   "openspec/changes/verification-surface-separation/**",
   "openspec/specs/product-interface/spec.md",
   "pyproject.toml",

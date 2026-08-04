@@ -6,9 +6,9 @@ summary = "Converge the proxy on one self-contained executable product, semantic
 
 [evidence]
 dated = "evidence/chronicle/terminal-product-closeout-20260802/2026-08-04.md"
-sha256 = "a3e76ad87cf3cb2090a960678531917552cdb2398712566eeb5494dc6811528a"
+sha256 = "22915f3e988becb2100dfead40517a536dbc395bd8e586bcde4646c6184029a4"
 evidence_ids = ["evidence:terminal-product-closeout-20260802"]
-binding = "Exact-head proof at fdb97868921d40944ca40423dc63422a43d5277c proves the annotated-tag admission source, strict OpenSpec validation, Python 3.12-3.14 matrix, and quality gate; landing, hosted publication, installation, and runtime states remain explicitly unproved"
+binding = "Exact-head proof at 2e5404e4d782fffca4d85dceb640735c60dcc4ae proves the separated Python matrix, quality, native release verification, and OpenSpec source; candidate landing, accepted closeout, hosted publication, installation, runtime acceptance, and retirement remain explicitly unproved post-archive transitions"
 verifier = "digest_only"
 tests = [
   "uv run --locked --no-sync nox -s quick",
