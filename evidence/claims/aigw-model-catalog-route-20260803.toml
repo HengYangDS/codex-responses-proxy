@@ -19,8 +19,8 @@ tests = [
 
 [evidence.freshness]
 mode = "semantic_scope"
-head = "74ca0eb52cad200a2864736d39f57bb0e732dc7a"
-semantic_sha256 = "e3f74ce05d904d0de81107750da62936442a72e8741c5f34e4133d679721c44c"
+head = "6e73b33c489540b2eef0719af1e82ec5fb547cc3"
+semantic_sha256 = "42644907d09330b9b142a96f0ad6c60e80dda6069416fbdb1da62ca9ea4d8616"
 
 [boundary]
 owner = "codex-responses-proxy"
