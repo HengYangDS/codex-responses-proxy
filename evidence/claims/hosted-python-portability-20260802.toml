@@ -24,7 +24,7 @@ owner = "codex-responses-proxy"
 scope = "Observed hosted setup defect and local supported-interpreter evidence only; final exact-HEAD quality proof, green hosted CI, publication, installation, runtime, MCP, original-conversation acceptance, and housekeeping remain unproved."
 
 [carriers]
-openspec = "openspec/changes/hosted-python-portability"
+openspec = "openspec/changes/archive/2026-08-02-hosted-python-portability"
 fallback = "Revert the CI-line selection commit before publication if an official Forge cannot resolve a supported minor line."
 kill_signal = "A hosted workflow reintroduces a platform-specific Python patch pin, narrows the supported matrix, or treats a setup-only result as product proof."
 

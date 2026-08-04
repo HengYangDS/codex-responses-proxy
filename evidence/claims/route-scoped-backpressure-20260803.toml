@@ -26,7 +26,7 @@ owner = "codex-responses-proxy"
 scope = "Source, tests, release metadata, exact-HEAD proof, independent Forge publication, transactional installation, live provider behavior, and unchanged original-task continuation are separate claims."
 
 [carriers]
-openspec = "openspec/changes/route-scoped-backpressure"
+openspec = "openspec/changes/archive/2026-08-03-route-scoped-backpressure"
 fallback = "Keep the installed global concurrency at one until signed 2.0.6 passes every plane; after publication roll back only through the preceding signed release."
 kill_signal = "Same-route requests overlap provider I/O, different routes are globally serialized by the released design, cooldown is not rechecked after queue admission, HTTP 429 performs more than one upstream attempt, or Codex conversation state is modified."
 
