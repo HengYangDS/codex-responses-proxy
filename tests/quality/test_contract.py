@@ -742,8 +742,9 @@ class TestVerificationContracts:
             and node.func.attr == "mkdir"
         )
         keywords = {keyword.arg: keyword.value for keyword in mkdir.keywords}
-        assert isinstance(keywords.get("exist_ok"), ast.Constant)
-        assert keywords["exist_ok"].value is True
+        exist_ok = keywords.get("exist_ok")
+        assert isinstance(exist_ok, ast.Constant)
+        assert exist_ok.value is True
 
     def test_nox_is_the_only_quality_composition_owner(self) -> None:
         assert not (ROOT / "tools" / "quality" / "run.sh").exists()
