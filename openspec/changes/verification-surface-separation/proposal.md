@@ -16,6 +16,9 @@ single-session success.
   both CLI and real handoff black-box tests before packaging.
 - Preserve the complete behavior inventory, supported Python matrix, coverage,
   and native no-Python acceptance.
+- Repair task carriers that incorrectly modeled candidate landing as a
+  pre-archive checkbox. Landing remains unproved and moves to the active claim
+  as an explicit post-archive transition.
 
 ## Capabilities
 
@@ -31,8 +34,9 @@ None.
 
 ## Impact
 
-Only repository-owned verification composition and its tests change. Product
-runtime, provider protocols, release contents, and user configuration do not.
+Repository-owned verification composition, its tests, and the malformed task
+boundary change. Product runtime, provider protocols, release contents, and
+user configuration do not.
 
 ## Out of Scope
 

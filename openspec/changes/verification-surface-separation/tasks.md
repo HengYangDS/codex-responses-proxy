@@ -8,4 +8,11 @@
 
 - [x] 2.1 Pass focused interface, handoff, and repository contract tests.
 - [x] 2.2 Pass quick, quality, Python 3.12-3.14, release, and strict OpenSpec gates.
-- [ ] 2.3 Pass final exact-head proof and land forward-only.
+- [x] 2.3 Pass final exact-head proof and record candidate landing as a separate
+  post-archive transition owned by the active claim.
+
+## Post-archive transition boundary
+
+Candidate landing, accepted-root closeout, hosted publication, installation,
+runtime acceptance, and lane retirement remain unproved lifecycle transitions.
+They are not pre-archive tasks and must not be inferred from this checklist.
