@@ -1,0 +1,9 @@
+schema_version = 1
+paths = [
+  ".gitlab-ci.yml",
+  "evidence/claims/terminal-product-closeout-20260802.toml",
+  "evidence/chronicle/terminal-product-closeout-20260802/**",
+  "openspec/changes/linux-native-ci-prerequisites/**",
+  "openspec/specs/ci-diagnostics/spec.md",
+  "tests/release/test_metadata.py",
+]

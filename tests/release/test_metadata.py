@@ -558,7 +558,7 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
             "git fetch --unshallow --tags --force origin",
             "git fetch --tags --force origin",
             'uv run --locked --no-sync nox -s "tests-${PYTHON_VERSION}"',
-            f"{APT_INSTALL} git openssh-client",
+            f"{APT_INSTALL} binutils git openssh-client",
         ),
         ".python-verify template",
     )
@@ -591,7 +591,7 @@ def test_python_quality_gate_is_cross_forge() -> None:
     require_tokens(gitlab, ("DEBIAN_FRONTEND: noninteractive",), "GitLab pipeline")
     require_tokens(
         ci_block(gitlab, "verify-python-quality:", "\n\npublish-gitlab-release:"),
-        (f"{APT_INSTALL} git openssh-client",),
+        (f"{APT_INSTALL} binutils git openssh-client",),
         "GitLab Python quality",
     )
 
