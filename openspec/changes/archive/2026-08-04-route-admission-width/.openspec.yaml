@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-04
+goal: Source the per-route admission width from validated settings and derive
+  its default from process capacity, so one provider route is no longer
+  serialized to a single exchange and no route can starve another.

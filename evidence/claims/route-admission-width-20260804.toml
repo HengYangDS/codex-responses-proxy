@@ -1,0 +1,46 @@
+[claim]
+id = "route-admission-width-20260804"
+subject = "codex-responses-proxy:per-route-admission-width"
+state = "active"
+summary = "Make the per-route admission width a validated operator setting derived as half of the process-wide limit, so a healthy provider route is no longer serialized while process capacity sits idle."
+
+[evidence]
+dated = "evidence/chronicle/route-admission-width-20260804/2026-08-04.md"
+sha256 = "8157b45408365b0efd19877587f595c1b7716e1fe002e9061edb9000be43d1ec"
+evidence_ids = ["evidence:route-admission-width-20260804"]
+binding = "Root cause measured on the live 2.0.9 listener, where every dmxapi responses_slot_acquired line reported active=1/8 and one request waited 115 s behind same-route holds with seven of eight process slots idle, against 0 queue-timeout denials, 0 rate limits, and 0 stream failures; TDD with an observed RED, a governance guard that failed until the setting was projected into the unit, and warning-free full quality above 95% statement and branch coverage; live acceptance remains pending because the change reaches no listener until a reinstall, which is itself gated on hosted publication"
+verifier = "digest_only"
+tests = [
+  "python3.14 tests/runtime/test_admission.py",
+  "python3.14 tests/governance/test_repository.py",
+  "python3.14 tests/transport/test_proxy.py",
+  "PYTHON=python3.12 sh tools/quality/run.sh",
+  "openspec validate route-admission-width --strict",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "The process-wide admission limit itself, the local queue wait and the total upstream stream deadline, the provider cooldown mechanism, hosted publication of 2.0.8 through 2.0.10, and live acceptance of the widened route are separate claims."
+
+[carriers]
+openspec = "openspec/changes/archive/2026-08-04-route-admission-width"
+fallback = "Set CODEX_RESPONSES_PROXY_RESPONSES_MAX_PER_ROUTE=1 in the installed unit's environment and reload to restore strict single-flight admission without a release; a shell export does not reach a supervised listener. Reverting this commit restores the source constant and removes the operator lever with it."
+kill_signal = "A provider route admits more than its configured admission width, the default width stops leaving a second route at least as much capacity as the busiest route holds, the width stops being reachable through the supervised unit's environment, the queue-timeout denial names a width other than the configured one, or responses_rate_limited rises on a route whose upstream has resumed rate limiting without the documented remedy arresting it."
+supersedes = "The route-slot-lease finding that widening per-route admission was unsafe because a provider cooldown is recorded only after an exchange returns; the premise was a rate-limiting UCloud upstream, which the owner reports no longer rate-limits, and the residual exposure is bounded by the width and reversible through the unit."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "codex_responses_proxy/runtime/admission.py",
+  "codex_responses_proxy/runtime/config.py",
+  "codex_responses_proxy/runtime/context.py",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/governance/test_repository.py",
+  "tests/runtime/test_admission.py",
+  "tests/transport/test_proxy.py",
+]
