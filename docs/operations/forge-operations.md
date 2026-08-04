@@ -42,6 +42,19 @@ through `CODEX_RESPONSES_PROXY_GITLAB_ALLOWED_SIGNERS`,
 anchor input. These files are deployment identity/trust projections and are
 ignored by Git. They must never become product defaults.
 
+A commit anchor must admit every key that appears in the history it governs, not
+only the key in current use. Branch publication verifies each commit reachable
+from the source ref, so one rotated signing key missing from the anchor fails the
+whole projection while every signature is cryptographically good; Git reports
+this as `No principal matched` and `%G?` of `U`, which is a trust gap, not a bad
+signature. Because the two planes carry different actor emails, an anchor is
+per-plane: a file that binds only the GitLab principal cannot verify the GitHub
+projection's own history, and vice versa. Before publishing, confirm coverage by
+comparing the distinct `%GK` fingerprints across the source ref and the remote
+tip against the principals in each anchor. Recovering a signer's public key from
+the signatures the anchor is meant to validate is circular and does not
+establish trust.
+
 ## Branch publication
 
 From a clean accepted checkout, project both identity domains through one direct
