@@ -27,6 +27,7 @@ class RuntimeContext:
     watchdog_log_max_bytes: int = config.DEFAULT_WATCHDOG_LOG_MAX_BYTES
     watchdog_log_backup_count: int = config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT
     responses_max_concurrency: int = config.DEFAULT_RESPONSES_MAX_CONCURRENCY
+    responses_max_per_route: int = config.DEFAULT_RESPONSES_MAX_PER_ROUTE
     responses_queue_timeout: float = config.DEFAULT_RESPONSES_QUEUE_TIMEOUT
     upstream_timeout: float = config.DEFAULT_UPSTREAM_TIMEOUT
     upstream_read_timeout: float = config.DEFAULT_UPSTREAM_READ_TIMEOUT
@@ -47,6 +48,7 @@ class RuntimeContext:
             config.WATCHDOG_LOG_MAX_BYTES_ENV: str(self.watchdog_log_max_bytes),
             config.WATCHDOG_LOG_BACKUP_COUNT_ENV: str(self.watchdog_log_backup_count),
             config.RESPONSES_MAX_CONCURRENCY_ENV: str(self.responses_max_concurrency),
+            config.RESPONSES_MAX_PER_ROUTE_ENV: str(self.responses_max_per_route),
             config.RESPONSES_QUEUE_TIMEOUT_ENV: str(self.responses_queue_timeout),
             config.UPSTREAM_TIMEOUT_ENV: str(self.upstream_timeout),
             config.UPSTREAM_READ_TIMEOUT_ENV: str(self.upstream_read_timeout),
