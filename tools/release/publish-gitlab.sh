@@ -19,7 +19,7 @@ trap cleanup EXIT HUP INT TERM
 
 python_bin=${PYTHON:-$(command -v python3 || true)}
 [ -n "$python_bin" ] || { echo "python3 is required for GitLab release metadata" >&2; exit 2; }
-"$python_bin" tools/release/assets.py --output "$assets"
+"$python_bin" -m tools.release.assets --output "$assets"
 version=${CI_COMMIT_TAG#v}
 archive="$assets/codex-responses-proxy-$version.tar.gz"
 checksums="$assets/SHA256SUMS"

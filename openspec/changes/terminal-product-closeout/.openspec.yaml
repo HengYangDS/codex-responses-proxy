@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-02
+goal: Finish 2.0.5 from one portable development and release boundary without
+  ambient Python, silent supervision failure, or anonymous private-asset reads.

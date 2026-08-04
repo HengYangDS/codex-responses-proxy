@@ -44,16 +44,14 @@ repair a replay issue.
 ## Required Verification
 
 ```bash
-python tools/release/metadata.py --prepare-release
-python tools/quality/markdown.py
-python tests/release/test_metadata.py
-PYTHON=python3.12 sh tools/quality/run.sh
-for py in python3.12 python3.13 python3.14; do
-  "$py" tools/quality/tests.py --compile
-done
+uv sync --locked --only-group quality
+uv run --locked --no-sync nox -s quick
+uv run --locked --no-sync nox -s quality
+uv run --locked --no-sync nox -s tests-3.12 tests-3.13 tests-3.14
+uv run --locked --no-sync nox -s release
 ```
 
-Use `python3 -m codex_responses_proxy.commands.control status --json` for
+Use `codex-responses-proxy status --json` for
 read-only runtime evidence. A protocol-v2 reload is transactional but remains a lifecycle mutation and must be
 communicated before it is performed. A legacy first migration may interrupt
 traffic and requires its separate authorization. It binds a supported
@@ -68,9 +66,9 @@ and immutable Git blobs; any worktree or identity drift is rejected. Dual-Forge
 publication is verified independently and is not an installer dependency.
 
 Uninstall must prove native-service absence and exact owned-process exit before
-payload mutation. Process ownership requires a Python executable whose exact
-`argv[1]` resolves to the installed script; identity is re-read before signalling
-and boundedly rechecked afterwards. `--purge` trusts only a valid current or
+payload mutation. Process ownership requires the exact installed executable and
+one declared private service role; identity is re-read before signalling and
+boundedly rechecked afterwards. `--purge` trusts only a valid current or
 exact historical payload manifest, preserves unknown install content, and exits
 nonzero when residue remains. On
 Linux without a user systemd bus or `crontab`, installation starts no

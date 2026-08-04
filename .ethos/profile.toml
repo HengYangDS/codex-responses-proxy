@@ -5,33 +5,42 @@ material_paths = [
   ".ethos/**",
   ".github/**",
   ".gitlab-ci.yml",
+  "AGENTS.md",
   "CHANGELOG.md",
   "CONTRIBUTING.md",
+  "README.md",
   "VERSION",
-  "codex_responses_proxy/**",
-  "docs/governance/**",
+  ".python-versions",
+  "docs/**",
+  "evidence/**",
+  "noxfile.py",
   "openspec/**",
+  "packaging/**",
   "pyproject.toml",
-  "tools/**",
+  "src/**",
   "tests/**",
-  "watchdog/**",
-  "*.py",
+  "tools/**",
+  "uv.lock",
 ]
 
 [proof]
-code_correctness_gates = ["python-quality", "platform-matrix"]
+code_correctness_gates = ["python-quality", "python-matrix"]
 
 [proof.code_correctness_map]
-behavior = "platform-matrix"
+behavior = "python-matrix"
 static-analysis = "python-quality"
 
 [[proof.gates]]
 id = "python-quality"
 kind = "static"
 command = [
-  "sh",
-  "-c",
-  "PYTHON=python3.12 RUFF=ruff TY=ty sh tools/quality/run.sh",
+  "uv",
+  "run",
+  "--locked",
+  "--no-sync",
+  "nox",
+  "-s",
+  "quality",
 ]
 dimensions = ["static-analysis", "types", "structure", "coverage"]
 execution_mode = "subprocess"
@@ -41,12 +50,18 @@ tool_adapter = "repository-native"
 network_policy = "offline"
 
 [[proof.gates]]
-id = "platform-matrix"
+id = "python-matrix"
 kind = "test"
 command = [
-  "sh",
-  "-c",
-  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile || exit; done",
+  "uv",
+  "run",
+  "--locked",
+  "--no-sync",
+  "nox",
+  "-s",
+  "tests-3.12",
+  "tests-3.13",
+  "tests-3.14",
 ]
 dimensions = ["behavior", "test", "platform"]
 execution_mode = "subprocess"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Evaluate one secret-free Codex Responses Proxy runtime observation.
 
-This tool consumes the JSON produced by ``python3 -m codex_responses_proxy.commands.control status --json``.  It does
+This tool consumes the JSON produced by ``python3 -m codex_responses_proxy.lifecycle.control status --json``.  It does
 not contact a listener, read configuration, retain request data, or change the
 proxy lifecycle.  A caller may opt into a small local baseline with ``--state``
 to compute deltas across comparable observations.
@@ -30,7 +30,6 @@ _UPSTREAM_5XX = re.compile(r"^http_(?:500|502|503|504|524)_full$")
 _INPUT_VARIANT_VALIDATION_CLASS = "input_variant_validation_error"
 _COUNTER_NAMES = (
     "responses_rejected_while_draining",
-    "responses_local_queue_timeouts",
     "streams_failed",
     "streams_incomplete",
     "streams_pre_content_exhausted",
@@ -259,11 +258,6 @@ def _append_delta_reasons(
         )
     for name, code, detail in (
         (
-            "responses_local_queue_timeouts",
-            "local_queue_timeouts",
-            "local admission queue timeout(s) occurred.",
-        ),
-        (
             "streams_incomplete",
             "local_stream_incomplete",
             "stream(s) ended with response.incomplete.",
@@ -410,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--status-file",
         default="-",
-        help=("codex_responses_proxy.commands.control status --json output, or - for stdin"),
+        help=("codex_responses_proxy.lifecycle.control status --json output, or - for stdin"),
     )
     parser.add_argument("--state", help="explicit optional path for a normalized local baseline")
     parser.add_argument(

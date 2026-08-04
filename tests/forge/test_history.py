@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Git history fingerprint and unique-join contracts."""
 
 from __future__ import annotations
@@ -7,23 +6,20 @@ import os
 import subprocess
 import sys
 import tempfile
-import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
-from unittest import mock
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from tools.forge import history
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
-class HistoryIndexTests(unittest.TestCase):
+class HistoryIndexTests:
     """Keep Forge history matching exact, bounded, and provider-neutral."""
 
-    def test_index_matches_the_original_git_fingerprint_contract(self) -> None:
+    def test_index_matches_the_original_git_fingerprint_contract(self, *, mocker) -> None:
         """Match an independent Git oracle for every commit shape."""
 
         with tempfile.TemporaryDirectory() as directory:
@@ -77,7 +73,7 @@ class HistoryIndexTests(unittest.TestCase):
             ).splitlines()
             expected = [(self.git_fingerprint(repository, commit), commit) for commit in commits]
 
-            self.assertEqual(expected, history.build_index(repository, commits))
+            assert expected == history.build_index(repository, commits)
 
             canonical = Path(directory) / "canonical.txt"
             projected = Path(directory) / "projected.txt"
@@ -98,12 +94,12 @@ class HistoryIndexTests(unittest.TestCase):
                 str(output),
             ]
             stdout = StringIO()
-            with mock.patch.object(sys, "argv", arguments), redirect_stdout(stdout):
+            mocker.patch.object(sys, "argv", arguments)
+            with redirect_stdout(stdout):
                 history.main()
-            self.assertEqual(commits[-1], stdout.getvalue().strip())
-            self.assertEqual(
-                "".join(f"{commit}\t{commit}\n" for commit in commits),
-                output.read_text(encoding="utf-8"),
+            assert commits[-1] == stdout.getvalue().strip()
+            assert "".join(f"{commit}\t{commit}\n" for commit in commits) == output.read_text(
+                encoding="utf-8"
             )
 
     def test_join_requires_one_base_and_one_projection_per_fingerprint(self) -> None:
@@ -111,17 +107,17 @@ class HistoryIndexTests(unittest.TestCase):
 
         canonical = [("one", "source-1"), ("two", "source-2"), ("three", "source-3")]
         projected = [("one", "target-1"), ("two", "target-2")]
-        self.assertEqual(
-            ("source-2", [("source-1", "target-1"), ("source-2", "target-2")]),
-            history.join_indexes(canonical, projected, "target-2"),
-        )
-        with self.assertRaisesRegex(history.HistoryError, "found 0"):
+        assert (
+            "source-2",
+            [("source-1", "target-1"), ("source-2", "target-2")],
+        ) == history.join_indexes(canonical, projected, "target-2")
+        with pytest.raises(history.HistoryError, match="found 0"):
             history.join_indexes(canonical, [("other", "target")], "target")
-        with self.assertRaisesRegex(history.HistoryError, "found 2"):
+        with pytest.raises(history.HistoryError, match="found 2"):
             history.join_indexes([*canonical, ("two", "source-4")], projected, "target-2")
-        with self.assertRaisesRegex(history.HistoryError, "ambiguous"):
+        with pytest.raises(history.HistoryError, match="ambiguous"):
             history.join_indexes(canonical, [*projected, ("one", "target-3")], "target-2")
-        with self.assertRaisesRegex(history.HistoryError, "absent"):
+        with pytest.raises(history.HistoryError, match="absent"):
             history.join_indexes(canonical, projected, "missing")
 
     def test_index_cli_rejects_non_commit_without_traceback(self) -> None:
@@ -165,18 +161,20 @@ class HistoryIndexTests(unittest.TestCase):
                 check=False,
             )
 
-            self.assertEqual(1, result.returncode)
-            self.assertIn("cannot read commit object", result.stderr)
-            self.assertNotIn("Traceback", result.stderr)
-            self.assertFalse(output.exists())
+            assert 1 == result.returncode
+            assert "cannot read commit object" in result.stderr
+            assert "Traceback" not in result.stderr
+            assert not output.exists()
 
-    def test_batch_index_rejects_unsupported_and_malformed_git_output(self) -> None:
+    def test_batch_index_rejects_unsupported_and_malformed_git_output(
+        self, subtests, *, mocker
+    ) -> None:
         """Reject every batch framing ambiguity before emitting an index."""
 
         repository = Path("repository")
-        with mock.patch.object(history, "_git_output", return_value="unknown"):
-            with self.assertRaisesRegex(history.HistoryError, "unsupported"):
-                history.build_index(repository, ["commit"])
+        mocker.patch.object(history, "_git_output", return_value="unknown")
+        with pytest.raises(history.HistoryError, match="unsupported"):
+            history.build_index(repository, ["commit"])
 
         valid_commit = (
             b"tree deadbeef\n"
@@ -196,15 +194,12 @@ class HistoryIndexTests(unittest.TestCase):
         )
         for stdout, message in cases:
             completed = subprocess.CompletedProcess([], 0, stdout=stdout, stderr=b"")
-            with (
-                self.subTest(stdout=stdout),
-                mock.patch.object(history, "_git_output", return_value="sha1"),
-                mock.patch.object(history.subprocess, "run", return_value=completed),
-                self.assertRaisesRegex(history.HistoryError, message),
-            ):
+            mocker.patch.object(history, "_git_output", return_value="sha1")
+            mocker.patch.object(history.subprocess, "run", return_value=completed)
+            with subtests.test(stdout=stdout), pytest.raises(history.HistoryError, match=message):
                 history.build_index(repository, ["commit"])
 
-    def test_fingerprint_rejects_malformed_commit_bytes(self) -> None:
+    def test_fingerprint_rejects_malformed_commit_bytes(self, subtests) -> None:
         """Convert malformed commit internals into the same bounded error type."""
 
         invalid_objects = (
@@ -217,17 +212,15 @@ class HistoryIndexTests(unittest.TestCase):
             ),
         )
         for raw in invalid_objects:
-            with self.subTest(raw=raw), self.assertRaises(history.HistoryError):
+            with subtests.test(raw=raw), pytest.raises(history.HistoryError):
                 history._fingerprint(raw, history.hashlib.sha1)
-        self.assertEqual(
-            "1969-12-31T19:00:00-05:00",
-            history._strict_iso8601(b"Example <x@example.test> 0 -0500"),
+        assert "1969-12-31T19:00:00-05:00" == history._strict_iso8601(
+            b"Example <x@example.test> 0 -0500"
         )
         for offset in (b"+0000", b"-0000"):
-            with self.subTest(offset=offset):
-                self.assertEqual(
-                    "1970-01-01T00:00:00Z",
-                    history._strict_iso8601(b"Example <x@example.test> 0 " + offset),
+            with subtests.test(offset=offset):
+                assert "1970-01-01T00:00:00Z" == history._strict_iso8601(
+                    b"Example <x@example.test> 0 " + offset
                 )
 
     @staticmethod
@@ -258,7 +251,3 @@ class HistoryIndexTests(unittest.TestCase):
             .decode("ascii")
             .strip()
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

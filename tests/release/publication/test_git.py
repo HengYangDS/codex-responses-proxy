@@ -1,28 +1,23 @@
-#!/usr/bin/env python3
 """Offline Git-object and external-anchor publication contracts."""
 
 from __future__ import annotations
 
 import subprocess
-import sys
 import tempfile
-import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
-from unittest import mock
+
+from tools.release.publication import git
+import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from codex_responses_proxy.release.publication import git
 
 
-class GitPublicationContracts(unittest.TestCase):
+class GitPublicationContracts:
     """Require an exact annotated tag verified by an external signer anchor."""
 
-    def setUp(self) -> None:
+    def setup_method(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.repo = self.root / "repo"
@@ -74,25 +69,25 @@ class GitPublicationContracts(unittest.TestCase):
             check=True,
         )
 
-    def tearDown(self) -> None:
+    def teardown_method(self) -> None:
         self.temp.cleanup()
 
     def test_collects_exact_signed_tag_identity(self) -> None:
         evidence = git.collect(
             provider="gitlab", remote=str(self.remote), tag="v1.2.3", anchor=self.anchor
         )
-        self.assertEqual(evidence["provider"], "gitlab")
-        self.assertTrue(evidence["signature_verified"])
-        self.assertEqual(len(cast(str, evidence["tag_object_oid"])), 40)
-        self.assertEqual(len(cast(str, evidence["commit_oid"])), 40)
-        self.assertEqual(len(cast(str, evidence["tree_oid"])), 40)
+        assert evidence["provider"] == "gitlab"
+        assert evidence["signature_verified"]
+        assert len(cast(str, evidence["tag_object_oid"])) == 40
+        assert len(cast(str, evidence["commit_oid"])) == 40
+        assert len(cast(str, evidence["tree_oid"])) == 40
 
     def test_rejects_lightweight_tag_and_wrong_anchor(self) -> None:
         subprocess.run(["git", "-C", self.repo, "tag", "v1.2.4"], check=True)
         subprocess.run(
             ["git", "-C", self.repo, "push", "-q", self.remote, "refs/tags/v1.2.4"], check=True
         )
-        with self.assertRaises(git.GitProofError):
+        with pytest.raises(git.GitProofError):
             git.collect(
                 provider="gitlab", remote=str(self.remote), tag="v1.2.4", anchor=self.anchor
             )
@@ -100,18 +95,18 @@ class GitPublicationContracts(unittest.TestCase):
         wrong.write_text(
             "nobody@example.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n"
         )
-        with self.assertRaises(git.GitProofError):
+        with pytest.raises(git.GitProofError):
             git.collect(provider="gitlab", remote=str(self.remote), tag="v1.2.3", anchor=wrong)
 
-    def test_rejects_invalid_inputs_and_unavailable_tools(self) -> None:
+    def test_rejects_invalid_inputs_and_unavailable_tools(self, subtests, *, mocker) -> None:
         for provider, tag, anchor in (
             ("other", "v1.2.3", self.anchor),
             ("gitlab", "latest", self.anchor),
             ("gitlab", "v1.2.3", self.root / "missing"),
         ):
             with (
-                self.subTest(provider=provider, tag=tag),
-                self.assertRaises(git.GitProofError),
+                subtests.test(provider=provider, tag=tag),
+                pytest.raises(git.GitProofError),
             ):
                 git.collect(
                     provider=provider,
@@ -120,52 +115,41 @@ class GitPublicationContracts(unittest.TestCase):
                     anchor=anchor,
                 )
         for missing in ("ssh-keygen", "git"):
-            with (
-                mock.patch.object(
-                    git.shutil,
-                    "which",
-                    side_effect=lambda name, missing=missing: (
-                        None if name == missing else f"/{name}"
-                    ),
-                ),
-                self.assertRaises(git.GitProofError),
-            ):
+            mocker.patch.object(
+                git.shutil,
+                "which",
+                side_effect=lambda name, missing=missing: None if name == missing else f"/{name}",
+            )
+            with pytest.raises(git.GitProofError):
                 git.collect(
                     provider="gitlab", remote=str(self.remote), tag="v1.2.3", anchor=self.anchor
                 )
 
-    def test_environment_error_translation_and_ascii_boundary(self) -> None:
-        with mock.patch.dict(
+    def test_environment_error_translation_and_ascii_boundary(self, *, mocker) -> None:
+        mocker.patch.dict(
             git.os.environ,
             {"GIT_DIR": "foreign", "GIT_TERMINAL_PROMPT": "9"},
             clear=True,
-        ):
-            environment = git._git_environment()
-        self.assertNotIn("GIT_DIR", environment)
-        self.assertEqual(environment["GIT_TERMINAL_PROMPT"], "0")
+        )
+        environment = git._git_environment()
+        assert "GIT_DIR" not in environment
+        assert environment["GIT_TERMINAL_PROMPT"] == "0"
 
-        self.assertNotIn("GIT_CONFIG_COUNT", environment)
-        self.assertNotIn("credential.helper", environment.values())
+        assert "GIT_CONFIG_COUNT" not in environment
+        assert "credential.helper" not in environment.values()
 
         completed = SimpleNamespace(stdout=b"\xff")
-        with (
-            mock.patch.object(git, "_run", return_value=completed),
-            self.assertRaisesRegex(git.GitProofError, "not ASCII"),
-        ):
+        non_ascii = mocker.patch.object(git, "_run", return_value=completed)
+        with pytest.raises(git.GitProofError, match="not ASCII"):
             git._output(("git",), {})
+        mocker.stop(non_ascii)
+        mocker.patch.object(
+            git.subprocess,
+            "run",
+            side_effect=subprocess.CalledProcessError(1, ["git"]),
+        )
 
-        with (
-            mock.patch.object(
-                git.subprocess,
-                "run",
-                side_effect=subprocess.CalledProcessError(1, ["git"]),
-            ),
-            self.assertRaisesRegex(git.GitProofError, "fetch, verification"),
-        ):
+        with pytest.raises(git.GitProofError, match="fetch, verification"):
             git.collect(
                 provider="gitlab", remote=str(self.remote), tag="v1.2.3", anchor=self.anchor
             )
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)

@@ -13,7 +13,7 @@ aliases = []
 
 [owner]
 package = "codex-responses-proxy"
-scope = "Provider-portable Responses replay across DMXAPI, UCloud/Azure, and AIHubMix"
+scope = "Provider-portable Responses replay across DMXAPI, UCloud, and AIHubMix"
 
 [recommended_facets]
 lifecycle = ["request", "stream", "installation", "release"]

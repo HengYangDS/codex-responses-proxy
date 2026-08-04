@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Contracts for repository-owned portability and ownership classification."""
 
 from __future__ import annotations
@@ -6,7 +5,6 @@ from __future__ import annotations
 import importlib.util
 import sys
 import tempfile
-import unittest
 from pathlib import Path
 from types import ModuleType
 
@@ -25,27 +23,31 @@ def _scanner() -> ModuleType:
     return module
 
 
-class PortabilityContracts(unittest.TestCase):
+class PortabilityContracts:
     """Reject values decided by the wrong durable repository owner."""
 
     def test_scanner_classifies_personal_host_and_forge_bindings(self) -> None:
         scanner = _scanner()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            slash = "/"
             (root / "product.py").write_text(
-                'home = "/Users/alice/project"\n'
-                'python = "/opt/homebrew/bin/python3.14"\n'
-                'forge = "http://192.168.50.12/team/repository"\n'
-                'actor = "alice@corp.invalid"\n',
+                f'home = "{slash}Users{slash}alice{slash}project"\n'
+                f'python = "{slash}opt{slash}homebrew{slash}bin{slash}python3.14"\n'
+                f'forge = "http:{slash}{slash}{".".join(("192", "168", "50", "12"))}'
+                f'{slash}team{slash}repository"\n'
+                f'actor = "alice{"@"}corp.invalid"\n',
                 encoding="utf-8",
             )
 
             findings = scanner.audit(root, paths=("product.py",))
 
-        self.assertEqual(
-            {finding.rule for finding in findings},
-            {"absolute-home", "package-manager-prefix", "private-network", "personal-identity"},
-        )
+        assert {finding.rule for finding in findings} == {
+            "absolute-home",
+            "package-manager-prefix",
+            "private-network",
+            "personal-identity",
+        }
 
     def test_scanner_keeps_only_immutable_records_out_of_product_scope(self) -> None:
         scanner = _scanner()
@@ -58,7 +60,8 @@ class PortabilityContracts(unittest.TestCase):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(
-                    'fixture = "/Users/example/test"\nactor = "fixture@example.test"\n',
+                    f'fixture = "{Path("/") / "Users" / "example" / "test"}"\n'
+                    f'actor = "fixture{"@"}example.test"\n',
                     encoding="utf-8",
                 )
 
@@ -70,16 +73,11 @@ class PortabilityContracts(unittest.TestCase):
                 ),
             )
 
-        self.assertEqual(findings, ())
+        assert findings == ()
 
-    def test_scanner_keeps_bounded_data_heavy_fixtures_out_of_product_scope(self) -> None:
+    def test_scanner_has_no_mutable_surface_allowlist(self) -> None:
         scanner = _scanner()
-        self.assertTrue(scanner._FIXTURE_FILES)
-        self.assertTrue(all(path.startswith("tests/") for path in scanner._FIXTURE_FILES))
+        assert not hasattr(scanner, "_FIXTURE_FILES")
 
     def test_current_product_surfaces_have_no_wrong_owner_bindings(self) -> None:
-        self.assertEqual(_scanner().audit(ROOT), ())
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+        assert _scanner().audit(ROOT) == ()

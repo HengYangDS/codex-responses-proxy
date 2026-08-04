@@ -1,0 +1,36 @@
+[claim]
+id = "three-provider-compaction-acceptance-20260802"
+subject = "codex-responses-proxy:provider-portable-responses"
+state = "active"
+summary = "Bind the released remote-compaction control to the exact DMXAPI, UCloud, and AIHubMix route matrix without changing Codex conversation state."
+
+[evidence]
+dated = "evidence/chronicle/three-provider-compaction-acceptance-20260802/2026-08-02.md"
+sha256 = "597703a9fa90f1331e8fdc692f2f92fbaa675b67a205e03695118d0f330c8e10"
+evidence_ids = ["evidence:three-provider-compaction-acceptance-20260802"]
+binding = "Released 2.0.4 compaction projector, unchanged-session continuations, live available-provider probes, and exact three-route request equality"
+verifier = "digest_only"
+tests = [
+  "python3.12 tests/providers/test_routes.py",
+  "openspec validate three-provider-compaction-acceptance --strict --json",
+  "PYTHON=python3.12 UV=uv sh tools/quality/run.sh",
+  "for py in python3.12 python3.13 python3.14; do \"$py\" tools/quality/tests.py --compile; done",
+]
+
+[evidence.freshness]
+mode = "historical"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Source route projection, unchanged-session evidence, and live available-provider probes; DMXAPI is local-only and upstream-unverified while quota is exhausted."
+
+[carriers]
+openspec = "openspec/changes/three-provider-compaction-acceptance"
+fallback = "Revert this documentation-and-regression increment before landing; the installed 2.0.4 runtime remains unchanged."
+kill_signal = "Any route changes the projected compaction body, an unknown replay item reaches upstream, canonical provider names drift, or session storage is modified."
+
+[promotion]
+targets = [
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/providers/test_routes.py",
+]

@@ -1,0 +1,9 @@
+schema_version = 1
+paths = [
+  "evidence/claims/three-provider-compaction-acceptance-20260802.toml",
+  "evidence/chronicle/three-provider-compaction-acceptance-20260802/**",
+  "openspec/changes/three-provider-compaction-acceptance/**",
+  "openspec/changes/archive/2026-08-02-three-provider-compaction-acceptance/**",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/providers/test_routes.py",
+]

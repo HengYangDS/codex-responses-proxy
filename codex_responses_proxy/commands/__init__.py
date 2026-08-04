@@ -1,1 +1,0 @@
-"""Product lifecycle command implementations."""

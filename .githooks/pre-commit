@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Admit staged tracked writes through the public ETHOS command plane.
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+staged=()
+while IFS= read -r path; do
+  staged+=("$path")
+done < <(git diff --cached --name-only --diff-filter=ACMRTD)
+
+((${#staged[@]})) || exit 0
+exec ethos hook admit pre-tool "${staged[@]}" \
+  --root "$root" --editor-root "$root" --require-editor-root --json
