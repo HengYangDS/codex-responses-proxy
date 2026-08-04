@@ -7,6 +7,29 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.10] - 2026-08-04
+
+### Changed
+
+- Stop serializing a healthy provider route. Per-route admission was fixed at
+  one exchange since the UCloud upstream was returning HTTP 429; that upstream no
+  longer rate-limits, and on the live listener every route acquisition reported
+  `active=1/8`, so the process-wide bound was never the binding one. Holds of 23
+  to 69 seconds queued behind each other for up to 115 seconds without denying
+  anything, which is invisible to every counter and visible only as latency to a
+  client carrying its own deadline. The per-route width is now derived from the
+  process-wide limit, so one route may hold at most half of process capacity and
+  a second route always retains at least as much as the busiest route holds.
+- Make the per-route width a validated operator setting,
+  `CODEX_RESPONSES_PROXY_RESPONSES_MAX_PER_ROUTE`, bounded `1..4096` and rendered
+  into the supervised unit. It was previously the only admission bound that was a
+  source constant. Setting it to `1` restores the previous strict single-flight
+  behavior without a new release, which is the recorded remedy if a provider
+  begins rate-limiting again: because a provider cooldown is recorded only after
+  an exchange returns, up to one route width of same-route requests can reach a
+  newly rate-limiting provider before the first failure closes the cooldown for
+  the rest.
+
 ## [2.0.9] - 2026-08-04
 
 ### Fixed
