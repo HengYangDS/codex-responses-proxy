@@ -1,0 +1,17 @@
+#!/bin/sh
+# Require public ETHOS push admission for every non-deletion update.
+set -eu
+
+remote=$1
+root=$(git rev-parse --show-toplevel)
+zero=0000000000000000000000000000000000000000
+
+while read -r _local_ref local_head remote_ref remote_head; do
+  [ -n "$remote_ref" ] || continue
+  [ "$local_head" != "$zero" ] || continue
+  if ! report=$(ethos hook pre-push "$remote_ref" "$local_head" \
+    --remote-head "$remote_head" --remote "$remote" --root "$root" --json); then
+    printf '%s\n' "$report" >&2
+    exit 1
+  fi
+done

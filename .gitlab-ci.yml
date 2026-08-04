@@ -27,9 +27,11 @@ variables:
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends git openssh-client
     - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
+    - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore uv==0.12.1
   script:
     - python --version
-    - python tools/quality/tests.py --compile
+    - uv sync --locked --only-group quality
+    - uv run --locked --no-sync nox -s "tests-${PYTHON_VERSION}"
 
 verify-python-3.12:
   extends: .python-verify
@@ -67,7 +69,7 @@ verify-release-metadata:
         python tools/release/metadata.py --provider gitlab --prepare-release
       fi
     - python tools/quality/markdown.py
-    - python tests/release/test_metadata.py
+    - python -m pytest -q tests/release/test_metadata.py
     - python tools/quality/repository.py
     - sh tests/release/contracts/test-publish-gitlab.sh
     - sh tests/forge/contracts/test-github-actions.sh
@@ -103,7 +105,8 @@ verify-python-quality:
     - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
     - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore uv==0.12.1
   script:
-    - PYTHON=python sh tools/quality/run.sh
+    - uv sync --locked --only-group quality
+    - uv run --locked --no-sync nox -s quality
 
 publish-gitlab-release:
   stage: release

@@ -1,20 +1,22 @@
-#!/usr/bin/env python3
 """Contract tests for the repository-owned Python quality policy."""
 
 from __future__ import annotations
 
+import ast
 import importlib.util
-import inspect
+import io
 import os
 import subprocess
 import sys
 import tempfile
-import unittest
+import tokenize
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import Iterator
-from unittest import mock
+from typing import Any, Iterator
+
+import pytest
+from pytest_mock import MockerFixture
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -68,26 +70,27 @@ def _quality_inventory(root: Path):
     return _checker()._repository_inventory(root, ("src",), ("tests",))
 
 
-class QualityPolicyContracts(unittest.TestCase):
-    """Keep quality scope and ratchets executable rather than documentary."""
+def _audit_source(source_text: str, **overrides: Any):
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source = root / "source.py"
+        source.write_text(source_text, encoding="utf-8")
+        options = {
+            "logic_limit": 10,
+            "test_limit": 10,
+            "ratchets": {},
+            "module_public_definition_docstrings_required": False,
+            **overrides,
+        }
+        return _checker().audit_paths(root, [source], **options)
 
-    def audit_source(self, source_text: str, **overrides):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = root / "source.py"
-            source.write_text(source_text, encoding="utf-8")
-            options = {
-                "logic_limit": 10,
-                "test_limit": 10,
-                "ratchets": {},
-                "module_public_definition_docstrings_required": False,
-                **overrides,
-            }
-            return _checker().audit_paths(root, [source], **options)
+
+class TestQualityPolicyContracts:
+    """Keep quality scope and ratchets executable rather than documentary."""
 
     def test_current_repository_policy_is_internally_consistent(self) -> None:
         report = _checker().audit()
-        self.assertEqual(report["policy_errors"], [])
+        assert report["policy_errors"] == []
         inventory_gaps = [gap for gap in report["gaps"] if gap.startswith("quality_inventory_")]
         untracked = _git(
             ROOT,
@@ -126,19 +129,157 @@ class QualityPolicyContracts(unittest.TestCase):
             expected_gaps.append(f"quality_inventory_missing:{','.join(missing)}")
         if expected_untracked:
             expected_gaps.append(f"quality_inventory_untracked:{','.join(expected_untracked)}")
-        self.assertEqual(inventory_gaps, expected_gaps)
-        self.assertGreater(len(report["files"]), 20)
+        assert inventory_gaps == expected_gaps
+        assert len(report["files"]) > 20
         inventoried = {entry["path"] for entry in report["files"]}
         for path in (
-            "codex_responses_proxy/commands/control.py",
-            "codex_responses_proxy/supervision/watchdog.py",
+            "src/codex_responses_proxy/lifecycle/control.py",
+            "src/codex_responses_proxy/lifecycle/supervision/watchdog.py",
             "tools/release/metadata.py",
             "tests/governance/test_repository.py",
         ):
-            self.assertIn(path, inventoried)
+            assert path in inventoried
+
+    def test_repository_cli_is_quiet_on_success_and_diagnostic_on_failure(
+        self, mocker: MockerFixture
+    ) -> None:
+        checker = _checker()
+        mocker.patch.object(checker, "audit", return_value={"ok": True, "gaps": []})
+        output = mocker.patch("builtins.print")
+        checker.main()
+        output.assert_not_called()
+
+        mocker.patch.object(
+            checker, "audit", return_value={"ok": False, "gaps": ["invalid_contract"]}
+        )
+        output.reset_mock()
+        with pytest.raises(SystemExit):
+            checker.main()
+        output.assert_called_once()
+
+    def test_worktree_fingerprint_is_stable_and_content_sensitive(self) -> None:
+        checker = _checker()
+        with _test_repository(("tracked.txt",)) as root:
+            untracked = root / "untracked.txt"
+            untracked.write_text("first\n", encoding="utf-8")
+
+            initial = checker.worktree_fingerprint(root)
+            assert checker.worktree_fingerprint(root) == initial
+
+            (root / "tracked.txt").write_text("changed\n", encoding="utf-8")
+            tracked_changed = checker.worktree_fingerprint(root)
+            assert tracked_changed != initial
+
+            untracked.write_text("second\n", encoding="utf-8")
+            untracked_changed = checker.worktree_fingerprint(root)
+            assert untracked_changed != tracked_changed
+
+            (root / "tracked.txt").chmod(0o755)
+            assert checker.worktree_fingerprint(root) != untracked_changed
+
+    def test_worktree_fingerprint_is_path_sensitive_and_ignores_git_internals(self) -> None:
+        checker = _checker()
+        with _test_repository(("first.txt",)) as root:
+            before = checker.worktree_fingerprint(root)
+            (root / "first.txt").rename(root / "second.txt")
+            renamed = checker.worktree_fingerprint(root)
+            assert renamed != before
+
+            (root / ".git" / "irrelevant").write_text("internal\n", encoding="utf-8")
+            assert checker.worktree_fingerprint(root) == renamed
 
     def test_current_product_architecture_is_acyclic_and_directional(self) -> None:
-        self.assertEqual(_checker().architecture_gaps(ROOT), [])
+        assert _checker().architecture_gaps(ROOT) == []
+
+    def test_cli_is_the_only_production_command_composition_root(self) -> None:
+        package = ROOT / "src/codex_responses_proxy"
+        argparse_owners = []
+        module_entrypoints = []
+        shebangs = []
+        for path in sorted(package.rglob("*.py")):
+            relative = path.relative_to(ROOT).as_posix()
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=relative)
+            if source.startswith("#!"):
+                shebangs.append(relative)
+            if any(
+                (
+                    isinstance(node, ast.Import)
+                    and any(alias.name == "argparse" for alias in node.names)
+                )
+                or (isinstance(node, ast.ImportFrom) and node.module == "argparse")
+                for node in tree.body
+            ):
+                argparse_owners.append(relative)
+            if any(
+                isinstance(node, ast.If)
+                and isinstance(node.test, ast.Compare)
+                and ast.unparse(node.test) == "__name__ == '__main__'"
+                for node in tree.body
+            ):
+                module_entrypoints.append(relative)
+
+        assert argparse_owners == ["src/codex_responses_proxy/cli/application.py"]
+        assert module_entrypoints == []
+        assert shebangs == []
+        assert (
+            (package / "cli/__main__.py")
+            .read_text(encoding="utf-8")
+            .endswith("raise SystemExit(main())\n")
+        )
+
+    def test_lifecycle_tests_follow_lifecycle_ownership(self) -> None:
+        tests = ROOT / "tests"
+        assert [
+            name for name in ("deployment", "payload", "supervision") if (tests / name).exists()
+        ] == []
+        assert (tests / "lifecycle/fixtures.py").is_file()
+        assert (tests / "lifecycle/supervision/test_process.py").is_file()
+        assert (tests / "service/test_identity.py").is_file()
+
+    def test_service_tests_follow_runtime_and_deployment_ownership(self) -> None:
+        tests = ROOT / "tests"
+        assert [name for name in ("listener", "runtime") if (tests / name).exists()] == []
+        assert (tests / "relay/proxy_fixture.py").is_file()
+        assert (tests / "service/test_entrypoint.py").is_file()
+        assert (tests / "service/handoff/test_runtime.py").is_file()
+        assert (tests / "lifecycle/deployment/test_handoff.py").is_file()
+
+    def test_protocol_and_relay_tests_follow_terminal_ownership(self) -> None:
+        tests = ROOT / "tests"
+        assert [
+            name for name in ("compatibility", "transport", "recovery") if (tests / name).exists()
+        ] == []
+        assert (tests / "protocol/test_request.py").is_file()
+        assert (tests / "protocol/test_response.py").is_file()
+        assert (tests / "protocol/test_input_variant.py").is_file()
+        assert (tests / "relay/test_empty_response.py").is_file()
+        assert (tests / "relay/test_routes.py").is_file()
+        for retired in tests.joinpath("providers").glob("test_portable_*.py"):
+            raise AssertionError(f"protocol test remains under providers: {retired.name}")
+
+    def test_product_and_tests_never_mutate_import_resolution_or_suppress_analysis(self) -> None:
+        offenders = []
+        for root in (ROOT / "tests",):
+            for path in root.rglob("*.py"):
+                source = path.read_text(encoding="utf-8")
+                tree = ast.parse(source, filename=str(path))
+                if any(
+                    isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "sys"
+                    and node.attr == "path"
+                    for node in ast.walk(tree)
+                ):
+                    offenders.append(f"{path.relative_to(ROOT).as_posix()}:sys.path")
+                comments = (
+                    token.string
+                    for token in tokenize.generate_tokens(io.StringIO(source).readline)
+                    if token.type == tokenize.COMMENT
+                )
+                if any("noqa" in comment or "type: ignore" in comment for comment in comments):
+                    offenders.append(f"{path.relative_to(ROOT).as_posix()}:suppression")
+        assert offenders == []
 
     def test_architecture_gate_rejects_root_implementation_init_behavior_and_cycles(self) -> None:
         checker = _checker()
@@ -146,23 +287,23 @@ class QualityPolicyContracts(unittest.TestCase):
             root = Path(directory)
             files = {
                 "control.py": "def main():\n    return 0\n",
-                "codex_responses_proxy/__init__.py": "from .runtime import state\n",
-                "codex_responses_proxy/common/value.py": "VALUE = 1\n",
-                "codex_responses_proxy/listener/__init__.py": "",
-                "codex_responses_proxy/listener/private.py": "_VALUE = 1\n",
-                "codex_responses_proxy/listener/forward.py": (
-                    "from codex_responses_proxy.listener import private\nPUBLIC = private._VALUE\n"
+                "src/codex_responses_proxy/__init__.py": "from .runtime import state\n",
+                "src/codex_responses_proxy/common/value.py": "VALUE = 1\n",
+                "src/codex_responses_proxy/service/__init__.py": "",
+                "src/codex_responses_proxy/service/private.py": "_VALUE = 1\n",
+                "src/codex_responses_proxy/service/forward.py": (
+                    "from codex_responses_proxy.service import private\nPUBLIC = private._VALUE\n"
                 ),
-                "codex_responses_proxy/listener/direct.py": (
-                    "from codex_responses_proxy.listener.private import _VALUE\nPUBLIC = _VALUE\n"
+                "src/codex_responses_proxy/service/direct.py": (
+                    "from codex_responses_proxy.service.private import _VALUE\nPUBLIC = _VALUE\n"
                 ),
-                "codex_responses_proxy/runtime/state.py": (
-                    "from codex_responses_proxy.transport import relay\n"
+                "src/codex_responses_proxy/runtime/state.py": (
+                    "from codex_responses_proxy.relay import relay\n"
                 ),
-                "codex_responses_proxy/transport/relay.py": (
+                "src/codex_responses_proxy/relay/relay.py": (
                     "from codex_responses_proxy.runtime import state\n"
                 ),
-                "codex_responses_proxy/commands/install.py": (
+                "src/codex_responses_proxy/lifecycle/install.py": (
                     "import aigw_cli\nCOMMAND = 'aigw sync'\n"
                 ),
                 "codex_dmx_proxy/legacy.py": "VALUE = 1\n",
@@ -175,76 +316,75 @@ class QualityPolicyContracts(unittest.TestCase):
 
             gaps = checker.architecture_gaps(root)
 
-        self.assertIn("architecture_root_implementation:control.py", gaps)
-        self.assertIn("architecture_init_behavior:codex_responses_proxy/__init__.py", gaps)
-        self.assertIn("architecture_forbidden_package:common", gaps)
-        self.assertIn(
-            "architecture_package_declaration_missing:codex_responses_proxy/listener/__init__.py",
-            gaps,
+        assert "architecture_root_implementation:control.py" in gaps
+        assert "architecture_init_behavior:src/codex_responses_proxy/__init__.py" in gaps
+        assert "architecture_forbidden_package:common" in gaps
+        assert (
+            "architecture_package_declaration_missing:src/codex_responses_proxy/service/__init__.py"
+            in gaps
         )
-        self.assertIn(
+        assert (
             "architecture_private_cross_module:"
-            "codex_responses_proxy/listener/forward.py:2:private._VALUE",
-            gaps,
+            "src/codex_responses_proxy/service/forward.py:2:private._VALUE" in gaps
         )
-        self.assertIn(
+        assert (
             "architecture_forwarding_alias:"
-            "codex_responses_proxy/listener/forward.py:2:private._VALUE",
-            gaps,
+            "src/codex_responses_proxy/service/forward.py:2:private._VALUE" in gaps
         )
-        self.assertIn(
-            "architecture_private_cross_module:codex_responses_proxy/listener/direct.py:1:_VALUE",
-            gaps,
+        assert (
+            "architecture_private_cross_module:src/codex_responses_proxy/service/direct.py:1:_VALUE"
+            in gaps
         )
-        self.assertIn(
-            "architecture_forwarding_alias:codex_responses_proxy/listener/direct.py:2:_VALUE",
-            gaps,
+        assert (
+            "architecture_forwarding_alias:src/codex_responses_proxy/service/direct.py:2:_VALUE"
+            in gaps
         )
-        self.assertIn("architecture_retired_module:codex_responses_proxy/runtime/state.py", gaps)
-        self.assertIn("architecture_disallowed_edge:runtime->transport", gaps)
-        self.assertIn("architecture_cycle:runtime,transport", gaps)
-        self.assertIn("architecture_retired_source_root:codex_dmx_proxy", gaps)
-        self.assertIn("architecture_retired_source_root:watchdog", gaps)
-        self.assertIn(
+        assert "architecture_retired_module:src/codex_responses_proxy/runtime/state.py" in gaps
+        assert "architecture_disallowed_edge:relay->runtime" in gaps
+        assert "architecture_disallowed_edge:runtime->relay" in gaps
+        assert "architecture_cycle:relay,runtime" in gaps
+        assert "architecture_retired_source_root:codex_dmx_proxy" in gaps
+        assert "architecture_retired_source_root:watchdog" in gaps
+        assert (
             "architecture_foreign_product_dependency:"
-            "codex_responses_proxy/commands/install.py:1:aigw_cli",
-            gaps,
+            "src/codex_responses_proxy/lifecycle/install.py:1:aigw_cli" in gaps
         )
-        self.assertIn(
-            "architecture_foreign_product_literal:codex_responses_proxy/commands/install.py:2:aigw",
-            gaps,
+        assert (
+            "architecture_foreign_product_literal:src/codex_responses_proxy/lifecycle/install.py:2:aigw"
+            in gaps
         )
 
     def test_unratcheted_file_exceeding_hard_limit_fails(self) -> None:
-        gaps, inventory = self.audit_source(
+        gaps, inventory = _audit_source(
             "\n".join(f"value_{index} = {index}" for index in range(4)), logic_limit=3
         )
-        self.assertEqual(inventory[0]["logical_statements"], 4)
-        self.assertIn("code_size_exceeded:source.py:4>3", gaps)
+        assert inventory[0]["logical_statements"] == 4
+        assert "code_size_exceeded:source.py:4>3" in gaps
 
     def test_ratchet_is_an_exact_ceiling_not_a_free_allowance(self) -> None:
-        gaps, _ = self.audit_source(
-            "a = 1\nb = 2\nc = 3\n", logic_limit=1, ratchets={"source.py": 2}
-        )
-        self.assertIn("code_size_ratchet_increased:source.py:3>2", gaps)
-        self.assertTrue(gaps)
+        gaps, _ = _audit_source("a = 1\nb = 2\nc = 3\n", logic_limit=1, ratchets={"source.py": 2})
+        assert "code_size_ratchet_increased:source.py:3>2" in gaps
+        assert gaps
 
-    def test_logical_statement_metric_is_invariant_to_formatter_wrapping(self) -> None:
-        for source in ("value = call(first, second)\n", "value = call(\n first,\n second,\n)\n"):
-            with self.subTest(source=source):
-                gaps, inventory = self.audit_source(source, logic_limit=1, test_limit=1)
-                self.assertEqual(gaps, [])
-                self.assertEqual(inventory[0]["logical_statements"], 1)
+    @pytest.mark.parametrize(
+        "source",
+        ("value = call(first, second)\n", "value = call(\n first,\n second,\n)\n"),
+    )
+    def test_logical_statement_metric_is_invariant_to_formatter_wrapping(self, source: str) -> None:
+        gaps, inventory = _audit_source(source, logic_limit=1, test_limit=1)
+        assert gaps == []
+        assert inventory[0]["logical_statements"] == 1
 
     def test_module_public_definition_docstring_switch_is_actually_enforced(self) -> None:
-        gaps, _ = self.audit_source(
+        gaps, _ = _audit_source(
             "def public_api():\n    return 1\n",
             module_public_definition_docstrings_required=True,
         )
-        self.assertIn("public_docstring_missing:source.py:1:public_api", gaps)
+        assert "public_docstring_missing:source.py:1:public_api" in gaps
 
-    def test_structural_limits_reject_large_or_deep_production_owners(self) -> None:
-        cases = (
+    @pytest.mark.parametrize(
+        ("source", "options", "expected"),
+        (
             (
                 '"""Docs do not buy structural headroom."""\ndef compact():\n    return (\n        1\n        + 2\n        + 3\n    )\n',
                 {"module_eloc_limit": 4},
@@ -260,32 +400,53 @@ class QualityPolicyContracts(unittest.TestCase):
                 {"nesting_depth_limit": 2},
                 "nesting_depth_exceeded:source.py:3>2",
             ),
-        )
-        for source, options, expected in cases:
-            with self.subTest(expected=expected):
-                gaps, _ = self.audit_source(source, **options)
-                self.assertIn(expected, gaps)
+        ),
+    )
+    def test_structural_limits_reject_large_or_deep_production_owners(
+        self, source: str, options: dict[str, int], expected: str
+    ) -> None:
+        gaps, _ = _audit_source(source, **options)
+        assert expected in gaps
 
     def test_structural_inventory_exposes_eloc_function_size_and_nesting(self) -> None:
-        gaps, inventory = self.audit_source(
+        gaps, inventory = _audit_source(
             "def owner(value):\n    if value:\n        return value\n    return None\n",
             module_eloc_limit=10,
             function_eloc_limit=10,
             nesting_depth_limit=2,
         )
-        self.assertEqual(gaps, [])
-        self.assertEqual(inventory[0]["effective_lines"], 4)
-        self.assertEqual(inventory[0]["max_function_lines"], 4)
-        self.assertEqual(inventory[0]["max_nesting_depth"], 1)
+        assert gaps == []
+        assert inventory[0]["effective_lines"] == 4
+        assert inventory[0]["max_function_lines"] == 4
+        assert inventory[0]["max_nesting_depth"] == 1
 
     def test_coverage_floor_is_branch_aware_and_at_least_ninety_five_percent(self) -> None:
         import tomllib
 
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         coverage = metadata["tool"]["coverage"]
-        self.assertIs(coverage["run"]["branch"], True)
-        self.assertGreaterEqual(coverage["report"]["fail_under"], 95)
-        self.assertEqual(coverage["run"]["omit"], ["*/__init__.py"])
+        assert coverage["run"]["branch"] is True
+        assert coverage["run"]["source_pkgs"] == ["codex_responses_proxy"]
+        assert "disable_warnings" not in coverage["run"]
+        assert coverage["report"]["fail_under"] >= 95
+        assert coverage["run"]["omit"] == ["*/__init__.py"]
+
+    def test_repository_has_standard_package_metadata_and_one_version_owner(self) -> None:
+        import tomllib
+
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        project = metadata["project"]
+        assert project["name"] == "codex-responses-proxy"
+        assert project["requires-python"] == ">=3.12"
+        assert project["dynamic"] == ["version"]
+        assert project["scripts"] == {
+            "codex-responses-proxy": "codex_responses_proxy.cli.application:main"
+        }
+        assert metadata["build-system"]["build-backend"] == "hatchling.build"
+        assert metadata["tool"]["hatch"]["version"]["path"] == "VERSION"
+        assert "setuptools" not in metadata["tool"]
+        assert "requires-python" not in metadata["tool"]["codex-responses-proxy"]
+        assert "version-source" not in metadata["tool"]["codex-responses-proxy"]
 
     def test_quality_inventory_uses_index_ownership_with_staged_add_and_delete(self) -> None:
         with _test_repository(("src/current.py", "tests/test_current.py")) as root:
@@ -295,32 +456,29 @@ class QualityPolicyContracts(unittest.TestCase):
             (root / "src/current.py").unlink()
             _git(root, "add", "--", "src/current.py")
             inventory = _quality_inventory(root)
-        self.assertEqual(inventory.gaps, ())
-        self.assertEqual(
-            [path.relative_to(root).as_posix() for path in inventory.paths],
-            ["src/added.py", "tests/test_current.py"],
-        )
+        assert inventory.gaps == ()
+        assert [path.relative_to(root).as_posix() for path in inventory.paths] == [
+            "src/added.py",
+            "tests/test_current.py",
+        ]
 
     def test_quality_inventory_rejects_untracked_missing_and_out_of_scope_is_ignored(self) -> None:
         files = ("src/tracked.py", "tests/test_current.py", "outside/foreign.py")
         with _test_repository(files, tracked=files[1:]) as root:
             (root / "tests/test_current.py").unlink()
             inventory = _quality_inventory(root)
-        self.assertEqual(inventory.paths, ())
-        self.assertEqual(
-            inventory.gaps,
-            (
-                "quality_inventory_missing:tests/test_current.py",
-                "quality_inventory_untracked:src/tracked.py",
-            ),
+        assert inventory.paths == ()
+        assert inventory.gaps == (
+            "quality_inventory_missing:tests/test_current.py",
+            "quality_inventory_untracked:src/tracked.py",
         )
 
     def test_quality_inventory_glob_does_not_expand_beyond_its_configured_depth(self) -> None:
         checker = _checker()
-        self.assertTrue(checker._in_scope("owner.py", ("*.py",)))
-        self.assertFalse(checker._in_scope("nested/foreign.py", ("*.py",)))
-        self.assertTrue(checker._in_scope("tools/owner.py", ("tools/*.py",)))
-        self.assertFalse(checker._in_scope("tools/nested/foreign.py", ("tools/*.py",)))
+        assert checker._in_scope("owner.py", ("*.py",))
+        assert not checker._in_scope("nested/foreign.py", ("*.py",))
+        assert checker._in_scope("tools/owner.py", ("tools/*.py",))
+        assert not checker._in_scope("tools/nested/foreign.py", ("tools/*.py",))
 
     def test_quality_inventory_rejects_symlink_misnamed_test_and_empty_tests(self) -> None:
         with _test_repository(("src/current.py", "tests/helper.py")) as root:
@@ -330,13 +488,10 @@ class QualityPolicyContracts(unittest.TestCase):
             link.symlink_to(target)
             _git(root, "add", "--", "src/link.py")
             inventory = _quality_inventory(root)
-        self.assertEqual(
-            inventory.gaps,
-            (
-                "quality_inventory_symlink:src/link.py",
-                "quality_inventory_test_empty",
-                "quality_inventory_test_misnamed:tests/helper.py",
-            ),
+        assert inventory.gaps == (
+            "quality_inventory_symlink:src/link.py",
+            "quality_inventory_test_empty",
+            "quality_inventory_test_misnamed:tests/helper.py",
         )
 
     def test_quality_inventory_accepts_semantic_fixture_carriers_only(self) -> None:
@@ -344,19 +499,17 @@ class QualityPolicyContracts(unittest.TestCase):
             "src/current.py",
             "tests/test_current.py",
             "tests/__init__.py",
-            "tests/runtime/fixtures.py",
-            "tests/compatibility/replay_fixture.py",
+            "tests/service/fixtures.py",
+            "tests/protocol/replay_fixture.py",
             "tests/nested/helper.py",
         )
         with _test_repository(files) as root:
             inventory = _quality_inventory(root)
-        self.assertEqual(
-            inventory.gaps, ("quality_inventory_test_misnamed:tests/nested/helper.py",)
-        )
+        assert inventory.gaps == ("quality_inventory_test_misnamed:tests/nested/helper.py",)
 
-    def test_branch_coverage_floor_is_enforced_independently(self) -> None:
-        checker = _load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
-        cases = (
+    @pytest.mark.parametrize(
+        ("totals", "floor", "expected"),
+        (
             (
                 {"num_branches": 20, "covered_branches": 19},
                 95,
@@ -373,14 +526,17 @@ class QualityPolicyContracts(unittest.TestCase):
                 95,
                 ["branch_coverage_requires_measured_branches"],
             ),
-        )
-        for totals, floor, expected in cases:
-            with self.subTest(totals=totals):
-                self.assertEqual(checker.branch_gaps(totals, floor), expected)
-
-    def test_statement_coverage_floor_is_enforced_independently(self) -> None:
+        ),
+    )
+    def test_branch_coverage_floor_is_enforced_independently(
+        self, totals: dict[str, int], floor: int, expected: list[str]
+    ) -> None:
         checker = _load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
-        cases = (
+        assert checker.branch_gaps(totals, floor) == expected
+
+    @pytest.mark.parametrize(
+        ("totals", "floor", "expected"),
+        (
             (
                 {"num_statements": 20, "covered_lines": 19},
                 95,
@@ -397,165 +553,187 @@ class QualityPolicyContracts(unittest.TestCase):
                 95,
                 ["statement_coverage_requires_measured_statements"],
             ),
-        )
-        for totals, floor, expected in cases:
-            with self.subTest(totals=totals):
-                self.assertEqual(checker.statement_gaps(totals, floor), expected)
+        ),
+    )
+    def test_statement_coverage_floor_is_enforced_independently(
+        self, totals: dict[str, int], floor: int, expected: list[str]
+    ) -> None:
+        checker = _load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
+        assert checker.statement_gaps(totals, floor) == expected
 
 
-class TestRunnerContracts(unittest.TestCase):
-    """Keep all behavior matrices and coverage on one ordered test inventory."""
+class TestVerificationContracts:
+    """Keep verification on mature tools and the released product artifact."""
 
-    def test_runner_collects_all_failures_before_exiting(self) -> None:
-        source = (ROOT / "tools" / "quality" / "tests.py").read_text(encoding="utf-8")
-        self.assertIn("failures: list[tuple[str, str]]", source)
-        self.assertIn("check=False", source)
-        self.assertIn("canonical Python tests failed", source)
+    def test_pytest_is_the_only_behavior_test_runner(self) -> None:
+        import tomllib
 
-    def _runner(self) -> ModuleType:
-        return _load("codex_responses_proxy_test_runner", "tools/quality/tests.py")
-
-    def test_current_checkout_inventory_is_complete_or_reports_untracked_construction(self) -> None:
-        runner = self._runner()
-        try:
-            configured = runner.configured_tests()
-        except RuntimeError as exc:
-            untracked = _git(
-                ROOT, "ls-files", "-z", "--others", "--exclude-standard", "--", "tests"
-            ).stdout
-            paths = sorted(
-                path.decode()
-                for path in untracked.split(b"\0")
-                if path.endswith(b".py") and b"__pycache__" not in path.split(b"/")
-            )
-            self.assertTrue(paths)
-            self.assertEqual(str(exc), f"test_inventory_untracked:{','.join(paths)}")
-        else:
-            self.assertIn("tests/quality/test_contract.py", configured)
-
-    def test_runner_reads_sorted_tests_from_the_git_index_at_any_depth(self) -> None:
-        files = (
-            "tests/test_top.py",
-            "tests/nested/test_deep.py",
-            "tests/runtime/fixtures.py",
-            "tests/compatibility/replay_fixture.py",
-            "tests/other/__init__.py",
-        )
-        with _test_repository(files) as root:
-            self.assertEqual(
-                self._runner().configured_tests(root),
-                ["tests/nested/test_deep.py", "tests/test_top.py"],
-            )
-
-    def test_runner_rejects_untracked_or_missing_python_files(self) -> None:
-        files = ("tests/test_tracked.py", "tests/test_untracked.py")
-        with _test_repository(files, tracked=files[:1]) as root:
-            with self.assertRaisesRegex(RuntimeError, "test_inventory_untracked"):
-                self._runner().configured_tests(root)
-        with _test_repository(files[:1]) as root:
-            (root / files[0]).unlink()
-            with self.assertRaisesRegex(RuntimeError, "test_inventory_missing"):
-                self._runner().configured_tests(root)
-
-    def test_runner_rejects_misnamed_helpers_and_empty_inventory(self) -> None:
-        with _test_repository(("tests/test_valid.py", "tests/helper.py")) as root:
-            with self.assertRaisesRegex(RuntimeError, "test_inventory_misnamed:tests/helper.py"):
-                self._runner().configured_tests(root)
-        with _test_repository(("tests/runtime/fixtures.py",)) as root:
-            with self.assertRaisesRegex(RuntimeError, "test_inventory_empty"):
-                self._runner().configured_tests(root)
-
-    def test_runner_rejects_symlinks(self) -> None:
-        with _test_repository(()) as root:
-            target = root / "fixture.py"
-            target.write_text("pass\n", encoding="utf-8")
-            link = root / "tests/test_link.py"
-            link.parent.mkdir()
-            link.symlink_to(target)
-            _git(root, "add", "--", "tests/test_link.py")
-            with self.assertRaisesRegex(RuntimeError, "test_inventory_symlink"):
-                self._runner().configured_tests(root)
-
-    def test_coverage_mode_uses_the_current_interpreter_and_append(self) -> None:
-        runner = self._runner()
-        first = runner.command_for("tests/test_route_management.py", coverage=True, append=False)
-        later = runner.command_for("tests/test_route_management.py", coverage=True, append=True)
-        self.assertEqual(first[:5], [sys.executable, "-m", "coverage", "run", "--branch"])
-        self.assertNotIn("--append", first)
-        self.assertIn("--append", later)
-
-    def test_behavior_mode_uses_the_current_interpreter_without_coverage(self) -> None:
-        runner = self._runner()
-        command = runner.command_for("tests/test_route_management.py", coverage=False, append=False)
-        self.assertEqual(command, [sys.executable, "tests/test_route_management.py"])
-
-    def test_runner_rejects_unhandled_tracebacks_warnings_and_error_banners(self) -> None:
-        runner = self._runner()
-        self.assertFalse(runner.abnormal_output(b"390 tests passed\n", b""))
-        for output in (
-            b"Traceback (most recent call last):\n",
-            b"Exception ignored in: <function Resource.__del__>\n",
-            b"Exception occurred during processing of request\n",
-            b"ResourceWarning: unclosed response\n",
-            b"module.py:1: UserWarning: visible warning\n",
-            b"Warning: visible base warning\n",
-            b"ERROR: visible error banner\n",
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        assert "pytest==9.1.1" in metadata["dependency-groups"]["quality"]
+        assert "pytest-mock==3.15.1" in metadata["dependency-groups"]["quality"]
+        assert metadata["tool"]["pytest"]["ini_options"] == {
+            "addopts": ["--import-mode=importlib", "--strict-config", "--strict-markers"],
+            "filterwarnings": ["error"],
+            "python_classes": ["Test*", "*Tests", "*Contracts"],
+            "testpaths": ["tests"],
+        }
+        assert not (ROOT / "tools" / "quality" / "tests.py").exists()
+        direct_test_commands = []
+        for relative in (
+            ".gitlab-ci.yml",
+            ".github/workflows/verify.yml",
+            "noxfile.py",
         ):
-            with self.subTest(output=output):
-                self.assertTrue(runner.abnormal_output(b"", output))
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            for lineno, line in enumerate(source.splitlines(), 1):
+                if "python tests/" in line or '"-m", "tests.' in line:
+                    direct_test_commands.append(f"{relative}:{lineno}:{line.strip()}")
+        assert direct_test_commands == []
+        assert "python -m pytest -q tests/release/test_metadata.py" in (
+            ROOT / ".gitlab-ci.yml"
+        ).read_text(encoding="utf-8")
 
-    def test_git_fixtures_do_not_inherit_host_hooks(self) -> None:
-        with _test_repository(("src/current.py",)) as root:
-            hooks = root / ".git" / "hooks"
-            self.assertFalse((hooks / "pre-commit").exists())
+    def test_test_suite_has_no_unittest_compatibility_surface(self) -> None:
+        offenders = []
+        for path in sorted((ROOT / "tests").rglob("*.py")):
+            relative = path.relative_to(ROOT).as_posix()
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import) and any(
+                    alias.name == "unittest" or alias.name.startswith("unittest.")
+                    for alias in node.names
+                ):
+                    offenders.append(f"{relative}:{node.lineno}:unittest_import")
+                elif isinstance(node, ast.ImportFrom) and (
+                    node.module == "unittest"
+                    or (node.module is not None and node.module.startswith("unittest."))
+                ):
+                    offenders.append(f"{relative}:{node.lineno}:unittest_import")
+                elif isinstance(node, ast.ClassDef) and any(
+                    (isinstance(base, ast.Name) and base.id == "TestCase")
+                    or (
+                        isinstance(base, ast.Attribute)
+                        and isinstance(base.value, ast.Name)
+                        and base.value.id == "unittest"
+                        and base.attr == "TestCase"
+                    )
+                    for base in node.bases
+                ):
+                    offenders.append(f"{relative}:{node.lineno}:testcase_inheritance")
+                elif (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "unittest"
+                    and node.func.attr == "main"
+                ):
+                    offenders.append(f"{relative}:{node.lineno}:unittest_main")
+                elif (
+                    isinstance(node, ast.If) and ast.unparse(node.test) == "__name__ == '__main__'"
+                ):
+                    offenders.append(f"{relative}:{node.lineno}:direct_test_entrypoint")
+        assert offenders == []
 
-    def test_runner_compile_inventory_isolated_from_the_checkout(self) -> None:
-        runner = self._runner()
-        self.assertIn("tests", runner.COMPILE_TARGETS)
-        self.assertIn("codex_responses_proxy", runner.COMPILE_TARGETS)
-        self.assertIn("sys.pycache_prefix", inspect.getsource(runner.compile_sources))
+    def test_nox_tests_build_and_install_the_wheel_before_running_pytest(self) -> None:
+        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        assert set(functions) >= {"_build_wheel", "_install_wheel", "_assert_installed_product"}
+        calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        ]
+        commands = [
+            tuple(
+                argument.value
+                for argument in call.args
+                if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+            )
+            for call in calls
+            if isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "session"
+            and call.func.attr in {"run", "run_install"}
+        ]
+        assert any(command[:3] == ("uv", "build", "--wheel") for command in commands)
+        assert any(command[:3] == ("uv", "pip", "install") for command in commands)
+        tests_calls = {
+            node.func.id
+            for node in ast.walk(functions["tests"])
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        assert tests_calls >= {"_build_wheel", "_install_wheel", "_assert_installed_product"}
+        tests_source = ast.get_source_segment(source, functions["tests"]) or ""
+        quality_source = ast.get_source_segment(source, functions["quality"]) or ""
+        assert '"compileall",' in tests_source
+        assert 'session.run("python", "-m", "pytest", env=environment)' in tests_source
+        assert 'session.run("coverage", "run", "-m", "pytest"' in quality_source
+        assert "PYTHONPATH=src" not in source
+
+    def test_nox_release_exports_one_manifest_bound_native_asset_set(self) -> None:
+        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        release_source = ast.get_source_segment(source, functions["release"]) or ""
+        assert '"-m", "pytest", "-q", "tests/cli/test_interface.py"' in release_source
+        assert '"-m", "tests.' not in release_source
+        release_calls = {
+            node.func.id
+            for node in ast.walk(functions["release"])
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        assert "_package_release_asset" in release_calls
+        package_source = ast.get_source_segment(source, functions["_package_release_asset"]) or ""
+        assert "tools.release.assets" in package_source
+        assert "--executable" in package_source
+        assert "--platform" in package_source
+        assert "session.posargs" in package_source
 
     def test_quality_environment_is_repository_owned_and_locked(self) -> None:
         import tomllib
 
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertEqual(
-            metadata["dependency-groups"]["quality"],
-            ["coverage==7.15.2", "ruff==0.16.1", "ty==0.0.65"],
-        )
-        self.assertEqual(metadata["tool"]["uv"]["required-version"], "==0.12.1")
-        self.assertTrue((ROOT / "uv.lock").is_file())
-        self.assertFalse((ROOT / "tools" / "quality" / "requirements.txt").exists())
-        self.assertNotIn("uv.lock", (ROOT / ".gitignore").read_text(encoding="utf-8"))
+        assert metadata["dependency-groups"]["quality"] == [
+            "coverage==7.15.2",
+            "hatchling==1.31.0",
+            "nox==2026.7.11",
+            "pyinstaller==6.21.0",
+            "pytest==9.1.1",
+            "pytest-mock==3.15.1",
+            "pytest-subtests==0.15.0",
+            "ruff==0.16.1",
+            "ty==0.0.65",
+        ]
+        assert metadata["tool"]["uv"]["required-version"] == "==0.12.1"
+        assert (ROOT / "uv.lock").is_file()
+        assert not (ROOT / "tools" / "quality" / "requirements.lock").exists()
+        assert not (ROOT / "tools" / "quality" / "requirements.txt").exists()
+        assert "requirements.lock" not in (ROOT / ".gitignore").read_text(encoding="utf-8")
 
-    def test_quality_runner_uses_only_the_locked_repository_environment(self) -> None:
-        source = (ROOT / "tools" / "quality" / "run.sh").read_text(encoding="utf-8")
-        self.assertIn('"$uv" sync --quiet --locked --only-group quality', source)
-        self.assertIn("UV_NO_PROGRESS=1", source)
-        self.assertIn(".venv/bin", source)
-        self.assertIn("PYTHONNOUSERSITE=1", source)
-        for forbidden in ("for directory in $PATH", "requirements.txt", "pip install"):
-            self.assertNotIn(forbidden, source)
+    def test_repository_declares_the_supported_python_matrix_once(self) -> None:
+        assert (ROOT / ".python-versions").read_text(encoding="utf-8") == "3.12\n3.13\n3.14\n"
+        assert not (ROOT / ".python-version").exists()
+        noxfile = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+        assert 'PYTHONS = ("3.12", "3.13", "3.14")' in noxfile
+        for session in ("quick", "full", "release"):
+            assert f"def {session}(session: nox.Session)" in noxfile
 
-    def test_successful_tests_emit_only_progress_and_summary(self) -> None:
-        runner = self._runner()
-        result = subprocess.CompletedProcess(
-            [sys.executable, "tests/test_example.py"],
-            0,
-            stdout=b"verbose success output\n",
-            stderr=b"",
-        )
-        with mock.patch.object(runner.subprocess, "run", return_value=result):
-            completed = runner.run_tests(["tests/test_example.py"])
-        self.assertEqual(completed, [])
+        tree = ast.parse(noxfile)
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        full_source = ast.get_source_segment(noxfile, functions["full"]) or ""
+        assert 'session.notify(f"tests-{python}")' in full_source
+        assert 'session.notify("tests",' not in full_source
+
+    def test_nox_is_the_only_quality_composition_owner(self) -> None:
+        assert not (ROOT / "tools" / "quality" / "run.sh").exists()
 
     def test_forge_quality_jobs_use_the_locked_runner(self) -> None:
         github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         for source in (github, gitlab):
-            self.assertIn("sh tools/quality/run.sh", source)
-            self.assertNotIn("tools/quality/requirements.txt", source)
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+            assert "uv sync --locked --only-group quality" in source
+            assert "uv run --locked --no-sync nox -s quality" in source
+            assert "tools/quality/run.sh" not in source
+            assert "tools/quality/tests.py" not in source
+            assert "tools/quality/requirements.txt" not in source

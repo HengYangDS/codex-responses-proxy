@@ -4,10 +4,14 @@
 from __future__ import annotations
 
 import ast
+import argparse
+import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
+import sys
 import tokenize
 import tomllib
 from collections.abc import Iterable, Mapping
@@ -23,19 +27,15 @@ _FORBIDDEN_PACKAGES = frozenset({"common", "helpers", "lib", "shared", "support"
 _FOREIGN_PRODUCT_IMPORTS = frozenset({"aigw", "aigw_cli"})
 _FOREIGN_PRODUCT_LITERAL = re.compile(r"(?<![A-Za-z0-9])aigw(?:-cli)?(?![A-Za-z0-9])", re.I)
 _RETIRED_SOURCE_ROOTS = frozenset({"codex_dmx_proxy", "watchdog"})
-_RETIRED_MODULES = frozenset({"codex_responses_proxy/runtime/state.py"})
+_RETIRED_MODULES = frozenset({"src/codex_responses_proxy/runtime/state.py"})
+_ROOT_CONFIGURATION_MODULES = frozenset({"noxfile.py"})
 _ALLOWED_PACKAGE_EDGES = {
-    "commands": frozenset({"deployment", "payload", "release", "runtime", "supervision"}),
-    "deployment": frozenset({"payload", "runtime", "supervision"}),
-    "listener": frozenset({"payload", "runtime", "transport"}),
-    "payload": frozenset({"providers", "runtime"}),
+    "cli": frozenset({"lifecycle", "service"}),
+    "lifecycle": frozenset({"protocol", "providers", "relay", "service"}),
+    "protocol": frozenset(),
     "providers": frozenset(),
-    "recovery": frozenset(),
-    "release": frozenset({"payload"}),
-    "replay": frozenset(),
-    "runtime": frozenset(),
-    "supervision": frozenset({"runtime"}),
-    "transport": frozenset({"providers", "recovery", "replay", "runtime"}),
+    "relay": frozenset({"protocol", "providers"}),
+    "service": frozenset({"protocol", "providers", "relay"}),
 }
 
 
@@ -45,6 +45,75 @@ class RepositoryInventory:
 
     paths: tuple[Path, ...]
     gaps: tuple[str, ...]
+
+
+def _hash_field(digest: Any, label: bytes, value: bytes) -> None:
+    """Add one length-delimited field to a repository fingerprint."""
+
+    digest.update(len(label).to_bytes(4, "big"))
+    digest.update(label)
+    digest.update(len(value).to_bytes(8, "big"))
+    digest.update(value)
+
+
+def _git_output(root: Path, *args: str, allow_absent_head: bool = False) -> bytes:
+    """Return raw Git output without inheriting host-specific configuration."""
+
+    environment = os.environ | {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
+    result = subprocess.run(
+        ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        env=environment,
+    )
+    if result.returncode:
+        if allow_absent_head:
+            return b"<unborn>"
+        detail = os.fsdecode(result.stderr).strip() or str(result.returncode)
+        raise RuntimeError(f"git_failed:{detail}")
+    return result.stdout
+
+
+def worktree_fingerprint(root: Path = ROOT) -> str:
+    """Fingerprint HEAD and the current tracked or untracked worktree content."""
+
+    digest = hashlib.sha256()
+    head = _git_output(root, "rev-parse", "--verify", "HEAD", allow_absent_head=True).strip()
+    _hash_field(digest, b"head", head)
+    listed = _git_output(
+        root,
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+    )
+    for encoded_path in sorted({path for path in listed.split(b"\0") if path}):
+        relative = os.fsdecode(encoded_path)
+        path = root / relative
+        _hash_field(digest, b"path", encoded_path)
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            _hash_field(digest, b"type", b"missing")
+            continue
+        mode = metadata.st_mode
+        executable = b"1" if mode & 0o111 else b"0"
+        _hash_field(digest, b"executable", executable)
+        if stat.S_ISREG(mode):
+            _hash_field(digest, b"type", b"regular")
+            with path.open("rb") as stream:
+                while chunk := stream.read(1024 * 1024):
+                    _hash_field(digest, b"content", chunk)
+        elif stat.S_ISLNK(mode):
+            _hash_field(digest, b"type", b"symlink")
+            _hash_field(digest, b"target", os.fsencode(os.readlink(path)))
+        elif stat.S_ISDIR(mode):
+            _hash_field(digest, b"type", b"directory")
+        else:
+            _hash_field(digest, b"type", f"special:{stat.S_IFMT(mode):o}".encode())
+    return digest.hexdigest()
 
 
 def _in_scope(relative: str, configured_roots: Iterable[str]) -> bool:
@@ -409,7 +478,7 @@ def _semantic_owner_gaps(root: Path, package: Path) -> list[str]:
             gaps.append(f"architecture_package_declaration_missing:{relative}")
         peer_modules: set[str] = set()
         peer_symbols: set[str] = set()
-        current_package = path.parent.relative_to(root).as_posix().replace("/", ".")
+        current_package = path.parent.relative_to(package.parent).as_posix().replace("/", ".")
         for node in tree.body:
             if isinstance(node, ast.ImportFrom) and node.module:
                 if node.module == current_package:
@@ -458,10 +527,10 @@ def _semantic_owner_gaps(root: Path, package: Path) -> list[str]:
 def architecture_gaps(root: Path = ROOT) -> list[str]:
     """Enforce the semantic-to-physical product dependency contract."""
 
-    package = root / "codex_responses_proxy"
+    package = root / "src" / "codex_responses_proxy"
     gaps: list[str] = []
     for path in sorted(root.glob("*.py")):
-        if path.is_file() or path.is_symlink():
+        if path.name not in _ROOT_CONFIGURATION_MODULES and (path.is_file() or path.is_symlink()):
             gaps.append(f"architecture_root_implementation:{path.name}")
     for name in sorted(_RETIRED_SOURCE_ROOTS):
         path = root / name
@@ -573,15 +642,17 @@ def audit() -> dict[str, object]:
 
     config = tomllib.loads(CONFIG.read_text(encoding="utf-8"))
     tool = config.get("tool", {})
-    metadata = tool.get("codex-responses-proxy", {})
-    policy = metadata.get("quality", {}) if isinstance(metadata, dict) else {}
+    repository = tool.get("codex-responses-proxy", {})
+    project = config.get("project", {})
+    policy = repository.get("quality", {}) if isinstance(repository, dict) else {}
     policy_errors: list[str] = []
-    if metadata.get("requires-python") != ">=3.12":
+    if not isinstance(project, dict) or project.get("requires-python") != ">=3.12":
         policy_errors.append("requires_python_must_be_3_12_without_upper_bound")
-    if metadata.get("version-source") != "VERSION":
+    hatch_version = tool.get("hatch", {}).get("version", {})
+    if project.get("dynamic") != ["version"] or hatch_version.get("path") != "VERSION":
         policy_errors.append("version_source_must_remain_VERSION")
-    if metadata.get("distribution") != "runtime-files" or "build-system" in config:
-        policy_errors.append("distribution_must_remain_unbuilt_runtime_files")
+    if repository.get("distribution") != "native-executable" or "build-system" not in config:
+        policy_errors.append("distribution_must_be_native_executable")
     if not isinstance(policy, dict):
         policy_errors.append("quality_policy_must_be_a_table")
         policy = {}
@@ -642,14 +713,25 @@ def audit() -> dict[str, object]:
     }
 
 
-def main() -> None:
-    """Print the quality report and fail when a repository contract is violated."""
+def main(argv: Iterable[str] = ()) -> None:
+    """Print an explicit fingerprint or audit the repository quietly."""
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--fingerprint",
+        action="store_true",
+        help="print the content-sensitive worktree fingerprint",
+    )
+    arguments = parser.parse_args(tuple(argv))
+    if arguments.fingerprint:
+        print(worktree_fingerprint())
+        return
 
     report = audit()
-    print(json.dumps(report, sort_keys=True))
     if not report["ok"]:
+        print(json.dumps(report, sort_keys=True))
         raise SystemExit(1)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

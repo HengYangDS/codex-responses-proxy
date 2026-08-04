@@ -24,7 +24,7 @@ required = [
     "runs-on: ubuntu-24.04",
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     'python-version: ["3.12", "3.13", "3.14"]',
-    "python tools/quality/tests.py --compile",
+    'uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"',
     "python-windows:",
     "windows-2025",
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
@@ -41,8 +41,8 @@ required = [
     'python tools/release/metadata.py --provider github',
     "python-quality:",
     "uv==0.12.1",
-    "PYTHON=python sh tools/quality/run.sh",
-    "tools/quality/run.sh",
+    "uv sync --locked --only-group quality",
+    "uv run --locked --no-sync nox -s quality",
     "tests/forge/contracts/test-gitlab-tagging.sh",
     "tests/forge/contracts/test-github-tagging.sh",
     "tests/release/contracts/test-publish-gitlab.sh",
@@ -52,7 +52,12 @@ for token in required:
         raise SystemExit(f"GitHub Actions verification contract is missing {token!r}")
 if "contents: write" in text:
     raise SystemExit("verification workflow must use read-only repository permissions")
-for retired in ("tools/quality/requirements.txt", "RUFF_VERSION=", "TY_VERSION="):
+for retired in (
+    "tools/quality/run.sh",
+    "tools/quality/requirements.txt",
+    "RUFF_VERSION=",
+    "TY_VERSION=",
+):
     if retired in text:
         raise SystemExit(f"verification workflow retains retired quality setup: {retired!r}")
 if "pull_request:" in text or "pull_request_target:" in text:
@@ -66,7 +71,7 @@ governance_start = text.index("\n  governance:")
 mac_block = text[mac_start:windows_start]
 windows_block = text[windows_start:governance_start]
 rest = text[:windows_start] + text[governance_start:]
-test_owner = "python tools/quality/tests.py --compile"
+test_owner = 'uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"'
 if test_owner not in mac_block:
     raise SystemExit(f"macOS Python matrix must run {test_owner}")
 for token in (
@@ -75,7 +80,7 @@ for token in (
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
     "shell: bash",
-    "python tools/quality/tests.py --compile",
+    'uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"',
 ):
     if token not in windows_block:
         raise SystemExit(f"Windows Python matrix must contain {token!r}")

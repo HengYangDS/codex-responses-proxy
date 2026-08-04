@@ -36,8 +36,8 @@ The current release declares:
 ```text
 /dmxapi/v1/responses  -> release-owned DMXAPI Responses endpoint
 /dmxapi/v1/models     -> release-owned DMXAPI model catalog endpoint
-/ucloud/v1/responses  -> release-owned UCloud/Azure Responses endpoint
-/ucloud/v1/models     -> release-owned UCloud/Azure model catalog endpoint
+/ucloud/v1/responses  -> release-owned UCloud Responses endpoint
+/ucloud/v1/models     -> release-owned UCloud model catalog endpoint
 /aihubmix/v1/responses -> release-owned AIHubMix Responses endpoint
 /aihubmix/v1/models    -> release-owned AIHubMix model catalog endpoint
 ```
@@ -45,23 +45,23 @@ The current release declares:
 A consumer selects one namespace through its own endpoint configuration and
 supplies that account's credential. The listener strips only the selected
 provider path prefix and does not accept an upstream host from a request header
-or body. `codex_responses_proxy/providers/manifest.toml` is the single owner of
+or body. `src/codex_responses_proxy/providers/manifest.toml` is the single owner of
 provider names, HTTPS origins, and optional wire-policy slugs. There is no
 default route, installer-level upstream override, or parallel service variable.
 Adding an ordinary provider is
 one manifest table. A genuinely provider-specific wire extension adds one
-module under `codex_responses_proxy/providers/policies/` and names it from that
+module under `src/codex_responses_proxy/providers/policies/` and names it from that
 table; the registry and release inventory contain no provider-name switch or
 second policy list.
 
 Only the Responses target enters replay projection, response projection,
-Responses admission, cooldown, retry, and provider-specific recovery. A model
-catalog target is a single transparent GET: it keeps client authentication,
-uses the same manifest-owned upstream origin, and relays the upstream status,
-eligible headers, and body without catalog parsing, filtering, or caching.
+lifecycle admission, cooldown, retry, and provider-specific recovery. A model
+catalog target is one transparent GET: it keeps client authentication, uses the
+same manifest-owned upstream origin, and relays the upstream status, eligible
+headers, and body without parsing, filtering, caching, or retry.
 
-Before remote I/O, `codex_responses_proxy.replay.request` projects Responses
-replay onto a closed portable grammar. `codex_responses_proxy.replay.response`
+Before remote I/O, `codex_responses_proxy.protocol.request` projects Responses
+replay onto a closed portable grammar. `codex_responses_proxy.protocol.response`
 owns the matching provider-neutral output projection for both complete SSE
 events and successful non-stream JSON. Non-stream transport buffers at most
 eight MiB before commitment and admits only structurally proved `completed` or
@@ -83,7 +83,7 @@ and code fields, not incidental message prose, admit request-changing recovery.
 Output projection prevents new provider ciphertext from re-entering later
 replay.
 
-The pure policy in `codex_responses_proxy/recovery/input_variant.py` owns the exact observed
+The pure policy in `src/codex_responses_proxy/protocol/input_variant.py` owns the exact observed
 Responses input-union failure. Transport orchestration may invoke that policy
 once to construct a strictly smaller network request from the latest system,
 developer, and user messages plus top-level instructions. No stored transcript
@@ -99,7 +99,7 @@ consumes one selected release source, requires a clean checkout, and verifies
 that `HEAD` is the exact signed annotated `v<VERSION>` tag under the caller's
 external allowed-signers anchor.
 
-`codex_responses_proxy.release.admission` reads immutable Git objects rather than
+`tools.release.admission` reads immutable Git objects rather than
 working-tree payload bytes and returns an opaque, immutable, one-use release
 capability. That capability binds the tag object, commit, tree, payload blobs
 and modes, aggregate serving-payload digest, and canonical receipt. Before
@@ -111,18 +111,21 @@ environment overrides, and disables replace objects, hooks, and filesystem
 monitoring. A release archive, arbitrary directory, working-tree stage, or
 installed controller cannot create that capability.
 
-## Payload transaction and provenance
+## Lifecycle transaction and provenance
 
-The payload package separates one lifecycle by reason to change:
+The `lifecycle` package separates installation and replacement by reason to
+change, while live service inventory remains with the serving identity it
+describes:
 
-- `inventory` owns the released and installed file sets;
-- `projection` owns manifest integrity, exact historical inventories, and
+- `service.inventory` owns the released and installed file sets;
+- `lifecycle.projection` owns manifest integrity, exact historical inventories, and
   manifest-bounded purge;
-- `candidate` validates and materializes one admitted candidate;
-- `rollback` owns the exact prior-payload snapshot and restoration;
-- `migration` removes only admitted retired privacy and executable residue;
-- `state` persists the transaction journal and installed-release state;
-- `transaction` coordinates those owners through the single-use state machine.
+- `lifecycle.candidate` validates and materializes one admitted candidate;
+- `lifecycle.rollback` owns the exact prior-payload snapshot and restoration;
+- `lifecycle.migration` removes only admitted retired privacy and executable residue;
+- `lifecycle.state` persists the transaction journal and installed-release state;
+- `lifecycle.transaction` coordinates those owners through the single-use state
+  machine.
 
 The manifest covers only declared executable files and records release identity,
 per-file digests, the canonical aggregate serving-payload digest, and the
@@ -148,42 +151,41 @@ projection. If a committed handoff outcome cannot be proved, the transaction is
 preserved as recovery-required rather than guessed successful or rolled back
 blindly.
 
-`python3 -m codex_responses_proxy.commands.control status --json` is the
+`codex-responses-proxy status --json` is the
 read-only view of installed integrity, listener identity, transaction state, and
 startup-frozen runtime identity. `codex_responses_proxy` is the single product
 root:
 
-- `commands` owns human-invoked lifecycle entrypoints;
-- `runtime` owns portable paths, validated settings, admission, telemetry, and
-  secret-safe logging;
+- `cli` owns the single human-facing command grammar;
+- `lifecycle` owns installation, installed projection, transactions, native
+  supervision, and payload replacement;
+- `protocol` owns provider-neutral replay projection and request-local recovery;
 - `providers` owns the provider manifest and true provider-specific wire deltas;
-- `replay` owns the provider-neutral portable replay grammar;
-- `recovery` owns provider-neutral request-local recovery policies;
-- `transport` owns bounded cooldown, upstream exchange, and downstream HTTP/SSE relay;
-- `listener` owns the serving process and socket handoff;
-- `payload` owns installed identity, inventory, projection, and transactions;
-- `release` owns signed source admission and publication observation;
-- `deployment` owns application of an admitted payload; and
-- `supervision` owns native user services and owned processes.
+- `relay` owns validated runtime settings, admission, telemetry, cooldown,
+  upstream exchange, and downstream HTTP/SSE relay; and
+- `service` owns listener identity, serving, inventory, and socket handoff.
+
+Release construction and Forge verification are repository tools under
+`tools/release`; they are not part of the installed product package.
 
 Package initializers are declarations, not facades.
 
 Generic transport retries cover only the declared transient 5xx set. HTTP 429
 is terminal for the current proxy attempt: transport records an absolute
 deadline under a collision-free provider key and relays the first upstream
-response. Runtime admission permits one active Responses exchange per registry
-route and retains the configured global process bound across routes. A request
-that waited for its route rechecks the same cooldown owner before remote I/O,
-returns local 429 while the deadline remains, and never applies one provider's
-state to another provider. A positive `Retry-After` is capped at five minutes;
-absent, invalid, zero, or expired timing uses the release-owned five-second
-fallback. Runtime configuration defaults global Responses concurrency to 8 as
-a cross-route capacity guardrail, not as a claim about any provider's
-undocumented quota.
+response. The Responses entrypoint consults the same cooldown owner before
+remote I/O, returns local 429 while the deadline remains, and never applies one
+provider's state to another provider. A positive `Retry-After` is capped at five
+minutes; absent, invalid, zero, or expired timing uses the release-owned
+five-second fallback. The proxy does not serialize provider routes or expose a
+concurrency setting. Codex controls per-session fan-out and providers enforce
+their actual quotas. The proxy owns no ordinary-request concurrency ceiling or
+queue. Active-request accounting exists only for lifecycle drain, transactional
+handoff, and observation.
 
 ## Lifecycle ownership
 
-Installed `python3 -m codex_responses_proxy.commands.control reload` is
+Installed `codex-responses-proxy reload` is
 same-payload only. It verifies the installed manifest and receipt, prepares a non-accepting protocol-v2 child, stops the old
 accept loop before `COMMIT`, and proves PID, transaction, release, aggregate
 payload, receipt, manifest, and accepting state before `FINALIZE`. The listening
@@ -191,13 +193,13 @@ socket remains open. Accepted handlers drain to zero or the bounded lease; a
 pre-finalize failure resumes old admission only after child exit is confirmed.
 An unconfirmed abort fails closed.
 
-A different release is installed only by source-side
-`python3 -m codex_responses_proxy.commands.install`. After release admission and
-transaction commit, `codex_responses_proxy.deployment.apply` uses the same
+A different release is installed only by `codex-responses-proxy install`.
+After release admission and transaction commit,
+`codex_responses_proxy.lifecycle.deployment.apply` uses the same
 protocol-v2 handoff owner and runtime identity proof. Installed control exposes
 no arbitrary stage-path upgrade or controller-only partial apply.
 
-The sole compatibility exception is source-side replacement of a verified
+The sole compatibility exception is release-gated replacement of a verified
 listener that predates protocol-v2 handoff. It requires explicit
 `--allow-legacy-bootstrap` authorization and a bounded zero-active quiet window
 on the same PID before payload mutation. The historical verifier shared with
@@ -214,8 +216,8 @@ reported as failed.
 
 Uninstall never reads or changes consumer configuration. Payload mutation begins only after
 the native service reports `absent` and exact owned watchdog and listener
-processes are proved gone. Ownership requires a Python command whose resolved
-`argv[1]` equals the installed script; identity is re-read before signalling and
+processes are proved gone. Ownership requires the exact installed executable and
+one declared private service role; identity is re-read before signalling and
 boundedly rechecked afterwards so PID reuse cannot target a new occupant.
 `--purge` removes only a valid current manifest inventory or an exact supported
 historical inventory. Unknown physical content is preserved and reported as an

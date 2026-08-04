@@ -4,11 +4,13 @@ __pycache__/
 *.pyo
 .ruff_cache/
 .venv/
+*.egg-info/
 .coverage
 coverage.xml
 htmlcov/
 build/
 dist/
+.nox/
 
 # Logs / runtime artifacts (never commit)
 #

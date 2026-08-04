@@ -2,26 +2,20 @@
 
 from __future__ import annotations
 
-import sys
 import tempfile
-import unittest
+import sys
 import urllib.error
 from pathlib import Path
 from typing import TypedDict, cast
-from unittest import mock
+
+from codex_responses_proxy import errors
+from codex_responses_proxy.lifecycle import install, projection, transaction
+from codex_responses_proxy.lifecycle.deployment import apply
+from codex_responses_proxy.lifecycle.supervision import process
+from tests.lifecycle.fixtures import install_context, write_retired_projection
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from codex_responses_proxy.deployment import apply
-from codex_responses_proxy import errors
-from codex_responses_proxy.supervision import process
-from codex_responses_proxy.payload import projection
-from codex_responses_proxy.payload import transaction
-from codex_responses_proxy.commands import install
-from tests.deployment.fixtures import install_context
-from tests.deployment.fixtures import write_retired_projection
 
 
 class FakeTransaction:
@@ -60,8 +54,8 @@ def as_transaction(value: FakeTransaction) -> "transaction.PayloadTransaction":
 class FakeServiceAdapter:
     """Minimal controllable implementation of the service-adapter protocol."""
 
-    def __init__(self, *, failure: BaseException | None = None) -> None:
-        self.install_mock = mock.Mock(side_effect=failure)
+    def __init__(self, *, failure: BaseException | None = None, mocker) -> None:
+        self.install_mock = mocker.Mock(side_effect=failure)
 
     def install(self, ctx) -> None:
         self.install_mock(ctx)
@@ -73,8 +67,8 @@ class InstallArguments(TypedDict, total=False):
     rollback_recovery: bool
 
 
-class TestReleasedDeployment(unittest.TestCase):
-    def setUp(self) -> None:
+class TestReleasedDeployment:
+    def setup_method(self) -> None:
         self.ctx = install_context(Path(tempfile.mkdtemp()))
 
     @staticmethod
@@ -100,11 +94,12 @@ class TestReleasedDeployment(unittest.TestCase):
         allow_legacy_bootstrap: bool = False,
         force_legacy_bootstrap: bool = False,
         force_v2_bootstrap: bool = False,
+        mocker,
     ) -> dict[str, object]:
         return apply.install(
             self.ctx,
             as_transaction(payload),
-            adapter=adapter or FakeServiceAdapter(),
+            adapter=adapter or FakeServiceAdapter(mocker=mocker),
             runtime_reader=lambda _ctx: current,
             timeout_seconds=timeout_seconds,
             allow_legacy_bootstrap=allow_legacy_bootstrap,
@@ -139,89 +134,80 @@ class TestReleasedDeployment(unittest.TestCase):
         )
         return apply.LegacyListener(projection_state, process.OwnedProcess(111, script))
 
-    def test_fresh_install_commits_once_then_finalizes_only_after_service_proof(self) -> None:
+    def test_fresh_install_commits_once_then_finalizes_only_after_service_proof(
+        self, *, mocker
+    ) -> None:
         transaction = FakeTransaction()
         runtime = self._runtime(pid=123)
-        adapter = FakeServiceAdapter()
-        with (
-            mock.patch.object(process, "listener_pids", return_value=[]),
-            mock.patch.object(apply, "wait_for_serving_runtime", return_value=runtime),
-        ):
-            result = self._install(transaction, adapter=adapter)
-        self.assertEqual(transaction.events, ["commit", ("finalize", runtime)])
+        adapter = FakeServiceAdapter(mocker=mocker)
+        mocker.patch.object(process, "listener_pids", return_value=[])
+        mocker.patch.object(apply, "wait_for_serving_runtime", return_value=runtime)
+        result = self._install(transaction, adapter=adapter, mocker=mocker)
+        assert transaction.events == ["commit", ("finalize", runtime)]
         adapter.install_mock.assert_called_once_with(self.ctx)
-        self.assertEqual(result["mode"], "fresh-install")
+        assert result["mode"] == "fresh-install"
 
-    def test_protocol_v2_upgrade_uses_source_side_handoff_and_never_installed_control(self) -> None:
+    def test_protocol_v2_upgrade_uses_source_side_handoff_and_never_installed_control(
+        self, *, mocker
+    ) -> None:
         transaction = FakeTransaction()
         current = self._protocol_v2_runtime()
         successor = self._runtime()
-        with (
-            mock.patch.object(apply, "request_handoff", return_value=successor) as handoff,
-            mock.patch.object(apply, "load_installed_control", create=True) as installed_control,
-        ):
-            result = self._install(transaction, current)
+        handoff = mocker.patch.object(apply, "request_handoff", return_value=successor)
+        installed_control = mocker.patch.object(apply, "load_installed_control", create=True)
+        result = self._install(transaction, current, mocker=mocker)
         installed_control.assert_not_called()
         handoff.assert_called_once()
-        self.assertEqual(transaction.events, ["commit", ("finalize", successor)])
-        self.assertEqual(result["mode"], "protocol-v2-upgrade")
+        assert transaction.events == ["commit", ("finalize", successor)]
+        assert result["mode"] == "protocol-v2-upgrade"
 
-    def test_authorized_v2_bootstrap_binds_terminates_and_proves_the_exact_listener(self) -> None:
+    def test_authorized_v2_bootstrap_binds_terminates_and_proves_the_exact_listener(
+        self, *, mocker
+    ) -> None:
         payload = FakeTransaction()
         current = self._protocol_v2_runtime()
         successor = self._runtime()
-        adapter = FakeServiceAdapter()
-        old = process.OwnedProcess(111, self.ctx.proxy_script)
-        with (
-            mock.patch.object(apply, "prove_v2_listener", return_value=old) as prove,
-            mock.patch.object(process, "terminate_pid", return_value=True) as terminate,
-            mock.patch.object(apply, "wait_for_serving_runtime", return_value=successor),
-        ):
-            result = self._install(
-                payload,
-                current,
-                adapter=adapter,
-                force_v2_bootstrap=True,
-            )
+        adapter = FakeServiceAdapter(mocker=mocker)
+        old = process.OwnedProcess(111, self.ctx.executable)
+        prove = mocker.patch.object(apply, "prove_v2_listener", return_value=old)
+        terminate = mocker.patch.object(process, "terminate_pid", return_value=True)
+        mocker.patch.object(apply, "wait_for_serving_runtime", return_value=successor)
+        result = self._install(
+            payload, current, adapter=adapter, force_v2_bootstrap=True, mocker=mocker
+        )
         prove.assert_called_once()
-        terminate.assert_called_once_with(111, expected_path=self.ctx.proxy_script)
+        terminate.assert_called_once_with(111, expected_path=self.ctx.executable)
         adapter.install_mock.assert_called_once_with(self.ctx)
-        self.assertEqual(payload.events, ["commit", ("finalize", successor)])
-        self.assertEqual(result["mode"], "protocol-v2-bootstrap")
+        assert payload.events == ["commit", ("finalize", successor)]
+        assert result["mode"] == "protocol-v2-bootstrap"
 
-    def test_v2_bootstrap_failure_restores_payload_and_old_runtime(self) -> None:
+    def test_v2_bootstrap_failure_restores_payload_and_old_runtime(self, *, mocker) -> None:
         payload = FakeTransaction()
         current = self._protocol_v2_runtime()
-        adapter = FakeServiceAdapter()
-        old = process.OwnedProcess(111, self.ctx.proxy_script)
-        with (
-            mock.patch.object(apply, "prove_v2_listener", return_value=old),
-            mock.patch.object(process, "terminate_pid", return_value=True),
-            mock.patch.object(
-                apply,
-                "wait_for_serving_runtime",
-                side_effect=errors.InstallError("successor failed"),
-            ),
-            mock.patch.object(apply, "wait_for_legacy_runtime", return_value=current),
-            self.assertRaisesRegex(errors.InstallError, "successor failed"),
-        ):
-            self._install(
-                payload,
-                current,
-                adapter=adapter,
-                force_v2_bootstrap=True,
-            )
-        self.assertEqual(payload.events, ["commit", "rollback"])
-        self.assertEqual(adapter.install_mock.call_count, 2)
+        adapter = FakeServiceAdapter(mocker=mocker)
+        old = process.OwnedProcess(111, self.ctx.executable)
+        mocker.patch.object(apply, "prove_v2_listener", return_value=old)
+        mocker.patch.object(process, "terminate_pid", return_value=True)
+        mocker.patch.object(
+            apply,
+            "wait_for_serving_runtime",
+            side_effect=errors.InstallError("successor failed"),
+        )
+        mocker.patch.object(apply, "wait_for_legacy_runtime", return_value=current)
+        with pytest.raises(errors.InstallError, match="successor failed"):
+            self._install(payload, current, adapter=adapter, force_v2_bootstrap=True, mocker=mocker)
+        assert payload.events == ["commit", "rollback"]
+        assert adapter.install_mock.call_count == 2
 
-    def test_v2_bootstrap_rejects_unbound_or_non_idle_listener_before_commit(self) -> None:
+    def test_v2_bootstrap_rejects_unbound_or_non_idle_listener_before_commit(
+        self, subtests, *, mocker
+    ) -> None:
         payload = FakeTransaction()
         current = self._protocol_v2_runtime()
-        with mock.patch.object(process, "verified_proxy_listener_pids", return_value=[111]):
-            self.assertEqual(
-                apply.prove_v2_listener(self.ctx, current),
-                process.OwnedProcess(111, self.ctx.proxy_script),
-            )
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
+        assert apply.prove_v2_listener(self.ctx, current) == process.OwnedProcess(
+            111, self.ctx.executable
+        )
         cases = (
             ({**current, "pid": True}, [111]),
             (current, []),
@@ -229,128 +215,117 @@ class TestReleasedDeployment(unittest.TestCase):
             ({**current, "handoff_state": "ready"}, [111]),
         )
         for runtime, listeners in cases:
+            mocker.patch.object(process, "verified_proxy_listener_pids", return_value=listeners)
             with (
-                self.subTest(runtime=runtime, listeners=listeners),
-                mock.patch.object(process, "verified_proxy_listener_pids", return_value=listeners),
-                self.assertRaises(errors.InstallError),
+                subtests.test(runtime=runtime, listeners=listeners),
+                pytest.raises(errors.InstallError),
             ):
-                self._install(payload, runtime, force_v2_bootstrap=True)
-        self.assertEqual(payload.events, [])
+                self._install(payload, runtime, force_v2_bootstrap=True, mocker=mocker)
+        assert payload.events == []
 
-    def test_v2_bootstrap_reports_termination_and_rollback_failures(self) -> None:
+    def test_v2_bootstrap_reports_termination_and_rollback_failures(self, *, mocker) -> None:
         current = self._protocol_v2_runtime()
-        old = process.OwnedProcess(111, self.ctx.proxy_script)
+        old = process.OwnedProcess(111, self.ctx.executable)
         payload = FakeTransaction()
-        with (
-            mock.patch.object(apply, "prove_v2_listener", return_value=old),
-            mock.patch.object(process, "terminate_pid", return_value=False),
-            self.assertRaisesRegex(errors.InstallError, "did not terminate"),
-        ):
-            self._install(payload, current, force_v2_bootstrap=True)
-        self.assertEqual(payload.events, ["commit", "rollback"])
+        mocker.patch.object(apply, "prove_v2_listener", return_value=old)
+        mocker.patch.object(process, "terminate_pid", return_value=False)
+        with pytest.raises(errors.InstallError, match="did not terminate"):
+            self._install(payload, current, force_v2_bootstrap=True, mocker=mocker)
+        assert payload.events == ["commit", "rollback"]
 
         payload = FakeTransaction()
-        with (
-            mock.patch.object(apply, "prove_v2_listener", return_value=old),
-            mock.patch.object(process, "terminate_pid", return_value=True),
-            mock.patch.object(
-                apply, "wait_for_serving_runtime", side_effect=RuntimeError("failed")
-            ),
-            mock.patch.object(
-                apply, "wait_for_legacy_runtime", side_effect=RuntimeError("rollback")
-            ),
-            self.assertRaisesRegex(errors.InstallError, "runtime rollback failed"),
-        ):
-            self._install(payload, current, force_v2_bootstrap=True)
+        mocker.patch.object(apply, "prove_v2_listener", return_value=old)
+        mocker.patch.object(process, "terminate_pid", return_value=True)
+        mocker.patch.object(apply, "wait_for_serving_runtime", side_effect=RuntimeError("failed"))
+        mocker.patch.object(apply, "wait_for_legacy_runtime", side_effect=RuntimeError("rollback"))
+        with pytest.raises(errors.InstallError, match="runtime rollback failed"):
+            self._install(payload, current, force_v2_bootstrap=True, mocker=mocker)
 
     def test_legacy_or_unreadable_listener_refuses_before_commit_without_authorization(
-        self,
+        self, subtests, *, mocker
     ) -> None:
         for current, listeners in ((self._legacy_runtime(), []), (None, [111])):
-            with self.subTest(current=current):
+            with subtests.test(current=current):
                 payload = FakeTransaction()
-                with (
-                    mock.patch.object(process, "listener_pids", return_value=listeners),
-                    self.assertRaisesRegex(errors.InstallError, "authorized legacy bootstrap"),
-                ):
-                    self._install(payload, current)
-                self.assertEqual(payload.events, [])
+                mocker.patch.object(process, "listener_pids", return_value=listeners)
+                with pytest.raises(errors.InstallError, match="authorized legacy bootstrap"):
+                    self._install(payload, current, mocker=mocker)
+                assert payload.events == []
 
-    def test_legacy_upgrade_commits_only_after_source_side_quiet_window(self) -> None:
+    def test_legacy_upgrade_commits_only_after_source_side_quiet_window(self, *, mocker) -> None:
         transaction = FakeTransaction()
         current = self._legacy_runtime()
         successor = self._runtime()
-        adapter = FakeServiceAdapter()
-        with (
-            mock.patch.object(
-                apply,
-                "prove_legacy_quiet_window",
-                return_value=self._legacy_listener(),
-            ) as quiet,
-            mock.patch.object(apply, "wait_for_serving_runtime", return_value=successor),
-            mock.patch.object(process, "terminate_pid", return_value=True) as terminate,
-        ):
-            result = self._install(
-                transaction, current, adapter=adapter, allow_legacy_bootstrap=True
-            )
+        adapter = FakeServiceAdapter(mocker=mocker)
+        quiet = mocker.patch.object(
+            apply,
+            "prove_legacy_quiet_window",
+            return_value=self._legacy_listener(),
+        )
+        mocker.patch.object(apply, "wait_for_serving_runtime", return_value=successor)
+        terminate = mocker.patch.object(process, "terminate_pid", return_value=True)
+        result = self._install(
+            transaction, current, adapter=adapter, allow_legacy_bootstrap=True, mocker=mocker
+        )
         quiet.assert_called_once()
         terminate.assert_called_once_with(
             111, expected_path="/installed/proxy/dmx_responses_proxy.py"
         )
         adapter.install_mock.assert_called_once_with(self.ctx)
-        self.assertEqual(transaction.events, ["commit", ("finalize", successor)])
-        self.assertEqual(result["mode"], "legacy-bootstrap")
+        assert transaction.events == ["commit", ("finalize", successor)]
+        assert result["mode"] == "legacy-bootstrap"
 
-    def test_unknown_handoff_outcome_preserves_transaction_instead_of_rolling_back(self) -> None:
+    def test_unknown_handoff_outcome_preserves_transaction_instead_of_rolling_back(
+        self, *, mocker
+    ) -> None:
         transaction = FakeTransaction()
         current = self._protocol_v2_runtime()
-        with (
-            mock.patch.object(
-                apply,
-                "request_handoff",
-                side_effect=apply.UnknownDeploymentOutcome("handoff outcome is unconfirmed"),
-            ),
-            self.assertRaisesRegex(apply.UnknownDeploymentOutcome, "unconfirmed"),
-        ):
-            self._install(transaction, current)
-        self.assertEqual(
-            transaction.events,
-            ["commit", ("preserve", "handoff outcome is unconfirmed")],
+        mocker.patch.object(
+            apply,
+            "request_handoff",
+            side_effect=apply.UnknownDeploymentOutcome("handoff outcome is unconfirmed"),
         )
+        with pytest.raises(apply.UnknownDeploymentOutcome, match="unconfirmed"):
+            self._install(transaction, current, mocker=mocker)
+        assert transaction.events == ["commit", ("preserve", "handoff outcome is unconfirmed")]
 
-    def test_fresh_install_rolls_back_after_service_or_runtime_proof_failure(self) -> None:
+    def test_fresh_install_rolls_back_after_service_or_runtime_proof_failure(
+        self, subtests, *, mocker
+    ) -> None:
         failures = RuntimeError("service failed"), errors.InstallError("runtime timeout")
         for service_fails, failure in enumerate(failures, start=1):
-            with self.subTest(failure=failure):
+            with subtests.test(failure=failure):
                 payload = FakeTransaction()
-                adapter = FakeServiceAdapter(failure=failure if service_fails == 1 else None)
-                with (
-                    mock.patch.object(process, "listener_pids", return_value=[]),
-                    mock.patch.object(
-                        apply,
-                        "wait_for_serving_runtime",
-                        side_effect=None if service_fails == 1 else failure,
-                    ),
-                    self.assertRaises(type(failure)),
-                ):
-                    self._install(payload, adapter=adapter)
-                self.assertEqual(payload.events, ["commit", "rollback"])
+                adapter = FakeServiceAdapter(
+                    failure=failure if service_fails == 1 else None, mocker=mocker
+                )
+                mocker.patch.object(process, "listener_pids", return_value=[])
+                mocker.patch.object(
+                    apply,
+                    "wait_for_serving_runtime",
+                    side_effect=None if service_fails == 1 else failure,
+                )
+                with pytest.raises(type(failure)):
+                    self._install(payload, adapter=adapter, mocker=mocker)
+                assert payload.events == ["commit", "rollback"]
 
-    def test_protocol_v2_failure_rolls_back_when_the_outcome_is_proven_rolled_back(self) -> None:
+    def test_protocol_v2_failure_rolls_back_when_the_outcome_is_proven_rolled_back(
+        self, *, mocker
+    ) -> None:
         payload = FakeTransaction()
         current = self._protocol_v2_runtime()
-        with (
-            mock.patch.object(
-                apply,
-                "request_handoff",
-                side_effect=errors.InstallError("handoff rolled back"),
-            ),
-            self.assertRaisesRegex(errors.InstallError, "rolled back"),
-        ):
-            self._install(payload, current)
-        self.assertEqual(payload.events, ["commit", "rollback"])
+        mocker.patch.object(
+            apply,
+            "request_handoff",
+            side_effect=errors.InstallError("handoff rolled back"),
+        )
+        with pytest.raises(errors.InstallError, match="rolled back"):
+            self._install(payload, current, mocker=mocker)
+        assert payload.events == ["commit", "rollback"]
 
-    def test_legacy_upgrade_rolls_back_after_termination_or_successor_failure(self) -> None:
+    def test_legacy_upgrade_rolls_back_after_termination_or_successor_failure(
+        self, subtests, *, mocker
+    ) -> None:
         failures = (
             (False, errors.InstallError("verified legacy listener did not terminate")),
             (
@@ -359,129 +334,117 @@ class TestReleasedDeployment(unittest.TestCase):
             ),
         )
         for terminated, failure in failures:
-            with self.subTest(failure=failure):
+            with subtests.test(failure=failure):
                 payload = FakeTransaction()
-                adapter = FakeServiceAdapter()
+                adapter = FakeServiceAdapter(mocker=mocker)
                 restored = {"pid": 333, "release": "1.0.26", "accepting": True}
-                with (
-                    mock.patch.object(
-                        apply,
-                        "prove_legacy_quiet_window",
-                        return_value=self._legacy_listener(),
-                    ),
-                    mock.patch.object(process, "terminate_pid", return_value=terminated),
-                    mock.patch.object(
-                        apply,
-                        "wait_for_serving_runtime",
-                        side_effect=failure if terminated else None,
-                    ),
-                    mock.patch.object(
-                        apply,
-                        "wait_for_legacy_runtime",
-                        return_value=restored,
-                    ) as rollback_runtime,
-                    self.assertRaisesRegex(type(failure), str(failure)),
-                ):
+                mocker.patch.object(
+                    apply,
+                    "prove_legacy_quiet_window",
+                    return_value=self._legacy_listener(),
+                )
+                mocker.patch.object(process, "terminate_pid", return_value=terminated)
+                mocker.patch.object(
+                    apply,
+                    "wait_for_serving_runtime",
+                    side_effect=failure if terminated else None,
+                )
+                rollback_runtime = mocker.patch.object(
+                    apply,
+                    "wait_for_legacy_runtime",
+                    return_value=restored,
+                )
+                with pytest.raises(type(failure), match=str(failure)):
                     self._install(
                         payload,
                         self._legacy_runtime(),
                         adapter=adapter,
                         allow_legacy_bootstrap=True,
+                        mocker=mocker,
                     )
-                self.assertEqual(payload.events, ["commit", "rollback"])
-                self.assertEqual(adapter.install_mock.call_count, 2 * int(terminated))
-                self.assertEqual(rollback_runtime.call_count, int(terminated))
+                assert payload.events == ["commit", "rollback"]
+                assert adapter.install_mock.call_count == 2 * int(terminated)
+                assert rollback_runtime.call_count == int(terminated)
 
-    def test_legacy_upgrade_rolls_back_when_supervision_replacement_fails(self) -> None:
+    def test_legacy_upgrade_rolls_back_when_supervision_replacement_fails(self, *, mocker) -> None:
         payload = FakeTransaction()
-        adapter = FakeServiceAdapter()
+        adapter = FakeServiceAdapter(mocker=mocker)
         adapter.install_mock.side_effect = [RuntimeError("service replacement failed"), None]
-        with (
-            mock.patch.object(
-                apply,
-                "prove_legacy_quiet_window",
-                return_value=self._legacy_listener(),
-            ),
-            mock.patch.object(process, "terminate_pid", return_value=True),
-            mock.patch.object(apply, "wait_for_legacy_runtime"),
-            self.assertRaisesRegex(RuntimeError, "service replacement failed"),
-        ):
+        mocker.patch.object(
+            apply,
+            "prove_legacy_quiet_window",
+            return_value=self._legacy_listener(),
+        )
+        mocker.patch.object(process, "terminate_pid", return_value=True)
+        mocker.patch.object(apply, "wait_for_legacy_runtime")
+        with pytest.raises(RuntimeError, match="service replacement failed"):
             self._install(
                 payload,
                 self._legacy_runtime(),
                 adapter=adapter,
                 allow_legacy_bootstrap=True,
+                mocker=mocker,
             )
-        self.assertEqual(payload.events, ["commit", "rollback"])
-        self.assertEqual(adapter.install_mock.call_count, 2)
+        assert payload.events == ["commit", "rollback"]
+        assert adapter.install_mock.call_count == 2
 
-    def test_legacy_upgrade_reports_failed_runtime_rollback(self) -> None:
+    def test_legacy_upgrade_reports_failed_runtime_rollback(self, *, mocker) -> None:
         payload = FakeTransaction()
-        adapter = FakeServiceAdapter()
-        with (
-            mock.patch.object(
-                apply,
-                "prove_legacy_quiet_window",
-                return_value=self._legacy_listener(),
-            ),
-            mock.patch.object(process, "terminate_pid", return_value=True),
-            mock.patch.object(
-                apply,
-                "wait_for_serving_runtime",
-                side_effect=errors.InstallError("successor timeout"),
-            ),
-            mock.patch.object(
-                apply,
-                "wait_for_legacy_runtime",
-                side_effect=errors.InstallError("rollback timeout"),
-            ),
-            self.assertRaisesRegex(
-                errors.InstallError, "runtime rollback failed: rollback timeout"
-            ),
-        ):
+        adapter = FakeServiceAdapter(mocker=mocker)
+        mocker.patch.object(
+            apply,
+            "prove_legacy_quiet_window",
+            return_value=self._legacy_listener(),
+        )
+        mocker.patch.object(process, "terminate_pid", return_value=True)
+        mocker.patch.object(
+            apply,
+            "wait_for_serving_runtime",
+            side_effect=errors.InstallError("successor timeout"),
+        )
+        mocker.patch.object(
+            apply,
+            "wait_for_legacy_runtime",
+            side_effect=errors.InstallError("rollback timeout"),
+        )
+        with pytest.raises(errors.InstallError, match="runtime rollback failed: rollback timeout"):
             self._install(
                 payload,
                 self._legacy_runtime(),
                 adapter=adapter,
                 allow_legacy_bootstrap=True,
+                mocker=mocker,
             )
-        self.assertEqual(payload.events, ["commit", "rollback"])
+        assert payload.events == ["commit", "rollback"]
 
     def test_schema_one_bootstrap_binds_integrity_listener_and_termination_to_old_entrypoint(
-        self,
+        self, *, mocker
     ) -> None:
         write_retired_projection(self.ctx, version="1.0.26", schema=1)
         legacy_script = str(Path(self.ctx.install_dir, "proxy", "dmx_responses_proxy.py"))
-        with (
-            mock.patch.object(process, "listener_pids", return_value=[111]),
-            mock.patch.object(
-                process,
-                "process_argv",
-                return_value=[self.ctx.python, legacy_script],
+        mocker.patch.object(process, "listener_pids", return_value=[111])
+        mocker.patch.object(
+            process,
+            "process_argv",
+            return_value=[sys.executable, legacy_script],
+        )
+        listener = apply.prove_legacy_quiet_window(
+            self.ctx,
+            runtime_reader=lambda _ctx: {"active_responses": 0},
+            timeout_seconds=0,
+            force=True,
+        )
+        assert listener == apply.LegacyListener(
+            projection.HistoricalProjection(
+                "1.0.26", frozenset(projection._RETIRED_RUNTIME_FILES[1]), legacy_script
             ),
-        ):
-            listener = apply.prove_legacy_quiet_window(
-                self.ctx,
-                runtime_reader=lambda _ctx: {"active_responses": 0},
-                timeout_seconds=0,
-                force=True,
-            )
-        self.assertEqual(
-            listener,
-            apply.LegacyListener(
-                projection.HistoricalProjection(
-                    "1.0.26",
-                    frozenset(projection._RETIRED_RUNTIME_FILES[1]),
-                    legacy_script,
-                ),
-                process.OwnedProcess(111, legacy_script),
-            ),
+            process.OwnedProcess(111, legacy_script),
         )
 
     def test_force_legacy_bootstrap_never_bypasses_historical_manifest_integrity(self) -> None:
         write_retired_projection(self.ctx, version="1.0.26", schema=1)
         Path(self.ctx.install_dir, "proxy", "dmx_responses_proxy.py").write_bytes(b"tampered")
-        with self.assertRaisesRegex(errors.InstallError, "integrity"):
+        with pytest.raises(errors.InstallError, match="integrity"):
             apply.prove_legacy_quiet_window(
                 self.ctx,
                 runtime_reader=lambda _ctx: {"active_responses": 0},
@@ -489,7 +452,9 @@ class TestReleasedDeployment(unittest.TestCase):
                 force=True,
             )
 
-    def test_request_handoff_accepts_direct_or_recovered_successor_runtime(self) -> None:
+    def test_request_handoff_accepts_direct_or_recovered_successor_runtime(
+        self, subtests, *, mocker
+    ) -> None:
         current = self._protocol_v2_runtime()
         expected = FakeTransaction().expected
         finalized = {"pid": 222, "release": "1.2.3"}
@@ -497,37 +462,35 @@ class TestReleasedDeployment(unittest.TestCase):
             ({"runtime": finalized}, None),
             ({"runtime": None}, ("finalized", finalized)),
         ):
-            with self.subTest(resolution=resolution):
-                with (
-                    mock.patch.object(apply.handoff, "request", return_value=request_result),
-                    mock.patch.object(
-                        apply.handoff,
-                        "resolve_after_controller_failure",
-                        return_value=resolution,
-                    ) as resolver,
-                ):
-                    result = apply.request_handoff(
-                        self.ctx,
-                        expected,
-                        current=current,
-                        runtime_reader=lambda _ctx: current,
-                        timeout_seconds=0.5,
-                    )
-                self.assertEqual(result, finalized)
-                self.assertEqual(resolver.call_count, int(resolution is not None))
+            with subtests.test(resolution=resolution):
+                mocker.patch.object(apply.handoff, "request", return_value=request_result)
+                resolver = mocker.patch.object(
+                    apply.handoff,
+                    "resolve_after_controller_failure",
+                    return_value=resolution,
+                )
+                result = apply.request_handoff(
+                    self.ctx,
+                    expected,
+                    current=current,
+                    runtime_reader=lambda _ctx: current,
+                    timeout_seconds=0.5,
+                )
+                assert result == finalized
+                assert resolver.call_count == int(resolution is not None)
 
-    def test_request_handoff_reraises_the_original_error_after_proven_rollback(self) -> None:
+    def test_request_handoff_reraises_the_original_error_after_proven_rollback(
+        self, *, mocker
+    ) -> None:
         current = self._protocol_v2_runtime()
         error = errors.InstallError("original handoff failure")
-        with (
-            mock.patch.object(apply.handoff, "request", side_effect=error),
-            mock.patch.object(
-                apply.handoff,
-                "resolve_after_controller_failure",
-                return_value=("rolled_back", current),
-            ),
-            self.assertRaisesRegex(errors.InstallError, "original handoff failure"),
-        ):
+        mocker.patch.object(apply.handoff, "request", side_effect=error)
+        mocker.patch.object(
+            apply.handoff,
+            "resolve_after_controller_failure",
+            return_value=("rolled_back", current),
+        )
+        with pytest.raises(errors.InstallError, match="original handoff failure"):
             apply.request_handoff(
                 self.ctx,
                 FakeTransaction().expected,
@@ -537,7 +500,7 @@ class TestReleasedDeployment(unittest.TestCase):
             )
 
     def test_legacy_quiet_window_covers_integrity_listener_force_change_idle_and_timeout(
-        self,
+        self, subtests, *, mocker
     ) -> None:
         def prove(
             runtime_reader: apply.RuntimeReader = lambda _ctx: None,
@@ -556,51 +519,39 @@ class TestReleasedDeployment(unittest.TestCase):
         verified_manifest = projection.HistoricalProjection(
             "1.0.26", frozenset({"proxy/dmx_responses_proxy.py"}), legacy_script
         )
+        mocker.patch.object(
+            projection,
+            "verify_historical_projection",
+            side_effect=errors.InstallError("bad"),
+        )
 
-        with (
-            mock.patch.object(
-                projection,
-                "verify_historical_projection",
-                side_effect=errors.InstallError("bad"),
-            ),
-            self.assertRaisesRegex(errors.InstallError, "integrity"),
-        ):
+        with pytest.raises(errors.InstallError, match="integrity"):
             prove()
 
         for listeners in ([], [111, 222]):
+            mocker.patch.object(
+                projection, "verify_historical_projection", return_value=verified_manifest
+            )
+            mocker.patch.object(process, "verified_listener_pids", return_value=listeners)
             with (
-                self.subTest(listeners=listeners),
-                mock.patch.object(
-                    projection, "verify_historical_projection", return_value=verified_manifest
-                ),
-                mock.patch.object(process, "verified_listener_pids", return_value=listeners),
-                self.assertRaisesRegex(errors.InstallError, "exactly one"),
+                subtests.test(listeners=listeners),
+                pytest.raises(errors.InstallError, match="exactly one"),
             ):
                 prove()
+        mocker.patch.object(
+            projection, "verify_historical_projection", return_value=verified_manifest
+        )
+        mocker.patch.object(process, "verified_listener_pids", return_value=[111])
+        assert prove(
+            lambda _ctx: {"active_responses": 9}, timeout=0, force=True
+        ) == apply.LegacyListener(verified_manifest, process.OwnedProcess(111, legacy_script))
+        mocker.patch.object(
+            projection, "verify_historical_projection", return_value=verified_manifest
+        )
+        mocker.patch.object(process, "verified_listener_pids", side_effect=[[111], [222]])
+        mocker.patch.object(apply.time, "monotonic", side_effect=[0.0, 0.1])
 
-        with (
-            mock.patch.object(
-                projection, "verify_historical_projection", return_value=verified_manifest
-            ),
-            mock.patch.object(process, "verified_listener_pids", return_value=[111]),
-        ):
-            self.assertEqual(
-                prove(
-                    lambda _ctx: {"active_responses": 9},
-                    timeout=0,
-                    force=True,
-                ),
-                apply.LegacyListener(verified_manifest, process.OwnedProcess(111, legacy_script)),
-            )
-
-        with (
-            mock.patch.object(
-                projection, "verify_historical_projection", return_value=verified_manifest
-            ),
-            mock.patch.object(process, "verified_listener_pids", side_effect=[[111], [222]]),
-            mock.patch.object(apply.time, "monotonic", side_effect=[0.0, 0.1]),
-            self.assertRaisesRegex(errors.InstallError, "changed"),
-        ):
+        with pytest.raises(errors.InstallError, match="changed"):
             prove(lambda _ctx: {"active_responses": 0})
 
         readings: list[dict[str, object]] = (
@@ -609,39 +560,31 @@ class TestReleasedDeployment(unittest.TestCase):
             + [{"active_responses": 0}] * 2
         )
         clock = iter([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 6.0, 6.1, 6.2])
-        with (
-            mock.patch.object(
-                projection, "verify_historical_projection", return_value=verified_manifest
-            ),
-            mock.patch.object(process, "verified_listener_pids", return_value=[111]),
-            mock.patch.object(
-                apply.time,
-                "monotonic",
-                side_effect=lambda: next(clock),
-            ),
-            mock.patch.object(apply.time, "sleep"),
-        ):
-            self.assertEqual(
-                prove(
-                    lambda _ctx: readings.pop(0),
-                    timeout=10,
-                ),
-                apply.LegacyListener(verified_manifest, process.OwnedProcess(111, legacy_script)),
-            )
+        mocker.patch.object(
+            projection, "verify_historical_projection", return_value=verified_manifest
+        )
+        mocker.patch.object(process, "verified_listener_pids", return_value=[111])
+        mocker.patch.object(
+            apply.time,
+            "monotonic",
+            side_effect=lambda: next(clock),
+        )
+        mocker.patch.object(apply.time, "sleep")
+        assert prove(lambda _ctx: readings.pop(0), timeout=10) == apply.LegacyListener(
+            verified_manifest, process.OwnedProcess(111, legacy_script)
+        )
+        mocker.patch.object(
+            projection, "verify_historical_projection", return_value=verified_manifest
+        )
+        mocker.patch.object(process, "verified_listener_pids", return_value=[111])
+        mocker.patch.object(apply.time, "monotonic", side_effect=[0.0, 0.1, 0.2])
+        mocker.patch.object(apply.time, "sleep")
 
-        with (
-            mock.patch.object(
-                projection, "verify_historical_projection", return_value=verified_manifest
-            ),
-            mock.patch.object(process, "verified_listener_pids", return_value=[111]),
-            mock.patch.object(apply.time, "monotonic", side_effect=[0.0, 0.1, 0.2]),
-            mock.patch.object(apply.time, "sleep"),
-            self.assertRaisesRegex(errors.InstallError, "did not remain idle"),
-        ):
+        with pytest.raises(errors.InstallError, match="did not remain idle"):
             prove(lambda _ctx: {"active_responses": 1}, timeout=0.15)
 
     def test_wait_for_serving_runtime_rejects_each_identity_and_pid_shape_then_times_out(
-        self,
+        self, *, mocker
     ) -> None:
         expected = FakeTransaction().expected
         matching: dict[str, object] = {
@@ -668,34 +611,28 @@ class TestReleasedDeployment(unittest.TestCase):
             matching,
         ]
         listener_snapshots = [[], [True], [0], [999], [111], *[[222]] * 7]
-        with (
-            mock.patch.object(
-                process, "verified_proxy_listener_pids", side_effect=listener_snapshots
-            ),
-            mock.patch.object(apply.time, "sleep"),
-            mock.patch.object(
-                apply.time,
-                "monotonic",
-                side_effect=map(float, range(13)),
-            ),
-        ):
-            self.assertEqual(
-                apply.wait_for_serving_runtime(
-                    self.ctx,
-                    expected,
-                    runtime_reader=lambda _ctx: snapshots.pop(0),
-                    timeout_seconds=20,
-                    old_pid=111,
-                ),
-                matching,
+        mocker.patch.object(process, "verified_proxy_listener_pids", side_effect=listener_snapshots)
+        mocker.patch.object(apply.time, "sleep")
+        mocker.patch.object(
+            apply.time,
+            "monotonic",
+            side_effect=map(float, range(13)),
+        )
+        assert (
+            apply.wait_for_serving_runtime(
+                self.ctx,
+                expected,
+                runtime_reader=lambda _ctx: snapshots.pop(0),
+                timeout_seconds=20,
+                old_pid=111,
             )
+            == matching
+        )
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[])
+        mocker.patch.object(apply.time, "monotonic", side_effect=[0.0, 0.1, 0.2])
+        mocker.patch.object(apply.time, "sleep")
 
-        with (
-            mock.patch.object(process, "verified_proxy_listener_pids", return_value=[]),
-            mock.patch.object(apply.time, "monotonic", side_effect=[0.0, 0.1, 0.2]),
-            mock.patch.object(apply.time, "sleep"),
-            self.assertRaisesRegex(errors.InstallError, "SERVING identity"),
-        ):
+        with pytest.raises(errors.InstallError, match="SERVING identity"):
             apply.wait_for_serving_runtime(
                 self.ctx,
                 expected,
@@ -703,7 +640,9 @@ class TestReleasedDeployment(unittest.TestCase):
                 timeout_seconds=0.15,
             )
 
-    def test_wait_for_legacy_runtime_requires_exact_accepting_process_identity(self) -> None:
+    def test_wait_for_legacy_runtime_requires_exact_accepting_process_identity(
+        self, *, mocker
+    ) -> None:
         matching: dict[str, object] = {
             "pid": 222,
             "release": "1.0.26",
@@ -718,38 +657,36 @@ class TestReleasedDeployment(unittest.TestCase):
             {**matching, "accepting": False},
             matching,
         ]
-        with (
-            mock.patch.object(
-                process,
-                "verified_listener_pids",
-                side_effect=[[], [True], [0], [222], [222], [222], [222]],
-            ),
-            mock.patch.object(apply.time, "monotonic", side_effect=map(float, range(8))),
-            mock.patch.object(apply.time, "sleep"),
-        ):
-            self.assertEqual(
-                apply.wait_for_legacy_runtime(
-                    self.ctx,
-                    release="1.0.26",
-                    runtime_reader=lambda _ctx: snapshots.pop(0),
-                    timeout_seconds=10,
-                ),
-                matching,
-            )
-        with (
-            mock.patch.object(process, "verified_listener_pids", return_value=[]),
-            mock.patch.object(apply.time, "monotonic", side_effect=[0.0, 0.1, 0.2]),
-            mock.patch.object(apply.time, "sleep"),
-            self.assertRaisesRegex(errors.InstallError, "historical listener rollback"),
-        ):
+        mocker.patch.object(
+            process,
+            "verified_listener_pids",
+            side_effect=[[], [True], [0], [222], [222], [222], [222]],
+        )
+        mocker.patch.object(apply.time, "monotonic", side_effect=map(float, range(8)))
+        mocker.patch.object(apply.time, "sleep")
+        assert (
             apply.wait_for_legacy_runtime(
                 self.ctx,
                 release="1.0.26",
+                entrypoint="/installed/proxy/dmx_responses_proxy.py",
+                runtime_reader=lambda _ctx: snapshots.pop(0),
+                timeout_seconds=10,
+            )
+            == matching
+        )
+        mocker.patch.object(process, "verified_listener_pids", return_value=[])
+        mocker.patch.object(apply.time, "monotonic", side_effect=[0.0, 0.1, 0.2])
+        mocker.patch.object(apply.time, "sleep")
+        with pytest.raises(errors.InstallError, match="historical listener rollback"):
+            apply.wait_for_legacy_runtime(
+                self.ctx,
+                release="1.0.26",
+                entrypoint="/installed/proxy/dmx_responses_proxy.py",
                 runtime_reader=lambda _ctx: None,
                 timeout_seconds=0.15,
             )
 
-    def test_read_runtime_accepts_only_http_200_json_objects(self) -> None:
+    def test_read_runtime_accepts_only_http_200_json_objects(self, *, mocker) -> None:
         class Response:
             def __init__(self, status: int, payload: bytes) -> None:
                 self.status = status
@@ -764,100 +701,22 @@ class TestReleasedDeployment(unittest.TestCase):
             def read(self):
                 return self.payload
 
-        opener = mock.Mock()
-        with mock.patch.object(apply.urllib.request, "build_opener", return_value=opener):
-            opener.open.return_value = Response(200, b'{"pid": 222}')
-            self.assertEqual(apply.read_runtime(self.ctx), {"pid": 222})
-            opener.open.return_value = Response(204, b"")
-            self.assertIsNone(apply.read_runtime(self.ctx))
-            opener.open.return_value = Response(200, b"[]")
-            self.assertIsNone(apply.read_runtime(self.ctx))
-            opener.open.return_value = Response(200, b"not-json")
-            self.assertIsNone(apply.read_runtime(self.ctx))
-            opener.open.side_effect = urllib.error.URLError("offline")
-            self.assertIsNone(apply.read_runtime(self.ctx))
+        opener = mocker.Mock()
+        mocker.patch.object(apply.urllib.request, "build_opener", return_value=opener)
+        opener.open.return_value = Response(200, b'{"pid": 222}')
+        assert apply.read_runtime(self.ctx) == {"pid": 222}
+        opener.open.return_value = Response(204, b"")
+        assert apply.read_runtime(self.ctx) is None
+        opener.open.return_value = Response(200, b"[]")
+        assert apply.read_runtime(self.ctx) is None
+        opener.open.return_value = Response(200, b"not-json")
+        assert apply.read_runtime(self.ctx) is None
+        opener.open.side_effect = urllib.error.URLError("offline")
+        assert apply.read_runtime(self.ctx) is None
 
 
-class TestInstallComposition(unittest.TestCase):
-    """Keep admission, transaction, and apply on one source-side entry."""
-
-    def test_install_release_consumes_one_signed_source_without_forge_inputs(self) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
-        released = mock.Mock()
-        tx = mock.Mock()
-        service = FakeServiceAdapter()
-        with (
-            mock.patch.object(install.release_admission, "require_clean_checkout"),
-            mock.patch.object(install, "admit_released_payload", return_value=released) as admit,
-            mock.patch.object(install.transaction, "begin_transaction", return_value=tx) as begin,
-            mock.patch.object(
-                install.apply, "install", return_value={"mode": "fresh-install"}
-            ) as deploy,
-        ):
-            result = install.install_release(
-                ctx,
-                trust_anchor=Path("/external/allowed-signers"),
-                adapter=service,
-            )
-        admit.assert_called_once_with(trust_anchor=Path("/external/allowed-signers"))
-        begin.assert_called_once_with(ctx, released)
-        deploy.assert_called_once()
-        self.assertEqual(result["mode"], "fresh-install")
-
-    @staticmethod
-    def _arguments() -> InstallArguments:
-        return InstallArguments(
-            trust_anchor=Path("/external/allowed-signers"),
-            adapter=FakeServiceAdapter(),
-        )
-
-    def test_install_release_refuses_dirty_source_before_admission(self) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
-        arguments = self._arguments()
-        with (
-            mock.patch.object(install.release_admission, "require_clean_checkout") as clean,
-            mock.patch.object(
-                install,
-                "admit_released_payload",
-                side_effect=install.release_admission.ReleaseSourceError("clean checkout required"),
-            ),
-            mock.patch.object(install.transaction, "begin_transaction") as begin,
-            self.assertRaisesRegex(install.release_admission.ReleaseSourceError, "clean checkout"),
-        ):
-            install.install_release(ctx, **arguments)
-        clean.assert_called_once()
-        begin.assert_not_called()
-
-    def test_recovery_rollback_requires_signed_source_before_restore(self) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
-        arguments = self._arguments()
-        arguments["rollback_recovery"] = True
-        runtime = {"release": "1.2.2", "accepting": True}
-        with (
-            mock.patch.object(install.release_admission, "require_clean_checkout"),
-            mock.patch.object(install.apply, "read_runtime", return_value=runtime),
-            mock.patch.object(install.apply, "prove_v2_listener") as prove_listener,
-            mock.patch.object(install.transaction, "rollback_recovery") as rollback,
-            mock.patch.object(install, "admit_released_payload", return_value=mock.Mock()),
-            mock.patch.object(install.transaction, "begin_transaction", return_value=mock.Mock()),
-            mock.patch.object(install.apply, "install", return_value={"mode": "recovered"}),
-        ):
-            install.install_release(ctx, **arguments)
-        prove_listener.assert_called_once_with(ctx, runtime)
-        rollback.assert_called_once_with(ctx, runtime=runtime)
-
-        with (
-            mock.patch.object(install.release_admission, "require_clean_checkout"),
-            mock.patch.object(install.apply, "read_runtime", return_value=None),
-            mock.patch.object(install.transaction, "rollback_recovery") as rollback,
-            self.assertRaisesRegex(errors.InstallError, "available listener"),
-        ):
-            install.install_release(ctx, **arguments)
-        rollback.assert_not_called()
+class TestInstallComposition:
+    """Keep native artifact admission and installation free of Forge proof loaders."""
 
     def test_install_has_no_json_publication_proof_loader(self) -> None:
-        self.assertFalse(hasattr(install, "publication_proof_from_file"))
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+        assert not hasattr(install, "publication_proof_from_file")

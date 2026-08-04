@@ -1,19 +1,14 @@
-#!/usr/bin/env python3
 """Pure contracts for dual-Forge publication proof evaluation."""
 
 from __future__ import annotations
 
-import sys
-import unittest
 from pathlib import Path
 from typing import cast
 
-ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+from tools.release.publication import evaluator
+from tools.release.publication import verification as publication
 
-from codex_responses_proxy.release.publication import verification as publication
-from codex_responses_proxy.release.publication import evaluator
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def _policy() -> evaluator.PublicationPolicy:
@@ -39,8 +34,15 @@ def _forge(
         "anchor_sha256": "f" * 64,
         "signature_verified": True,
         "assets": {
-            "codex-responses-proxy-1.2.3.tar.gz": "1" * 64,
-            "SHA256SUMS": "2" * 64,
+            **{
+                f"codex-responses-proxy-1.2.3-{platform}.tar.gz": "1" * 64
+                for platform in ("linux-x86_64", "macos-arm64", "windows-x86_64")
+            },
+            **{
+                f"codex-responses-proxy-{platform}.manifest.json": "2" * 64
+                for platform in ("linux-x86_64", "macos-arm64", "windows-x86_64")
+            },
+            "SHA256SUMS": "3" * 64,
         },
         "ci": {
             "id": 42,
@@ -90,21 +92,21 @@ def _github_forge(*, tree: str = "c" * 40) -> dict[str, object]:
     )
 
 
-class PublicationProofContracts(unittest.TestCase):
+class PublicationProofContracts:
     """Admit only complete independent publications of one source tree."""
 
     def test_valid_proof_remains_evidence_only(self) -> None:
         result = evaluator.evaluate("v1.2.3", _gitlab_forge(), _github_forge(), _policy())
-        self.assertTrue(result["verified"])
-        self.assertTrue(result["tree_equal"])
-        self.assertTrue(result["assets_equal"])
-        self.assertNotIn("release_source", result)
+        assert result["verified"]
+        assert result["tree_equal"]
+        assert result["assets_equal"]
+        assert "release_source" not in result
         forges = cast(dict[str, dict[str, object]], result["forges"])
-        self.assertEqual(forges["gitlab"]["provider"], "gitlab")
-        self.assertEqual(forges["github"]["provider"], "github")
-        self.assertEqual(result["reasons"], [])
+        assert forges["gitlab"]["provider"] == "gitlab"
+        assert forges["github"]["provider"] == "github"
+        assert result["reasons"] == []
 
-    def test_empty_policy_and_unknown_fields_fail_closed(self) -> None:
+    def test_empty_policy_and_unknown_fields_fail_closed(self, subtests) -> None:
         cases: tuple[tuple[evaluator.PublicationPolicy, bool, list[str]], ...] = (
             (
                 evaluator.PublicationPolicy(gitlab_jobs=(), github_jobs=()),
@@ -118,28 +120,28 @@ class PublicationProofContracts(unittest.TestCase):
             if unexpected:
                 gitlab["unexpected"] = "value"
             result = evaluator.evaluate("v1.2.3", gitlab, _github_forge(), policy)
-            with self.subTest(reasons=reasons):
-                self.assertFalse(result["verified"])
-                self.assertEqual(result["reasons"], reasons)
+            with subtests.test(reasons=reasons):
+                assert not result["verified"]
+                assert result["reasons"] == reasons
 
     def test_rejects_tree_mismatch_and_unverified_signature(self) -> None:
         gitlab = _gitlab_forge()
         github = _github_forge(tree="9" * 40)
         github["signature_verified"] = False
         result = evaluator.evaluate("v1.2.3", gitlab, github, _policy())
-        self.assertFalse(result["verified"])
-        self.assertFalse(result["tree_equal"])
+        assert not result["verified"]
+        assert not result["tree_equal"]
         reasons = cast(list[str], result["reasons"])
-        self.assertIn("tree_mismatch", reasons)
-        self.assertIn("github.signature_unverified", reasons)
+        assert "tree_mismatch" in reasons
+        assert "github.signature_unverified" in reasons
 
     def test_rejects_cross_forge_asset_mismatch(self) -> None:
         github = _github_forge()
         cast(dict[str, str], github["assets"])["SHA256SUMS"] = "9" * 64
         result = evaluator.evaluate("v1.2.3", _gitlab_forge(), github, _policy())
-        self.assertFalse(result["verified"])
-        self.assertFalse(result["assets_equal"])
-        self.assertIn("asset_mismatch", cast(list[str], result["reasons"]))
+        assert not result["verified"]
+        assert not result["assets_equal"]
+        assert "asset_mismatch" in cast(list[str], result["reasons"])
 
     def test_rejects_wrong_ci_revision_missing_job_and_release_identity(self) -> None:
         gitlab = _gitlab_forge()
@@ -154,13 +156,13 @@ class PublicationProofContracts(unittest.TestCase):
         assert isinstance(release, dict)
         cast(dict[str, object], release)["draft"] = True
         result = evaluator.evaluate("v1.2.3", gitlab, _github_forge(), _policy())
-        self.assertFalse(result["verified"])
+        assert not result["verified"]
         reasons = cast(list[str], result["reasons"])
-        self.assertIn("gitlab.ci_revision_mismatch", reasons)
-        self.assertIn("gitlab.ci_required_job_missing:verify-python-quality", reasons)
-        self.assertIn("gitlab.release_draft", reasons)
+        assert "gitlab.ci_revision_mismatch" in reasons
+        assert "gitlab.ci_required_job_missing:verify-python-quality" in reasons
+        assert "gitlab.release_draft" in reasons
 
-    def test_invalid_shapes_and_all_semantic_mismatches_fail_closed(self) -> None:
+    def test_invalid_shapes_and_all_semantic_mismatches_fail_closed(self, subtests) -> None:
         invalid = {
             "tag": "latest",
             "repository": "",
@@ -172,23 +174,26 @@ class PublicationProofContracts(unittest.TestCase):
         for field, value in invalid.items():
             evidence = _gitlab_forge()
             evidence[field] = value
-            with self.subTest(field=field):
-                self.assertIsNone(
+            with subtests.test(field=field):
+                assert (
                     evaluator._evaluate_forge(
                         "gitlab", "v1.2.3", evidence, _policy()["gitlab_jobs"]
                     )[0]
+                    is None
                 )
 
         evidence = _gitlab_forge()
         cast(dict[str, object], evidence["assets"])["SHA256SUMS"] = "not-a-digest"
-        self.assertIsNone(
+        assert (
             evaluator._evaluate_forge("gitlab", "v1.2.3", evidence, _policy()["gitlab_jobs"])[0]
+            is None
         )
 
         evidence = _gitlab_forge()
         cast(dict[str, object], evidence["release"]).pop("name")
-        self.assertIsNone(
+        assert (
             evaluator._evaluate_forge("gitlab", "v1.2.3", evidence, _policy()["gitlab_jobs"])[0]
+            is None
         )
 
         evidence = _gitlab_forge()
@@ -212,14 +217,11 @@ class PublicationProofContracts(unittest.TestCase):
             "gitlab.release_name_mismatch",
             "gitlab.release_prerelease",
         ):
-            self.assertIn(expected, reasons)
+            assert expected in reasons
 
         evidence = _gitlab_forge()
         cast(dict[str, object], evidence["ci"])["jobs"] = []
-        self.assertIsNone(
+        assert (
             evaluator._evaluate_forge("gitlab", "v1.2.3", evidence, _policy()["gitlab_jobs"])[0]
+            is None
         )
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
