@@ -1,0 +1,9 @@
+schema_version = 1
+paths = [
+  ".githooks/pre-push",
+  "evidence/claims/terminal-product-closeout-20260802.toml",
+  "evidence/chronicle/terminal-product-closeout-20260802/**",
+  "openspec/changes/annotated-tag-push-admission/**",
+  "openspec/specs/ci-diagnostics/spec.md",
+  "tests/governance/test_repository.py",
+]
