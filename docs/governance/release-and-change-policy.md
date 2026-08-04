@@ -19,6 +19,39 @@ resolved to the first PATH candidate with the exact repository-required
 version, so an outer runner's virtual environment cannot silently substitute a
 different tool; an explicit executable path remains authoritative.
 
+## Lane retirement
+
+A work lane is retirable when its findings are demonstrably present in the
+product and its working tree holds nothing unrecorded. Presence is shown by
+naming the file, spec, or setting that carries the finding today, not by
+asserting that the lane was merged; a lane whose branch root is disjoint from
+the current line can never have been merged and must be checked this way.
+
+Uncommitted work is committed before its worktree is removed, on the lane's own
+branch and with a message stating what the work is and why it cannot move
+forward. Deleting a worktree that holds unrecorded work destroys it; committing
+first costs nothing and is reversible. Worktrees are removed, branches are kept:
+removing a worktree can be undone from the branch, and deleting the branch
+cannot be undone.
+
+A lane with recent write activity is active regardless of how old its last
+commit is, and is never retired, committed into, or removed by anyone but its
+owner. Working-tree state, not branch position, decides this: a lane can sit on
+an already-merged commit and still hold substantial in-flight work.
+
+Recorded retirement, 2026-08-04. Five lanes were retired after their findings
+were located in the 2.x product: `work/20260731-empty-tool-output-replay` and
+`work/transaction-semantic-split` each held a complete but never-committed
+change on the pre-reconstruction line, preserved as commits `86a4a08` and
+`bad87ed` before removal; `work/function-eloc-ratchet` is carried by
+`pyproject.toml` `function-max-eloc` enforced as mandatory in
+`tools/quality/repository.py`; `work/20260731-provider-portable-runtime-acceptance`
+covered v1.0.44 and v1.0.45, versions the 2.x line does not contain;
+`work/20260803-provider-concurrency-portability` sat exactly on `main`'s tip
+with nothing unique. `work/20260803-terminal-product-reconstruction` was not
+retired: it holds an uncommitted `src/` layout migration across 256 files and
+was written to minutes before the sweep.
+
 ## Release identity
 
 `VERSION` is the release-train identifier. Before a tag exists, it must be
