@@ -6,7 +6,7 @@
 
 ## 2. Verification
 
-- [ ] 2.1 Pass release metadata, strict OpenSpec, and exact-head ETHOS proof.
+- [x] 2.1 Pass release metadata, strict OpenSpec, and exact-head ETHOS proof.
 
 ## Post-archive transition boundary
 
