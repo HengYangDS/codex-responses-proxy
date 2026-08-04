@@ -1,0 +1,16 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "VERSION",
+  "codex_responses_proxy/listener/control.py",
+  "codex_responses_proxy/transport/relay.py",
+  "codex_responses_proxy/transport/responses.py",
+  "evidence/chronicle/route-rejection-contract-20260804/**",
+  "evidence/claims/route-rejection-contract-20260804.toml",
+  "openspec/changes/route-rejection-contract",
+  "openspec/changes/route-rejection-contract/**",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/listener/proxy_fixture.py",
+  "tests/providers/test_routes.py",
+  "tests/transport/test_proxy.py",
+]

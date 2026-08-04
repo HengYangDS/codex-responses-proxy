@@ -102,6 +102,8 @@ def _reject_route(
     """Return one local closed-route rejection without upstream I/O."""
     telemetry.record_counter("provider_route_rejected")
     telemetry.record_failure("provider_route_rejected")
+    # A rejection answers before the request body is read, so the connection
+    # cannot stay persistent over bytes the listener will never consume.
     if method is None:
         downstream.send_payload(
             handler,
@@ -111,6 +113,7 @@ def _reject_route(
                 "invalid_request_error",
                 "provider_route_not_found",
             ),
+            close=True,
         )
         operational_log.log(
             f"req={request_id} event=provider_route_rejected "
@@ -125,6 +128,7 @@ def _reject_route(
             "invalid_request_error",
             "provider_route_method_not_allowed",
         ),
+        close=True,
     )
     operational_log.log(
         f"req={request_id} event=provider_route_method_rejected "
