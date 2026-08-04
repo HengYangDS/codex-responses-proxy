@@ -26,7 +26,7 @@ owner = "codex-responses-proxy"
 scope = "Portable discovery and validation evidence only; full quality, both Forge pipelines, signed publication, installation, live providers, original-task continuation, and housekeeping remain separate."
 
 [carriers]
-openspec = "openspec/changes/windows-ci-portability-closeout"
+openspec = "openspec/changes/archive/2026-08-03-windows-ci-portability-closeout"
 fallback = "Retain installed 2.0.4 with global concurrency one until signed 2.0.7 passes both Forge planes."
 kill_signal = "Windows or Linux performs per-PID host queries during batch discovery, Darwin loses native argv identity, signal-time identity is not revalidated, hosted CI remains red, or failed release history is rewritten."
 
