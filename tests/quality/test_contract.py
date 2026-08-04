@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import tomllib
 import tokenize
 from contextlib import contextmanager
 from pathlib import Path
@@ -421,8 +422,6 @@ class TestQualityPolicyContracts:
         assert inventory[0]["max_nesting_depth"] == 1
 
     def test_coverage_floor_is_branch_aware_and_at_least_ninety_five_percent(self) -> None:
-        import tomllib
-
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         coverage = metadata["tool"]["coverage"]
         assert coverage["run"]["branch"] is True
@@ -432,8 +431,6 @@ class TestQualityPolicyContracts:
         assert coverage["run"]["omit"] == ["*/__init__.py"]
 
     def test_repository_has_standard_package_metadata_and_one_version_owner(self) -> None:
-        import tomllib
-
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         project = metadata["project"]
         assert project["name"] == "codex-responses-proxy"
@@ -566,14 +563,13 @@ class TestVerificationContracts:
     """Keep verification on mature tools and the released product artifact."""
 
     def test_pytest_is_the_only_behavior_test_runner(self) -> None:
-        import tomllib
-
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         assert "pytest==9.1.1" in metadata["dependency-groups"]["quality"]
         assert "pytest-mock==3.15.1" in metadata["dependency-groups"]["quality"]
         assert metadata["tool"]["pytest"]["ini_options"] == {
             "addopts": ["--import-mode=importlib", "--strict-config", "--strict-markers"],
             "filterwarnings": ["error"],
+            "markers": ["native_distribution: requires the self-contained released executable"],
             "python_classes": ["Test*", "*Tests", "*Contracts"],
             "testpaths": ["tests"],
         }
@@ -664,11 +660,20 @@ class TestVerificationContracts:
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         }
         assert tests_calls >= {"_build_wheel", "_install_wheel", "_assert_installed_product"}
+        assert "_build_executable" not in tests_calls
         tests_source = ast.get_source_segment(source, functions["tests"]) or ""
         quality_source = ast.get_source_segment(source, functions["quality"]) or ""
         assert '"compileall",' in tests_source
-        assert 'session.run("python", "-m", "pytest", env=environment)' in tests_source
-        assert 'session.run("coverage", "run", "-m", "pytest"' in quality_source
+        assert '"pytest", "-m", "not native_distribution"' in tests_source
+        assert '"pytest",\n        "-m",\n        "not native_distribution"' in quality_source
+        assert (
+            '"CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session))'
+            in tests_source
+        )
+        assert (
+            '"CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session))'
+            in quality_source
+        )
         assert "PYTHONPATH=src" not in source
 
     def test_nox_release_exports_one_manifest_bound_native_asset_set(self) -> None:
@@ -676,7 +681,9 @@ class TestVerificationContracts:
         tree = ast.parse(source)
         functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
         release_source = ast.get_source_segment(source, functions["release"]) or ""
-        assert '"-m", "pytest", "-q", "tests/cli/test_interface.py"' in release_source
+        assert '"tests/cli/test_interface.py"' in release_source
+        assert '"tests/service/handoff/test_subprocess.py"' in release_source
+        assert '"CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE": str(executable)' in release_source
         assert '"-m", "tests.' not in release_source
         release_calls = {
             node.func.id
@@ -690,9 +697,27 @@ class TestVerificationContracts:
         assert "--platform" in package_source
         assert "session.posargs" in package_source
 
-    def test_quality_environment_is_repository_owned_and_locked(self) -> None:
-        import tomllib
+        native_build_owners = {
+            name
+            for name, function in functions.items()
+            if any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "_build_executable"
+                for node in ast.walk(function)
+            )
+        }
+        assert native_build_owners == {"release"}
 
+    def test_native_distribution_tests_are_explicit_and_release_owned(self) -> None:
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        assert metadata["tool"]["pytest"]["ini_options"]["markers"] == [
+            "native_distribution: requires the self-contained released executable"
+        ]
+        source = (ROOT / "tests/service/handoff/test_subprocess.py").read_text(encoding="utf-8")
+        assert "pytestmark = pytest.mark.native_distribution" in source
+
+    def test_quality_environment_is_repository_owned_and_locked(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         assert metadata["dependency-groups"]["quality"] == [
             "coverage==7.15.2",

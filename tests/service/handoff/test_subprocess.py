@@ -34,6 +34,8 @@ ROOT = Path(__file__).resolve().parents[3]
 
 SUCCESSOR_TIMEOUT = 20
 
+pytestmark = pytest.mark.native_distribution
+
 
 class TestRealSubprocessHandoffIntegration:
     """Exercise the complete rolling handoff against owned loopback processes."""

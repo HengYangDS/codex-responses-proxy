@@ -264,3 +264,73 @@ class TestProcessIdentity:
         sleep = mocker.patch.object(process.time, "sleep")
         assert not process.terminate_pid(123, expected_path="/proxy.py", timeout_seconds=1.0)
         sleep.assert_called_once_with(0.05)
+
+    def test_native_termination_rechecks_identity_and_proves_exit(self, subtests, *, mocker):
+        executable = "/installed/codex-responses-proxy"
+        roles = {"--internal-listener", "--internal-handoff-child"}
+        for name, command in (
+            ("nt", ["taskkill", "/pid", "123", "/f"]),
+            ("posix", ["kill", "-TERM", "123"]),
+        ):
+            with subtests.test(platform=name):
+                mocker.patch.object(process.os, "name", name)
+                owns = mocker.patch.object(
+                    process,
+                    "pid_names_executable",
+                    side_effect=[True, True, False],
+                )
+                invoked = mocker.patch.object(
+                    process.subprocess,
+                    "run",
+                    return_value=_completed(returncode=0),
+                )
+                mocker.patch.object(process.time, "monotonic", side_effect=[0.0, 0.1])
+                sleep = mocker.patch.object(process.time, "sleep")
+
+                assert process.terminate_executable(
+                    123,
+                    executable,
+                    roles=roles,
+                    timeout_seconds=1.0,
+                )
+                assert owns.call_count == 3
+                invoked.assert_called_once_with(
+                    command,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                sleep.assert_called_once_with(0.05)
+                mocker.stopall()
+
+    def test_native_termination_fails_closed_before_and_after_signal(self, subtests, *, mocker):
+        executable = "/installed/codex-responses-proxy"
+        cases = (
+            ("identity", [False], None, [0.0], 0),
+            ("signal", [True], 1, [0.0], 1),
+            ("timeout", [True, True], 0, [0.0, 1.0], 1),
+        )
+        for case, identities, returncode, clocks, expected_calls in cases:
+            with subtests.test(case=case):
+                mocker.patch.object(process.os, "name", "posix")
+                mocker.patch.object(
+                    process,
+                    "pid_names_executable",
+                    side_effect=identities,
+                )
+                invoked = mocker.patch.object(
+                    process.subprocess,
+                    "run",
+                    return_value=_completed(returncode=returncode or 0),
+                )
+                mocker.patch.object(process.time, "monotonic", side_effect=clocks)
+                sleep = mocker.patch.object(process.time, "sleep")
+
+                assert not process.terminate_executable(
+                    123,
+                    executable,
+                    timeout_seconds=1.0,
+                )
+                assert invoked.call_count == expected_calls
+                sleep.assert_not_called()
+                mocker.stopall()
