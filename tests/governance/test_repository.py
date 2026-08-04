@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ntpath
+import os
+import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
@@ -308,6 +311,103 @@ class TestGovernanceMetadata:
                 assert destructive not in source
         assert "commit-tree -S" in source
         assert 'git_transport -C "$repository" push' in source
+
+    def test_pre_push_admission_distinguishes_commits_and_annotated_tags(self):
+        hook = ROOT / ".githooks/pre-push"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", root], check=True)
+            subprocess.run(["git", "-C", root, "config", "user.name", "Test"], check=True)
+            subprocess.run(
+                ["git", "-C", root, "config", "user.email", "test@example.invalid"],
+                check=True,
+            )
+            (root / "tracked").write_text("accepted\n", encoding="utf-8")
+            subprocess.run(["git", "-C", root, "add", "tracked"], check=True)
+            subprocess.run(["git", "-C", root, "commit", "-qm", "accepted"], check=True)
+            head = subprocess.check_output(
+                ["git", "-C", root, "rev-parse", "HEAD"], text=True
+            ).strip()
+            subprocess.run(["git", "-C", root, "tag", "-a", "v1.0.0", "-m", "release"], check=True)
+            tag = subprocess.check_output(
+                ["git", "-C", root, "rev-parse", "v1.0.0"], text=True
+            ).strip()
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            calls = root / "calls"
+            fake_ethos = bin_dir / "ethos"
+            fake_ethos.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$*" >> "$ETHOS_CALLS"\n', encoding="utf-8"
+            )
+            fake_ethos.chmod(0o755)
+            environment = os.environ | {
+                "ETHOS_CALLS": str(calls),
+                "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            }
+
+            branch_input = f"refs/heads/dev {head} refs/heads/main {'0' * 40}\n"
+            subprocess.run(
+                ["sh", hook, "origin", "unused"],
+                cwd=root,
+                input=branch_input,
+                text=True,
+                env=environment,
+                check=True,
+            )
+            tag_input = f"refs/tags/v1.0.0 {tag} refs/tags/v1.0.0 {'0' * 40}\n"
+            subprocess.run(
+                ["sh", hook, "origin", "unused"],
+                cwd=root,
+                input=tag_input,
+                text=True,
+                env=environment,
+                check=True,
+            )
+
+            recorded = calls.read_text(encoding="utf-8").splitlines()
+            assert f"hook pre-push refs/heads/main {head}" in recorded[0]
+            assert f"hook pre-push refs/tags/v1.0.0 {head}" in recorded[1]
+
+            subprocess.run(["git", "-C", root, "tag", "lightweight"], check=True)
+            lightweight = subprocess.check_output(
+                ["git", "-C", root, "rev-parse", "lightweight"], text=True
+            ).strip()
+            rejected = subprocess.run(
+                ["sh", hook, "origin", "unused"],
+                cwd=root,
+                input=f"refs/tags/lightweight {lightweight} refs/tags/lightweight {'0' * 40}\n",
+                text=True,
+                env=environment,
+                capture_output=True,
+                check=False,
+            )
+            assert rejected.returncode != 0
+            assert "annotated tag" in rejected.stderr
+
+            orphan_tree = subprocess.check_output(
+                ["git", "-C", root, "mktree"], input="", text=True
+            ).strip()
+            orphan = subprocess.check_output(
+                ["git", "-C", root, "commit-tree", orphan_tree, "-m", "orphan"], text=True
+            ).strip()
+            subprocess.run(
+                ["git", "-C", root, "tag", "-a", "outside", orphan, "-m", "outside"],
+                check=True,
+            )
+            outside = subprocess.check_output(
+                ["git", "-C", root, "rev-parse", "outside"], text=True
+            ).strip()
+            rejected = subprocess.run(
+                ["sh", hook, "origin", "unused"],
+                cwd=root,
+                input=f"refs/tags/outside {outside} refs/tags/outside {'0' * 40}\n",
+                text=True,
+                env=environment,
+                capture_output=True,
+                check=False,
+            )
+            assert rejected.returncode != 0
+            assert "outside the current accepted history" in rejected.stderr
 
     def test_lifecycle_never_reads_or_prescribes_client_state(self):
         text = "\n".join(
