@@ -279,7 +279,7 @@ def _run_without_python(
     """Run a black-box command with no Python executable or package path."""
 
     empty_path = Path(session.create_tmp()) / "empty-path"
-    empty_path.mkdir()
+    empty_path.mkdir(exist_ok=True)
     environment = {
         "HOME": str(Path.home()),
         "PATH": str(empty_path),

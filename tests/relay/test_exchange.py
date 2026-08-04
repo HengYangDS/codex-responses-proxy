@@ -134,6 +134,9 @@ class _DirectResponse:
             raise item
         return item
 
+    def close(self) -> None:
+        """Satisfy the upstream response lifecycle contract."""
+
 
 class InputTransportContracts:
     """Exercise the recovery boundary through real loopback HTTP servers."""

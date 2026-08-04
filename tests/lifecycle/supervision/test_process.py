@@ -180,14 +180,14 @@ class TestProcessIdentity:
 
         if sys.platform == "darwin":
             with tempfile.TemporaryDirectory(prefix="responses proxy argv ") as directory:
-                script = Path(directory, "listener entrypoint.py")
-                script.write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
-                child = subprocess.Popen([sys.executable, str(script)])
+                fixture = Path(directory, "listener entrypoint.py")
+                fixture.write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
+                child = subprocess.Popen([sys.executable, str(fixture)])
                 try:
                     argv = process.process_argv(child.pid)
-                    assert argv == [sys.executable, str(script)]
-                    assert process.pid_names_path(child.pid, str(script))
-                    assert child.pid in process.pids_naming_path(str(script))
+                    assert argv == [sys.executable, str(fixture)]
+                    assert process.pid_names_path(child.pid, str(fixture))
+                    assert child.pid in process.pids_naming_path(str(fixture))
                 finally:
                     child.terminate()
                     child.wait(timeout=5)

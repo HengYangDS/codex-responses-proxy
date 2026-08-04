@@ -94,10 +94,13 @@ class ProxyOwnerBoundaryContracts:
             for node in tree.body
             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
         }
-        assert {"create_server", "main"}.issubset(definitions)
-        assert {"Handler", "sanitize_responses_body", "stream_sanitized_sse"}.isdisjoint(
-            definitions
-        )
+        assert {"create_server", "run"}.issubset(definitions)
+        assert {
+            "Handler",
+            "main",
+            "sanitize_responses_body",
+            "stream_sanitized_sse",
+        }.isdisjoint(definitions)
 
     def test_owner_modules_never_import_the_entrypoint(self) -> None:
         for relative in ("lifecycle/control.py", "service/server.py", "relay/sse.py"):
