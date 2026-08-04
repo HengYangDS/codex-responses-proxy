@@ -6,9 +6,9 @@ summary = "Converge the proxy on one self-contained executable product, semantic
 
 [evidence]
 dated = "evidence/chronicle/terminal-product-closeout-20260802/2026-08-04.md"
-sha256 = "22915f3e988becb2100dfead40517a536dbc395bd8e586bcde4646c6184029a4"
+sha256 = "bfcc036608b915c5ab9eb858f2f7c8be1e0cc9060e2e7a14bd1254a62dfe3597"
 evidence_ids = ["evidence:terminal-product-closeout-20260802"]
-binding = "Exact-head proof at 2e5404e4d782fffca4d85dceb640735c60dcc4ae proves the separated Python matrix, quality, native release verification, and OpenSpec source; candidate landing, accepted closeout, hosted publication, installation, runtime acceptance, and retirement remain explicitly unproved post-archive transitions"
+binding = "Exact-head and accepted-root proofs at b3117bc92f60a0f52077a2068c9aefc47f1f1dc8 prove separated verification, archived source, candidate landing, and accepted closeout; active release-2-0-11 owns chronology finalization while Forge publication, installation, runtime acceptance, original-session continuity, and retirement remain explicitly unproved"
 verifier = "digest_only"
 tests = [
   "uv run --locked --no-sync nox -s quick",
@@ -26,7 +26,7 @@ owner = "codex-responses-proxy"
 scope = "Local source, tests, locked development environment, native macOS release construction, and OpenSpec convergence only; hosted CI, dual-Forge publication, installation, live providers, original-task continuity, PyCharm MCP, and housekeeping remain unproved."
 
 [carriers]
-openspec = "openspec/changes/archive/2026-08-04-verification-surface-separation"
+openspec = "openspec/changes/release-2-0-11"
 fallback = "Revert the terminal reconstruction commit before landing; do not restore retired compatibility paths or mutate Codex state."
 kill_signal = "Any supported provider-portable replay regresses, an ordinary-request concurrency ceiling returns, a personal or local path becomes a product default, either coverage measure is not strictly above 95 percent, or the released executable requires Python or a source checkout."
 supersedes = "The overlapping active OpenSpec tails for Forge UTC oracle, private GitLab asset verification, and three-provider compaction acceptance after their implemented semantics entered canonical specs and this terminal candidate."
