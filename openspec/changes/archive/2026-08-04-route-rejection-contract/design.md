@@ -51,6 +51,17 @@ catalog targets. That leaves two statements of one rule, and the next admitted
 path recreates the contradiction. Removing the duplicate leaves exactly one
 requirement that can be wrong, and it is the one named for the job.
 
+The dedupe is expressed as a requirement split rather than an in-place edit,
+because `openspec archive` refuses a `MODIFIED` block that drops a scenario the
+current requirement carries — a deliberate guard against silent scenario loss,
+and one that a scenario moving between requirements necessarily trips. The
+conflated requirement is therefore removed and its projection half restated
+under `Responses request projection is fail-closed at the HTTP boundary`, a name
+that claims only projection and cannot host routing prose without reading as
+wrong. The old name, `Responses admission is closed at the HTTP boundary`, was
+itself part of the problem: "admission is closed" reads as a claim about which
+paths the boundary admits, which invited the duplicate.
+
 ## Risks / Trade-offs
 
 - A client that pipelines many requests and expects to survive a rejection now

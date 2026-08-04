@@ -149,8 +149,9 @@ without returning request text, credentials, or encrypted payloads.
 
 The listener SHALL expose provider-scoped loopback Responses targets and exact
 read-only model-catalog targets for `dmxapi`, `ucloud`, and `aihubmix`. Each
-namespace SHALL resolve only exact `POST /<provider>/v1/responses` targets with
-an optional query to its release-owned HTTPS upstream mapping, or exact
+namespace SHALL resolve only exact, lexically normalized
+`POST /<provider>/v1/responses` targets with an optional query to its
+release-owned HTTPS upstream mapping, or exact, lexically normalized
 `GET /<provider>/v1/models` targets with an optional query to that same mapping.
 Responses targets SHALL retain their existing compatibility projection, route-local
 admission behavior, queue-timeout retry semantics, and total stream-deadline
@@ -192,6 +193,13 @@ URL or host.
   or the bounded DMX migration route
 - **THEN** the proxy rejects it locally
 - **AND** it performs no remote network request.
+
+#### Scenario: A caller sends an ambiguous route suffix
+
+- **WHEN** the route contains dot segments, encoded path material, duplicate
+  separators, a lookalike suffix, or a method the matched target does not admit
+- **THEN** the proxy rejects it locally
+- **AND** it does not construct or contact an upstream URL.
 
 ### Requirement: Provider-specific recovery is route-scoped
 
@@ -338,25 +346,6 @@ upstream bytes.
 - **WHEN** known projection rules leave any `encrypted_content` key in the
   terminal JSON document
 - **THEN** the proxy fails closed rather than forwarding an unproved carrier.
-
-### Requirement: Responses admission is closed at the HTTP boundary
-
-Every POST Responses request SHALL pass through fail-closed request projection,
-including a zero-length body. Provider-scoped routes SHALL resolve only exact,
-lexically normalized `/v1/responses` targets with an optional query.
-
-#### Scenario: A caller sends an empty Responses request
-
-- **WHEN** a POST Responses request has no body
-- **THEN** the proxy rejects it locally as invalid JSON
-- **AND** no configured provider receives the request.
-
-#### Scenario: A caller sends an ambiguous route suffix
-
-- **WHEN** the route contains dot segments, encoded path material, duplicate
-  separators, a lookalike suffix, or a non-Responses endpoint
-- **THEN** the proxy rejects it locally
-- **AND** it does not construct or contact an upstream URL.
 
 ### Requirement: Provider wire differences are isolated
 
@@ -549,4 +538,38 @@ unchanged, and per-route admission SHALL remain single-flight.
 - **WHEN** the default total upstream stream deadline changes
 - **THEN** the default local queue wait covers the new deadline without a
   separate edit.
+
+### Requirement: A local response that precedes its request body ends the connection
+
+A local response emitted before the request body is consumed SHALL declare the
+connection closed, so the listener never parses an unread body remainder as the
+next request on a persistent connection. The listener SHALL NOT read a request
+body it has already refused, and a response emitted after the body is consumed
+SHALL keep the connection available for reuse.
+
+#### Scenario: A rejected request carries a body on a persistent connection
+
+- **WHEN** a closed-route or unsupported-method request carries a body and the
+  client intends to reuse the connection
+- **THEN** the rejection declares the connection closed
+- **AND** exactly one response is produced, with no second response derived from
+  the unread body.
+
+#### Scenario: An accepted request keeps the connection reusable
+
+- **WHEN** a request whose body the listener consumes is answered locally
+- **THEN** the connection remains available for the client's next request.
+
+### Requirement: Responses request projection is fail-closed at the HTTP boundary
+
+Every POST Responses request SHALL pass through fail-closed request projection,
+including a zero-length body. This requirement SHALL NOT restate which
+provider-scoped paths resolve, which is owned solely by the provider route
+requirement.
+
+#### Scenario: A caller sends an empty Responses request
+
+- **WHEN** a POST Responses request has no body
+- **THEN** the proxy rejects it locally as invalid JSON
+- **AND** no configured provider receives the request.
 
