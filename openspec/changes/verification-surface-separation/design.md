@@ -16,6 +16,9 @@ compatibility invariant.
    used by native black-box assertions.
 4. The release session is the sole `_build_executable` caller and runs both the
    CLI interface tests and real handoff integration tests before packaging.
+5. OpenSpec carriers contain only work completed before archive. Candidate
+   landing and later transitions remain active-claim obligations; they are not
+   unchecked archive tasks and are never marked complete before execution.
 
 ## Risks / Trade-offs
 
@@ -26,6 +29,8 @@ compatibility invariant.
 
 ## Migration Plan
 
-Add structural RED contracts, separate the two executable identities, run
-focused behavior tests, then run quick, quality, Python matrix, release, strict
-OpenSpec, and exact-head ETHOS proof before landing.
+Add structural RED contracts, separate the two executable identities, repair
+the malformed pre-archive task boundary, run focused behavior tests, then run
+quick, quality, Python matrix, release, strict OpenSpec, and exact-head ETHOS
+proof. Archive the completed carrier before candidate landing; keep landing and
+later transitions explicitly unproved in the active claim until executed.

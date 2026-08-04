@@ -8,4 +8,8 @@
 
 - [x] 2.1 Pass focused hook and repository quality tests.
 - [x] 2.2 Pass exact-head proof and strict OpenSpec validation.
-- [ ] 2.3 Land forward-only before retrying unchanged historical tag objects.
+## Post-archive transition boundary
+
+Candidate landing and retrying the unchanged historical tag objects remain
+unproved lifecycle transitions owned by the active terminal closeout claim.
+They are not pre-archive tasks and must not be inferred from this checklist.
