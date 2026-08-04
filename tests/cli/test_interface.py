@@ -126,7 +126,7 @@ class ProductInterfaceContracts:
         assert "Traceback" not in stderr
 
     def test_built_executable_runs_without_python_on_path(self) -> None:
-        executable = os.environ.get("CODEX_RESPONSES_PROXY_EXECUTABLE")
+        executable = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
         if executable is None:
             pytest.skip("native executable supplied by release session")
         with tempfile.TemporaryDirectory() as empty_path:

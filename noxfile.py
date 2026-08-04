@@ -40,8 +40,10 @@ def tests(session: nox.Session) -> None:
     wheel = _build_wheel(session, work)
     _install_wheel(session, wheel)
     _assert_installed_product(session, work)
-    executable = _build_executable(session, work)
-    environment = {**_environment(), "CODEX_RESPONSES_PROXY_EXECUTABLE": str(executable)}
+    environment = {
+        **_environment(),
+        "CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session)),
+    }
     session.run(
         "python",
         "-m",
@@ -50,7 +52,7 @@ def tests(session: nox.Session) -> None:
         *ROOTS,
         env={**environment, "PYTHONPYCACHEPREFIX": str(work / "pycache")},
     )
-    session.run("python", "-m", "pytest", env=environment)
+    session.run("python", "-m", "pytest", "-m", "not native_distribution", env=environment)
 
 
 @nox.session(python="3.12")
@@ -62,8 +64,10 @@ def quality(session: nox.Session) -> None:
     wheel = _build_wheel(session, work)
     _install_wheel(session, wheel)
     _assert_installed_product(session, work)
-    executable = _build_executable(session, work)
-    environment = {**_environment(), "CODEX_RESPONSES_PROXY_EXECUTABLE": str(executable)}
+    environment = {
+        **_environment(),
+        "CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session)),
+    }
     session.run("ruff", "check", "--no-cache", ".", env=environment)
     session.run("ruff", "format", "--no-cache", "--check", ".", env=environment)
     session.run("python", "tools/quality/portability.py", env=environment)
@@ -81,7 +85,15 @@ def quality(session: nox.Session) -> None:
         env=environment,
     )
     session.run("coverage", "erase", env=environment)
-    session.run("coverage", "run", "-m", "pytest", env=environment)
+    session.run(
+        "coverage",
+        "run",
+        "-m",
+        "pytest",
+        "-m",
+        "not native_distribution",
+        env=environment,
+    )
     session.run("coverage", "report", env=environment)
     session.run("python", "tools/quality/branch_coverage.py", env=environment)
 
@@ -106,8 +118,20 @@ def release(session: nox.Session) -> None:
     _install_wheel(session, wheel)
     _assert_installed_product(session, work)
     executable = _build_executable(session, work)
-    environment = {**_environment(), "CODEX_RESPONSES_PROXY_EXECUTABLE": str(executable)}
-    session.run("python", "-m", "pytest", "-q", "tests/cli/test_interface.py", env=environment)
+    environment = {
+        **_environment(),
+        "CODEX_RESPONSES_PROXY_EXECUTABLE": str(executable),
+        "CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE": str(executable),
+    }
+    session.run(
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/cli/test_interface.py",
+        "tests/service/handoff/test_subprocess.py",
+        env=environment,
+    )
     _run_without_python(session, executable, "--help")
     _run_without_python(session, executable, "version")
     _run_without_python(session, executable, "status", "--json", success_codes=(0, 2))
@@ -205,6 +229,16 @@ def _assert_installed_product(session: nox.Session, work: Path) -> None:
     )
     with session.chdir(work):
         session.run("python", "-I", "-c", probe, env=_environment())
+
+
+def _installed_executable(session: nox.Session) -> Path:
+    """Return the console executable installed from this session's built wheel."""
+
+    name = "codex-responses-proxy.exe" if os.name == "nt" else "codex-responses-proxy"
+    executable = Path(session.bin) / name
+    if not executable.is_file():
+        session.error(f"installed console executable was not produced: {executable}")
+    return executable
 
 
 def _build_executable(session: nox.Session, work: Path) -> Path:
