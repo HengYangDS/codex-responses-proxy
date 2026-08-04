@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-05
+goal: Hosted Python matrix and quality jobs reproduce the native executable gate
+  on a minimal Linux image.

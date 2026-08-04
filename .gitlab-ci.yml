@@ -25,7 +25,9 @@ variables:
     GIT_DEPTH: "0"
   before_script:
     - apt-get update -qq
-    - apt-get install -qq -y --no-install-recommends git openssh-client
+    # PyInstaller inspects native objects with objdump on Linux.  Keep that
+    # platform dependency explicit instead of relying on a runner image layer.
+    - apt-get install -qq -y --no-install-recommends binutils git openssh-client
     - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
     - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore uv==0.12.1
   script:
@@ -101,7 +103,7 @@ verify-python-quality:
     GIT_DEPTH: "0"
   before_script:
     - apt-get update -qq
-    - apt-get install -qq -y --no-install-recommends git openssh-client
+    - apt-get install -qq -y --no-install-recommends binutils git openssh-client
     - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
     - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore uv==0.12.1
   script:

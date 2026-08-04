@@ -6,9 +6,9 @@ summary = "Converge the proxy on one self-contained executable product, semantic
 
 [evidence]
 dated = "evidence/chronicle/terminal-product-closeout-20260802/2026-08-04.md"
-sha256 = "60a3ca38c84994120b33a3513d475c712d053ea0127b5d36cff030a0915fb044"
+sha256 = "084bd99a88d73f9638041319424065a7f4e1b5a82c84132715647d4411cd46b4"
 evidence_ids = ["evidence:terminal-product-closeout-20260802"]
-binding = "Current source, contract tests, fingerprint-bound quality, Python 3.12-3.14 matrix, and native release gate prove the local terminal candidate; hosted and runtime states remain explicitly unproved"
+binding = "Current source, contract tests, fingerprint-bound quality, Python 3.12-3.14 matrix, and native release gate prove the prior local terminal candidate; the active Linux CI prerequisite carrier owns the forward repair exposed by hosted pipeline 4489, while hosted success and runtime states remain explicitly unproved"
 verifier = "digest_only"
 tests = [
   "uv run --locked --no-sync nox -s quick",
@@ -26,7 +26,7 @@ owner = "codex-responses-proxy"
 scope = "Local source, tests, locked development environment, native macOS release construction, and OpenSpec convergence only; hosted CI, dual-Forge publication, installation, live providers, original-task continuity, PyCharm MCP, and housekeeping remain unproved."
 
 [carriers]
-openspec = "openspec/changes/archive/2026-08-04-terminal-product-closeout"
+openspec = "openspec/changes/linux-native-ci-prerequisites"
 fallback = "Revert the terminal reconstruction commit before landing; do not restore retired compatibility paths or mutate Codex state."
 kill_signal = "Any supported provider-portable replay regresses, an ordinary-request concurrency ceiling returns, a personal or local path becomes a product default, either coverage measure is not strictly above 95 percent, or the released executable requires Python or a source checkout."
 supersedes = "The overlapping active OpenSpec tails for Forge UTC oracle, private GitLab asset verification, and three-provider compaction acceptance after their implemented semantics entered canonical specs and this terminal candidate."
