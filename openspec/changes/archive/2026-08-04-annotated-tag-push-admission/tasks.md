@@ -7,5 +7,5 @@
 ## 2. Verify and deliver
 
 - [x] 2.1 Pass focused hook and repository quality tests.
-- [ ] 2.2 Pass exact-head proof and strict OpenSpec validation.
+- [x] 2.2 Pass exact-head proof and strict OpenSpec validation.
 - [ ] 2.3 Land forward-only before retrying unchanged historical tag objects.
