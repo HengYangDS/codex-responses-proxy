@@ -8,23 +8,27 @@ AIHubMix routes without changing the conversation record itself.
 ## Requirements
 ### Requirement: Every Responses request is projected to a provider-portable form
 
-Before upstream I/O, the proxy SHALL remove provider-bound continuation state,
-stored-item references, replayed reasoning items, reasoning ciphertext, and
-encrypted agent or tool-output content from each Responses request. The
-projection SHALL also remove the request for `reasoning.encrypted_content` and
-SHALL set `store=false` while leaving every other provider-neutral generation
-setting unchanged. Every bounded recovery request SHALL preserve `store=false`.
+Before upstream I/O, the proxy SHALL derive portability only from the current
+request and the proved protocol grammar. It SHALL remove provider-bound
+continuation state, stored-item references, replayed reasoning items, reasoning
+ciphertext, encrypted agent or tool-output content, and the request for
+`reasoning.encrypted_content`. It SHALL set `store=false` while leaving every
+other provider-neutral generation setting unchanged. Canonical dialogue,
+complete tool relationships, payload-free compaction controls, and supported
+non-text agent content SHALL remain representable. Every bounded recovery
+request SHALL preserve the same projection. No client configuration or
+conversation store may be consulted or changed.
 
 #### Scenario: A stored conversation changes provider
 
 - **WHEN** a request contains `previous_response_id`, `conversation`,
-  `prompt_cache_key`, provider-issued item identifiers, reasoning items, or
-  encrypted replay blocks from an earlier provider
+  `prompt_cache_key`, an `rs_*` item, encrypted output, or another
+  provider-owned continuation structure
 - **THEN** none of that provider-bound state is sent to the selected upstream
-- **AND** the current request is carried by the remaining portable dialogue and
-  tool history.
-- **AND** the upstream receives `store=false` and no provider-issued response,
-  conversation, or item identity.
+- **AND** the upstream receives `store=false` with the remaining portable
+  dialogue, complete tool history, and supported controls
+- **AND** no AIGW setting, JSONL, SQLite, history item, or model metadata is
+  read or modified.
 
 #### Scenario: A new request has no replay state
 
@@ -36,8 +40,8 @@ setting unchanged. Every bounded recovery request SHALL preserve `store=false`.
 
 #### Scenario: Codex requests remote compaction
 
-- **WHEN** Codex 0.146 or later appends the payload-free
-  `{"type":"compaction_trigger"}` request control to portable dialogue
+- **WHEN** Codex appends the payload-free `{"type":"compaction_trigger"}`
+  request control to portable dialogue
 - **THEN** the projection preserves that exact control item for the upstream
   Responses compaction request
 - **AND** any additional field on that control is rejected locally as an
@@ -357,16 +361,29 @@ lexically normalized `/v1/responses` targets with an optional query.
 
 ### Requirement: Provider wire differences are isolated
 
-The provider manifest MAY select one optional narrow wire-policy module. Core
+The provider manifest MAY select one optional pure wire-policy module. Core
 transport SHALL depend only on that policy contract and SHALL NOT branch on a
-provider name. A provider with no wire difference SHALL require only a manifest
-entry.
+provider name. A provider with no wire difference SHALL require only one
+secret-free manifest entry. A policy MUST NOT perform HTTP dispatch, retries,
+credential access, host discovery, filesystem access, runtime mutation,
+lifecycle operations, or client configuration.
 
 #### Scenario: A new ordinary provider is added
 
-- **WHEN** its Responses wire behavior matches the provider-neutral core
+- **WHEN** a synthetic provider's Responses wire behavior matches the
+  provider-neutral core
 - **THEN** setup requires only its declarative manifest record
-- **AND** no transport, replay, or registry provider-name branch is added.
+- **AND** no listener, relay, lifecycle, CLI, release, service, consumer,
+  replay, or registry provider-name branch is added.
+
+#### Scenario: A provider has a proved special wire contract
+
+- **WHEN** executable fixtures prove a distinct request, response, or error
+  contract
+- **THEN** one manifest-selected policy implements only that transformation or
+  classification
+- **AND** every higher layer continues to depend on the policy contract rather
+  than provider identity.
 
 ### Requirement: Recovery classifiers use structured provider errors
 
