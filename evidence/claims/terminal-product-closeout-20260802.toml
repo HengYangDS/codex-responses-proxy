@@ -6,7 +6,7 @@ summary = "Converge the proxy on one self-contained executable product, semantic
 
 [evidence]
 dated = "evidence/chronicle/terminal-product-closeout-20260802/2026-08-04.md"
-sha256 = "6473b72130ac312730a01934ccfab18968426e20b2a8baa2b4d28c5bb7c11be8"
+sha256 = "a45fde4934f3f111c2d85f735a313ec57aff2c4e31a4e2f7e1fc815db91640bb"
 evidence_ids = ["evidence:terminal-product-closeout-20260802"]
 binding = "Exact-head source, contract tests, fingerprint-bound quality, Python 3.12-3.14 matrix, native release gate, and strict OpenSpec validation prove the Linux CI prerequisite candidate at 63686e0361fedad722bb594a26dfed76318e0097; hosted success and runtime states remain explicitly unproved"
 verifier = "digest_only"
@@ -26,7 +26,7 @@ owner = "codex-responses-proxy"
 scope = "Local source, tests, locked development environment, native macOS release construction, and OpenSpec convergence only; hosted CI, dual-Forge publication, installation, live providers, original-task continuity, PyCharm MCP, and housekeeping remain unproved."
 
 [carriers]
-openspec = "openspec/changes/linux-native-ci-prerequisites"
+openspec = "openspec/changes/archive/2026-08-05-linux-native-ci-prerequisites"
 fallback = "Revert the terminal reconstruction commit before landing; do not restore retired compatibility paths or mutate Codex state."
 kill_signal = "Any supported provider-portable replay regresses, an ordinary-request concurrency ceiling returns, a personal or local path becomes a product default, either coverage measure is not strictly above 95 percent, or the released executable requires Python or a source checkout."
 supersedes = "The overlapping active OpenSpec tails for Forge UTC oracle, private GitLab asset verification, and three-provider compaction acceptance after their implemented semantics entered canonical specs and this terminal candidate."
