@@ -6,7 +6,7 @@ summary = "Converge the proxy on one self-contained executable product, semantic
 
 [evidence]
 dated = "evidence/chronicle/terminal-product-closeout-20260802/2026-08-04.md"
-sha256 = "a45fde4934f3f111c2d85f735a313ec57aff2c4e31a4e2f7e1fc815db91640bb"
+sha256 = "064643fad34f72ff2e9b093dcf34477befbe73aec6bf7a1f2caf3198528e78dc"
 evidence_ids = ["evidence:terminal-product-closeout-20260802"]
 binding = "Exact-head source, contract tests, fingerprint-bound quality, Python 3.12-3.14 matrix, native release gate, and strict OpenSpec validation prove the Linux CI prerequisite candidate at 63686e0361fedad722bb594a26dfed76318e0097; hosted success and runtime states remain explicitly unproved"
 verifier = "digest_only"

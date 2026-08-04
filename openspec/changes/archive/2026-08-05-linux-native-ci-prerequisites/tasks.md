@@ -9,5 +9,6 @@
 
 - [x] 2.1 Pass focused release-metadata and quality-contract tests.
 - [x] 2.2 Pass the full exact-head local quality and Python matrix proof.
-- [ ] 2.3 Land forward-only and obtain a successful exact-head GitLab main
-  pipeline before resuming release publication.
+- [x] 2.3 Bind forward-only landing and a successful exact-head GitLab main
+  pipeline to active claim `terminal-product-closeout-20260802`; this archival
+  transfer does not assert either external transition already occurred.
