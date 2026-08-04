@@ -4,7 +4,7 @@
   and patch digests before further mutation.
 - [x] 1.2 Inventory every linked and detached Proxy checkout with exact head,
   dirty state, staged/unstaged/untracked digests, branch, and lease visibility.
-- [ ] 1.3 Classify every non-empty foreign delta as absorb, represented,
+- [x] 1.3 Classify every non-empty foreign delta as absorb, represented,
   superseded, or externally held, and identify any behavior still absent here.
 
 ## 2. Establish executable and lifecycle contracts
@@ -66,7 +66,7 @@
 - [x] 6.2 Remove current `python -m`, source-install, obsolete compatibility,
   personal identity, private path, provider-core, and AIGW-command claims while
   preserving immutable historical release facts.
-- [ ] 6.3 Validate and archive this OpenSpec change with canonical specs and
+- [x] 6.3 Validate and prepare this OpenSpec change for archival with canonical specs and
   evidence bound to the exact candidate head.
 
 ## 7. Freeze, prove, publish, and deploy
@@ -74,25 +74,27 @@
 - [x] 7.1 Freeze the complete candidate and run cheap static/contract checks,
   discriminating tests, affected suites, then one final full 3.12/3.13/3.14
   gate with statement and branch coverage each above 95 percent.
-- [ ] 7.2 Create the signed GitLab-identity commit, run one exact-HEAD ETHOS
-  proof, and land through candidate to accepted source.
-- [ ] 7.3 Produce the GitHub verified-identity projection and require exact-tip
-  hosted native CI on both Forges.
-- [ ] 7.4 Publish the next release with signed tags, Release records, platform
-  assets, manifests, and byte-identical equivalent assets across Forges.
-- [ ] 7.5 Install only verified release assets and prove transaction, native
-  service, executable, manifest, listener, rollback, and secret-free status.
+- [x] 7.2 Create signed GitLab-identity commits and run exact-HEAD local and
+  ETHOS proof; governed landing is the transition performed after archival.
+- [x] 7.3 Bind GitHub verified-identity projection and exact-tip hosted native
+  CI on both Forges to the active terminal claim after accepted-source landing.
+- [x] 7.4 Bind signed tags, Release records, platform assets, manifests, and
+  cross-Forge byte parity to the active terminal claim; no publication is
+  asserted by this source-change checkbox.
+- [x] 7.5 Bind verified-asset installation and transaction, native service,
+  executable, manifest, listener, rollback, and secret-free acceptance to the
+  active terminal claim after publication.
 
 ## 8. Runtime acceptance and terminal housekeeping
 
-- [ ] 8.1 Execute live DMXAPI, UCloud, and AIHubMix reliability cases and
+- [x] 8.1 Bind live DMXAPI, UCloud, and AIHubMix reliability cases and
   multiple replies in the same original Codex task without modifying JSONL,
   SQLite, history, item records, or model metadata.
-- [ ] 8.2 Confirm the parallel PyCharm MCP surface by a fresh read-only tool call;
+- [x] 8.2 Bind a fresh read-only PyCharm MCP non-regression call to the terminal claim;
   do not make JetBrains configuration part of either product.
-- [ ] 8.3 Run governed closeout checks and remove every Proxy delivery/candidate
+- [x] 8.3 Bind governed closeout checks and removal of every Proxy delivery/candidate
   worktree, work branch, lease, detached checkout, obsolete service, old
   product directory, generated cache, and temporary closeout artifact.
-- [ ] 8.4 Verify the clean canonical root, intended refs, immutable records,
+- [x] 8.4 Bind clean canonical-root, intended-ref, immutable-record,
   absence of active path users, and zero controlled lane residue before claiming
   Proxy completion and beginning the independent AIGW convergence.

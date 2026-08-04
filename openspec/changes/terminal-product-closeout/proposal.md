@@ -73,3 +73,13 @@ release assets, documentation, and repository-family closeout. AIGW remains an
 independent client configuration control plane; JetBrains products, PyCharm
 MCP, Codex history, Workstation Control Plane, and ETHOS remain outside the
 installed proxy and are only external composition or acceptance surfaces.
+
+## Lifecycle Boundary
+
+This change closes the repository-source mutation and becomes archival before
+governed landing. Hosted CI, identity projection, dual-Forge publication,
+installed-runtime acceptance, live-provider checks, original-task continuity,
+PyCharm MCP non-regression, and repository-family retirement remain mandatory
+downstream obligations of claim `terminal-product-closeout-20260802`. Checked
+task transfer statements bind those obligations to that claim; they do not
+assert that the external states already exist.
