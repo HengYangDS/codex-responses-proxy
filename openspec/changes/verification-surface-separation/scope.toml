@@ -1,0 +1,13 @@
+schema_version = 1
+paths = [
+  "evidence/claims/terminal-product-closeout-20260802.toml",
+  "evidence/chronicle/terminal-product-closeout-20260802/**",
+  "noxfile.py",
+  "openspec/changes/verification-surface-separation/**",
+  "openspec/specs/product-interface/spec.md",
+  "pyproject.toml",
+  "tests/cli/test_interface.py",
+  "tests/lifecycle/supervision/test_process.py",
+  "tests/quality/test_contract.py",
+  "tests/service/handoff/test_subprocess.py",
+]

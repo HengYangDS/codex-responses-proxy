@@ -57,6 +57,7 @@ select = ["E4", "E7", "E9", "F"]
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib", "--strict-config", "--strict-markers"]
 filterwarnings = ["error"]
+markers = ["native_distribution: requires the self-contained released executable"]
 testpaths = ["tests"]
 python_classes = ["Test*", "*Tests", "*Contracts"]
 

@@ -6,7 +6,7 @@ summary = "Converge the proxy on one self-contained executable product, semantic
 
 [evidence]
 dated = "evidence/chronicle/terminal-product-closeout-20260802/2026-08-04.md"
-sha256 = "1109cc36f9f9b6dd3d0998b8991a471c5a795b611e826c3787848e10ae6fbc07"
+sha256 = "a3e76ad87cf3cb2090a960678531917552cdb2398712566eeb5494dc6811528a"
 evidence_ids = ["evidence:terminal-product-closeout-20260802"]
 binding = "Exact-head proof at fdb97868921d40944ca40423dc63422a43d5277c proves the annotated-tag admission source, strict OpenSpec validation, Python 3.12-3.14 matrix, and quality gate; landing, hosted publication, installation, and runtime states remain explicitly unproved"
 verifier = "digest_only"
@@ -26,7 +26,7 @@ owner = "codex-responses-proxy"
 scope = "Local source, tests, locked development environment, native macOS release construction, and OpenSpec convergence only; hosted CI, dual-Forge publication, installation, live providers, original-task continuity, PyCharm MCP, and housekeeping remain unproved."
 
 [carriers]
-openspec = "openspec/changes/archive/2026-08-04-annotated-tag-push-admission"
+openspec = "openspec/changes/verification-surface-separation"
 fallback = "Revert the terminal reconstruction commit before landing; do not restore retired compatibility paths or mutate Codex state."
 kill_signal = "Any supported provider-portable replay regresses, an ordinary-request concurrency ceiling returns, a personal or local path becomes a product default, either coverage measure is not strictly above 95 percent, or the released executable requires Python or a source checkout."
 supersedes = "The overlapping active OpenSpec tails for Forge UTC oracle, private GitLab asset verification, and three-provider compaction acceptance after their implemented semantics entered canonical specs and this terminal candidate."
