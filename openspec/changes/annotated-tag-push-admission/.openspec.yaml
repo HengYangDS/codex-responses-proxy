@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-04
+goal: Make signed annotated tag publication compatible with proof-bound
+  protected pushes without bypassing hooks.

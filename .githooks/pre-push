@@ -9,7 +9,33 @@ zero=0000000000000000000000000000000000000000
 while read -r _local_ref local_head remote_ref remote_head; do
   [ -n "$remote_ref" ] || continue
   [ "$local_head" != "$zero" ] || continue
-  if ! report=$(ethos hook pre-push "$remote_ref" "$local_head" \
+
+  admission_head=$local_head
+  case "$remote_ref" in
+    refs/tags/*)
+      object_type=$(git cat-file -t "$local_head" 2>/dev/null) || {
+        printf 'cannot inspect pushed tag object: %s\n' "$remote_ref" >&2
+        exit 1
+      }
+      [ "$object_type" = tag ] || {
+        printf 'protected tag publication requires an annotated tag: %s\n' "$remote_ref" >&2
+        exit 1
+      }
+      tagged_type=$(git cat-file tag "$local_head" | sed -n '2s/^type //p')
+      [ "$tagged_type" = commit ] || {
+        printf 'annotated tag must directly name a commit: %s\n' "$remote_ref" >&2
+        exit 1
+      }
+      tagged_commit=$(git rev-parse --verify "$local_head^{commit}")
+      admission_head=$(git rev-parse --verify HEAD^{commit})
+      git merge-base --is-ancestor "$tagged_commit" "$admission_head" || {
+        printf 'tagged commit is outside the current accepted history: %s\n' "$remote_ref" >&2
+        exit 1
+      }
+      ;;
+  esac
+
+  if ! report=$(ethos hook pre-push "$remote_ref" "$admission_head" \
     --remote-head "$remote_head" --remote "$remote" --root "$root" --json); then
     printf '%s\n' "$report" >&2
     exit 1
