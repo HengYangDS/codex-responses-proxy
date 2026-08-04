@@ -39,18 +39,47 @@ commit is, and is never retired, committed into, or removed by anyone but its
 owner. Working-tree state, not branch position, decides this: a lane can sit on
 an already-merged commit and still hold substantial in-flight work.
 
-Recorded retirement, 2026-08-04. Five lanes were retired after their findings
-were located in the 2.x product: `work/20260731-empty-tool-output-replay` and
-`work/transaction-semantic-split` each held a complete but never-committed
-change on the pre-reconstruction line, preserved as commits `86a4a08` and
-`bad87ed` before removal; `work/function-eloc-ratchet` is carried by
-`pyproject.toml` `function-max-eloc` enforced as mandatory in
-`tools/quality/repository.py`; `work/20260731-provider-portable-runtime-acceptance`
-covered v1.0.44 and v1.0.45, versions the 2.x line does not contain;
-`work/20260803-provider-concurrency-portability` sat exactly on `main`'s tip
-with nothing unique. `work/20260803-terminal-product-reconstruction` was not
-retired: it holds an uncommitted `src/` layout migration across 256 files and
-was written to minutes before the sweep.
+Branches outlive their worktrees under an explicit namespace. `work/*` is a live
+lane; `archive/1.x/*` and `archive/2.x/*` are retired records kept only for
+recovery. A retired lane is renamed rather than deleted, unless its tip is
+already held by another ref and it carries no unique commit.
+
+Work that lives in a temporary directory and is reachable from no ref is one
+directory sweep away from destruction. It is recovered onto a branch when found,
+using a snapshot primitive that does not disturb the worktree or the shared
+stash stack.
+
+Recorded retirement, 2026-08-04. Four lanes sit on the disjoint 1.x root
+`fc8d76c5`, which the 2.x root `941e930d` can never merge, so each was verified
+by naming its carrier and then renamed under `archive/1.x/`:
+`empty-tool-output-replay` (`86a4a08`) is carried by
+`codex_responses_proxy/replay/request.py` and
+`tests/providers/test_portable_requests.py`; `transaction-semantic-split`
+(`bad87ed`) by `codex_responses_proxy/listener/handoff/transaction.py` and
+`codex_responses_proxy/payload/transaction.py`; `function-eloc-ratchet`
+(`7e85adf`) by `pyproject.toml` `function-max-eloc` enforced in
+`tools/quality/repository.py`; `provider-portable-runtime-acceptance` (`f01a50d`)
+covered v1.0.44 and v1.0.45, whose headings the 2.x chronology retains without
+the code line. The first two had held complete but never-committed changes and
+were committed before their worktrees were removed.
+
+`work/20260803-provider-concurrency-portability` was deleted rather than
+archived: its tip `74ca0eb` is simultaneously `main`, `v2.0.7`, and both GitLab
+remote heads, and it carried no unique commit.
+
+An orphaned evaluation worktree under `/private/tmp` held HEAD `b8c318b`
+reachable from no branch and no tag, with 179 files of unrecorded work above it.
+Its three commits proved tree-identical to `6cc5457`, `e7c4794`, and `584e1a8`,
+so only the working state was at risk. It is preserved as `94a9496` on
+`archive/2.x/terminal-product-restructure` and absorbed nowhere: its module
+renames duplicate an active lane, its `.githooks/` contradicts the
+`core.hooksPath=/dev/null` this product sets in
+`codex_responses_proxy/release/admission.py`, and its four OpenSpec changes are
+all incomplete, `terminal-product-closeout` most of all at 30 open tasks
+against 2 done.
+
+`work/20260803-terminal-product-reconstruction` was not retired: it holds an
+uncommitted `src/` layout migration and belongs to its owner.
 
 ## Release identity
 
