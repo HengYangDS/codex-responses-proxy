@@ -28,6 +28,13 @@ shared headings even when a historical tag exists only on the other Forge.
   install-time value, so exporting
   `CODEX_RESPONSES_PROXY_RESPONSES_QUEUE_TIMEOUT` in a shell never reaches a
   supervised listener; re-rendering the unit is the supported path.
+- Derive the default local queue wait from the total upstream stream deadline
+  instead of restating an unrelated shorter constant. A request queued behind a
+  route-slot holder is no longer denied while that holder is still inside its
+  own deadline, which a census of the live logs measured as the cause of a
+  10.2 percent denial rate: the median denied request needed only 24 seconds
+  more than the old wait allowed. The operator override and its validated
+  bounds are unchanged, and per-route admission stays single-flight.
 - Add the closed, read-only `GET /<provider>/v1/models` compatibility route
   for DMXAPI, UCloud/Azure, and AIHubMix. Catalog requests retain client
   authentication and relay their selected upstream response exactly once,

@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from codex_responses_proxy.runtime import admission, telemetry
+from codex_responses_proxy.runtime import config as runtime_config
 
 
 class _Semaphore:
@@ -37,6 +38,12 @@ class AdmissionTests(unittest.TestCase):
 
     def test_default_responses_concurrency_is_conservative(self) -> None:
         self.assertEqual(admission.RESPONSES_MAX_CONCURRENCY, 8)
+
+    def test_default_queue_wait_is_not_shorter_than_one_upstream_deadline(self) -> None:
+        self.assertGreaterEqual(
+            runtime_config.DEFAULT_RESPONSES_QUEUE_TIMEOUT,
+            runtime_config.DEFAULT_UPSTREAM_TIMEOUT,
+        )
 
     def test_admission_is_bounded_and_fail_closed_during_drain_races(self) -> None:
         self.assertEqual(admission.admit_response("ucloud", timeout=0), ("acquired", 1))

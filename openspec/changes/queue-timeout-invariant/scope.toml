@@ -1,0 +1,13 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "README.md",
+  "codex_responses_proxy/runtime/config.py",
+  "evidence/claims/queue-timeout-invariant-20260804.toml",
+  "evidence/claims/route-slot-lease-20260804.toml",
+  "evidence/chronicle/queue-timeout-invariant-20260804/**",
+  "evidence/chronicle/route-slot-lease-20260804/**",
+  "openspec/changes/queue-timeout-invariant/**",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/runtime/test_admission.py",
+]
