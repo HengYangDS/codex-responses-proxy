@@ -17,17 +17,6 @@ _IGNORED_PREFIXES = (
     "evidence/",
     "openspec/changes/archive/",
 )
-# Explicit bounded fixture carriers; the scanner itself and all production tests
-# remain in scope. This list may contain only data-heavy integration fixtures.
-_FIXTURE_FILES = frozenset(
-    {
-        "tests/deployment/fixtures.py",
-        "tests/runtime/handoff/test_runtime.py",
-        "tests/supervision/test_process.py",
-        "tests/supervision/test_services.py",
-        "tests/governance/test_portability.py",
-    }
-)
 _IGNORED_FILES = frozenset({"CHANGELOG.md", "LICENSE"})
 _IGNORED_NAMES = frozenset()
 _RULES = (
@@ -69,7 +58,6 @@ def _in_scope(relative: str) -> bool:
     path = PurePosixPath(relative)
     return (
         relative not in _IGNORED_FILES
-        and relative not in _FIXTURE_FILES
         and path.name not in _IGNORED_NAMES
         and not relative.startswith(_IGNORED_PREFIXES)
         and path.suffix.lower() in _SCOPED_SUFFIXES

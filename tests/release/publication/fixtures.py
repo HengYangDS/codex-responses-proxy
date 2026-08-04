@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
-from typing import TypedDict
-from unittest import mock
+from typing import Any, TypedDict
 
-from codex_responses_proxy.release.publication import verification as publication
+from tools.release.publication import verification as publication
 
 
 class VerifyArguments(TypedDict):
@@ -45,8 +43,16 @@ def forge_evidence(*, items: list[dict[str, object]] | None = None) -> dict[str,
         "commit_oid": "b" * 40,
         "tree_oid": "c" * 40,
         "assets": {
-            "codex-responses-proxy-1.2.3.tar.gz": "1" * 64,
-            "SHA256SUMS": "2" * 64,
+            **{
+                f"codex-responses-proxy-1.2.3-{platform}.tar.gz": "1" * 64
+                for platform in ("linux-x86_64", "macos-arm64", "windows-x86_64")
+            },
+            **{
+                f"codex-responses-proxy-{platform}.manifest.json": "2" * 64
+                for platform in ("linux-x86_64", "macos-arm64", "windows-x86_64")
+            },
+            "SHA256SUMS": "3" * 64,
+            "SHA256SUMS.sig": "4" * 64,
         },
     }
     if items is not None:
@@ -60,7 +66,7 @@ def forge_evidence(*, items: list[dict[str, object]] | None = None) -> dict[str,
     }
 
 
-def verified_evidence(evidence: Mapping[str, Any]) -> Mapping[str, Any]:
+def verified_evidence(evidence: Mapping[str, Any], *, mocker) -> Mapping[str, Any]:
     """Run ``publication.verify`` with offline Forge adapters."""
 
     forges = evidence["forges"]
@@ -77,34 +83,32 @@ def verified_evidence(evidence: Mapping[str, Any]) -> Mapping[str, Any]:
         assert isinstance(forge, Mapping)
         return forge
 
-    with (
-        mock.patch.object(publication.git, "collect", side_effect=collect_git),
-        mock.patch.object(publication.gitlab, "collect", side_effect=collect_hosted),
-        mock.patch.object(publication.github, "collect", side_effect=collect_hosted),
-        mock.patch.object(
-            publication.evaluator,
-            "evaluate",
-            side_effect=lambda tag, gitlab, github, policy: {
-                "verified": True,
-                "tree_equal": True,
-                "assets_equal": True,
-                "forges": {"gitlab": gitlab, "github": github},
-            },
-        ),
-        mock.patch.object(
-            publication,
-            "load_policy",
-            return_value={"gitlab_jobs": ("required",), "github_jobs": ("required",)},
-        ),
-    ):
-        return publication.verify(
-            tag=str(evidence["tag"]),
-            gitlab_remote="gitlab-remote",
-            gitlab_api_base="https://gitlab.example/api/v4",
-            gitlab_repo="gitlab/repository",
-            github_remote="github-remote",
-            github_repo="github/repository",
-            gitlab_anchor=Path("gitlab-anchor"),
-            github_anchor=Path("github-anchor"),
-            policy_path=Path("publication-policy.toml"),
-        )
+    mocker.patch.object(publication.git, "collect", side_effect=collect_git)
+    mocker.patch.object(publication.gitlab, "collect", side_effect=collect_hosted)
+    mocker.patch.object(publication.github, "collect", side_effect=collect_hosted)
+    mocker.patch.object(
+        publication.evaluator,
+        "evaluate",
+        side_effect=lambda tag, gitlab, github, policy: {
+            "verified": True,
+            "tree_equal": True,
+            "assets_equal": True,
+            "forges": {"gitlab": gitlab, "github": github},
+        },
+    )
+    mocker.patch.object(
+        publication,
+        "load_policy",
+        return_value={"gitlab_jobs": ("required",), "github_jobs": ("required",)},
+    )
+    return publication.verify(
+        tag=str(evidence["tag"]),
+        gitlab_remote="gitlab-remote",
+        gitlab_api_base="https://gitlab.example/api/v4",
+        gitlab_repo="gitlab/repository",
+        github_remote="github-remote",
+        github_repo="github/repository",
+        gitlab_anchor=Path("gitlab-anchor"),
+        github_anchor=Path("github-anchor"),
+        policy_path=Path("publication-policy.toml"),
+    )

@@ -7,6 +7,20 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+### Changed
+
+- Remove proxy-owned ordinary-request concurrency ceilings, provider-route queues,
+  and route serialization. Codex owns per-session fan-out and each provider owns
+  its actual quota; the proxy retains only lifecycle drain accounting and
+  provider-scoped cooldown after an observed HTTP 429.
+- Reconstruct the installed product as one native `codex-responses-proxy` command
+  under a standard `src/` package, with semantic `cli`, `lifecycle`, `protocol`,
+  `providers`, `relay`, and `service` owners. Repository-only release and Forge
+  tooling is no longer shipped as product runtime.
+- Retain exact read-only provider model-catalog routes and close connections for
+  local rejections emitted before a request body is consumed.
+
+
 ## [2.0.10] - 2026-08-04
 
 ### Changed

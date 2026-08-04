@@ -1,0 +1,10 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/private-gitlab-release-asset-verification/**",
+  "openspec/changes/archive/*-private-gitlab-release-asset-verification/**",
+  "openspec/specs/ci-diagnostics/**",
+  "tools/release/publication/gitlab.py",
+  "tests/release/publication/test_forges.py",
+]

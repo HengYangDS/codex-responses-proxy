@@ -1,33 +1,45 @@
-#!/usr/bin/env python3
 """Offline provider API projection tests for publication proof adapters."""
 
 from __future__ import annotations
 
-import sys
-import unittest
 from pathlib import Path
 from typing import cast
-from unittest import mock
+
+from tools.release import product_assets as release_assets
+from tools.release.publication import github, gitlab
+import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from codex_responses_proxy.release.publication import github
-from codex_responses_proxy.release.publication import gitlab
-from codex_responses_proxy.release import assets as release_assets
 
 
 def _release_assets() -> dict[str, bytes]:
-    archive_name = "codex-responses-proxy-1.2.3.tar.gz"
-    archive = b"archive"
-    return {
-        archive_name: archive,
-        release_assets.CHECKSUM_NAME: release_assets.checksums({archive_name: archive}),
+    version = "1.2.3"
+    platform_assets: dict[str, bytes] = {}
+    for platform in release_assets.RELEASE_PLATFORMS:
+        executable = (
+            "codex-responses-proxy.exe"
+            if platform.startswith("windows-")
+            else "codex-responses-proxy"
+        )
+        files = {executable: release_assets.ArchiveFile(f"native-{platform}".encode(), mode=0o755)}
+        archive_name = release_assets.archive_name(version, platform)
+        archive = release_assets.archive_bytes(files, version, platform)
+        platform_assets[archive_name] = archive
+        platform_assets[release_assets.manifest_name(platform)] = release_assets.asset_manifest(
+            version=version,
+            platform=platform,
+            archive_name=archive_name,
+            archive=archive,
+            files=files,
+        )
+    unsigned = {
+        **platform_assets,
+        release_assets.CHECKSUM_NAME: release_assets.checksums(platform_assets),
     }
+    return {**unsigned, release_assets.SIGNATURE_NAME: b"fixture-signature\n"}
 
 
-class ForgeAdapterContracts(unittest.TestCase):
+class ForgeAdapterContracts:
     """Normalize only exact hosted CI and release identities."""
 
     @staticmethod
@@ -163,10 +175,10 @@ class ForgeAdapterContracts(unittest.TestCase):
         result = self._normalize_github(commit, (runs, jobs, release, assets))
         ci = cast(dict[str, object], result["ci"])
         release_result = cast(dict[str, object], result["release"])
-        self.assertEqual(ci["status"], "success")
-        self.assertEqual(release_result["commit_oid"], commit)
+        assert ci["status"] == "success"
+        assert release_result["commit_oid"] == commit
         runs[0]["head_sha"] = "b" * 40
-        with self.assertRaises(github.GitHubProofError):
+        with pytest.raises(github.GitHubProofError):
             self._normalize_github(commit, (runs, jobs, release, assets))
 
     def test_gitlab_requires_exact_tag_pipeline_jobs_and_release(self) -> None:
@@ -174,9 +186,9 @@ class ForgeAdapterContracts(unittest.TestCase):
         pipeline, jobs, release, assets = self._gitlab_fixture(commit)
         result = self._normalize_gitlab(commit, (pipeline, jobs, release, assets))
         ci = cast(dict[str, object], result["ci"])
-        self.assertEqual(ci["status"], "success")
+        assert ci["status"] == "success"
         jobs[-1]["allow_failure"] = True
-        with self.assertRaises(gitlab.GitLabProofError):
+        with pytest.raises(gitlab.GitLabProofError):
             self._normalize_gitlab(commit, (pipeline, jobs, release, assets))
 
     def test_required_job_duplicates_fail_closed(self) -> None:
@@ -184,15 +196,15 @@ class ForgeAdapterContracts(unittest.TestCase):
         runs, github_jobs, github_release, github_assets = self._github_fixture(commit)
         duplicated = github.DEFAULT_REQUIRED_JOBS[0]
         github_jobs[1].append({"name": duplicated, "status": "completed", "conclusion": "success"})
-        with self.assertRaises(github.GitHubProofError):
+        with pytest.raises(github.GitHubProofError):
             self._normalize_github(commit, (runs, github_jobs, github_release, github_assets))
 
         pipeline, jobs, release, gitlab_assets = self._gitlab_fixture(commit)
         jobs.append(self._gitlab_job(gitlab.DEFAULT_REQUIRED_JOBS[0], commit))
-        with self.assertRaises(gitlab.GitLabProofError):
+        with pytest.raises(gitlab.GitLabProofError):
             self._normalize_gitlab(commit, (pipeline, jobs, release, gitlab_assets))
 
-    def test_github_collection_binds_api_tag_object_to_fetched_identity(self) -> None:
+    def test_github_collection_binds_api_tag_object_to_fetched_identity(self, *, mocker) -> None:
         commit = "a" * 40
         tag_object = "b" * 40
         runs, _, _, asset_bytes = self._github_fixture(commit)
@@ -228,34 +240,30 @@ class ForgeAdapterContracts(unittest.TestCase):
                 ],
             },
         ]
-        with (
-            mock.patch.object(github.hosted, "executable", return_value="gh"),
-            mock.patch.object(github, "_api", side_effect=responses[:2]),
-            mock.patch.object(
-                github,
-                "_api_pages",
-                side_effect=[
-                    [{"workflow_runs": [runs[0]]}],
-                    [{"workflow_runs": [runs[1]]}],
-                    [{"jobs": responses[3]["jobs"]}],
-                    [{"jobs": responses[4]["jobs"]}],
-                    [[responses[5]]],
-                ],
-            ),
-            mock.patch.object(github.hosted, "api_bytes", side_effect=list(asset_bytes.values())),
-        ):
-            github.collect(
-                repository="owner/repo",
-                tag="v1.2.3",
-                tag_object_oid=tag_object,
-                commit_oid=commit,
-            )
+        mocker.patch.object(github.hosted, "executable", return_value="gh")
+        mocker.patch.object(github, "_api", side_effect=responses[:2])
+        mocker.patch.object(
+            github,
+            "_api_pages",
+            side_effect=[
+                [{"workflow_runs": [runs[0]]}],
+                [{"workflow_runs": [runs[1]]}],
+                [{"jobs": responses[3]["jobs"]}],
+                [{"jobs": responses[4]["jobs"]}],
+                [[responses[5]]],
+            ],
+        )
+        mocker.patch.object(github.hosted, "api_bytes", side_effect=list(asset_bytes.values()))
+        github.collect(
+            repository="owner/repo",
+            tag="v1.2.3",
+            tag_object_oid=tag_object,
+            commit_oid=commit,
+        )
         responses[0] = {"object": {"type": "tag", "sha": "c" * 40}}
-        with (
-            mock.patch.object(github.hosted, "executable", return_value="gh"),
-            mock.patch.object(github, "_api", side_effect=responses[:1]),
-            self.assertRaises(github.GitHubProofError),
-        ):
+        mocker.patch.object(github.hosted, "executable", return_value="gh")
+        mocker.patch.object(github, "_api", side_effect=responses[:1])
+        with pytest.raises(github.GitHubProofError):
             github.collect(
                 repository="owner/repo",
                 tag="v1.2.3",
@@ -273,10 +281,10 @@ class ForgeAdapterContracts(unittest.TestCase):
                 for name in github.DEFAULT_REQUIRED_JOBS
             ],
         }
-        with self.assertRaisesRegex(github.GitHubProofError, "wrong workflow"):
+        with pytest.raises(github.GitHubProofError, match="wrong workflow"):
             self._normalize_github(commit, (runs, jobs, release, assets))
 
-    def test_provider_candidates_and_release_identity_fail_closed(self) -> None:
+    def test_provider_candidates_and_release_identity_fail_closed(self, subtests) -> None:
         commit = "a" * 40
         pipeline, jobs, release, assets = self._gitlab_fixture(commit)
         for mutation in (
@@ -291,8 +299,8 @@ class ForgeAdapterContracts(unittest.TestCase):
             )
             mutation()
             with (
-                self.subTest(pipeline=pipeline, release=release),
-                self.assertRaises(gitlab.GitLabProofError),
+                subtests.test(pipeline=pipeline, release=release),
+                pytest.raises(gitlab.GitLabProofError),
             ):
                 self._normalize_gitlab(commit, (pipeline, jobs, release, assets))
 
@@ -305,12 +313,14 @@ class ForgeAdapterContracts(unittest.TestCase):
             github_release.update(published_at="2026-07-29T00:00:00Z")
             mutation()
             with (
-                self.subTest(runs=runs, release=github_release),
-                self.assertRaises(github.GitHubProofError),
+                subtests.test(runs=runs, release=github_release),
+                pytest.raises(github.GitHubProofError),
             ):
                 self._normalize_github(commit, (runs, github_jobs, github_release, github_assets))
 
-    def test_github_malformed_boundaries_and_hosted_transport_fail_closed(self) -> None:
+    def test_github_malformed_boundaries_and_hosted_transport_fail_closed(
+        self, subtests, *, mocker
+    ) -> None:
         commit, tag_object = "a" * 40, "b" * 40
         runs, jobs, release, assets = self._github_fixture(commit)
         cases = (
@@ -321,35 +331,29 @@ class ForgeAdapterContracts(unittest.TestCase):
         for name, mutate in cases:
             runs, jobs, release, assets = self._github_fixture(commit)
             mutate()
-            with self.subTest(name=name), self.assertRaises(github.GitHubProofError):
+            with subtests.test(name=name), pytest.raises(github.GitHubProofError):
                 self._normalize_github(commit, (runs, jobs, release, assets))
 
         for helper, value in (
             (github._mapping, []),
             (github._mappings, {}),
         ):
-            with self.assertRaises(github.GitHubProofError):
+            with pytest.raises(github.GitHubProofError):
                 helper(value, "malformed")
-        with (
-            mock.patch.object(github.hosted, "executable", return_value="gh"),
-            mock.patch.object(github.hosted, "api_json", return_value={}),
-            self.assertRaises(github.GitHubProofError),
-        ):
+        mocker.patch.object(github.hosted, "executable", return_value="gh")
+        mocker.patch.object(github.hosted, "api_json", return_value={})
+        with pytest.raises(github.GitHubProofError):
             github._api_pages("endpoint")
-        with (
-            mock.patch.object(github.hosted, "executable", return_value="gh"),
-            mock.patch.object(github.hosted, "api_json", return_value={}),
-        ):
-            self.assertEqual(github._api("endpoint"), {})
+        mocker.patch.object(github.hosted, "executable", return_value="gh")
+        mocker.patch.object(github.hosted, "api_json", return_value={})
+        assert github._api("endpoint") == {}
 
         responses = [
             {"ref": "refs/tags/v1.2.3", "object": {"type": "tag", "sha": tag_object}},
             {"tag": "wrong", "sha": tag_object, "object": {"type": "commit", "sha": commit}},
         ]
-        with (
-            mock.patch.object(github, "_api", side_effect=responses),
-            self.assertRaisesRegex(github.GitHubProofError, "tag identity"),
-        ):
+        mocker.patch.object(github, "_api", side_effect=responses)
+        with pytest.raises(github.GitHubProofError, match="tag identity"):
             github.collect(
                 repository="owner/repo",
                 tag="v1.2.3",
@@ -357,7 +361,7 @@ class ForgeAdapterContracts(unittest.TestCase):
                 commit_oid=commit,
             )
 
-    def test_gitlab_collection_and_malformed_boundaries_fail_closed(self) -> None:
+    def test_gitlab_collection_and_malformed_boundaries_fail_closed(self, *, mocker) -> None:
         commit, tag_object = "a" * 40, "b" * 40
         pipeline, jobs, release, asset_bytes = self._gitlab_fixture(commit)
         release["assets"] = {
@@ -371,49 +375,42 @@ class ForgeAdapterContracts(unittest.TestCase):
             "target": tag_object,
             "commit": {"id": commit},
         }
-        with (
-            mock.patch.object(
-                gitlab,
-                "_api",
-                side_effect=[tag_record, pipeline],
-            ),
-            mock.patch.object(gitlab.hosted, "executable", return_value="glab"),
-            mock.patch.object(
-                gitlab.hosted, "api_bytes", side_effect=list(asset_bytes.values())
-            ) as download,
-            mock.patch.object(
-                gitlab,
-                "_api_pages",
-                side_effect=[[pipeline], jobs, [release]],
-            ),
-        ):
-            result = gitlab.collect(
-                api_base="https://gitlab.example/api/v4/",
-                repository="group/repo",
-                tag="v1.2.3",
-                tag_object_oid=tag_object,
-                commit_oid=commit,
-            )
-        self.assertEqual(result["repository"], "group/repo")
-        self.assertEqual(
-            [call.args[0] for call in download.call_args_list],
-            [
-                ("glab", "api", "--method", "GET", f"https://gitlab.example/assets/{index}")
-                for index in range(1, 3)
-            ],
+        mocker.patch.object(
+            gitlab,
+            "_api",
+            side_effect=[tag_record, pipeline],
         )
+        mocker.patch.object(gitlab.hosted, "executable", return_value="glab")
+        download = mocker.patch.object(
+            gitlab.hosted, "api_bytes", side_effect=list(asset_bytes.values())
+        )
+        mocker.patch.object(
+            gitlab,
+            "_api_pages",
+            side_effect=[[pipeline], jobs, [release]],
+        )
+        result = gitlab.collect(
+            api_base="https://gitlab.example/api/v4/",
+            repository="group/repo",
+            tag="v1.2.3",
+            tag_object_oid=tag_object,
+            commit_oid=commit,
+        )
+        assert result["repository"] == "group/repo"
+        assert [call.args[0] for call in download.call_args_list] == [
+            ("glab", "api", "--method", "GET", f"https://gitlab.example/assets/{index}")
+            for index in range(1, len(asset_bytes) + 1)
+        ]
 
-        with self.assertRaises(gitlab.GitLabProofError):
+        with pytest.raises(gitlab.GitLabProofError):
             self._normalize_gitlab(
                 commit,
                 (pipeline, [{"name": "not-required"}, *jobs[:-1]], release, asset_bytes),
             )
 
         wrong_commit = {**tag_record, "commit": {"id": "0" * 40}}
-        with (
-            mock.patch.object(gitlab, "_api", return_value=wrong_commit),
-            self.assertRaisesRegex(gitlab.GitLabProofError, "commit differs"),
-        ):
+        mocker.patch.object(gitlab, "_api", return_value=wrong_commit)
+        with pytest.raises(gitlab.GitLabProofError, match="commit differs"):
             gitlab.collect(
                 api_base="https://gitlab.example/api/v4",
                 repository="group/repo",
@@ -421,16 +418,14 @@ class ForgeAdapterContracts(unittest.TestCase):
                 tag_object_oid=tag_object,
                 commit_oid=commit,
             )
+        mocker.patch.object(
+            gitlab,
+            "_api",
+            side_effect=[tag_record, {**pipeline, "id": 8}],
+        )
+        mocker.patch.object(gitlab, "_api_pages", return_value=[pipeline])
 
-        with (
-            mock.patch.object(
-                gitlab,
-                "_api",
-                side_effect=[tag_record, {**pipeline, "id": 8}],
-            ),
-            mock.patch.object(gitlab, "_api_pages", return_value=[pipeline]),
-            self.assertRaisesRegex(gitlab.GitLabProofError, "detail identity"),
-        ):
+        with pytest.raises(gitlab.GitLabProofError, match="detail identity"):
             gitlab.collect(
                 api_base="https://gitlab.example/api/v4",
                 repository="group/repo",
@@ -440,18 +435,18 @@ class ForgeAdapterContracts(unittest.TestCase):
             )
 
         for value in ([], None):
-            with self.assertRaises(gitlab.GitLabProofError):
+            with pytest.raises(gitlab.GitLabProofError):
                 gitlab._mapping(value, "malformed")
         for value in ([], {}):
-            with self.assertRaises(gitlab.GitLabProofError):
+            with pytest.raises(gitlab.GitLabProofError):
                 gitlab._stable_id(value)
         for value, expected in (([1], [1]), ({"id": 1}, [{"id": 1}])):
-            self.assertEqual(gitlab._page_items(value), expected)
-        with self.assertRaises(gitlab.GitLabProofError):
+            assert gitlab._page_items(value) == expected
+        with pytest.raises(gitlab.GitLabProofError):
             gitlab._page_items("wrong")
-        with self.assertRaises(gitlab.GitLabProofError):
+        with pytest.raises(gitlab.GitLabProofError):
             gitlab._evidence({})
-        with self.assertRaisesRegex(gitlab.GitLabProofError, "HTTP"):
+        with pytest.raises(gitlab.GitLabProofError, match="HTTP"):
             gitlab.collect(
                 api_base="file:///tmp",
                 repository="group/repo",
@@ -470,34 +465,26 @@ class ForgeAdapterContracts(unittest.TestCase):
         ):
             pipeline, jobs, release, assets = self._gitlab_fixture(commit)
             mutation()
-            with self.assertRaises(gitlab.GitLabProofError):
+            with pytest.raises(gitlab.GitLabProofError):
                 self._normalize_gitlab(commit, (pipeline, jobs, release, assets))
 
-    def test_gitlab_cli_transport_and_pagination_translate_failures(self) -> None:
-        completed = mock.Mock(stdout='[{"id":1}]\n{"id":2}\n')
-        with (
-            mock.patch.object(gitlab.hosted, "executable", return_value="glab"),
-            mock.patch.object(gitlab.subprocess, "run", return_value=completed),
-        ):
-            self.assertEqual(gitlab._api_pages("endpoint"), [{"id": 1}, {"id": 2}])
-        with (
-            mock.patch.object(gitlab.hosted, "executable", return_value="glab"),
-            mock.patch.object(gitlab.hosted, "api_json", return_value={}),
-        ):
-            self.assertEqual(gitlab._api("endpoint"), {})
+    def test_gitlab_cli_transport_and_pagination_translate_failures(self, *, mocker) -> None:
+        completed = mocker.Mock(stdout='[{"id":1}]\n{"id":2}\n')
+        mocker.patch.object(gitlab.hosted, "executable", return_value="glab")
+        mocker.patch.object(gitlab.subprocess, "run", return_value=completed)
+        assert gitlab._api_pages("endpoint") == [{"id": 1}, {"id": 2}]
+        mocker.stopall()
+        mocker.patch.object(gitlab.hosted, "executable", return_value="glab")
+        mocker.patch.object(gitlab.hosted, "api_json", return_value={})
+        assert gitlab._api("endpoint") == {}
+        mocker.stopall()
         for failure in (OSError("missing"), ValueError("bad")):
-            patch = (
-                mock.patch.object(gitlab.subprocess, "run", side_effect=failure)
+            mocker.patch.object(gitlab.hosted, "executable", return_value="glab")
+            (
+                mocker.patch.object(gitlab.subprocess, "run", side_effect=failure)
                 if isinstance(failure, OSError)
-                else mock.patch.object(gitlab.json, "loads", side_effect=failure)
+                else mocker.patch.object(gitlab.json, "loads", side_effect=failure)
             )
-            with (
-                mock.patch.object(gitlab.hosted, "executable", return_value="glab"),
-                patch,
-                self.assertRaises(gitlab.GitLabProofError),
-            ):
+            with pytest.raises(gitlab.GitLabProofError):
                 gitlab._api_pages("endpoint")
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+            mocker.stopall()

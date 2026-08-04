@@ -47,14 +47,11 @@ upstream request. The outbound copy always uses `store=false`; continuity comes
 from projected dialogue and complete tool relationships, never from a third-
 party provider's stored response or item IDs.
 
-Only exact `POST /<provider>/v1/responses` targets and exact read-only
-`GET /<provider>/v1/models` targets are admitted. A model-catalog request is
-relayed once to the same manifest-owned upstream without request or response
-projection, Responses admission, cooldown, retry, or provider-policy recovery.
-Encoded path material, dot segments, duplicate separators, lookalike suffixes,
-absolute targets, fragments, unsupported methods, and unrelated endpoints are
-rejected before remote I/O. Successful non-stream Responses are buffered within
-an eight-MiB integrity limit before downstream commitment,
+Only exact `/<provider>/v1/responses` request targets are admitted. Encoded path
+material, dot segments, duplicate separators, lookalike suffixes, absolute
+targets, fragments, and unrelated endpoints are rejected before remote I/O.
+Successful non-stream Responses are buffered within an eight-MiB integrity
+limit before downstream commitment,
 required to be valid terminal JSON (`completed` or `incomplete`), and projected
 with the same ciphertext-removal rules as SSE. Unknown residual ciphertext,
 empty, truncated, oversized, malformed, or non-terminal HTTP 2xx bodies become
@@ -88,9 +85,10 @@ process-local cooldown for only the selected provider, capped at five minutes;
 an absent, invalid, zero, or expired value uses a five-second fallback. Requests
 arriving during that cooldown receive local HTTP 429 without upstream I/O, while
 other providers remain independent. Overlapping failures can extend an active
-cooldown but cannot shorten it. The default Responses concurrency is 8 and
-remains configurable through the validated runtime setting; it is a burst
-guardrail, not a claim about a provider's undocumented quota.
+cooldown but cannot shorten it. The proxy does not serialize provider routes.
+It owns no ordinary-request concurrency ceiling or queue: Codex controls
+per-session fan-out, each provider enforces its actual quota, and the proxy
+retains active-request accounting only for transactional drain and observation.
 
 When the upstream returns the complete observed HTTP 400 `validation_error`
 stating that `input` matched no expected variant, the proxy records one bounded
@@ -107,7 +105,8 @@ neither surface records message values or unknown names.
 
 ## Requirements
 
-- Python 3.12 or later; the runtime uses only the Python standard library.
+- The released native executable for the host platform; end users do not need
+  Python or a source checkout.
 - Git and OpenSSH, including `ssh-keygen`, for source and signature verification.
 - A verified third-party Responses endpoint. The adapter never stores an API key.
 - One exact signed release checkout and its absolute trust-anchor file stored
@@ -122,7 +121,7 @@ payload capability. Release operators independently verify both Forge planes
 and may retain the verifier's JSON result as publication evidence:
 
 ```bash
-python3 tools/release/verify.py \
+python3 -m tools.release.verify \
   --tag "v$(cat VERSION)" \
   --gitlab-remote "$GITLAB_REMOTE" \
   --gitlab-api-base "$GITLAB_API_BASE" \
@@ -145,11 +144,9 @@ selected signed release source and has no GitLab, GitHub, CI, or release-record
 dependency:
 
 ```bash
-python3 -m codex_responses_proxy.commands.install \
+codex-responses-proxy install \
   --trust-anchor "$CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR"
 ```
-
-On Windows, replace `python3` with `py -3`.
 
 The installer does not copy arbitrary working-tree files or accept a filesystem
 stage. Admission reads immutable blobs from the signed tag, freezes `HEAD`, tag
@@ -163,7 +160,7 @@ state. Failure restores the exact prior owned projection; an unprovable
 committed handoff is retained as an explicit recovery-required transaction. The
 installer never downloads Python dependencies or collects credentials.
 
-If a prior source-side install retained an exact `recovery_required`
+If a prior release install retained an exact `recovery_required`
 transaction, a newer verified installer can use `--rollback-recovery` to
 restore that recorded prior projection only while the accepting listener still
 reports the rollback release, serving digest, and receipt digest, reports the
@@ -209,22 +206,22 @@ a route change.
 
 ```bash
 # Read-only runtime evidence from the installed product directory
-python3 -m codex_responses_proxy.commands.control status --json
+codex-responses-proxy status --json
 
 # Hand off one verified protocol-v2 listener without closing its socket
-python3 -m codex_responses_proxy.commands.control reload --json
+codex-responses-proxy reload --json
 
 # Remove the product-owned service
-python3 -m codex_responses_proxy.commands.uninstall
+codex-responses-proxy uninstall
 
 # Also remove the generated runtime payload
-python3 -m codex_responses_proxy.commands.uninstall --purge
+codex-responses-proxy uninstall --purge
 ```
 
 Uninstall never reads or changes consumer endpoint configuration. Before any
 payload mutation, native service removal must report `absent`, and every watchdog and
-listener selected for termination must be an exact Python process whose
-`argv[1]` resolves to this installation's script. Identity is re-read
+listener selected for termination must run the exact installed executable with
+one declared private service role. Identity is re-read
 immediately before signalling and boundedly rechecked afterwards; PID reuse
 never authorizes signalling the new occupant. `--purge` then removes only files
 owned by a valid current manifest or an exact supported historical inventory.
@@ -241,14 +238,14 @@ lease; a pre-finalize failure resumes the old process only after the child is
 confirmed exited. An unconfirmed abort fails closed rather than risking two
 accepting processes.
 
-Changing payload bytes is exclusively a source-side
-`python3 -m codex_responses_proxy.commands.install` operation from an independently
+Changing payload bytes is exclusively a
+`codex-responses-proxy install` operation from an independently
 verified release. For a current protocol-v2 listener, that
-source-side transaction uses the same handoff protocol after committing the
+installation transaction uses the same handoff protocol after committing the
 admitted release projection. Installed control exposes no arbitrary stage path,
 release upgrade, or controller-only partial apply.
 
-`python3 -m codex_responses_proxy.commands.control status --json` reports
+`codex-responses-proxy status --json` reports
 manifest integrity, verified listener identity, transaction state, and the
 startup-frozen aggregate SHA-256 of the loaded serving payload when the loopback
 listener is reachable. It does not
@@ -277,13 +274,13 @@ internals, not general APIs.
 The loopback-only `POST /control/drain` and `DELETE /control/drain`
 endpoints are lifecycle internals used by the installed control command, not general APIs.
 
-For a repeatable, privacy-bounded trend decision, use the source-side observer
+For a repeatable, privacy-bounded trend decision, use the repository observer
 with two or more comparable snapshots. It consumes the JSON that `status`
 already emits; it neither contacts the listener nor changes its lifecycle:
 
 ```bash
 status_file="$(mktemp)"
-python3 -m codex_responses_proxy.commands.control status --json > "$status_file"
+codex-responses-proxy status --json > "$status_file"
 python3 tools/reliability/observe.py \
   --status-file "$status_file" \
   --state "$CODEX_RESPONSES_PROXY_OBSERVER_STATE"
@@ -321,7 +318,7 @@ protocol-v2 handoff; installed control remains same-payload only.
 
 If an urgent, separately authorized interruption is unavoidable,
 `--force-legacy-bootstrap` may be combined with `--allow-legacy-bootstrap` on
-the source-side installer. It still requires manifest integrity and exactly one
+the release installer. It still requires manifest integrity and exactly one
 verified legacy listener; it skips only the quiet wait. The flag is rejected
 without the allow flag, is not available to installed-control `reload`, and is
 never a normal operating mode.
@@ -333,7 +330,7 @@ persist request bodies, credentials, headers, prompts, query values, or raw
 upstream payloads. Each log has a bounded rotating retention window; the default
 is four 4 MiB proxy segments and three 512 KiB watchdog segments, including the
 active segment. Oversized legacy segments are discarded without being copied or
-read into evidence. Each admitted source-side installation also removes the retired
+read into evidence. Each admitted release installation also removes the retired
 `reject-*.json` raw request-capture files without reading or preserving them.
 Native macOS service stdout and stderr are deliberately discarded so they cannot
 become an unbounded second logging channel.
@@ -341,7 +338,7 @@ become an unbounded second logging channel.
 Set a durable retention policy at installation time:
 
 ```bash
-python3 -m codex_responses_proxy.commands.install \
+codex-responses-proxy install \
   --trust-anchor "$CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR" \
   --proxy-log-max-bytes 4194304 \
   --proxy-log-backup-count 3 \
@@ -350,14 +347,14 @@ python3 -m codex_responses_proxy.commands.install \
 ```
 
 The selected bounds are rendered into the native user service. Changing them
-requires another signed-release source-side installation; a
+requires another signed-release installation; a
 same-payload `reload` does not change service configuration.
 
 ## Design
 
 ```text
 Codex/AIGW -> 127.0.0.1:<configured-port>/dmxapi/v1  -> DMXAPI
-           -> 127.0.0.1:<configured-port>/ucloud/v1  -> UCloud/Azure
+           -> 127.0.0.1:<configured-port>/ucloud/v1  -> UCloud
            -> 127.0.0.1:<configured-port>/aihubmix/v1 -> AIHubMix
                       |
                       +-- watchdog supervised by the native user service
@@ -379,16 +376,13 @@ rejections are returned unchanged.
 
 | Symptom | First check | Boundary |
 | --- | --- | --- |
-| Missing `rs_` item or encrypted replay error | `python3 -m codex_responses_proxy.commands.control status --json` | Confirm the account uses its scoped proxy route. The normal request projection removes provider IDs and ciphertext without editing history. |
+| Missing `rs_` item or encrypted replay error | `codex-responses-proxy status --json` | Confirm the account uses its scoped proxy route. The normal request projection removes provider IDs and ciphertext without editing history. |
 | Error after provider switch | Consumer control-plane diagnostics | The consumer must select one manifest-defined scoped route; a direct upstream endpoint bypasses portability. AIGW is one optional control plane, not a proxy dependency. |
-| Upstream `response_failed` | `python3 -m codex_responses_proxy.commands.control status --json` | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
-| Exact `Invalid 'input'` validation error | `python3 -m codex_responses_proxy.commands.control status --json` | The proxy may send one current-dialogue fallback. Diagnostics contain only bounded type counts, pairing state, a categorical shape hash, and the first locally detectable incompatibility; no request values or unknown labels are logged. |
-| DMX HTTP 477 `empty_response` | `python3 -m codex_responses_proxy.commands.control status --json` | The proxy retries the already projected current attempt bytes exactly once. If that retry fails, both streaming and non-streaming requests receive standard HTTP 503 with `Retry-After: 3`; unrelated 477 responses remain unchanged. |
-| SSE closes before completion | `python3 -m codex_responses_proxy.commands.control status --json` | The proxy retries only before sending substantive bytes downstream. If that bounded pre-content budget is exhausted, it returns retryable HTTP 503 with `Retry-After: 3` rather than an empty successful stream. |
-| Client reports `local proxy overloaded: timed out waiting` | `python3 -m codex_responses_proxy.commands.control status --json` | One provider route is saturated, not the whole process; the message names the route and both limits. A queued turn waits the bounded local queue timeout, then receives retryable HTTP 503 with `Retry-After: 5`. The holding turn is bounded only by the total upstream stream deadline, so that hint is a floor rather than a prediction. |
-| Legitimate long turns keep exhausting that queue wait | `python3 -m codex_responses_proxy.commands.control status --json` | The default queue wait now covers one total upstream stream deadline, so a waiter is not denied while its holder is still running; a waiting request also holds no process-wide slot, because the route slot is acquired first. A listener installed before this default still pins the old value in its unit, because the unit is rendered at install time and the install exposes no flag for this setting — reinstall to re-render it. To deviate from the default, set `CODEX_RESPONSES_PROXY_RESPONSES_QUEUE_TIMEOUT` in the unit's environment; exporting it in a shell does not reach a supervised listener. |
-| A provider begins returning HTTP 429 again | `python3 -m codex_responses_proxy.commands.control status --json` | Per-route admission is a share of process capacity, not a single exchange, so one route holds at most half the process budget and a second route always retains at least as much as the busiest route holds. A provider cooldown is recorded only after an exchange returns, so up to one route width of same-route requests can reach a newly rate-limiting provider before the first recorded failure closes the cooldown for the rest; watch `responses_rate_limited`. To restore strict single-flight without a release, set `CODEX_RESPONSES_PROXY_RESPONSES_MAX_PER_ROUTE=1` in the unit's environment and reload; exporting it in a shell does not reach a supervised listener. |
-| Need current reliability evidence | `python3 -m codex_responses_proxy.commands.control status --json` | Inspect the secret-free `runtime` snapshot; it proves listener-local counters, not recovery of a historical conversation. |
+| Upstream `response_failed` | `codex-responses-proxy status --json` | After the explicit 400, the proxy makes up to three strictly shrinking, pair-safe fallback attempts. If all are explicitly rejected, it may send one safely smaller dialogue-only attempt and then returns retryable 503 with `Retry-After: 3`; unrelated 400 responses remain unchanged. |
+| Exact `Invalid 'input'` validation error | `codex-responses-proxy status --json` | The proxy may send one current-dialogue fallback. Diagnostics contain only bounded type counts, pairing state, a categorical shape hash, and the first locally detectable incompatibility; no request values or unknown labels are logged. |
+| DMX HTTP 477 `empty_response` | `codex-responses-proxy status --json` | The proxy retries the already projected current attempt bytes exactly once. If that retry fails, both streaming and non-streaming requests receive standard HTTP 503 with `Retry-After: 3`; unrelated 477 responses remain unchanged. |
+| SSE closes before completion | `codex-responses-proxy status --json` | The proxy retries only before sending substantive bytes downstream. If that bounded pre-content budget is exhausted, it returns retryable HTTP 503 with `Retry-After: 3` rather than an empty successful stream. |
+| Need current reliability evidence | `codex-responses-proxy status --json` | Inspect the secret-free `runtime` snapshot; it proves listener-local counters, not recovery of a historical conversation. |
 | Need a windowed incident decision | `tools/reliability/observe.py --status-file <snapshot> --state <baseline>` | Compare only the same running payload; the tool is read-only and never reloads the listener. |
 | Client ignores a route change | Client configuration lifecycle | A running client may need its normal reload; the proxy does not restart it. |
 
@@ -405,27 +399,25 @@ The generated service supplies safe defaults. Use install arguments rather than
 editing a generated service definition:
 
 ```bash
-python3 -m codex_responses_proxy.commands.install \
+codex-responses-proxy install \
   --trust-anchor "$CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR" \
   --port 8801
 ```
 
-Portable data, state, listener, timeout, concurrency, and log-retention
-settings are declared and validated by
-`codex_responses_proxy.runtime.config`. Normal installations persist explicit
+Portable data, state, listener, timeout, and log-retention settings are declared
+and validated by
+`codex_responses_proxy.relay.config`. Normal installations persist explicit
 installer arguments into native supervision; environment overrides are for
 direct runtime composition and tests, not a second configuration file.
 
 ## Verify a source checkout
 
 ```bash
-python3 tools/release/metadata.py --prepare-release
-python3 tools/quality/markdown.py
-python3 tests/release/test_metadata.py
-PYTHON=python3.12 sh tools/quality/run.sh
-for py in python3.12 python3.13 python3.14; do
-  "$py" tools/quality/tests.py --compile
-done
+uv sync --locked --only-group quality
+uv run --locked --no-sync nox -s quick
+uv run --locked --no-sync nox -s quality
+uv run --locked --no-sync nox -s tests-3.12 tests-3.13 tests-3.14
+uv run --locked --no-sync nox -s release
 ```
 
 ## Documentation

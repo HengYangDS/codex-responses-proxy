@@ -51,7 +51,7 @@ required = [
     "duplicate GitHub release records for exact tag",
     "GitHub release tag does not resolve to the checked-out commit",
     "gh release create", "--verify-tag", "--generate-notes",
-    'python tools/release/assets.py --output "$assets"',
+    'python -m tools.release.assets --output "$assets"',
     'codex-responses-proxy-${SELECTED_TAG#v}.tar.gz',
     '"$assets/SHA256SUMS"',
     'gh release download "$SELECTED_TAG"',

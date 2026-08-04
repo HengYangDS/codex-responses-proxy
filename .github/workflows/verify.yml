@@ -34,7 +34,9 @@ jobs:
         run: |
           set -euo pipefail
           python --version
-          python tools/quality/tests.py --compile
+          python -m pip install --disable-pip-version-check --no-cache-dir uv==0.12.1
+          uv sync --locked --only-group quality
+          uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"
 
   python-windows:
     name: Python ${{ matrix.python-version }} (Windows)
@@ -57,7 +59,9 @@ jobs:
         run: |
           set -euo pipefail
           python --version
-          python tools/quality/tests.py --compile
+          python -m pip install --disable-pip-version-check --no-cache-dir uv==0.12.1
+          uv sync --locked --only-group quality
+          uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"
 
   governance:
     name: Governance and presentation
@@ -108,4 +112,5 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check --no-cache-dir uv==0.12.1
-          PYTHON=python sh tools/quality/run.sh
+          uv sync --locked --only-group quality
+          uv run --locked --no-sync nox -s quality

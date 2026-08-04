@@ -139,21 +139,21 @@ API authentication remains with `glab` and `gh`; tag fetches use the supplied
 Git remote and its native external transport context. Prefer SSH and never put
 tokens or passwords in a remote URL.
 
-The source-side installer consumes one caller-selected release source and its
+The release installer consumes one caller-selected release source and its
 external trust anchor without requiring Forge access. Admission checks clean
 state, requires `HEAD` to be the exact signed annotated `v<VERSION>` tag, and
 reads payload bytes from Git objects,
 never from an arbitrary working-tree stage. Before capability minting, it
 compares the frozen `HEAD`, tag object, tag commit, tree, and object format,
 requires a final clean checkout, then compares the same identity again. Dirty
-state and clean ref movement both fail closed. `codex_responses_proxy.release.admission`
+state and clean ref movement both fail closed. `tools.release.admission`
 returns an opaque one-use capability binding signed source identity, payload
 blobs and modes, aggregate serving identity, receipt, and sidecar.
 
 ## Installation transaction
 
-Every payload mutation is owned by source-side
-`python3 -m codex_responses_proxy.commands.install`. The installer consumes the
+Every payload mutation is owned by
+`codex-responses-proxy install`. The installer consumes the
 release capability into one private transaction that owns commit,
 rollback snapshot, installed-release state, and recovery hold. The separate
 installed-projection owner defines and verifies the manifest, writes the
@@ -174,7 +174,7 @@ control exposes no arbitrary stage-path upgrade and no controller-only partial
 apply. Plain release archives are not installation sources because they cannot
 carry the signed annotated tag object.
 
-Recovery remains source-side and signed-release-gated. The installer may restore
+Recovery remains release-gated. The installer may restore
 only the exact retained rollback snapshot while the live accepting listener's
 frozen release, serving digest, and receipt digest match that prior projection;
 its reported manifest digest matches the fully verified candidate projection
@@ -195,7 +195,7 @@ consumer control plane, such as AIGW.
 
 ## Lifecycle operations
 
-`python3 -m codex_responses_proxy.commands.control status` is read-only.
+`codex-responses-proxy status` is read-only.
 Installed-control `reload` is same-payload only and requires a user-visible warning plus post-operation
 identity proof. It prepares a non-accepting child, stops the old accept loop
 before `COMMIT`, and requires `SERVING` proof by PID, transaction, release,
@@ -204,8 +204,8 @@ before `FINALIZE`. Accepted handlers drain to zero or the bounded lease.
 Pre-finalize failure confirms child exit before old admission resumes; an
 unconfirmed abort fails closed.
 
-Replacing payload bytes is a source-side install operation. For a current
-protocol-v2 listener, source-side deployment commits the admitted release
+Replacing payload bytes is a release install operation. For a current
+protocol-v2 listener, deployment commits the admitted release
 transaction and uses the same handoff transport and identity proof. A one-time
 legacy replacement requires explicit `--allow-legacy-bootstrap`, installed
 historical-manifest integrity, exactly one PID bound to the manifest-derived
@@ -221,15 +221,15 @@ unproven restoration is a rollback failure, never a successful rollback claim.
 
 Uninstall has two distinct authority boundaries. It never reads or changes
 consumer endpoint configuration. Native-service deregistration must be confirmed as `absent`, and each
-owned watchdog or listener must be identified by a Python executable plus exact
-resolved script in `argv[1]`, rechecked before signalling, and boundedly proved
+owned watchdog or listener must be identified by the exact installed executable
+plus one declared private service role, rechecked before signalling, and boundedly proved
 gone before payload mutation. A purge trusts only a valid current manifest or an
 exact supported historical inventory; unknown claims fail closed, while unknown
 physical content is preserved and produces a nonzero incomplete result.
 
 ## Reliability observation and incident boundary
 
-`python3 -m codex_responses_proxy.commands.control status --json` is the
+`codex-responses-proxy status --json` is the
 secret-free source of listener-local counters. `tools/reliability/observe.py` evaluates a supplied snapshot and optional
 explicit baseline file; it does not contact the listener, mutate configuration,
 retain request or response material, or perform lifecycle control.
@@ -239,8 +239,8 @@ serving-payload digest, and monotonic uptime identify the same running payload.
 A first snapshot, restart, or payload change starts a new observation window;
 lifetime counters and `last_failure` are not reclassified as new incidents.
 Payload-integrity failure, missing or multiple verified listeners, local stream
-failures, pre-content exhaustion, and local queue timeouts are immediate local
-incidents. Drain rejections remain a separate local class: approved maintenance
+failures, and pre-content exhaustion are immediate local incidents. Drain
+rejections remain a separate local class: approved maintenance
 may classify them as `observe`, never as upstream failure.
 
 Upstream `empty_response`, retryable 5xx, `response_failed`, and the exact input-

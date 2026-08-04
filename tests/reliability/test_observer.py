@@ -1,13 +1,10 @@
-#!/usr/bin/env python3
 """Focused contracts for source-side reliability observation policy."""
 
 from __future__ import annotations
 
 import importlib.util
 import sys
-import unittest
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 INPUT_VARIANT_CLASS = "input_variant_validation_error"
@@ -58,8 +55,8 @@ def _status(
     }
 
 
-class ObserverCase(unittest.TestCase):
-    def setUp(self) -> None:
+class ObserverCase:
+    def setup_method(self) -> None:
         self.observer = _observer()
 
     def delta(self, before, after, **kwargs):
@@ -78,36 +75,30 @@ class TestInputVariantObservation(ObserverCase):
             {"upstream": {INPUT_VARIANT_CLASS: 7 + count}},
         )
 
-    def test_one_or_two_exact_input_variant_events_require_observation(self):
+    def test_one_or_two_exact_input_variant_events_require_observation(self, subtests):
         for count in (1, 2):
-            with self.subTest(count=count):
+            with subtests.test(count=count):
                 report = self._evaluate_delta(count)
                 reasons = [
                     item for item in report["reasons"] if item["code"] == INPUT_VARIANT_REASON
                 ]
-                self.assertEqual(report["state"], "observe")
-                self.assertEqual([item["severity"] for item in reasons], ["observe"])
-                self.assertEqual(
-                    report["deltas"]["upstream_classifications"],
-                    {INPUT_VARIANT_CLASS: count},
-                )
+                assert report["state"] == "observe"
+                assert [item["severity"] for item in reasons] == ["observe"]
+                assert report["deltas"]["upstream_classifications"] == {INPUT_VARIANT_CLASS: count}
 
     def test_three_exact_input_variant_events_are_an_incident(self):
         report = self._evaluate_delta(3)
         reasons = [item for item in report["reasons"] if item["code"] == INPUT_VARIANT_REASON]
-        self.assertEqual(report["state"], "incident")
-        self.assertEqual([item["severity"] for item in reasons], ["incident"])
+        assert report["state"] == "incident"
+        assert [item["severity"] for item in reasons] == ["incident"]
 
     def test_unknown_validation_class_is_not_treated_as_input_variant(self):
         report = self.delta(
             {"upstream": {"validation_error": 4}}, {"upstream": {"validation_error": 7}}
         )
-        self.assertEqual(report["state"], "healthy")
-        self.assertEqual(report["reasons"], [])
-        self.assertEqual(
-            report["deltas"]["upstream_classifications"],
-            {"validation_error": 3},
-        )
+        assert report["state"] == "healthy"
+        assert report["reasons"] == []
+        assert report["deltas"]["upstream_classifications"] == {"validation_error": 3}
 
 
 class TestReliabilityWindowPolicy(ObserverCase):
@@ -122,10 +113,10 @@ class TestReliabilityWindowPolicy(ObserverCase):
             ),
             observed_at_unix=1000,
         )
-        self.assertEqual(report["state"], "observe")
-        self.assertEqual(report["window"]["comparison"], "baseline_absent")
-        self.assertEqual(report["deltas"], {"counters": {}, "upstream_classifications": {}})
-        self.assertEqual(baseline["upstream_classifications"]["empty_response"], 23)
+        assert report["state"] == "observe"
+        assert report["window"]["comparison"] == "baseline_absent"
+        assert report["deltas"] == {"counters": {}, "upstream_classifications": {}}
+        assert baseline["upstream_classifications"]["empty_response"] == 23
 
     def test_upstream_empty_response_threshold_is_windowed_and_explicit(self) -> None:
         observe = self.delta(
@@ -134,12 +125,10 @@ class TestReliabilityWindowPolicy(ObserverCase):
         incident = self.delta(
             {"upstream": {"empty_response": 10}}, {"upstream": {"empty_response": 13}}
         )
-        self.assertEqual(observe["state"], "observe")
-        self.assertEqual(incident["state"], "incident")
-        self.assertEqual(incident["deltas"]["upstream_classifications"], {"empty_response": 3})
-        self.assertIn(
-            "upstream_empty_response_burst", [item["code"] for item in incident["reasons"]]
-        )
+        assert observe["state"] == "observe"
+        assert incident["state"] == "incident"
+        assert incident["deltas"]["upstream_classifications"] == {"empty_response": 3}
+        assert "upstream_empty_response_burst" in [item["code"] for item in incident["reasons"]]
 
     def test_upstream_5xx_and_response_failed_have_separate_thresholds(self) -> None:
         report = self.delta(
@@ -147,24 +136,22 @@ class TestReliabilityWindowPolicy(ObserverCase):
             {"upstream": {"http_503_full": 5, "response_failed": 11}},
         )
         codes = {item["code"] for item in report["reasons"]}
-        self.assertEqual(report["state"], "incident")
-        self.assertEqual(
-            report["deltas"]["upstream_classifications"],
-            {"http_503_full": 3, "response_failed": 3},
-        )
-        self.assertIn("upstream_5xx_burst", codes)
-        self.assertIn("upstream_response_failed_burst", codes)
+        assert report["state"] == "incident"
+        assert report["deltas"]["upstream_classifications"] == {
+            "http_503_full": 3,
+            "response_failed": 3,
+        }
+        assert "upstream_5xx_burst" in codes
+        assert "upstream_response_failed_burst" in codes
 
     def test_proxy_drain_is_not_conflated_with_upstream_failure(self) -> None:
         before = {"counters": {"responses_rejected_while_draining": 4}}
         after = {"counters": {"responses_rejected_while_draining": 5}}
         incident = self.delta(before, after)
         maintenance = self.delta(before, after, allow_drain=True)
-        self.assertEqual(incident["state"], "incident")
-        self.assertEqual(maintenance["state"], "observe")
-        self.assertNotIn(
-            "upstream_empty_response_burst", [item["code"] for item in incident["reasons"]]
-        )
+        assert incident["state"] == "incident"
+        assert maintenance["state"] == "observe"
+        assert "upstream_empty_response_burst" not in [item["code"] for item in incident["reasons"]]
 
     def test_local_stream_failure_and_payload_integrity_are_incidents(self) -> None:
         stream_report = self.delta(
@@ -173,15 +160,11 @@ class TestReliabilityWindowPolicy(ObserverCase):
         integrity_report, _ = self.observer.evaluate(
             _status(integrity=False, listeners=[]), observed_at_unix=10
         )
-        self.assertEqual(stream_report["state"], "incident")
-        self.assertIn("local_stream_failed", [item["code"] for item in stream_report["reasons"]])
-        self.assertEqual(integrity_report["state"], "incident")
-        self.assertIn(
-            "payload_integrity_failed", [item["code"] for item in integrity_report["reasons"]]
-        )
-        self.assertIn(
-            "listener_cardinality", [item["code"] for item in integrity_report["reasons"]]
-        )
+        assert stream_report["state"] == "incident"
+        assert "local_stream_failed" in [item["code"] for item in stream_report["reasons"]]
+        assert integrity_report["state"] == "incident"
+        assert "payload_integrity_failed" in [item["code"] for item in integrity_report["reasons"]]
+        assert "listener_cardinality" in [item["code"] for item in integrity_report["reasons"]]
 
     def test_changed_runtime_starts_new_window_and_state_has_no_payload_snapshot(self) -> None:
         _, baseline = self.observer.evaluate(
@@ -192,12 +175,8 @@ class TestReliabilityWindowPolicy(ObserverCase):
             baseline,
             observed_at_unix=20,
         )
-        self.assertEqual(report["state"], "observe")
-        self.assertEqual(report["window"]["comparison"], "runtime_identity_changed")
-        self.assertEqual(report["deltas"]["upstream_classifications"], {})
-        self.assertNotIn("payload_integrity", next_baseline)
-        self.assertNotIn("last_failure", next_baseline)
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+        assert report["state"] == "observe"
+        assert report["window"]["comparison"] == "runtime_identity_changed"
+        assert report["deltas"]["upstream_classifications"] == {}
+        assert "payload_integrity" not in next_baseline
+        assert "last_failure" not in next_baseline

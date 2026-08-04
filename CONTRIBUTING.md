@@ -15,14 +15,16 @@ repository has no third-party runtime dependency; ordinary reading and editing
 requires no local installer beyond a supported Python interpreter.
 
 ```bash
-python tools/release/metadata.py --prepare-release
-python tools/quality/markdown.py
-python tests/release/test_metadata.py
-PYTHON=python3.12 sh tools/quality/run.sh
-for py in python3.12 python3.13 python3.14; do
-  "$py" tools/quality/tests.py --compile
-done
+uv sync --locked --only-group quality
+uv run --locked --no-sync nox -s quick
+uv run --locked --no-sync nox -s quality
+uv run --locked --no-sync nox -s tests-3.12 tests-3.13 tests-3.14
+uv run --locked --no-sync nox -s release
 ```
+
+Nox creates repository-owned, non-reused environments and installs the product
+as a non-editable wheel before tests. Do not add `PYTHONPATH`, import-path
+injection, or a system-environment fallback: those hide packaging defects.
 
 Add a failing regression before production behavior changes. Tests must not
 require real user credentials, a live third-party endpoint, or a mutation of
@@ -30,12 +32,12 @@ require real user credentials, a live third-party endpoint, or a mutation of
 
 ## Provider extensions
 
-`codex_responses_proxy/providers/manifest.toml` is the provider registry. An
+`src/codex_responses_proxy/providers/manifest.toml` is the provider registry. An
 ordinary OpenAI-compatible Responses endpoint requires only one `[providers.<slug>]` table with its
 `base_url`; do not add a Python branch, inventory entry, environment variable,
 installer option, or release-script case. Only a real provider-specific wire
 contract may add `policy = "<slug>"` and one matching module under
-`codex_responses_proxy/providers/policies/`. The loader validates that module
+`src/codex_responses_proxy/providers/policies/`. The loader validates that module
 against the closed policy protocol, and the release inventory derives its file
 from the validated manifest. Keep provider policy modules pure: no HTTP
 dispatch, mutable runtime state, credentials, host paths, or Forge identity.
@@ -48,9 +50,9 @@ The quality command enforces aggregate, statement, and measured branch coverage
 independently at 95% or higher. No one result substitutes for either independent
 result emitted by `tools/quality/branch_coverage.py`.
 
-`tools/reliability/observe.py` is source-side observation only. It accepts a
+`tools/reliability/observe.py` is repository-side observation only. It accepts a
 supplied secret-free
-`python3 -m codex_responses_proxy.commands.control status --json` snapshot and
+`codex-responses-proxy status --json` snapshot and
 may write an explicit operator-selected baseline file. It must not contact an endpoint,
 read configuration, retain payloads, or invoke lifecycle control. Tests must
 cover a first-window baseline, runtime restart/identity boundary, upstream and

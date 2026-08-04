@@ -3,7 +3,7 @@
 ## Purpose
 
 Provide one fail-closed Responses compatibility boundary that makes stored
-Codex dialogue replayable across the governed DMXAPI, UCloud/Azure, and
+Codex dialogue replayable across the governed DMXAPI, UCloud, and
 AIHubMix routes without changing the conversation record itself.
 ## Requirements
 ### Requirement: Every Responses request is projected to a provider-portable form
@@ -150,75 +150,64 @@ without returning request text, credentials, or encrypted payloads.
 The listener SHALL expose provider-scoped loopback Responses targets and exact
 read-only model-catalog targets for `dmxapi`, `ucloud`, and `aihubmix`. Each
 namespace SHALL resolve only exact, lexically normalized
-`POST /<provider>/v1/responses` targets with an optional query to its
-release-owned HTTPS upstream mapping, or exact, lexically normalized
-`GET /<provider>/v1/models` targets with an optional query to that same mapping.
-Responses targets SHALL retain their existing compatibility projection, route-local
-admission behavior, queue-timeout retry semantics, and total stream-deadline
-behavior. Model-catalog targets SHALL relay once without request-body or response
-projection, Responses admission, cooldown, retry, or provider-policy recovery.
-Encoded path material, dot segments, duplicate separators, lookalike suffixes,
-fragments, absolute targets, unsupported methods, and unrelated endpoints SHALL
-be rejected locally. A downstream request SHALL NOT supply or override an upstream
-URL or host.
+`POST /<provider>/v1/responses` targets or exact, lexically normalized
+`GET /<provider>/v1/models` targets, with an optional query to the same
+release-owned HTTPS upstream mapping. Model-catalog targets SHALL relay exactly
+once without request or response projection, Responses admission, cooldown,
+retry, or provider-policy recovery. Encoded path material, dot segments,
+duplicate separators, lookalike suffixes, fragments, absolute targets, and
+unrelated endpoints SHALL be rejected locally. A downstream request SHALL NOT
+supply or override an upstream URL or host.
 
 #### Scenario: AIGW selects each governed provider
 
 - **WHEN** AIGW sends otherwise equivalent Requests traffic to
-  `/dmxapi/v1/responses`, `/ucloud/v1/responses`, or `/aihubmix/v1/responses`
-- **THEN** the proxy sends it only to the matching DMXAPI, UCloud/Azure, or
+  `/dmxapi/v1/responses`, `/ucloud/v1/responses`, or
+  `/aihubmix/v1/responses`
+- **THEN** the proxy sends it only to the matching DMXAPI, UCloud, or
   AIHubMix HTTPS upstream
 - **AND** credentials continue to come from the AIGW-managed client request.
-
-#### Scenario: A client discovers a selected provider catalog
-
-- **WHEN** a client sends `GET /dmxapi/v1/models`, `/ucloud/v1/models`, or
-  `/aihubmix/v1/models`
-- **THEN** the proxy makes one request only to the matching release-owned
-  upstream `/v1/models` path
-- **AND** it relays authentication, upstream status, eligible headers, and body
-  without Responses replay transformation or recovery.
-
-#### Scenario: A Responses route is locally saturated
-
-- **WHEN** the route-local Responses admission wait expires
-- **THEN** the proxy reports the selected provider route, both effective limits,
-  and `Retry-After: 5`
-- **AND** a catalog request does not consume or wait for a Responses slot.
 
 #### Scenario: A caller uses an unknown namespace
 
 - **WHEN** a request path does not match a control endpoint, one of the three
-  canonical Responses targets, one of the three canonical model-catalog targets,
-  or the bounded DMX migration route
+  canonical namespaces, or the bounded DMX migration route
 - **THEN** the proxy rejects it locally
 - **AND** it performs no remote network request.
 
-#### Scenario: A caller sends an ambiguous route suffix
+#### Scenario: A consumer reads one provider model catalog
 
-- **WHEN** the route contains dot segments, encoded path material, duplicate
-  separators, a lookalike suffix, or a method the matched target does not admit
-- **THEN** the proxy rejects it locally
-- **AND** it does not construct or contact an upstream URL.
+- **WHEN** it sends GET to `/dmxapi/v1/models`, `/ucloud/v1/models`, or
+  `/aihubmix/v1/models`
+- **THEN** the proxy relays exactly one GET to the matching provider
+- **AND** it does not activate Responses projection, cooldown, retry, or
+  recovery.
+
+#### Scenario: A rejected route carries an unread body
+
+- **WHEN** an unknown route or unsupported method is rejected before its body
+  is consumed
+- **THEN** the response closes the connection
+- **AND** the unread body is not parsed as another request.
 
 ### Requirement: Provider-specific recovery is route-scoped
 
 The exact DMXAPI HTTP 477 `empty_response` recovery and cooldown SHALL apply
 only to the DMXAPI route. A failure or cooldown key from DMXAPI SHALL NOT block,
-rewrite, or classify a UCloud/Azure or AIHubMix request. Generic transient and
+rewrite, or classify a UCloud or AIHubMix request. Generic transient and
 schema recovery MAY remain shared only where its trigger is provider-neutral
 and exact.
 
 #### Scenario: DMXAPI enters empty-response cooldown
 
 - **WHEN** a DMXAPI request exhausts its exact HTTP 477 recovery and the same
-  portable body is then sent to UCloud/Azure or AIHubMix
+  portable body is then sent to UCloud or AIHubMix
 - **THEN** the other provider request is attempted normally
 - **AND** no DMXAPI cooldown response is reused across the route boundary.
 
 #### Scenario: A non-DMX provider returns HTTP 477
 
-- **WHEN** UCloud/Azure or AIHubMix returns HTTP 477
+- **WHEN** UCloud or AIHubMix returns HTTP 477
 - **THEN** the proxy does not apply the DMXAPI `empty_response` policy unless
   the request was routed to DMXAPI and the exact DMX error contract matched.
 
@@ -277,14 +266,14 @@ activate compaction, dialogue recovery, or schema fallback.
 The compatibility path SHALL NOT edit Codex JSONL, SQLite, transcript history,
 archived conversations, hidden resume pointers, or per-conversation model
 metadata. Success SHALL require an unchanged original conversation to complete
-multiple turns after the provider sequence DMXAPI, UCloud/Azure, AIHubMix, and
+multiple turns after the provider sequence DMXAPI, UCloud, AIHubMix, and
 DMXAPI again.
 
 #### Scenario: The integrated fix is accepted
 
 - **WHEN** the released proxy and AIGW projections are installed and the same
   original conversation completes at least two turns on each leg of
-  DMXAPI to UCloud/Azure to AIHubMix to DMXAPI
+  DMXAPI to UCloud to AIHubMix to DMXAPI
 - **THEN** no turn reports missing `rs_` items, encrypted-content decode or
   decrypt failure, or proxy-generated empty-response 503
 - **AND** acceptance evidence confirms the session files and model metadata
@@ -347,6 +336,25 @@ upstream bytes.
   terminal JSON document
 - **THEN** the proxy fails closed rather than forwarding an unproved carrier.
 
+### Requirement: Responses admission is closed at the HTTP boundary
+
+Every POST Responses request SHALL pass through fail-closed request projection,
+including a zero-length body. Provider-scoped routes SHALL resolve only exact,
+lexically normalized `/v1/responses` targets with an optional query.
+
+#### Scenario: A caller sends an empty Responses request
+
+- **WHEN** a POST Responses request has no body
+- **THEN** the proxy rejects it locally as invalid JSON
+- **AND** no configured provider receives the request.
+
+#### Scenario: A caller sends an ambiguous route suffix
+
+- **WHEN** the route contains dot segments, encoded path material, duplicate
+  separators, a lookalike suffix, or a non-Responses endpoint
+- **THEN** the proxy rejects it locally
+- **AND** it does not construct or contact an upstream URL.
+
 ### Requirement: Provider wire differences are isolated
 
 The provider manifest MAY select one optional narrow wire-policy module. Core
@@ -380,9 +388,8 @@ and eligible non-hop-by-hop headers unchanged, SHALL NOT sleep before that
 relay, and SHALL record a bounded provider-scoped cooldown. A valid upstream
 `Retry-After` SHALL determine the cooldown up to five minutes; a value above
 that bound SHALL be capped, while an omitted, invalid, zero, or expired value
-SHALL use a five-second fallback. The
-default Responses concurrency SHALL be 8 and configurable through the validated
-runtime owner without claiming an undocumented provider quota.
+SHALL use a five-second fallback. The proxy SHALL NOT infer or configure an
+undocumented provider quota.
 
 #### Scenario: A provider returns a rate limit
 
@@ -436,167 +443,41 @@ and isolate unrelated provider and request-fingerprint keys.
 - **THEN** its deadline is stored independently
 - **AND** the longer key is neither shortened nor copied across the boundary.
 
-### Requirement: Provider route admission closes concurrent rate-limit bursts
+### Requirement: Ordinary concurrency remains outside the proxy
 
-The proxy SHALL admit at most one active Responses exchange per provider route
-while allowing different provider routes to proceed concurrently within the
-configured global limit. After a queued request acquires its provider route, it
-SHALL recheck that provider's cooldown before remote I/O. HTTP 429 SHALL remain
-terminal for the current request and SHALL NOT introduce an upstream retry.
+The proxy SHALL NOT serialize a provider route, queue ordinary traffic, or own
+a fixed or configurable ordinary-request concurrency ceiling. Codex owns
+per-session concurrency and each provider owns its actual quota. Each request
+SHALL check that provider's cooldown and the lifecycle drain barrier before
+remote I/O. HTTP 429 SHALL remain terminal for the current request and SHALL NOT
+introduce an upstream retry. Active-request accounting exists only for
+lifecycle handoff and observation.
 
 #### Scenario: Concurrent requests target one provider route
 
 - **WHEN** two Responses requests overlap on the same configured provider route
-- **THEN** only one request performs provider I/O at a time
-- **AND** the second request remains locally queued until the first releases the
-  route or its bounded queue wait expires.
+- **THEN** neither request waits in a proxy-owned concurrency queue
+- **AND** both may perform provider I/O unless a provider cooldown or lifecycle
+  drain is active.
 
 #### Scenario: Different provider routes overlap
 
 - **WHEN** Responses requests overlap on two different configured provider
-  routes and global capacity remains
+  routes
 - **THEN** both routes can perform provider I/O concurrently
-- **AND** neither route's admission slot blocks the other route.
+- **AND** neither a route-level nor process-wide ordinary admission slot or
+  queue exists.
 
-#### Scenario: Leading request establishes cooldown
+#### Scenario: One request establishes cooldown
 
-- **WHEN** a queued request acquires its route after the preceding request has
-  recorded a provider rate-limit cooldown
-- **THEN** the queued request receives the existing local HTTP 429 response
-- **AND** the proxy makes no upstream call for that queued request.
+- **WHEN** a later request arrives after a preceding request recorded a
+  provider rate-limit cooldown
+- **THEN** the later request receives the existing local HTTP 429 response
+- **AND** the proxy makes no upstream call for that later request.
 
-### Requirement: A held provider route slot is bounded by a total stream deadline
+#### Scenario: Lifecycle drain closes admission
 
-The proxy SHALL bound one upstream Responses stream by a total wall-clock
-deadline derived from the configured upstream timeout, in addition to the
-existing per-read idle timeout. That deadline SHALL span every pre-content
-reconnect attempt for the same request. Each per-read wait SHALL be clamped to
-the remaining deadline so a blocked read cannot outlive it by a full idle
-interval. An upstream connection the relay will not read from again SHALL be
-released rather than left for garbage collection.
-
-#### Scenario: A committed stream stalls without idling out
-
-- **WHEN** an upstream stream has written downstream and then stops producing
-  events until the total deadline passes
-- **THEN** the relay stops reading that stream and reports a deadline outcome
-  distinct from a per-read timeout
-- **AND** the provider route slot is released.
-
-#### Scenario: A pre-content failure occurs after the deadline
-
-- **WHEN** a stream fails before writing downstream and the total deadline has
-  already passed
-- **THEN** the relay does not reopen the stream
-- **AND** no further reconnect attempt is recorded for that request.
-
-#### Scenario: The relay abandons an upstream response
-
-- **WHEN** the relay stops reading an upstream response, whether at the total
-  deadline or because a pre-content reconnect replaces it
-- **THEN** that upstream connection is closed at that point.
-
-### Requirement: Local queue-timeout denial names the binding limit and is retryable
-
-When a Responses request exhausts its bounded local queue wait, the proxy SHALL
-deny it with a message naming the provider route, that route's admission limit,
-and the process-wide limit. The denial SHALL advertise a retry hint. The route
-limit named in the denial SHALL be the configured per-route admission width.
-
-#### Scenario: A request waits out the local queue timeout
-
-- **WHEN** a Responses request cannot acquire its provider route slot within the
-  configured local queue timeout
-- **THEN** the client receives HTTP 503 naming the provider route, the route
-  limit, and the process limit
-- **AND** the response advertises a retry hint for the client to retry the turn.
-
-#### Scenario: One route saturates while process capacity remains
-
-- **WHEN** concurrent Responses exchanges occupy one provider route up to that
-  route's admission width, and the process-wide limit is not yet binding
-- **THEN** the denial for a further same-route request attributes saturation to
-  that route rather than to the process limit.
-
-### Requirement: The default local queue wait covers one upstream stream deadline
-
-The default bounded local queue wait SHALL NOT be shorter than the default total
-upstream stream deadline that bounds the route-slot holder it waits on. A
-waiting request SHALL NOT be denied while the holder ahead of it is still inside
-its own deadline. The operator override and its validated bounds SHALL remain
-unchanged, and the per-route admission width SHALL remain a separate bound.
-
-#### Scenario: A waiter queues behind a legitimate long turn
-
-- **WHEN** a request waits on a provider route whose current holder is still
-  streaming inside the total upstream deadline
-- **THEN** the waiting request is not denied for exhausting its queue wait
-- **AND** it is admitted once the holder releases the route slot.
-
-#### Scenario: The upstream deadline is retuned
-
-- **WHEN** the default total upstream stream deadline changes
-- **THEN** the default local queue wait covers the new deadline without a
-  separate edit.
-
-### Requirement: A local response that precedes its request body ends the connection
-
-A local response emitted before the request body is consumed SHALL declare the
-connection closed, so the listener never parses an unread body remainder as the
-next request on a persistent connection. The listener SHALL NOT read a request
-body it has already refused, and a response emitted after the body is consumed
-SHALL keep the connection available for reuse.
-
-#### Scenario: A rejected request carries a body on a persistent connection
-
-- **WHEN** a closed-route or unsupported-method request carries a body and the
-  client intends to reuse the connection
-- **THEN** the rejection declares the connection closed
-- **AND** exactly one response is produced, with no second response derived from
-  the unread body.
-
-#### Scenario: An accepted request keeps the connection reusable
-
-- **WHEN** a request whose body the listener consumes is answered locally
-- **THEN** the connection remains available for the client's next request.
-
-### Requirement: Responses request projection is fail-closed at the HTTP boundary
-
-Every POST Responses request SHALL pass through fail-closed request projection,
-including a zero-length body. This requirement SHALL NOT restate which
-provider-scoped paths resolve, which is owned solely by the provider route
-requirement.
-
-#### Scenario: A caller sends an empty Responses request
-
-- **WHEN** a POST Responses request has no body
-- **THEN** the proxy rejects it locally as invalid JSON
-- **AND** no configured provider receives the request.
-
-### Requirement: Per-route admission width is an operator-settable share of process capacity
-
-The per-route admission width SHALL be a validated runtime setting projected
-into the supervised unit, not a source constant. Its default SHALL be derived
-from the process-wide limit so that one provider route holds no more than half
-of process capacity, leaving a second route at least as much capacity as the
-busiest route holds. Setting the width to one SHALL restore strict single-flight
-admission without a new release.
-
-#### Scenario: A busy route leaves capacity for another route
-
-- **WHEN** one provider route holds Responses exchanges up to its full admission
-  width
-- **THEN** a Responses request on a different provider route is still admitted.
-
-#### Scenario: The process-wide limit is retuned
-
-- **WHEN** the default process-wide admission limit changes
-- **THEN** the default per-route width follows it without a separate edit.
-
-#### Scenario: An operator restores single-flight admission
-
-- **WHEN** an operator sets the per-route admission width to one in the
-  supervised unit's environment and reloads the listener
-- **THEN** same-route Responses exchanges are serialized again without a new
-  release.
-
+- **WHEN** a transactional reload or shutdown activates the drain barrier
+- **THEN** new Responses receive the bounded local draining response
+- **AND** active-request accounting remains available for safe handoff without
+  becoming an ordinary traffic limit.

@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-02
+goal: Make dual-Forge publication proof work for private GitLab projects without
+  weakening release identity or asset parity.

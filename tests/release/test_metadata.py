@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Regression tests for release-history provenance enforcement."""
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from datetime import date
 from pathlib import Path
 from types import ModuleType
 from typing import Callable
-
 
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER = ROOT / "tools" / "release" / "metadata.py"
@@ -559,7 +557,7 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
             'GIT_DEPTH: "0"',
             "git fetch --unshallow --tags --force origin",
             "git fetch --tags --force origin",
-            "python tools/quality/tests.py",
+            'uv run --locked --no-sync nox -s "tests-${PYTHON_VERSION}"',
             f"{APT_INSTALL} git openssh-client",
         ),
         ".python-verify template",
@@ -585,9 +583,11 @@ def test_python_quality_gate_is_cross_forge() -> None:
 
     gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
-    owner = "sh tools/quality/run.sh"
+    owner = "uv run --locked --no-sync nox -s quality"
     require_tokens(gitlab, (owner,), "GitLab quality projection")
     require_tokens(github, (owner,), "GitHub quality projection")
+    require("tools/quality/run.sh" not in gitlab, "GitLab retains a duplicate quality runner")
+    require("tools/quality/run.sh" not in github, "GitHub retains a duplicate quality runner")
     require_tokens(gitlab, ("DEBIAN_FRONTEND: noninteractive",), "GitLab pipeline")
     require_tokens(
         ci_block(gitlab, "verify-python-quality:", "\n\npublish-gitlab-release:"),
@@ -596,23 +596,9 @@ def test_python_quality_gate_is_cross_forge() -> None:
     )
 
 
-def main() -> None:
-    test_cross_provider_changelog_provenance()
-    test_tag_creation_date_uses_utc()
-    test_prepare_release_requires_current_utc_date()
-    test_exact_release_tag_contract()
-    test_retired_cli_is_rejected()
-    test_provider_tag_scripts_preflight_before_signing()
-    test_forward_only_forge_publication_contract()
-    test_prune_tags_removes_deleted_remote_tag()
-    test_gitlab_ci_refreshes_tags_before_every_release_gate()
-    test_github_governance_fetches_complete_provider_tags()
-    test_github_release_metadata_is_strict()
-    test_gitlab_release_metadata_gate_selects_validation_by_ref()
-    test_gitlab_tag_gates_require_exact_tag_validation()
-    test_gitlab_ci_has_no_repository_bound_runner_selection()
-    test_gitlab_ci_runs_full_regression_matrix()
-    test_python_quality_gate_is_cross_forge()
+def test_current_release_metadata_chronology() -> None:
+    """Validate the current release train and representative chronology failures."""
+
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     heading = f"## [{version}]"
@@ -650,8 +636,3 @@ def main() -> None:
         cwd=ROOT,
         check=True,
     )
-    print("release metadata chronology contract: OK")
-
-
-if __name__ == "__main__":
-    main()

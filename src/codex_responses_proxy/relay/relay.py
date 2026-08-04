@@ -1,0 +1,239 @@
+"""Downstream HTTP framing and streaming relay."""
+
+from __future__ import annotations
+
+import http.client
+import json
+from http.server import BaseHTTPRequestHandler
+from typing import Any, Protocol
+
+from codex_responses_proxy.protocol import response as replay_response
+from codex_responses_proxy.relay import operational_log, telemetry
+from codex_responses_proxy.relay import sse
+from codex_responses_proxy.providers import registry as provider_registry
+
+HOP_BY_HOP = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+    "host",
+    "content-length",
+    "accept-encoding",
+}
+MAX_RESPONSES_JSON_BYTES = 8 * 1024 * 1024
+
+
+class Exchange(Protocol):
+    """Exchange surface required by the downstream relay."""
+
+    handler: BaseHTTPRequestHandler
+    request_id: int
+    is_responses: bool
+    used_input_variant_dialogue: bool
+
+    def upstream(self, body: bytes | None = None) -> Any:
+        """Open the current upstream attempt."""
+
+    def log(self, event: str, detail: str = "") -> None:
+        """Record a bounded request event."""
+
+    def input_variant_accepted(self) -> None:
+        """Record accepted input-variant recovery."""
+
+    def input_variant_exhausted(self, detail: str) -> None:
+        """Record exhausted input-variant recovery."""
+
+
+def send_payload(
+    handler: BaseHTTPRequestHandler,
+    status: int,
+    payload: bytes,
+    *,
+    content_type: str = "application/json",
+    retry_after: str | None = None,
+    close: bool = False,
+) -> None:
+    """Send one length-delimited local response."""
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    if retry_after:
+        handler.send_header("Retry-After", retry_after)
+    if close:
+        handler.send_header("Connection", "close")
+    handler.send_header("Content-Length", str(len(payload)))
+    handler.end_headers()
+    handler.wfile.write(payload)
+
+
+def json_error(message: str, error_type: str, code: str, *, reason: str | None = None) -> bytes:
+    """Encode one stable local error envelope."""
+    error = {"message": message, "type": error_type, "code": code}
+    if reason is not None:
+        error["reason"] = reason
+    return json.dumps(
+        {"error": error},
+        separators=(",", ":"),
+    ).encode()
+
+
+def send_wire_failure_exhausted(
+    handler: BaseHTTPRequestHandler,
+    policy: provider_registry.WirePolicy,
+    attempts: int,
+) -> None:
+    """Emit one provider-policy empty-response exhaustion."""
+    send_payload(handler, 503, policy.exhausted_payload(attempts), retry_after="3")
+
+
+def relay_error(handler: BaseHTTPRequestHandler, status: int, headers, payload: bytes) -> None:
+    """Relay one bounded upstream HTTP error."""
+    handler.send_response(status)
+    for name, value in headers.items():
+        if name.lower() not in HOP_BY_HOP:
+            handler.send_header(name, value)
+    handler.send_header("Content-Length", str(len(payload)))
+    handler.end_headers()
+    handler.wfile.write(payload)
+
+
+def _send_stream_headers(handler: BaseHTTPRequestHandler, response) -> None:
+    handler.send_response(response.status)
+    for name, value in response.headers.items():
+        if name.lower() not in HOP_BY_HOP and name.lower() != "content-length":
+            handler.send_header(name, value)
+    handler.send_header("Transfer-Encoding", "chunked")
+    handler.end_headers()
+
+
+def relay_sse(exchange: Exchange, response) -> None:
+    """Relay one Responses SSE stream with bounded pre-content recovery."""
+
+    def reopen():
+        return exchange.upstream()
+
+    try:
+        result = sse.relay(
+            exchange.handler,
+            response,
+            exchange.handler.path,
+            exchange.request_id,
+            reopen=None if exchange.used_input_variant_dialogue else reopen,
+            send_headers=lambda: _send_stream_headers(exchange.handler, response),
+        )
+        if result["pre_content_exhausted"]:
+            if exchange.used_input_variant_dialogue:
+                exchange.input_variant_exhausted("")
+            send_payload(
+                exchange.handler, 503, sse.exhausted_payload(result["attempts"]), retry_after="3"
+            )
+            exchange.log("sse_pre_content_exhausted", f"attempts={result['attempts']} ")
+        else:
+            exchange.input_variant_accepted()
+    except (BrokenPipeError, ConnectionResetError):
+        exchange.log("downstream_client_closed")
+    except Exception as error:
+        exchange.log(
+            "stream_handler_exception", f"exception={operational_log.safe_exception_label(error)} "
+        )
+
+
+def _read_chunk(response) -> tuple[bytes, bool]:
+    try:
+        return response.read(8192), False
+    except http.client.IncompleteRead as error:
+        return error.partial, True
+
+
+def relay_body(exchange: Exchange, response) -> None:
+    """Relay one length-unknown upstream body as chunked downstream data."""
+    _send_stream_headers(exchange.handler, response)
+    try:
+        while True:
+            chunk, terminal = _read_chunk(response)
+            if chunk:
+                exchange.handler.wfile.write(b"%X\r\n%s\r\n" % (len(chunk), chunk))
+            if not chunk or terminal:
+                break
+        exchange.handler.wfile.write(b"0\r\n\r\n")
+        if exchange.is_responses:
+            telemetry.record_counter("responses_completed")
+        exchange.input_variant_accepted()
+    except (BrokenPipeError, ConnectionResetError):
+        exchange.log("downstream_client_closed")
+    except Exception as error:
+        exchange.log(
+            "stream_handler_exception", f"exception={operational_log.safe_exception_label(error)} "
+        )
+
+
+def relay_readonly_body(handler: BaseHTTPRequestHandler, response) -> None:
+    """Relay one non-Responses body without replay or recovery side effects."""
+    _send_stream_headers(handler, response)
+    try:
+        while True:
+            chunk, terminal = _read_chunk(response)
+            if chunk:
+                handler.wfile.write(b"%X\r\n%s\r\n" % (len(chunk), chunk))
+            if not chunk or terminal:
+                break
+        handler.wfile.write(b"0\r\n\r\n")
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+    except Exception:
+        pass
+
+
+def _invalid_responses_success(exchange: Exchange, reason: str) -> None:
+    telemetry.record_counter("invalid_responses_success_bodies")
+    telemetry.record_failure("invalid_responses_success_body")
+    send_payload(
+        exchange.handler,
+        503,
+        json_error(
+            "Upstream returned an invalid successful Responses body; retry the turn",
+            "upstream_unavailable",
+            "invalid_responses_success_body",
+            reason=reason,
+        ),
+        retry_after="3",
+    )
+    exchange.log("invalid_responses_success_body", f"reason={reason} ")
+
+
+def relay_responses_json(exchange: Exchange, response) -> None:
+    """Project one complete non-stream Responses body before commitment."""
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        while True:
+            chunk, incomplete = _read_chunk(response)
+            if chunk:
+                chunks.append(chunk)
+                total += len(chunk)
+                if total > MAX_RESPONSES_JSON_BYTES:
+                    _invalid_responses_success(exchange, "response_too_large")
+                    return
+            if incomplete:
+                _invalid_responses_success(exchange, "incomplete_read")
+                return
+            if not chunk:
+                break
+        payload, removed = replay_response.sanitize_json_response(b"".join(chunks))
+    except ValueError:
+        _invalid_responses_success(exchange, "invalid_terminal_json")
+        return
+    except Exception as error:
+        _invalid_responses_success(exchange, operational_log.safe_exception_label(error))
+        return
+
+    send_payload(exchange.handler, response.status, payload)
+    if removed:
+        telemetry.record_counter("encrypted_response_keys_stripped", removed)
+        exchange.log("response_sanitized", f"encrypted_keys={removed} ")
+    telemetry.record_counter("responses_completed")
+    exchange.input_variant_accepted()

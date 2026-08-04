@@ -32,17 +32,18 @@ def check_python_metadata() -> None:
     """Keep Python support metadata aligned without duplicating release ownership."""
 
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    repository = metadata.get("tool", {}).get("codex-responses-proxy", {})
-    if repository.get("requires-python") != ">=3.12":
+    project = metadata.get("project", {})
+    if project.get("requires-python") != ">=3.12":
         raise ValueError("pyproject.toml must require Python >=3.12 without an upper bound")
-    if repository.get("version-source") != "VERSION":
-        raise ValueError("pyproject.toml must keep VERSION as the version owner")
-    if (
-        "project" in metadata
-        or repository.get("distribution") != "runtime-files"
-        or "build-system" in metadata
+    if project.get("dynamic") != ["version"]:
+        raise ValueError("pyproject.toml must keep VERSION as the sole version owner")
+    hatch_version = metadata.get("tool", {}).get("hatch", {}).get("version", {})
+    if hatch_version.get("path") != "VERSION":
+        raise ValueError("pyproject.toml must read package version from VERSION")
+    if metadata.get("tool", {}).get("codex-responses-proxy", {}).get("distribution") != (
+        "native-executable"
     ):
-        raise ValueError("the repository must remain an unbuilt runtime-file distribution")
+        raise ValueError("the product distribution must be the native executable")
 
 
 def _version_key(version: str) -> tuple[int, int, int]:
@@ -370,7 +371,7 @@ def main() -> None:
         )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    proxy = (ROOT / "codex_responses_proxy" / "listener" / "entrypoint.py").read_text(
+    proxy = (ROOT / "src" / "codex_responses_proxy" / "service" / "entrypoint.py").read_text(
         encoding="utf-8"
     )
     if "release_version()" not in proxy:

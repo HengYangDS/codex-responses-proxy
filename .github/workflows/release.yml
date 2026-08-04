@@ -159,7 +159,7 @@ jobs:
           PY
           if [ "$verdict" = missing ]; then
             assets="$RUNNER_TEMP/release-assets"
-            python tools/release/assets.py --output "$assets"
+            python -m tools.release.assets --output "$assets"
             gh release create "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" \
               --verify-tag --title "Codex Responses Proxy $SELECTED_TAG" --generate-notes \
               "$assets/codex-responses-proxy-${SELECTED_TAG#v}.tar.gz" \
