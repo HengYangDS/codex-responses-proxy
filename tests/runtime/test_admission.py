@@ -39,6 +39,13 @@ class AdmissionTests(unittest.TestCase):
     def test_default_responses_concurrency_is_conservative(self) -> None:
         self.assertEqual(admission.RESPONSES_MAX_CONCURRENCY, 8)
 
+    def test_default_route_width_admits_concurrency_without_starving_other_routes(self) -> None:
+        self.assertGreater(admission.RESPONSES_MAX_PER_ROUTE, 1)
+        self.assertLessEqual(
+            admission.RESPONSES_MAX_PER_ROUTE,
+            admission.RESPONSES_MAX_CONCURRENCY - admission.RESPONSES_MAX_PER_ROUTE,
+        )
+
     def test_default_queue_wait_is_not_shorter_than_one_upstream_deadline(self) -> None:
         self.assertGreaterEqual(
             runtime_config.DEFAULT_RESPONSES_QUEUE_TIMEOUT,
@@ -64,15 +71,20 @@ class AdmissionTests(unittest.TestCase):
             self.assertEqual(semaphore.releases, expected == ("draining", 0))
             admission.set_draining(False)
 
-    def test_same_route_is_single_flight_while_distinct_routes_overlap(self) -> None:
-        self.assertEqual(admission.admit_response("ucloud", timeout=0), ("acquired", 1))
-        self.assertEqual(admission.admit_response("ucloud", timeout=0), ("timeout", 1))
-        self.assertEqual(admission.admit_response("aihubmix", timeout=0), ("acquired", 2))
-        self.assertEqual(admission.release_response_slot("aihubmix"), 1)
-        self.assertEqual(admission.release_response_slot("ucloud"), 0)
+    def test_a_route_saturates_at_its_width_while_distinct_routes_overlap(self) -> None:
+        width = admission.RESPONSES_MAX_PER_ROUTE
+        for held in range(1, width + 1):
+            self.assertEqual(admission.admit_response("ucloud", timeout=0), ("acquired", held))
+        self.assertEqual(admission.admit_response("ucloud", timeout=0), ("timeout", width))
+        self.assertEqual(admission.admit_response("aihubmix", timeout=0), ("acquired", width + 1))
+        self.assertEqual(admission.release_response_slot("aihubmix"), width)
+        for remaining in reversed(range(width)):
+            self.assertEqual(admission.release_response_slot("ucloud"), remaining)
 
     def test_waiting_same_route_acquires_after_release(self) -> None:
-        self.assertEqual(admission.admit_response("ucloud", timeout=0), ("acquired", 1))
+        width = admission.RESPONSES_MAX_PER_ROUTE
+        for held in range(1, width + 1):
+            self.assertEqual(admission.admit_response("ucloud", timeout=0), ("acquired", held))
         acquired = threading.Event()
         result: list[tuple[str, int]] = []
 
@@ -83,11 +95,12 @@ class AdmissionTests(unittest.TestCase):
         waiter = threading.Thread(target=wait_for_route)
         waiter.start()
         self.assertFalse(acquired.wait(0.05))
-        self.assertEqual(admission.release_response_slot("ucloud"), 0)
+        self.assertEqual(admission.release_response_slot("ucloud"), width - 1)
         self.assertTrue(acquired.wait(1))
         waiter.join()
-        self.assertEqual(result, [("acquired", 1)])
-        self.assertEqual(admission.release_response_slot("ucloud"), 0)
+        self.assertEqual(result, [("acquired", width)])
+        for remaining in reversed(range(width)):
+            self.assertEqual(admission.release_response_slot("ucloud"), remaining)
 
     def test_handlers_ids_loopback_and_lease_bounds_are_total(self) -> None:
         self.assertEqual((admission.next_request_id(), admission.next_request_id()), (1, 2))
