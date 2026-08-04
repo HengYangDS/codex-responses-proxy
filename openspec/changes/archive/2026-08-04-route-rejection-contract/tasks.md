@@ -1,12 +1,16 @@
 ## 1. One owner for the route contract
 
-- [x] 1.1 Remove the duplicated route-resolution sentence from the Responses
-  admission requirement, leaving it to state fail-closed projection only.
+- [x] 1.1 Remove the conflated requirement that stated both which provider paths
+  resolve and how a Responses body is projected, and restate its projection half
+  under a name that claims only projection.
 - [x] 1.2 Move the ambiguous-suffix scenario to the route requirement and
   replace its stale "non-Responses endpoint" wording, which the admitted
   `GET /<provider>/v1/models` target had made false.
 - [x] 1.3 Carry "lexically normalized" onto the route requirement so the dedupe
   drops no meaning.
+- [x] 1.4 Confirm after archival that the routing rule, the ambiguous-suffix
+  scenario, and the stale clause each appear exactly once, zero times, and zero
+  times respectively across `openspec/specs`.
 
 ## 2. Connection framing on a refused request
 

@@ -26,11 +26,11 @@ A client reusing that connection loses its next request.
 
 ## What Changes
 
-- Give routing a single owner in the specification. The route-resolution
-  sentence is removed from the admission requirement, which now states only
-  fail-closed projection; the ambiguous-suffix scenario moves to the route
-  requirement and its stale "non-Responses endpoint" wording is replaced by the
-  method the matched target does not admit.
+- Give routing a single owner in the specification. The conflated requirement is
+  removed; its projection half is restated under a name that claims only
+  projection, and the ambiguous-suffix scenario moves to the route requirement
+  with its stale "non-Responses endpoint" wording replaced by the method the
+  matched target does not admit.
 - Add a requirement that a local response emitted before its request body is
   consumed declares the connection closed, and that a response emitted after the
   body is consumed leaves the connection reusable.
@@ -51,6 +51,7 @@ None.
   connection instead of leaving an unread remainder to be parsed as the next
   request; facet:lifecycle=admission; facet:surface=source,test,openspec,claim,
   evidence; facet:authority=source,test,openspec,claim,evidence.
+
 
 ## Out of Scope
 
