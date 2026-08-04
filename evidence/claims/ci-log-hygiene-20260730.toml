@@ -27,7 +27,7 @@ owner = "codex-responses-proxy"
 scope = "The dated Chronicle covers one observed hosted checkout warning. Current local proof additionally covers exact identity-neutral fingerprint preservation, linear history matching, and bounded diagnostics; post-fix hosted CI, publication, installation, runtime, and immutable reclose remain external until refreshed."
 
 [carriers]
-openspec = "openspec/changes/forge-projection-linearization"
+openspec = "openspec/changes/archive/2026-08-01-forge-projection-linearization"
 fallback = "Revert the source commit before publication if checkout behavior or identity-neutral projection regresses; no runner-global or installed-runtime state needs rollback."
 kill_signal = "A successful job emits an actual prohibited diagnostic, checkout residue survives, history matching ceases to be linear, identity-neutral mapping becomes absent or ambiguous, or a target ref changes after a rejected projection."
 

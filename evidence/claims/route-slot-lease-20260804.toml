@@ -26,7 +26,7 @@ owner = "codex-responses-proxy"
 scope = "The AIGW check and catalog model-listing contract, the VERSION bump, raising the released responses_queue_timeout default in code, hosted publication, and live provider acceptance are separate claims."
 
 [carriers]
-openspec = "openspec/changes/route-slot-lease"
+openspec = "openspec/changes/archive/2026-08-04-route-slot-lease"
 fallback = "Raise the local queue wait by setting CODEX_RESPONSES_PROXY_RESPONSES_QUEUE_TIMEOUT in the installed unit's environment and reloading it, since install exposes no flag for this setting and a shell export does not reach a supervised listener; revert these three commits to restore prior stream behavior."
 kill_signal = "A route slot is held past the configured upstream timeout, an abandoned upstream response is left unclosed, the queue-timeout denial omits the route or its retry hint, per-route admission admits more than one exchange, or a legitimate completing turn is truncated inside the configured budget."
 
