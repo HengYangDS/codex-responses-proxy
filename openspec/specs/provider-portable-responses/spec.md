@@ -152,19 +152,19 @@ read-only model-catalog targets for `dmxapi`, `ucloud`, and `aihubmix`. Each
 namespace SHALL resolve only exact `POST /<provider>/v1/responses` targets with
 an optional query to its release-owned HTTPS upstream mapping, or exact
 `GET /<provider>/v1/models` targets with an optional query to that same mapping.
-Responses targets SHALL retain their existing compatibility projection and
-recovery behavior. Model-catalog targets SHALL relay once without request-body
-or response projection, Responses admission, cooldown, retry, or
-provider-policy recovery. Encoded path material, dot segments, duplicate
-separators, lookalike suffixes, fragments, absolute targets, unsupported
-methods, and unrelated endpoints SHALL be rejected locally. A downstream
-request SHALL NOT supply or override an upstream URL or host.
+Responses targets SHALL retain their existing compatibility projection, route-local
+admission behavior, queue-timeout retry semantics, and total stream-deadline
+behavior. Model-catalog targets SHALL relay once without request-body or response
+projection, Responses admission, cooldown, retry, or provider-policy recovery.
+Encoded path material, dot segments, duplicate separators, lookalike suffixes,
+fragments, absolute targets, unsupported methods, and unrelated endpoints SHALL
+be rejected locally. A downstream request SHALL NOT supply or override an upstream
+URL or host.
 
 #### Scenario: AIGW selects each governed provider
 
 - **WHEN** AIGW sends otherwise equivalent Requests traffic to
-  `/dmxapi/v1/responses`, `/ucloud/v1/responses`, or
-  `/aihubmix/v1/responses`
+  `/dmxapi/v1/responses`, `/ucloud/v1/responses`, or `/aihubmix/v1/responses`
 - **THEN** the proxy sends it only to the matching DMXAPI, UCloud/Azure, or
   AIHubMix HTTPS upstream
 - **AND** credentials continue to come from the AIGW-managed client request.
@@ -178,11 +178,18 @@ request SHALL NOT supply or override an upstream URL or host.
 - **AND** it relays authentication, upstream status, eligible headers, and body
   without Responses replay transformation or recovery.
 
+#### Scenario: A Responses route is locally saturated
+
+- **WHEN** the route-local Responses admission wait expires
+- **THEN** the proxy reports the selected provider route, both effective limits,
+  and `Retry-After: 5`
+- **AND** a catalog request does not consume or wait for a Responses slot.
+
 #### Scenario: A caller uses an unknown namespace
 
 - **WHEN** a request path does not match a control endpoint, one of the three
-  canonical Responses targets, one of the three canonical model-catalog
-  targets, or the bounded DMX migration route
+  canonical Responses targets, one of the three canonical model-catalog targets,
+  or the bounded DMX migration route
 - **THEN** the proxy rejects it locally
 - **AND** it performs no remote network request.
 
