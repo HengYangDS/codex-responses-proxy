@@ -290,3 +290,70 @@ class TestPayloadValidation:
                 (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
                 with pytest.raises(errors.InstallError, match=message):
                     payload_rollback.restore_snapshot(ctx, rollback)
+
+    def test_owned_file_boundaries_reject_invalid_types_and_path_races(
+        self, tmp_path: Path, subtests, *, mocker
+    ) -> None:
+        """Exercise each fail-closed filesystem type boundary without private host paths."""
+
+        with pytest.raises(errors.InstallError, match="non-empty string"):
+            owned_files.canonical_relative(None, "fixture")
+
+        root_file = tmp_path / "root-file"
+        root_file.write_text("not a directory", encoding="utf-8")
+        with pytest.raises(errors.InstallError, match="root is not a real directory"):
+            owned_files.regular_file(root_file, "payload", "fixture")
+
+        root = tmp_path / "root"
+        root.mkdir()
+        ancestor = root / "ancestor"
+        ancestor.write_text("not a directory", encoding="utf-8")
+        with pytest.raises(errors.InstallError, match="ancestor is not a directory"):
+            owned_files.regular_file(root, "ancestor/payload", "fixture")
+
+        symlink = root / "symlink"
+        symlink.symlink_to(ancestor)
+        with pytest.raises(errors.InstallError, match="path is a symlink"):
+            owned_files.regular_file(root, "symlink", "fixture")
+
+        directory = root / "directory"
+        directory.mkdir()
+        with pytest.raises(errors.InstallError, match="not a regular file"):
+            owned_files.regular_file(root, "directory", "fixture")
+        with pytest.raises(errors.InstallError, match="owned path is not a regular file"):
+            owned_files.write_bytes(directory, b"content", root=root)
+
+        target = root / "changed-type"
+        calls = 0
+
+        def change_target_type(_target: Path, _root: Path) -> None:
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                target.mkdir()
+
+        mocker.patch.object(owned_files, "_real_parent", side_effect=change_target_type)
+        with pytest.raises(errors.InstallError, match="owned path changed type"):
+            owned_files.write_bytes(target, b"content", root=root)
+        mocker.stopall()
+
+        sequence = root / "sequence.json"
+        sequence.write_text("[]", encoding="utf-8")
+        with pytest.raises(errors.InstallError, match="not a JSON object"):
+            owned_files.read_json_object(sequence, "fixture JSON")
+
+        outside = tmp_path / "outside" / "payload"
+        with pytest.raises(errors.InstallError, match="escapes its root"):
+            owned_files._real_parent(outside, root)
+
+        real_root = tmp_path / "real-root"
+        real_root.mkdir()
+        linked_root = tmp_path / "linked-root"
+        linked_root.symlink_to(real_root, target_is_directory=True)
+        with pytest.raises(errors.InstallError, match="root is a symlink"):
+            owned_files._real_parent(linked_root / "payload", linked_root)
+
+        parent_file = real_root / "parent"
+        parent_file.write_text("not a directory", encoding="utf-8")
+        with pytest.raises(errors.InstallError, match="ancestor is not a directory"):
+            owned_files._real_parent(parent_file / "payload", real_root)

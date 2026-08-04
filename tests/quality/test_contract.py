@@ -725,6 +725,26 @@ class TestVerificationContracts:
         assert 'session.notify(f"tests-{python}")' in full_source
         assert 'session.notify("tests",' not in full_source
 
+    def test_release_black_box_path_is_repeatable(self) -> None:
+        """Release verification must tolerate repeated commands in one Nox session."""
+
+        tree = ast.parse((ROOT / "noxfile.py").read_text(encoding="utf-8"))
+        function = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_run_without_python"
+        )
+        mkdir = next(
+            node
+            for node in ast.walk(function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "mkdir"
+        )
+        keywords = {keyword.arg: keyword.value for keyword in mkdir.keywords}
+        assert isinstance(keywords.get("exist_ok"), ast.Constant)
+        assert keywords["exist_ok"].value is True
+
     def test_nox_is_the_only_quality_composition_owner(self) -> None:
         assert not (ROOT / "tools" / "quality" / "run.sh").exists()
 

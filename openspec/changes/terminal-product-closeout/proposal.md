@@ -43,17 +43,27 @@ for one terminal product.
 
 ### New Capabilities
 
-- `product-interface`: stable executable UX, repository-owned DX, native
-  distribution, public lifecycle grammar, and terminal lane state.
+- `product-interface`: subject=public executable, repository-owned DX, and terminal lane state; reuse=new; change=add; facet:lifecycle=installation,operation,closeout; facet:surface=cli,release,docs,openspec; facet:authority=source,test,docs,openspec,claim,evidence.
 
 ### Modified Capabilities
 
-- `provider-portable-responses`: manifest-only ordinary provider extension and
-  complete request-local replay/recovery semantics.
-- `runtime-upgrade`: executable- and manifest-bound transactional lifecycle
-  independent of source checkout and Python installation.
-- `ci-diagnostics`: one locked Nox projection with pristine success output,
-  supported-Python coverage, and native executable acceptance.
+- `provider-portable-responses`: subject=request-local portable replay, provider routing, and bounded recovery; reuse=extend; change=modify; facet:lifecycle=request,stream; facet:surface=protocol,provider,relay,test,openspec; facet:authority=source,test,openspec,claim,evidence.
+- `runtime-upgrade`: subject=executable-bound installation, handoff, rollback, and supervision; reuse=extend; change=modify; facet:lifecycle=installation,recovery,operation; facet:surface=lifecycle,service,release,test,openspec; facet:authority=source,test,openspec,claim,evidence.
+- `ci-diagnostics`: subject=locked verification, strict coverage, clean diagnostics, and native release acceptance; reuse=extend; change=modify; facet:lifecycle=validation,release; facet:surface=quality,ci,test,release,openspec; facet:authority=source,test,openspec,claim,evidence.
+
+## Out of Scope
+
+- Installing, configuring, verifying, or controlling AIGW, Codex, Claude Code,
+  JetBrains products, Air, Junie, PyCharm MCP, ETHOS, or Workstation Control
+  Plane.
+- Editing Codex JSONL, SQLite, historical messages, item records, conversation
+  metadata, or model metadata.
+- General model routing, account management, credential storage, billing, load
+  balancing, or provider quota policy.
+- Preserving retired source paths, module entrypoints, compatibility aliases,
+  provider-specific product names, or development-runtime dependencies.
+- Treating local tests as hosted CI, Forge publication, installed-runtime, live
+  provider, original-task, or housekeeping evidence.
 
 ## Impact
 

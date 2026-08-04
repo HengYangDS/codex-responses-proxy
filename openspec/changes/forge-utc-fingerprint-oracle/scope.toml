@@ -1,7 +1,0 @@
-schema_version = 1
-paths = [
-  "openspec/changes/forge-utc-fingerprint-oracle/**",
-  "openspec/changes/archive/*-forge-utc-fingerprint-oracle/**",
-  "openspec/specs/ci-diagnostics/**",
-  "tests/forge/test_history.py",
-]

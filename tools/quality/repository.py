@@ -50,29 +50,21 @@ class RepositoryInventory:
 def _hash_field(digest: Any, label: bytes, value: bytes) -> None:
     """Add one length-delimited field to a repository fingerprint."""
 
-    digest.update(len(label).to_bytes(4, "big"))
-    digest.update(label)
-    digest.update(len(value).to_bytes(8, "big"))
-    digest.update(value)
+    digest.update(len(label).to_bytes(2, "big") + label + len(value).to_bytes(8, "big") + value)
 
 
 def _git_output(root: Path, *args: str, allow_absent_head: bool = False) -> bytes:
     """Return raw Git output without inheriting host-specific configuration."""
 
     environment = os.environ | {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
-    result = subprocess.run(
-        ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        env=environment,
-    )
-    if result.returncode:
+    command = ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args]
+    try:
+        return subprocess.run(command, capture_output=True, check=True, env=environment).stdout
+    except subprocess.CalledProcessError as error:
         if allow_absent_head:
             return b"<unborn>"
-        detail = os.fsdecode(result.stderr).strip() or str(result.returncode)
-        raise RuntimeError(f"git_failed:{detail}")
-    return result.stdout
+        detail = os.fsdecode(error.stderr).strip() or str(error.returncode)
+        raise RuntimeError(f"git_failed:{detail}") from None
 
 
 def worktree_fingerprint(root: Path = ROOT) -> str:
@@ -81,38 +73,26 @@ def worktree_fingerprint(root: Path = ROOT) -> str:
     digest = hashlib.sha256()
     head = _git_output(root, "rev-parse", "--verify", "HEAD", allow_absent_head=True).strip()
     _hash_field(digest, b"head", head)
-    listed = _git_output(
-        root,
-        "ls-files",
-        "-z",
-        "--cached",
-        "--others",
-        "--exclude-standard",
-    )
+    listed = _git_output(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
     for encoded_path in sorted({path for path in listed.split(b"\0") if path}):
-        relative = os.fsdecode(encoded_path)
-        path = root / relative
+        path = root / os.fsdecode(encoded_path)
         _hash_field(digest, b"path", encoded_path)
         try:
-            metadata = path.lstat()
+            mode = path.lstat().st_mode
         except FileNotFoundError:
             _hash_field(digest, b"type", b"missing")
             continue
-        mode = metadata.st_mode
-        executable = b"1" if mode & 0o111 else b"0"
-        _hash_field(digest, b"executable", executable)
+        _hash_field(digest, b"executable", b"1" if mode & 0o111 else b"0")
         if stat.S_ISREG(mode):
-            _hash_field(digest, b"type", b"regular")
-            with path.open("rb") as stream:
-                while chunk := stream.read(1024 * 1024):
-                    _hash_field(digest, b"content", chunk)
+            label, value = b"regular", path.read_bytes()
         elif stat.S_ISLNK(mode):
-            _hash_field(digest, b"type", b"symlink")
-            _hash_field(digest, b"target", os.fsencode(os.readlink(path)))
-        elif stat.S_ISDIR(mode):
-            _hash_field(digest, b"type", b"directory")
+            label, value = b"symlink", os.fsencode(os.readlink(path))
         else:
-            _hash_field(digest, b"type", f"special:{stat.S_IFMT(mode):o}".encode())
+            label = (
+                b"directory" if stat.S_ISDIR(mode) else f"special:{stat.S_IFMT(mode):o}".encode()
+            )
+            value = b""
+        _hash_field(digest, label, value)
     return digest.hexdigest()
 
 
@@ -256,6 +236,17 @@ def _repository_inventory(
     return RepositoryInventory(paths, tuple(sorted(gaps)))
 
 
+def _docstring_expressions(tree: ast.Module) -> Iterable[ast.Expr]:
+    """Yield syntax nodes that carry module, class, or function docstrings."""
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, (ast.Module, *_DEFINITION_TYPES))
+            and ast.get_docstring(node, clean=False) is not None
+        ):
+            yield node.body[0]
+
+
 def _effective_lines(path: Path, tree: ast.Module) -> int:
     """Count code lines while excluding comments, blanks, and docstring carriers."""
 
@@ -264,18 +255,9 @@ def _effective_lines(path: Path, tree: ast.Module) -> int:
     for token in tokenize.tokenize(BytesIO(path.read_bytes()).readline):
         if token.type == tokenize.COMMENT:
             excluded.update(range(token.start[0], token.end[0] + 1))
-    for node in ast.walk(tree):
-        body = getattr(node, "body", None)
-        if not isinstance(body, list) or not body:
-            continue
-        first = body[0]
-        if (
-            isinstance(first, ast.Expr)
-            and isinstance(first.value, ast.Constant)
-            and isinstance(first.value.value, str)
-            and first.end_lineno is not None
-        ):
-            excluded.update(range(first.lineno, first.end_lineno + 1))
+    for expression in _docstring_expressions(tree):
+        if expression.end_lineno is not None:
+            excluded.update(range(expression.lineno, expression.end_lineno + 1))
     return sum(
         bool(line.strip()) and lineno not in excluded for lineno, line in enumerate(lines, 1)
     )
@@ -332,19 +314,7 @@ def _logical_statements(path: Path, tree: ast.Module) -> int:
 
     tokens = tokenize.tokenize(BytesIO(path.read_bytes()).readline)
     logical_statements = sum(token.type == tokenize.NEWLINE for token in tokens)
-    docstrings = 0
-    for node in ast.walk(tree):
-        body = getattr(node, "body", None)
-        if not isinstance(body, list) or not body:
-            continue
-        first = body[0]
-        if (
-            isinstance(first, ast.Expr)
-            and isinstance(first.value, ast.Constant)
-            and isinstance(first.value.value, str)
-        ):
-            docstrings += 1
-    return logical_statements - docstrings
+    return logical_statements - sum(1 for _ in _docstring_expressions(tree))
 
 
 def _public_docstring_gaps(root: Path, path: Path, tree: ast.Module) -> list[str]:
