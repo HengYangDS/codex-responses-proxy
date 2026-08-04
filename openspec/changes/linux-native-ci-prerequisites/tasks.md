@@ -8,6 +8,6 @@
 ## 2. Verify and deliver
 
 - [x] 2.1 Pass focused release-metadata and quality-contract tests.
-- [ ] 2.2 Pass the full exact-head local quality and Python matrix proof.
+- [x] 2.2 Pass the full exact-head local quality and Python matrix proof.
 - [ ] 2.3 Land forward-only and obtain a successful exact-head GitLab main
   pipeline before resuming release publication.
