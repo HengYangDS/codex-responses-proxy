@@ -7,6 +7,8 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.8] - 2026-08-04
+
 ### Fixed
 
 - Name the provider route and both admission limits in the local queue-timeout
