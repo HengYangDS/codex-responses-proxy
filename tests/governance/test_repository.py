@@ -117,6 +117,7 @@ class TestInstallationInputValidation(unittest.TestCase):
             log_dir="/var/state/proxy",
             port=8808,
             responses_max_concurrency=19,
+            responses_max_per_route=7,
             upstream_timeout=45.0,
         )
         environment = context.service_environment()
@@ -133,6 +134,7 @@ class TestInstallationInputValidation(unittest.TestCase):
                 runtime_config.WATCHDOG_LOG_MAX_BYTES_ENV,
                 runtime_config.WATCHDOG_LOG_BACKUP_COUNT_ENV,
                 runtime_config.RESPONSES_MAX_CONCURRENCY_ENV,
+                runtime_config.RESPONSES_MAX_PER_ROUTE_ENV,
                 runtime_config.RESPONSES_QUEUE_TIMEOUT_ENV,
                 runtime_config.UPSTREAM_TIMEOUT_ENV,
                 runtime_config.UPSTREAM_READ_TIMEOUT_ENV,
@@ -142,6 +144,7 @@ class TestInstallationInputValidation(unittest.TestCase):
         )
         self.assertEqual(runtime_config.load(environment).listener, ("127.0.0.1", 8808))
         self.assertEqual(environment[runtime_config.RESPONSES_MAX_CONCURRENCY_ENV], "19")
+        self.assertEqual(environment[runtime_config.RESPONSES_MAX_PER_ROUTE_ENV], "7")
         self.assertEqual(environment[runtime_config.UPSTREAM_TIMEOUT_ENV], "45.0")
 
     def test_runtime_settings_have_one_owner_and_strict_validation(self):
@@ -152,6 +155,7 @@ class TestInstallationInputValidation(unittest.TestCase):
             runtime_config.WATCHDOG_LOG_MAX_BYTES_ENV: "12288",
             runtime_config.WATCHDOG_LOG_BACKUP_COUNT_ENV: "5",
             runtime_config.RESPONSES_MAX_CONCURRENCY_ENV: "17",
+            runtime_config.RESPONSES_MAX_PER_ROUTE_ENV: "6",
             runtime_config.RESPONSES_QUEUE_TIMEOUT_ENV: "2.5",
             runtime_config.UPSTREAM_TIMEOUT_ENV: "30",
             runtime_config.UPSTREAM_READ_TIMEOUT_ENV: "15.5",
@@ -165,6 +169,7 @@ class TestInstallationInputValidation(unittest.TestCase):
         self.assertEqual(settings.watchdog_log.max_bytes, 12288)
         self.assertEqual(settings.watchdog_log.backup_count, 5)
         self.assertEqual(settings.responses_max_concurrency, 17)
+        self.assertEqual(settings.responses_max_per_route, 6)
         self.assertEqual(settings.responses_queue_timeout, 2.5)
         self.assertEqual(settings.upstream_timeout, 30)
         self.assertEqual(settings.upstream_read_timeout, 15.5)
@@ -176,6 +181,7 @@ class TestInstallationInputValidation(unittest.TestCase):
             (runtime_config.PROXY_LOG_MAX_BYTES_ENV, "4095"),
             (runtime_config.PROXY_LOG_BACKUP_COUNT_ENV, "11"),
             (runtime_config.RESPONSES_MAX_CONCURRENCY_ENV, "0"),
+            (runtime_config.RESPONSES_MAX_PER_ROUTE_ENV, "0"),
             (runtime_config.RESPONSES_QUEUE_TIMEOUT_ENV, "nan"),
             (runtime_config.UPSTREAM_TIMEOUT_ENV, "0"),
             (runtime_config.UPSTREAM_READ_TIMEOUT_ENV, "infinity"),

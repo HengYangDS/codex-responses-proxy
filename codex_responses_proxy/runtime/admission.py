@@ -15,7 +15,7 @@ from codex_responses_proxy.runtime import telemetry
 SETTINGS = runtime_config.load()
 RESPONSES_MAX_CONCURRENCY = SETTINGS.responses_max_concurrency
 RESPONSES_QUEUE_TIMEOUT = SETTINGS.responses_queue_timeout
-RESPONSES_MAX_PER_ROUTE = 1
+RESPONSES_MAX_PER_ROUTE = SETTINGS.responses_max_per_route
 _MIN_DRAIN_LEASE_SECONDS = 1
 _MAX_DRAIN_LEASE_SECONDS = 900
 _RESPONSE_SEMAPHORE = threading.BoundedSemaphore(RESPONSES_MAX_CONCURRENCY)

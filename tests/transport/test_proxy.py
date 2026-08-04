@@ -476,7 +476,10 @@ class TestProxyTransport(unittest.TestCase):
             "started_event": started,
             "release_event": release,
         }
-        with running_proxy([scripted]) as (port, _received):
+        with (
+            mock.patch.object(admission, "RESPONSES_MAX_PER_ROUTE", 1),
+            running_proxy([scripted]) as (port, _received),
+        ):
 
             def request_in_flight():
                 try:
@@ -493,6 +496,7 @@ class TestProxyTransport(unittest.TestCase):
                 )
                 with (
                     mock.patch.object(admission, "RESPONSES_QUEUE_TIMEOUT", 0.05),
+                    mock.patch.object(admission, "RESPONSES_MAX_PER_ROUTE", 3),
                     self.assertRaises(urllib.error.HTTPError) as raised,
                 ):
                     request(port, body)
@@ -506,7 +510,7 @@ class TestProxyTransport(unittest.TestCase):
         self.assertNotIn("error", worker_result)
         message = payload["error"]["message"]
         self.assertIn("dmxapi", message)
-        self.assertIn("route limit 1", message)
+        self.assertIn("route limit 3", message)
         self.assertNotIn(f"slot ({admission.RESPONSES_MAX_CONCURRENCY})", message)
         self.assertEqual(payload["error"]["type"], "server_busy")
         self.assertEqual(payload["error"]["code"], "local_queue_timeout")
