@@ -1,0 +1,39 @@
+[claim]
+id = "queue-timeout-invariant-20260804"
+subject = "codex-responses-proxy:local-queue-wait-default"
+state = "active"
+summary = "Derive the default local queue wait from the total upstream stream deadline so a waiter is never denied while the holder ahead of it is still inside its own deadline."
+
+[evidence]
+dated = "evidence/chronicle/queue-timeout-invariant-20260804/2026-08-04.md"
+sha256 = "07d2ebd2b1235696adf38fbb713727711d0dac98dfe139a956da5377044fd9dc"
+evidence_ids = ["evidence:queue-timeout-invariant-20260804"]
+binding = "A census of 18364 route holds and 652 matched queue-timeout denials in the live rotated proxy logs, TDD with an observed RED, and warning-free full quality above 95% statement and branch coverage with a coverage total byte-identical to the pre-change baseline; the live listener has not yet observed the change, because its unit still pins the install-time value"
+verifier = "digest_only"
+tests = [
+  "python3.14 tests/runtime/test_admission.py",
+  "PYTHON=python3.12 sh tools/quality/run.sh",
+  "openspec validate queue-timeout-invariant --strict",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "The operator override and its validated bounds, per-route admission width, the total upstream stream deadline itself, the AIGW check and catalog contract, hosted publication, and live provider acceptance are separate claims."
+
+[carriers]
+openspec = "openspec/changes/queue-timeout-invariant"
+fallback = "Set CODEX_RESPONSES_PROXY_RESPONSES_QUEUE_TIMEOUT in the installed unit's environment to restore a shorter wait without reverting, or revert this commit to restore the 120-second default; both need a unit reload to reach a supervised listener."
+kill_signal = "A request is denied for exhausting its queue wait while its route holder is still inside the total upstream deadline, a held route slot outlives that deadline, the operator override or its bounds stop being honored, per-route admission admits more than one exchange, or the two constants drift apart again without the unit contract failing."
+supersedes = "The route-slot-lease finding that raising this default would reach no already-installed operator, and its 300-second target."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "README.md",
+  "codex_responses_proxy/runtime/config.py",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/runtime/test_admission.py",
+]

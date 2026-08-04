@@ -6,7 +6,7 @@ summary = "Bind a total upstream stream deadline, upstream connection release, a
 
 [evidence]
 dated = "evidence/chronicle/route-slot-lease-20260804/2026-08-04.md"
-sha256 = "523470b3c654153d405bd70d0a7fd996de0d4d670ad834d3fa0b88f4a5386a0c"
+sha256 = "b273f6236d4c4855efa5336cec0c381c9979d207fe2487ebd9cf1bac2eca8bf9"
 evidence_ids = ["evidence:route-slot-lease-20260804"]
 binding = "Log census, TDD with observed RED, warning-free full quality above 95% statement and branch coverage, strict OpenSpec, and three implementation commits; promoted to candidate/dev as a verified fast-forward ahead of the concurrent AIGW model-catalog change on the owner's instruction, so that lane's rebase and live route acceptance remain pending"
 verifier = "digest_only"
@@ -27,7 +27,7 @@ scope = "The AIGW check and catalog model-listing contract, the VERSION bump, ra
 
 [carriers]
 openspec = "openspec/changes/route-slot-lease"
-fallback = "Raise CODEX_RESPONSES_PROXY_RESPONSES_QUEUE_TIMEOUT from 120 toward 300 to absorb legitimate long holds, re-rendering the native unit with install --force-v2-bootstrap so a supervised listener actually observes it; revert these three commits to restore prior stream behavior."
+fallback = "Raise the local queue wait by setting CODEX_RESPONSES_PROXY_RESPONSES_QUEUE_TIMEOUT in the installed unit's environment and reloading it, since install exposes no flag for this setting and a shell export does not reach a supervised listener; revert these three commits to restore prior stream behavior."
 kill_signal = "A route slot is held past the configured upstream timeout, an abandoned upstream response is left unclosed, the queue-timeout denial omits the route or its retry hint, per-route admission admits more than one exchange, or a legitimate completing turn is truncated inside the configured budget."
 
 [promotion]
