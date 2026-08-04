@@ -7,6 +7,8 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.11] - 2026-08-04
+
 ### Changed
 
 - Remove proxy-owned ordinary-request concurrency ceilings, provider-route queues,

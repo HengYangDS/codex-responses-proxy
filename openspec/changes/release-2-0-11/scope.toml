@@ -1,0 +1,9 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "evidence/claims/terminal-product-closeout-20260802.toml",
+  "evidence/chronicle/terminal-product-closeout-20260802/**",
+  "openspec/changes/archive/2026-08-04-release-2-0-11/**",
+  "openspec/changes/release-2-0-11/**",
+  "openspec/specs/ci-diagnostics/spec.md",
+]
