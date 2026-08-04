@@ -6,9 +6,9 @@ summary = "Converge the proxy on one self-contained executable product, semantic
 
 [evidence]
 dated = "evidence/chronicle/terminal-product-closeout-20260802/2026-08-04.md"
-sha256 = "bfcc036608b915c5ab9eb858f2f7c8be1e0cc9060e2e7a14bd1254a62dfe3597"
+sha256 = "4dd942a21bf9b22ebcdd8fa74e79cecc234736ce44efe7980652206a8dcfb19d"
 evidence_ids = ["evidence:terminal-product-closeout-20260802"]
-binding = "Exact-head and accepted-root proofs at b3117bc92f60a0f52077a2068c9aefc47f1f1dc8 prove separated verification, archived source, candidate landing, and accepted closeout; active release-2-0-11 owns chronology finalization while Forge publication, installation, runtime acceptance, original-session continuity, and retirement remain explicitly unproved"
+binding = "Accepted-root proof at b3117bc92f60a0f52077a2068c9aefc47f1f1dc8 and release-preparation exact-head proof at 0268a98b68affaf750b0cb4f9018c2a7d318e554 prove source convergence and 2.0.11 chronology; release landing, Forge publication, installation, runtime acceptance, original-session continuity, and retirement remain explicitly unproved"
 verifier = "digest_only"
 tests = [
   "uv run --locked --no-sync nox -s quick",
