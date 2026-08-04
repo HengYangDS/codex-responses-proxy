@@ -21,6 +21,19 @@ SHALL keep the connection available for reuse.
 - **WHEN** a request whose body the listener consumes is answered locally
 - **THEN** the connection remains available for the client's next request.
 
+### Requirement: Responses request projection is fail-closed at the HTTP boundary
+
+Every POST Responses request SHALL pass through fail-closed request projection,
+including a zero-length body. This requirement SHALL NOT restate which
+provider-scoped paths resolve, which is owned solely by the provider route
+requirement.
+
+#### Scenario: A caller sends an empty Responses request
+
+- **WHEN** a POST Responses request has no body
+- **THEN** the proxy rejects it locally as invalid JSON
+- **AND** no configured provider receives the request.
+
 ## MODIFIED Requirements
 
 ### Requirement: Provider routes admit only exact Responses and model-catalog targets
@@ -79,13 +92,21 @@ URL or host.
 - **THEN** the proxy rejects it locally
 - **AND** it does not construct or contact an upstream URL.
 
+## REMOVED Requirements
+
 ### Requirement: Responses admission is closed at the HTTP boundary
 
-Every POST Responses request SHALL pass through fail-closed request projection,
-including a zero-length body.
+**Reason**: The requirement carried two rules — which provider-scoped paths
+resolve, and how a Responses request body is projected. The routing half
+duplicated the provider route requirement and had gone stale against it: it
+still claimed that only `/v1/responses` targets resolve, and its
+ambiguous-suffix scenario still rejected "a non-Responses endpoint", both
+falsified by the admitted read-only `GET /<provider>/v1/models` route. Routing
+now has a single owner, the provider route requirement, which also carries the
+ambiguous-suffix scenario with the stale clause replaced by the method the
+matched target does not admit.
 
-#### Scenario: A caller sends an empty Responses request
-
-- **WHEN** a POST Responses request has no body
-- **THEN** the proxy rejects it locally as invalid JSON
-- **AND** no configured provider receives the request.
+**Migration**: The projection half is restated verbatim, with its empty-body
+scenario, under `Responses request projection is fail-closed at the HTTP
+boundary`, a name that claims only projection. No behavior is removed; the
+implementation is unchanged by this requirement split.
