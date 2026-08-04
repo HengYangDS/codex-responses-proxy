@@ -6,9 +6,9 @@ summary = "A local response emitted before the request body is read declares the
 
 [evidence]
 dated = "evidence/chronicle/route-rejection-contract-20260804/2026-08-04.md"
-sha256 = "303409272b237dcffbe4360ca1cc00bcdb28a103455d615e3a4048f9ac4cdef1"
+sha256 = "b282b9caffdc2b37be2acb547b1a9ce17b5d2ce812388ad73bb2acbbf7f3eb36"
 evidence_ids = ["evidence:route-rejection-contract-20260804"]
-binding = "The double response was reproduced on the raw wire as two status lines from one request, TDD with an observed RED on all three affected sites, a converse guard proved non-vacuous by mutation, and warning-free full quality above 95% statement and branch coverage; the live listener has not yet observed the change, because it still runs release 2.0.8"
+binding = "The double response was reproduced on the raw wire as two status lines from one request, TDD with an observed RED on all three affected sites, a converse guard proved non-vacuous by mutation, and warning-free full quality above 95% statement and branch coverage; accepted live against installed release 2.0.9, where the same reproduction yields exactly one 404 with no spurious 400, /healthz stays reusable, and aigw check reports everything healthy"
 verifier = "digest_only"
 tests = [
   "python3.14 tests/providers/test_routes.py",
