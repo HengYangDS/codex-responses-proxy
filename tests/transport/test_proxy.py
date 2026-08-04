@@ -25,6 +25,7 @@ from codex_responses_proxy.replay import request as rewrite  # noqa: E402
 from codex_responses_proxy.transport import exchange as upstream_exchange  # noqa: E402
 from codex_responses_proxy.transport import sse  # noqa: E402
 from tests.listener.proxy_fixture import running_proxy  # noqa: E402
+from tests.listener.proxy_fixture import raw_exchange  # noqa: E402
 from tests.listener.proxy_fixture import request  # noqa: E402
 
 
@@ -360,6 +361,27 @@ class TestProxyTransport(unittest.TestCase):
         counters = cast("dict[str, int]", status["counters"])
         self.assertEqual(counters["responses_rejected_while_draining"], 1)
         self.assertFalse(status["draining"])
+
+    def test_a_drain_toggle_never_answers_twice_from_its_unread_body(self):
+        body = b'{"ignored":true}'
+        with running_proxy([]) as (port, received):
+            wire = raw_exchange(
+                port,
+                b"POST /control/drain HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                b"Content-Type: application/json\r\n"
+                b"Content-Length: "
+                + str(len(body)).encode()
+                + b"\r\n\r\n"
+                + body
+                # The toggle answers without reading the body, so the
+                # connection must not stay open over the unread remainder.
+                + b"GET /healthz HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+            )
+            self.assertEqual(wire.count(b"HTTP/1.1 "), 1)
+            self.assertIn(b"HTTP/1.1 200 ", wire)
+            self.assertNotIn(b"HTTP/1.1 400 ", wire)
+            self.assertEqual(received, [])
+        admission.reset_for_test()
 
     def test_drain_lease_expires_without_a_controller_rollback_request(self):
         admission.reset_for_test()

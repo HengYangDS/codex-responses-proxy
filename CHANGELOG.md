@@ -7,6 +7,23 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+### Fixed
+
+- End the connection on a local response the listener emits before it reads the
+  request body. Because the listener speaks HTTP/1.1, a closed-route rejection,
+  an unsupported-method rejection, or the drain toggle previously left the
+  unread body in the socket and then parsed it as the next request line, so one
+  refused request produced two responses: the intended 404 and a spurious
+  `400 Bad request syntax` synthesized from the caller's own JSON. A client
+  reusing that connection lost its next request. A response emitted after the
+  body is consumed still keeps the connection reusable.
+- State the provider route table once in the specification. The Responses
+  admission requirement restated the routing rule and still claimed that only
+  `/v1/responses` targets resolve and that a non-Responses endpoint is rejected,
+  which the admitted read-only `GET /<provider>/v1/models` route had made false.
+  Routing is now owned by the route requirement alone, so a future admitted path
+  cannot recreate the contradiction.
+
 ## [2.0.8] - 2026-08-04
 
 ### Fixed

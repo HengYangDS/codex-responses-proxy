@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import socket
 import tempfile
 import threading
 import urllib.request
@@ -164,3 +165,20 @@ def request(
         headers=request_headers,
     )
     return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(outbound)
+
+
+def raw_exchange(proxy_port: int, payload: bytes, *, timeout: float = 5.0) -> bytes:
+    """Write one raw byte stream to the listener and read until it closes."""
+    received = bytearray()
+    with socket.create_connection(("127.0.0.1", proxy_port), timeout=timeout) as client:
+        with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+            client.sendall(payload)
+        while True:
+            try:
+                chunk = client.recv(65536)
+            except (ConnectionResetError, TimeoutError):
+                break
+            if not chunk:
+                break
+            received.extend(chunk)
+    return bytes(received)

@@ -33,11 +33,15 @@ def _write_json(
     handler: BaseHTTPRequestHandler,
     status: int,
     payload: Mapping[str, object],
+    *,
+    close: bool = False,
 ) -> None:
     raw = json.dumps(payload, separators=(",", ":")).encode()
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json")
     handler.send_header("Cache-Control", "no-store")
+    if close:
+        handler.send_header("Connection", "close")
     handler.send_header("Content-Length", str(len(raw)))
     handler.end_headers()
     handler.wfile.write(raw)
@@ -55,7 +59,9 @@ def set_drain(handler: BaseHTTPRequestHandler, enabled: bool) -> None:
         return
     lease = handler.headers.get("X-Codex-Responses-Proxy-Drain-Lease-Seconds") if enabled else None
     payload = admission.set_draining(enabled, lease_seconds=lease)
-    _write_json(handler, 200, payload)
+    # The toggle carries its lease in a header and never reads a request body,
+    # so the connection cannot stay persistent over an unconsumed remainder.
+    _write_json(handler, 200, payload, close=True)
 
 
 def prepare_handoff(handler: BaseHTTPRequestHandler, bindings: Bindings) -> None:

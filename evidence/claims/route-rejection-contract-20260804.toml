@@ -1,0 +1,44 @@
+[claim]
+id = "route-rejection-contract-20260804"
+subject = "codex-responses-proxy:local-rejection-connection-framing"
+state = "active"
+summary = "A local response emitted before the request body is read declares the connection closed, so a refused request cannot be answered a second time from its own unread body, and the provider route table is stated once instead of twice."
+
+[evidence]
+dated = "evidence/chronicle/route-rejection-contract-20260804/2026-08-04.md"
+sha256 = "80691a8b0f2cc642ee3051b2d086840951d67349a96a86d26c34d0c524472f8d"
+evidence_ids = ["evidence:route-rejection-contract-20260804"]
+binding = "The double response was reproduced on the raw wire as two status lines from one request, TDD with an observed RED on all three affected sites, a converse guard proved non-vacuous by mutation, and warning-free full quality above 95% statement and branch coverage; the live listener has not yet observed the change, because it still runs release 2.0.8"
+verifier = "digest_only"
+tests = [
+  "python3.14 tests/providers/test_routes.py",
+  "python3.14 tests/transport/test_proxy.py",
+  "PYTHON=python3.12 sh tools/quality/run.sh",
+  "openspec validate route-rejection-contract --strict",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "The status code and Allow header used for an unsupported method, the aggregated provider_route_rejected counter, route resolution itself, admission width, the queue wait, the total upstream stream deadline, hosted publication, and live provider acceptance are separate claims."
+
+[carriers]
+openspec = "openspec/changes/route-rejection-contract"
+fallback = "Revert this commit to restore the persistent-connection default on rejected requests; the specification dedupe is inert on its own and can be reverted independently."
+kill_signal = "One refused request produces more than one response on a connection, a spurious 400 Bad request syntax appears after a rejection, a response emitted after its body is consumed closes the connection, GET /healthz stops being reusable, or the provider route table is stated in more than one requirement again."
+supersedes = "The review finding that the Responses admission requirement and the route requirement disagreed about which provider-scoped paths resolve."
+
+[promotion]
+targets = [
+  "CHANGELOG.md",
+  "VERSION",
+  "codex_responses_proxy/listener/control.py",
+  "codex_responses_proxy/transport/relay.py",
+  "codex_responses_proxy/transport/responses.py",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/listener/proxy_fixture.py",
+  "tests/providers/test_routes.py",
+  "tests/transport/test_proxy.py",
+]
