@@ -1,0 +1,21 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "codex_responses_proxy/runtime/admission.py",
+  "codex_responses_proxy/runtime/config.py",
+  "codex_responses_proxy/runtime/context.py",
+  "evidence/chronicle/queue-timeout-invariant-20260804/**",
+  "evidence/chronicle/route-admission-width-20260804/**",
+  "evidence/chronicle/route-slot-lease-20260804/**",
+  "evidence/claims/queue-timeout-invariant-20260804.toml",
+  "evidence/claims/route-admission-width-20260804.toml",
+  "evidence/claims/route-slot-lease-20260804.toml",
+  "openspec/changes/archive/2026-08-04-route-admission-width",
+  "openspec/changes/archive/2026-08-04-route-admission-width/**",
+  "openspec/specs/provider-portable-responses/spec.md",
+  "tests/governance/test_repository.py",
+  "tests/runtime/test_admission.py",
+  "tests/transport/test_proxy.py",
+]
