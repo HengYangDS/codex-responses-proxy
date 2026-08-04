@@ -3,9 +3,7 @@
 ## Purpose
 
 Define one self-contained executable UX, repository-owned DX, native distribution contract, and terminal repository-family state.
-
 ## Requirements
-
 ### Requirement: One self-contained product executable
 
 Codex Responses Proxy SHALL expose one `codex-responses-proxy` executable that
