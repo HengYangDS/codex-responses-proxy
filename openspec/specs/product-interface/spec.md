@@ -1,10 +1,10 @@
+# Product Interface
+
 ## Purpose
 
-Define the proxy's stable executable user experience, repository-owned
-developer experience, native distribution, and terminal repository-family
-state without exposing its implementation language or source layout.
+Define one self-contained executable UX, repository-owned DX, native distribution contract, and terminal repository-family state.
 
-## MODIFIED Requirements
+## Requirements
 
 ### Requirement: One self-contained product executable
 

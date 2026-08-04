@@ -1,0 +1,44 @@
+[claim]
+id = "terminal-product-closeout-20260802"
+subject = "codex-responses-proxy:terminal-product"
+state = "active"
+summary = "Converge the proxy on one self-contained executable product, semantic package graph, locked repository-owned DX, strict coverage, and one terminal delivery lane."
+
+[evidence]
+dated = "evidence/chronicle/terminal-product-closeout-20260802/2026-08-04.md"
+sha256 = "662598face765592c55af0d8434ca66d0090e092bd9a6d70b605df46a911e350"
+evidence_ids = ["evidence:terminal-product-closeout-20260802"]
+binding = "Current source, contract tests, fingerprint-bound quality, Python 3.12-3.14 matrix, and native release gate prove the local terminal candidate; hosted and runtime states remain explicitly unproved"
+verifier = "digest_only"
+tests = [
+  "uv run --locked --no-sync nox -s quick",
+  "uv run --locked --no-sync nox -s quality",
+  "uv run --locked --no-sync nox -s tests-3.12 tests-3.13 tests-3.14",
+  "uv run --locked --no-sync nox -s release",
+  "npx --yes @fission-ai/openspec@1.6.0 validate --all --strict --json",
+]
+
+[evidence.freshness]
+mode = "current"
+
+[boundary]
+owner = "codex-responses-proxy"
+scope = "Local source, tests, locked development environment, native macOS release construction, and OpenSpec convergence only; hosted CI, dual-Forge publication, installation, live providers, original-task continuity, PyCharm MCP, and housekeeping remain unproved."
+
+[carriers]
+openspec = "openspec/changes/terminal-product-closeout"
+fallback = "Revert the terminal reconstruction commit before landing; do not restore retired compatibility paths or mutate Codex state."
+kill_signal = "Any supported provider-portable replay regresses, an ordinary-request concurrency ceiling returns, a personal or local path becomes a product default, either coverage measure is not strictly above 95 percent, or the released executable requires Python or a source checkout."
+supersedes = "The overlapping active OpenSpec tails for Forge UTC oracle, private GitLab asset verification, and three-provider compaction acceptance after their implemented semantics entered canonical specs and this terminal candidate."
+
+[promotion]
+targets = [
+  "src/codex_responses_proxy",
+  "tests",
+  "tools",
+  "noxfile.py",
+  "pyproject.toml",
+  "uv.lock",
+  "openspec/specs",
+  "docs",
+]

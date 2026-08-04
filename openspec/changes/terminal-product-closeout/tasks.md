@@ -9,26 +9,26 @@
 
 ## 2. Establish executable and lifecycle contracts
 
-- [ ] 2.1 Add failing black-box tests for the six-command executable grammar,
+- [x] 2.1 Add failing black-box tests for the six-command executable grammar,
   clean human/JSON errors, and execution with Python absent from `PATH`.
-- [ ] 2.2 Introduce the single CLI composition root and move lifecycle behavior
+- [x] 2.2 Introduce the single CLI composition root and move lifecycle behavior
   behind `install`, `status`, `doctor`, `reload`, `uninstall`, and `version`.
-- [ ] 2.3 Bind service launch, install, upgrade, rollback, and uninstall to the
+- [x] 2.3 Bind service launch, install, upgrade, rollback, and uninstall to the
   installed executable, manifest, release, process, and owned-state identity.
-- [ ] 2.4 Implement and test only the exact direct-predecessor migration; remove
+- [x] 2.4 Implement and test only the exact direct-predecessor migration; remove
   source-checkout admission and version-shaped runtime symbols.
 
 ## 3. Reconstruct semantic production ownership
 
-- [ ] 3.1 Move request/response projection, pairing, compaction, and bounded
+- [x] 3.1 Move request/response projection, pairing, compaction, and bounded
   recovery into `protocol` without forwarding modules.
-- [ ] 3.2 Move manifest validation and pure wire policies into `providers`, and
+- [x] 3.2 Move manifest validation and pure wire policies into `providers`, and
   prove a synthetic standard provider changes only the manifest.
-- [ ] 3.3 Move HTTP exchange, SSE, retry budgets, and cooldown state into
+- [x] 3.3 Move HTTP exchange, SSE, retry budgets, and cooldown state into
   `relay`; remove provider-name branches outside policy selection.
-- [ ] 3.4 Move listener, health, logging, and private service execution into
+- [x] 3.4 Move listener, health, logging, and private service execution into
   `service`; move transactions and native supervision into `lifecycle`.
-- [ ] 3.5 Delete retired production packages, aliases, duplicate owners,
+- [x] 3.5 Delete retired production packages, aliases, duplicate owners,
   compatibility paths, one-caller abstractions, and stale imports.
 
 ## 4. Prove protocol reliability
@@ -47,23 +47,23 @@
 
 ## 5. Establish locked DX and native distribution
 
-- [ ] 5.1 Replace custom quality environment creation with concise project
+- [x] 5.1 Replace custom quality environment creation with concise project
   metadata, `.python-versions`, committed `uv.lock`, and `quick`, `full`, and
   `release` Nox sessions.
-- [ ] 5.2 Project the same sessions into GitLab and GitHub without duplicated
+- [x] 5.2 Project the same sessions into GitLab and GitHub without duplicated
   tool versions, interpreter loops, or quality bodies.
-- [ ] 5.3 Add native PyInstaller builds, release manifests, platform archive
+- [x] 5.3 Add native PyInstaller builds, release manifests, platform archive
   checksums, and pristine black-box product acceptance.
-- [ ] 5.4 Enforce dependency direction, forbidden hardcoding, no stdlib module
+- [x] 5.4 Enforce dependency direction, forbidden hardcoding, no stdlib module
   collisions, ELOC/complexity/duplication budgets, docstrings, and ponytail
   deletion review without allowlist baselines.
 
 ## 6. Align current documentation and specifications
 
-- [ ] 6.1 Rewrite README, contribution guidance, architecture, operations,
+- [x] 6.1 Rewrite README, contribution guidance, architecture, operations,
   evidence policy, CLI help, errors, comments, and docstrings around the actual
   executable product and semantic owners.
-- [ ] 6.2 Remove current `python -m`, source-install, obsolete compatibility,
+- [x] 6.2 Remove current `python -m`, source-install, obsolete compatibility,
   personal identity, private path, provider-core, and AIGW-command claims while
   preserving immutable historical release facts.
 - [ ] 6.3 Validate and archive this OpenSpec change with canonical specs and
@@ -71,7 +71,7 @@
 
 ## 7. Freeze, prove, publish, and deploy
 
-- [ ] 7.1 Freeze the complete candidate and run cheap static/contract checks,
+- [x] 7.1 Freeze the complete candidate and run cheap static/contract checks,
   discriminating tests, affected suites, then one final full 3.12/3.13/3.14
   gate with statement and branch coverage each above 95 percent.
 - [ ] 7.2 Create the signed GitLab-identity commit, run one exact-HEAD ETHOS

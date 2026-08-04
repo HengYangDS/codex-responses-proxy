@@ -64,6 +64,28 @@ class ProductInterfaceContracts:
             assert "Traceback" not in stderr
             assert "Warning" not in stderr
 
+    def test_parser_exit_preserves_argparse_status_and_optional_message(self) -> None:
+        """Keep successful help control flow distinct from bounded parse failures."""
+
+        parser = application._Parser()
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), pytest.raises(application._HelpRequested):
+            parser.exit()
+        assert stderr.getvalue() == ""
+
+        with (
+            contextlib.redirect_stderr(stderr),
+            pytest.raises(ValueError, match="invalid arguments"),
+        ):
+            parser.exit(2)
+
+        with (
+            contextlib.redirect_stderr(stderr),
+            pytest.raises(ValueError, match="explicit failure"),
+        ):
+            parser.exit(2, "explicit failure")
+        assert stderr.getvalue().endswith("explicit failure")
+
     def test_module_boundary_delegates_exit_status(self, *, mocker) -> None:
         main = mocker.patch.object(application, "main", return_value=7)
         with pytest.raises(SystemExit, match="7"):

@@ -1,0 +1,25 @@
+family = "product"
+primary_invariant = "Users operate one self-contained executable while contributors verify one repository-owned locked environment."
+routing_question = "Does this change alter public commands, native distribution, contributor verification, or terminal repository-family state?"
+decision_axes = ["lifecycle", "surface", "authority"]
+boundary_rules = [
+  "The executable UX does not expose Python, source checkouts, or governance systems.",
+  "The repository owns its development dependencies, interpreter matrix, and verification graph.",
+  "Installed lifecycle state is distinct from repository development state.",
+  "AIGW and JetBrains products remain independent external systems.",
+]
+aliases = []
+
+[owner]
+package = "codex-responses-proxy"
+scope = "Executable UX, repository-owned DX, native distribution, and terminal lane state"
+
+[recommended_facets]
+lifecycle = ["installation", "operation", "release", "closeout"]
+surface = ["cli", "service", "quality", "release", "docs", "openspec"]
+authority = ["source", "test", "docs", "openspec", "claim", "evidence"]
+
+[proof_profile]
+default_command = "ethos prove --json"
+executed_command = "ethos prove --execute --expect-head <head> --json"
+required_gates = ["python-quality", "platform-matrix"]
