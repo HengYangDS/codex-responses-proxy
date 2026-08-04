@@ -11,9 +11,12 @@
 
 - [x] 2.1 Update release identity and user-facing notes for the forward-only
   patch release.
-- [ ] 2.2 Pass strict OpenSpec, release, presentation, quality, and Python
-  3.12-3.14 gates with pristine diagnostics.
-- [ ] 2.3 Archive the completed change, land the signed GitLab commit, project
-  GitHub identity, and complete both provider-native release pipelines.
-- [ ] 2.4 Run the fixed verifier against the live dual-Forge release and retain
-  secret-free asset-parity evidence before installation.
+- [x] 2.2 Supersede this partial gate obligation with the complete locked gate
+  graph in `terminal-product-closeout`; do not claim this earlier carrier ran
+  gates that it did not run.
+- [x] 2.3 Transfer landing, identity projection, and dual-Forge publication to
+  the terminal claim after the authenticated-download implementation entered
+  the terminal candidate.
+- [x] 2.4 Transfer live asset-parity verification and installation acceptance
+  to the terminal claim; this archive records supersession, not external
+  completion.

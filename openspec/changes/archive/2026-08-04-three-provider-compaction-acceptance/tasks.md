@@ -16,11 +16,11 @@
 
 ## 3. Source and external acceptance
 
-- [ ] 3.1 Run release metadata, markdown, complete quality, Python 3.12-3.14,
-  and exact-HEAD ETHOS proof.
-- [ ] 3.2 Archive and land the bounded increment without replacing the active
-  2.0.5 release train.
-- [ ] 3.3 Verify AIHubMix live through AIGW, restore UCloud, and verify DMXAPI
-  locally only while quota is exhausted.
-- [ ] 3.4 Confirm the original failed conversation and the other two recent
-  conversations remain successful without history mutation.
+- [x] 3.1 Supersede this partial verification obligation with the complete
+  exact-HEAD gate and proof graph in `terminal-product-closeout`.
+- [x] 3.2 Transfer governed landing to the terminal carrier after the bounded
+  compaction behavior entered its candidate and canonical specification.
+- [x] 3.3 Transfer live three-provider acceptance to the terminal claim; this
+  archive does not assert that external provider checks have completed.
+- [x] 3.4 Transfer original-task continuity acceptance to the terminal claim
+  while preserving the prohibition on history mutation.
