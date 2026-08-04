@@ -7,6 +7,8 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.9] - 2026-08-04
+
 ### Fixed
 
 - End the connection on a local response the listener emits before it reads the
