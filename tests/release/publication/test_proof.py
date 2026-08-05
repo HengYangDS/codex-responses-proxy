@@ -63,17 +63,22 @@ def _forge(
 
 
 def _gitlab_forge(*, tree: str = "c" * 40) -> dict[str, object]:
-    return _forge(
+    forge = _forge(
         "gitlab",
         repository="example/gitlab",
         tag_object_oid="a" * 40,
         commit_oid="d" * 40,
         jobs=tuple(
             "verify-python-3.12 verify-python-3.13 verify-python-3.14 verify-release-metadata "
-            "verify-release-tag verify-python-quality publish-gitlab-release".split()
+            "verify-release-tag verify-python-quality build-gitlab-native-asset publish-gitlab-release".split()
         ),
         tree=tree,
     )
+    assets = cast(dict[str, str], forge["assets"])
+    for platform in ("macos-arm64", "windows-x86_64"):
+        assets.pop(f"codex-responses-proxy-1.2.3-{platform}.tar.gz")
+        assets.pop(f"codex-responses-proxy-{platform}.manifest.json")
+    return forge
 
 
 def _github_forge(*, tree: str = "c" * 40) -> dict[str, object]:
@@ -139,7 +144,9 @@ class PublicationProofContracts:
 
     def test_rejects_cross_forge_asset_mismatch(self) -> None:
         github = _github_forge()
-        cast(dict[str, str], github["assets"])["SHA256SUMS"] = "9" * 64
+        cast(dict[str, str], github["assets"])[
+            "codex-responses-proxy-1.2.3-linux-x86_64.tar.gz"
+        ] = "9" * 64
         result = evaluator.evaluate("v1.2.3", _gitlab_forge(), github, _policy())
         assert not result["verified"]
         assert not result["assets_equal"]

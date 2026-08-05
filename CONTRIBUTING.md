@@ -1,113 +1,122 @@
 # Contributing to Codex Responses Proxy
 
-## Scope and boundaries
+This guide is for repository development. Product use belongs in the
+[README](README.md).
 
-Keep changes within the proxy's data-plane and lifecycle responsibilities.
-AIGW may select the proxy as an ordinary HTTP endpoint, but neither product
-owns the other's process, configuration, or lifecycle. The proxy must not read
-or rewrite AIGW or client configuration. Do not alter Codex sessions, archives,
-SQLite, or model metadata as a workaround for upstream replay incompatibility.
+## Boundary
 
-## Local workflow
+Contributions may change only the proxy data plane, native lifecycle, product
+CLI, and repository-owned delivery system.
 
-Use an isolated Git worktree. Keep user-owned dirty checkouts untouched. This
-repository has no third-party runtime dependency; ordinary reading and editing
-requires no local installer beyond a supported Python interpreter.
+| Never mutate | Reason |
+| --- | --- |
+| Codex JSONL, SQLite, history, stored items, model metadata | Portability belongs at the network edge |
+| AIGW or client configuration | The proxy is not a client control plane |
+| Provider credentials | Credentials pass through; the proxy does not store them |
+| Another repository environment | Verification must be reproducible from this repository |
+
+## Development environment
+
+Requirements:
+
+- Python 3.12, 3.13, and 3.14 compatibility runtimes;
+- `uv` at the version declared in `pyproject.toml`;
+- Git and OpenSSH for release-provenance work.
+
+Bootstrap once:
 
 ```bash
 uv sync --locked --only-group quality
+```
+
+Run the repository-owned gates:
+
+```bash
 uv run --locked --no-sync nox -s quick
 uv run --locked --no-sync nox -s quality
 uv run --locked --no-sync nox -s tests-3.12 tests-3.13 tests-3.14
 uv run --locked --no-sync nox -s release
 ```
 
-Nox creates repository-owned, non-reused environments and installs the product
-as a non-editable wheel before tests. Do not add `PYTHONPATH`, import-path
-injection, or a system-environment fallback: those hide packaging defects.
+Nox installs a non-editable wheel in isolated environments. Do not add
+`PYTHONPATH`, user-site fallback, or another repository's virtual environment
+to make a test pass.
 
-Add a failing regression before production behavior changes. Tests must not
-require real user credentials, a live third-party endpoint, or a mutation of
-`~/.codex`.
+## Change method
 
-## Provider extensions
+```mermaid
+flowchart LR
+    R["Failing regression"] --> I["Minimal implementation"]
+    I --> F["Focused tests"]
+    F --> Q["Full gates"]
+    Q --> C["Signed commit"]
+```
 
-`src/codex_responses_proxy/providers/manifest.toml` is the provider registry. An
-ordinary OpenAI-compatible Responses endpoint requires only one `[providers.<slug>]` table with its
-`base_url`; do not add a Python branch, inventory entry, environment variable,
-installer option, or release-script case. Only a real provider-specific wire
-contract may add `policy = "<slug>"` and one matching module under
-`src/codex_responses_proxy/providers/policies/`. The loader validates that module
-against the closed policy protocol, and the release inventory derives its file
-from the validated manifest. Keep provider policy modules pure: no HTTP
-dispatch, mutable runtime state, credentials, host paths, or Forge identity.
-The released manifest is also the installed runtime's sole provider registry:
-there is no environment or installer override that can create a second
-authority. Every request selects an explicit `/<provider>/v1` namespace;
-unscoped `/v1` is rejected rather than silently choosing a provider.
+- Add a failing regression before changing behavior.
+- Keep expected failures free of traceback and warning noise.
+- Keep statement and measured branch coverage strictly above 95%.
+- Use focused Conventional Commits: `fix:`, `feat:`, `docs:`, `test:`, `ci:`.
+- Preserve historical records; remove stale claims from current documentation.
 
-The quality command enforces aggregate, statement, and measured branch coverage
-independently at 95% or higher. No one result substitutes for either independent
-result emitted by `tools/quality/branch_coverage.py`.
+## Provider extension
 
-`tools/reliability/observe.py` is repository-side observation only. It accepts a
-supplied secret-free
-`codex-responses-proxy status --json` snapshot and
-may write an explicit operator-selected baseline file. It must not contact an endpoint,
-read configuration, retain payloads, or invoke lifecycle control. Tests must
-cover a first-window baseline, runtime restart/identity boundary, upstream and
-local failure classes, the exact input-variant classification threshold, and
-the deliberate-drain boundary.
+The provider registry is
+`src/codex_responses_proxy/providers/manifest.toml`.
 
-## Change and release discipline
+| Extension | Required change |
+| --- | --- |
+| Ordinary OpenAI-compatible Responses provider | One `[providers.<slug>]` manifest table |
+| Provider-specific wire behavior | One pure policy module plus its manifest `policy` field |
 
-Use focused Conventional Commits (`fix:`, `feat:`, `docs:`, `ci:`). `VERSION`
-is the release source of truth. Keep `CHANGELOG.md` in this order:
+An ordinary provider must not require:
 
-1. `## [Unreleased]` immediately below the introduction;
-2. the GitLab-owned canonical release chronology in descending SemVer order;
-3. every provider-native tag represented exactly once; canonical heading dates
-   follow the UTC date of GitLab tag creation, while independently signed
-   GitHub tag dates may differ;
-4. no release claims without executable evidence.
+- a CLI command;
+- an environment variable;
+- an installer case;
+- a release-script branch;
+- a provider-name switch in relay or protocol code.
 
-GitLab is the canonical strict plane: validation requires complete history,
-every non-pending release heading must have a provider-native remote tag, and its heading date
-must equal the UTC date of that GitLab tag's creation. GitHub may retain
-canonical or legacy headings absent from its own tag namespace, but every
-GitHub-native tag still requires a heading; its independently signed native
-date does not rewrite GitLab chronology.
-`python tools/release/metadata.py --provider gitlab --prepare-release`
-enforces the GitLab candidate. GitHub main uses ordinary `--provider github`
-validation so a dated candidate remains valid after its preparation day; exact
-tag verification adds `--tag v<VERSION>`. Do not write an inferred or planned
-release into `CHANGELOG.md`.
-Hosted jobs select `origin` with
-`CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE`; local operators select the intended
-repository-local Forge remote explicitly. A workstation-only candidate tag is
-not release provenance.
+Policy modules are pure. They do not own HTTP dispatch, mutable state,
+credentials, host paths, or Forge identity.
 
-GitLab **Project Name** is the human-facing `Codex Responses Proxy`; its stable clone
-**Path** remains `codex-responses-proxy`. Never change the Path as a cosmetic rename.
+## Source organization
 
-## Forge discipline
+| Package | Responsibility |
+| --- | --- |
+| `cli` | Public command grammar and human/JSON projection |
+| `providers` | Declarative provider registry and optional wire policies |
+| `protocol` | Provider-portable request and response projection |
+| `relay` | HTTP/SSE exchange, admission, retry, and cooldown |
+| `service` | Listener process, health, logs, and handoff protocol |
+| `lifecycle` | Artifact admission, install, supervision, reload, and uninstall |
 
-GitLab and GitHub publish one ordered source-tree history through different
-verified identity domains. Create and land the canonical GitLab commit with its
-GitLab author, committer, and trusted signature. Then run
-`sh tools/forge/project.sh --provider gitlab` and
-`sh tools/forge/project.sh --provider github`. The GitHub projection preserves
-trees, messages, dates, and parent topology while using the GitHub actor email
-and trust anchor. Both updates are ordinary forward-only pushes; neither copies
-tags, force-pushes, or rewrites an existing remote commit. Ambiguous divergence
-requires an explicit recorded migration decision.
+Tests mirror these semantic packages. New generic buckets, forwarding modules,
+compatibility aliases, and one-caller abstractions require an independently
+proved invariant; otherwise delete them.
 
-Create a GitLab release tag only through `sh tools/release/tag-gitlab.sh
-v<VERSION>`. It binds the caller-provided GitLab tag actor to the selected
-OpenSSH-agent fingerprint, so a GitHub tag identity cannot sign it by mistake. After
-GitLab tag publication and its CI evidence, run `sh tools/release/tag-github.sh
-v<VERSION>` from the clean canonical GitLab `main`. The command first proves
-that the exact signed GitLab tag binds `HEAD`, then fetches the complete GitHub
-tag namespace into an isolated GitHub checkout, creates and validates the
-provider-native tag at the equal-tree GitHub `main` tip, and pushes only that
-single tag.
+## Release
+
+`VERSION` is the version source of truth. `CHANGELOG.md` records published
+history, not planned work.
+
+GitLab and GitHub are independent publication planes:
+
+```mermaid
+flowchart TD
+    S["Accepted source tree"] --> G["GitLab build and release"]
+    S --> H["GitHub build and release"]
+    G --> A["Read-only parity audit"]
+    H --> A
+```
+
+Neither plane waits for, downloads from, authenticates to, or publishes through
+the other. See [Forge operations](docs/operations/forge-operations.md).
+
+## Review checklist
+
+- [ ] Product and developer interfaces remain separate.
+- [ ] Human and JSON output derive from the same result model.
+- [ ] No personal identity, local path, credential, or private Forge coordinate is tracked.
+- [ ] No provider identity drives generic behavior.
+- [ ] Current docs match code, tests, CLI help, and release assets.
+- [ ] Focused tests and all affected gates pass.

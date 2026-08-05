@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-05
+goal: A local checkout closes the current-platform product lifecycle without a
+  Forge; GitLab and GitHub publish independently; remote branches are limited to
+  main, dev, and proposal/*.

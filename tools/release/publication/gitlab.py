@@ -155,7 +155,9 @@ def normalize(
             "prerelease": False,
         },
         "assets": release_assets.release_digests(
-            assets, tag.removeprefix("v"), release_assets.RELEASE_PLATFORMS
+            assets,
+            tag.removeprefix("v"),
+            release_assets.release_platforms(set(assets), tag.removeprefix("v")),
         ),
     }
 
@@ -229,9 +231,6 @@ def collect(
     links = assets.get("links")
     if not isinstance(links, list):
         raise GitLabProofError("GitLab release assets are unavailable")
-    expected_names = release_assets.release_asset_names(
-        tag.removeprefix("v"), release_assets.RELEASE_PLATFORMS
-    )
     glab = hosted.executable("glab", GitLabProofError)
     selected_assets = {
         str(link.get("name")): hosted.api_bytes(
@@ -242,10 +241,8 @@ def collect(
         for item in links
         if isinstance(item, Mapping)
         for link in [_mapping(item, "GitLab release asset link is malformed")]
-        if link.get("name") in expected_names and isinstance(link.get("url"), str)
+        if isinstance(link.get("name"), str) and isinstance(link.get("url"), str)
     }
-    if set(selected_assets) != expected_names:
-        raise GitLabProofError("GitLab release asset set is incomplete or ambiguous")
     return normalize(
         repository=repository,
         tag=tag,
