@@ -8,4 +8,7 @@
 
 - [x] 2.1 Pass focused lifecycle, Forge, and governance tests.
 - [x] 2.2 Pass quality and Python 3.12-3.14 gates.
-- [ ] 2.3 Pass exact-head proof and hosted branch pipelines.
+- [x] 2.3 Pass exact-head proof before the post-archive landing transition.
+
+Hosted branch pipelines remain a post-archive publication transition. They do
+not belong to this change's pre-archive completion checklist.
