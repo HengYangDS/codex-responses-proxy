@@ -140,3 +140,19 @@ class TestPayloadProjection:
         assert payload_projection.serving_payload_sha256(
             digests
         ) != payload_projection.serving_payload_sha256(changed)
+
+    def test_owned_directory_and_empty_root_edges_fail_closed(self, *, mocker) -> None:
+        install = Path(tempfile.mkdtemp())
+        payload_projection._remove_empty_owned_directories(
+            install, {"absent/payload", "present/payload"}
+        )
+
+        changed = install / "present"
+        changed.write_text("not a directory", encoding="utf-8")
+        with pytest.raises(errors.InstallError, match="directory changed type"):
+            payload_projection._remove_empty_owned_directories(install, {"present/payload"})
+
+        changed.unlink()
+        mocker.patch.object(Path, "rmdir", side_effect=OSError("busy"))
+        with pytest.raises(errors.InstallError, match="root removal failed"):
+            payload_projection._remaining_paths(install)

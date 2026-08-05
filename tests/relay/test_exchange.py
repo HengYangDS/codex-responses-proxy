@@ -799,6 +799,19 @@ class InputTransportContracts:
         assert counters["responses_completed"] == 1
         exchange.input_variant_accepted.assert_called_once_with()
 
+    def test_non_responses_helpers_bypass_responses_only_policy(self, *, mocker) -> None:
+        handler = _MemoryHandler(path="/dmxapi/v1/models")
+        exchange = mocker.Mock(handler=handler, is_responses=False)
+        exchange.input_variant_accepted = mocker.Mock()
+
+        assert responses._admit(exchange)
+        assert not responses._cooldown_active(exchange)
+        downstream.relay_body(exchange, _DirectResponse(b""))
+        assert handler.output() == b"0\r\n\r\n"
+        exchange.input_variant_accepted.assert_called_once_with()
+
+        assert sse._arm_read_budget(_DirectResponse(), sse.time.monotonic() - 1, None) is None
+
     def test_direct_sse_relay_flushes_completed_prelude(self) -> None:
         handler = _MemoryHandler()
         sent = 0
