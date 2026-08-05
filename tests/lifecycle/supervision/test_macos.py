@@ -93,3 +93,15 @@ class TestMacosLifecycle:
             with pytest.raises(errors.InstallError, match="launchctl unload failed"):
                 macos.uninstall(ctx)
             assert plist.exists()
+
+    def test_uninstall_keeps_plist_when_launchd_remains_registered(self, *, mocker) -> None:
+        with _temporary_context("home") as ctx:
+            plist = _set_file(macos._plist_path(ctx), "plist")
+            mocker.patch.object(
+                macos.subprocess,
+                "run",
+                side_effect=[_completed(), _completed(stdout=runtime_context.SERVICE_ID)],
+            )
+            with pytest.raises(errors.InstallError, match="remains registered"):
+                macos.uninstall(ctx)
+            assert plist.exists()
