@@ -125,7 +125,20 @@ def relay_sse(exchange: Exchange, response) -> None:
             reopen=None if exchange.used_input_variant_dialogue else reopen,
             send_headers=lambda: _send_stream_headers(exchange.handler, response),
         )
-        if result["pre_content_exhausted"]:
+        stream = result["result"]
+        if stream is not None and stream["detail"] == "projection_failed":
+            send_payload(
+                exchange.handler,
+                503,
+                json_error(
+                    "Upstream stream could not be projected safely; retry the turn",
+                    "upstream_unavailable",
+                    "stream_projection_failed",
+                ),
+                retry_after="3",
+            )
+            exchange.log("sse_projection_failed")
+        elif result["pre_content_exhausted"]:
             if exchange.used_input_variant_dialogue:
                 exchange.input_variant_exhausted("")
             send_payload(

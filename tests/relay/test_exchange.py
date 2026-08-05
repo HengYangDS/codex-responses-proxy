@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import cast
 
 from codex_responses_proxy.protocol import request as rewrite
+from codex_responses_proxy.protocol import response as response_projection
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.relay import (
     admission,
@@ -473,6 +474,72 @@ class InputTransportContracts:
         counters = cast("dict[str, int]", self._status_snapshot()["counters"])
         assert counters["encrypted_sse_keys_stripped"] == 1
         assert b"secret" not in handler.output()
+
+    def test_sse_projection_failure_after_commit_terminates_without_ciphertext(
+        self, *, mocker
+    ) -> None:
+        plaintext = b'data: {"type":"response.output_text.delta","delta":"visible"}\n\n'
+        encrypted = (
+            b'data: {"type":"response.completed","response":{"output":['
+            b'{"type":"reasoning","encrypted_content":"secret"}]}}\n\n'
+        )
+        mocker.patch.object(response_projection.json, "dumps", side_effect=TypeError("unsupported"))
+        handler = _MemoryHandler()
+        result = sse.relay(
+            handler,
+            _DirectResponse(plaintext + encrypted),
+            "/dmxapi/v1/responses",
+            1,
+            send_headers=lambda: None,
+        )
+
+        assert not result["pre_content_exhausted"]
+        assert result["result"] is not None
+        assert result["result"]["detail"] == "projection_failed"
+        assert result["result"]["error"] is not None
+        assert b"visible" in handler.output()
+        assert b"secret" not in handler.output()
+        assert handler.output().endswith(b"0\r\n\r\n")
+        counters = cast("dict[str, int]", self._status_snapshot()["counters"])
+        assert counters["stream_projection_failures"] == 1
+
+    def test_sse_projection_failure_before_commit_returns_retryable_error(self, *, mocker) -> None:
+        body = _request_body(stream=True)
+        encrypted = (
+            b'data: {"type":"response.completed","response":{"output":['
+            b'{"type":"reasoning","encrypted_content":"secret"}]}}\n\n'
+        )
+        with running_proxy(
+            [{"status": 200, "chunks": [encrypted], "content_type": "text/event-stream"}]
+        ) as (port, _received):
+            projected = rewrite.sanitize_responses_body(body).body
+            assert projected is not None
+            mocker.patch.object(
+                rewrite,
+                "sanitize_responses_body",
+                return_value=rewrite.ProjectionResult(projected, "clean"),
+            )
+            real_dumps = response_projection.json.dumps
+
+            def fail_encrypted_payload(payload, *args, **kwargs):
+                if isinstance(payload, dict) and payload.get("type") == "response.completed":
+                    raise TypeError("unsupported")
+                return real_dumps(payload, *args, **kwargs)
+
+            mocker.patch.object(
+                response_projection.json, "dumps", side_effect=fail_encrypted_payload
+            )
+            with pytest.raises(urllib.error.HTTPError) as raised:
+                request(port, body)
+            with raised.value as response:
+                status = response.code
+                payload = json.loads(response.read())
+
+        assert status == 503
+        assert payload["error"]["code"] == "stream_projection_failed"
+        assert b"secret" not in json.dumps(payload).encode()
+        counters = cast("dict[str, int]", self._status_snapshot()["counters"])
+        assert counters["stream_projection_failures"] == 1
 
     def test_direct_sse_relay_handles_reopen_failure_and_incomplete_terminal(
         self, *, mocker

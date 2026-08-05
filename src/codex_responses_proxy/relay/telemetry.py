@@ -41,6 +41,7 @@ _COUNTERS = {
     "streams_failed": 0,
     "streams_pre_content_reconnect_attempts": 0,
     "streams_pre_content_exhausted": 0,
+    "stream_projection_failures": 0,
     "response_failed_compaction_attempts": 0,
     "response_failed_compaction_accepted": 0,
     "response_failed_dialogue_recovery_attempts": 0,
