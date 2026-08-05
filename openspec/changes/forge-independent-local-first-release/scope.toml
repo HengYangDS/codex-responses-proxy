@@ -1,6 +1,7 @@
 schema_version = 1
 paths = [
   ".config/**",
+  ".ethos/**",
   ".githooks/**",
   ".github/**",
   ".gitlab-ci.yml",
