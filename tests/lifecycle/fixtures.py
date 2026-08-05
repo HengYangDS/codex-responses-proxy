@@ -18,11 +18,11 @@ from codex_responses_proxy.service import inventory
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def install_context(root: Path) -> runtime_context.RuntimeContext:
-    """Build an isolated install context rooted below ``root``."""
+def install_context(root: Path, *, windows: bool = False) -> runtime_context.RuntimeContext:
+    """Build an isolated install context for one explicitly modeled platform."""
 
     install_dir = root / "data" / "codex-responses-proxy"
-    executable = inventory.installed_executable(str(install_dir), windows=os.name == "nt")
+    executable = inventory.installed_executable(str(install_dir), windows=windows)
     return runtime_context.RuntimeContext(
         home=str(root),
         install_dir=str(install_dir),
@@ -52,16 +52,16 @@ def platform_context(port: int = 8791, *, windows: bool = False) -> runtime_cont
     )
 
 
-def runtime_files() -> tuple[str, str]:
-    """Return the installed payload inventory for the executing host."""
+def runtime_files(*, windows: bool = False) -> tuple[str, str]:
+    """Return the installed payload inventory for the modeled platform."""
 
-    return inventory.runtime_files(windows=os.name == "nt")
+    return inventory.runtime_files(windows=windows)
 
 
-def executable_relative() -> str:
-    """Return the installed executable member for the executing host."""
+def executable_relative(*, windows: bool = False) -> str:
+    """Return the installed executable member for the modeled platform."""
 
-    return inventory.executable_name(windows=os.name == "nt")
+    return inventory.executable_name(windows=windows)
 
 
 def assert_private_log_mode(testcase, mode: int) -> None:

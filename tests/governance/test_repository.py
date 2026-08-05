@@ -365,9 +365,9 @@ class TestGovernanceMetadata:
                 check=True,
             )
 
-            recorded = calls.read_text(encoding="utf-8").splitlines()
-            assert f"<hook><pre-push><refs/heads/main><{head}>" in recorded[0]
-            assert f"<hook><pre-push><refs/tags/v1.0.0><{head}>" in recorded[1]
+            recorded = calls.read_text(encoding="utf-8")
+            assert f"<hook><pre-push><refs/heads/main><{head}>" in recorded
+            assert f"<hook><pre-push><refs/tags/v1.0.0><{head}>" in recorded
 
             subprocess.run(["git", "-C", root, "tag", "lightweight"], check=True)
             lightweight = subprocess.check_output(

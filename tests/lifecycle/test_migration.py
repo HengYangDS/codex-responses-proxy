@@ -290,7 +290,7 @@ class TestPayloadMigration:
         Path(
             payload_state.transaction_root(ctx),
             "rollback",
-            inventory.executable_name(),
+            executable_relative(),
         ).unlink()
         with pytest.raises(errors.InstallError, match="rollback.*unavailable"):
             transaction.rollback()
@@ -384,7 +384,7 @@ class TestPayloadMigration:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install = Path(ctx.install_dir)
         write_retired_projection(ctx, version="1.0.8", schema=1)
-        collision = install / inventory.executable_name()
+        collision = install / executable_relative()
         collision.parent.mkdir(parents=True, exist_ok=True)
         collision.write_bytes(b"unknown\n")
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
