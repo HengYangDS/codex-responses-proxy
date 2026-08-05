@@ -115,6 +115,45 @@ class CliLifecycleContracts:
         }
         assert len(value_columns) == 1
 
+    def test_human_projection_covers_degraded_and_complete_command_results(self) -> None:
+        degraded = application.presentation.render(
+            "status",
+            {
+                "release": "",
+                "payload_integrity": {"ok": False},
+                "service": "",
+                "listener_pids": [],
+            },
+        )
+        assert "Not installed" in degraded
+        assert "Action required" in degraded
+        assert "codex-responses-proxy doctor" in degraded
+
+        doctor = application.presentation.render(
+            "doctor",
+            {
+                "checks": {
+                    "payload": {"status": "passed"},
+                    "listener": {
+                        "status": "failed",
+                        "next": "run `codex-responses-proxy reload`, then inspect the service log",
+                    },
+                    "ignored": "not a check",
+                }
+            },
+        )
+        assert "Payload" in doctor and "Passed" in doctor
+        assert "Listener" in doctor and "Action required" in doctor
+        assert "codex-responses-proxy reload" in doctor
+
+        installed = application.presentation.render("install", {"runtime": {"release": "2.0.11"}})
+        assert "Installed" in installed and "2.0.11" in installed
+        assert "Reloaded" in application.presentation.render("reload", {"old_pid": 1, "new_pid": 2})
+        assert "Purged" in application.presentation.render(
+            "uninstall", {"stopped": 1, "purged": True}
+        )
+        assert application.presentation.render("future", {}) == ""
+
     def test_status_returns_bounded_evidence_for_a_legacy_installed_projection(
         self, *, mocker
     ) -> None:

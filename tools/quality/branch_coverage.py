@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+from collections import defaultdict
 from collections.abc import Mapping
 from decimal import Decimal
 from importlib import import_module
@@ -86,19 +87,61 @@ def statement_gaps(totals: Mapping[str, Any], floor: int | float) -> list[str]:
     )
 
 
-def measured_totals(coverage: CoverageData) -> dict[str, int]:
-    """Return branch counts from the same configured coverage report scope."""
+def measured_report(coverage: CoverageData) -> dict[str, Any]:
+    """Return the exact configured coverage report."""
 
     with tempfile.TemporaryDirectory() as directory:
         report = Path(directory) / "coverage.json"
         coverage.json_report(outfile=str(report))
-        total = json.loads(report.read_text(encoding="utf-8"))["totals"]
-    return {
-        "num_statements": total["num_statements"],
-        "covered_lines": total["covered_lines"],
-        "num_branches": total["num_branches"],
-        "covered_branches": total["covered_branches"],
-    }
+        return json.loads(report.read_text(encoding="utf-8"))
+
+
+def _semantic_package(path: str) -> str | None:
+    marker = "codex_responses_proxy/"
+    normalized = path.replace("\\", "/")
+    if marker not in normalized:
+        return None
+    relative = normalized.split(marker, 1)[1]
+    return relative.split("/", 1)[0] if "/" in relative else "root"
+
+
+def _package_gap(package: str, gap: str) -> str:
+    """Qualify one stable aggregate gap with its semantic package."""
+
+    reason, separator, detail = gap.partition(":")
+    return f"package_{reason}:{package}{separator}{detail}"
+
+
+def package_gaps(files: Mapping[str, Any], floor: int | float) -> list[str]:
+    """Require statement and branch coverage above the floor per semantic package."""
+
+    totals: defaultdict[str, dict[str, int]] = defaultdict(
+        lambda: {
+            "num_statements": 0,
+            "covered_lines": 0,
+            "num_branches": 0,
+            "covered_branches": 0,
+        }
+    )
+    for path, detail in files.items():
+        package = _semantic_package(path)
+        summary = detail.get("summary") if isinstance(detail, dict) else None
+        if package is None or not isinstance(summary, dict):
+            continue
+        for key in totals[package]:
+            value = summary.get(key)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                totals[package][key] += value
+
+    gaps: list[str] = []
+    for package in sorted(totals):
+        package_totals = totals[package]
+        for gap in statement_gaps(package_totals, floor):
+            gaps.append(_package_gap(package, gap))
+        if package_totals["num_branches"]:
+            for gap in branch_gaps(package_totals, floor):
+                gaps.append(_package_gap(package, gap))
+    return gaps
 
 
 def main() -> int:
@@ -106,10 +149,12 @@ def main() -> int:
 
     coverage: CoverageData = import_module("coverage").Coverage()
     coverage.load()
-    totals = measured_totals(coverage)
+    report = measured_report(coverage)
+    totals = report["totals"]
     gaps = [
         *statement_gaps(totals, coverage.config.fail_under),
         *branch_gaps(totals, coverage.config.fail_under),
+        *package_gaps(report.get("files", {}), coverage.config.fail_under),
     ]
     print(json.dumps({"ok": not gaps, "gaps": gaps, **totals}, sort_keys=True))
     return 0 if not gaps else 1
