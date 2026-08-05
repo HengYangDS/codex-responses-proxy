@@ -15,7 +15,7 @@ from codex_responses_proxy.lifecycle import transaction as payload_transaction
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import identity as listener_identity
 from codex_responses_proxy.service import inventory
-from tests.lifecycle.fixtures import install_context
+from tests.lifecycle.fixtures import executable_relative, install_context
 from tests.lifecycle.fixtures import begin_transaction, install_payload, released_artifact
 from tests.lifecycle.fixtures import runtime_files
 import pytest
@@ -148,9 +148,7 @@ class TestPayloadTransaction:
         candidate.commit_projection()
         candidate.preserve_for_recovery("handoff outcome unknown")
         rollback = Path(payload_state.transaction_root(ctx), "rollback")
-        previous_identity = listener_identity.committed_payload(
-            rollback / inventory.executable_name()
-        )
+        previous_identity = listener_identity.committed_payload(rollback / executable_relative())
         candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
         assert previous_identity is not None
         assert candidate_identity is not None
@@ -213,9 +211,7 @@ class TestPayloadTransaction:
         candidate.preserve_for_recovery("handoff outcome unknown")
         root = Path(payload_state.transaction_root(ctx))
         rollback = root / "rollback"
-        previous_identity = listener_identity.committed_payload(
-            rollback / inventory.executable_name()
-        )
+        previous_identity = listener_identity.committed_payload(rollback / executable_relative())
         candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
         assert previous_identity is not None
         assert candidate_identity is not None
@@ -237,7 +233,7 @@ class TestPayloadTransaction:
         with pytest.raises(errors.InstallError, match="candidate projection identity"):
             payload_transaction.rollback_recovery(ctx, runtime=runtime)
         candidate_executable.write_bytes(candidate_bytes)
-        (root / "rollback" / inventory.executable_name()).write_bytes(b"tampered\n")
+        (root / "rollback" / executable_relative()).write_bytes(b"tampered\n")
         with pytest.raises(errors.InstallError, match="runtime identity is invalid"):
             payload_transaction.rollback_recovery(ctx, runtime=runtime)
         assert root.exists()

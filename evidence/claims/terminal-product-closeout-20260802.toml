@@ -8,7 +8,7 @@ summary = "Converge the proxy on one self-contained executable product, semantic
 dated = "evidence/chronicle/terminal-product-closeout-20260802/2026-08-04.md"
 sha256 = "4dd942a21bf9b22ebcdd8fa74e79cecc234736ce44efe7980652206a8dcfb19d"
 evidence_ids = ["evidence:terminal-product-closeout-20260802"]
-binding = "Accepted-root proof at b3117bc92f60a0f52077a2068c9aefc47f1f1dc8 and release-preparation exact-head proof at 0268a98b68affaf750b0cb4f9018c2a7d318e554 prove source convergence and 2.0.11 chronology; release landing, Forge publication, installation, runtime acceptance, original-session continuity, and retirement remain explicitly unproved"
+binding = "Accepted-root proof at b3117bc92f60a0f52077a2068c9aefc47f1f1dc8 and release-preparation exact-head proof at 0268a98b68affaf750b0cb4f9018c2a7d318e554 prove source convergence and 2.0.11 chronology; the hosted Windows fixture repair passes focused tests, quick, full quality at 97.11 percent statement and 95.46 percent branch coverage, and Python 3.12-3.14 locally; exact-head proof, hosted pipelines, release landing, Forge publication, installation, runtime acceptance, original-session continuity, and retirement remain explicitly unproved"
 verifier = "digest_only"
 tests = [
   "uv run --locked --no-sync nox -s quick",
@@ -26,7 +26,7 @@ owner = "codex-responses-proxy"
 scope = "Local source, tests, locked development environment, native macOS release construction, and OpenSpec convergence only; hosted CI, dual-Forge publication, installation, live providers, original-task continuity, PyCharm MCP, and housekeeping remain unproved."
 
 [carriers]
-openspec = "openspec/changes/hosted-ci-portability-repair"
+openspec = "openspec/changes/windows-hosted-runtime-fixtures"
 fallback = "Revert the terminal reconstruction commit before landing; do not restore retired compatibility paths or mutate Codex state."
 kill_signal = "Any supported provider-portable replay regresses, an ordinary-request concurrency ceiling returns, a personal or local path becomes a product default, either coverage measure is not strictly above 95 percent, or the released executable requires Python or a source checkout."
 supersedes = "The overlapping active OpenSpec tails for Forge UTC oracle, private GitLab asset verification, and three-provider compaction acceptance after their implemented semantics entered canonical specs and this terminal candidate."
