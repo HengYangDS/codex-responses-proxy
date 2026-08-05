@@ -43,4 +43,4 @@
 
 - [x] 7.1 Bind lane retirement to exact owner-bound post-land closeout evidence.
 - [x] 7.2 Bind temporary/runtime residue removal to bounded post-release housekeeping without touching Codex session storage.
-- [x] 7.3 Bind final clean roots, protected branches, remote-ref policy, and release evidence to the terminal closeout receipt.
+- [ ] 7.3 Bind final clean roots, protected branches, remote-ref policy, and release evidence to the terminal closeout receipt.
