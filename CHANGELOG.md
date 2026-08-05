@@ -7,6 +7,27 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.12] - 2026-08-05
+
+### Fixed
+
+- Reject an upstream stream whose replay envelope cannot be projected safely,
+  returning one bounded retryable error instead of forwarding an unproved
+  provider-portable structure into the client conversation.
+- Publish GitLab assets and its formal Release without querying GitHub. Each
+  Forge now completes its own build, signature, asset, and Release workflow
+  independently.
+- Give a packaged successor up to 60 seconds to assume the listener during
+  native handoff acceptance, removing the Windows startup false failure while
+  preserving a bounded deadline.
+
+### Changed
+
+- Present human CLI status, diagnosis, installation, reload, and uninstall
+  results as concise aligned pages while retaining the stable JSON interface.
+- Require statement and branch coverage above 95 percent for every semantic
+  runtime package, and keep successful Git admission hooks silent.
+
 ## [2.0.11] - 2026-08-05
 
 ### Changed
