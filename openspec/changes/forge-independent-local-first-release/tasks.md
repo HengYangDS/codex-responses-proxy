@@ -15,7 +15,7 @@
 ## 3. Establish the complete quality system
 
 - [x] 3.1 Create one quality policy and execution owner for lint, format, types, tests, statement/branch coverage, imports, Markdown, links, shell, workflows, secrets, vulnerabilities, SBOM, structure, and examples.
-- [x] 3.2 Keep hook, GitLab, and GitHub files as thin projections over those owners.
+- [ ] 3.2 Keep hook, GitLab, and GitHub files as thin projections over those owners.
 - [x] 3.3 Raise statement and measured branch coverage to strictly above 95% on the final denominator.
 - [x] 3.4 Make every expected CLI and quality failure concise, non-traceback, and actionable.
 

@@ -312,6 +312,55 @@ class TestGovernanceMetadata:
         assert "commit-tree -S" in source
         assert 'git_transport -C "$repository" push' in source
 
+    def test_pre_commit_admission_is_quiet_on_success_and_actionable_on_failure(self):
+        hook = ROOT / ".githooks/pre-commit"
+        assert hook.stat().st_mode & 0o111
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", root], check=True)
+            (root / "tracked").write_text("staged\n", encoding="utf-8")
+            subprocess.run(["git", "-C", root, "add", "tracked"], check=True)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            fake_ethos = bin_dir / "ethos"
+            environment = os.environ | {
+                "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            }
+
+            fake_ethos.write_text(
+                '#!/bin/sh\nprintf \'{"verdict":"pass","state":"admitted"}\\n\'\n',
+                encoding="utf-8",
+            )
+            fake_ethos.chmod(0o755)
+            accepted = subprocess.run(
+                [hook],
+                cwd=root,
+                text=True,
+                env=environment,
+                capture_output=True,
+                check=False,
+            )
+            assert accepted.returncode == 0
+            assert accepted.stdout == ""
+            assert accepted.stderr == ""
+
+            fake_ethos.write_text(
+                '#!/bin/sh\nprintf \'{"verdict":"block","required_gaps":["scope"]}\\n\'\nexit 1\n',
+                encoding="utf-8",
+            )
+            rejected = subprocess.run(
+                [hook],
+                cwd=root,
+                text=True,
+                env=environment,
+                capture_output=True,
+                check=False,
+            )
+            assert rejected.returncode != 0
+            assert rejected.stdout == ""
+            assert rejected.stderr == '{"verdict":"block","required_gaps":["scope"]}\n'
+
     def test_pre_push_admission_distinguishes_commits_and_annotated_tags(self):
         hook = ROOT / ".githooks/pre-push"
         with tempfile.TemporaryDirectory() as directory:
