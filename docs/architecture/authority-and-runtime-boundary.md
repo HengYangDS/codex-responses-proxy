@@ -1,242 +1,142 @@
 # Authority and Runtime Boundary
 
-Status: canonical.
+Codex Responses Proxy is a local Responses data plane. It normalizes outbound
+traffic and owns its native service lifecycle. It does not own client state or
+provider selection.
 
-## Purpose
+## Product graph
 
-Codex Responses Proxy is a local data-plane adapter. It removes narrowly defined,
-third-party-incompatible replay artifacts from outbound `/responses` requests.
-It does not own conversation history, account credentials, provider routing
-policy, or publication truth.
-
-## Authority model
-
-```text
-Codex Desktop        -> per-conversation model selection and transcript state
-AIGW CLI             -> marked provider configuration and multi-profile projection
-GitLab + GitHub      -> independent signed tags, CI, and Release records
-Released checkout    -> source admission and payload lifecycle composition
-Installed control    -> read-only evidence and same-payload reload
-Listener             -> loopback Responses compatibility and handoff state
+```mermaid
+flowchart LR
+    C["Codex"] --> P["Loopback proxy"]
+    P --> R["Provider-scoped route"]
+    R --> U["Third-party Responses API"]
+    S["Client control plane"] -. configures .-> C
+    S -. selects URL .-> P
 ```
 
-The proxy transforms requests only at the network edge. It must never repair a
-conversation by mutating session JSONL, SQLite state, archives, or model
-metadata. The proxy has no command that reads or changes AIGW or client
-configuration.
+## Authority
 
-The released provider manifest defines the listener's data-plane namespaces
-and is the installed runtime's sole provider authority. Runtime environment
-variables cannot replace it. The listener accepts only explicit
-`POST /<provider>/v1/responses` routes and explicit read-only
-`GET /<provider>/v1/models` routes; unscoped `/v1` has no implicit provider
-meaning and unrelated provider endpoints are outside this product.
-The current release declares:
+| Owner | Authoritative state |
+| --- | --- |
+| Codex | Conversations, tool state, JSONL, SQLite, stored items, model metadata |
+| Client control plane | Credentials, provider selection, and client endpoint configuration |
+| Proxy source and release | Provider manifest, protocol policy, native executable, lifecycle contract |
+| Installed proxy | Manifest-owned payload and native service projection |
+| Provider | Model execution, quota, and upstream availability |
+| GitLab / GitHub | Independent CI, tag, Release, and asset records |
 
-```text
-/dmxapi/v1/responses  -> release-owned DMXAPI Responses endpoint
-/dmxapi/v1/models     -> release-owned DMXAPI model catalog endpoint
-/ucloud/v1/responses  -> release-owned UCloud Responses endpoint
-/ucloud/v1/models     -> release-owned UCloud model catalog endpoint
-/aihubmix/v1/responses -> release-owned AIHubMix Responses endpoint
-/aihubmix/v1/models    -> release-owned AIHubMix model catalog endpoint
+The proxy repairs compatibility only at the network edge. It never rewrites a
+conversation or reads another product's configuration.
+
+## Semantic packages
+
+```mermaid
+flowchart TD
+    CLI["cli"] --> LIFE["lifecycle"]
+    CLI --> VIEW["presentation"]
+    LIFE --> SERVICE["service"]
+    SERVICE --> RELAY["relay"]
+    RELAY --> PROTOCOL["protocol"]
+    RELAY --> PROVIDERS["providers"]
 ```
 
-A consumer selects one namespace through its own endpoint configuration and
-supplies that account's credential. The listener strips only the selected
-provider path prefix and does not accept an upstream host from a request header
-or body. `src/codex_responses_proxy/providers/manifest.toml` is the single owner of
-provider names, HTTPS origins, and optional wire-policy slugs. There is no
-default route, installer-level upstream override, or parallel service variable.
-Adding an ordinary provider is
-one manifest table. A genuinely provider-specific wire extension adds one
-module under `src/codex_responses_proxy/providers/policies/` and names it from that
-table; the registry and release inventory contain no provider-name switch or
-second policy list.
+| Package | Owns |
+| --- | --- |
+| `cli` | Public grammar, command composition, human/JSON selection |
+| `providers` | Manifest-defined routes and optional pure policies |
+| `protocol` | Closed provider-portable request and response grammar |
+| `relay` | Admission, upstream exchange, retries, cooldown, SSE and HTTP integrity |
+| `service` | Listener process, health, structured logs, control and handoff protocol |
+| `lifecycle` | Artifact trust, payload transaction, supervision, install, reload, uninstall |
 
-Only the Responses target enters replay projection, response projection,
-lifecycle admission, cooldown, retry, and provider-specific recovery. A model
-catalog target is one transparent GET: it keeps client authentication, uses the
-same manifest-owned upstream origin, and relays the upstream status, eligible
-headers, and body without parsing, filtering, caching, or retry.
+Dependencies point toward semantic owners. No package may infer provider
+behavior from a name when the manifest or explicit policy contract owns it.
 
-Before remote I/O, `codex_responses_proxy.protocol.request` projects Responses
-replay onto a closed portable grammar. `codex_responses_proxy.protocol.response`
-owns the matching provider-neutral output projection for both complete SSE
-events and successful non-stream JSON. Non-stream transport buffers at most
-eight MiB before commitment and admits only structurally proved `completed` or
-`incomplete` Response documents with no unknown residual ciphertext; empty,
-truncated, oversized, malformed, or non-terminal HTTP 2xx bodies fail locally
-without committing partial bytes. The semantic
-packages then separate runtime admission, telemetry, and safe logging from
-transport route selection, bounded cooldown, upstream exchange, and downstream
-HTTP/SSE relay; no mixed state or listener forwarding facade remains. Provider continuation IDs, stored-item
-references, reasoning/search state, provider item IDs, and opaque ciphertext are
-removed. Text and complete call/output relationships remain. A correctly
-paired tool result whose exact value is the empty string is represented by one
-fixed plaintext empty-result marker in the outbound request copy; ordinary
-empty dialogue remains invalid. Unknown or malformed replay fails locally; DMX
-HTTP 477 recovery and cooldown apply only after that projection and only on the
-DMXAPI route. The optional `WirePolicy` contract contains that real provider
-delta; ordinary providers need only one manifest table. Structured error type
-and code fields, not incidental message prose, admit request-changing recovery.
-Output projection prevents new provider ciphertext from re-entering later
-replay.
+## Provider routing
 
-The pure policy in `src/codex_responses_proxy/protocol/input_variant.py` owns the exact observed
-Responses input-union failure. Transport orchestration may invoke that policy
-once to construct a strictly smaller network request from the latest system,
-developer, and user messages plus top-level instructions. No stored transcript
-is rewritten, and the resulting attempt cannot cross into another retry or
-reconnect policy.
+The released manifest is the sole provider registry.
 
-## Released-source admission
+```text
+/<provider>/v1/responses
+/<provider>/v1/models
+```
 
-Release governance verifies provider-native tags, hosted CI, formal Release
-records, and common source tree independently of installation. The evidence-only
-`tools/release/verify.py` owns that observation. The installer
-consumes one selected release source, requires a clean checkout, and verifies
-that `HEAD` is the exact signed annotated `v<VERSION>` tag under the caller's
-external allowed-signers anchor.
+- Responses routes enter projection, recovery, cooldown, and integrity checks.
+- Models routes are transparent authenticated GET relays.
+- Unscoped, encoded, ambiguous, or unrelated paths fail before remote I/O.
+- Headers, bodies, and query parameters cannot select an upstream host.
+- Adding an ordinary provider changes one manifest table.
 
-`tools.release.admission` reads immutable Git objects rather than
-working-tree payload bytes and returns an opaque, immutable, one-use release
-capability. That capability binds the tag object, commit, tree, payload blobs
-and modes, aggregate serving-payload digest, and canonical receipt. Before
-minting, admission compares the frozen `HEAD`, tag
-object, tag commit, tree, and object format, requires clean state a final time,
-and compares the same identity again. Dirty state or a clean ref move is rejected
-rather than admitted. Git verification ignores global, system, and `GIT_*`
-environment overrides, and disables replace objects, hooks, and filesystem
-monitoring. A release archive, arbitrary directory, working-tree stage, or
-installed controller cannot create that capability.
+## Responses projection
 
-## Lifecycle transaction and provenance
+```mermaid
+sequenceDiagram
+    participant Codex
+    participant Proxy
+    participant Provider
 
-The `lifecycle` package separates installation and replacement by reason to
-change, while live service inventory remains with the serving identity it
-describes:
+    Codex->>Proxy: Responses request
+    Proxy->>Proxy: Validate route and closed input grammar
+    Proxy->>Proxy: Remove provider-bound replay state
+    Proxy->>Provider: store=false portable request
+    Provider-->>Proxy: JSON or SSE response
+    Proxy->>Proxy: Validate terminal integrity and remove ciphertext
+    Proxy-->>Codex: Committed response or bounded failure
+```
 
-- `service.inventory` owns the released and installed file sets;
-- `lifecycle.projection` owns manifest integrity, exact historical inventories, and
-  manifest-bounded purge;
-- `lifecycle.candidate` validates and materializes one admitted candidate;
-- `lifecycle.rollback` owns the exact prior-payload snapshot and restoration;
-- `lifecycle.migration` removes only admitted retired privacy and executable residue;
-- `lifecycle.state` persists the transaction journal and installed-release state;
-- `lifecycle.transaction` coordinates those owners through the single-use state
-  machine.
+The request projection removes response, conversation, cache, provider-issued
+item, search, and encrypted-reasoning bindings. It retains portable dialogue
+and complete tool relationships. Unknown or unsafe structures fail locally.
 
-The manifest covers only declared executable files and records release identity,
-per-file digests, the canonical aggregate serving-payload digest, and the
-release-receipt digest. Configuration, backups, logs, request data, credentials,
-and consumer endpoint state remain outside all payload owners.
+The response projection never claims that ciphertext was decrypted. Empty,
+truncated, malformed, oversized, or non-terminal success bodies become a
+retryable local `503`; partial success bytes are not committed.
 
-The sibling transaction is private coordination state for the installer, not a
-cryptographic evidence carrier. Its permissions isolate other local users; a
-process already running as the same operating-system user is outside this
-rollback-integrity threat boundary. The admitted signature, release receipt, and
-installed manifest remain the installation authenticity evidence.
+## Recovery ownership
 
-Cleanup follows the same ownership boundary. Exact retired raw-capture files are
-deleted without being read and are never copied into rollback. Retired
-install-owned executable paths are included in the prior-payload snapshot before
-the candidate projection removes them, allowing a proven rollback to reconstruct
-the exact previous owned projection without retaining obsolete paths on success.
+| Condition | Bounded behavior |
+| --- | --- |
+| DMXAPI `477 empty_response` | Retry the already-projected bytes once |
+| `response_failed` | Strictly shrinking pair-safe attempts, then at most one dialogue-only attempt |
+| Invalid `input` union | One smaller current-dialogue attempt |
+| Pre-content stream interruption | Retry only before substantive downstream commitment |
+| `429` | Relay once; provider-scoped cooldown; no global queue |
 
-A fresh installation or replacement finalizes only after one accepting listener
-proves the expected release, aggregate serving-payload digest, receipt digest,
-and manifest digest. A pre-finalize failure restores the exact prior owned
-projection. If a committed handoff outcome cannot be proved, the transaction is
-preserved as recovery-required rather than guessed successful or rolled back
-blindly.
+Each recovery consumes the same provider-portable request owner. No recovery
+path restores provider IDs, ciphertext, or an older request body.
 
-`codex-responses-proxy status --json` is the
-read-only view of installed integrity, listener identity, transaction state, and
-startup-frozen runtime identity. `codex_responses_proxy` is the single product
-root:
+## Lifecycle transaction
 
-- `cli` owns the single human-facing command grammar;
-- `lifecycle` owns installation, installed projection, transactions, native
-  supervision, and payload replacement;
-- `protocol` owns provider-neutral replay projection and request-local recovery;
-- `providers` owns the provider manifest and true provider-specific wire deltas;
-- `relay` owns validated runtime settings, admission, telemetry, cooldown,
-  upstream exchange, and downstream HTTP/SSE relay; and
-- `service` owns listener identity, serving, inventory, and socket handoff.
+```mermaid
+stateDiagram-v2
+    [*] --> Admitted
+    Admitted --> Prepared
+    Prepared --> Committed
+    Committed --> Serving: exact successor proof
+    Committed --> RecoveryRequired: outcome unconfirmed
+    Prepared --> RolledBack: pre-commit failure
+    Serving --> [*]
+```
 
-Release construction and Forge verification are repository tools under
-`tools/release`; they are not part of the installed product package.
+Artifact admission verifies the release asset and external trust anchor. The
+payload transaction owns exact files and receipts. Installation finalizes only
+after one listener proves the expected release, payload digest, manifest digest,
+receipt digest, PID, and accepting state.
 
-Package initializers are declarations, not facades.
+Reload is same-payload handoff. Upgrade is install. Uninstall removes native
+supervision first, proves owned listener exit, then optionally removes only
+manifest-owned payload files.
 
-Generic transport retries cover only the declared transient 5xx set. HTTP 429
-is terminal for the current proxy attempt: transport records an absolute
-deadline under a collision-free provider key and relays the first upstream
-response. The Responses entrypoint consults the same cooldown owner before
-remote I/O, returns local 429 while the deadline remains, and never applies one
-provider's state to another provider. A positive `Retry-After` is capped at five
-minutes; absent, invalid, zero, or expired timing uses the release-owned
-five-second fallback. The proxy does not serialize provider routes or expose a
-concurrency setting. Codex controls per-session fan-out and providers enforce
-their actual quotas. The proxy owns no ordinary-request concurrency ceiling or
-queue. Active-request accounting exists only for lifecycle drain, transactional
-handoff, and observation.
+## Human and machine surfaces
 
-## Lifecycle ownership
+The CLI projects one result model:
 
-Installed `codex-responses-proxy reload` is
-same-payload only. It verifies the installed manifest and receipt, prepares a non-accepting protocol-v2 child, stops the old
-accept loop before `COMMIT`, and proves PID, transaction, release, aggregate
-payload, receipt, manifest, and accepting state before `FINALIZE`. The listening
-socket remains open. Accepted handlers drain to zero or the bounded lease; a
-pre-finalize failure resumes old admission only after child exit is confirmed.
-An unconfirmed abort fails closed.
+| Surface | Contract |
+| --- | --- |
+| Human | Scannable lifecycle state and one safe next action |
+| JSON | Stable, secret-free machine evidence |
+| Logs | Structured bounded events; no prompts, Tokens, headers, bodies, or raw upstream payloads |
 
-A different release is installed only by `codex-responses-proxy install`.
-After release admission and transaction commit,
-`codex_responses_proxy.lifecycle.deployment.apply` uses the same
-protocol-v2 handoff owner and runtime identity proof. Installed control exposes
-no arbitrary stage-path upgrade or controller-only partial apply.
-
-The sole compatibility exception is release-gated replacement of a verified
-listener that predates protocol-v2 handoff. It requires explicit
-`--allow-legacy-bootstrap` authorization and a bounded zero-active quiet window
-on the same PID before payload mutation. The historical verifier shared with
-rollback and purge proves the schema-specific inventory and derives the retired
-entrypoint used by listener discovery, quiet-window rechecks, and termination.
-After candidate commit, native supervision is replaced before successor proof
-so no service retains the old entrypoint. `--force-legacy-bootstrap` is separate
-interruption authorization; it skips only the quiet wait, never manifest,
-entrypoint, PID, or rollback proof. Neither flag applies to same-payload reload
-or a current protocol-v2 listener. A failure after old-process exit restores the
-old owned projection, reinstalls supervision with the historical entrypoint, and
-must prove one accepting historical listener; otherwise rollback is explicitly
-reported as failed.
-
-Uninstall never reads or changes consumer configuration. Payload mutation begins only after
-the native service reports `absent` and exact owned watchdog and listener
-processes are proved gone. Ownership requires the exact installed executable and
-one declared private service role; identity is re-read before signalling and
-boundedly rechecked afterwards so PID reuse cannot target a new occupant.
-`--purge` removes only a valid current manifest inventory or an exact supported
-historical inventory. Unknown physical content is preserved and reported as an
-incomplete uninstall.
-
-## Diagnostic boundary
-
-Runtime status contains only bounded counters, classifications, provenance
-digests, and timestamps. Logs are a secondary local diagnostic surface:
-structured events are bounded by rotating retention and redact secret-shaped
-values. No raw request, response, header, prompt, query value, credential, or
-upstream error payload is retained. Retired raw-capture filenames are removed
-without reading their contents; oversized legacy log segments are discarded
-rather than copied into evidence. Native service stdout and stderr must not form
-an unbounded parallel log channel.
-
-Input-union diagnostics contain closed-enum type counts, call/output pairing
-state, the first detected incompatibility category, and a hash of a capped
-categorical shape. Unknown names, values, and exact collection cardinalities
-are erased before hashing or diagnostic logging. Recovery events may retain
-exact byte lengths and retained or dropped item counts, but never the
-corresponding message values or unknown names.
+Runtime evidence proves only the installed listener. It does not prove client
+configuration, provider billing, or recovery of a historical conversation.

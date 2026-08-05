@@ -71,11 +71,7 @@ def evaluate(
     )
     if "gitlab" in normalized and "github" in normalized and not tree_equal:
         reasons.append("tree_mismatch")
-    assets_equal = (
-        "gitlab" in normalized
-        and "github" in normalized
-        and normalized["gitlab"]["assets"] == normalized["github"]["assets"]
-    )
+    assets_equal = _common_payloads_equal(normalized, tag)
     if "gitlab" in normalized and "github" in normalized and not assets_equal:
         reasons.append("asset_mismatch")
     verified = not reasons and tree_equal and assets_equal
@@ -88,6 +84,38 @@ def evaluate(
         "reasons": reasons,
         "forges": normalized,
     }
+
+
+def _common_payloads_equal(normalized: Mapping[str, Mapping[str, object]], tag: str) -> bool:
+    """Compare archive and manifest digests for platforms published by both Forges."""
+
+    if not {"gitlab", "github"} <= set(normalized):
+        return False
+    inventories = {
+        provider: cast(Mapping[str, str], normalized[provider]["assets"])
+        for provider in ("gitlab", "github")
+    }
+    version = tag.removeprefix("v")
+    prefix = f"codex-responses-proxy-{version}-"
+    platforms = [
+        {
+            name.removeprefix(prefix).removesuffix(".tar.gz")
+            for name in inventory
+            if name.startswith(prefix) and name.endswith(".tar.gz")
+        }
+        for inventory in inventories.values()
+    ]
+    common = set.intersection(*platforms)
+    if not common:
+        return False
+    return all(
+        inventories["gitlab"][name] == inventories["github"][name]
+        for platform in common
+        for name in (
+            f"{prefix}{platform}.tar.gz",
+            f"codex-responses-proxy-{platform}.manifest.json",
+        )
+    )
 
 
 def _evaluate_forge(

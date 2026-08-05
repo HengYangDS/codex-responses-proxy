@@ -12,10 +12,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def _release_assets() -> dict[str, bytes]:
+def _release_assets(
+    platforms: tuple[str, ...] = release_assets.RELEASE_PLATFORMS,
+) -> dict[str, bytes]:
     version = "1.2.3"
     platform_assets: dict[str, bytes] = {}
-    for platform in release_assets.RELEASE_PLATFORMS:
+    for platform in platforms:
         executable = (
             "codex-responses-proxy.exe"
             if platform.startswith("windows-")
@@ -167,7 +169,7 @@ class ForgeAdapterContracts:
             "description": "Provider-native source release. See CHANGELOG.md for user-relevant changes.",
             "evidences": [{"sha": "f" * 40}],
         }
-        return pipeline, jobs, release, _release_assets()
+        return pipeline, jobs, release, _release_assets(("linux-x86_64",))
 
     def test_github_requires_exact_verify_and_release_runs(self) -> None:
         commit = "a" * 40

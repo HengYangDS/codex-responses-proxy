@@ -26,14 +26,17 @@ expected = tuple(job for job in policy["gitlab"]["required-jobs"] if job != "pub
 if actual != expected:
     raise SystemExit(f"GitLab release dependencies differ from publication policy: {actual!r}")
 for token in (
-    "CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY",
+    "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY",
     "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
+    "CODEX_RESPONSES_PROXY_RELEASE_ASSET_DIR",
+    "build-gitlab-native-asset",
+    "docker: { platform: linux/amd64 }",
 ):
     if token not in text:
         raise SystemExit(f"GitLab release job does not receive {token}")
 PYTHON
 
-fixture="$tmp/github-assets"
+fixture="$tmp/native-assets"
 store="$tmp/gitlab-store"
 mkdir -p "$fixture" "$store"
 key="$tmp/release-key"
@@ -92,26 +95,6 @@ done
 printf '%s %s\n' "$method" "${url:-}" >> "${CODEX_RESPONSES_PROXY_TEST_CURL_LOG:?}"
 name=${url##*/}
 case "$url" in
-  */repos/*/releases/tags/*)
-    FIXTURE="${CODEX_RESPONSES_PROXY_TEST_FIXTURE:?}" TAG="${CODEX_RESPONSES_PROXY_TEST_TAG:?}" \
-      python3 - "$output" <<'PYTHON'
-import json
-import os
-import sys
-from pathlib import Path
-
-assets = [
-    {"name": path.name, "browser_download_url": f"https://downloads.example.test/{path.name}"}
-    for path in sorted(Path(os.environ["FIXTURE"]).iterdir())
-]
-Path(sys.argv[1]).write_text(json.dumps({"tag_name": os.environ["TAG"], "assets": assets}))
-PYTHON
-    code=200
-    ;;
-  https://downloads.example.test/*)
-    cp "${CODEX_RESPONSES_PROXY_TEST_FIXTURE:?}/$name" "$output"
-    code=200
-    ;;
   */packages/generic/*)
     target="${CODEX_RESPONSES_PROXY_TEST_STORE:?}/$name"
     if [ -n "$upload" ]; then cp "$upload" "$target"; code=201
@@ -159,11 +142,9 @@ run() {
     CODEX_RESPONSES_PROXY_TEST_FIXTURE="$fixture" \
     CODEX_RESPONSES_PROXY_TEST_STORE="$store" \
     CODEX_RESPONSES_PROXY_TEST_TAG="$tag" \
-    CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY=team/codex-responses-proxy \
-    CODEX_RESPONSES_PROXY_GITHUB_API_URL=https://api.github.test \
+    CODEX_RESPONSES_PROXY_RELEASE_ASSET_DIR="$fixture" \
+    CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY="$key" \
     CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST="$trust" \
-    CODEX_RESPONSES_PROXY_RELEASE_WAIT_SECONDS=1 \
-    CODEX_RESPONSES_PROXY_RELEASE_POLL_SECONDS=1 \
     CI_API_V4_URL=https://gitlab.example.test/api/v4 CI_PROJECT_ID=453 \
     CI_COMMIT_TAG="$tag" CI_JOB_TOKEN=redacted \
     sh "$script"
@@ -177,7 +158,10 @@ if run mismatch >/dev/null 2>&1; then
   echo 'publisher accepted a mismatched immutable release record' >&2
   exit 1
 fi
-grep -F 'GET https://api.github.test/repos/team/codex-responses-proxy/releases/tags/' "$log" >/dev/null
+if grep -Fi github "$log" >/dev/null || grep -Fi github "$script" >/dev/null; then
+  echo 'GitLab publisher retains a GitHub dependency' >&2
+  exit 1
+fi
 grep -F 'POST https://gitlab.example.test/api/v4/projects/453/releases' "$log" >/dev/null
 grep -F "GET https://gitlab.example.test/api/v4/projects/453/releases/$tag" "$log" >/dev/null
 for file in "$fixture"/*; do

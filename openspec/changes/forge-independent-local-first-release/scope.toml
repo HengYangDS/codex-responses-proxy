@@ -1,0 +1,22 @@
+schema_version = 1
+paths = [
+  ".config/**",
+  ".githooks/**",
+  ".github/**",
+  ".gitlab-ci.yml",
+  ".gitignore",
+  ".python-versions",
+  "AGENTS.md",
+  "CHANGELOG.md",
+  "CONTRIBUTING.md",
+  "README.md",
+  "VERSION",
+  "docs/**",
+  "noxfile.py",
+  "openspec/**",
+  "pyproject.toml",
+  "src/**",
+  "tests/**",
+  "tools/**",
+  "uv.lock",
+]
