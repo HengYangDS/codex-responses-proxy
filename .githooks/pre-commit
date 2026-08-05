@@ -9,5 +9,8 @@ while IFS= read -r path; do
 done < <(git diff --cached --name-only --diff-filter=ACMRTD)
 
 ((${#staged[@]})) || exit 0
-exec ethos hook admit pre-tool "${staged[@]}" \
-  --root "$root" --editor-root "$root" --require-editor-root --json
+if ! report=$(ethos hook admit pre-tool "${staged[@]}" \
+  --root "$root" --editor-root "$root" --require-editor-root --json); then
+  printf '%s\n' "$report" >&2
+  exit 1
+fi
