@@ -109,8 +109,8 @@ def sanitize_sse_event(raw_event: bytes) -> tuple[bytes, int]:
                     data = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode()
                     line = prefix + data + suffix
                     removed_total += removed
-            except (TypeError, ValueError, RecursionError, UnicodeError):
-                return raw_event, 0
+            except (TypeError, ValueError, RecursionError, UnicodeError) as exc:
+                raise ValueError("unproved_provider_ciphertext") from exc
         out_lines.append(line)
     return b"".join(out_lines), removed_total
 

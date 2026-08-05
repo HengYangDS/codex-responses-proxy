@@ -301,20 +301,27 @@ class ResponseSanitizationContracts:
             {"type": "output_text", "text": request_projection.OPAQUE_CONTENT_MARKER}
         ]
 
-    def test_sse_sanitizer_passes_non_json_and_non_target_events_unchanged(self, subtests):
+    def test_sse_sanitizer_passes_non_target_events_unchanged(self, subtests):
         events = (
             b"data: [DONE]\n\n",
-            b'data: {"encrypted_content":\n\n',
             b'data: {"type":"response.output_text.delta","delta":"ok"}\n\n',
         )
         for raw in events:
             with subtests.test(raw=raw):
                 assert rewrite.sanitize_sse_event(raw) == (raw, 0)
 
-    def test_sse_sanitizer_fails_open_when_mutation_cannot_be_serialized(self, *, mocker):
+    def test_sse_sanitizer_rejects_malformed_ciphertext_event(self) -> None:
+        with pytest.raises(ValueError, match="unproved_provider_ciphertext"):
+            rewrite.sanitize_sse_event(b'data: {"encrypted_content":\n\n')
+
+    def test_sse_sanitizer_rejects_ciphertext_when_mutation_cannot_be_serialized(
+        self, *, mocker
+    ) -> None:
         raw = b'data: {"type":"response.completed","response":{"output":[{"type":"reasoning","encrypted_content":"opaque"}]}}\n\n'
-        mocker.patch.object(request_projection.json, "dumps", side_effect=TypeError("unsupported"))
-        assert rewrite.sanitize_sse_event(raw) == (raw, 0)
+        mocker.patch.object(rewrite.json, "dumps", side_effect=TypeError("unsupported"))
+
+        with pytest.raises(ValueError, match="unproved_provider_ciphertext"):
+            rewrite.sanitize_sse_event(raw)
 
     def test_deep_sse_projection_remains_atomic(self) -> None:
         event = (
@@ -324,4 +331,5 @@ class ResponseSanitizationContracts:
             + "}" * 997
             + "\n\n"
         ).encode()
-        assert rewrite.sanitize_sse_event(event) == (event, 0)
+        with pytest.raises(ValueError, match="unproved_provider_ciphertext"):
+            rewrite.sanitize_sse_event(event)
