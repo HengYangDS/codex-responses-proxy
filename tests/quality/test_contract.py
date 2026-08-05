@@ -586,9 +586,13 @@ class TestVerificationContracts:
                 if "python tests/" in line or '"-m", "tests.' in line:
                     direct_test_commands.append(f"{relative}:{lineno}:{line.strip()}")
         assert direct_test_commands == []
-        assert "python -m pytest -q tests/release/test_metadata.py" in (
-            ROOT / ".gitlab-ci.yml"
-        ).read_text(encoding="utf-8")
+        gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+        metadata_job = gitlab.split("verify-release-metadata:", 1)[1].split(
+            "verify-release-tag:", 1
+        )[0]
+        assert "uv==0.12.1" in metadata_job
+        assert "uv sync --locked --only-group quality" in metadata_job
+        assert "uv run --locked --no-sync pytest -q tests/release/test_metadata.py" in metadata_job
 
     def test_test_suite_has_no_unittest_compatibility_surface(self) -> None:
         offenders = []
