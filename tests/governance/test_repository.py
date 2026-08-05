@@ -60,6 +60,19 @@ class TestInstallationInputValidation:
                 assert runtime_config.data_dir().endswith(expected[0])
                 assert runtime_config.state_dir().endswith(expected[1])
 
+    def test_macos_state_root_is_not_lost_in_platform_matrix(self, *, mocker):
+        """Keep the native macOS path branch covered on every CI host."""
+
+        mocker.patch.dict(runtime_config.os.environ, {}, clear=True)
+        mocker.patch.object(runtime_config.os, "name", "posix")
+        mocker.patch.object(runtime_config.sys, "platform", "darwin")
+        home = str(Path("/") / "portable" / "home")
+        mocker.patch.object(runtime_config, "home_dir", return_value=home)
+
+        assert runtime_config.state_dir() == str(
+            Path(home) / "Library" / "Logs" / "codex-responses-proxy"
+        )
+
     def test_runtime_configuration_is_loopback_only_and_rejects_invalid_ports(self, subtests):
         assert runtime_config.listener_host() == "127.0.0.1"
         for value in ("0", "65536", "not-a-port"):

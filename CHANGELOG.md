@@ -7,6 +7,15 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ## [Unreleased]
 
+## [2.0.13] - 2026-08-05
+
+### Fixed
+
+- Keep strict semantic-package branch coverage above 95 percent on every CI
+  host by selecting the macOS state-root branch explicitly in the portable
+  platform contract. The failed GitLab `v2.0.12` run remains immutable
+  evidence; production runtime behavior is unchanged.
+
 ## [2.0.12] - 2026-08-05
 
 ### Fixed

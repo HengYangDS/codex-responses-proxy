@@ -1,0 +1,40 @@
+schema_version = 1
+id = "change:forge-independent-local-first-release"
+intent = "Restore host-independent strict package coverage and advance the failed 2.0.12 release forward without runtime changes."
+subjects = ["repository:self"]
+scope = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/**",
+  "tests/governance/test_repository.py",
+]
+invariants = [
+  "coverage_remains_strictly_greater_than_ninety_five_percent",
+  "failed_release_evidence_is_immutable",
+  "production_runtime_is_unchanged",
+  "gitlab_and_github_remain_independent",
+]
+acceptance = [
+  "linux_relay_package_branch_coverage_exceeds_ninety_five_percent",
+  "full_python_and_native_release_matrix_passes",
+  "forward_release_metadata_is_valid",
+]
+risks = [
+  "host_specific_test_false_confidence",
+  "release_chronology_drift",
+]
+authority_refs = [
+  "user_instruction",
+  "AGENTS.md",
+  "openspec/specs/ci-diagnostics/spec.md",
+]
+permissions = [
+  "repository.read",
+  "work-lane.write",
+  "local-proof.execute",
+  "terminal-publication.execute",
+]
+hypotheses = [
+  "explicit_platform_selection_removes_host_dependent_coverage_drift",
+]
+dependencies = []
