@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 from tools.release import assets as asset_command
+from tools.release import assemble_assets
 from tools.release import product_assets as assets
 import pytest
 
@@ -119,6 +120,43 @@ class ReleaseAssetContracts:
                 "1.2.3",
                 ("linux-x86_64",),
             )
+
+    def test_native_platform_outputs_assemble_into_one_release(self, tmp_path: Path) -> None:
+        inputs: list[Path] = []
+        version = "1.2.3"
+        for platform in assets.RELEASE_PLATFORMS:
+            root = tmp_path / platform
+            root.mkdir()
+            executable = (
+                "codex-responses-proxy.exe"
+                if platform.startswith("windows-")
+                else "codex-responses-proxy"
+            )
+            files = {executable: assets.ArchiveFile(platform.encode(), 0o755)}
+            archive_name = assets.archive_name(version, platform)
+            archive = assets.archive_bytes(files, version, platform)
+            (root / archive_name).write_bytes(archive)
+            (root / assets.manifest_name(platform)).write_bytes(
+                assets.asset_manifest(
+                    version=version,
+                    platform=platform,
+                    archive_name=archive_name,
+                    archive=archive,
+                    files=files,
+                )
+            )
+            (root / assets.CHECKSUM_NAME).write_bytes(b"ignored platform checksum\n")
+            inputs.append(root)
+        output = tmp_path / "release"
+        release = assemble_assets.assemble(tuple(inputs), output)
+        assert set(release) == assets.release_asset_names(
+            version, assets.RELEASE_PLATFORMS, require_signature=False
+        )
+        assets.release_digests(release, version, assets.RELEASE_PLATFORMS, require_signature=False)
+        (output / assets.SIGNATURE_NAME).write_bytes(b"signature fixture\n")
+        assert set(assemble_assets.verify(output)) == assets.release_asset_names(
+            version, assets.RELEASE_PLATFORMS
+        )
 
     def test_invalid_paths_and_manifests_fail_closed(self, subtests) -> None:
         with pytest.raises(assets.AssetError):

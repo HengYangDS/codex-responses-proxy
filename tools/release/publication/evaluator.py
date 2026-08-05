@@ -136,6 +136,7 @@ def _evaluate_forge(
         *(f"{archive_prefix}{platform}.tar.gz" for platform in platforms),
         *(f"codex-responses-proxy-{platform}.manifest.json" for platform in platforms),
         "SHA256SUMS",
+        "SHA256SUMS.sig",
     }
     if not platforms or names != expected_assets:
         return None, [f"{provider}.invalid_evidence"]

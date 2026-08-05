@@ -337,7 +337,8 @@ class TestGovernanceMetadata:
             calls = root / "calls"
             fake_ethos = bin_dir / "ethos"
             fake_ethos.write_text(
-                '#!/bin/sh\nprintf "%s\\n" "$*" >> "$ETHOS_CALLS"\n', encoding="utf-8"
+                '#!/bin/sh\nprintf "<%s>" "$@" >> "$ETHOS_CALLS"\nprintf "\\n" >> "$ETHOS_CALLS"\n',
+                encoding="utf-8",
             )
             fake_ethos.chmod(0o755)
             environment = os.environ | {
@@ -365,8 +366,8 @@ class TestGovernanceMetadata:
             )
 
             recorded = calls.read_text(encoding="utf-8").splitlines()
-            assert f"hook pre-push refs/heads/main {head}" in recorded[0]
-            assert f"hook pre-push refs/tags/v1.0.0 {head}" in recorded[1]
+            assert f"<hook><pre-push><refs/heads/main><{head}>" in recorded[0]
+            assert f"<hook><pre-push><refs/tags/v1.0.0><{head}>" in recorded[1]
 
             subprocess.run(["git", "-C", root, "tag", "lightweight"], check=True)
             lightweight = subprocess.check_output(

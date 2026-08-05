@@ -43,6 +43,7 @@ def _forge(
                 for platform in ("linux-x86_64", "macos-arm64", "windows-x86_64")
             },
             "SHA256SUMS": "3" * 64,
+            "SHA256SUMS.sig": "4" * 64,
         },
         "ci": {
             "id": 42,
@@ -85,7 +86,8 @@ def _github_forge(*, tree: str = "c" * 40) -> dict[str, object]:
             (
                 "Python 3.12|Python 3.13|Python 3.14|Python 3.12 (Windows)|"
                 "Python 3.13 (Windows)|Python 3.14 (Windows)|Governance and presentation|"
-                "Python quality|Verify tag and publish record"
+                "Python quality|Native asset (linux-x86_64)|Native asset (macos-arm64)|"
+                "Native asset (windows-x86_64)|Release assets|Verify tag and publish record"
             ).split("|")
         ),
         tree=tree,

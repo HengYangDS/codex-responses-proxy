@@ -8,6 +8,9 @@ permissions:
   contents: write
   actions: read
 
+env:
+  CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
+
 concurrency:
   group: release-${{ github.repository }}-${{ github.ref_name }}
   cancel-in-progress: false
@@ -20,8 +23,11 @@ jobs:
     permissions:
       actions: read
       contents: read
+    outputs:
+      run-id: ${{ steps.verify.outputs.run-id }}
     steps:
       - name: Require exact successful Verify run
+        id: verify
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -51,7 +57,22 @@ jobs:
           PY
             )
             case "$verdict" in
-              success) break ;;
+              success)
+                run_id=$(RUNS_JSON="$runs" python3 - "$GITHUB_REF_NAME" "$GITHUB_SHA" <<'PY'
+          import json, os, sys
+          tag, sha = sys.argv[1:]
+          pages = json.loads(os.environ["RUNS_JSON"])
+          matches = [run for page in pages for run in page.get("workflow_runs", [])
+                     if run.get("path") == ".github/workflows/verify.yml"
+                     and run.get("event") == "push" and run.get("head_branch") == tag
+                     and run.get("head_sha") == sha]
+          if len(matches) != 1 or not isinstance(matches[0].get("id"), int):
+              raise SystemExit("exact successful Verify run is ambiguous")
+          print(matches[0]["id"])
+          PY
+                )
+                echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+                break ;;
               waiting)
                 test "$SECONDS" -lt "$deadline" || {
                   echo "exact tag Verify run timed out" >&2
@@ -108,6 +129,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SELECTED_TAG: ${{ github.ref_name }}
+          VERIFIED_RUN_ID: ${{ needs.require-verify.outputs.run-id }}
+          RELEASE_ASSET_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}
         run: |
           set -euo pipefail
           expected_sha=$(git rev-parse 'HEAD^{commit}')
@@ -157,17 +180,26 @@ jobs:
           if (record.get("tag"), record.get("sha"), target.get("type"), target.get("sha")) != (tag, oid, "commit", commit):
               raise SystemExit("GitHub release tag does not resolve to the checked-out commit")
           PY
+          assets="$RUNNER_TEMP/release-assets"
+          gh run download "$VERIFIED_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name release-assets --dir "$assets"
+          anchor="$RUNNER_TEMP/release-asset-trust"
+          printf '%s\n' "$RELEASE_ASSET_TRUST" > "$anchor"
+          principal=$(ssh-keygen -Y find-principals -s "$assets/SHA256SUMS.sig" \
+            -f "$anchor" < "$assets/SHA256SUMS")
+          test "$principal" = codex-responses-proxy-release
+          ssh-keygen -Y verify -f "$anchor" -I "$principal" \
+            -n codex-responses-proxy-release -s "$assets/SHA256SUMS.sig" \
+            < "$assets/SHA256SUMS"
+          python -m tools.release.assemble_assets --verify "$assets"
           if [ "$verdict" = missing ]; then
-            assets="$RUNNER_TEMP/release-assets"
-            python -m tools.release.assets --output "$assets"
             gh release create "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" \
               --verify-tag --title "Codex Responses Proxy $SELECTED_TAG" --generate-notes \
-              "$assets/codex-responses-proxy-${SELECTED_TAG#v}.tar.gz" \
-              "$assets/SHA256SUMS"
+              "$assets"/*
           fi
           downloaded="$RUNNER_TEMP/downloaded-assets"
           mkdir -p "$downloaded"
           gh release download "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" --dir "$downloaded" \
-            --pattern "codex-responses-proxy-${SELECTED_TAG#v}.tar.gz" --pattern SHA256SUMS
-          test "$(find "$downloaded" -type f | wc -l | tr -d ' ')" = 2
-          (cd "$downloaded" && sha256sum --check SHA256SUMS)
+            --pattern 'codex-responses-proxy-*' --pattern 'SHA256SUMS*'
+          python -m tools.release.assemble_assets --verify "$downloaded"
+          diff -qr "$assets" "$downloaded"

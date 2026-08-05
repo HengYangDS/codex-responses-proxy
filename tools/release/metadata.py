@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import tomllib
@@ -52,11 +53,19 @@ def _version_key(version: str) -> tuple[int, int, int]:
 
 
 def known_release_versions() -> list[str]:
-    """Return current provider tags in descending SemVer order."""
+    """Return the selected provider's tags in descending SemVer order."""
 
+    remote = os.environ.get("CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE")
+    if remote:
+        records = _git("ls-remote", "--tags", "--refs", remote, "v[0-9]*")
+        tags = [line.rsplit("refs/tags/", 1)[-1] for line in records.splitlines()]
+    else:
+        tags = _git("tag", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
     return [
         tag.removeprefix("v")
-        for tag in _git("tag", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
+        for tag in sorted(
+            tags, key=lambda value: _version_key(value.removeprefix("v")), reverse=True
+        )
         if re.fullmatch(r"v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", tag)
     ]
 

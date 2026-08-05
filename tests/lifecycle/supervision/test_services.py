@@ -9,8 +9,9 @@ from codex_responses_proxy.relay import config as runtime_config
 from tests.lifecycle.fixtures import platform_context
 from tests.lifecycle.supervision.fixtures import assert_fragments as _assert_fragments
 
-CONTEXT = platform_context()
-EXECUTABLE = CONTEXT.executable
+POSIX_CONTEXT = platform_context()
+WINDOWS_CONTEXT = platform_context(windows=True)
+EXECUTABLE = POSIX_CONTEXT.executable
 
 MACOS_CONTAINS = f"""<key>KeepAlive</key>
 <true/>
@@ -32,8 +33,8 @@ ExecStart={EXECUTABLE} --internal-watchdog
 Environment=CODEX_RESPONSES_PROXY_PROXY_PORT=8791
 Environment=CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES={runtime_config.DEFAULT_PROXY_LOG_MAX_BYTES}
 Environment=CODEX_RESPONSES_PROXY_WATCHDOG_LOG_BACKUP_COUNT={runtime_config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT}
-Environment=CODEX_RESPONSES_PROXY_PROXY_LOG={CONTEXT.log_dir}/proxy.log
-Environment=CODEX_RESPONSES_PROXY_WATCHDOG_LOG={CONTEXT.log_dir}/watchdog.log""".splitlines()
+Environment=CODEX_RESPONSES_PROXY_PROXY_LOG={POSIX_CONTEXT.log_dir}/proxy.log
+Environment=CODEX_RESPONSES_PROXY_WATCHDOG_LOG={POSIX_CONTEXT.log_dir}/watchdog.log""".splitlines()
 WINDOWS_TASK_CONTAINS = f"""<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
 <LogonTrigger>
 <RestartOnFailure>
@@ -45,7 +46,7 @@ WINDOWS_TASK_CONTAINS = f"""<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
 <Interval>PT1M</Interval>
 <StopAtDurationEnd>false</StopAtDurationEnd>
 <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-<Command>{EXECUTABLE}</Command>
+<Command>{WINDOWS_CONTEXT.executable}</Command>
 <Arguments>--internal-watchdog</Arguments>""".splitlines()
 
 
@@ -65,7 +66,7 @@ class TestServiceDefinitions:
         assert "multi-user.target" not in unit
 
     def test_windows_task(self):
-        xml = windows.render_task_xml(platform_context())
+        xml = windows.render_task_xml(WINDOWS_CONTEXT)
         minidom.parseString(xml)
         _assert_fragments(xml, WINDOWS_TASK_CONTAINS)
         _assert_fragments(xml.lower(), exclude=("cmd.exe", "comspec", "run-watchdog.cmd"))

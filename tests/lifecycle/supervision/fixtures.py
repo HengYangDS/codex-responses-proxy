@@ -18,11 +18,11 @@ def completed(cmd=(), returncode=0, stdout="", stderr=""):
 
 
 @contextmanager
-def temporary_context(attribute):
+def temporary_context(attribute, *, windows=False):
     """Yield a platform context with one path rooted in a temporary directory."""
 
     with tempfile.TemporaryDirectory() as directory:
-        context = platform_context()
+        context = platform_context(windows=windows)
         setattr(context, attribute, directory)
         yield context
 

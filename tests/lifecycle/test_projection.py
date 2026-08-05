@@ -12,7 +12,7 @@ from codex_responses_proxy.lifecycle import projection as payload_projection
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import install_context
-from tests.lifecycle.fixtures import install_payload, released_artifact
+from tests.lifecycle.fixtures import install_payload, released_artifact, runtime_files
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,8 +27,8 @@ class TestPayloadProjection:
         manifest = json.loads(
             Path(payload_projection.payload_manifest_path(ctx)).read_text(encoding="utf-8")
         )
-        assert sorted(manifest["files"]) == sorted(inventory.RUNTIME_FILES)
-        assert sorted(manifest["serving_files"]) == sorted(inventory.SERVING_FILES)
+        assert sorted(manifest["files"]) == sorted(runtime_files())
+        assert sorted(manifest["serving_files"]) == sorted(runtime_files())
         assert manifest["serving_payload_sha256"] == payload_projection.serving_payload_sha256(
             manifest["serving_files"]
         )
@@ -78,7 +78,7 @@ class TestPayloadProjection:
         assert remaining == ("operator-note.txt",)
         assert unknown.read_text(encoding="utf-8") == "keep\n"
         assert not Path(payload_projection.payload_manifest_path(ctx)).exists()
-        for relative in inventory.RUNTIME_FILES:
+        for relative in runtime_files():
             assert not (install / relative).exists()
 
     def test_purge_rejects_manifest_claims_outside_historical_inventory(self) -> None:
@@ -129,14 +129,14 @@ class TestPayloadProjection:
     def test_serving_payload_identity_is_order_independent_and_length_delimited(self) -> None:
         digests = {
             relative: hashlib.sha256(relative.encode("utf-8")).hexdigest()
-            for relative in inventory.SERVING_FILES
+            for relative in runtime_files()
         }
         reverse_order = dict(reversed(tuple(digests.items())))
         assert payload_projection.serving_payload_sha256(
             digests
         ) == payload_projection.serving_payload_sha256(reverse_order)
         changed = dict(digests)
-        changed[inventory.SERVING_FILES[-1]] = "0" * 64
+        changed[runtime_files()[-1]] = "0" * 64
         assert payload_projection.serving_payload_sha256(
             digests
         ) != payload_projection.serving_payload_sha256(changed)

@@ -18,7 +18,7 @@ from pytest_mock import MockerFixture
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.service import digest, inventory
-from tests.lifecycle.fixtures import released_artifact
+from tests.lifecycle.fixtures import released_artifact, runtime_files
 from tools.release import product_assets
 
 VERSION = "1.2.3"
@@ -259,7 +259,7 @@ def test_verified_artifact_is_opaque_immutable_and_single_use() -> None:
         setattr(candidate, "_claimed", False)
 
     claimed = artifact.claim(candidate)
-    assert tuple(blob.path for blob in claimed[0]) == inventory.RUNTIME_FILES
+    assert tuple(blob.path for blob in claimed[0]) == runtime_files()
     with pytest.raises(artifact.ArtifactError, match="already claimed"):
         artifact.claim(candidate)
 
@@ -298,7 +298,7 @@ def test_failed_integrity_check_does_not_consume_authority() -> None:
     with pytest.raises(artifact.ArtifactError):
         artifact.claim(candidate)
     object.__setattr__(candidate, "_sidecar", original)
-    assert tuple(blob.path for blob in artifact.claim(candidate)[0]) == inventory.RUNTIME_FILES
+    assert tuple(blob.path for blob in artifact.claim(candidate)[0]) == runtime_files()
 
 
 def test_plain_value_recursively_unfreezes_json_values() -> None:
@@ -312,7 +312,7 @@ def test_real_signature_admission_mints_exact_native_artifact(tmp_path: Path) ->
     candidate = artifact.admit(paths["archive"], trust_anchor=paths["anchor"])
 
     assert candidate.version == VERSION
-    assert tuple(blob.path for blob in candidate.peek_blobs()) == inventory.RUNTIME_FILES
+    assert tuple(blob.path for blob in candidate.peek_blobs()) == runtime_files()
     assert candidate.receipt["verification_scope"] == "signed-native-release-asset"
     assert candidate.receipt["archive"] == paths["archive"].name
     assert candidate.sidecar["receipt_sha256"] == candidate.receipt_sha256

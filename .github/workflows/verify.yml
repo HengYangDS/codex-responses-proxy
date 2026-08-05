@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
+
 concurrency:
   group: verify-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -114,3 +117,90 @@ jobs:
           python -m pip install --disable-pip-version-check --no-cache-dir uv==0.12.1
           uv sync --locked --only-group quality
           uv run --locked --no-sync nox -s quality
+
+  native-assets:
+    name: Native asset (${{ matrix.platform }})
+    if: github.ref_type == 'tag'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            runner: ubuntu-24.04
+          - platform: macos-arm64
+            runner: macos-26
+          - platform: windows-x86_64
+            runner: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Build and accept the native release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-cache-dir uv==0.12.1
+          uv sync --locked --only-group quality
+          uv run --locked --no-sync nox -s release -- "$RUNNER_TEMP/native-assets"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-${{ matrix.platform }}
+          path: ${{ runner.temp }}/native-assets
+          if-no-files-found: error
+          retention-days: 7
+
+  release-assets:
+    name: Release assets
+    if: github.ref_type == 'tag'
+    needs: native-assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: native-*
+          path: ${{ runner.temp }}/native
+      - name: Assemble, sign, and verify the release set
+        env:
+          RELEASE_ASSET_SIGNING_KEY: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY }}
+          RELEASE_ASSET_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_ASSET_SIGNING_KEY"
+          test -n "$RELEASE_ASSET_TRUST"
+          release="$RUNNER_TEMP/release-assets"
+          python -m tools.release.assemble_assets \
+            --input "$RUNNER_TEMP/native/native-linux-x86_64" \
+            --input "$RUNNER_TEMP/native/native-macos-arm64" \
+            --input "$RUNNER_TEMP/native/native-windows-x86_64" \
+            --output "$release"
+          key="$RUNNER_TEMP/release-asset-key"
+          anchor="$RUNNER_TEMP/release-asset-trust"
+          printf '%s\n' "$RELEASE_ASSET_SIGNING_KEY" > "$key"
+          printf '%s\n' "$RELEASE_ASSET_TRUST" > "$anchor"
+          chmod 600 "$key" "$anchor"
+          (cd "$release" && ssh-keygen -Y sign -q -f "$key" \
+            -n codex-responses-proxy-release SHA256SUMS)
+          principal=$(ssh-keygen -Y find-principals -s "$release/SHA256SUMS.sig" \
+            -f "$anchor" < "$release/SHA256SUMS")
+          test "$principal" = codex-responses-proxy-release
+          ssh-keygen -Y verify -f "$anchor" -I "$principal" \
+            -n codex-responses-proxy-release -s "$release/SHA256SUMS.sig" \
+            < "$release/SHA256SUMS"
+          python -m tools.release.assemble_assets --verify "$release"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets
+          if-no-files-found: error
+          retention-days: 7
