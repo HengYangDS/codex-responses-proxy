@@ -215,6 +215,52 @@ class TestLinuxLifecycle:
             with pytest.raises(errors.InstallError, match="crontab removal failed"):
                 linux.uninstall(ctx)
 
+    def test_uninstall_refuses_unproved_cron_and_process_terminal_states(
+        self, subtests, *, mocker
+    ) -> None:
+        ctx = platform_context()
+        mocker.patch.object(linux.os.path, "exists", return_value=False)
+        mocker.patch.object(linux.shutil, "which", return_value="crontab")
+        mocker.patch.object(linux.process, "pids_naming_executable", return_value=[])
+        mocker.patch.object(
+            linux.subprocess,
+            "run",
+            return_value=_completed(returncode=2, stderr="inventory denied"),
+        )
+        with (
+            subtests.test("inventory"),
+            pytest.raises(errors.InstallError, match="inventory failed"),
+        ):
+            linux.uninstall(ctx)
+
+        owned = f"@reboot /owned # {runtime_context.SERVICE_ID}\n"
+        mocker.patch.object(
+            linux.subprocess,
+            "run",
+            side_effect=[_completed(stdout=owned), _completed(), _completed(stdout=owned)],
+        )
+        with (
+            subtests.test("verification"),
+            pytest.raises(errors.InstallError, match="remains registered"),
+        ):
+            linux.uninstall(ctx)
+
+        mocker.patch.object(linux.shutil, "which", return_value=None)
+        mocker.patch.object(linux.process, "pids_naming_executable", side_effect=[[17], []])
+        mocker.patch.object(linux.process, "terminate_executable", return_value=False)
+        with (
+            subtests.test("termination"),
+            pytest.raises(errors.InstallError, match="17 did not exit"),
+        ):
+            linux.uninstall(ctx)
+
+        mocker.patch.object(linux.process, "pids_naming_executable", side_effect=[[], [19]])
+        with (
+            subtests.test("residue"),
+            pytest.raises(errors.InstallError, match=r"watchdogs remain: \[19\]"),
+        ):
+            linux.uninstall(ctx)
+
     def test_uninstall_terminates_each_verified_linux_watchdog(self, *, mocker):
         ctx = platform_context()
         mocker.patch.object(linux.os.path, "exists", return_value=False)

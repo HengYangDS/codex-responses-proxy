@@ -123,3 +123,14 @@ class TestWindowsLifecycle:
             with pytest.raises(errors.InstallError, match=message):
                 windows.uninstall(ctx)
             inventory.assert_not_called()
+
+    def test_uninstall_refuses_watchdog_residue_when_task_is_absent(self, *, mocker) -> None:
+        ctx = platform_context(windows=True)
+        mocker.patch.object(
+            windows.subprocess,
+            "run",
+            side_effect=[_completed(returncode=1), _completed(returncode=1)],
+        )
+        mocker.patch.object(windows, "_running_watchdog_pids", side_effect=[[], [23]])
+        with pytest.raises(errors.InstallError, match=r"watchdogs remain: \[23\]"):
+            windows.uninstall(ctx)

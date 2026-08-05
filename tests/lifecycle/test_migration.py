@@ -557,3 +557,28 @@ class TestPayloadMigration:
 
         with pytest.raises(errors.InstallError, match="residue inventory failed"):
             begin_transaction(ctx, released_artifact(), mocker=mocker)
+
+    def test_residue_inventory_and_retired_directory_types_fail_closed(
+        self, subtests, *, mocker
+    ) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        Path(ctx.log_dir).mkdir(parents=True)
+        mocker.patch.object(Path, "iterdir", side_effect=OSError("denied"))
+        with (
+            subtests.test("capture inventory"),
+            pytest.raises(errors.InstallError, match="residue inventory failed"),
+        ):
+            payload_transaction.migration.remove_legacy_captures(ctx)
+        mocker.stopall()
+
+        install = Path(ctx.install_dir)
+        retired = install / next(
+            iter(payload_transaction.migration.owned_files.RETIRED_INSTALL_DIRECTORIES)
+        )
+        retired.parent.mkdir(parents=True, exist_ok=True)
+        retired.write_text("not a directory", encoding="utf-8")
+        with (
+            subtests.test("retired directory type"),
+            pytest.raises(errors.InstallError, match="is not a directory"),
+        ):
+            payload_transaction.migration._remove_empty_retired_directories(install)

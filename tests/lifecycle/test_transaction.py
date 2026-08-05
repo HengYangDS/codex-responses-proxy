@@ -324,3 +324,54 @@ class TestPayloadTransaction:
         )
         fresh.rollback()
         payload_transaction._remove_transaction_root(fresh._ctx)
+
+    def test_commit_and_cleanup_fail_closed_on_unproved_terminal_state(
+        self, subtests, *, mocker
+    ) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+        mocker.patch.object(
+            payload_transaction.projection,
+            "verify_payload_manifest",
+            return_value=(False, "tampered"),
+        )
+        with (
+            subtests.test("integrity"),
+            pytest.raises(
+                errors.InstallError, match="committed payload integrity check failed: tampered"
+            ),
+        ):
+            transaction.commit_projection()
+        mocker.stopall()
+
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+        mocker.patch.object(
+            payload_transaction.payload_candidate,
+            "write_projection",
+            side_effect=OSError("write failed"),
+        )
+        mocker.patch.object(
+            payload_transaction.PayloadTransaction,
+            "rollback",
+            side_effect=errors.InstallError("restore failed"),
+        )
+        with (
+            subtests.test("rollback"),
+            pytest.raises(
+                errors.InstallError,
+                match="payload commit failed and rollback failed: restore failed",
+            ),
+        ):
+            transaction.commit_projection()
+        mocker.stopall()
+
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        root = payload_transaction.state.transaction_root(ctx)
+        root.mkdir(parents=True)
+        mocker.patch.object(payload_transaction.shutil, "rmtree", return_value=None)
+        with (
+            subtests.test("cleanup"),
+            pytest.raises(errors.InstallError, match="cleanup did not remove"),
+        ):
+            payload_transaction._remove_transaction_root(ctx)

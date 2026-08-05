@@ -98,6 +98,40 @@ class TestControllerLifecycle:
             with subtests.test(resolution=resolution), pytest.raises(expected_error):
                 control.reload(ctx)
 
+    def test_status_and_reload_bound_unobservable_failures(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        current_error = errors.InstallError("current manifest invalid")
+        mocker.patch.object(
+            control.projection, "verify_payload_manifest", side_effect=current_error
+        )
+        mocker.patch.object(
+            control.projection,
+            "verify_historical_projection",
+            side_effect=errors.InstallError("historical manifest invalid"),
+        )
+        mocker.patch.object(control, "adapter", side_effect=RuntimeError("service unavailable"))
+        mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
+        evidence = control.status(ctx)
+        assert evidence["payload_integrity"] == {"ok": False, "detail": str(current_error)}
+        assert evidence["service"] == "unknown"
+
+        mocker.patch.object(control, "_runtime_metrics", return_value={"pid": 7})
+        mocker.patch.object(control.handoff, "runtime_supports_handoff", return_value=True)
+        mocker.patch.object(
+            control.projection, "verify_payload_manifest", return_value=(True, "ok")
+        )
+        mocker.patch.object(
+            control.handoff, "expected_metadata", return_value={"transaction_id": "tx"}
+        )
+        mocker.patch.object(control.handoff, "request", side_effect=OSError("lost response"))
+        mocker.patch.object(
+            control.handoff,
+            "resolve_after_controller_failure",
+            side_effect=RuntimeError("resolution unavailable"),
+        )
+        with pytest.raises(errors.InstallError, match="outcome is unconfirmed"):
+            control.reload(ctx)
+
     def test_lifecycle_helpers_cover_local_files_and_process_failures(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
         version = Path(ctx.install_dir) / "VERSION"
