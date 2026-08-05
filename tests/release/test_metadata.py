@@ -460,11 +460,14 @@ def test_gitlab_ci_refreshes_tags_before_every_release_gate() -> None:
     """Require every GitLab release gate to prune stale runner tags."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    require(
-        ci.count(TAG_REFRESH) == 3,
-        "every GitLab release gate must refresh and prune origin tags",
+    release_jobs = (
+        "verify-release-metadata:",
+        "verify-release-tag:",
+        "build-gitlab-native-asset:",
+        "publish-gitlab-release:",
     )
-    for job in ("verify-release-metadata:", "verify-release-tag:", "publish-gitlab-release:"):
+    require(ci.count(TAG_REFRESH) == len(release_jobs), "GitLab tag refresh count drifted")
+    for job in release_jobs:
         require(TAG_REFRESH in ci_block(ci, job), f"{job} does not refresh and prune origin tags")
 
 
