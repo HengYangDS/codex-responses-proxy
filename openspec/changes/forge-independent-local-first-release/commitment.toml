@@ -4,6 +4,7 @@ intent = "Converge Codex Responses Proxy to one portable local Responses data pl
 subjects = ["repository:self"]
 scope = [
   ".config/**",
+  ".ethos/**",
   ".githooks/**",
   ".github/**",
   ".gitlab-ci.yml",
