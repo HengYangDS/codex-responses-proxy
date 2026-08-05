@@ -30,6 +30,7 @@ from codex_responses_proxy.service.handoff import transaction as handoff_module
 from tests.lifecycle.fixtures import install_context
 
 ROOT = Path(__file__).resolve().parents[3]
+PACKAGED_EXECUTABLE_START_TIMEOUT_SECONDS = 60
 
 
 def expected_metadata(**overrides) -> dict[str, object]:
@@ -431,7 +432,13 @@ def start_real_proxy(
             stderr=diagnostic,
             close_fds=True,
         )
-    if not wait_until(lambda: process.poll() is not None or proxy_is_up(ctx.port), timeout=30):
+    # PyInstaller one-file executables must unpack before the listener can bind.
+    # Keep the native acceptance budget bounded, but large enough for a cold
+    # start on a busy hosted runner or developer workstation.
+    if not wait_until(
+        lambda: process.poll() is not None or proxy_is_up(ctx.port),
+        timeout=PACKAGED_EXECUTABLE_START_TIMEOUT_SECONDS,
+    ):
         terminate_process(process)
         detail = log_path.read_text(encoding="utf-8", errors="replace")[-2000:].strip()
         raise RuntimeError(
