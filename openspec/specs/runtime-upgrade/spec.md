@@ -190,10 +190,9 @@ host and port from the address bound by the kernel rather than from DNS.
 The installer SHALL admit a prior protocol-v2 projection only when its complete
 manifest file set, per-file digests, serving aggregate, release receipt,
 release, and entrypoint match a supported released inventory. When finalized
-install state is present it SHALL match the same release and receipt; its
+install state is present it SHALL match the same release and receipt. Its
 absence MAY be admitted only for an explicitly modeled exact historical
-projection. Files owned only by that verified prior inventory SHALL be
-snapshotted, removed during candidate commit, and restored by rollback.
+projection.
 
 #### Scenario: Exact v2.0.0 projection upgrades
 
@@ -206,6 +205,12 @@ snapshotted, removed during candidate commit, and restored by rollback.
   content
 - **AND** rollback restores the receipt and original absence or presence of
   finalized install state.
+
+#### Scenario: A verified predecessor owns retired files
+
+- **WHEN** files exist only in the exact admitted predecessor inventory
+- **THEN** the transaction snapshots and removes them during candidate commit
+- **AND** rollback restores their exact bytes and metadata.
 
 #### Scenario: Similar but unknown schema-2 projection is presented
 
@@ -236,10 +241,8 @@ rather than copy listener-port literals.
 The released macOS service SHALL start the watchdog by its exact installed
 entrypoint without relying on ambient `PYTHONPATH`, SHALL preserve the listener
 argv needed for ownership checks, and SHALL persist stdout and stderr below a
-pre-created application log directory. Process discovery on non-Darwin hosts
-SHALL consume one batch command inventory per discovery call rather than
-launching a second host query for every PID, while every signal path SHALL
-revalidate the exact live PID identity immediately before mutation.
+pre-created application log directory. Every signal path SHALL revalidate the
+exact live PID identity immediately before mutation.
 
 #### Scenario: Direct watchdog execution from an unrelated directory
 
@@ -258,8 +261,7 @@ revalidate the exact live PID identity immediately before mutation.
 
 - **WHEN** the runtime discovers PIDs naming one exact installed entrypoint on
   Windows or Linux
-- **THEN** it obtains one batch process inventory and validates each captured
-  command without issuing a per-PID host query
+- **THEN** it obtains one process inventory and validates each captured command
 - **AND** a later signal operation independently revalidates the selected live
   PID before mutation.
 

@@ -1,4 +1,4 @@
-"""Interpreter resolution and exact process-identity contracts."""
+"""Exact process identity and termination contracts."""
 
 from __future__ import annotations
 
@@ -8,60 +8,63 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from codex_responses_proxy.lifecycle.supervision import process
 from tests.lifecycle.fixtures import platform_context
-from tests.lifecycle.supervision.fixtures import completed as _completed
-
-ROOT = Path(__file__).resolve().parents[3]
 
 
 class TestProcessIdentity:
-    def test_process_discovery_is_platform_specific_and_fail_closed(self, *, mocker):
-        loopback = ".".join(("127", "0", "0", "1"))
-        wildcard = ".".join(("0", "0", "0", "0"))
-        for name, output, expected in (
-            (
-                "nt",
-                f"TCP {loopback}:8791 {wildcard}:0 LISTENING 123\n"
-                f"TCP {loopback}:8792 {wildcard}:0 LISTENING 456\n",
-                [123],
-            ),
-            ("posix", "123\ninvalid\n456\n", [123, 456]),
-        ):
-            mocker.patch.object(process.os, "name", name)
-            mocker.patch.object(process.subprocess, "run", return_value=mocker.Mock(stdout=output))
-            assert process.listener_pids(8791) == expected
-        mocker.patch.object(process.subprocess, "run", side_effect=OSError)
+    def test_psutil_process_inventory_and_listener_discovery_are_host_command_free(self, *, mocker):
+        first = mocker.Mock(pid=7)
+        first.cmdline.return_value = ["python", "/installed/proxy.py"]
+        first.info = {
+            "net_connections": [
+                mocker.Mock(status=process.psutil.CONN_LISTEN, laddr=mocker.Mock(port=8791))
+            ]
+        }
+        second = mocker.Mock(pid=8)
+        second.cmdline.side_effect = process.psutil.AccessDenied(8)
+        second.info = {"net_connections": []}
+        process_iter = mocker.patch.object(
+            process.psutil,
+            "process_iter",
+            side_effect=([first, second], [first, second]),
+        )
+
+        assert process._process_inventory() == [(7, ["python", "/installed/proxy.py"])]
+        assert process.listener_pids(8791) == [7]
+        assert process_iter.call_args_list[1].args == (["pid", "net_connections"],)
+
+    def test_process_discovery_fails_closed(self, *, mocker):
+        mocker.patch.object(
+            process.psutil,
+            "process_iter",
+            side_effect=process.psutil.AccessDenied(),
+        )
         assert process.listener_pids(8791) == []
+        mocker.patch.object(
+            process.psutil,
+            "Process",
+            side_effect=process.psutil.NoSuchProcess(123),
+        )
+        assert process.process_argv(123) == []
         assert process.process_command(123) == ""
 
-    def test_process_inventory_parses_each_platform_and_fails_closed(self, *, mocker):
-        for name, output, expected in (
-            (
-                "posix",
-                "  7 python /proxy.py\ninvalid\n8\n 9 python /other.py\n",
-                [(7, "python /proxy.py"), (9, "python /other.py")],
-            ),
-            (
-                "nt",
-                "7\tpython C:\\proxy.py\ninvalid\n8\t\n9\tpython C:\\other.py\n",
-                [(7, r"python C:\proxy.py"), (9, r"python C:\other.py")],
-            ),
-        ):
-            mocker.patch.object(process.os, "name", name)
-            mocker.patch.object(process.subprocess, "run", return_value=_completed(stdout=output))
-            assert process._process_inventory() == expected
-        mocker.patch.object(process.subprocess, "run", side_effect=OSError)
+    def test_process_inventory_and_path_discovery_fail_closed(self, *, mocker):
+        mocker.patch.object(
+            process.psutil,
+            "process_iter",
+            side_effect=process.psutil.AccessDenied(),
+        )
         assert process._process_inventory() == []
         mocker.patch.object(
             process,
             "_process_inventory",
             return_value=[
-                (7, "python /installed/watchdog.py.backup"),
-                (8, 'python "/installed/watchdog.py"'),
-                (9, "powershell -Command 'Write-Output /installed/watchdog.py'"),
-                (10, "powershell -Command Write-Output /installed/watchdog.py"),
-                (11, "python -c print /installed/watchdog.py"),
+                (7, ["python", "/installed/watchdog.py.backup"]),
+                (8, ["python", "/installed/watchdog.py"]),
+                (9, ["python", "-c", "print", "/installed/watchdog.py"]),
             ],
         )
         mocker.patch.object(
@@ -70,8 +73,6 @@ class TestProcessIdentity:
             side_effect=[
                 ["python", "/installed/watchdog.py.backup"],
                 ["python", "/installed/watchdog.py"],
-                ["powershell", "-Command", "Write-Output /installed/watchdog.py"],
-                ["powershell", "-Command", "Write-Output", "/installed/watchdog.py"],
                 ["python", "-c", "print", "/installed/watchdog.py"],
             ],
         )
@@ -100,12 +101,10 @@ class TestProcessIdentity:
         mocker.patch.object(
             process,
             "process_argv",
-            side_effect=[
-                [executable, "--internal-watchdog"],
-                [executable, listener],
-            ],
+            side_effect=[[executable, "--internal-watchdog"], [executable, listener]],
         )
         assert process.verified_proxy_listener_pids(ctx) == [8]
+
         legacy = str(Path("/") / "fixture-home" / "retired" / "listener.py")
         mocker.patch.object(process, "listener_pids", return_value=[7, 8])
         mocker.patch.object(
@@ -114,305 +113,149 @@ class TestProcessIdentity:
             side_effect=[["python", legacy], [executable, listener]],
         )
         assert process.verified_listener_pids(ctx.port, legacy) == [7]
-        mocker.patch.object(process.os, "name", "nt")
-        mocker.patch.object(process.ctypes, "windll", None, create=True)
-        assert process.command_argv("native command") == []
 
-    def test_windows_argv_uses_native_parser(self, *, mocker):
-        expected = [r"C:\Python\pythonw.exe", r"C:\DMX Proxy\run-watchdog.pyw"]
+    def test_identity_helpers_cover_empty_roles_and_python_suffixes(self, subtests, *, mocker):
+        executable = os.path.abspath("/installed/codex-responses-proxy")
+        for argv, roles, expected in (
+            ([], None, False),
+            ([executable], None, True),
+            ([executable, "--watchdog"], {"--listener"}, False),
+        ):
+            with subtests.test(argv=argv, roles=roles):
+                assert process.argv_names_executable(argv, executable, roles=roles) is expected
 
-        class NativeParser:
-            argtypes = None
-            restype = None
+        for argv, expected in (
+            (["python3.12", "/installed/proxy.py"], True),
+            (["pythonw.exe", "/installed/proxy.py"], True),
+            (["ruby", "/installed/proxy.py"], False),
+            (["python"], False),
+        ):
+            with subtests.test(argv=argv):
+                mocker.patch.object(process, "process_argv", return_value=argv)
+                assert process.pid_names_path(17, "/installed/proxy.py") is expected
+                mocker.stopall()
 
-            def __call__(self, command, count):
-                self.command = command
-                count._obj.value = len(expected)
-                return expected
+        mocker.patch.object(process, "_process_inventory", return_value=[(17, [executable])])
+        mocker.patch.object(process, "pid_names_executable", return_value=True)
+        assert process.pids_naming_executable(executable) == [17]
 
-        class LocalFree:
-            argtypes = None
-            restype = None
-
-            def __call__(self, value):
-                self.value = value
-
-        parser = NativeParser()
-        local_free = LocalFree()
-        windll = mocker.Mock(
-            shell32=mocker.Mock(CommandLineToArgvW=parser),
-            kernel32=mocker.Mock(LocalFree=local_free),
-        )
-        mocker.patch.object(process.os, "name", "nt")
-        mocker.patch.object(process.ctypes, "windll", windll, create=True)
-        assert process.command_argv("native command") == expected
-        assert parser.command == "native command"
-        assert local_free.value is expected
-
-        failing_parser = mocker.Mock(return_value=None)
-        failing_parser.argtypes = None
-        failing_parser.restype = None
-        failing_windll = mocker.Mock(
-            shell32=mocker.Mock(CommandLineToArgvW=failing_parser),
-            kernel32=mocker.Mock(LocalFree=local_free),
-        )
-        mocker.patch.object(process.os, "name", "nt")
-        mocker.patch.object(process.ctypes, "windll", failing_windll, create=True)
-        assert process.command_argv("native command") == []
-
-    def test_process_command_and_windows_executable_suffix(self, *, mocker):
-        mocker.patch.object(process.sys, "platform", "linux")
-        mocker.patch.object(process, "process_command", return_value="python /installed/proxy.py")
-        assert process.process_argv(17) == ["python", "/installed/proxy.py"]
-        mocker.stopall()
-
-        script = str(Path("/") / "fixture-home" / "Library" / "proxy.py")
-        mocker.patch.object(process.sys, "platform", "darwin")
-        invoked = mocker.patch.object(
-            process,
-            "_darwin_process_argv",
-            return_value=[
-                "/usr/bin/python3",
-                script,
-            ],
-        )
-        assert process.process_argv(17) == [
-            "/usr/bin/python3",
-            script,
-        ]
-        invoked.assert_called_once_with(17)
-        mocker.stopall()
-
-        if sys.platform == "darwin":
-            with tempfile.TemporaryDirectory(prefix="responses proxy argv ") as directory:
-                fixture = Path(directory, "listener entrypoint.py")
-                fixture.write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
-                child = subprocess.Popen([sys.executable, str(fixture)])
-                try:
-                    argv = process.process_argv(child.pid)
-                    assert argv == [sys.executable, str(fixture)]
-                    assert process.pid_names_path(child.pid, str(fixture))
-                    assert child.pid in process.pids_naming_path(str(fixture))
-                finally:
-                    child.terminate()
-                    child.wait(timeout=5)
-
-        mocker.patch.object(process, "listener_pids", return_value=[17])
+    def test_process_command_quotes_native_argv(self, *, mocker):
         mocker.patch.object(
             process,
             "process_argv",
-            return_value=["/usr/bin/python3", script],
+            return_value=["/usr/bin/python3", "/installed/proxy with spaces.py"],
         )
-        assert process.verified_listener_pids(8792, script) == [17]
-        mocker.patch.object(process.os, "name", "nt")
-        invoked = mocker.patch.object(
-            process.subprocess,
-            "run",
-            return_value=_completed(stdout="pythonw.exe C:\\installed\\proxy.py\n"),
+        assert process.process_command(17) == ("/usr/bin/python3 '/installed/proxy with spaces.py'")
+
+    @pytest.mark.skipif(sys.platform != "darwin", reason="real Darwin argv integration")
+    def test_real_process_argv_preserves_paths_with_spaces(self):
+        with tempfile.TemporaryDirectory(prefix="responses proxy argv ") as directory:
+            fixture = Path(directory, "listener entrypoint.py")
+            fixture.write_text("import time\ntime.sleep(30)\n", encoding="utf-8")
+            child = subprocess.Popen([sys.executable, str(fixture)])
+            try:
+                assert process.process_argv(child.pid) == [sys.executable, str(fixture)]
+                assert process.pid_names_path(child.pid, str(fixture))
+                assert child.pid in process.pids_naming_path(str(fixture))
+            finally:
+                child.terminate()
+                child.wait(timeout=5)
+
+
+class TestTermination:
+    def test_script_termination_rechecks_identity_and_waits(self, *, mocker):
+        mocker.patch.object(process, "pid_names_path", side_effect=[True, True])
+        candidate = mocker.Mock()
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        assert process.terminate_pid(123, expected_path="/proxy.py", timeout_seconds=1.0)
+        candidate.terminate.assert_called_once_with()
+        candidate.wait.assert_called_once_with(timeout=1.0)
+
+    def test_script_termination_fails_closed(self, subtests, *, mocker):
+        cases = (
+            ("identity", [False], None),
+            ("identity changed", [True, False], None),
+            ("wait", [True, True], process.psutil.TimeoutExpired(123, 1)),
         )
-        assert process.process_command(17) == "pythonw.exe C:\\installed\\proxy.py"
-        assert invoked.call_args.args[0][:2] == ["powershell", "-NoProfile"]
-        mocker.patch.object(process.os, "name", "nt")
+        for case, identities, failure in cases:
+            with subtests.test(case=case):
+                mocker.patch.object(process, "pid_names_path", side_effect=identities)
+                candidate = mocker.Mock()
+                if failure is not None:
+                    candidate.wait.side_effect = failure
+                constructor = mocker.patch.object(process.psutil, "Process", return_value=candidate)
+                assert not process.terminate_pid(
+                    123, expected_path="/proxy.py", timeout_seconds=1.0
+                )
+                constructor_calls = 0 if case == "identity" else 1
+                assert constructor.call_count == constructor_calls
+                mocker.stopall()
+
+    def test_native_termination_rechecks_identity_and_waits(self, *, mocker):
+        roles = {"--internal-listener"}
         mocker.patch.object(
             process,
-            "command_argv",
-            return_value=["pythonw.exe", r"C:\installed\proxy.py"],
+            "pid_names_executable",
+            side_effect=[True, True],
         )
-        assert process.command_names_path(
-            r"pythonw.exe C:\installed\proxy.py", r"C:\installed\proxy.py"
+        candidate = mocker.Mock()
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        assert process.terminate_executable(
+            123,
+            "/installed/codex-responses-proxy",
+            roles=roles,
+            timeout_seconds=1.0,
         )
+        candidate.terminate.assert_called_once_with()
+        candidate.wait.assert_called_once_with(timeout=1.0)
 
-    def test_darwin_argv_failures_are_host_independent(self, subtests, *, mocker):
-        mocker.patch.object(process.ctypes.util, "find_library", return_value=None)
-        assert process._darwin_process_argv(17) == []
-        mocker.stopall()
-
-        class SysctlFailure:
-            def __init__(self, fail_call: int):
-                self.calls = 0
-                self.fail_call = fail_call
-
-            def sysctl(self, _mib, _count, _buffer, size, _new, _new_len):
-                self.calls += 1
-                if self.calls == self.fail_call:
-                    return 1
-                size._obj.value = 8
-                return 0
-
-        for fail_call in (1, 2):
-            with subtests.test(fail_call=fail_call):
-                mocker.patch.object(process.ctypes.util, "find_library", return_value="libc")
-                mocker.patch.object(process.ctypes, "CDLL", return_value=SysctlFailure(fail_call))
-                assert process._darwin_process_argv(17) == []
-                mocker.stopall()
-
-        class EmptyArguments:
-            calls = 0
-
-            def sysctl(self, _mib, _count, buffer, size, _new, _new_len):
-                self.calls += 1
-                if self.calls == 1:
-                    size._obj.value = 8
-                else:
-                    buffer.raw = b"\x00" * 8
-                return 0
-
-        mocker.patch.object(process.ctypes.util, "find_library", return_value="libc")
-        mocker.patch.object(process.ctypes, "CDLL", return_value=EmptyArguments())
-        assert process._darwin_process_argv(17) == []
-
-    def test_darwin_argv_decoding_is_host_independent(self, *, mocker):
-        executable = b"/usr/bin/python3"
-        arguments = (b"/usr/bin/python3", b"/tmp/listener entrypoint.py")
-
-        class DarwinArguments:
-            def __init__(self, payload: bytes):
-                self.payload = payload
-
-            def sysctl(self, _mib, _count, buffer, size, _new, _new_len):
-                if buffer is None:
-                    size._obj.value = len(self.payload)
-                else:
-                    buffer.raw = self.payload
-                return 0
-
-        valid = (
-            len(arguments).to_bytes(4, sys.byteorder, signed=True)
-            + executable
-            + b"\0\0"
-            + b"\0".join(arguments)
-            + b"\0"
-        )
-        mocker.patch.object(process.ctypes.util, "find_library", return_value="libc")
-        mocker.patch.object(process.ctypes, "CDLL", return_value=DarwinArguments(valid))
-        assert process._darwin_process_argv(17) == [value.decode() for value in arguments]
-        mocker.stopall()
-
-        incomplete = (
-            len(arguments).to_bytes(4, sys.byteorder, signed=True)
-            + executable
-            + b"\0\0"
-            + arguments[0]
-            + b"\0\0"
-        )
-        mocker.patch.object(process.ctypes.util, "find_library", return_value="libc")
-        mocker.patch.object(process.ctypes, "CDLL", return_value=DarwinArguments(incomplete))
-        assert process._darwin_process_argv(17) == []
-
-    def test_termination_rechecks_identity_and_proves_exit(self, subtests, *, mocker):
-        for name, command in (
-            ("nt", ["taskkill", "/pid", "123", "/f"]),
-            ("posix", ["kill", "-TERM", "123"]),
-        ):
-            with subtests.test(platform=name):
-                mocker.patch.object(process.os, "name", name)
-                mocker.patch.object(process, "pid_names_path", return_value=False)
-                invoked = mocker.patch.object(process.subprocess, "run")
-                assert not process.terminate_pid(123, expected_path="/proxy.py")
-                invoked.assert_not_called()
-                mocker.patch.object(process.os, "name", name)
-                mocker.patch.object(process, "pid_names_path", side_effect=[True, True, False])
-                invoked = mocker.patch.object(
-                    process.subprocess,
-                    "run",
-                    return_value=_completed(returncode=0),
-                )
-                mocker.patch.object(process.time, "monotonic", side_effect=[0.0, 0.1])
-                sleep = mocker.patch.object(process.time, "sleep")
-                assert process.terminate_pid(123, expected_path="/proxy.py", timeout_seconds=1.0)
-                invoked.assert_called_once_with(
-                    command,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                )
-                sleep.assert_called_once_with(0.05)
-
-    def test_termination_fails_on_signal_error_or_post_kill_timeout(self, *, mocker):
-        mocker.patch.object(process, "pid_names_path", return_value=True)
+    def test_native_termination_accepts_already_exited_identity(self, *, mocker):
         mocker.patch.object(
-            process.subprocess,
-            "run",
-            return_value=_completed(returncode=1),
+            process,
+            "pid_names_executable",
+            side_effect=[True, True],
         )
-        assert not process.terminate_pid(123, expected_path="/proxy.py")
-        mocker.patch.object(process, "pid_names_path", return_value=True)
-        mocker.patch.object(
-            process.subprocess,
-            "run",
-            return_value=_completed(returncode=0),
-        )
-        mocker.patch.object(process.time, "monotonic", side_effect=[0.0, 0.1, 1.1])
-        sleep = mocker.patch.object(process.time, "sleep")
-        assert not process.terminate_pid(123, expected_path="/proxy.py", timeout_seconds=1.0)
-        sleep.assert_called_once_with(0.05)
+        candidate = mocker.Mock()
+        candidate.wait.side_effect = process.psutil.NoSuchProcess(123)
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
 
-    def test_native_termination_rechecks_identity_and_proves_exit(self, subtests, *, mocker):
-        executable = "/installed/codex-responses-proxy"
-        roles = {"--internal-listener", "--internal-handoff-child"}
-        for name, command in (
-            ("nt", ["taskkill", "/pid", "123", "/f"]),
-            ("posix", ["kill", "-TERM", "123"]),
+        assert process.terminate_executable(123, "/installed/codex-responses-proxy")
+
+    def test_native_termination_fails_closed(self, subtests, *, mocker):
+        for case, identities, constructor_failure, wait_failure in (
+            ("initial identity", [False], None, None),
+            ("reused pid", [True, False], None, None),
+            ("constructor", [True], process.psutil.AccessDenied(123), None),
+            ("wait", [True, True], None, process.psutil.TimeoutExpired(123, 1)),
         ):
-            with subtests.test(platform=name):
-                mocker.patch.object(process.os, "name", name)
-                owns = mocker.patch.object(
-                    process,
-                    "pid_names_executable",
-                    side_effect=[True, True, False],
-                )
-                invoked = mocker.patch.object(
-                    process.subprocess,
-                    "run",
-                    return_value=_completed(returncode=0),
-                )
-                mocker.patch.object(process.time, "monotonic", side_effect=[0.0, 0.1])
-                sleep = mocker.patch.object(process.time, "sleep")
-
-                assert process.terminate_executable(
-                    123,
-                    executable,
-                    roles=roles,
-                    timeout_seconds=1.0,
-                )
-                assert owns.call_count == 3
-                invoked.assert_called_once_with(
-                    command,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                )
-                sleep.assert_called_once_with(0.05)
-                mocker.stopall()
-
-    def test_native_termination_fails_closed_before_and_after_signal(self, subtests, *, mocker):
-        executable = "/installed/codex-responses-proxy"
-        cases = (
-            ("identity", [False], None, [0.0], 0),
-            ("signal", [True], 1, [0.0], 1),
-            ("timeout", [True, True], 0, [0.0, 1.0], 1),
-        )
-        for case, identities, returncode, clocks, expected_calls in cases:
             with subtests.test(case=case):
-                mocker.patch.object(process.os, "name", "posix")
                 mocker.patch.object(
                     process,
                     "pid_names_executable",
                     side_effect=identities,
                 )
-                invoked = mocker.patch.object(
-                    process.subprocess,
-                    "run",
-                    return_value=_completed(returncode=returncode or 0),
+                candidate = mocker.Mock()
+                candidate.wait.side_effect = wait_failure
+                constructor = mocker.patch.object(
+                    process.psutil,
+                    "Process",
+                    side_effect=constructor_failure or [candidate],
                 )
-                mocker.patch.object(process.time, "monotonic", side_effect=clocks)
-                sleep = mocker.patch.object(process.time, "sleep")
-
                 assert not process.terminate_executable(
                     123,
-                    executable,
+                    "/installed/codex-responses-proxy",
                     timeout_seconds=1.0,
                 )
-                assert invoked.call_count == expected_calls
-                sleep.assert_not_called()
+                if case == "initial identity":
+                    constructor.assert_not_called()
                 mocker.stopall()
+
+    def test_script_termination_accepts_already_exited_identity(self, *, mocker):
+        mocker.patch.object(process, "pid_names_path", side_effect=[True, True])
+        candidate = mocker.Mock()
+        candidate.wait.side_effect = process.psutil.NoSuchProcess(123)
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        assert process.terminate_pid(123, expected_path="/installed/proxy.py")

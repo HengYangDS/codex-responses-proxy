@@ -327,7 +327,14 @@ class TestGovernanceMetadata:
 
     def test_pre_commit_admission_is_quiet_on_success_and_actionable_on_failure(self):
         hook = ROOT / ".githooks/pre-commit"
-        assert hook.stat().st_mode & 0o111
+        mode = subprocess.run(
+            ["git", "ls-files", "--stage", "--", hook.relative_to(ROOT).as_posix()],
+            cwd=ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout.split(maxsplit=1)[0]
+        assert mode == "100755"
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

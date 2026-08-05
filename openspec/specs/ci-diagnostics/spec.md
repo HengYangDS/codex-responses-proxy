@@ -8,12 +8,9 @@ tracebacks and warnings.
 ### Requirement: Capability boundary
 
 The CI diagnostics capability SHALL own diagnostic cleanliness across the
-repository test runner, quality gate, dependency bootstrap, release metadata
-validation, and provider projections without owning application logs or
-provider infrastructure. Release-contract tests SHALL verify repository-owner
-behavior and stable policy values without depending on private syntax. Every
-metadata invocation SHALL select the current provider chronology in all release
-states, while canonical GitLab validation remains strict.
+repository test runner, quality gate, dependency bootstrap, and release
+metadata validation without owning application logs or provider infrastructure.
+Forge projections SHALL remain thin consumers of repository-owned commands.
 
 #### Scenario: A diagnostic contract changes
 
@@ -22,6 +19,12 @@ states, while canonical GitLab validation remains strict.
 - **THEN** the repository-owned command remains the semantic owner
 - **AND** GitLab and GitHub remain thin projections over that command
 - **AND** contract tests prove behavior rather than obsolete implementation text.
+
+#### Scenario: Release metadata is verified
+
+- **WHEN** a release-contract test or Forge invokes metadata validation
+- **THEN** it uses the current provider chronology and stable policy values
+- **AND** canonical GitLab validation remains strict.
 
 #### Scenario: A provider-native release tag is verified
 
@@ -91,17 +94,10 @@ fallback warnings.
 
 A test fixture that depends on host shell executable-bit semantics SHALL run
 only on hosts that implement those semantics, while each supported operating
-system SHALL continue running its product behavior matrix. Before branch
-projection creates a hosted pipeline, read-only Forge admission SHALL prove
-that its required verification is schedulable. Release chronology MUST NOT
-depend on unpublished workstation-only tags. Generic lifecycle fixtures SHALL
-select their modeled payload platform explicitly instead of inferring payload
-identity from the runner host. Windows, macOS, and Linux fixtures SHALL use the
-modeled platform's path, executable-name, permission, and process semantics.
-Every hosted quality target MUST report statement and branch coverage strictly
-above 95%, and workflow contract checks MUST invoke the current release-asset
-interface. POSIX-only shell publication harnesses SHALL not be classified as
-Windows product behavior.
+system SHALL continue running its product behavior matrix. Generic lifecycle
+fixtures SHALL select their modeled payload platform explicitly. Windows,
+macOS, and Linux fixtures SHALL use the modeled platform's path,
+executable-name, permission, and process semantics.
 
 #### Scenario: Windows runs the supported product matrix
 
@@ -116,6 +112,13 @@ Windows product behavior.
 - **AND** all scheduled platform jobs are assigned to runners and reach a terminal result
 - **AND** each supported platform test matrix passes
 - **AND** statement and branch coverage are each strictly above 95%.
+
+#### Scenario: A hosted pipeline is projected
+
+- **WHEN** branch projection would create a pipeline
+- **THEN** read-only Forge admission proves its required verification is schedulable
+- **AND** chronology does not depend on workstation-only tags
+- **AND** workflow contracts invoke the current release-asset interface.
 
 #### Scenario: Windows executes the portable product matrix
 
