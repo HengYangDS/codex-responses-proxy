@@ -54,6 +54,23 @@ target platform, exercise its public CLI and real handoff behavior, run it with
 Python absent from `PATH`, and package a manifest-bound native asset. A hosted
 job MUST prove its runtime architecture before assigning a platform identifier.
 
+#### Scenario: A platform asset is published
+
+- **WHEN** a release archive for a supported OS and architecture is admitted
+- **THEN** its executable passed black-box help, version, status, manifest, and
+  service-start checks in a pristine native environment
+- **AND** Python was absent from the product execution path.
+
+#### Scenario: Minimal Linux verifies the native executable
+
+- **WHEN** a hosted Linux matrix or quality job starts from its declared
+  minimal base image
+- **THEN** the provider projection installs the operating-system tools required
+  by the repository-owned native executable gate
+- **AND** every supported Python line executes that gate without depending on
+  private runner image state
+- **AND** a contract test rejects omission of the declared prerequisite.
+
 #### Scenario: Local release runs without a Forge
 
 - **WHEN** a contributor runs the locked release session in a clean checkout
