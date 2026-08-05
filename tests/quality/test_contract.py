@@ -559,6 +559,44 @@ class TestQualityPolicyContracts:
         checker = _load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
         assert checker.statement_gaps(totals, floor) == expected
 
+    def test_each_semantic_package_must_clear_both_coverage_floors(self) -> None:
+        checker = _load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
+        files = {
+            "/site-packages/codex_responses_proxy/cli/application.py": {
+                "summary": {
+                    "num_statements": 60,
+                    "covered_lines": 58,
+                    "num_branches": 20,
+                    "covered_branches": 19,
+                }
+            },
+            "/site-packages/codex_responses_proxy/relay/exchange.py": {
+                "summary": {
+                    "num_statements": 100,
+                    "covered_lines": 99,
+                    "num_branches": 100,
+                    "covered_branches": 96,
+                }
+            },
+        }
+        assert checker.package_gaps(files, 95) == [
+            "package_branch_coverage_not_strictly_above_floor:cli:95.00<=95.00"
+        ]
+
+    def test_branchless_root_package_is_governed_by_statement_coverage(self) -> None:
+        checker = _load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
+        files = {
+            "/site-packages/codex_responses_proxy/cli/__main__.py": {
+                "summary": {
+                    "num_statements": 3,
+                    "covered_lines": 3,
+                    "num_branches": 0,
+                    "covered_branches": 0,
+                }
+            }
+        }
+        assert checker.package_gaps(files, 95) == []
+
 
 class TestVerificationContracts:
     """Keep verification on mature tools and the released product artifact."""
