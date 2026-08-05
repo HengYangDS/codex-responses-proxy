@@ -17,6 +17,10 @@ DEFAULT_REQUIRED_JOBS: Final = (
     "Python 3.14 (Windows)",
     "Governance and presentation",
     "Python quality",
+    "Native asset (linux-x86_64)",
+    "Native asset (macos-arm64)",
+    "Native asset (windows-x86_64)",
+    "Release assets",
     "Verify tag and publish record",
 )
 

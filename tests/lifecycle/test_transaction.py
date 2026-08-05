@@ -17,6 +17,7 @@ from codex_responses_proxy.service import identity as listener_identity
 from codex_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import install_context
 from tests.lifecycle.fixtures import begin_transaction, install_payload, released_artifact
+from tests.lifecycle.fixtures import runtime_files
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -78,7 +79,7 @@ class TestPayloadTransaction:
         before = {
             relative: Path(ctx.install_dir, relative).read_bytes()
             for relative in (
-                *inventory.RUNTIME_FILES,
+                *runtime_files(),
                 inventory.MANIFEST_FILENAME,
                 inventory.RELEASE_RECEIPT_FILENAME,
             )

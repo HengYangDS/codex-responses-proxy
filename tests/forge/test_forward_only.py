@@ -29,6 +29,7 @@ class ForgeFixture(TypedDict):
     gitlab_anchor: Path
     github_anchor: Path
     context: Path
+    forge_bin: Path
     gitlab_email: str
     github_email: str
 
@@ -124,10 +125,38 @@ class ProviderProjectionTests:
         run("git", "config", "user.signingkey", str(gitlab_key), cwd=source)
         (source / "README.md").write_text("one\n", encoding="utf-8")
         (source / "tools" / "forge").mkdir(parents=True)
-        for name in ("context.sh", "history.py", "project.sh"):
+        for name in ("context.sh", "history.py", "project.sh", "runner_admission.py"):
             source_file = ROOT / "tools" / "forge" / name
             if source_file.exists():
                 shutil.copy2(source_file, source / "tools" / "forge")
+        forge_bin = root / "forge-bin"
+        forge_bin.mkdir()
+        (forge_bin / "glab").write_text(
+            "#!/bin/sh\n"
+            'case "$*" in\n'
+            "  *'/runners?per_page=100') printf '%s\\n' '[{\"id\":35}]' ;;\n"
+            "  *'runners/35') printf '%s\\n' "
+            '\'{"active":true,"runner_type":"project_type","online":true,'
+            '"paused":false,"run_untagged":true,"tag_list":["linux"],'
+            '"access_level":"not_protected"}\' ;;\n'
+            "  *) exit 1 ;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        (forge_bin / "gh").write_text(
+            "#!/bin/sh\n"
+            'case "$*" in\n'
+            "  *'/actions/workflows') printf '%s\\n' "
+            '\'{"workflows":[{"path":".github/workflows/verify.yml",'
+            '"state":"active"},{"path":".github/workflows/release.yml",'
+            '"state":"active"}]}\' ;;\n'
+            "  *'/actions/permissions') printf '%s\\n' '{\"enabled\":true}' ;;\n"
+            "  *) exit 1 ;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        for command in (forge_bin / "glab", forge_bin / "gh"):
+            command.chmod(0o755)
         run("git", "add", ".", cwd=source)
         run("git", "commit", "-qS", "-m", "publication contract", cwd=source)
         (source / "CONTRIBUTING.md").write_text("two\n", encoding="utf-8")
@@ -146,6 +175,7 @@ class ProviderProjectionTests:
             "context": context,
             "gitlab_email": gitlab_email,
             "github_email": github_email,
+            "forge_bin": forge_bin,
         }
 
     @staticmethod
@@ -154,10 +184,14 @@ class ProviderProjectionTests:
 
         return {
             **agent,
+            "PATH": f"{fixture['forge_bin']}{os.pathsep}{os.environ['PATH']}",
             "PYTHON": sys.executable,
             "CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT": str(fixture["context"]),
             "CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS": str(fixture["gitlab_anchor"]),
             "CODEX_RESPONSES_PROXY_GITHUB_COMMIT_ALLOWED_SIGNERS": str(fixture["github_anchor"]),
+            "CODEX_RESPONSES_PROXY_GITLAB_PROJECT": "group%2Fproject",
+            "CODEX_RESPONSES_PROXY_GITLAB_RUNNER_TAG": "linux",
+            "CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY": "owner/project",
         }
 
     def test_each_forge_uses_its_identity_and_preserves_the_source_tree(self) -> None:

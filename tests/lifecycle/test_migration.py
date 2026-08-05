@@ -16,6 +16,7 @@ from codex_responses_proxy.lifecycle import transaction as payload_transaction
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import (
+    executable_relative,
     install_context,
     write_retired_projection,
     write_supported_predecessor_projection,
@@ -176,7 +177,7 @@ class TestPayloadMigration:
         unknown.write_bytes(b"local\n")
         manifest_path = Path(payload_projection.payload_manifest_path(ctx))
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest["files"][inventory.EXECUTABLE] = "0" * 64
+        manifest["files"][executable_relative()] = "0" * 64
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
         with pytest.raises(errors.InstallError, match="hash mismatch"):

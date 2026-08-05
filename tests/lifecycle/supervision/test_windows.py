@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 class TestWindowsLifecycle:
     def test_task_executes_the_installed_binary_in_private_watchdog_mode(self):
-        ctx = platform_context()
+        ctx = platform_context(windows=True)
         rendered = windows.render_task_xml(ctx)
         assert f"<Command>{ctx.executable}</Command>" in rendered
         assert "<Arguments>--internal-watchdog</Arguments>" in rendered
@@ -26,7 +26,7 @@ class TestWindowsLifecycle:
         assert ".py" not in rendered
 
     def test_install_success_and_failure_messages(self, *, mocker):
-        with _temporary_context("install_dir") as ctx:
+        with _temporary_context("install_dir", windows=True) as ctx:
             invoked = mocker.patch.object(
                 windows.subprocess,
                 "run",
@@ -71,10 +71,10 @@ class TestWindowsLifecycle:
                 "run",
                 return_value=_completed(returncode=returncode, stdout=stdout),
             )
-            assert windows.status(platform_context()) == expected
+            assert windows.status(platform_context(windows=True)) == expected
 
     def test_pid_discovery_and_uninstall(self, *, mocker):
-        ctx = platform_context()
+        ctx = platform_context(windows=True)
         inventory = mocker.patch.object(
             windows.process,
             "pids_naming_executable",
@@ -113,7 +113,7 @@ class TestWindowsLifecycle:
         )
 
     def test_uninstall_requires_task_deletion_and_absence_proof(self, *, mocker):
-        ctx = platform_context()
+        ctx = platform_context(windows=True)
         for results, message in (
             ([_completed(returncode=1, stderr="denied"), _completed()], "delete failed"),
             ([_completed(), _completed(stdout="Ready")], "remains registered"),

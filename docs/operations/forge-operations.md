@@ -115,3 +115,15 @@ Git transport and API authentication are caller-owned external concerns.
 Prefer SSH remotes backed by caller-owned OpenSSH configuration or an agent;
 never embed tokens or passwords in URLs. Runner labels, executable paths, and
 installation roots are adopter deployment policy, not product truth.
+
+Branch projection fails before its push unless a read-only Forge admission can
+prove that required verification is schedulable. Set
+`CODEX_RESPONSES_PROXY_GITLAB_PROJECT` to the URL-encoded GitLab project path and
+`CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY` to the GitHub `owner/repository`
+coordinate. Set `CODEX_RESPONSES_PROXY_GITLAB_RUNNER_TAG` to the exact project
+runner tag also projected as the GitLab CI variable. GitLab admission requires
+an active, online, unpaused project runner with that tag; GitHub admission
+requires Actions and both tracked workflows to be active. These caller-supplied
+coordinates and labels are deployment inputs, not product defaults. A CI job
+cannot diagnose an absent runner because that job would also remain pending, so
+admission intentionally runs before the push.

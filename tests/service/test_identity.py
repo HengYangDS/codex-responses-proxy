@@ -10,7 +10,7 @@ from pathlib import Path
 from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import inventory
-from tests.lifecycle.fixtures import install_context, install_payload
+from tests.lifecycle.fixtures import executable_relative, install_context, install_payload
 
 
 class TestServiceIdentity:
@@ -44,9 +44,9 @@ class TestServiceIdentity:
         mutations = (
             lambda value: value.__setitem__("schema_version", 1),
             lambda value: value.__setitem__("files", []),
-            lambda value: value["files"].pop(inventory.EXECUTABLE),
+            lambda value: value["files"].pop(executable_relative()),
             lambda value: value["serving_files"].pop(inventory.PROVIDER_MANIFEST),
-            lambda value: value["files"].__setitem__(inventory.EXECUTABLE, "0" * 64),
+            lambda value: value["files"].__setitem__(executable_relative(), "0" * 64),
             lambda value: value["serving_files"].__setitem__(inventory.PROVIDER_MANIFEST, "0" * 64),
             lambda value: value.__setitem__("release_receipt_sha256", "invalid"),
         )

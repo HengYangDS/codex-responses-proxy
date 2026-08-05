@@ -25,26 +25,64 @@ actual = tuple(line.removeprefix("    - ") for line in match["needs"].splitlines
 expected = tuple(job for job in policy["gitlab"]["required-jobs"] if job != "publish-gitlab-release")
 if actual != expected:
     raise SystemExit(f"GitLab release dependencies differ from publication policy: {actual!r}")
+for token in (
+    "CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY",
+    "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
+):
+    if token not in text:
+        raise SystemExit(f"GitLab release job does not receive {token}")
 PYTHON
+
+fixture="$tmp/github-assets"
+store="$tmp/gitlab-store"
+mkdir -p "$fixture" "$store"
+key="$tmp/release-key"
+ssh-keygen -q -t ed25519 -N '' -f "$key"
+PYTHONPATH="$root" VERSION="$version" FIXTURE="$fixture" python3 - <<'PYTHON'
+import os
+from pathlib import Path
+
+from tools.release import product_assets as assets
+
+root = Path(os.environ["FIXTURE"])
+version = os.environ["VERSION"]
+release = {}
+for platform in assets.RELEASE_PLATFORMS:
+    executable = "codex-responses-proxy.exe" if platform.startswith("windows-") else "codex-responses-proxy"
+    files = {executable: assets.ArchiveFile(platform.encode(), 0o755)}
+    archive_name = assets.archive_name(version, platform)
+    archive = assets.archive_bytes(files, version, platform)
+    release[archive_name] = archive
+    release[assets.manifest_name(platform)] = assets.asset_manifest(
+        version=version,
+        platform=platform,
+        archive_name=archive_name,
+        archive=archive,
+        files=files,
+    )
+release[assets.CHECKSUM_NAME] = assets.checksums(release)
+for name, content in release.items():
+    (root / name).write_bytes(content)
+PYTHON
+(cd "$fixture" && ssh-keygen -Y sign -q -f "$key" -n codex-responses-proxy-release SHA256SUMS)
+public_key=$(cat "$key.pub")
+trust="codex-responses-proxy-release namespaces=\"codex-responses-proxy-release\" $public_key"
 
 mock_curl="$tmp/curl"
 log="$tmp/curl.log"
-store="$tmp/store"
-mkdir -p "$store"
 cat > "$mock_curl" <<'EOF'
 #!/bin/sh
 set -eu
 output=
 method=GET
 upload=
-data=
 write_out=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --output) output=$2; shift 2 ;;
     --request) method=$2; shift 2 ;;
     --header) shift 2 ;;
-    --data) data=$2; shift 2 ;;
+    --data) shift 2 ;;
     --write-out) write_out=$2; shift 2 ;;
     --upload-file) upload=$2; method=PUT; shift 2 ;;
     --fail|--silent|--show-error|--location) shift ;;
@@ -54,6 +92,26 @@ done
 printf '%s %s\n' "$method" "${url:-}" >> "${CODEX_RESPONSES_PROXY_TEST_CURL_LOG:?}"
 name=${url##*/}
 case "$url" in
+  */repos/*/releases/tags/*)
+    FIXTURE="${CODEX_RESPONSES_PROXY_TEST_FIXTURE:?}" TAG="${CODEX_RESPONSES_PROXY_TEST_TAG:?}" \
+      python3 - "$output" <<'PYTHON'
+import json
+import os
+import sys
+from pathlib import Path
+
+assets = [
+    {"name": path.name, "browser_download_url": f"https://downloads.example.test/{path.name}"}
+    for path in sorted(Path(os.environ["FIXTURE"]).iterdir())
+]
+Path(sys.argv[1]).write_text(json.dumps({"tag_name": os.environ["TAG"], "assets": assets}))
+PYTHON
+    code=200
+    ;;
+  https://downloads.example.test/*)
+    cp "${CODEX_RESPONSES_PROXY_TEST_FIXTURE:?}/$name" "$output"
+    code=200
+    ;;
   */packages/generic/*)
     target="${CODEX_RESPONSES_PROXY_TEST_STORE:?}/$name"
     if [ -n "$upload" ]; then cp "$upload" "$target"; code=201
@@ -70,22 +128,42 @@ case "$url" in
     if [ "${CODEX_RESPONSES_PROXY_TEST_CURL_MODE:?}" = mismatch ]; then
       printf '{"tag_name":"%s","name":"wrong"}' "${CODEX_RESPONSES_PROXY_TEST_TAG:?}" > "$output"
     else
-      printf '{"tag_name":"%s","name":"Codex Responses Proxy %s","assets":{"links":[{"name":"codex-responses-proxy-%s.tar.gz"},{"name":"SHA256SUMS"}]}}' \
-        "${CODEX_RESPONSES_PROXY_TEST_TAG:?}" "${CODEX_RESPONSES_PROXY_TEST_TAG:?}" \
-        "${CODEX_RESPONSES_PROXY_TEST_VERSION:?}" > "$output"
+      FIXTURE="${CODEX_RESPONSES_PROXY_TEST_FIXTURE:?}" TAG="${CODEX_RESPONSES_PROXY_TEST_TAG:?}" \
+        python3 - "$output" <<'PYTHON'
+import json
+import os
+import sys
+from pathlib import Path
+
+names = sorted(path.name for path in Path(os.environ["FIXTURE"]).iterdir())
+Path(sys.argv[1]).write_text(json.dumps({
+    "tag_name": os.environ["TAG"],
+    "name": f"Codex Responses Proxy {os.environ['TAG']}",
+    "assets": {"links": [{"name": name} for name in names]},
+}))
+PYTHON
     fi
     code=200
     ;;
+  *) echo "unexpected curl URL: $url" >&2; exit 1 ;;
 esac
-if [ -n "$write_out" ]; then
-  printf %s "$code"
-fi
+if [ -n "$write_out" ]; then printf %s "$code"; fi
 EOF
 chmod +x "$mock_curl"
 
 run() {
   mode=$1
-  PATH="$tmp:$PATH" PYTHON="$(command -v python3)" CODEX_RESPONSES_PROXY_TEST_CURL_LOG="$log" CODEX_RESPONSES_PROXY_TEST_CURL_MODE="$mode" CODEX_RESPONSES_PROXY_TEST_STORE="$store" CODEX_RESPONSES_PROXY_TEST_TAG="$tag" CODEX_RESPONSES_PROXY_TEST_VERSION="$version" \
+  PATH="$tmp:$PATH" PYTHON="$(command -v python3)" PYTHONPATH="$root" \
+    CODEX_RESPONSES_PROXY_TEST_CURL_LOG="$log" \
+    CODEX_RESPONSES_PROXY_TEST_CURL_MODE="$mode" \
+    CODEX_RESPONSES_PROXY_TEST_FIXTURE="$fixture" \
+    CODEX_RESPONSES_PROXY_TEST_STORE="$store" \
+    CODEX_RESPONSES_PROXY_TEST_TAG="$tag" \
+    CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY=team/codex-responses-proxy \
+    CODEX_RESPONSES_PROXY_GITHUB_API_URL=https://api.github.test \
+    CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST="$trust" \
+    CODEX_RESPONSES_PROXY_RELEASE_WAIT_SECONDS=1 \
+    CODEX_RESPONSES_PROXY_RELEASE_POLL_SECONDS=1 \
     CI_API_V4_URL=https://gitlab.example.test/api/v4 CI_PROJECT_ID=453 \
     CI_COMMIT_TAG="$tag" CI_JOB_TOKEN=redacted \
     sh "$script"
@@ -99,9 +177,12 @@ if run mismatch >/dev/null 2>&1; then
   echo 'publisher accepted a mismatched immutable release record' >&2
   exit 1
 fi
+grep -F 'GET https://api.github.test/repos/team/codex-responses-proxy/releases/tags/' "$log" >/dev/null
 grep -F 'POST https://gitlab.example.test/api/v4/projects/453/releases' "$log" >/dev/null
 grep -F "GET https://gitlab.example.test/api/v4/projects/453/releases/$tag" "$log" >/dev/null
-grep -F "PUT https://gitlab.example.test/api/v4/projects/453/packages/generic/codex-responses-proxy/$tag/codex-responses-proxy-$version.tar.gz" "$log" >/dev/null
-grep -F "PUT https://gitlab.example.test/api/v4/projects/453/packages/generic/codex-responses-proxy/$tag/SHA256SUMS" "$log" >/dev/null
+for file in "$fixture"/*; do
+  name=$(basename "$file")
+  grep -F "PUT https://gitlab.example.test/api/v4/projects/453/packages/generic/codex-responses-proxy/$tag/$name" "$log" >/dev/null
+done
 
 echo 'GitLab release publication contract: OK'

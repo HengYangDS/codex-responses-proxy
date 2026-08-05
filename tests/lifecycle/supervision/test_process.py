@@ -161,6 +161,11 @@ class TestProcessIdentity:
         assert process.command_argv("native command") == []
 
     def test_process_command_and_windows_executable_suffix(self, *, mocker):
+        mocker.patch.object(process.sys, "platform", "linux")
+        mocker.patch.object(process, "process_command", return_value="python /installed/proxy.py")
+        assert process.process_argv(17) == ["python", "/installed/proxy.py"]
+        mocker.stopall()
+
         script = str(Path("/") / "fixture-home" / "Library" / "proxy.py")
         mocker.patch.object(process.sys, "platform", "darwin")
         invoked = mocker.patch.object(
@@ -216,6 +221,83 @@ class TestProcessIdentity:
         assert process.command_names_path(
             r"pythonw.exe C:\installed\proxy.py", r"C:\installed\proxy.py"
         )
+
+    def test_darwin_argv_failures_are_host_independent(self, subtests, *, mocker):
+        mocker.patch.object(process.ctypes.util, "find_library", return_value=None)
+        assert process._darwin_process_argv(17) == []
+        mocker.stopall()
+
+        class SysctlFailure:
+            def __init__(self, fail_call: int):
+                self.calls = 0
+                self.fail_call = fail_call
+
+            def sysctl(self, _mib, _count, _buffer, size, _new, _new_len):
+                self.calls += 1
+                if self.calls == self.fail_call:
+                    return 1
+                size._obj.value = 8
+                return 0
+
+        for fail_call in (1, 2):
+            with subtests.test(fail_call=fail_call):
+                mocker.patch.object(process.ctypes.util, "find_library", return_value="libc")
+                mocker.patch.object(process.ctypes, "CDLL", return_value=SysctlFailure(fail_call))
+                assert process._darwin_process_argv(17) == []
+                mocker.stopall()
+
+        class EmptyArguments:
+            calls = 0
+
+            def sysctl(self, _mib, _count, buffer, size, _new, _new_len):
+                self.calls += 1
+                if self.calls == 1:
+                    size._obj.value = 8
+                else:
+                    buffer.raw = b"\x00" * 8
+                return 0
+
+        mocker.patch.object(process.ctypes.util, "find_library", return_value="libc")
+        mocker.patch.object(process.ctypes, "CDLL", return_value=EmptyArguments())
+        assert process._darwin_process_argv(17) == []
+
+    def test_darwin_argv_decoding_is_host_independent(self, *, mocker):
+        executable = b"/usr/bin/python3"
+        arguments = (b"/usr/bin/python3", b"/tmp/listener entrypoint.py")
+
+        class DarwinArguments:
+            def __init__(self, payload: bytes):
+                self.payload = payload
+
+            def sysctl(self, _mib, _count, buffer, size, _new, _new_len):
+                if buffer is None:
+                    size._obj.value = len(self.payload)
+                else:
+                    buffer.raw = self.payload
+                return 0
+
+        valid = (
+            len(arguments).to_bytes(4, sys.byteorder, signed=True)
+            + executable
+            + b"\0\0"
+            + b"\0".join(arguments)
+            + b"\0"
+        )
+        mocker.patch.object(process.ctypes.util, "find_library", return_value="libc")
+        mocker.patch.object(process.ctypes, "CDLL", return_value=DarwinArguments(valid))
+        assert process._darwin_process_argv(17) == [value.decode() for value in arguments]
+        mocker.stopall()
+
+        incomplete = (
+            len(arguments).to_bytes(4, sys.byteorder, signed=True)
+            + executable
+            + b"\0\0"
+            + arguments[0]
+            + b"\0\0"
+        )
+        mocker.patch.object(process.ctypes.util, "find_library", return_value="libc")
+        mocker.patch.object(process.ctypes, "CDLL", return_value=DarwinArguments(incomplete))
+        assert process._darwin_process_argv(17) == []
 
     def test_termination_rechecks_identity_and_proves_exit(self, subtests, *, mocker):
         for name, command in (

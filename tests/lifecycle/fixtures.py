@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from pathlib import PurePosixPath, PureWindowsPath
 
 from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import context as runtime_context
@@ -13,7 +14,6 @@ from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle import transaction as payload_transaction
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import inventory
-from codex_responses_proxy.service import runtime as service_runtime
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -22,27 +22,46 @@ def install_context(root: Path) -> runtime_context.RuntimeContext:
     """Build an isolated install context rooted below ``root``."""
 
     install_dir = root / "data" / "codex-responses-proxy"
+    executable = inventory.installed_executable(str(install_dir), windows=os.name == "nt")
     return runtime_context.RuntimeContext(
         home=str(root),
         install_dir=str(install_dir),
-        executable=str(install_dir / "bin" / service_runtime.EXECUTABLE_NAME),
+        executable=executable,
         log_dir=str(root / "state" / "codex-responses-proxy"),
         port=8791,
     )
 
 
-def platform_context(port: int = 8791) -> runtime_context.RuntimeContext:
-    """Build the deterministic cross-platform service-definition fixture."""
+def platform_context(port: int = 8791, *, windows: bool = False) -> runtime_context.RuntimeContext:
+    """Build a deterministic service-definition fixture for one modeled platform."""
 
-    home = Path("/") / "fixture-home"
-    install_dir = home / ".local" / "share" / "codex-responses-proxy"
+    if windows:
+        home = PureWindowsPath("C:/fixture-home")
+        install_dir = home / "AppData" / "Local" / "codex-responses-proxy"
+        log_dir = home / "AppData" / "Local" / "codex-responses-proxy" / "state"
+    else:
+        home = PurePosixPath("/fixture-home")
+        install_dir = home / ".local" / "share" / "codex-responses-proxy"
+        log_dir = home / ".local" / "state" / "codex-responses-proxy"
     return runtime_context.RuntimeContext(
         home=str(home),
         install_dir=str(install_dir),
-        executable=str(install_dir / "bin" / service_runtime.EXECUTABLE_NAME),
-        log_dir=str(home / ".local" / "state" / "codex-responses-proxy"),
+        executable=inventory.installed_executable(str(install_dir), windows=windows),
+        log_dir=str(log_dir),
         port=port,
     )
+
+
+def runtime_files() -> tuple[str, str]:
+    """Return the installed payload inventory for the executing host."""
+
+    return inventory.runtime_files(windows=os.name == "nt")
+
+
+def executable_relative() -> str:
+    """Return the installed executable member for the executing host."""
+
+    return inventory.executable_name(windows=os.name == "nt")
 
 
 def assert_private_log_mode(testcase, mode: int) -> None:
@@ -71,13 +90,14 @@ def released_artifact(version: str = "1.2.3") -> artifact.VerifiedArtifact:
             content=content,
         )
 
-    blobs = tuple(map(blob, inventory.RUNTIME_FILES))
-    serving = {item.path: item.sha256 for item in blobs if item.path in inventory.SERVING_FILES}
+    files = runtime_files()
+    blobs = tuple(map(blob, files))
+    serving = {item.path: item.sha256 for item in blobs if item.path in files}
     receipt = {
         "schema_version": 1,
         "version": version,
         "serving_payload_sha256": projection.serving_payload_sha256(serving),
-        "serving_files": list(inventory.SERVING_FILES),
+        "serving_files": list(files),
         "payload": [
             dict(path=item.path, mode=item.mode, blob_oid=item.blob_oid, sha256=item.sha256)
             for item in blobs

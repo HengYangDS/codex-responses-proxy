@@ -175,8 +175,9 @@ class TestQualityPolicyContracts:
             untracked_changed = checker.worktree_fingerprint(root)
             assert untracked_changed != tracked_changed
 
-            (root / "tracked.txt").chmod(0o755)
-            assert checker.worktree_fingerprint(root) != untracked_changed
+            if os.name != "nt":
+                (root / "tracked.txt").chmod(0o755)
+                assert checker.worktree_fingerprint(root) != untracked_changed
 
     def test_worktree_fingerprint_is_path_sensitive_and_ignores_git_internals(self) -> None:
         checker = _checker()

@@ -19,7 +19,12 @@ from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import install_context
-from tests.lifecycle.fixtures import begin_transaction, released_artifact
+from tests.lifecycle.fixtures import (
+    begin_transaction,
+    executable_relative,
+    released_artifact,
+    runtime_files,
+)
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -100,8 +105,7 @@ class TestPayloadValidation:
 
     def test_digest_boundary_and_retired_residue_types_fail_closed(self, *, mocker) -> None:
         valid = {
-            relative: hashlib.sha256(relative.encode()).hexdigest()
-            for relative in inventory.SERVING_FILES
+            relative: hashlib.sha256(relative.encode()).hexdigest() for relative in runtime_files()
         }
         with pytest.raises(errors.InstallError, match="file set mismatch"):
             payload_projection.serving_payload_sha256({})
@@ -162,15 +166,15 @@ class TestPayloadValidation:
             (lambda value: value.update(schema_version=99), "manifest schema is unsupported"),
             (lambda value: value.pop("release"), "manifest is incomplete"),
             (
-                lambda value: value["files"].pop(inventory.EXECUTABLE),
+                lambda value: value["files"].pop(executable_relative()),
                 "manifest file set mismatch",
             ),
             (
-                lambda value: value["serving_files"].pop(inventory.SERVING_FILES[-1]),
+                lambda value: value["serving_files"].pop(runtime_files()[-1]),
                 "manifest serving file set mismatch",
             ),
             (
-                lambda value: value["files"].update({inventory.EXECUTABLE: "short"}),
+                lambda value: value["files"].update({executable_relative(): "short"}),
                 "invalid digest",
             ),
             (
