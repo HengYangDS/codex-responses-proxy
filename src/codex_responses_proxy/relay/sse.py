@@ -173,7 +173,13 @@ def _read_one_stream(
 
     def process_event(event: bytes) -> None:
         nonlocal stripped_events, stripped_keys, event_count, terminal_event
-        sanitized, removed = replay_response.sanitize_sse_event(event)
+        nonlocal upstream_detail, upstream_error
+        try:
+            sanitized, removed = replay_response.sanitize_sse_event(event)
+        except ValueError as error:
+            upstream_detail = "projection_failed"
+            upstream_error = error
+            return
         if removed:
             stripped_events += 1
             stripped_keys += removed
@@ -215,6 +221,11 @@ def _read_one_stream(
             event = buffer[: index + separator_length]
             buffer = buffer[index + separator_length :]
             process_event(event)
+            if upstream_detail == "projection_failed":
+                buffer = b""
+                break
+        if upstream_detail == "projection_failed":
+            break
     if buffer:
         process_event(buffer)
     if terminal_event in _CLEAN_TERMINALS:
@@ -262,7 +273,11 @@ def relay(
         result = _read_one_stream(handler, current, path, request_id, on_first_write, deadline)
         _release_upstream(current)
         terminal = result["terminal"]
-        if result["wrote_downstream"] or terminal in _CLEAN_TERMINALS:
+        if (
+            result["wrote_downstream"]
+            or terminal in _CLEAN_TERMINALS
+            or result["detail"] == "projection_failed"
+        ):
             break
         if attempt == max_attempts - 1 or time.monotonic() >= deadline:
             break
@@ -297,7 +312,10 @@ def relay(
     else:
         telemetry.record_counter("streams_failed")
         detail = result["detail"]
-        if pre_content_exhausted:
+        if detail == "projection_failed":
+            telemetry.record_counter("stream_projection_failures")
+            telemetry.record_failure("stream_projection_failed")
+        elif pre_content_exhausted:
             telemetry.record_counter("streams_pre_content_exhausted")
             telemetry.record_failure("stream_pre_content_exhausted")
         else:
