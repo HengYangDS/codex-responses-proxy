@@ -46,6 +46,22 @@ required = [
     "tests/forge/contracts/test-gitlab-tagging.sh",
     "tests/forge/contracts/test-github-tagging.sh",
     "tests/release/contracts/test-publish-gitlab.sh",
+    "native-assets:",
+    "name: Native asset (${{ matrix.platform }})",
+    "platform: linux-x86_64",
+    "platform: macos-arm64",
+    "platform: windows-x86_64",
+    'uv run --locked --no-sync nox -s release -- "$RUNNER_TEMP/native-assets"',
+    "release-assets:",
+    "name: Release assets",
+    "needs: native-assets",
+    "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+    "python -m tools.release.assemble_assets",
+    "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY",
+    "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
+    "ssh-keygen -Y sign",
+    "python -m tools.release.assemble_assets --verify \"$release\"",
+    "name: release-assets",
 ]
 for token in required:
     if token not in text:
@@ -70,7 +86,6 @@ windows_start = text.index("\n  python-windows:")
 governance_start = text.index("\n  governance:")
 mac_block = text[mac_start:windows_start]
 windows_block = text[windows_start:governance_start]
-rest = text[:windows_start] + text[governance_start:]
 test_owner = 'uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"'
 if test_owner not in mac_block:
     raise SystemExit(f"macOS Python matrix must run {test_owner}")
@@ -84,8 +99,8 @@ for token in (
 ):
     if token not in windows_block:
         raise SystemExit(f"Windows Python matrix must contain {token!r}")
-if rest.count("actions/setup-python@") != 3:
-    raise SystemExit("macOS, governance, and quality jobs must each use pinned setup-python")
+if text.count("actions/setup-python@") != 6:
+    raise SystemExit("every Python-bearing verification or asset job must use pinned setup-python")
 if windows_block.count("actions/setup-python@") != 1:
     raise SystemExit("Windows verification must use exactly one pinned setup-python action")
 for patch_pin in ("3.12.", "3.13.", "3.14."):

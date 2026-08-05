@@ -72,7 +72,7 @@ is the release source of truth. Keep `CHANGELOG.md` in this order:
 4. no release claims without executable evidence.
 
 GitLab is the canonical strict plane: validation requires complete history,
-every non-pending release heading must have a local tag, and its heading date
+every non-pending release heading must have a provider-native remote tag, and its heading date
 must equal the UTC date of that GitLab tag's creation. GitHub may retain
 canonical or legacy headings absent from its own tag namespace, but every
 GitHub-native tag still requires a heading; its independently signed native
@@ -82,6 +82,10 @@ enforces the GitLab candidate. GitHub main uses ordinary `--provider github`
 validation so a dated candidate remains valid after its preparation day; exact
 tag verification adds `--tag v<VERSION>`. Do not write an inferred or planned
 release into `CHANGELOG.md`.
+Hosted jobs select `origin` with
+`CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE`; local operators select the intended
+repository-local Forge remote explicitly. A workstation-only candidate tag is
+not release provenance.
 
 GitLab **Project Name** is the human-facing `Codex Responses Proxy`; its stable clone
 **Path** remains `codex-responses-proxy`. Never change the Path as a cosmetic rename.

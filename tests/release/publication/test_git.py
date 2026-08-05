@@ -148,6 +148,7 @@ class GitPublicationContracts:
             "run",
             side_effect=subprocess.CalledProcessError(1, ["git"]),
         )
+        mocker.patch.object(git.shutil, "which", side_effect=lambda name: f"/{name}")
 
         with pytest.raises(git.GitProofError, match="fetch, verification"):
             git.collect(

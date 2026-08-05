@@ -335,6 +335,9 @@ def test_forward_only_forge_publication_contract() -> None:
             "CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS",
             "CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT",
             "commit-tree -S",
+            "runner_admission.py",
+            "CODEX_RESPONSES_PROXY_GITLAB_PROJECT",
+            "CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY",
             "--map-output",
         ),
         "provider identity projector",
@@ -539,11 +542,18 @@ def test_gitlab_tag_gates_require_exact_tag_validation() -> None:
     )
 
 
-def test_gitlab_ci_has_no_repository_bound_runner_selection() -> None:
-    """Keep job scheduling portable across team-owned GitLab installations."""
+def test_gitlab_ci_selects_a_deployment_supplied_runner_tag() -> None:
+    """Bind every job to one explicit adopter-owned runner label."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    require("tags:" not in ci, "GitLab CI must not require a repository-specific runner tag")
+    require(
+        "tags: [$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG]" in ci,
+        "GitLab CI must use the deployment-supplied runner tag",
+    )
+    require(
+        "codex-responses-proxy-linux-x86_64" not in ci,
+        "GitLab CI must not hardcode one installation's runner label",
+    )
 
 
 def test_gitlab_ci_runs_full_regression_matrix() -> None:

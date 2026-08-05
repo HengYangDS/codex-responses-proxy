@@ -71,6 +71,22 @@ remote_url=$(git config --local --get "remote.$remote.url" 2>/dev/null) || {
   echo "$provider remote is not configured: $remote" >&2
   exit 2
 }
+case "$provider" in
+  gitlab) forge_repository=${CODEX_RESPONSES_PROXY_GITLAB_PROJECT:-} ;;
+  github) forge_repository=${CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY:-} ;;
+esac
+[ -n "$forge_repository" ] || publication_error \
+  "$provider runner admission requires its explicit repository coordinate"
+if [ "$provider" = gitlab ]; then
+  [ -n "${CODEX_RESPONSES_PROXY_GITLAB_RUNNER_TAG:-}" ] || publication_error \
+    "gitlab runner admission requires its explicit runner tag"
+  "$python_bin" "$script_root/runner_admission.py" \
+    --provider gitlab --repository "$forge_repository" \
+    --runner-tag "$CODEX_RESPONSES_PROXY_GITLAB_RUNNER_TAG"
+else
+  "$python_bin" "$script_root/runner_admission.py" \
+    --provider github --repository "$forge_repository"
+fi
 
 workspace=$(mktemp -d "${TMPDIR:-/tmp}/codex-responses-proxy-$provider-projection.XXXXXX")
 cleanup() { rm -rf "$workspace"; }

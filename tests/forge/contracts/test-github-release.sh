@@ -51,11 +51,18 @@ required = [
     "duplicate GitHub release records for exact tag",
     "GitHub release tag does not resolve to the checked-out commit",
     "gh release create", "--verify-tag", "--generate-notes",
-    'python -m tools.release.assets --output "$assets"',
-    'codex-responses-proxy-${SELECTED_TAG#v}.tar.gz',
-    '"$assets/SHA256SUMS"',
+    "run-id: ${{ steps.verify.outputs.run-id }}",
+    'VERIFIED_RUN_ID: ${{ needs.require-verify.outputs.run-id }}',
+    'gh run download "$VERIFIED_RUN_ID"',
+    "--name release-assets",
+    "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
+    "ssh-keygen -Y find-principals",
+    "ssh-keygen -Y verify",
+    'python -m tools.release.assemble_assets --verify "$assets"',
+    '"$assets"/*',
     'gh release download "$SELECTED_TAG"',
-    "sha256sum --check SHA256SUMS",
+    'python -m tools.release.assemble_assets --verify "$downloaded"',
+    'diff -qr "$assets" "$downloaded"',
     "existing GitHub release does not match exact release identity",
 ]
 for token in required:
@@ -86,5 +93,8 @@ for forbidden in (
         raise SystemExit(f"release workflow must not depend on runner-local state: {forbidden!r}")
 if "@main" in text or "@master" in text:
     raise SystemExit("GitHub Actions must use immutable action revisions")
+for retired in ('python -m tools.release.assets --output "$assets"', "sha256sum --check"):
+    if retired in text:
+        raise SystemExit(f"release workflow retains obsolete asset production: {retired!r}")
 print("GitHub Actions release contract: OK")
 PYTHON

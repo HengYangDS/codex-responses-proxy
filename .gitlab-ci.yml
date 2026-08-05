@@ -15,6 +15,11 @@ stages:
 
 variables:
   DEBIAN_FRONTEND: noninteractive
+  CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
+  CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY: $CODEX_RESPONSES_PROXY_GITHUB_RELEASE_REPOSITORY
+
+default:
+  tags: [$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG]
 
 .python-verify:
   stage: verify
@@ -125,8 +130,10 @@ publish-gitlab-release:
     - if: '$CI_COMMIT_TAG'
   before_script:
     - apt-get update -qq
-    - apt-get install -qq -y --no-install-recommends curl git
+    - apt-get install -qq -y --no-install-recommends curl git openssh-client
     - git fetch --tags --force --prune --prune-tags origin
   script:
     - python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
+    - test -n "${CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY:-}"
+    - test -n "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST:-}"
     - sh tools/release/publish-gitlab.sh

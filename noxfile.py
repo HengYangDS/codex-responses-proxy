@@ -338,5 +338,14 @@ def _environment() -> dict[str, str]:
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
         "PYTHONWARNINGS": "error",
+        **(
+            {
+                "CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE": os.environ[
+                    "CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE"
+                ]
+            }
+            if "CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE" in os.environ
+            else {}
+        ),
         **({"COVERAGE_FILE": os.environ["COVERAGE_FILE"]} if "COVERAGE_FILE" in os.environ else {}),
     }
