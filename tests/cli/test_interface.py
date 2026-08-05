@@ -60,7 +60,9 @@ class ProductInterfaceContracts:
             if as_json:
                 assert json.loads(stderr)["error"]["message"]
             else:
-                assert stderr.startswith("error: ")
+                assert "Action required" in stderr
+                assert "Problem" in stderr
+                assert "Next" in stderr
             assert "Traceback" not in stderr
             assert "Warning" not in stderr
 
@@ -123,6 +125,22 @@ class ProductInterfaceContracts:
         assert code == 2
         assert stdout == ""
         assert "unknown command" in stderr
+        assert "Traceback" not in stderr
+
+    def test_human_error_has_problem_and_next_action_without_internal_leakage(
+        self, *, mocker
+    ) -> None:
+        mocker.patch.object(application, "dispatch", side_effect=ValueError("listener unavailable"))
+
+        code, stdout, stderr = self.invoke("status")
+
+        assert code == 2
+        assert stdout == ""
+        assert "Problem" in stderr
+        assert "listener unavailable" in stderr
+        assert "Next" in stderr
+        assert "codex-responses-proxy doctor" in stderr
+        assert "python -m" not in stderr
         assert "Traceback" not in stderr
 
     def test_built_executable_runs_without_python_on_path(self) -> None:

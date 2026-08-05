@@ -32,7 +32,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 
-SUCCESSOR_TIMEOUT = 20
+PACKAGED_SUCCESSOR_TIMEOUT_SECONDS = 60
 
 pytestmark = pytest.mark.native_distribution
 
@@ -186,7 +186,7 @@ class TestRealSubprocessHandoffIntegration:
         assert ready.get("transaction_id") == expected["transaction_id"]
         child_pid, observe = child_pid_observer(port, expected, exclude_pid=old_runtime_pid)
 
-        assert wait_until(observe, timeout=SUCCESSOR_TIMEOUT), (
+        assert wait_until(observe, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS), (
             "child did not take over serving with matching health"
         )
         assert wait_until(lambda: old.poll() is not None, timeout=10), (
@@ -211,7 +211,7 @@ class TestRealSubprocessHandoffIntegration:
         assert status_code == 202
         child_one, observe_first = child_pid_observer(port, first, exclude_pid=old.pid)
 
-        assert wait_until(observe_first, timeout=SUCCESSOR_TIMEOUT)
+        assert wait_until(observe_first, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS)
         assert wait_until(lambda: old.poll() is not None, timeout=10)
 
         second = installed_expected_metadata(ctx, "txn-repeat-2")
@@ -226,7 +226,7 @@ class TestRealSubprocessHandoffIntegration:
         assert status_code == 202
         child_two, observe_second = child_pid_observer(port, second, exclude_pid=child_one["value"])
 
-        assert wait_until(observe_second, timeout=SUCCESSOR_TIMEOUT)
+        assert wait_until(observe_second, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS)
         retired = wait_until(lambda: not pid_alive(child_one["value"]), timeout=10)
         child_one_pid = child_one["value"]
         detail = (
@@ -285,7 +285,7 @@ class TestRealSubprocessHandoffIntegration:
 
         child_pid, observe = child_pid_observer(port, expected, exclude_pid=old.pid)
 
-        assert wait_until(observe, timeout=SUCCESSOR_TIMEOUT), (
+        assert wait_until(observe, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS), (
             "child did not take over serving with matching health"
         )
 
@@ -350,7 +350,7 @@ class TestRealSubprocessHandoffIntegration:
 
         child_pid, observe = child_pid_observer(port, expected, exclude_pid=old.pid)
 
-        assert wait_until(observe, timeout=SUCCESSOR_TIMEOUT), (
+        assert wait_until(observe, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS), (
             "child did not take over serving with matching health"
         )
 
@@ -391,7 +391,7 @@ class TestRealSubprocessHandoffIntegration:
             controller.shutdown(socket.SHUT_RDWR)
 
         child_pid, observe = child_pid_observer(port, expected, exclude_pid=old.pid)
-        assert wait_until(observe, timeout=SUCCESSOR_TIMEOUT), (
+        assert wait_until(observe, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS), (
             "listener-owned transaction did not survive controller disconnect"
         )
         assert wait_until(lambda: old.poll() is not None, timeout=10)

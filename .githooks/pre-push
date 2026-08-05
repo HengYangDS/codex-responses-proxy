@@ -10,6 +10,14 @@ while read -r _local_ref local_head remote_ref remote_head; do
   [ -n "$remote_ref" ] || continue
   [ "$local_head" != "$zero" ] || continue
 
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/dev|refs/heads/proposal/*|refs/tags/*) ;;
+    refs/heads/*)
+      printf 'remote branch is outside the shared namespace: %s\n' "$remote_ref" >&2
+      exit 1
+      ;;
+  esac
+
   admission_head=$local_head
   case "$remote_ref" in
     refs/tags/*)

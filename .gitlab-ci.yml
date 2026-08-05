@@ -16,7 +16,6 @@ stages:
 variables:
   DEBIAN_FRONTEND: noninteractive
   CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
-  CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY: $CODEX_RESPONSES_PROXY_GITHUB_RELEASE_REPOSITORY
 
 default:
   tags: [$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG]
@@ -117,11 +116,34 @@ verify-python-quality:
     - uv sync --locked --only-group quality
     - uv run --locked --no-sync nox -s quality
 
+build-gitlab-native-asset:
+  stage: release
+  image:
+    name: python:3.14-slim
+    docker: { platform: linux/amd64 }
+  variables: { GIT_DEPTH: "0" }
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  before_script:
+    - apt-get update -qq
+    - apt-get install -qq -y --no-install-recommends binutils git openssh-client
+    - git fetch --tags --force --prune --prune-tags origin
+    - test "$(uname -m)" = x86_64
+    - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore uv==0.12.1
+    - uv sync --locked --only-group quality
+  script:
+    - uv run --locked --no-sync nox -s release -- "$CI_PROJECT_DIR/.release-assets"
+  artifacts:
+    name: "gitlab-native-$CI_COMMIT_TAG-linux-x86_64"
+    paths: [.release-assets/]
+    expire_in: 7 days
+
 publish-gitlab-release:
   stage: release
   image: python:3.14-slim
   variables: { GIT_DEPTH: "0" }
   needs:
+    - build-gitlab-native-asset
     - verify-python-3.12
     - verify-python-3.13
     - verify-python-3.14
@@ -136,6 +158,6 @@ publish-gitlab-release:
     - git fetch --tags --force --prune --prune-tags origin
   script:
     - python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
-    - test -n "${CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY:-}"
+    - test -f "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY:-}"
     - test -n "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST:-}"
-    - sh tools/release/publish-gitlab.sh
+    - CODEX_RESPONSES_PROXY_RELEASE_ASSET_DIR="$CI_PROJECT_DIR/.release-assets" sh tools/release/publish-gitlab.sh

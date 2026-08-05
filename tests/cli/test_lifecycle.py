@@ -41,7 +41,9 @@ class CliLifecycleContracts:
             "8801",
         )
         assert code == 0
-        assert json.loads(stdout) == {"release": "2.0.8"}
+        assert "Installed" in stdout
+        assert "2.0.8" in stdout
+        assert not stdout.lstrip().startswith("{")
         assert stderr == ""
         install.assert_called_once_with(
             Path("/release/proxy.tar.gz"),
@@ -80,6 +82,38 @@ class CliLifecycleContracts:
         assert stderr == ""
         context.assert_called_once_with(8801)
         status.assert_called_once_with("context")
+
+    def test_status_human_output_is_aligned_and_not_serialized_json(self, *, mocker) -> None:
+        evidence = {
+            "release": "2.0.8",
+            "payload_integrity": {"ok": True, "detail": "verified"},
+            "service": "running",
+            "listener_pids": [321],
+            "runtime": {"pid": 321, "accepting": True},
+            "payload_transaction": None,
+        }
+        mocker.patch.object(application.control, "status", return_value=evidence)
+
+        code, stdout, stderr = self.invoke("status")
+
+        assert code == 0
+        assert stderr == ""
+        assert "Codex Responses Proxy  Status" in stdout
+        assert "Release" in stdout and "2.0.8" in stdout
+        assert "Payload" in stdout and "Verified" in stdout
+        assert "Service" in stdout and "Running" in stdout
+        assert "Listener" in stdout and "PID 321" in stdout
+        assert not stdout.lstrip().startswith("{")
+        lines = stdout.splitlines()
+        value_columns = {
+            line.index(value)
+            for line, value in (
+                (next(line for line in lines if "2.0.8" in line), "2.0.8"),
+                (next(line for line in lines if "Verified" in line), "Verified"),
+                (next(line for line in lines if "Running" in line), "Running"),
+            )
+        }
+        assert len(value_columns) == 1
 
     def test_status_returns_bounded_evidence_for_a_legacy_installed_projection(
         self, *, mocker
@@ -212,7 +246,8 @@ class CliLifecycleContracts:
         )
         code, stdout, stderr = self.invoke("uninstall", "--port", "8801")
         assert code == 0
-        assert json.loads(stdout) == {"purged": False, "stopped": 1}
+        assert "Uninstalled" in stdout and "1" in stdout
+        assert not stdout.lstrip().startswith("{")
         assert stderr == ""
         uninstall.assert_called_once_with(port=8801, purge=False)
         uninstall = mocker.patch.object(
@@ -223,7 +258,8 @@ class CliLifecycleContracts:
         code, stdout, stderr = self.invoke("uninstall", "--purge")
         assert code == 0
         assert stderr == ""
-        assert json.loads(stdout) == {"purged": True, "stopped": 0}
+        assert "Purged" in stdout
+        assert not stdout.lstrip().startswith("{")
         uninstall.assert_called_once_with(port=8792, purge=True)
 
     def test_expected_lifecycle_failures_are_rendered_once(self, *, mocker) -> None:

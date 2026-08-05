@@ -1,0 +1,65 @@
+schema_version = 1
+id = "change:forge-independent-local-first-release"
+intent = "Converge Codex Responses Proxy to one portable local Responses data plane with independent release planes."
+subjects = ["repository:self"]
+scope = [
+  ".config/**",
+  ".githooks/**",
+  ".github/**",
+  ".gitlab-ci.yml",
+  ".gitignore",
+  ".python-versions",
+  "AGENTS.md",
+  "CHANGELOG.md",
+  "CONTRIBUTING.md",
+  "README.md",
+  "VERSION",
+  "docs/**",
+  "evidence/**",
+  "noxfile.py",
+  "openspec/**",
+  "packaging/**",
+  "pyproject.toml",
+  "src/**",
+  "tests/**",
+  "tools/**",
+  "uv.lock",
+]
+invariants = [
+  "store_false_and_provider_portable_replay_are_mandatory",
+  "empty_responses_and_non_text_agent_content_recover_without_session_mutation",
+  "rate_limit_cooldown_is_provider_scoped_without_global_request_queue",
+  "native_service_lifecycle_is_checkout_independent",
+  "gitlab_and_github_are_independent_publication_planes",
+  "no_compatibility_shell_or_parallel_truth_survives",
+]
+acceptance = [
+  "ucloud_dmxapi_and_aihubmix_switch_freely",
+  "statement_branch_and_package_coverage_each_exceed_ninety_five_percent",
+  "local_gitlab_and_github_release_paths_are_independently_proven",
+  "released_native_installation_and_original_session_continuity_are_proven",
+  "all_absorbed_lanes_stashes_services_and_residue_are_retired",
+]
+risks = [
+  "breaking_runtime_cutover",
+  "incomplete_stream_or_replay_projection",
+  "service_upgrade_interrupts_active_traffic",
+]
+authority_refs = [
+  "user_instruction",
+  "AGENTS.md",
+  "docs/architecture/authority-and-runtime-boundary.md",
+]
+permissions = [
+  "repository.read",
+  "work-lane.write",
+  "git.ref.compare-and-swap",
+  "local-proof.execute",
+  "terminal-publication.execute",
+]
+hypotheses = [
+  "provider_neutral_protocol_projection_reduces_switching_failures",
+  "native_executable_lifecycle_removes_environment_coupling",
+  "destructive_debt_removal_is_safer_than_compatibility_retention",
+]
+dependencies = []

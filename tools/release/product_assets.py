@@ -267,6 +267,23 @@ def release_asset_names(
     return names
 
 
+def release_platforms(names: set[str], version: str) -> tuple[str, ...]:
+    """Return the exact nonempty platform inventory encoded by asset names."""
+
+    prefix = f"codex-responses-proxy-{version}-"
+    suffix = ".tar.gz"
+    platforms = tuple(
+        sorted(
+            name.removeprefix(prefix).removesuffix(suffix)
+            for name in names
+            if name.startswith(prefix) and name.endswith(suffix)
+        )
+    )
+    if not platforms or names != release_asset_names(version, platforms):
+        raise AssetError("release asset set is incomplete or contains unknown files")
+    return platforms
+
+
 def _safe_relative(value: str) -> bool:
     path, windows_path = PurePosixPath(value), PureWindowsPath(value)
     return bool(path.parts) and not (

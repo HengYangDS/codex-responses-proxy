@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
+from codex_responses_proxy.cli import presentation
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import control, install, uninstall
 from codex_responses_proxy.service import runtime as service_runtime
@@ -158,10 +159,10 @@ def _doctor(evidence: dict[str, Any]) -> dict[str, Any]:
 def _render(command: str, result: Any, *, as_json: bool) -> None:
     if as_json:
         print(json.dumps(result, sort_keys=True))
-    elif isinstance(result, str):
-        print(result)
-    elif result is not None:
-        print(json.dumps(result, indent=2, sort_keys=True))
+        return
+    rendered = presentation.render(command, result)
+    if rendered:
+        print(rendered)
 
 
 def _result_code(command: str, result: Any) -> int:
@@ -176,7 +177,10 @@ def _error(message: str, *, as_json: bool) -> None:
     if as_json:
         print(json.dumps({"error": {"message": message}}, sort_keys=True), file=sys.stderr)
     else:
-        print(f"error: {message}", file=sys.stderr)
+        print(
+            presentation.error(message, next_command="codex-responses-proxy doctor"),
+            file=sys.stderr,
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

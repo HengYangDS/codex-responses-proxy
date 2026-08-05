@@ -369,6 +369,36 @@ class TestGovernanceMetadata:
             assert f"<hook><pre-push><refs/heads/main><{head}>" in recorded
             assert f"<hook><pre-push><refs/tags/v1.0.0><{head}>" in recorded
 
+            for allowed in ("refs/heads/dev", "refs/heads/proposal/portable-release"):
+                accepted = subprocess.run(
+                    ["sh", hook, "origin", "unused"],
+                    cwd=root,
+                    input=f"refs/heads/local {head} {allowed} {'0' * 40}\n",
+                    text=True,
+                    env=environment,
+                    capture_output=True,
+                    check=False,
+                )
+                assert accepted.returncode == 0
+            for forbidden in (
+                "refs/heads/work/repair",
+                "refs/heads/candidate/dev",
+                "refs/heads/archive/old",
+                "refs/heads/release/v1",
+                "refs/heads/feature/unclassified",
+            ):
+                rejected_branch = subprocess.run(
+                    ["sh", hook, "origin", "unused"],
+                    cwd=root,
+                    input=f"refs/heads/local {head} {forbidden} {'0' * 40}\n",
+                    text=True,
+                    env=environment,
+                    capture_output=True,
+                    check=False,
+                )
+                assert rejected_branch.returncode != 0
+                assert "outside the shared namespace" in rejected_branch.stderr
+
             subprocess.run(["git", "-C", root, "tag", "lightweight"], check=True)
             lightweight = subprocess.check_output(
                 ["git", "-C", root, "rev-parse", "lightweight"], text=True
