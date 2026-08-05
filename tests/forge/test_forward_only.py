@@ -74,6 +74,8 @@ class ProviderProjectionTests:
     """Prove separate Forge identities over one ordered source-tree history."""
 
     def setup_method(self) -> None:
+        if os.name == "nt":
+            pytest.skip("POSIX Forge integration is not Windows product behavior")
         for executable in ("ssh-agent", "ssh-add", "ssh-keygen"):
             if shutil.which(executable) is None:
                 pytest.skip(f"{executable} is required")

@@ -1,0 +1,12 @@
+schema_version = 1
+paths = [
+  "evidence/claims/terminal-product-closeout-20260802.toml",
+  "openspec/changes/windows-hosted-runtime-fixtures/**",
+  "openspec/specs/ci-diagnostics/spec.md",
+  "tests/forge/test_forward_only.py",
+  "tests/governance/test_repository.py",
+  "tests/lifecycle/fixtures.py",
+  "tests/lifecycle/test_artifact.py",
+  "tests/lifecycle/test_migration.py",
+  "tests/lifecycle/test_transaction.py",
+]
