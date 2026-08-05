@@ -11,7 +11,7 @@
 
 - [x] 2.1 Pass focused release, governance, lifecycle, service, and quality tests.
 - [x] 2.2 Pass quick, quality, Python 3.12-3.14, release, and strict OpenSpec gates.
-- [ ] 2.3 Pass clean Linux verification and exact-head ETHOS proof.
+- [x] 2.3 Pass clean Linux verification and exact-head ETHOS proof.
 
 ## Post-archive transition boundary
 
