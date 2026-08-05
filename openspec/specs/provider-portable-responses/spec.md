@@ -10,14 +10,10 @@ AIHubMix routes without changing the conversation record itself.
 
 Before upstream I/O, the proxy SHALL derive portability only from the current
 request and the proved protocol grammar. It SHALL remove provider-bound
-continuation state, stored-item references, replayed reasoning items, reasoning
-ciphertext, encrypted agent or tool-output content, and the request for
-`reasoning.encrypted_content`. It SHALL set `store=false` while leaving every
-other provider-neutral generation setting unchanged. Canonical dialogue,
-complete tool relationships, payload-free compaction controls, and supported
-non-text agent content SHALL remain representable. Every bounded recovery
-request SHALL preserve the same projection. No client configuration or
-conversation store may be consulted or changed.
+continuation state, stored-item references, replayed reasoning items, and
+encrypted replay content. It SHALL set `store=false` and remove any request for
+`reasoning.encrypted_content` while leaving provider-neutral generation settings
+unchanged.
 
 #### Scenario: A stored conversation changes provider
 
@@ -37,6 +33,14 @@ conversation store may be consulted or changed.
 - **THEN** the projection preserves those semantics, sets `store=false`, and
   does not manufacture a continuation identifier, stored item, or decrypted
   value.
+
+#### Scenario: Portable content is projected
+
+- **WHEN** canonical dialogue, complete tool relationships, payload-free
+  compaction controls, or supported non-text agent content is present
+- **THEN** the projection keeps it representable
+- **AND** every bounded recovery preserves the same projection
+- **AND** no client configuration or conversation store is consulted or changed.
 
 #### Scenario: Codex requests remote compaction
 
@@ -153,15 +157,9 @@ without returning request text, credentials, or encrypted payloads.
 
 The listener SHALL expose provider-scoped loopback Responses targets and exact
 read-only model-catalog targets for `dmxapi`, `ucloud`, and `aihubmix`. Each
-namespace SHALL resolve only exact, lexically normalized
-`POST /<provider>/v1/responses` targets or exact, lexically normalized
-`GET /<provider>/v1/models` targets, with an optional query to the same
-release-owned HTTPS upstream mapping. Model-catalog targets SHALL relay exactly
-once without request or response projection, Responses admission, cooldown,
-retry, or provider-policy recovery. Encoded path material, dot segments,
-duplicate separators, lookalike suffixes, fragments, absolute targets, and
-unrelated endpoints SHALL be rejected locally. A downstream request SHALL NOT
-supply or override an upstream URL or host.
+namespace SHALL resolve only exact, lexically normalized Responses and model
+catalog paths against the release-owned HTTPS upstream mapping. A downstream
+request SHALL NOT supply or override an upstream URL or host.
 
 #### Scenario: AIGW selects each governed provider
 
@@ -178,6 +176,13 @@ supply or override an upstream URL or host.
   canonical namespaces, or the bounded DMX migration route
 - **THEN** the proxy rejects it locally
 - **AND** it performs no remote network request.
+
+#### Scenario: A caller uses a malformed provider target
+
+- **WHEN** a target contains encoded path material, dot segments, duplicate
+  separators, a lookalike suffix, a fragment, or an absolute URL
+- **THEN** the proxy rejects it locally
+- **AND** unrelated endpoints remain unreachable.
 
 #### Scenario: A consumer reads one provider model catalog
 
@@ -401,11 +406,8 @@ sufficient to activate semantic recovery.
 
 For an upstream HTTP 429, the proxy SHALL make no additional upstream attempt
 for the current client request. It SHALL relay the first upstream status, body,
-and eligible non-hop-by-hop headers unchanged, SHALL NOT sleep before that
-relay, and SHALL record a bounded provider-scoped cooldown. A valid upstream
-`Retry-After` SHALL determine the cooldown up to five minutes; a value above
-that bound SHALL be capped, while an omitted, invalid, zero, or expired value
-SHALL use a five-second fallback. The proxy SHALL NOT infer or configure an
+and eligible non-hop-by-hop headers unchanged without sleeping. It SHALL record
+a bounded provider-scoped cooldown and SHALL NOT infer or configure an
 undocumented provider quota.
 
 #### Scenario: A provider returns a rate limit

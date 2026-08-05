@@ -65,7 +65,7 @@ def set_drain(handler: BaseHTTPRequestHandler, enabled: bool) -> None:
 
 
 def prepare_handoff(handler: BaseHTTPRequestHandler, bindings: Bindings) -> None:
-    """Prepare one replacement and acknowledge READY before crossing COMMIT."""
+    """Prepare one replacement and transfer COMMIT before READY projection."""
     if not admission.is_loopback_client(handler.client_address[0]):
         handler.send_error(403, "handoff control is available only from loopback")
         return
@@ -137,21 +137,24 @@ def prepare_handoff(handler: BaseHTTPRequestHandler, bindings: Bindings) -> None
             },
         )
         return
-    _write_json(
-        handler,
-        202,
-        {
-            "ok": True,
-            "state": "ready",
-            "protocol_version": handoff.HANDOFF_PROTOCOL_VERSION,
-            "child_pid": prepared["child"].runtime_pid,
-            "transaction_id": expected["transaction_id"],
-        },
-    )
-    handler.wfile.flush()
     threading.Thread(
         target=handoff.commit,
         args=(server, prepared, context),
         daemon=True,
         name="responses-proxy-handoff-commit",
     ).start()
+    try:
+        _write_json(
+            handler,
+            202,
+            {
+                "ok": True,
+                "state": "ready",
+                "protocol_version": handoff.HANDOFF_PROTOCOL_VERSION,
+                "child_pid": prepared["child"].runtime_pid,
+                "transaction_id": expected["transaction_id"],
+            },
+        )
+        handler.wfile.flush()
+    except (BrokenPipeError, ConnectionResetError):
+        pass

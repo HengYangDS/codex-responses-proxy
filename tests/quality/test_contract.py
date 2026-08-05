@@ -697,6 +697,8 @@ class TestVerificationContracts:
         ]
         assert any(command[:3] == ("uv", "build", "--wheel") for command in commands)
         assert any(command[:3] == ("uv", "pip", "install") for command in commands)
+        install_source = ast.get_source_segment(source, functions["_install_wheel"]) or ""
+        assert '"--no-deps"' not in install_source
         tests_calls = {
             node.func.id
             for node in ast.walk(functions["tests"])
@@ -763,7 +765,7 @@ class TestVerificationContracts:
     def test_quality_environment_is_repository_owned_and_locked(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         assert metadata["dependency-groups"]["quality"] == [
-            "coverage==7.15.2",
+            "coverage==7.15.3",
             "hatchling==1.31.0",
             "nox==2026.7.11",
             "pyinstaller==6.21.0",
@@ -771,9 +773,10 @@ class TestVerificationContracts:
             "pytest-mock==3.15.1",
             "pytest-subtests==0.15.0",
             "ruff==0.16.1",
-            "ty==0.0.65",
+            "ty==0.0.67",
         ]
         assert metadata["tool"]["uv"]["required-version"] == "==0.12.1"
+        assert metadata["tool"]["uv"]["link-mode"] == "copy"
         assert (ROOT / "uv.lock").is_file()
         assert not (ROOT / "tools" / "quality" / "requirements.lock").exists()
         assert not (ROOT / "tools" / "quality" / "requirements.txt").exists()

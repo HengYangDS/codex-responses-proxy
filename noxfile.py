@@ -198,7 +198,6 @@ def _install_wheel(session: nox.Session, wheel: Path) -> None:
         "install",
         "--python",
         _session_python(session),
-        "--no-deps",
         "--strict",
         str(wheel),
         env={"PYTHONNOUSERSITE": "1", "UV_NO_PROGRESS": "1"},
@@ -338,6 +337,7 @@ def _environment() -> dict[str, str]:
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
         "PYTHONWARNINGS": "error",
+        "UV_LINK_MODE": "copy",
         **(
             {
                 "CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE": os.environ[
