@@ -11,10 +11,14 @@ shared headings even when a historical tag exists only on the other Forge.
 
 ### Fixed
 
+- Discover listeners and process identities through bundled `psutil` instead
+  of optional host commands or platform-specific parsers.
+- Transfer a prepared handoff to its commit coordinator before projecting HTTP
+  202, so a controller disconnect cannot strand a READY successor.
+- Read hook executable intent from Git metadata on every host and use the
+  repository-wide uv copy policy to keep successful Windows CI warning-free.
 - Keep strict semantic-package branch coverage above 95 percent on every CI
-  host by selecting the macOS state-root branch explicitly in the portable
-  platform contract. The failed GitLab `v2.0.12` run remains immutable
-  evidence; production runtime behavior is unchanged.
+  host. The failed `v2.0.12` runs remain immutable evidence.
 
 ## [2.0.12] - 2026-08-05
 

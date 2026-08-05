@@ -9,7 +9,7 @@ description = "Provider-portable compatibility gateway for Codex Responses traff
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
-dependencies = []
+dependencies = ["psutil==7.2.2"]
 
 [project.scripts]
 codex-responses-proxy = "codex_responses_proxy.cli.application:main"
@@ -19,7 +19,7 @@ distribution = "native-executable"
 
 [dependency-groups]
 quality = [
-    "coverage==7.15.2",
+    "coverage==7.15.3",
     "hatchling==1.31.0",
     "nox==2026.7.11",
     "pyinstaller==6.21.0",
@@ -27,11 +27,12 @@ quality = [
     "pytest-mock==3.15.1",
     "pytest-subtests==0.15.0",
     "ruff==0.16.1",
-    "ty==0.0.65",
+    "ty==0.0.67",
 ]
 
 [tool.uv]
 required-version = "==0.12.1"
+link-mode = "copy"
 
 [tool.hatch.version]
 path = "VERSION"

@@ -1,0 +1,17 @@
+schema_version = 1
+paths = [
+  ".github/workflows/**",
+  ".gitlab-ci.yml",
+  "CHANGELOG.md",
+  "VERSION",
+  "noxfile.py",
+  "openspec/**",
+  "pyproject.toml",
+  "src/codex_responses_proxy/lifecycle/supervision/process.py",
+  "src/codex_responses_proxy/service/control.py",
+  "tests/governance/test_repository.py",
+  "tests/lifecycle/supervision/test_process.py",
+  "tests/service/handoff/test_runtime.py",
+  "tests/quality/test_contract.py",
+  "uv.lock",
+]

@@ -1,0 +1,37 @@
+schema_version = 1
+id = "change:release-portability-closeout"
+intent = "Repair deterministic cross-platform release verification and ship 2.0.13 forward."
+subjects = ["repository:self"]
+scope = [
+  ".github/workflows/**",
+  ".gitlab-ci.yml",
+  "CHANGELOG.md",
+  "VERSION",
+  "noxfile.py",
+  "openspec/**",
+  "pyproject.toml",
+  "src/codex_responses_proxy/lifecycle/supervision/process.py",
+  "src/codex_responses_proxy/service/control.py",
+  "tests/governance/test_repository.py",
+  "tests/lifecycle/supervision/test_process.py",
+  "tests/service/handoff/test_runtime.py",
+  "tests/quality/test_contract.py",
+  "uv.lock",
+]
+invariants = [
+  "failed_2_0_12_evidence_is_immutable",
+  "exact_process_identity_remains_fail_closed",
+  "provider_runtime_behavior_is_unchanged",
+  "gitlab_and_github_publish_independently",
+]
+acceptance = [
+  "windows_linux_and_macos_native_verification_pass",
+  "post_ready_disconnect_preserves_listener_owned_commit",
+  "statement_branch_and_package_coverage_remain_strictly_above_ninety_five_percent",
+  "forward_2_0_13_release_is_verified_installed_and_accepted",
+]
+risks = ["native_dependency_packaging", "handoff_barrier_ordering"]
+authority_refs = ["user_instruction", "AGENTS.md", "openspec/specs/ci-diagnostics/spec.md"]
+permissions = ["repository.read", "work-lane.write", "git.ref.compare-and-swap", "local-proof.execute", "terminal-publication.execute"]
+hypotheses = ["one_mature_process_library_removes_host_command_coupling"]
+dependencies = []

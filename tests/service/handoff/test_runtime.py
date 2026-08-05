@@ -494,7 +494,7 @@ class TestHandoffControlHandler:
             handoff_context=entrypoint_module._handoff_context,
         )
 
-    def test_handler_acknowledges_ready_before_starting_the_commit_coordinator(self, *, mocker):
+    def test_handler_transfers_ownership_before_acknowledging_ready(self, *, mocker):
         order = []
         handler = fake_handler(expected_metadata(), mocker=mocker)
         handler.wfile.write.side_effect = lambda chunk: order.append(("write", chunk))
@@ -506,13 +506,31 @@ class TestHandoffControlHandler:
         thread_cls = mocker.patch("threading.Thread")
         thread_cls.return_value.start.side_effect = lambda: order.append(("start", None))
         control.prepare_handoff(handler, self.bindings)
-        body = json.loads(order[0][1])
-        assert [event for event, _ in order] == ["write", "flush", "start"]
+        assert [event for event, _ in order] == ["start", "write", "flush"]
+        body = json.loads(order[1][1])
         assert (
             handler.send_response.call_args.args[0],
             body["child_pid"],
             body["transaction_id"],
-        ) == (202, 999, expected["transaction_id"])
+        ) == (
+            202,
+            999,
+            expected["transaction_id"],
+        )
+        assert thread_cls.call_args.kwargs["target"] == handoff_module.commit
+
+    def test_handler_keeps_commit_after_ready_response_disconnect(self, *, mocker):
+        handler = fake_handler(expected_metadata(), mocker=mocker)
+        handler.wfile.write.side_effect = BrokenPipeError("controller disconnected")
+        expected = expected_metadata()
+        prepared = {"child": mocker.Mock(runtime_pid=999), "expected": expected}
+        mocker.patch.object(handoff_module, "disk_payload_matches_expected", return_value=True)
+        mocker.patch.object(handoff_module, "prepare", return_value=prepared)
+        thread_cls = mocker.patch("threading.Thread")
+
+        control.prepare_handoff(handler, self.bindings)
+
+        thread_cls.return_value.start.assert_called_once_with()
         assert thread_cls.call_args.kwargs["target"] == handoff_module.commit
 
     def test_handler_rejects_non_loopback_clients(self, *, mocker):
