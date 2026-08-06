@@ -40,7 +40,7 @@ required = [
     'python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"',
     'python tools/release/metadata.py --provider github',
     "python-quality:",
-    "uv==0.12.1",
+    "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
     "uv sync --locked --only-group quality",
     "uv run --locked --no-sync nox -s quality",
     "tests/forge/contracts/test-gitlab-tagging.sh",

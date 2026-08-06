@@ -20,6 +20,12 @@ variables:
 default:
   tags: [$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG]
 
+.uv-bootstrap:
+  before_script:
+    - &install-uv |
+      UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
+      python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore "uv${UV_REQUIREMENT}"
+
 .python-verify:
   stage: verify
   image: python:${PYTHON_VERSION}-slim
@@ -33,7 +39,7 @@ default:
     # platform dependency explicit instead of relying on a runner image layer.
     - apt-get install -qq -y --no-install-recommends binutils git openssh-client
     - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
-    - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore uv==0.12.1
+    - *install-uv
   script:
     - python --version
     - uv sync --locked --only-group quality
@@ -65,7 +71,7 @@ verify-release-metadata:
     # with tag pruning makes the checker reason about the provider's current
     # release namespace, not runner-local history.
     - git fetch --tags --force --prune --prune-tags origin
-    - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore uv==0.12.1
+    - *install-uv
     - uv sync --locked --only-group quality
   script:
     - |
@@ -111,7 +117,7 @@ verify-python-quality:
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends binutils git openssh-client
     - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
-    - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore uv==0.12.1
+    - *install-uv
   script:
     - uv sync --locked --only-group quality
     - uv run --locked --no-sync nox -s quality
@@ -129,7 +135,7 @@ build-gitlab-native-asset:
     - apt-get install -qq -y --no-install-recommends binutils git openssh-client
     - git fetch --tags --force --prune --prune-tags origin
     - test "$(uname -m)" = x86_64
-    - python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore uv==0.12.1
+    - *install-uv
     - uv sync --locked --only-group quality
   script:
     - uv run --locked --no-sync nox -s release -- "$CI_PROJECT_DIR/.release-assets"
