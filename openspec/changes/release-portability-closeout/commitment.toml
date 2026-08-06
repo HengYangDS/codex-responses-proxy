@@ -27,6 +27,7 @@ invariants = [
   "provider_addition_has_one_declarative_owner_and_only_optional_narrow_policy_code",
   "supply_chain_versions_have_one_repository_owned_source",
   "gitlab_and_github_publish_independently",
+  "active_change_identity_matches_logical_carrier",
 ]
 acceptance = [
   "windows_linux_and_macos_native_verification_pass",
@@ -45,4 +46,4 @@ hypotheses = [
   "one_mature_process_library_removes_host_command_coupling",
   "separating_ci_tool_bootstrap_from_full_developer_bootstrap_removes_environment_ambiguity",
 ]
-dependencies = ["archive:2026-08-06-release-portability-closeout"]
+dependencies = []
