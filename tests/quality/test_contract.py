@@ -6,6 +6,7 @@ import ast
 import importlib.util
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -140,6 +141,19 @@ class TestQualityPolicyContracts:
             "tests/governance/test_repository.py",
         ):
             assert path in inventoried
+
+    def test_readme_install_path_matches_product_contract(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        assert "$CODEX_RESPONSES_PROXY_RELEASE_ASSET" not in readme
+        assert "$CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR" not in readme
+        assert "codex-responses-proxy-2.0.13-macos-arm64.tar.gz" in readme
+        assert "codex-responses-proxy-macos-arm64.manifest.json" in readme
+        assert "SHA256SUMS.sig" in readme
+        assert "SSH" in readme
+        assert "`allowed_signers` file" in readme
+        assert "--port 8801" in readme
+        assert "CODEX_RESPONSES_PROXY_PROXY_PORT" not in readme
 
     def test_repository_cli_is_quiet_on_success_and_diagnostic_on_failure(
         self, mocker: MockerFixture
@@ -628,9 +642,30 @@ class TestVerificationContracts:
         metadata_job = gitlab.split("verify-release-metadata:", 1)[1].split(
             "verify-release-tag:", 1
         )[0]
-        assert "uv==0.12.1" in metadata_job
+        assert "*install-uv" in metadata_job
         assert "uv sync --locked --only-group quality" in metadata_job
         assert "uv run --locked --no-sync pytest -q tests/release/test_metadata.py" in metadata_job
+
+    def test_forge_bootstrap_derives_uv_requirement_from_project_metadata(self) -> None:
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        requirement = metadata["tool"]["uv"]["required-version"]
+        assert requirement.startswith("==")
+
+        for relative in (".github/workflows/verify.yml", ".gitlab-ci.yml"):
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            assert f"uv{requirement}" not in source
+            assert re.search(r"\buv==\d", source) is None
+
+        github = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
+        assert "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9" in github
+        assert "version:" not in "\n".join(
+            line for line in github.splitlines() if "setup-uv" in line or "uv-version" in line
+        )
+
+        gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+        assert gitlab.count("&install-uv") == 1
+        assert gitlab.count('["tool"]["uv"]["required-version"]') == 1
+        assert gitlab.count("*install-uv") == 4
 
     def test_test_suite_has_no_unittest_compatibility_surface(self) -> None:
         offenders = []
@@ -775,7 +810,7 @@ class TestVerificationContracts:
             "ruff==0.16.1",
             "ty==0.0.67",
         ]
-        assert metadata["tool"]["uv"]["required-version"] == "==0.12.1"
+        assert metadata["tool"]["uv"]["required-version"] == "==0.12.2"
         assert metadata["tool"]["uv"]["link-mode"] == "copy"
         assert (ROOT / "uv.lock").is_file()
         assert not (ROOT / "tools" / "quality" / "requirements.lock").exists()
