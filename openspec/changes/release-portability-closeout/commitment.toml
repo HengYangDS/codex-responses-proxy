@@ -3,28 +3,29 @@ id = "change:release-portability-closeout"
 intent = "Complete deterministic cross-platform verification, repository bootstrap semantics, and the 2.0.13 release."
 subjects = ["repository:self"]
 scope = [
-  ".github/workflows/**",
+  ".github/**",
   ".gitlab-ci.yml",
   "AGENTS.md",
   "CHANGELOG.md",
   "CONTRIBUTING.md",
   "README.md",
   "VERSION",
+  "docs/**",
   "noxfile.py",
   "openspec/**",
+  "packaging/**",
   "pyproject.toml",
-  "src/codex_responses_proxy/lifecycle/supervision/process.py",
-  "src/codex_responses_proxy/service/control.py",
-  "tests/governance/test_repository.py",
-  "tests/lifecycle/supervision/test_process.py",
-  "tests/service/handoff/test_runtime.py",
-  "tests/quality/test_contract.py",
+  "src/**",
+  "tests/**",
+  "tools/**",
   "uv.lock",
 ]
 invariants = [
   "failed_2_0_12_evidence_is_immutable",
   "exact_process_identity_remains_fail_closed",
   "provider_runtime_behavior_is_unchanged",
+  "provider_addition_has_one_declarative_owner_and_only_optional_narrow_policy_code",
+  "supply_chain_versions_have_one_repository_owned_source",
   "gitlab_and_github_publish_independently",
 ]
 acceptance = [
@@ -34,6 +35,8 @@ acceptance = [
   "forward_2_0_13_release_is_verified_installed_and_accepted",
   "developer_bootstrap_installs_the_project_and_all_locked_groups",
   "ci_bootstrap_remains_a_minimal_locked_tool_environment",
+  "repository_has_no_personal_host_path_identity_or_duplicate_configuration_binding",
+  "runtime_configuration_and_provider_policy_have_single_semantic_owners",
 ]
 risks = ["native_dependency_packaging", "handoff_barrier_ordering", "bootstrap_semantic_drift"]
 authority_refs = ["user_instruction", "AGENTS.md", "openspec/specs/ci-diagnostics/spec.md"]
