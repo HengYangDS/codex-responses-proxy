@@ -26,7 +26,7 @@ Requirements:
 Bootstrap once:
 
 ```bash
-uv sync --locked --only-group quality
+uv sync --locked --all-groups
 ```
 
 Run the repository-owned gates:

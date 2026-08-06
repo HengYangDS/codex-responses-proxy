@@ -170,7 +170,7 @@ Development uses the repository-owned Python environments and locked supply
 chain. These commands are DX, not product UX:
 
 ```bash
-uv sync --locked --only-group quality
+uv sync --locked --all-groups
 uv run --locked --no-sync nox -s quick
 uv run --locked --no-sync nox -s quality
 uv run --locked --no-sync nox -s tests-3.12 tests-3.13 tests-3.14
