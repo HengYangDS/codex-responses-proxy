@@ -158,10 +158,10 @@ class CliLifecycleContracts:
         self, *, mocker
     ) -> None:
         evidence = {
-            "release": "2.0.7",
+            "release": "2.0.10",
             "payload_integrity": {
                 "ok": True,
-                "detail": "supported predecessor 2.0.7 verified",
+                "detail": "direct predecessor 2.0.10 verified",
             },
             "service": "running",
             "listener_pids": [321],
@@ -178,7 +178,7 @@ class CliLifecycleContracts:
         self, *, mocker
     ) -> None:
         predecessor = projection.HistoricalProjection(
-            release="2.0.7",
+            release="2.0.10",
             files=frozenset({"VERSION", "codex_responses_proxy/listener/entrypoint.py"}),
             entrypoint="/product/src/codex_responses_proxy/listener/entrypoint.py",
         )
@@ -189,7 +189,7 @@ class CliLifecycleContracts:
             side_effect=errors.InstallError("current layout differs"),
         )
         mocker.patch.object(projection, "verify_historical_projection", return_value=predecessor)
-        mocker.patch.object(application.control, "_installed_release", return_value="2.0.7")
+        mocker.patch.object(application.control, "_installed_release", return_value="2.0.10")
         adapter = mocker.patch.object(application.control, "adapter")
         pids = mocker.patch.object(process, "verified_listener_pids", return_value=[321])
         mocker.patch.object(
