@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-06
+goal: Ship the forward 2.0.13 release only after Windows, Linux, local, and
+  dual-Forge proof succeeds.
