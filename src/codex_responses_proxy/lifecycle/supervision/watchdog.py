@@ -19,7 +19,7 @@ import time
 from contextlib import suppress
 from pathlib import Path
 
-from codex_responses_proxy.relay import config as runtime_config
+from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.service import runtime as service_runtime
 
 SETTINGS = runtime_config.load()

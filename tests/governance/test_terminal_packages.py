@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = ROOT / "src" / "codex_responses_proxy"
-TERMINAL = {"cli", "protocol", "providers", "relay", "service", "lifecycle"}
+TERMINAL = {"cli", "protocol", "providers", "relay", "runtime", "service", "lifecycle"}
 RETIRED = {
     "commands",
     "deployment",
@@ -15,15 +15,15 @@ RETIRED = {
     "payload",
     "recovery",
     "replay",
-    "runtime",
     "supervision",
     "transport",
 }
 ALLOWED = {
     "cli": {"lifecycle", "service"},
-    "lifecycle": {"service", "relay", "protocol", "providers"},
-    "service": {"relay", "protocol", "providers"},
-    "relay": {"protocol", "providers"},
+    "lifecycle": {"service", "relay", "runtime", "protocol", "providers"},
+    "service": {"relay", "runtime", "protocol", "providers"},
+    "relay": {"runtime", "protocol", "providers"},
+    "runtime": set(),
     "protocol": set(),
     "providers": set(),
 }

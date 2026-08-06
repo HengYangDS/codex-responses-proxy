@@ -356,7 +356,7 @@ class TestQualityPolicyContracts:
             in gaps
         )
         assert "architecture_retired_module:src/codex_responses_proxy/runtime/state.py" in gaps
-        assert "architecture_disallowed_edge:relay->runtime" in gaps
+        assert "architecture_disallowed_edge:relay->runtime" not in gaps
         assert "architecture_disallowed_edge:runtime->relay" in gaps
         assert "architecture_cycle:relay,runtime" in gaps
         assert "architecture_retired_source_root:codex_dmx_proxy" in gaps

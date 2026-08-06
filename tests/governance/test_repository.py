@@ -15,7 +15,7 @@ from typing import cast
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import install
-from codex_responses_proxy.relay import config as runtime_config
+from codex_responses_proxy.runtime import config as runtime_config
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -130,6 +130,8 @@ class TestInstallationInputValidation:
             runtime_config.UPSTREAM_READ_TIMEOUT_ENV,
             runtime_config.WATCHDOG_INTERVAL_ENV,
             runtime_config.WATCHDOG_MAX_BACKOFF_ENV,
+            runtime_config.RESPONSE_FAILED_COMPACTION_BUDGET_ENV,
+            runtime_config.RESPONSE_FAILED_MAX_STAGES_ENV,
         }
         assert runtime_config.load(environment).listener == ("127.0.0.1", 8808)
         assert environment[runtime_config.UPSTREAM_TIMEOUT_ENV] == "45.0"
@@ -159,6 +161,8 @@ class TestInstallationInputValidation:
             runtime_config.UPSTREAM_READ_TIMEOUT_ENV: "15.5",
             runtime_config.WATCHDOG_INTERVAL_ENV: "3",
             runtime_config.WATCHDOG_MAX_BACKOFF_ENV: "12",
+            runtime_config.RESPONSE_FAILED_COMPACTION_BUDGET_ENV: "65536",
+            runtime_config.RESPONSE_FAILED_MAX_STAGES_ENV: "2",
         }
         settings = runtime_config.load(environment)
         assert settings.listener == ("127.0.0.1", 8801)
@@ -170,6 +174,8 @@ class TestInstallationInputValidation:
         assert settings.upstream_read_timeout == 15.5
         assert settings.watchdog_interval == 3
         assert settings.watchdog_max_backoff == 12
+        assert settings.response_failed_compaction_budget == 65536
+        assert settings.response_failed_max_stages == 2
 
         invalid = (
             (runtime_config.PROXY_PORT_ENV, True),
@@ -180,6 +186,8 @@ class TestInstallationInputValidation:
             (runtime_config.WATCHDOG_INTERVAL_ENV, "-1"),
             (runtime_config.WATCHDOG_MAX_BACKOFF_ENV, "not-a-number"),
             (runtime_config.WATCHDOG_MAX_BACKOFF_ENV, False),
+            (runtime_config.RESPONSE_FAILED_COMPACTION_BUDGET_ENV, "4095"),
+            (runtime_config.RESPONSE_FAILED_MAX_STAGES_ENV, "9"),
         )
         for name, value in invalid:
             with (
@@ -216,7 +224,7 @@ class TestGovernanceMetadata:
 
     def test_listener_port_literals_have_one_production_owner(self):
         production = ROOT / "src" / "codex_responses_proxy"
-        owner = production / "relay" / "config.py"
+        owner = production / "runtime" / "config.py"
         owner_text = owner.read_text(encoding="utf-8")
         assert owner_text.count("8792") == 1
         assert "8791" not in owner_text
@@ -573,7 +581,7 @@ class TestReleaseMetadata:
                 ),
             ),
             (
-                ("src/codex_responses_proxy/relay/config.py",),
+                ("src/codex_responses_proxy/runtime/config.py",),
                 (
                     "CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES",
                     "CODEX_RESPONSES_PROXY_PROXY_LOG_BACKUP_COUNT",

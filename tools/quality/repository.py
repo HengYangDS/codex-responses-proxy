@@ -31,11 +31,12 @@ _RETIRED_MODULES = frozenset({"src/codex_responses_proxy/runtime/state.py"})
 _ROOT_CONFIGURATION_MODULES = frozenset({"noxfile.py"})
 _ALLOWED_PACKAGE_EDGES = {
     "cli": frozenset({"lifecycle", "service"}),
-    "lifecycle": frozenset({"protocol", "providers", "relay", "service"}),
+    "lifecycle": frozenset({"protocol", "providers", "relay", "runtime", "service"}),
     "protocol": frozenset(),
     "providers": frozenset(),
-    "relay": frozenset({"protocol", "providers"}),
-    "service": frozenset({"protocol", "providers", "relay"}),
+    "relay": frozenset({"protocol", "providers", "runtime"}),
+    "service": frozenset({"protocol", "providers", "relay", "runtime"}),
+    "runtime": frozenset(),
 }
 
 
@@ -398,8 +399,7 @@ def _dependency_cycles(edges: Mapping[str, set[str]]) -> list[tuple[str, ...]]:
         if len(component) > 1:
             cycles.append(tuple(sorted(component)))
 
-    nodes = set(edges)
-    nodes.update(target for targets in edges.values() for target in targets)
+    nodes = set(edges) | {target for targets in edges.values() for target in targets}
     for node in sorted(nodes):
         if node not in indices:
             visit(node)

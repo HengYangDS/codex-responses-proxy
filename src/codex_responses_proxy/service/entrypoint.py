@@ -14,7 +14,7 @@ from pathlib import Path
 
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.relay import admission, operational_log, telemetry
-from codex_responses_proxy.relay import config as runtime_config
+from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.relay import exchange, sse
 from codex_responses_proxy.service import control, identity, runtime, server
 from codex_responses_proxy.service.handoff import transaction as handoff

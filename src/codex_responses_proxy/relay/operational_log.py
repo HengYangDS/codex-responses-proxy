@@ -12,7 +12,7 @@ import urllib.parse
 from contextlib import suppress
 from pathlib import Path
 
-from codex_responses_proxy.relay import config as runtime_config
+from codex_responses_proxy.runtime import config as runtime_config
 
 SETTINGS = runtime_config.load()
 LOG_PATH = SETTINGS.proxy_log.path

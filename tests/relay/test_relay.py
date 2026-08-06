@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import cast
 
 from codex_responses_proxy.protocol import request as rewrite
-from codex_responses_proxy.protocol import response_failed as response_failed_policy
 from codex_responses_proxy.relay import admission, cooldown, operational_log, telemetry
 from codex_responses_proxy.relay import exchange as upstream_exchange
 from tests.relay.proxy_fixture import request, running_proxy
@@ -212,7 +211,7 @@ class TestProxyTransport:
             },
             separators=(",", ":"),
         ).encode()
-        mocker.patch.object(response_failed_policy, "MAX_STAGES", 1)
+        mocker.patch.object(upstream_exchange, "RESPONSE_FAILED_MAX_STAGES", 1)
         log = mocker.patch.object(operational_log, "log")
 
         with (
@@ -265,7 +264,7 @@ class TestProxyTransport:
             },
             separators=(",", ":"),
         ).encode()
-        mocker.patch.object(response_failed_policy, "MAX_STAGES", 0)
+        mocker.patch.object(upstream_exchange, "RESPONSE_FAILED_MAX_STAGES", 0)
 
         with running_proxy([(400, response_failed), (400, response_failed)]) as (port, received):
             with pytest.raises(urllib.error.HTTPError) as raised:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import xml.dom.minidom as minidom
 
 from codex_responses_proxy.lifecycle.supervision import linux, macos, windows
-from codex_responses_proxy.relay import config as runtime_config
+from codex_responses_proxy.runtime import config as runtime_config
 from tests.lifecycle.fixtures import platform_context
 from tests.lifecycle.supervision.fixtures import assert_fragments as _assert_fragments
 

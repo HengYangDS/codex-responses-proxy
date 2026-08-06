@@ -750,9 +750,10 @@ class InputTransportContracts:
         admission.reset_for_test()
         telemetry.reset_for_test()
         cooldown.reset_for_test()
-        mocker.patch.object(upstream_exchange, "INPUT_VARIANT_DIALOGUE_SLOTS", -4)
-        mocker.patch.object(upstream_exchange.response_failed, "DIALOGUE_SLOTS", 0)
-        mocker.patch.object(upstream_exchange.response_failed, "MAX_STAGES", 0)
+        mocker.patch.object(upstream_exchange, "_MAX_ATTEMPTS", 0)
+        mocker.patch.object(upstream_exchange, "INPUT_VARIANT_DIALOGUE_SLOTS", 0)
+        mocker.patch.object(upstream_exchange, "RESPONSE_FAILED_DIALOGUE_SLOTS", 0)
+        mocker.patch.object(upstream_exchange, "RESPONSE_FAILED_MAX_STAGES", 0)
         responses.relay(handler, "POST", PROVIDERS)
         assert handler.statuses == [502]
         assert b"upstream_transport_error" in handler.output()
@@ -769,6 +770,10 @@ class InputTransportContracts:
         with pytest.raises(RuntimeError, match="wire recovery requires a provider policy"):
             upstream_exchange._reject_wire_failure(exchange, "fingerprint", 2, "event", "")
         assert not upstream_exchange._retry_wire_failure(exchange)
+
+        sleep = mocker.patch.object(upstream_exchange.time, "sleep", return_value=None)
+        assert upstream_exchange._transport_error(exchange, OSError("private"), 0) == "retry"
+        sleep.assert_called_once()
 
         outcome = upstream_exchange._transport_error(exchange, OSError("private"), 3)
         assert outcome == "terminal"
