@@ -45,4 +45,4 @@ hypotheses = [
   "one_mature_process_library_removes_host_command_coupling",
   "separating_ci_tool_bootstrap_from_full_developer_bootstrap_removes_environment_ambiguity",
 ]
-dependencies = []
+dependencies = ["archive:2026-08-06-release-portability-closeout"]
