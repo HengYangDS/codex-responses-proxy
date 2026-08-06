@@ -62,7 +62,7 @@ def status(ctx: runtime_context.RuntimeContext) -> dict:
             integrity_ok, integrity_detail = False, str(current_error)
         else:
             integrity_ok = True
-            integrity_detail = f"supported predecessor {historical.release} verified"
+            integrity_detail = f"direct predecessor {historical.release} verified"
     try:
         service = adapter().status(ctx)
     except Exception:
