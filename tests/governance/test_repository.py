@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ntpath
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -66,11 +67,11 @@ class TestInstallationInputValidation:
         mocker.patch.dict(runtime_config.os.environ, {}, clear=True)
         mocker.patch.object(runtime_config.os, "name", "posix")
         mocker.patch.object(runtime_config.sys, "platform", "darwin")
-        home = str(Path("/") / "portable" / "home")
+        home = runtime_config.path_join("/", "portable", "user")
         mocker.patch.object(runtime_config, "home_dir", return_value=home)
 
-        assert runtime_config.state_dir() == str(
-            Path(home) / "Library" / "Logs" / "codex-responses-proxy"
+        assert runtime_config.state_dir() == runtime_config.path_join(
+            home, "Library", "Logs", "codex-responses-proxy"
         )
 
     def test_runtime_configuration_is_loopback_only_and_rejects_invalid_ports(self, subtests):
@@ -353,8 +354,11 @@ class TestGovernanceMetadata:
                 encoding="utf-8",
             )
             fake_ethos.chmod(0o755)
+            bash = shutil.which("bash")
+            if bash is None:
+                pytest.skip("Bash is required to execute the repository hook")
             accepted = subprocess.run(
-                [hook],
+                [bash, hook],
                 cwd=root,
                 text=True,
                 env=environment,
@@ -370,7 +374,7 @@ class TestGovernanceMetadata:
                 encoding="utf-8",
             )
             rejected = subprocess.run(
-                [hook],
+                [bash, hook],
                 cwd=root,
                 text=True,
                 env=environment,
