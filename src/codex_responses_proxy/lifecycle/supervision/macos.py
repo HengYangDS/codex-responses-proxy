@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 
-from codex_responses_proxy.relay import config
+from codex_responses_proxy.runtime import config
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy import errors
 from codex_responses_proxy.service import runtime as service_runtime

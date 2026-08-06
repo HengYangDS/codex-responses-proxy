@@ -13,7 +13,7 @@ from codex_responses_proxy.lifecycle import projection, state as payload_state
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle.supervision.native_service import adapter
-from codex_responses_proxy.relay import config as runtime_config
+from codex_responses_proxy.runtime import config as runtime_config
 
 
 def _context(port: int = runtime_config.DEFAULT_PORT) -> runtime_context.RuntimeContext:
@@ -34,7 +34,7 @@ def _runtime_metrics(ctx: runtime_context.RuntimeContext) -> dict | None:
     """Read the proxy's secret-free health snapshot from loopback only."""
 
     request = urllib.request.Request(
-        f"http://127.0.0.1:{ctx.port}/healthz",
+        runtime_config.loopback_url(ctx.port, "/healthz"),
         headers={"Accept": "application/json"},
         method="GET",
     )

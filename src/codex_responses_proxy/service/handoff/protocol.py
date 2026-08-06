@@ -22,6 +22,8 @@ from typing import Mapping
 from typing import Protocol
 from typing import TypedDict
 
+from codex_responses_proxy.runtime import config as runtime_config
+
 
 type JsonObject = dict[str, object]
 type ReadOnlyJsonObject = Mapping[str, object]
@@ -289,7 +291,7 @@ def listener_from_prepare(message: ReadOnlyJsonObject) -> socket.socket:
 
 def probe_health(port: int, *, timeout_seconds: float) -> JsonObject:
     """Read one loopback-only child health proof through the shared listener."""
-    url = f"http://127.0.0.1:{int(port)}/healthz"
+    url = runtime_config.loopback_url(int(port), "/healthz")
     request = urllib.request.Request(url, method="GET")
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     with opener.open(request, timeout=max(0.1, float(timeout_seconds))) as response:
