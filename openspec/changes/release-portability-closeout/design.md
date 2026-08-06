@@ -47,3 +47,10 @@ are independent symptoms of host state leaking into product verification.
 Run focused red-green tests, then quick, quality, Python 3.12-3.14, native
 release, strict OpenSpec, and exact-HEAD proof. Archive and land only after all
 pass; publish 2.0.13 forward without modifying 2.0.12 records.
+
+## Requirement To Task To Proof
+
+| Requirement | Task | Proof |
+| --- | --- | --- |
+| `ci-diagnostics:Hosted verification uses portable product semantics` | `1.1` | `tests/governance/test_repository.py` |
+| `product-interface:Native lifecycle inspection is self-contained` | `1.2` | `tests/lifecycle/supervision/test_process.py` |
