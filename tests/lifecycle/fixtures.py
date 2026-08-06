@@ -175,13 +175,13 @@ def write_retired_projection(
     return files
 
 
-def write_supported_predecessor_projection(
+def write_direct_predecessor_projection(
     ctx: runtime_context.RuntimeContext,
 ) -> dict[str, bytes]:
     """Write the exact installed projection accepted for direct upgrade."""
 
-    version = projection.SUPPORTED_PREDECESSOR_RELEASE
-    files, serving_paths = projection._SUPPORTED_PREDECESSOR_INVENTORIES[version]
+    version = "2.0.10"
+    files, serving_paths = projection._DIRECT_PREDECESSOR_INVENTORY
     contents = {
         relative: (f"{version}\n".encode() if relative == "VERSION" else f"{relative}\n".encode())
         for relative in files
@@ -195,7 +195,7 @@ def write_supported_predecessor_projection(
         relative: hashlib.sha256(contents[relative]).hexdigest() for relative in serving_paths
     }
     receipt = payload_digest.canonical_json(
-        {"schema_version": 1, "version": version, "fixture": "supported-predecessor"}
+        {"schema_version": 1, "version": version, "fixture": "direct-predecessor"}
     )
     receipt_sha256 = hashlib.sha256(receipt).hexdigest()
     manifest = {
@@ -219,7 +219,7 @@ def write_supported_predecessor_projection(
                 "schema_version": 1,
                 "version": version,
                 "receipt_sha256": receipt_sha256,
-                "transaction_id": "fixture-supported-predecessor",
+                "transaction_id": "fixture-direct-predecessor",
                 "runtime": {"release": version},
             }
         )

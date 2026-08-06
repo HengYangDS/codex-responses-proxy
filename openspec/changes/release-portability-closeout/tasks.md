@@ -1,6 +1,6 @@
 ## 1. Portable failure contracts
 
-- [ ] 1.1 Make repository governance tests portable across native Windows, Linux, and macOS runners.
+- [x] 1.1 Make repository governance tests portable across native Windows, Linux, and macOS runners.
 - [x] 1.2 Prove listener discovery and exact process identity work without optional host commands.
 - [x] 1.3 Prove a post-READY controller disconnect cannot prevent transaction commit.
 - [x] 1.4 Eliminate expected uv hardlink warnings through one shared install policy.
@@ -13,9 +13,9 @@
 
 ## 3. Repository bootstrap contract
 
-- [ ] 3.1 Keep Forge jobs on the minimal locked quality-tool bootstrap.
-- [ ] 3.2 Make documented developer bootstrap install the project and every locked dependency group.
-- [ ] 3.3 Add executable contracts that distinguish the two bootstrap semantics.
+- [x] 3.1 Keep Forge jobs on the minimal locked quality-tool bootstrap.
+- [x] 3.2 Make documented developer bootstrap install the project and every locked dependency group.
+- [x] 3.3 Add executable contracts that distinguish the two bootstrap semantics.
 
 ## 4. Verification and closeout
 

@@ -19,7 +19,7 @@ from tests.lifecycle.fixtures import (
     executable_relative,
     install_context,
     write_retired_projection,
-    write_supported_predecessor_projection,
+    write_direct_predecessor_projection,
 )
 from tests.lifecycle.fixtures import begin_transaction, install_payload, released_artifact
 import pytest
@@ -30,20 +30,15 @@ ROOT = Path(__file__).resolve().parents[2]
 class TestPayloadMigration:
     """Historical payload migration and rollback safety contracts."""
 
-    def test_only_the_supported_predecessor_is_migratable(self) -> None:
-        assert set(payload_projection._SUPPORTED_PREDECESSOR_INVENTORIES) == {
-            payload_projection.SUPPORTED_PREDECESSOR_RELEASE
-        }
-
-    def _supported_predecessor(self) -> tuple[runtime_context.RuntimeContext, Path]:
+    def _direct_predecessor(self) -> tuple[runtime_context.RuntimeContext, Path]:
         ctx = install_context(Path(tempfile.mkdtemp()))
-        write_supported_predecessor_projection(ctx)
+        write_direct_predecessor_projection(ctx)
         return ctx, Path(ctx.install_dir)
 
-    def test_supported_predecessor_upgrades_and_rolls_back(self, *, mocker) -> None:
+    def test_direct_predecessor_upgrades_and_rolls_back(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install = Path(ctx.install_dir)
-        previous = write_supported_predecessor_projection(ctx)
+        previous = write_direct_predecessor_projection(ctx)
         renamed = {
             install / old: install / current
             for current, old in payload_projection._PREDECESSOR_PATHS.items()
@@ -53,7 +48,7 @@ class TestPayloadMigration:
         previous_receipt = receipt.read_bytes()
         installed_state.unlink()
 
-        transaction = begin_transaction(ctx, released_artifact("2.0.8"), mocker=mocker)
+        transaction = begin_transaction(ctx, released_artifact("2.0.13"), mocker=mocker)
         transaction.commit_projection()
 
         for old, current in renamed.items():
@@ -67,14 +62,14 @@ class TestPayloadMigration:
         assert receipt.read_bytes() == previous_receipt
         assert not installed_state.exists()
 
-    def test_predecessor_receipt_is_canonical_and_version_bound(self, subtests) -> None:
+    def test_direct_predecessor_receipt_is_canonical_and_version_bound(self, subtests) -> None:
         cases = (
             ("noncanonical", None, "canonical"),
             ("wrong-version", "9.9.9", "version"),
         )
         for name, version, message in cases:
             with subtests.test(name=name):
-                ctx, install = self._supported_predecessor()
+                ctx, install = self._direct_predecessor()
                 receipt_path = install / payload_projection._PREDECESSOR_RECEIPT_FILENAME
                 receipt = json.loads(receipt_path.read_bytes())
                 if version is not None:
@@ -91,14 +86,14 @@ class TestPayloadMigration:
                 with pytest.raises(errors.InstallError, match=message):
                     payload_projection.verify_historical_projection(ctx)
 
-    def test_predecessor_install_state_must_match_when_present(self, subtests) -> None:
+    def test_direct_predecessor_install_state_must_match_when_present(self, subtests) -> None:
         cases = (
             ("wrong-version", {"version": "9.9.9"}),
             ("wrong-receipt", {"receipt_sha256": "0" * 64}),
         )
         for name, changes in cases:
             with subtests.test(name=name):
-                ctx, install = self._supported_predecessor()
+                ctx, install = self._direct_predecessor()
                 state_path = install / inventory.INSTALLED_RELEASE_STATE_FILENAME
                 installed = json.loads(state_path.read_bytes())
                 installed.update(changes)
@@ -107,14 +102,14 @@ class TestPayloadMigration:
                 with pytest.raises(errors.InstallError, match="installed release state"):
                     payload_projection.verify_historical_projection(ctx)
 
-    def test_matching_predecessor_install_state_is_owned(self) -> None:
-        ctx, _install = self._supported_predecessor()
+    def test_matching_direct_predecessor_install_state_is_owned(self) -> None:
+        ctx, _install = self._direct_predecessor()
 
         historical = payload_projection.verify_historical_projection(ctx)
 
         assert inventory.INSTALLED_RELEASE_STATE_FILENAME in historical.metadata
 
-    def test_predecessor_serving_and_receipt_identity_are_bound(self, subtests) -> None:
+    def test_direct_predecessor_serving_and_receipt_identity_are_bound(self, subtests) -> None:
         cases = (
             (
                 "serving-digest",
@@ -134,7 +129,7 @@ class TestPayloadMigration:
         )
         for name, mutate, message in cases:
             with subtests.test(name=name):
-                ctx, install = self._supported_predecessor()
+                ctx, install = self._direct_predecessor()
                 manifest_path = install / inventory.MANIFEST_FILENAME
                 manifest = json.loads(manifest_path.read_bytes())
                 mutate(manifest)
@@ -144,7 +139,7 @@ class TestPayloadMigration:
                     payload_projection.verify_historical_projection(ctx)
 
     def test_unknown_schema_two_inventory_remains_rejected(self) -> None:
-        ctx, install = self._supported_predecessor()
+        ctx, install = self._direct_predecessor()
         manifest_path = install / inventory.MANIFEST_FILENAME
         manifest = json.loads(manifest_path.read_bytes())
         manifest["files"].pop(next(iter(payload_projection._PREDECESSOR_PATHS.values())))
