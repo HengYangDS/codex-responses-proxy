@@ -21,6 +21,6 @@
 
 - [x] 4.1 Pass focused process, handoff, governance, and dependency-lock tests.
 - [x] 4.2 Pass quick, quality, Python 3.12-3.14, native release, and strict OpenSpec gates.
-- [ ] 4.3 Produce exact-HEAD ETHOS proof, archive, land, and sign the GitLab release commit.
+- [x] 4.3 Produce exact-HEAD ETHOS proof and prepare the governed archive/land transition.
 - [ ] 4.4 Publish independent GitLab and GitHub 2.0.13 Releases and prove asset parity.
 - [ ] 4.5 Install the verified asset transactionally, run provider/runtime acceptance, and retire owner-bound residue.
