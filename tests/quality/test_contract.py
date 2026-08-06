@@ -782,6 +782,12 @@ class TestVerificationContracts:
         assert not (ROOT / "tools" / "quality" / "requirements.txt").exists()
         assert "requirements.lock" not in (ROOT / ".gitignore").read_text(encoding="utf-8")
 
+    def test_developer_bootstrap_installs_product_and_quality_groups(self) -> None:
+        for relative in ("AGENTS.md", "CONTRIBUTING.md", "README.md"):
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            assert "uv sync --locked --all-groups" in source
+            assert "uv sync --locked --only-group quality" not in source
+
     def test_repository_declares_the_supported_python_matrix_once(self) -> None:
         assert (ROOT / ".python-versions").read_text(encoding="utf-8") == "3.12\n3.13\n3.14\n"
         assert not (ROOT / ".python-version").exists()
