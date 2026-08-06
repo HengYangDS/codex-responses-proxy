@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.relay import config
+from codex_responses_proxy.runtime import config
 from codex_responses_proxy.service import inventory
 
 
@@ -30,6 +30,8 @@ class RuntimeContext:
     upstream_read_timeout: float = config.DEFAULT_UPSTREAM_READ_TIMEOUT
     watchdog_interval: float = config.DEFAULT_WATCHDOG_INTERVAL
     watchdog_max_backoff: float = config.DEFAULT_WATCHDOG_MAX_BACKOFF
+    response_failed_compaction_budget: int = config.DEFAULT_RESPONSE_FAILED_COMPACTION_BUDGET
+    response_failed_max_stages: int = config.DEFAULT_RESPONSE_FAILED_MAX_STAGES
 
     def service_environment(self) -> dict[str, str]:
         """Project the exact installer-selected settings into native supervision."""
@@ -46,6 +48,10 @@ class RuntimeContext:
             config.UPSTREAM_READ_TIMEOUT_ENV: str(self.upstream_read_timeout),
             config.WATCHDOG_INTERVAL_ENV: str(self.watchdog_interval),
             config.WATCHDOG_MAX_BACKOFF_ENV: str(self.watchdog_max_backoff),
+            config.RESPONSE_FAILED_COMPACTION_BUDGET_ENV: str(
+                self.response_failed_compaction_budget
+            ),
+            config.RESPONSE_FAILED_MAX_STAGES_ENV: str(self.response_failed_max_stages),
         }
 
 

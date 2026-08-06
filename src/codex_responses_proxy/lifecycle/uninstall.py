@@ -9,7 +9,7 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle.supervision.native_service import adapter
-from codex_responses_proxy.relay import config as runtime_config
+from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.service import runtime as service_runtime
 
 

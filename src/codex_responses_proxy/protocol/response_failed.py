@@ -9,7 +9,6 @@ tool call/output relationships.
 from __future__ import annotations
 
 import json
-import os
 from typing import cast
 
 type JsonObject = dict[str, object]
@@ -17,12 +16,7 @@ type Request = tuple[JsonObject, list[object], int]
 type RecoveryMetrics = dict[str, int | bool]
 type Recovery = tuple[bytes | None, RecoveryMetrics | None]
 
-COMPACTION_BUDGET = int(
-    os.environ.get("CODEX_RESPONSES_PROXY_RESPONSE_FAILED_COMPACTION_BUDGET", 512 * 1024)
-)
 COMPACTION_RATIO_DENOMINATOR = 2
-MAX_STAGES = max(0, int(os.environ.get("CODEX_RESPONSES_PROXY_RESPONSE_FAILED_MAX_STAGES", "3")))
-DIALOGUE_SLOTS = 1
 
 _TOOL_PAIR_TYPES = {
     "custom_tool_call": "custom_tool_call_output",
@@ -56,9 +50,8 @@ def _request(raw: bytes, minimum_items: int = 1) -> Request | None:
     return (payload, items, latest_user) if latest_user >= 0 else None
 
 
-def _budget(raw: bytes, budget: int | None) -> int | None:
+def _budget(raw: bytes, budget: int) -> int | None:
     """Bound a positive caller budget by the required compaction ratio."""
-    budget = COMPACTION_BUDGET if budget is None else budget
     if not isinstance(budget, int) or budget <= 0:
         return None
     return min(budget, max(1, len(raw) // COMPACTION_RATIO_DENOMINATOR))
@@ -127,11 +120,11 @@ def tool_pair_boundary_is_safe(items: list[object], start: int) -> bool:
     return True
 
 
-def compact_request(raw: bytes, budget: int | None = None) -> Recovery:
+def compact_request(raw: bytes, budget: int) -> Recovery:
     """Build the oldest-prefix-only, pair-safe fallback for one failed request."""
-    budget = _budget(raw, budget)
+    bounded_budget = _budget(raw, budget)
     request = _request(raw, minimum_items=2)
-    if budget is None or request is None:
+    if bounded_budget is None or request is None:
         return None, None
     payload, input_items, latest_user_index = request
 
@@ -146,13 +139,13 @@ def compact_request(raw: bytes, budget: int | None = None) -> Recovery:
         compact = json.dumps(candidate, separators=(",", ":")).encode("utf-8")
         metrics = {
             "original_bytes": len(raw),
-            "budget_bytes": budget,
+            "budget_bytes": bounded_budget,
             "compact_bytes": len(compact),
             "removed_inputs": start,
             "retained_inputs": len(input_items) - start,
             "prompt_cache_key_removed": "prompt_cache_key" in payload,
         }
-        if len(compact) <= budget:
+        if len(compact) <= bounded_budget:
             return compact, metrics
         if len(compact) < len(raw) and (smallest is None or len(compact) < len(smallest[0])):
             smallest = (compact, metrics)
@@ -163,11 +156,11 @@ def compact_request(raw: bytes, budget: int | None = None) -> Recovery:
     return None, None
 
 
-def recover_dialogue(raw: bytes, budget: int | None = None) -> Recovery:
+def recover_dialogue(raw: bytes, budget: int) -> Recovery:
     """Build the final instruction-and-user-only recovery request."""
-    budget = _budget(raw, budget)
+    bounded_budget = _budget(raw, budget)
     request = _request(raw)
-    if budget is None or request is None:
+    if bounded_budget is None or request is None:
         return None, None
     payload, input_items, latest_user_index = request
 
@@ -192,12 +185,12 @@ def recover_dialogue(raw: bytes, budget: int | None = None) -> Recovery:
     candidate["store"] = False
     candidate.pop("prompt_cache_key", None)
     recovery = json.dumps(candidate, separators=(",", ":")).encode("utf-8")
-    if len(recovery) > budget or len(recovery) >= len(raw):
+    if len(recovery) > bounded_budget or len(recovery) >= len(raw):
         return None, None
     return recovery, {
         "original_bytes": len(raw),
         "recovery_bytes": len(recovery),
-        "budget_bytes": budget,
+        "budget_bytes": bounded_budget,
         "retained_messages": len(dialogue),
         "dropped_input_items": len(input_items) - len(dialogue),
         "prompt_cache_key_removed": "prompt_cache_key" in payload,

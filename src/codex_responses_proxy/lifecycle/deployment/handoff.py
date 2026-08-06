@@ -24,6 +24,7 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import inventory
+from codex_responses_proxy.runtime import config as runtime_config
 
 HANDOFF_PROTOCOL_VERSION = 2
 _MAX_BODY_BYTES = 64 * 1024
@@ -136,7 +137,7 @@ def post_ready(
     if len(data) > _MAX_BODY_BYTES:
         raise errors.InstallError("handoff request payload is too large")
     request = urllib.request.Request(
-        f"http://127.0.0.1:{ctx.port}/control/handoff",
+        runtime_config.loopback_url(ctx.port, "/control/handoff"),
         data=data,
         headers={"Content-Type": "application/json", "Accept": "application/json"},
         method="POST",

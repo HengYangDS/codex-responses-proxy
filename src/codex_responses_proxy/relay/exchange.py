@@ -14,10 +14,14 @@ from codex_responses_proxy.protocol import response_failed
 from codex_responses_proxy.relay import operational_log, telemetry
 from codex_responses_proxy.relay import cooldown
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.relay import config as runtime_config
+from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.relay import relay as downstream
 
-UPSTREAM_TIMEOUT = runtime_config.load().upstream_timeout
+_SETTINGS = runtime_config.load()
+UPSTREAM_TIMEOUT = _SETTINGS.upstream_timeout
+RESPONSE_FAILED_COMPACTION_BUDGET = _SETTINGS.response_failed_compaction_budget
+RESPONSE_FAILED_MAX_STAGES = _SETTINGS.response_failed_max_stages
+RESPONSE_FAILED_DIALOGUE_SLOTS = 1
 INPUT_VARIANT_DIALOGUE_SLOTS = 1
 _MAX_ATTEMPTS = 4
 _BACKOFFS = (0.4, 1.0, 2.0)
@@ -45,7 +49,7 @@ def _request(url: str, body: bytes, method: str, headers: dict[str, str]) -> url
 
 
 def _input_variant_recovery(raw: bytes) -> tuple[bytes | None, dict[str, object] | None]:
-    recovery, metrics = input_variant.build_recovery(raw, response_failed.COMPACTION_BUDGET)
+    recovery, metrics = input_variant.build_recovery(raw, RESPONSE_FAILED_COMPACTION_BUDGET)
     if metrics is None:
         return recovery, None
     return recovery, {
@@ -181,8 +185,10 @@ def _recover_input_variant(exchange: Exchange) -> bool:
 def _recover_response_failed(exchange: Exchange, status_code: int, disposition: str) -> bool:
     if not (exchange.is_responses and status_code == 400 and disposition == "full"):
         return False
-    if exchange.response_failed_stages < response_failed.MAX_STAGES:
-        compact, metrics = response_failed.compact_request(exchange.attempt_body)
+    if exchange.response_failed_stages < RESPONSE_FAILED_MAX_STAGES:
+        compact, metrics = response_failed.compact_request(
+            exchange.attempt_body, RESPONSE_FAILED_COMPACTION_BUDGET
+        )
         if compact is not None and metrics is not None:
             telemetry.record_counter("response_failed_compaction_attempts")
             exchange.response_failed_stages += 1
@@ -193,7 +199,7 @@ def _recover_response_failed(exchange: Exchange, status_code: int, disposition: 
             exchange.attempt_body = compact
             exchange.log(
                 "response_failed_compact_recovery",
-                f"stage={exchange.response_failed_stages}/{response_failed.MAX_STAGES} "
+                f"stage={exchange.response_failed_stages}/{RESPONSE_FAILED_MAX_STAGES} "
                 f"bytes={previous_bytes}->{metrics['compact_bytes']} budget={metrics['budget_bytes']} "
                 f"removed_inputs={metrics['removed_inputs']} retained_inputs={metrics['retained_inputs']} "
                 f"cache_key_removed={metrics['prompt_cache_key_removed']} "
@@ -202,7 +208,9 @@ def _recover_response_failed(exchange: Exchange, status_code: int, disposition: 
             return True
     if exchange.used_response_failed_dialogue:
         return False
-    recovery, metrics = response_failed.recover_dialogue(exchange.body)
+    recovery, metrics = response_failed.recover_dialogue(
+        exchange.body, RESPONSE_FAILED_COMPACTION_BUDGET
+    )
     if recovery is None or metrics is None:
         return False
     telemetry.record_counter("response_failed_dialogue_recovery_attempts")
@@ -390,8 +398,8 @@ def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
 
 def open_upstream(exchange: Exchange):
     """Open an upstream response or emit the bounded terminal error."""
-    stages = response_failed.MAX_STAGES if exchange.is_responses else 0
-    dialogue_slots = response_failed.DIALOGUE_SLOTS if exchange.is_responses else 0
+    stages = RESPONSE_FAILED_MAX_STAGES if exchange.is_responses else 0
+    dialogue_slots = RESPONSE_FAILED_DIALOGUE_SLOTS if exchange.is_responses else 0
     input_slots = INPUT_VARIANT_DIALOGUE_SLOTS if exchange.is_responses else 0
     for attempt in range(
         (_MAX_ATTEMPTS if exchange.is_responses else 1) + stages + dialogue_slots + input_slots

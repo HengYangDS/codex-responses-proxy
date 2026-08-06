@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from codex_responses_proxy.relay import config
+from codex_responses_proxy.runtime import config
 from codex_responses_proxy.service import digest
 
 MANIFEST_FILENAME = "payload-manifest.json"

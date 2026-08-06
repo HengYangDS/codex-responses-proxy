@@ -20,6 +20,7 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle import projection, transaction
+from codex_responses_proxy.runtime import config as runtime_config
 
 
 QUIET_SECONDS = 5.0
@@ -427,7 +428,7 @@ def read_runtime(ctx: runtime_context.RuntimeContext) -> dict[str, object] | Non
     """Read the secret-free installed listener health snapshot over loopback."""
 
     request = urllib.request.Request(
-        f"http://127.0.0.1:{ctx.port}/healthz",
+        runtime_config.loopback_url(ctx.port, "/healthz"),
         headers={"Accept": "application/json"},
         method="GET",
     )

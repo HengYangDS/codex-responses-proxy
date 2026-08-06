@@ -24,6 +24,8 @@ UPSTREAM_TIMEOUT_ENV = "CODEX_RESPONSES_PROXY_UPSTREAM_TIMEOUT"
 UPSTREAM_READ_TIMEOUT_ENV = "CODEX_RESPONSES_PROXY_UPSTREAM_READ_TIMEOUT"
 WATCHDOG_INTERVAL_ENV = "CODEX_RESPONSES_PROXY_WATCHDOG_INTERVAL"
 WATCHDOG_MAX_BACKOFF_ENV = "CODEX_RESPONSES_PROXY_WATCHDOG_MAX_BACKOFF"
+RESPONSE_FAILED_COMPACTION_BUDGET_ENV = "CODEX_RESPONSES_PROXY_RESPONSE_FAILED_COMPACTION_BUDGET"
+RESPONSE_FAILED_MAX_STAGES_ENV = "CODEX_RESPONSES_PROXY_RESPONSE_FAILED_MAX_STAGES"
 
 DEFAULT_PORT = 8792
 DEFAULT_PROXY_LOG_MAX_BYTES = 4 * 1024 * 1024
@@ -34,6 +36,8 @@ DEFAULT_UPSTREAM_TIMEOUT = 900.0
 DEFAULT_UPSTREAM_READ_TIMEOUT = 240.0
 DEFAULT_WATCHDOG_INTERVAL = 15.0
 DEFAULT_WATCHDOG_MAX_BACKOFF = 120.0
+DEFAULT_RESPONSE_FAILED_COMPACTION_BUDGET = 512 * 1024
+DEFAULT_RESPONSE_FAILED_MAX_STAGES = 3
 
 
 class ConfigurationError(ValueError):
@@ -61,6 +65,8 @@ class Settings:
     upstream_read_timeout: float
     watchdog_interval: float
     watchdog_max_backoff: float
+    response_failed_compaction_budget: int
+    response_failed_max_stages: int
 
     @property
     def listener(self) -> tuple[str, int]:
@@ -131,6 +137,12 @@ def listener_host() -> str:
     """Return the product-invariant loopback listener host."""
 
     return "127.0.0.1"
+
+
+def loopback_url(port: int, path: str) -> str:
+    """Build one internal HTTP URL from the invariant listener host."""
+
+    return f"http://{listener_host()}:{port}{path}"
 
 
 def _integer(source: Mapping[str, str], name: str, default: int, minimum: int, maximum: int) -> int:
@@ -232,5 +244,19 @@ def load(environment: Mapping[str, str] | None = None) -> Settings:
         ),
         watchdog_max_backoff=_number(
             source, WATCHDOG_MAX_BACKOFF_ENV, DEFAULT_WATCHDOG_MAX_BACKOFF, 0.1, 86400
+        ),
+        response_failed_compaction_budget=_integer(
+            source,
+            RESPONSE_FAILED_COMPACTION_BUDGET_ENV,
+            DEFAULT_RESPONSE_FAILED_COMPACTION_BUDGET,
+            4 * 1024,
+            64 * 1024 * 1024,
+        ),
+        response_failed_max_stages=_integer(
+            source,
+            RESPONSE_FAILED_MAX_STAGES_ENV,
+            DEFAULT_RESPONSE_FAILED_MAX_STAGES,
+            0,
+            8,
         ),
     )

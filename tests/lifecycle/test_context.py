@@ -8,7 +8,7 @@ from pathlib import Path
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context
-from codex_responses_proxy.relay import config
+from codex_responses_proxy.runtime import config
 from codex_responses_proxy.service import runtime
 import pytest
 

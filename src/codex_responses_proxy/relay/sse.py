@@ -19,7 +19,7 @@ from typing import Any, Protocol, TypedDict
 
 from codex_responses_proxy.protocol import response as replay_response
 from codex_responses_proxy.relay import operational_log, telemetry
-from codex_responses_proxy.relay import config as runtime_config
+from codex_responses_proxy.runtime import config as runtime_config
 
 
 UPSTREAM_READ_TIMEOUT = runtime_config.load().upstream_read_timeout

@@ -6,6 +6,9 @@ import json
 from collections.abc import Mapping
 
 from codex_responses_proxy.protocol import response_failed
+from codex_responses_proxy.runtime import config as runtime_config
+
+COMPACTION_BUDGET = runtime_config.DEFAULT_RESPONSE_FAILED_COMPACTION_BUDGET
 
 
 def _body(input_items, **extra):
@@ -78,10 +81,10 @@ class ResponseFailedContracts:
             ],
             prompt_cache_key="cache-key-must-not-reach-the-fallback",
         )
-        compact, detail = response_failed.compact_request(body)
+        compact, detail = response_failed.compact_request(body, COMPACTION_BUDGET)
         compact, detail = self.assert_compacted(compact, detail)
         assert detail["removed_inputs"] >= 1
-        assert len(compact) <= response_failed.COMPACTION_BUDGET
+        assert len(compact) <= COMPACTION_BUDGET
         obj = json.loads(compact)
         assert obj["store"] is False
         assert "prompt_cache_key" not in obj
@@ -108,7 +111,7 @@ class ResponseFailedContracts:
                 _message("user", "newest user context"),
             ]
         )
-        compact, detail = response_failed.compact_request(body)
+        compact, detail = response_failed.compact_request(body, COMPACTION_BUDGET)
         compact, detail = self.assert_compacted(compact, detail)
         assert detail["removed_inputs"] == 3
         obj = json.loads(compact)
@@ -124,8 +127,8 @@ class ResponseFailedContracts:
             ],
             prompt_cache_key="stale-full-history-key",
         )
-        assert len(body) < response_failed.COMPACTION_BUDGET
-        compact, detail = response_failed.compact_request(body)
+        assert len(body) < COMPACTION_BUDGET
+        compact, detail = response_failed.compact_request(body, COMPACTION_BUDGET)
         compact, detail = self.assert_compacted(compact, detail)
         assert len(compact) <= len(body) // 2
         assert detail["removed_inputs"] == 1
@@ -154,7 +157,7 @@ class ResponseFailedContracts:
             tools=[{"type": "function", "name": "huge", "parameters": "x" * 600000}],
             prompt_cache_key="must-remain-on-original-request",
         )
-        compact, detail = response_failed.compact_request(body)
+        compact, detail = response_failed.compact_request(body, COMPACTION_BUDGET)
         assert compact is None
         assert detail is None
         assert json.loads(body)["prompt_cache_key"] == "must-remain-on-original-request"
@@ -174,7 +177,7 @@ class ResponseFailedContracts:
             ],
             prompt_cache_key="stale-full-history-key",
         )
-        recovery, detail = response_failed.recover_dialogue(body)
+        recovery, detail = response_failed.recover_dialogue(body, COMPACTION_BUDGET)
         recovery, detail = self.assert_compacted(recovery, detail)
         recovered = json.loads(recovery)
         assert recovered["store"] is False
@@ -196,7 +199,7 @@ class ResponseFailedContracts:
                 _output("custom_tool_call_output", "new", "large" + "x" * 100000),
             ]
         )
-        recovery, detail = response_failed.recover_dialogue(body)
+        recovery, detail = response_failed.recover_dialogue(body, COMPACTION_BUDGET)
         recovery, detail = self.assert_compacted(recovery, detail)
         assert json.loads(recovery)["input"] == [_message("user", "latest user request")]
         assert detail["retained_messages"] == 1
