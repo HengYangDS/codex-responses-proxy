@@ -1,0 +1,31 @@
+schema_version = 1
+id = "change:terminal-product-closeout"
+intent = "Remove historical compatibility debt, restore portable toolchain contracts, declare independent Forge publication, and complete the terminal product release."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/terminal-product-closeout/**",
+    ".ethos/**",
+    ".github/**",
+    ".gitlab-ci.yml",
+    "pyproject.toml",
+    "uv.lock",
+    "src/**",
+    "tests/**",
+    "README.md",
+    "CHANGELOG.md",
+    "VERSION",
+    "docs/**",
+    "openspec/**",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
