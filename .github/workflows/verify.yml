@@ -33,11 +33,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Compile and test
         run: |
           set -euo pipefail
           python --version
-          python -m pip install --disable-pip-version-check --no-cache-dir uv==0.12.1
           uv sync --locked --only-group quality
           uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"
 
@@ -57,12 +57,12 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Compile and test
         shell: bash
         run: |
           set -euo pipefail
           python --version
-          python -m pip install --disable-pip-version-check --no-cache-dir uv==0.12.1
           uv sync --locked --only-group quality
           uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"
 
@@ -111,10 +111,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Verify lint, format, types, structure, docstrings, and product branch coverage
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check --no-cache-dir uv==0.12.1
           uv sync --locked --only-group quality
           uv run --locked --no-sync nox -s quality
 
@@ -141,11 +141,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Build and accept the native release asset
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check --no-cache-dir uv==0.12.1
           uv sync --locked --only-group quality
           uv run --locked --no-sync nox -s release -- "$RUNNER_TEMP/native-assets"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
