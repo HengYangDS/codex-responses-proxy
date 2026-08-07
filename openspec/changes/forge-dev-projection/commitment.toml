@@ -1,0 +1,23 @@
+schema_version = 1
+id = "change:forge-dev-projection"
+intent = "Publish provider-native main and dev refs from one accepted source without coupling the two Forges."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/forge-dev-projection/**",
+    "tools/forge/project.sh",
+    "tests/forge/test_forward_only.py",
+    "docs/operations/forge-operations.md",
+    "openspec/changes/archive/*-forge-dev-projection/**",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
