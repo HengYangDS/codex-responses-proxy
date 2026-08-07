@@ -111,11 +111,11 @@ installation command that operate from its isolated locked environment. It SHALL
 also declare distinct GitLab and GitHub remote aliases and tracked CI surfaces.
 GitLab and GitHub SHALL remain independent publication peers: neither Forge may
 consume the other Forge's CI status or release assets as publication authority.
-Only `main`, `dev`, and `proposal/*` are remote-eligible; `candidate/dev` and
-`work/*` remain local-only. Forge publication SHALL be an optional distribution
-projection, not a prerequisite for local product closure. A completed
-publication-topology Change SHALL carry only the minimal compare-and-swap
-authority required by the governed candidate integration operation.
+Each Forge SHALL independently project accepted source into one signed
+provider-native commit and atomically advance its protected `main` and `dev`
+refs to that commit. Only `main`, `dev`, and `proposal/*` are remote-eligible;
+`candidate/dev` and `work/*` remain local-only. Forge publication SHALL be an
+optional distribution projection, not a prerequisite for local product closure.
 
 #### Scenario: Both Forges are unavailable
 
@@ -128,9 +128,12 @@ authority required by the governed candidate integration operation.
 #### Scenario: Either Forge is independently available
 
 - **WHEN** GitLab or GitHub alone can receive an admitted remote-eligible branch
-- **THEN** that Forge can run its own tracked CI and publish its own release
-- **AND** the unavailable peer creates no dependency or substitute authority
-- **AND** no `candidate/dev` or `work/*` ref is published.
+- **THEN** that Forge receives one signed provider-native commit built from the
+  accepted source
+- **AND** its `main` and `dev` refs advance atomically to that exact commit
+- **AND** the projected tree equals the accepted source tree
+- **AND** no candidate or work ref is pushed
+- **AND** the unavailable peer creates no dependency or substitute authority.
 
 #### Scenario: Source proof is complete
 
