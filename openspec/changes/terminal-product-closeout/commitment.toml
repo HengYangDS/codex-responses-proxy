@@ -1,6 +1,6 @@
 schema_version = 1
 id = "change:terminal-product-closeout"
-intent = "Converge the current native lifecycle, portable toolchain contracts, independent Forge publication, and terminal product release."
+intent = "Converge the repository source to one portable native proxy product contract."
 subjects = [
     "repository:self",
 ]
@@ -36,34 +36,28 @@ invariants = [
 acceptance = [
     "quick_quality_python_matrix_and_native_release_pass",
     "statement_branch_and_package_coverage_each_exceed_ninety_five_percent",
-    "collaboration_nonce_and_digest_survive_an_installed_proxy_round_trip",
-    "dmxapi_ucloud_and_aihubmix_switch_without_session_state_rewrite",
-    "gitlab_and_github_publish_verified_byte_identical_product_assets_independently",
-    "all_owned_lanes_worktrees_leases_services_and_disposable_artifacts_are_closed",
+    "native_adapters_are_present_in_the_built_executable",
+    "installation_rollback_recovery_and_purge_use_one_current_payload_model",
+    "requirements_map_to_repository_tasks_and_executable_proof",
 ]
 risks = [
     "live_ciphertext_removed_before_codex_can_decrypt_collaboration_payload",
     "provider_bound_replay_reaches_a_different_provider",
-    "runtime_cutover_interrupts_active_responses",
-    "forge_specific_release_state_is_mistaken_for_shared_authority",
+    "a_legacy_payload_is_mistaken_for_current_product_state",
 ]
 authority_refs = [
     "user_instruction",
     "AGENTS.md",
     "docs/architecture/authority-and-runtime-boundary.md",
-    "docs/decisions/dr-0002-provider-portable-stateless-replay.md",
-    "docs/decisions/dr-0004-local-first-independent-forge-release.md",
+    "docs/decisions/dr-0005-single-native-payload-lifecycle.md",
 ]
 permissions = [
     "repository.read",
     "work-lane.write",
     "local-proof.execute",
     "git.ref.compare-and-swap",
-    "terminal-publication.execute",
 ]
 hypotheses = [
-    "preserving_live_response_bytes_repairs_encrypted_collaboration_delivery",
-    "request_side_replay_projection_is_the_unique_provider_portability_boundary",
     "destructive_compatibility_removal_reduces_product_and_release_risk",
 ]
 dependencies = []

@@ -13,8 +13,8 @@ failure surface without serving the terminal product.
 - Fail before mutation when the installed payload is incompatible.
 - Keep rollback and recovery exact, current, and receipt-bound.
 - Derive repeated versions and matrices from repository-owned sources.
-- Prove supported platforms, independent Forges, installation, provider
-  switching, original-session continuity, and repository-family closeout.
+- Prove the repository source, native artifact assembly, and independent Forge
+  contracts required before land.
 
 **Non-Goals:**
 
@@ -55,14 +55,21 @@ failure surface without serving the terminal product.
 | Provider | One route unavailable | Other routes remain usable |
 | Closeout | Owner residue remains | No completion claim |
 
+## Requirement To Task To Proof
+
+| Requirement | Task | Proof |
+| --- | --- | --- |
+| `product-interface:One self-contained product executable` | `1.1` | `native-release` |
+| `runtime-upgrade:The installed payload has one current shape` | `1.2` | `python-quality` |
+| `runtime-upgrade:Recovery binds candidate, rollback, and live runtime` | `1.3` | `python-quality` |
+
 ## Verification
 
 - Focused tests for current-only installation, rollback, recovery, and adapter
   assembly.
 - Quick, quality, Python 3.12/3.13/3.14, native release, and strict OpenSpec.
 - Statement, branch, and package coverage each strictly above 95%.
-- Native macOS installation plus hosted Linux and Windows executable proof.
-- Independent GitLab and GitHub releases with byte-identical assets.
-- DMXAPI -> UCloud -> AIHubMix -> DMXAPI requests with `store=false`.
-- Successful replies in the exact original Codex conversation.
-- Repository-family and process audit with no owner residue.
+- Native artifact and Forge workflow contract tests before land. Hosted runs,
+  independent publication, installation, provider switching, original-session
+  continuity, and repository-family retirement are verified by their own
+  post-land lifecycle receipts rather than being declared complete here.
