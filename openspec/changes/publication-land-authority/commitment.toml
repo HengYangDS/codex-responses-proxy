@@ -6,14 +6,25 @@ subjects = [
 ]
 scope = [
     "openspec/changes/publication-land-authority/**",
+    "openspec/specs/product-interface/spec.md",
+    "openspec/changes/archive/*-publication-land-authority/**",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+    "candidate_landing_uses_only_the_governed_exact_cas_operation",
+    "work_and_candidate_refs_remain_local_only",
+    "product_source_runtime_and_forge_topology_remain_unchanged",
+]
+acceptance = [
+    "strict_openspec_validation_passes",
+    "exact_head_repository_proof_passes",
+    "archive_and_candidate_landing_complete_through_ethos",
+]
+risks = ["authority_scope_widening"]
+authority_refs = ["user_instruction", "AGENTS.md", "rules/mutation.md"]
 permissions = [
     "repository.read",
     "work-lane.write",
+    "git.ref.compare-and-swap",
 ]
 hypotheses = []
 dependencies = []
