@@ -8,6 +8,8 @@ scope = [
     "openspec/changes/publication-land-authority/**",
     "openspec/specs/product-interface/spec.md",
     "openspec/changes/archive/*-publication-land-authority/**",
+    ".ethos/release.toml",
+    "openspec/changes/archive/2026-08-07-declare-publication-topology/**",
 ]
 invariants = [
     "candidate_landing_uses_only_the_governed_exact_cas_operation",
