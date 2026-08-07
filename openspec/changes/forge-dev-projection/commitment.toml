@@ -11,10 +11,24 @@ scope = [
     "docs/operations/forge-operations.md",
     "openspec/changes/archive/*-forge-dev-projection/**",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+    "gitlab_and_github_remain_independent_publication_planes",
+    "candidate_and_work_refs_remain_local_only",
+    "one_provider_projection_owns_main_and_dev_updates",
+]
+acceptance = [
+    "each_provider_atomically_advances_main_and_dev",
+    "both_protected_refs_equal_the_verified_provider_projection",
+    "exact_head_repository_proof_passes",
+]
+risks = [
+    "partial_protected_branch_update",
+]
+authority_refs = [
+    "user_instruction",
+    "docs/operations/forge-operations.md",
+    "openspec/specs/product-interface/spec.md",
+]
 permissions = [
     "repository.read",
     "work-lane.write",
