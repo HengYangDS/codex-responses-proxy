@@ -9,6 +9,7 @@ scope = [
     ".gitleaks.toml",
     ".ethos/release.toml",
     "openspec/specs/product-interface/spec.md",
+    "openspec/changes/archive/*-declare-publication-topology/**",
 ]
 invariants = [
     "gitlab_and_github_are_independent_publication_peers",
@@ -31,6 +32,7 @@ authority_refs = [
     "AGENTS.md",
     "docs/governance/release-and-change-policy.md",
     "openspec/specs/product-interface/spec.md",
+    "openspec/changes/archive/*-declare-publication-topology/**",
 ]
 permissions = [
     "repository.read",
