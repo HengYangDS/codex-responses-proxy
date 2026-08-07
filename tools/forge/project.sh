@@ -244,6 +244,8 @@ done
   exit 1
 }
 git -C "$repository" update-ref refs/heads/main "$projected"
-git_transport -C "$repository" push target refs/heads/main:refs/heads/main
+git_transport -C "$repository" push --atomic target \
+  refs/heads/main:refs/heads/main \
+  refs/heads/main:refs/heads/dev
 write_map "$projected" "$base_source" "$base_projected"
-printf '%s identity projection synchronized: %s\n' "$provider" "$projected"
+printf '%s identity projection synchronized to main and dev: %s\n' "$provider" "$projected"

@@ -54,7 +54,14 @@ Each projection:
 2. verifies source and provider-native history;
 3. creates only the required provider-specific commit identities;
 4. proves the update is forward-only and fast-forward;
-5. pushes only allowed refs.
+5. atomically advances that Forge's protected `main` and `dev` to the same
+   provider-native commit;
+6. pushes no other branch.
+
+`main` is the default release branch. `dev` is the shared integration branch.
+They intentionally point to the same provider-native commit immediately after
+publication; later proposal integration may advance `dev` first. Local
+`candidate/dev` and `work/*` refs are never published.
 
 No history rewrite, force push, tag copy, or cross-Forge credential use is
 admitted.
