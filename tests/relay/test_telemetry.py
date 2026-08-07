@@ -35,7 +35,7 @@ class TelemetryTests:
             status["pid"],
             counters["responses_received"],
             counters["encrypted_replayed_reasoning_items_stripped"],
-            counters["encrypted_content_blocks_stripped"],
+            counters["encrypted_replay_content_blocks_stripped"],
             counters["unreplayable_images_stripped"],
             status["upstream_classifications"],
         ) == ("1.2.3", 42, 1, 2, 3, 4, {"validation_error": 1})

@@ -7,10 +7,10 @@ usage() {
 usage: project.sh --provider <gitlab|github> [--source-ref <ref>]
                   [--remote <name>] [--map-output <path>]
 
-GitLab receives the accepted canonical commits unchanged. GitHub receives an
+The accepted local history is provider-neutral. Each Forge receives an
 append-only identity projection with identical trees, messages, dates, and
-parent topology. Every projected commit uses the selected Forge actor and a
-trusted signature. Existing remote history is never rewritten or force-pushed.
+parent topology. Every projected commit uses only the selected Forge actor and
+trust inputs. Existing remote history is never rewritten or force-pushed.
 USAGE
   exit 2
 }
@@ -54,11 +54,8 @@ python_bin=${PYTHON:-python3}
 . "$script_root/context.sh"
 load_publication_context "$provider"
 
-canonical_anchor=${CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS:-}
 provider_anchor_variable=CODEX_RESPONSES_PROXY_$(printf '%s' "$provider" | tr '[:lower:]' '[:upper:]')_COMMIT_ALLOWED_SIGNERS
 eval "provider_anchor=\${$provider_anchor_variable:-}"
-[ -f "$canonical_anchor" ] || publication_error \
-  "canonical GitLab commit trust must be supplied with CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS"
 [ -f "$provider_anchor" ] || publication_error \
   "$provider commit trust must be supplied with $provider_anchor_variable"
 
@@ -115,15 +112,6 @@ commit_email_and_signature_are_valid() {
       verify-commit "$commit" >/dev/null 2>&1
 }
 
-gitlab_email=$(CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT=${CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT:-} \
-  sh -c '. "$1"; load_publication_context gitlab; printf %s "$publication_email"' _ "$script_root/context.sh")
-for commit in $(git rev-list "$source"); do
-  commit_email_and_signature_are_valid "$root" "$commit" "$gitlab_email" "$canonical_anchor" || {
-    echo "canonical GitLab identity or signature is invalid: $commit" >&2
-    exit 1
-  }
-done
-
 git_transport clone --quiet --no-local --no-tags "file://$root" "$repository"
 git -C "$repository" remote remove origin 2>/dev/null || true
 git -C "$repository" remote add target "$remote_url"
@@ -174,32 +162,18 @@ os.replace(temporary, destination)
 PY
 }
 
-if [ "$provider" = gitlab ]; then
-  if [ -n "$remote_tip" ]; then
-    git -C "$repository" merge-base --is-ancestor "$remote_tip" "$source" || {
-      echo "GitLab main is not an ancestor of canonical source; forward-only projection refused" >&2
-      exit 1
-    }
-  fi
-  printf '%s\t%s\n' "$source" "$source" >>"$map_rows"
-  git_transport -C "$repository" push target "$source:refs/heads/main"
-  write_map "$source" "$source" "$source"
-  printf 'GitLab canonical projection synchronized: %s\n' "$source"
-  exit 0
-fi
-
 select_agent_signing_key "$workspace/signing-key.pub"
 
-canonical_commits=$(git -C "$repository" rev-list --reverse --topo-order "$source")
-canonical_commit_list="$workspace/canonical-commits.txt"
-printf '%s\n' "$canonical_commits" >"$canonical_commit_list"
+source_commits=$(git -C "$repository" rev-list --reverse --topo-order "$source")
+source_commit_list="$workspace/canonical-commits.txt"
+printf '%s\n' "$source_commits" >"$source_commit_list"
 base_source=
 base_projected=
 if [ -n "$remote_tip" ]; then
   projected_commits=$(git -C "$repository" rev-list "$remote_tip")
   for commit in $projected_commits; do
     commit_email_and_signature_are_valid "$repository" "$commit" "$publication_email" "$provider_anchor" || {
-      echo "existing GitHub identity or signature is invalid: $commit" >&2
+      echo "existing provider identity or signature is invalid: $commit" >&2
       exit 1
     }
   done
@@ -208,7 +182,7 @@ if [ -n "$remote_tip" ]; then
   printf '%s\n' "$projected_commits" >"$projected_commit_list"
   base_source=$("$python_bin" "$script_root/history.py" \
     --repository "$repository" \
-    --canonical "$canonical_commit_list" --projected "$projected_commit_list" \
+    --canonical "$source_commit_list" --projected "$projected_commit_list" \
     --remote-commit "$remote_tip" --output "$joined_map")
   base_projected=$remote_tip
   cat "$joined_map" >>"$map_rows"
@@ -223,7 +197,7 @@ if [ -n "$base_source" ]; then
   new_commits=$(git -C "$repository" rev-list --reverse --topo-order "$base_source..$source")
   projected=$remote_tip
 else
-  new_commits=$canonical_commits
+  new_commits=$source_commits
   projected=
 fi
 
@@ -233,7 +207,7 @@ for source_commit in $new_commits; do
   for source_parent in $(git -C "$repository" show -s --format=%P "$source_commit"); do
     projected_parent=$(lookup_projected_parent "$source_parent")
     [ -n "$projected_parent" ] || {
-      echo "canonical parent has no GitHub projection: $source_parent" >&2
+      echo "source parent has no provider projection: $source_parent" >&2
       exit 1
     }
     set -- "$@" -p "$projected_parent"
@@ -254,7 +228,7 @@ for source_commit in $new_commits; do
       <"$message_file"
   )
   commit_email_and_signature_are_valid "$repository" "$projected" "$publication_email" "$provider_anchor" || {
-    echo "generated GitHub commit does not satisfy provider trust: $projected" >&2
+    echo "generated commit does not satisfy provider trust: $projected" >&2
     exit 1
   }
   printf '%s\t%s\n' "$source_commit" "$projected" >>"$map_rows"
@@ -262,14 +236,14 @@ for source_commit in $new_commits; do
 done
 
 [ -n "$projected" ] || {
-  echo "GitHub projection produced no target commit" >&2
+  echo "$provider projection produced no target commit" >&2
   exit 1
 }
 [ "$(git -C "$repository" rev-parse "$projected^{tree}")" = "$source_tree" ] || {
-  echo "projected GitHub branch tree differs from canonical source" >&2
+  echo "projected branch tree differs from accepted source" >&2
   exit 1
 }
 git -C "$repository" update-ref refs/heads/main "$projected"
 git_transport -C "$repository" push target refs/heads/main:refs/heads/main
 write_map "$projected" "$base_source" "$base_projected"
-printf 'GitHub identity projection synchronized: %s\n' "$projected"
+printf '%s identity projection synchronized: %s\n' "$provider" "$projected"

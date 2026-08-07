@@ -23,9 +23,8 @@ mkdir -p "$home" "$tmp/allowed"
 : > "$global_config"
 ssh-keygen -q -t ed25519 -N '' -f "$key"
 public=$(awk '{print $1" "$2}' "$key.pub")
-gitlab_email=gitlab-publisher@example.test
+gitlab_email=local-builder@example.test
 github_email=github-publisher@example.test
-printf '%s namespaces="git" %s\n' "$gitlab_email" "$public" > "$tmp/allowed/gitlab"
 printf '%s namespaces="git" %s\n' "$github_email" "$public" > "$tmp/allowed/github"
 eval "$(ssh-agent -s)" >/dev/null
 ssh-add "$key" >/dev/null 2>&1
@@ -49,15 +48,15 @@ repo=$(CDPATH= cd -- "$repo" && pwd)
 canonical=$(git -C "${CODEX_RESPONSES_PROXY_TEST_CANONICAL:?}" rev-parse --show-toplevel)
 printf '%s|%s\n' "$repo" "$*" >> "${CODEX_RESPONSES_PROXY_TEST_METADATA_LOG:?}"
 case "$*" in
-  *'--provider gitlab --tag '*)
-    test "$repo" = "$canonical" || {
-      echo 'GitLab metadata preflight ran outside the canonical checkout' >&2
+  *'--provider github --prepare-release'*)
+    test "$repo" != "$canonical" || {
+      echo 'GitHub preparation ran outside the isolated provider checkout' >&2
       exit 90
     }
     ;;
   *'--provider github --tag '*)
     test "$repo" != "$canonical" || {
-      echo 'GitHub metadata preflight ran in the canonical GitLab checkout' >&2
+      echo 'GitHub metadata preflight ran outside the isolated provider checkout' >&2
       exit 91
     }
     git -C "$repo" show-ref --verify --quiet "refs/tags/${CODEX_RESPONSES_PROXY_TEST_TAG:?}" || {
@@ -104,12 +103,8 @@ chmod +x "$source/tools/forge/check-tag-signature.sh" "$source/tools/release/met
 printf 'release source\n' > "$source/README.md"
 git -C "$source" add .
 git -C "$source" commit -qm 'release source'
-git -C "$source" -c gpg.format=ssh -c gpg.ssh.program=ssh-keygen \
-  -c user.signingkey="$key" tag -s -a v1.0.0 -m 'GitLab release identity'
-
 projection="$tmp/projection"
 git clone -q --no-local "file://$source" "$projection"
-git -C "$projection" tag -d v1.0.0 >/dev/null
 git -C "$projection" remote set-url origin "file://$remote"
 git -C "$projection" push -q origin main
 git -C "$remote" symbolic-ref HEAD refs/heads/main
@@ -126,8 +121,7 @@ run_tag() {
   (
     cd "$source"
     CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT="$context" \
-    CODEX_RESPONSES_PROXY_GITLAB_ALLOWED_SIGNERS="$tmp/allowed/gitlab" \
-    CODEX_RESPONSES_PROXY_GITHUB_ALLOWED_SIGNERS="$tmp/allowed/github" \
+      CODEX_RESPONSES_PROXY_GITHUB_ALLOWED_SIGNERS="$tmp/allowed/github" \
     CODEX_RESPONSES_PROXY_GITHUB_SIGNING_KEY="$key" \
     CODEX_RESPONSES_PROXY_RELEASE_PYTHON="$mock_python" \
     CODEX_RESPONSES_PROXY_TEST_METADATA_LOG="$metadata_log" \
@@ -143,27 +137,22 @@ run_tag() {
 run_tag v1.0.0 >"$tmp/tagger.out" 2>"$tmp/tagger.err"
 
 canonical_source=$(git -C "$source" rev-parse --show-toplevel)
-[ "$(sed -n '1p' "$metadata_log")" = "$canonical_source|$canonical_source/tools/release/metadata.py --provider gitlab --tag v1.0.0" ] || {
-  echo 'GitHub tag creation did not first validate the exact canonical GitLab tag' >&2
-  exit 1
-}
+first_repo=$(sed -n '1s/|.*//p' "$metadata_log")
 second_repo=$(sed -n '2s/|.*//p' "$metadata_log")
-[ -n "$second_repo" ] && [ "$second_repo" != "$canonical_source" ] || {
-  echo 'GitHub tag creation did not isolate provider validation' >&2
+[ -n "$first_repo" ] && [ "$first_repo" = "$second_repo" ] && [ "$first_repo" != "$canonical_source" ] || {
+  echo 'GitHub tag creation did not keep validation inside one isolated provider checkout' >&2
   exit 1
 }
-second_checker=$(sed -n '2s/^[^|]*|\([^ ]*\).*/\1/p' "$metadata_log")
-second_checker_normalized=$(printf '%s\n' "$second_checker" | sed 's://*:/:g')
-case "$second_checker_normalized" in "$second_repo"/tools/release/metadata.py) ;; *)
-  echo 'GitHub metadata checker did not come from the isolated projection' >&2
+grep -F -- '--provider github --prepare-release' "$metadata_log" >/dev/null || {
+  echo 'GitHub tag creation bypassed provider-native release preparation' >&2
   exit 1
-;; esac
-grep -F -- "$second_checker --provider github --tag v1.0.0" "$metadata_log" >/dev/null || {
-  echo 'GitHub tag creation used the wrong provider namespace' >&2
+}
+grep -F -- '--provider github --tag v1.0.0' "$metadata_log" >/dev/null || {
+  echo 'GitHub tag creation bypassed exact provider-native tag validation' >&2
   exit 1
 }
 [ "$(wc -l < "$metadata_log" | tr -d ' ')" = 2 ] || {
-  echo 'GitHub tag creation ran an unexpected metadata preflight' >&2
+  echo 'GitHub tag creation ran an unexpected cross-Forge metadata preflight' >&2
   exit 1
 }
 git -C "$remote" rev-parse --verify refs/tags/v1.0.0 >/dev/null
@@ -173,8 +162,8 @@ git -C "$remote" -c gpg.format=ssh -c gpg.ssh.program=ssh-keygen \
   echo 'GitHub release tag does not bind the GitHub main tip' >&2
   exit 1
 }
-[ "$(git -C "$remote" rev-parse 'v1.0.0^{}^{tree}')" = "$(git -C "$source" rev-parse 'v1.0.0^{}^{tree}')" ] || {
-  echo 'GitHub release tag tree differs from GitLab release tag tree' >&2
+[ "$(git -C "$remote" rev-parse 'v1.0.0^{}^{tree}')" = "$(git -C "$source" rev-parse 'HEAD^{tree}')" ] || {
+  echo 'GitHub release tag tree differs from accepted local source tree' >&2
   exit 1
 }
 [ "$(git -C "$remote" rev-parse refs/tags/v0.9.0)" = "$existing_tag" ] || {
@@ -187,8 +176,8 @@ remote_tag_count=$(git -C "$remote" for-each-ref --format='%(refname)' refs/tags
   exit 1
 }
 
-# A provider-native target tag already present on GitHub must be rejected after
-# only the canonical GitLab phase; GitHub metadata validation must not run.
+# A provider-native target tag already present on GitHub must be rejected before
+# GitHub metadata validation runs.
 cp "$metadata_log" "$tmp/metadata-before-existing.log"
 if run_tag v1.0.0 >"$tmp/existing.out" 2>"$tmp/existing.err"; then
   echo 'GitHub tag creation accepted an existing remote target tag' >&2
@@ -198,33 +187,8 @@ grep -F 'GitHub tag already exists: v1.0.0' "$tmp/existing.err" >/dev/null || {
   echo 'existing-tag rejection returned an unclear error' >&2
   exit 1
 }
-existing_before=$(wc -l < "$tmp/metadata-before-existing.log" | tr -d ' ')
-existing_after=$(wc -l < "$metadata_log" | tr -d ' ')
-[ "$existing_after" = "$((existing_before + 1))" ] || {
-  echo 'existing GitHub target tag reached provider validation' >&2
-  exit 1
-}
-tail -n 1 "$metadata_log" | grep -F -- '--provider gitlab --tag v1.0.0' >/dev/null || {
-  echo 'existing GitHub target tag bypassed canonical validation order' >&2
-  exit 1
-}
-
-# The canonical GitLab tag must peel to canonical main HEAD before any
-# provider-specific metadata checker is invoked.
-printf 'later source\n' >> "$source/README.md"
-git -C "$source" add README.md
-git -C "$source" commit -qm 'later source'
-cp "$metadata_log" "$tmp/metadata-before-head.log"
-if run_tag v1.0.0 >"$tmp/head.out" 2>"$tmp/head.err"; then
-  echo 'GitHub tag creation accepted a GitLab tag that does not bind HEAD' >&2
-  exit 1
-fi
-grep -F 'does not bind canonical HEAD' "$tmp/head.err" >/dev/null || {
-  echo 'wrong-HEAD rejection returned an unclear error' >&2
-  exit 1
-}
-cmp -s "$metadata_log" "$tmp/metadata-before-head.log" || {
-  echo 'wrong-HEAD GitLab tag was checked after provider validation' >&2
+cmp -s "$metadata_log" "$tmp/metadata-before-existing.log" || {
+  echo 'existing GitHub target tag reached metadata validation' >&2
   exit 1
 }
 

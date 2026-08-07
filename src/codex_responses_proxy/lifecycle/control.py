@@ -52,26 +52,15 @@ def _runtime_metrics(ctx: runtime_context.RuntimeContext) -> dict | None:
 def status(ctx: runtime_context.RuntimeContext) -> dict:
     """Return non-secret runtime and transaction evidence without mutation."""
 
-    historical: projection.HistoricalProjection | None = None
     try:
         integrity_ok, integrity_detail = projection.verify_payload_manifest(ctx)
-    except errors.InstallError as current_error:
-        try:
-            historical = projection.verify_historical_projection(ctx)
-        except errors.InstallError:
-            integrity_ok, integrity_detail = False, str(current_error)
-        else:
-            integrity_ok = True
-            integrity_detail = f"direct predecessor {historical.release} verified"
+    except errors.InstallError as exc:
+        integrity_ok, integrity_detail = False, str(exc)
     try:
         service = adapter().status(ctx)
-    except Exception:
+    except (OSError, errors.InstallError, errors.UnsupportedPlatform):
         service = "unknown"
-    listeners = (
-        process.verified_proxy_listener_pids(ctx)
-        if historical is None
-        else process.verified_listener_pids(ctx.port, historical.entrypoint)
-    )
+    listeners = process.verified_proxy_listener_pids(ctx)
     return {
         "release": _installed_release(ctx),
         "payload_integrity": {"ok": integrity_ok, "detail": integrity_detail},
@@ -87,10 +76,7 @@ def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -
 
     runtime = _runtime_metrics(ctx)
     if not handoff.runtime_supports_handoff(runtime):
-        raise errors.InstallError(
-            "installed listener does not support protocol-v2 handoff; install a verified "
-            "successor release during an explicitly authorized predecessor migration"
-        )
+        raise errors.InstallError("installed runtime does not support transactional reload")
     assert runtime is not None
     integrity_ok, integrity_detail = projection.verify_payload_manifest(ctx)
     if not integrity_ok:

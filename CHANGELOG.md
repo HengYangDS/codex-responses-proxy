@@ -1,24 +1,35 @@
 # Changelog
 
-This project follows [Semantic Versioning](https://semver.org/). The changelog
-records released, user-relevant behavior across both Forge planes. `Unreleased`
-is reserved for work that has not yet been tagged. A provider may retain these
-shared headings even when a historical tag exists only on the other Forge.
+This project follows [Semantic Versioning](https://semver.org/). It preserves
+all released, user-visible changes. GitLab and GitHub keep independent signed
+tags and Releases for the same product versions; neither Forge is the other's
+publication authority.
 
 ## [Unreleased]
 
-## [2.0.13] - 2026-08-06
+## [2.0.15] - 2026-08-07
+
+### Changed
+
+- Install a fresh payload or hand off from one verified current-native runtime;
+  reject every incompatible installation before mutation.
+- Keep one manifest-owned rollback and recovery model. Remove version-specific
+  inventories, interpreter entrypoints, migration paths, and bypass switches.
+- Keep specifications, tests, documentation, and the executable on the same
+  provider-portable runtime contract.
 
 ### Fixed
 
-- Discover listeners and process identities through bundled `psutil` instead
-  of optional host commands or platform-specific parsers.
-- Transfer a prepared handoff to its commit coordinator before projecting HTTP
-  202, so a controller disconnect cannot strand a READY successor.
-- Read hook executable intent from Git metadata on every host and use the
-  repository-wide uv copy policy to keep successful Windows CI warning-free.
-- Keep strict semantic-package branch coverage above 95 percent on every CI
-  host. The failed `v2.0.12` runs remain immutable evidence.
+- Preserve live Responses bytes, including encrypted reasoning and collaboration
+  control data, until Codex completes the current turn. Strip provider-bound
+  ciphertext and identifiers only when a later request replays prior output,
+  restoring non-empty subagent task delivery without weakening `store=false`.
+- Bundle every native service adapter and keep expected failures concise, with
+  no traceback, warning, module path, or private path.
+- Discover process identity through bundled `psutil`, not host command parsers.
+- Commit a prepared handoff before returning HTTP 202, so controller loss cannot
+  strand the successor.
+- Keep repository hooks portable and Python package coverage above 95 percent.
 
 ## [2.0.12] - 2026-08-05
 

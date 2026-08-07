@@ -81,7 +81,7 @@ class TestPayloadProjection:
         for relative in runtime_files():
             assert not (install / relative).exists()
 
-    def test_purge_rejects_manifest_claims_outside_historical_inventory(self) -> None:
+    def test_purge_rejects_noncurrent_manifest_without_touching_unknown_content(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install = Path(ctx.install_dir)
         claimed = {
@@ -102,7 +102,7 @@ class TestPayloadProjection:
         }
         (install / inventory.MANIFEST_FILENAME).write_bytes(payload_digest.canonical_json(manifest))
 
-        with pytest.raises(errors.InstallError, match="file set is unsupported"):
+        with pytest.raises(errors.InstallError, match="manifest schema is unsupported"):
             payload_projection.purge_installed_projection(ctx)
         assert (install / "operator-note.txt").read_bytes() == b"keep\n"
 

@@ -1,22 +1,22 @@
-family = "quality"
-primary_invariant = "A successful CI job contains no unhandled Python traceback or warning."
-routing_question = "Does this change alter test diagnostics, quality output, or Forge verification logs?"
+family = "verification"
+primary_invariant = "One repository-owned graph proves product quality with pristine cross-platform output."
+routing_question = "Does this change alter verification composition, diagnostic cleanliness, coverage, or hosted execution portability?"
 decision_axes = ["lifecycle", "surface", "authority"]
 boundary_rules = [
-  "Production resources are closed by their production owner.",
+  "Nox owns verification composition and uv.lock owns Python tool resolution.",
   "Expected test disconnects are suppressed only at the fixture boundary.",
-  "Forge jobs project repository-owned commands instead of duplicating them.",
+  "Forge jobs project repository-owned commands instead of owning product or release semantics.",
 ]
 aliases = []
 
 [owner]
 package = "codex-responses-proxy"
-scope = "Python diagnostic integrity across tests, quality gates, and Forge projections"
+scope = "Repository-owned local and hosted verification diagnostics"
 
 [recommended_facets]
-lifecycle = ["validation", "release"]
+lifecycle = ["validation"]
 surface = ["test", "quality", "ci", "docs", "openspec"]
-authority = ["source", "test", "docs", "openspec", "claim", "evidence"]
+authority = ["source", "test", "docs", "openspec"]
 
 [proof_profile]
 default_command = "ethos prove --json"

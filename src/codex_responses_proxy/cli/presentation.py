@@ -92,6 +92,15 @@ def render(command: str, result: Any) -> str:
             ),
             next_command="codex-responses-proxy status",
         )
+    if command == "recover":
+        return _page(
+            "Recovered",
+            (
+                ("Transaction", result.get("version", "Unknown")),
+                ("State", str(result.get("state", "Unknown")).replace("_", " ").title()),
+            ),
+            next_command="codex-responses-proxy status",
+        )
     if command == "uninstall":
         return _page(
             "Purged" if result.get("purged") else "Uninstalled",

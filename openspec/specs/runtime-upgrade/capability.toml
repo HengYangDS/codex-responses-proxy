@@ -7,7 +7,7 @@ boundary_rules = [
   "The old listener validates committed successor bytes before preparing a child.",
   "The child independently freezes and echoes the same successor identity.",
   "Recovery restores only an exact retained rollback snapshot before a new release transaction begins.",
-  "An interrupted protocol-v2 bootstrap requires explicit authorization and exact old and successor runtime proof.",
+  "An interrupted handoff requires exact prior-runtime, candidate, and rollback proof.",
 ]
 aliases = []
 
@@ -18,7 +18,7 @@ scope = "Cross-version protocol-v2 released-payload upgrade and recovery"
 [recommended_facets]
 lifecycle = ["installation", "recovery"]
 surface = ["runtime", "listener", "control", "docs", "openspec"]
-authority = ["source", "test", "docs", "openspec", "claim", "evidence"]
+authority = ["source", "test", "docs", "openspec"]
 
 [proof_profile]
 default_command = "ethos prove --json"

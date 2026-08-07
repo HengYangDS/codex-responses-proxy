@@ -23,13 +23,14 @@ required = [
     "runs-on: macos-26",
     "runs-on: ubuntu-24.04",
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-    'python-version: ["3.12", "3.13", "3.14"]',
+    'versions = Path(".python-versions").read_text(encoding="utf-8").splitlines()',
+    'python-version: ${{ fromJSON(needs.python-matrix.outputs.versions) }}',
     'uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"',
     "python-windows:",
     "windows-2025",
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
     "# v7.0.0",
-    "shell: bash",
+    "shell: pwsh",
     'fetch-tags: true',
     'if: github.ref_type == \'tag\'',
     'git fetch --force --no-tags origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"',
@@ -37,8 +38,8 @@ required = [
     'git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}"',
     'git checkout --detach "$GITHUB_SHA"',
     'if [[ "$GITHUB_REF_TYPE" == tag ]]; then',
-    'python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"',
-    'python tools/release/metadata.py --provider github',
+    'uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"',
+    'uv run --locked --no-sync python tools/release/metadata.py --provider github',
     "python-quality:",
     "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
     "uv sync --locked --only-group quality",
@@ -54,13 +55,14 @@ required = [
     'uv run --locked --no-sync nox -s release -- "$RUNNER_TEMP/native-assets"',
     "release-assets:",
     "name: Release assets",
-    "needs: native-assets",
+    "needs: [python-matrix, native-assets]",
+    'python-version: ${{ needs.python-matrix.outputs.latest }}',
     "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
-    "python -m tools.release.assemble_assets",
+    "uv run --locked --no-sync python tools/release/assemble_assets.py",
     "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY",
     "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
     "ssh-keygen -Y sign",
-    "python -m tools.release.assemble_assets --verify \"$release\"",
+    "uv run --locked --no-sync python tools/release/assemble_assets.py --verify \"$release\"",
     "name: release-assets",
 ]
 for token in required:
@@ -68,14 +70,8 @@ for token in required:
         raise SystemExit(f"GitHub Actions verification contract is missing {token!r}")
 if "contents: write" in text:
     raise SystemExit("verification workflow must use read-only repository permissions")
-for retired in (
-    "tools/quality/run.sh",
-    "tools/quality/requirements.txt",
-    "RUFF_VERSION=",
-    "TY_VERSION=",
-):
-    if retired in text:
-        raise SystemExit(f"verification workflow retains retired quality setup: {retired!r}")
+if "needs.native-assets.outputs.python-version" in text:
+    raise SystemExit("release assembly must read the Python SSOT, not a pass-through job output")
 if "pull_request:" in text or "pull_request_target:" in text:
     raise SystemExit("verification workflow must not execute pull-request workflow code")
 if "@main" in text or "@master" in text:
@@ -91,10 +87,10 @@ if test_owner not in mac_block:
     raise SystemExit(f"macOS Python matrix must run {test_owner}")
 for token in (
     "runs-on: windows-2025",
-    'python-version: ["3.12", "3.13", "3.14"]',
+    'python-version: ${{ fromJSON(needs.python-matrix.outputs.versions) }}',
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
-    "shell: bash",
+    "shell: pwsh",
     'uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"',
 ):
     if token not in windows_block:
@@ -114,8 +110,8 @@ checkout_block = governance_block.split("- name: Verify release", 1)[0]
 for token in ("fetch-depth: 0", "fetch-tags: true"):
     if token not in checkout_block:
         raise SystemExit(f"governance checkout must contain {token!r}")
-tag_check = 'python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"'
-branch_check = 'python tools/release/metadata.py --provider github'
+tag_check = 'uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"'
+branch_check = 'uv run --locked --no-sync python tools/release/metadata.py --provider github'
 for token in ('if [[ "$GITHUB_REF_TYPE" == tag ]]; then', tag_check, "else", branch_check):
     if token not in governance_block:
         raise SystemExit(f"governance ref dispatch must contain {token!r}")
@@ -125,6 +121,8 @@ if "--provider github --prepare-release" in governance_block:
     raise SystemExit("ordinary GitHub main verification must not require same-day release preparation")
 if governance_block.index(tag_check) > governance_block.rindex(branch_check):
     raise SystemExit("governance ref dispatch must select tag validation before branch fallback")
+if "shell: bash" in windows_block or ".sh" in windows_block:
+    raise SystemExit("Windows verification must not depend on Bash or POSIX shell scripts")
 if "secrets:" in windows_block or "permissions:" in windows_block:
     raise SystemExit("Windows verification must inherit the read-only, secret-free workflow contract")
 for forbidden in (
@@ -139,12 +137,5 @@ for forbidden in (
 for forbidden in ("git config --global", "GIT_ADVICE", "advice.detachedHead"):
     if forbidden in text or forbidden in release_text:
         raise SystemExit(f"GitHub workflows must not suppress Git diagnostics with {forbidden!r}")
-for retired in (
-    "tests/test_package.py",
-    "tests/test_empty_response_recovery.py",
-    "tests/test_rolling_handoff.py",
-):
-    if retired in text:
-        raise SystemExit(f"verification workflow retains retired test owner {retired!r}")
 print("GitHub Actions verification contract: OK")
 PYTHON

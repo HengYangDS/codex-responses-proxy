@@ -6,7 +6,6 @@ import contextlib
 import io
 import json
 import sys
-from argparse import Namespace
 from pathlib import Path
 
 import pytest
@@ -154,14 +153,12 @@ class CliLifecycleContracts:
         )
         assert application.presentation.render("future", {}) == ""
 
-    def test_status_returns_bounded_evidence_for_a_legacy_installed_projection(
-        self, *, mocker
-    ) -> None:
+    def test_status_returns_bounded_current_runtime_evidence(self, *, mocker) -> None:
         evidence = {
             "release": "2.0.10",
             "payload_integrity": {
                 "ok": True,
-                "detail": "direct predecessor 2.0.10 verified",
+                "detail": "release 2.0.15; 2 files verified",
             },
             "service": "running",
             "listener_pids": [321],
@@ -174,24 +171,16 @@ class CliLifecycleContracts:
         assert json.loads(stdout) == evidence
         assert stderr == ""
 
-    def test_status_binds_listener_identity_to_a_verified_predecessor_entrypoint(
-        self, *, mocker
-    ) -> None:
-        predecessor = projection.HistoricalProjection(
-            release="2.0.10",
-            files=frozenset({"VERSION", "codex_responses_proxy/listener/entrypoint.py"}),
-            entrypoint="/product/src/codex_responses_proxy/listener/entrypoint.py",
-        )
+    def test_status_binds_listener_identity_to_the_installed_executable(self, *, mocker) -> None:
         context = mocker.Mock(port=8792, executable="/product/codex-responses-proxy")
         mocker.patch.object(
             projection,
             "verify_payload_manifest",
-            side_effect=errors.InstallError("current layout differs"),
+            return_value=(True, "release 2.0.15; 2 files verified"),
         )
-        mocker.patch.object(projection, "verify_historical_projection", return_value=predecessor)
-        mocker.patch.object(application.control, "_installed_release", return_value="2.0.10")
+        mocker.patch.object(application.control, "_installed_release", return_value="2.0.15")
         adapter = mocker.patch.object(application.control, "adapter")
-        pids = mocker.patch.object(process, "verified_listener_pids", return_value=[321])
+        pids = mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[321])
         mocker.patch.object(
             application.control,
             "_runtime_metrics",
@@ -202,7 +191,7 @@ class CliLifecycleContracts:
         evidence = application.control.status(context)
         assert evidence["payload_integrity"]["ok"]
         assert evidence["listener_pids"] == [321]
-        pids.assert_called_once_with(8792, predecessor.entrypoint)
+        pids.assert_called_once_with(context)
 
     def test_doctor_classifies_an_unavailable_listener_without_false_success(
         self, *, mocker
@@ -277,6 +266,24 @@ class CliLifecycleContracts:
         assert stderr == ""
         reload.assert_called_once_with("context", timeout_seconds=12.5)
 
+    def test_recover_restores_only_the_runtime_bound_retained_transaction(self, *, mocker) -> None:
+        runtime = {"pid": 321, "release": "2.0.10", "accepting": True}
+        context = mocker.patch.object(application.control, "_context", return_value="context")
+        mocker.patch.object(application.control, "_runtime_metrics", return_value=runtime)
+        recover = mocker.patch.object(
+            application.transaction,
+            "rollback_recovery",
+            return_value={"version": "2.0.13", "state": "rolled_back"},
+        )
+
+        code, stdout, stderr = self.invoke("recover", "--json", "--port", "8801")
+
+        assert code == 0
+        assert stderr == ""
+        assert json.loads(stdout) == {"state": "rolled_back", "version": "2.0.13"}
+        context.assert_called_once_with(8801)
+        recover.assert_called_once_with("context", runtime=runtime)
+
     def test_uninstall_removes_only_the_owned_service_unless_purge_is_requested(
         self, *, mocker
     ) -> None:
@@ -318,10 +325,10 @@ class CliLifecycleContracts:
         )
         version = mocker.patch.object(application, "_release_version", return_value="2.0.8")
 
-        assert application.dispatch(
-            "install", Namespace(asset=asset, trust_anchor=anchor, port=8801)
-        ) == {"ok": True}
-        assert application.dispatch("version", Namespace()) == "2.0.8"
+        assert application.dispatch("install", asset=asset, trust_anchor=anchor, port=8801) == {
+            "ok": True
+        }
+        assert application.dispatch("version") == "2.0.8"
         install.assert_called_once_with(asset, trust_anchor=anchor, port=8801)
         version.assert_called_once_with()
 
@@ -329,7 +336,7 @@ class CliLifecycleContracts:
         for arguments in (("status", "--help"), ("install", "--help")):
             code, stdout, stderr = self.invoke(*arguments)
             assert code == 0
-            assert "usage:" in stdout
+            assert "Usage:" in stdout
             assert stderr == ""
 
         code, stdout, stderr = self.invoke("install")
@@ -340,7 +347,7 @@ class CliLifecycleContracts:
         code, stdout, stderr = self.invoke("status", "--unknown")
         assert code == 2
         assert stdout == ""
-        assert "unrecognized arguments" in stderr
+        assert "Unknown option" in stderr
 
     def test_no_command_uses_sys_argv_and_renders_public_help(self, *, mocker) -> None:
         mocker.patch.object(application.sys, "argv", ["codex-responses-proxy"])
@@ -385,4 +392,4 @@ class CliLifecycleContracts:
         rendered.assert_not_called()
 
         with pytest.raises(ValueError, match="not implemented"):
-            application.dispatch("future", Namespace(port=8792))
+            application.dispatch("future", port=8792)

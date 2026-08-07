@@ -96,7 +96,10 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version-file: .python-versions
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Install the complete locked tool environment
+        run: uv sync --locked --all-groups
       - name: Fetch the exact annotated tag object
         env:
           SELECTED_TAG: ${{ github.ref_name }}
@@ -123,8 +126,8 @@ jobs:
           chmod 600 "$anchor"
           CODEX_RESPONSES_PROXY_RELEASE_ALLOWED_SIGNERS="$anchor" \
             sh tools/forge/check-tag-signature.sh . "$SELECTED_TAG" github
-          python tools/release/metadata.py --provider github --tag "$SELECTED_TAG"
-          python tools/quality/markdown.py
+          uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$SELECTED_TAG"
+          uv run --locked --no-sync python tools/quality/markdown.py
       - name: Publish or verify exact GitHub release record
         env:
           GH_TOKEN: ${{ github.token }}
@@ -191,7 +194,7 @@ jobs:
           ssh-keygen -Y verify -f "$anchor" -I "$principal" \
             -n codex-responses-proxy-release -s "$assets/SHA256SUMS.sig" \
             < "$assets/SHA256SUMS"
-          python -m tools.release.assemble_assets --verify "$assets"
+          uv run --locked --no-sync python tools/release/assemble_assets.py --verify "$assets"
           if [ "$verdict" = missing ]; then
             gh release create "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" \
               --verify-tag --title "Codex Responses Proxy $SELECTED_TAG" --generate-notes \
@@ -201,5 +204,5 @@ jobs:
           mkdir -p "$downloaded"
           gh release download "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" --dir "$downloaded" \
             --pattern 'codex-responses-proxy-*' --pattern 'SHA256SUMS*'
-          python -m tools.release.assemble_assets --verify "$downloaded"
+          uv run --locked --no-sync python tools/release/assemble_assets.py --verify "$downloaded"
           diff -qr "$assets" "$downloaded"

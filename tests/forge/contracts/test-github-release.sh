@@ -38,7 +38,7 @@ required = [
     'test "$target" = "$VERIFIED_SHA"',
     'git checkout --detach "$target"',
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
-    'python tools/release/metadata.py --provider github --tag "$SELECTED_TAG"',
+    'uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$SELECTED_TAG"',
     "CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST",
     'anchor="$RUNNER_TEMP/github-tag-allowed-signers"',
     "CODEX_RESPONSES_PROXY_RELEASE_ALLOWED_SIGNERS=\"$anchor\"",
@@ -58,10 +58,10 @@ required = [
     "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
     "ssh-keygen -Y find-principals",
     "ssh-keygen -Y verify",
-    'python -m tools.release.assemble_assets --verify "$assets"',
+    'uv run --locked --no-sync python tools/release/assemble_assets.py --verify "$assets"',
     '"$assets"/*',
     'gh release download "$SELECTED_TAG"',
-    'python -m tools.release.assemble_assets --verify "$downloaded"',
+    'uv run --locked --no-sync python tools/release/assemble_assets.py --verify "$downloaded"',
     'diff -qr "$assets" "$downloaded"',
     "existing GitHub release does not match exact release identity",
 ]
@@ -93,8 +93,5 @@ for forbidden in (
         raise SystemExit(f"release workflow must not depend on runner-local state: {forbidden!r}")
 if "@main" in text or "@master" in text:
     raise SystemExit("GitHub Actions must use immutable action revisions")
-for retired in ('python -m tools.release.assets --output "$assets"', "sha256sum --check"):
-    if retired in text:
-        raise SystemExit(f"release workflow retains obsolete asset production: {retired!r}")
 print("GitHub Actions release contract: OK")
 PYTHON

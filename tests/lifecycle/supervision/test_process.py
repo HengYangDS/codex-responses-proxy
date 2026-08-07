@@ -78,7 +78,7 @@ class TestProcessIdentity:
         )
         assert process.pids_naming_path("/installed/watchdog.py") == [8]
 
-    def test_native_and_retired_script_identity_are_distinct(self, subtests, *, mocker):
+    def test_native_and_foreign_script_identity_are_distinct(self, subtests, *, mocker):
         ctx = platform_context()
         executable = os.path.abspath(ctx.executable)
         listener = "--internal-listener"
@@ -105,14 +105,14 @@ class TestProcessIdentity:
         )
         assert process.verified_proxy_listener_pids(ctx) == [8]
 
-        legacy = str(Path("/") / "fixture-home" / "retired" / "listener.py")
+        foreign = str(Path("/") / "fixture-home" / "foreign" / "listener.py")
         mocker.patch.object(process, "listener_pids", return_value=[7, 8])
         mocker.patch.object(
             process,
             "process_argv",
-            side_effect=[["python", legacy], [executable, listener]],
+            side_effect=[["python", foreign], [executable, listener]],
         )
-        assert process.verified_listener_pids(ctx.port, legacy) == [7]
+        assert process.verified_listener_pids(ctx.port, foreign) == [7]
 
     def test_identity_helpers_cover_empty_roles_and_python_suffixes(self, subtests, *, mocker):
         executable = os.path.abspath("/installed/codex-responses-proxy")

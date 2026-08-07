@@ -6,7 +6,7 @@ boundary_rules = [
   "The executable UX does not expose Python, source checkouts, or governance systems.",
   "The repository owns its development dependencies, interpreter matrix, and verification graph.",
   "Installed lifecycle state is distinct from repository development state.",
-  "AIGW and JetBrains products remain independent external systems.",
+  "Client control planes and IDE products remain independent external systems.",
 ]
 aliases = []
 
@@ -17,7 +17,7 @@ scope = "Executable UX, repository-owned DX, native distribution, and terminal l
 [recommended_facets]
 lifecycle = ["installation", "operation", "release", "closeout"]
 surface = ["cli", "service", "quality", "release", "docs", "openspec"]
-authority = ["source", "test", "docs", "openspec", "claim", "evidence"]
+authority = ["source", "test", "docs", "openspec"]
 
 [proof_profile]
 default_command = "ethos prove --json"

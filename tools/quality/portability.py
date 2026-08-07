@@ -3,22 +3,26 @@
 
 from __future__ import annotations
 
-import argparse
 import ipaddress
 import json
 import re
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
+from typing import Annotated
+
+from cyclopts import App, Parameter
 
 ROOT = Path(__file__).resolve().parents[2]
 _SCOPED_SUFFIXES = frozenset({".md", ".py", ".sh", ".toml", ".yml", ".yaml"})
-_IGNORED_PREFIXES = (
-    "evidence/",
-    "openspec/changes/archive/",
-)
 _IGNORED_FILES = frozenset({"CHANGELOG.md", "LICENSE"})
 _IGNORED_NAMES = frozenset()
+_HISTORICAL_ROOTS = (
+    PurePosixPath("evidence/claims"),
+    PurePosixPath("evidence/chronicle"),
+    PurePosixPath("openspec/changes/archive"),
+)
 _RULES = (
     ("absolute-home", re.compile(r"(?:/Users/|/home/)[A-Za-z0-9._-]+/")),
     ("windows-home", re.compile(r"[A-Za-z]:[/\\\\]Users[/\\\\][A-Za-z0-9._-]+[/\\\\]")),
@@ -59,7 +63,7 @@ def _in_scope(relative: str) -> bool:
     return (
         relative not in _IGNORED_FILES
         and path.name not in _IGNORED_NAMES
-        and not relative.startswith(_IGNORED_PREFIXES)
+        and not any(root == path or root in path.parents for root in _HISTORICAL_ROOTS)
         and path.suffix.lower() in _SCOPED_SUFFIXES
     )
 
@@ -99,12 +103,11 @@ def audit(root: Path = ROOT, *, paths: tuple[str, ...] | None = None) -> tuple[F
     return tuple(sorted(set(findings), key=lambda item: (item.path, item.line, item.rule)))
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--json", action="store_true")
-    args = parser.parse_args()
+def _command(*, as_json: Annotated[bool, Parameter(name="--json", negative=False)] = False) -> None:
+    """Audit durable product surfaces for host- or person-owned bindings."""
+
     findings = audit()
-    if args.json:
+    if as_json:
         print(json.dumps([asdict(finding) for finding in findings], sort_keys=True))
     elif findings:
         for finding in findings:
@@ -113,6 +116,14 @@ def main() -> None:
         print("Portability ownership contract: OK")
     if findings:
         raise SystemExit(1)
+
+
+def main(argv: tuple[str, ...] | None = None) -> None:
+    """Run the portability audit through the repository's single parser stack."""
+
+    App(default_command=_command, help=__doc__, result_action="return_value")(
+        tuple(sys.argv[1:] if argv is None else argv)
+    )
 
 
 if __name__ == "__main__":

@@ -1,15 +1,11 @@
-#!/usr/bin/env python3
 """Audit the repository-owned Python quality scope and explicit contracts."""
 
 from __future__ import annotations
 
 import ast
-import argparse
-import hashlib
 import json
 import os
 import re
-import stat
 import subprocess
 import sys
 import tokenize
@@ -20,14 +16,16 @@ from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from cyclopts import App
+from tools.quality.decision_records import decision_record_gaps
+from tools.quality.repository_state import worktree_fingerprint
+from tools.quality.semantic_names import semantic_name_gaps
+
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "pyproject.toml"
-_DEFINITION_TYPES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 _FORBIDDEN_PACKAGES = frozenset({"common", "helpers", "lib", "shared", "support"})
-_FOREIGN_PRODUCT_IMPORTS = frozenset({"aigw", "aigw_cli"})
-_FOREIGN_PRODUCT_LITERAL = re.compile(r"(?<![A-Za-z0-9])aigw(?:-cli)?(?![A-Za-z0-9])", re.I)
-_RETIRED_SOURCE_ROOTS = frozenset({"codex_dmx_proxy", "watchdog"})
-_RETIRED_MODULES = frozenset({"src/codex_responses_proxy/runtime/state.py"})
+_CONTROL_PLANE_IMPORT_FIXTURES = frozenset({"client_control_plane"})
+_CONTROL_PLANE_LITERAL = re.compile(r"(?<![A-Za-z0-9])client-control-plane(?![A-Za-z0-9])")
 _ROOT_CONFIGURATION_MODULES = frozenset({"noxfile.py"})
 _ALLOWED_PACKAGE_EDGES = {
     "cli": frozenset({"lifecycle", "service"}),
@@ -38,6 +36,7 @@ _ALLOWED_PACKAGE_EDGES = {
     "service": frozenset({"protocol", "providers", "relay", "runtime"}),
     "runtime": frozenset(),
 }
+_DEFINITION_TYPES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
 @dataclass(frozen=True)
@@ -46,55 +45,6 @@ class RepositoryInventory:
 
     paths: tuple[Path, ...]
     gaps: tuple[str, ...]
-
-
-def _hash_field(digest: Any, label: bytes, value: bytes) -> None:
-    """Add one length-delimited field to a repository fingerprint."""
-
-    digest.update(len(label).to_bytes(2, "big") + label + len(value).to_bytes(8, "big") + value)
-
-
-def _git_output(root: Path, *args: str, allow_absent_head: bool = False) -> bytes:
-    """Return raw Git output without inheriting host-specific configuration."""
-
-    environment = os.environ | {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
-    command = ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args]
-    try:
-        return subprocess.run(command, capture_output=True, check=True, env=environment).stdout
-    except subprocess.CalledProcessError as error:
-        if allow_absent_head:
-            return b"<unborn>"
-        detail = os.fsdecode(error.stderr).strip() or str(error.returncode)
-        raise RuntimeError(f"git_failed:{detail}") from None
-
-
-def worktree_fingerprint(root: Path = ROOT) -> str:
-    """Fingerprint HEAD and the current tracked or untracked worktree content."""
-
-    digest = hashlib.sha256()
-    head = _git_output(root, "rev-parse", "--verify", "HEAD", allow_absent_head=True).strip()
-    _hash_field(digest, b"head", head)
-    listed = _git_output(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-    for encoded_path in sorted({path for path in listed.split(b"\0") if path}):
-        path = root / os.fsdecode(encoded_path)
-        _hash_field(digest, b"path", encoded_path)
-        try:
-            mode = path.lstat().st_mode
-        except FileNotFoundError:
-            _hash_field(digest, b"type", b"missing")
-            continue
-        _hash_field(digest, b"executable", b"1" if mode & 0o111 else b"0")
-        if stat.S_ISREG(mode):
-            label, value = b"regular", path.read_bytes()
-        elif stat.S_ISLNK(mode):
-            label, value = b"symlink", os.fsencode(os.readlink(path))
-        else:
-            label = (
-                b"directory" if stat.S_ISDIR(mode) else f"special:{stat.S_IFMT(mode):o}".encode()
-            )
-            value = b""
-        _hash_field(digest, label, value)
-    return digest.hexdigest()
 
 
 def _in_scope(relative: str, configured_roots: Iterable[str]) -> bool:
@@ -296,13 +246,10 @@ def _nesting_depth(node: ast.AST) -> int:
 def _function_structure(tree: ast.Module) -> tuple[int, int]:
     """Return the largest function ELOC and control-flow nesting depth."""
 
-    functions = (
-        node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    )
     metrics = [
         (node.end_lineno - node.lineno + 1, _nesting_depth(node))
-        for node in functions
-        if node.end_lineno is not None
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.end_lineno is not None
     ]
     return (
         max((lines for lines, _ in metrics), default=0),
@@ -314,8 +261,9 @@ def _logical_statements(path: Path, tree: ast.Module) -> int:
     """Count non-docstring logical statements independently of formatter wrapping."""
 
     tokens = tokenize.tokenize(BytesIO(path.read_bytes()).readline)
-    logical_statements = sum(token.type == tokenize.NEWLINE for token in tokens)
-    return logical_statements - sum(1 for _ in _docstring_expressions(tree))
+    return sum(token.type == tokenize.NEWLINE for token in tokens) - sum(
+        1 for _ in _docstring_expressions(tree)
+    )
 
 
 def _public_docstring_gaps(root: Path, path: Path, tree: ast.Module) -> list[str]:
@@ -323,9 +271,11 @@ def _public_docstring_gaps(root: Path, path: Path, tree: ast.Module) -> list[str
 
     gaps = []
     for node in tree.body:
-        if not isinstance(node, _DEFINITION_TYPES):
-            continue
-        if node.name.startswith("_") or node.name == "main":
+        if (
+            not isinstance(node, _DEFINITION_TYPES)
+            or node.name.startswith("_")
+            or node.name == "main"
+        ):
             continue
         if ast.get_docstring(node, clean=False) is None:
             gaps.append(
@@ -407,7 +357,7 @@ def _dependency_cycles(edges: Mapping[str, set[str]]) -> list[tuple[str, ...]]:
 
 
 def _foreign_product_gaps(root: Path, package: Path) -> list[str]:
-    """Reject data-plane ownership of the independent AIGW product."""
+    """Reject data-plane ownership of an independent client control plane."""
 
     gaps: list[str] = []
     for path in sorted(package.rglob("*.py")):
@@ -422,14 +372,16 @@ def _foreign_product_gaps(root: Path, package: Path) -> list[str]:
                 imported = tuple(alias.name for alias in node.names)
             for module in imported:
                 owner = module.split(".", 1)[0]
-                if owner in _FOREIGN_PRODUCT_IMPORTS:
+                if owner in _CONTROL_PLANE_IMPORT_FIXTURES:
                     gaps.append(
                         "architecture_foreign_product_dependency:"
                         f"{relative}:{getattr(node, 'lineno', 0)}:{owner}"
                     )
         for number, line in enumerate(source.splitlines(), 1):
-            if _FOREIGN_PRODUCT_LITERAL.search(line):
-                gaps.append(f"architecture_foreign_product_literal:{relative}:{number}:aigw")
+            if _CONTROL_PLANE_LITERAL.search(line):
+                gaps.append(
+                    f"architecture_foreign_product_literal:{relative}:{number}:client-control-plane"
+                )
     return gaps
 
 
@@ -437,10 +389,6 @@ def _semantic_owner_gaps(root: Path, package: Path) -> list[str]:
     """Reject hidden peer APIs, forwarding aliases, and undeclared packages."""
 
     gaps: list[str] = []
-    for relative in sorted(_RETIRED_MODULES):
-        path = root / relative
-        if path.exists() or path.is_symlink():
-            gaps.append(f"architecture_retired_module:{relative}")
     for path in sorted(package.rglob("*.py")):
         relative = path.relative_to(root).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -502,12 +450,18 @@ def architecture_gaps(root: Path = ROOT) -> list[str]:
     for path in sorted(root.glob("*.py")):
         if path.name not in _ROOT_CONFIGURATION_MODULES and (path.is_file() or path.is_symlink()):
             gaps.append(f"architecture_root_implementation:{path.name}")
-    for name in sorted(_RETIRED_SOURCE_ROOTS):
-        path = root / name
-        if path.is_dir() or path.is_symlink():
-            gaps.append(f"architecture_retired_source_root:{name}")
     if not package.is_dir():
         return sorted([*gaps, "architecture_package_missing:codex_responses_proxy"])
+    actual_packages = {
+        child.name
+        for child in package.iterdir()
+        if child.is_dir() and not child.name.startswith("__")
+    }
+    expected_packages = set(_ALLOWED_PACKAGE_EDGES)
+    for name in sorted(actual_packages - expected_packages):
+        gaps.append(f"architecture_undeclared_package:{name}")
+    for name in sorted(expected_packages - actual_packages):
+        gaps.append(f"architecture_package_missing:{name}")
     for child in sorted(package.iterdir()):
         if child.is_dir() and child.name in _FORBIDDEN_PACKAGES:
             gaps.append(f"architecture_forbidden_package:{child.name}")
@@ -673,7 +627,16 @@ def audit() -> dict[str, object]:
             matches = ROOT.glob(value) if any(char in value for char in "*?[") else (ROOT / value,)
             if not any(path.exists() for path in matches):
                 policy_errors.append(f"quality_policy_missing_path:{key}:{value}")
-    all_gaps = sorted([*policy_errors, *repository_inventory.gaps, *gaps, *architecture_gaps(ROOT)])
+    all_gaps = sorted(
+        [
+            *policy_errors,
+            *repository_inventory.gaps,
+            *gaps,
+            *architecture_gaps(ROOT),
+            *decision_record_gaps(ROOT),
+            *semantic_name_gaps(ROOT),
+        ]
+    )
     return {
         "ok": not all_gaps,
         "gaps": all_gaps,
@@ -683,24 +646,23 @@ def audit() -> dict[str, object]:
     }
 
 
-def main(argv: Iterable[str] = ()) -> None:
+def _command(*, fingerprint: bool = False) -> None:
     """Print an explicit fingerprint or audit the repository quietly."""
 
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--fingerprint",
-        action="store_true",
-        help="print the content-sensitive worktree fingerprint",
-    )
-    arguments = parser.parse_args(tuple(argv))
-    if arguments.fingerprint:
-        print(worktree_fingerprint())
+    if fingerprint:
+        print(worktree_fingerprint(ROOT))
         return
 
     report = audit()
     if not report["ok"]:
         print(json.dumps(report, sort_keys=True))
         raise SystemExit(1)
+
+
+def main(argv: Iterable[str] = ()) -> None:
+    """Run the repository audit through the repository's single parser stack."""
+
+    App(default_command=_command, help=__doc__, result_action="return_value")(tuple(argv))
 
 
 if __name__ == "__main__":

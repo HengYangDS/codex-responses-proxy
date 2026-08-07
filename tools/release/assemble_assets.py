@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
-import argparse
+import sys
 from pathlib import Path
+from typing import Annotated
+
+from cyclopts import App, Parameter
 
 from tools.release import product_assets as assets
 
@@ -72,24 +75,32 @@ def _version(discovered: dict[str, bytes]) -> str:
     return versions.pop()
 
 
-def main() -> None:
-    """Assemble the command-line inputs."""
+def _command(
+    *,
+    inputs: Annotated[tuple[Path, ...], Parameter(name="--input")] = (),
+    output: Path | None = None,
+    verify_path: Annotated[Path | None, Parameter(name="--verify")] = None,
+) -> None:
+    """Assemble or verify one complete release asset set."""
 
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, action="append")
-    parser.add_argument("--output", type=Path)
-    parser.add_argument("--verify", type=Path)
-    arguments = parser.parse_args()
-    if arguments.verify:
-        if arguments.input or arguments.output:
-            parser.error("--verify cannot be combined with --input or --output")
-        digests = verify(arguments.verify)
+    if verify_path:
+        if inputs or output:
+            raise SystemExit("--verify cannot be combined with --input or --output")
+        digests = verify(verify_path)
         print(f"verified release assets: {len(digests)} files")
         return
-    if not arguments.input or not arguments.output:
-        parser.error("--input and --output are required when assembling")
-    release = assemble(tuple(arguments.input), arguments.output)
+    if not inputs or not output:
+        raise SystemExit("--input and --output are required when assembling")
+    release = assemble(inputs, output)
     print(f"assembled release assets: {len(release)} files")
+
+
+def main(argv: tuple[str, ...] | None = None) -> None:
+    """Run release assembly through the repository's single parser stack."""
+
+    App(default_command=_command, help=__doc__, result_action="return_value")(
+        tuple(sys.argv[1:] if argv is None else argv)
+    )
 
 
 if __name__ == "__main__":

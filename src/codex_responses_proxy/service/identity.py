@@ -124,7 +124,7 @@ def committed_payload(executable: Path) -> LoadedPayloadIdentity | None:
             raise ValueError("installed payload digest mismatch")
         if any(files[path] != expected for path, expected in serving.items()):
             raise ValueError("serving digest mismatch")
-        aggregate = inventory.serving_payload_sha256(serving)
+        aggregate = digest.serving_payload_sha256(serving)
         receipt = cast("str", manifest["release_receipt_sha256"])
         release = manifest.get("release")
         if (

@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
-from typing import cast
+from typing import Annotated, cast
+
+from cyclopts import App, Parameter
 
 
 class AdmissionError(RuntimeError):
@@ -94,34 +95,34 @@ def _github(repository: str) -> dict[str, object]:
     return {"provider": "github", "ready": True, "workflow_count": len(records)}
 
 
-def parser() -> argparse.ArgumentParser:
-    """Build the runner-admission command line."""
-
-    command = argparse.ArgumentParser(description=__doc__)
-    command.add_argument("--provider", choices=("gitlab", "github"), required=True)
-    command.add_argument("--repository", required=True)
-    command.add_argument("--runner-tag")
-    command.add_argument("--json", action="store_true")
-    return command
-
-
-def main() -> None:
+def _run(
+    *,
+    provider: str,
+    repository: str,
+    runner_tag: str | None = None,
+    as_json: Annotated[bool, Parameter(name="--json", negative=False)] = False,
+) -> None:
     """Verify scheduling readiness without mutating either Forge."""
 
-    args = parser().parse_args()
+    if provider not in {"gitlab", "github"}:
+        raise SystemExit(f"unsupported Forge provider: {provider}")
     try:
-        result = (
-            _gitlab(args.repository, args.runner_tag)
-            if args.provider == "gitlab"
-            else _github(args.repository)
-        )
+        result = _gitlab(repository, runner_tag) if provider == "gitlab" else _github(repository)
     except AdmissionError as error:
         print(str(error), file=sys.stderr)
         raise SystemExit(1) from error
-    if args.json:
+    if as_json:
         print(json.dumps(result, sort_keys=True))
     else:
-        print(f"{args.provider} runner admission: READY")
+        print(f"{provider} runner admission: READY")
+
+
+def main(argv: tuple[str, ...] | None = None) -> None:
+    """Run Forge admission through the repository's single parser stack."""
+
+    App(default_command=_run, help=__doc__, result_action="return_value")(
+        tuple(sys.argv[1:] if argv is None else argv)
+    )
 
 
 if __name__ == "__main__":
