@@ -8,14 +8,35 @@ scope = [
     "openspec/changes/declare-publication-topology/**",
     ".gitleaks.toml",
     ".ethos/release.toml",
+    "openspec/specs/product-interface/spec.md",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+    "gitlab_and_github_are_independent_publication_peers",
+    "local_verification_and_installation_remain_forge_free",
+    "candidate_and_work_refs_remain_local_only",
+    "publication_configuration_contains_no_personal_path_identity_credential_or_forge_url",
+]
+acceptance = [
+    "openspec_requirement_maps_to_one_task_and_executable_proof",
+    "exact_head_python_matrix_and_quality_proof_pass",
+    "exact_head_publish_readiness_reports_local_publish_ready",
+    "remote_publication_is_refused_from_work_and_candidate_refs",
+]
+risks = [
+    "forge_projection_drift",
+    "documentation_environment_contract_drift",
+]
+authority_refs = [
+    "user_instruction",
+    "AGENTS.md",
+    "docs/governance/release-and-change-policy.md",
+    "openspec/specs/product-interface/spec.md",
+]
 permissions = [
     "repository.read",
     "work-lane.write",
 ]
-hypotheses = []
+hypotheses = [
+    "one_repository_owned_topology_removes_forge_coupling_and_operator_guesswork",
+]
 dependencies = []
