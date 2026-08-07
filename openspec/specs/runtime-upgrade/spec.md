@@ -4,9 +4,7 @@
 
 Define the current native payload, transactional handoff, rollback, recovery,
 and supervision invariants.
-
 ## Requirements
-
 ### Requirement: Source-side upgrade authority
 
 Only the signed-asset installer SHALL admit a different release. Installed
@@ -24,15 +22,14 @@ installation input.
 ### Requirement: The installed payload has one current shape
 
 The installed payload SHALL contain one native executable, `providers.toml`,
-their manifest, signed-release receipt, and finalized state. No other source
-tree, interpreter entrypoint, inventory reader, compatibility switch, or
-version-specific path SHALL be accepted as product state.
+their manifest, signed-release receipt, and finalized state. Installation SHALL
+accept only an empty target or one verified current native listener.
 
 #### Scenario: An incompatible installation is present
 
 - **WHEN** its manifest or executable does not match the current payload shape
 - **THEN** installation fails before mutation with one bounded removal action
-- **AND** no force option bypasses payload or process identity.
+- **AND** no inventory reader, interpreter entrypoint, or bypass switch admits it.
 
 ### Requirement: Upgrade uses the current native handoff protocol
 
@@ -63,8 +60,7 @@ manifest, serving aggregate, receipt, accepting state, and non-draining state.
 
 Recovery SHALL require one canonical journal, a fully verified current
 candidate, a fully verified current rollback payload, and matching accepting
-runtime identity. It SHALL restore only that rollback snapshot and remove the
-transaction only after restoration succeeds.
+runtime identity.
 
 #### Scenario: All identities agree
 
@@ -140,3 +136,4 @@ owned files, preserve unknown content, and fail nonzero if residue remains.
 - **WHEN** purge removes every manifest-owned file
 - **THEN** unknown content remains untouched
 - **AND** the command reports that the directory is not fully purged.
+
