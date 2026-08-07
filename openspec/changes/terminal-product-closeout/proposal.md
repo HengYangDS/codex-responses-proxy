@@ -15,11 +15,8 @@ gateway with exact lifecycle ownership and independent distribution planes.
   warning, module, or private-path leakage.
 - Derive tool and matrix projections from repository-owned sources instead of
   repeating versions in tests or CI.
-- Publish one final forward release independently to GitLab and GitHub from the
-  same accepted source and asset bytes.
-- Install that release, verify DMXAPI, UCloud, and AIHubMix with `store=false`,
-  prove the original Codex conversation can continue, and retire all owner
-  lanes and temporary runtime state.
+- Keep GitLab and GitHub release workflows independent while deriving their
+  product identity and toolchain inputs from repository-owned sources.
 
 ## Capabilities
 
@@ -35,6 +32,7 @@ None.
 ## Impact
 
 The CLI, native executable, lifecycle, tests, dependency lock, cross-platform
-CI, release evidence, documentation, and repository-family state change. Codex
-JSONL, SQLite, messages, stored items, model metadata, IDE products, and client
-configuration remain untouched.
+CI contracts, and documentation change. Publication, installation, live
+provider acceptance, original-session continuity, and lane retirement remain
+post-land lifecycle operations. Codex JSONL, SQLite, messages, stored items,
+model metadata, IDE products, and client configuration remain untouched.
