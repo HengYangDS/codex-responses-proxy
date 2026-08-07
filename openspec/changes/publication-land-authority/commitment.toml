@@ -1,0 +1,19 @@
+schema_version = 1
+id = "change:publication-land-authority"
+intent = "Complete the publication-topology lifecycle with explicit candidate landing authority."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/publication-land-authority/**",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
