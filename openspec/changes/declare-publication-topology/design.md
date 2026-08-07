@@ -27,3 +27,9 @@ environment variables:
 | `CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR` | Path to the organization-supplied SSH allowed-signers file. |
 
 Neither variable is stored by the repository or inferred from a workstation.
+
+## Requirement To Task To Proof
+
+| Requirement | Task | Proof |
+| --- | --- | --- |
+| `product-interface:Local product closure is Forge-free` | `3.2` | `ethos-publish-readiness` |
