@@ -15,3 +15,9 @@ Atomic push ensures neither protected branch advances alone. Existing remote
 history admission remains unchanged: every new provider commit is append-only,
 signed by the selected external identity, and tree-equivalent to accepted
 source.
+
+## Requirement To Task To Proof
+
+| Requirement | Task | Proof |
+| --- | --- | --- |
+| `product-interface:Local product closure is Forge-free` | `1.1` | `python-quality` |
