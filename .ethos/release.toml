@@ -1,0 +1,22 @@
+[publication]
+local_verification_command = "uv run --locked --no-sync nox -s full"
+local_installation_command = ".venv/bin/codex-responses-proxy install --asset $CODEX_RESPONSES_PROXY_RELEASE_ASSET --trust-anchor $CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR"
+gitlab_remote = "gitlab-release"
+gitlab_ci_surface = ".gitlab-ci.yml"
+github_remote = "github"
+github_ci_surface = ".github/workflows/verify.yml"
+
+[protected_refs]
+branches = ["main", "dev"]
+tags = ["v*"]
+
+[host_profile]
+provider = "native-release"
+
+[host_profile.surfaces]
+verification = ".github/workflows/verify.yml"
+installation = "README.md"
+
+[attestation]
+formats = ["spdx-2.3-json"]
+signing = "ssh-signature"
