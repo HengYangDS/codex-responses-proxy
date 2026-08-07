@@ -8,16 +8,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = ROOT / "src" / "codex_responses_proxy"
 TERMINAL = {"cli", "protocol", "providers", "relay", "runtime", "service", "lifecycle"}
-RETIRED = {
-    "commands",
-    "deployment",
-    "listener",
-    "payload",
-    "recovery",
-    "replay",
-    "supervision",
-    "transport",
-}
 ALLOWED = {
     "cli": {"lifecycle", "service"},
     "lifecycle": {"service", "relay", "runtime", "protocol", "providers"},
@@ -59,7 +49,6 @@ class TerminalPackageContracts:
             if path.is_dir() and not path.name.startswith("__")
         }
         assert actual == TERMINAL
-        assert RETIRED.isdisjoint(actual)
 
     def test_dependency_edges_follow_terminal_direction(self) -> None:
         forbidden = sorted(

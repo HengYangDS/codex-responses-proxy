@@ -81,7 +81,7 @@ sequenceDiagram
     Proxy->>Proxy: Remove provider-bound replay state
     Proxy->>Provider: store=false portable request
     Provider-->>Proxy: JSON or SSE response
-    Proxy->>Proxy: Validate terminal integrity and remove ciphertext
+    Proxy->>Proxy: Validate integrity without changing response bytes
     Proxy-->>Codex: Committed response or bounded failure
 ```
 
@@ -89,9 +89,10 @@ The request projection removes response, conversation, cache, provider-issued
 item, search, and encrypted-reasoning bindings. It retains portable dialogue
 and complete tool relationships. Unknown or unsafe structures fail locally.
 
-The response projection never claims that ciphertext was decrypted. Empty,
-truncated, malformed, oversized, or non-terminal success bodies become a
-retryable local `503`; partial success bytes are not committed.
+The live-response boundary preserves encrypted control content needed for the
+current turn. Portability is applied only if a later request replays that
+output. Empty, truncated, malformed, oversized, or non-terminal success bodies
+become a retryable local `503`; partial success bytes are not committed.
 
 ## Recovery ownership
 

@@ -2,320 +2,141 @@
 
 ## Purpose
 
-Define the released-payload identity and recovery invariants for source-side
-protocol-v2 upgrades.
+Define the current native payload, transactional handoff, rollback, recovery,
+and supervision invariants.
+
 ## Requirements
+
 ### Requirement: Source-side upgrade authority
 
-Released-payload mutation SHALL remain owned by the source-side installer after
-signed-source admission; installed control must not accept an arbitrary upgrade
-payload. Forge publication evidence SHALL NOT be an installation input.
+Only the signed-asset installer SHALL admit a different release. Installed
+control SHALL observe, reload, recover, or remove the current product but SHALL
+NOT accept arbitrary release bytes. Forge availability SHALL NOT be an
+installation input.
 
-#### Scenario: Different release requested
-
-- **WHEN** an operator needs to install payload bytes from a different release
-- **THEN** the operation runs through the source-side installer and its release
-  transaction rather than installed control
+#### Scenario: An operator installs a release
 
-#### Scenario: One signed release source selected
+- **WHEN** one signed native archive and its external trust anchor are supplied
+- **THEN** the installer verifies and applies the release locally
+- **AND** a Forge, Git, Python, uv, Nox, ETHOS, a client control plane, and a source checkout
+  are not runtime dependencies.
 
-- **WHEN** an operator installs an exact signed release checkout under an
-  external trust anchor
-- **THEN** installation requires no GitLab, GitHub, hosted-CI, or release-record
-  credential or coordinate
+### Requirement: The installed payload has one current shape
 
-### Requirement: Recovery binds the live prior runtime
+The installed payload SHALL contain one native executable, `providers.toml`,
+their manifest, signed-release receipt, and finalized state. No other source
+tree, interpreter entrypoint, inventory reader, compatibility switch, or
+version-specific path SHALL be accepted as product state.
 
-The installer SHALL restore a retained rollback snapshot only while the live
-accepting listener's frozen release, serving digest, and receipt match that
-snapshot; its reported manifest digest matches the fully verified candidate
-projection committed on disk; and it is the sole idle PID bound to the installed
-entrypoint.
+#### Scenario: An incompatible installation is present
 
-#### Scenario: Runtime, rollback, and candidate agree
+- **WHEN** its manifest or executable does not match the current payload shape
+- **THEN** installation fails before mutation with one bounded removal action
+- **AND** no force option bypasses payload or process identity.
 
-- **WHEN** the rollback bytes match the listener's frozen serving identity and
-  the installed manifest matches the listener's reported manifest digest
-- **THEN** the prior projection is restored and the retained transaction is
-  removed before a new release transaction begins
+### Requirement: Upgrade uses the current native handoff protocol
 
-#### Scenario: Either projection disagrees
+A running upgrade SHALL bind the health snapshot to exactly one listener owned
+by the installed executable, commit the admitted candidate, and request
+transactional handoff. A successor SHALL prove its PID, executable, release,
+manifest, serving aggregate, receipt, accepting state, and non-draining state.
 
-- **WHEN** any bound runtime identity, candidate manifest identity, or unique
-  process proof differs or cannot be read
-- **THEN** recovery fails closed and retains the transaction
+#### Scenario: A current release upgrades successfully
 
-### Requirement: Cross-version successor identity
-The listener SHALL validate a handoff request against the complete committed
-successor payload on disk, independently of the old process's frozen runtime
-identity.
+- **WHEN** the sole verified listener supports handoff and the successor proves
+  the admitted identity
+- **THEN** the transaction finalizes without replacing native supervision
+- **AND** at most one listener accepts requests at each barrier.
 
-#### Scenario: Valid cross-version upgrade
-- **WHEN** a signed released payload with a new version is committed and its
-  manifest, serving files, receipt, and requested identity agree
-- **THEN** the old protocol-v2 listener prepares a child from that successor
-  payload and permits the bounded handoff to continue
+#### Scenario: Handoff rolls back
 
-#### Scenario: Successor payload mismatch
-- **WHEN** any requested successor field, manifest-owned file, or aggregate
-  digest differs from the committed payload
-- **THEN** preparation fails before the accept barrier and the old listener
-  remains serving
+- **WHEN** failure resolution proves the original runtime resumed
+- **THEN** the exact rollback snapshot is restored and the operation fails.
 
-### Requirement: Recovery rollback before a new installation
+#### Scenario: Handoff outcome is unknown
 
-Source-side recovery SHALL validate the old listener's frozen serving identity
-against the rollback snapshot and its reported manifest digest against the
-fully verified candidate projection currently committed on disk. It SHALL then
-restore the exact rollback snapshot only while that listener is the sole
-accepting, idle process bound to the installed entrypoint.
+- **WHEN** neither finalization nor rollback can be proved
+- **THEN** candidate and rollback bytes remain transaction-bound for recovery
+- **AND** no success or rollback claim is emitted.
 
-#### Scenario: Old listener serves after candidate commit
+### Requirement: Recovery binds candidate, rollback, and live runtime
 
-- **WHEN** the listener reports the rollback release, serving digest, and
-  receipt, while its manifest digest identifies the committed candidate
-- **THEN** recovery accepts the two-projection identity and restores the exact
-  rollback snapshot
+Recovery SHALL require one canonical journal, a fully verified current
+candidate, a fully verified current rollback payload, and matching accepting
+runtime identity. It SHALL restore only that rollback snapshot and remove the
+transaction only after restoration succeeds.
 
-#### Scenario: Either projection differs
+#### Scenario: All identities agree
 
-- **WHEN** a runtime field differs from the rollback projection or the reported
-  manifest differs from the committed candidate
-- **THEN** recovery refuses without changing the transaction or installed files
+- **WHEN** release, serving digest, receipt, manifest digest, transaction, and
+  runtime state match
+- **THEN** recovery restores the exact prior payload and clears the hold.
 
-#### Scenario: Recoverable committed transaction
+#### Scenario: Any identity differs
 
-- **WHEN** one canonical recovery journal, intact rollback snapshot, fully
-  verified committed candidate, and matching accepting prior listener are present
-- **THEN** recovery restores the prior owned projection, removes transaction
-  residue, and leaves successor installation to a new admitted transaction
+- **WHEN** a required byte, digest, PID, state, or journal field differs
+- **THEN** recovery fails closed without changing the payload or journal.
 
-#### Scenario: Ambiguous recovery state
+### Requirement: Rollback owns only current product files
 
-- **WHEN** either projection, rollback proof, or listener identity is missing or
-  mismatched
-- **THEN** recovery fails closed without removing the journal or claiming either
-  rollback or installation success
+Rollback SHALL snapshot the current owned inventory or its complete absence.
+Unknown install content SHALL be preserved and SHALL never become implicitly
+owned. Candidate paths that collide with unknown content SHALL block mutation.
 
-### Requirement: Explicit protocol-v2 bootstrap
-Source-side installation MAY interrupt an old protocol-v2 listener only under
-explicit authorization after binding one idle accepting PID to the exact
-installed entrypoint. Failure SHALL restore the prior payload and prove the
-prior accepting runtime.
+#### Scenario: Current payload upgrade fails
 
-#### Scenario: Authorized replacement
-- **WHEN** the old listener is exactly bound and the admitted successor becomes
-  the sole accepting runtime
-- **THEN** the new release transaction finalizes with successor identity proof
+- **WHEN** candidate commit or successor proof fails
+- **THEN** every prior owned byte and mode is restored
+- **AND** unknown content remains unchanged.
 
-#### Scenario: Replacement fails
-- **WHEN** termination, supervision replacement, or successor proof fails
-- **THEN** the installer restores the prior projection and reports failure unless
-  the prior accepting runtime is also proved
+### Requirement: Payload primitives have one semantic owner
 
-### Requirement: Installed payload operations have concrete module owners
+Canonical paths and safe file I/O SHALL belong to `owned_files`; candidate
+materialization to `candidate`; installed integrity and purge to `projection`;
+rollback to `rollback`; journals to `state`; and orchestration to `transaction`.
+No forwarding facade or private-name import SHALL create a second authority.
+The four transaction roles SHALL remain separate concrete modules rather than
+being folded into the orchestrator or projected through a compatibility facade.
 
-Each installed-payload filesystem primitive SHALL have one public module owner.
-Peer modules SHALL import that owner directly and SHALL NOT recover shared
-behavior through another module's private names or forwarding aliases.
+#### Scenario: A transaction mutates the payload
 
-#### Scenario: A payload transaction reads or writes an owned file
+- **WHEN** it validates, snapshots, writes, verifies, restores, or finalizes
+- **THEN** it calls the defining semantic owner directly.
 
-- **WHEN** candidate construction, migration, rollback, state, or transaction code needs a canonical payload path, safe regular-file read, digest, or atomic write
-- **THEN** it calls the public owned-file module directly
-- **AND** projection remains responsible only for installed projection semantics
-- **AND** transaction does not re-export peer behavior as a second authority.
+### Requirement: Listener configuration has one source
 
-### Requirement: Process-local behavior has concrete semantic owners
+The runtime configuration owner SHALL define the default listener port and all
+validated overrides. Installer, control, service, and uninstall code SHALL not
+copy port, host, log, or concurrency policy.
 
-Admission and drain, telemetry, safe logging, and provider-neutral cooldown
-SHALL be owned by separate concrete modules. Production callers SHALL import
-the defining owner directly, and the retired mixed runtime state module SHALL
-NOT remain as an implementation or compatibility facade.
+#### Scenario: A port override is supplied
 
-#### Scenario: The listener handles a Responses request
+- **WHEN** an operator selects a valid port through the public CLI
+- **THEN** installation, supervision, health, reload, and uninstall use that
+  exact value consistently.
 
-- **WHEN** the listener admits, logs, records, or cooldown-checks the request
-- **THEN** each operation is delegated to its concrete semantic owner
-- **AND** no caller imports a mixed runtime state namespace.
+### Requirement: Native supervision is self-contained and portable
 
-### Requirement: Replay metrics are structured data
+The released executable SHALL install and inspect its user service through the
+native macOS, Linux, or Windows adapter without an ambient Python interpreter,
+optional process utility, source path, user identity, or workstation-specific
+coordinate. Signal paths SHALL revalidate exact process identity immediately
+before mutation.
 
-Replay normalization SHALL return immutable structured metrics with the
-projected bytes and bounded rejection state. Telemetry SHALL consume numeric
-fields directly and SHALL NOT parse diagnostic strings.
+#### Scenario: A supported host lacks development tools
 
-#### Scenario: Provider-bound replay data is removed
+- **WHEN** the product is installed on a clean supported host
+- **THEN** service installation, listener discovery, handoff, status, and
+  uninstall remain available from the released executable alone.
 
-- **WHEN** replay removes response ids, reasoning items, encrypted blocks, or
-  unreplayable local images
-- **THEN** the result reports each aggregate as a typed field
-- **AND** operational diagnostics are derived from that result without
-  retaining removed content.
+### Requirement: Uninstall removes only proved product ownership
 
-### Requirement: Dual-Forge history parity is identity-aware
+Uninstall SHALL remove native supervision and exact owned listener processes.
+`--purge` SHALL additionally require a valid current manifest, remove only its
+owned files, preserve unknown content, and fail nonzero if residue remains.
 
-Provider-native histories SHALL use the configured Forge author email and
-trusted signature. Verification SHALL prove source-to-projection tree, message,
-date, and parent-topology correspondence without claiming identical commit
-object ids across different identities.
+#### Scenario: Unknown content shares the install directory
 
-#### Scenario: GitHub publishes a GitLab-accepted source commit
-
-- **WHEN** the required GitHub actor differs from the GitLab actor
-- **THEN** publication creates or reuses the verified identity projection
-- **AND** rejects destructive updates, ambiguous mappings, or tree/topology drift.
-
-### Requirement: Loopback listener admission is DNS-independent
-
-Fresh and handoff-adopted loopback listeners SHALL become serviceable without
-forward, reverse, or FQDN resolution. Each listener SHALL derive its presented
-host and port from the address bound by the kernel rather than from DNS.
-
-#### Scenario: A fresh listener starts while DNS is unavailable
-
-- **WHEN** the proxy constructs a fresh loopback listener and hostname resolution is unavailable or blocked
-- **THEN** listener construction completes without consulting DNS
-- **AND** the listener reports the actual bound loopback host and port
-- **AND** it can proceed immediately to serve requests.
-
-#### Scenario: A handed-off listener is adopted while DNS is unavailable
-
-- **WHEN** an authorized runtime handoff supplies an already bound loopback socket and hostname resolution is unavailable or blocked
-- **THEN** the successor adopts the socket without consulting DNS
-- **AND** its reported host and port match the adopted socket's bound address.
-
-### Requirement: Exact prior protocol-v2 inventories remain upgradeable
-
-The installer SHALL admit a prior protocol-v2 projection only when its complete
-manifest file set, per-file digests, serving aggregate, release receipt,
-release, and entrypoint match a supported released inventory. When finalized
-install state is present it SHALL match the same release and receipt. Its
-absence MAY be admitted only for an explicitly modeled exact historical
-projection.
-
-#### Scenario: Exact v2.0.0 projection upgrades
-
-- **WHEN** the installed schema-2 manifest exactly identifies the v2.0.0
-  runtime inventory, every owned digest matches, its canonical receipt is bound
-  to release v2.0.0, and finalized install state is either absent or matching
-- **THEN** the installer admits the projection and includes
-  `codex_responses_proxy/replay/event.py` in the rollback-bound retired set
-- **AND** candidate commit removes that retired path without touching unknown
-  content
-- **AND** rollback restores the receipt and original absence or presence of
-  finalized install state.
-
-#### Scenario: A verified predecessor owns retired files
-
-- **WHEN** files exist only in the exact admitted predecessor inventory
-- **THEN** the transaction snapshots and removes them during candidate commit
-- **AND** rollback restores their exact bytes and metadata.
-
-#### Scenario: Similar but unknown schema-2 projection is presented
-
-- **WHEN** a schema-2 manifest adds, removes, or changes any path outside a
-  supported exact inventory
-- **THEN** installation fails before payload mutation.
-
-### Requirement: Listener port has one configurable default
-
-The runtime SHALL define 8792 once as its default listener port. Installer,
-control, uninstall, and environment inputs SHALL remain able to select another
-valid TCP port. Production modules SHALL consume the named configuration owner
-rather than copy listener-port literals.
-
-#### Scenario: No port override is supplied
-
-- **WHEN** runtime configuration is loaded without a CLI or environment port
-- **THEN** the listener port is 8792.
-
-#### Scenario: A valid override is supplied
-
-- **WHEN** an operator supplies another valid port through the supported CLI or
-  environment contract
-- **THEN** that exact port is projected into native supervision and runtime.
-
-### Requirement: Native supervision starts and remains observable
-
-The released macOS service SHALL start the watchdog by its exact installed
-entrypoint without relying on ambient `PYTHONPATH`, SHALL preserve the listener
-argv needed for ownership checks, and SHALL persist stdout and stderr below a
-pre-created application log directory. Every signal path SHALL revalidate the
-exact live PID identity immediately before mutation.
-
-#### Scenario: Direct watchdog execution from an unrelated directory
-
-- **WHEN** the installed watchdog file is loaded in an isolated Python process
-- **THEN** the package root is established before imports can resolve sibling
-  modules
-- **AND** no supervision filename shadows a Python standard-library module.
-
-#### Scenario: First native-service installation
-
-- **WHEN** launchd is loaded before any application log exists
-- **THEN** the installer creates the configured log directory
-- **AND** the plist routes stdout and stderr to persistent files there.
-
-#### Scenario: Non-Darwin process discovery
-
-- **WHEN** the runtime discovers PIDs naming one exact installed entrypoint on
-  Windows or Linux
-- **THEN** it obtains one process inventory and validates each captured command
-- **AND** a later signal operation independently revalidates the selected live
-  PID before mutation.
-
-### Requirement: Listener port remains configurable
-
-The runtime SHALL own one named default of 8792 and SHALL accept explicit CLI
-and `CODEX_RESPONSES_PROXY_PROXY_PORT` overrides without any hard-coded dual
-listener design.
-
-#### Scenario: Explicit non-default port
-
-- **WHEN** an operator supplies a supported port through CLI or environment
-- **THEN** install, control, and uninstall use that port consistently
-- **AND** supervision does not copy 8791 or 8792 literals.
-
-### Requirement: Executable-bound transactional lifecycle
-
-Install, upgrade, reload, rollback, and uninstall SHALL bind identity to the
-exact installed executable, provider manifest, release manifest, service, and
-owned files. A Python interpreter path, package module, or source checkout MUST
-NOT be part of the public or persistent service contract.
-
-#### Scenario: A verified release replaces a running release
-
-- **WHEN** the new executable and manifest pass admission
-- **THEN** a non-accepting successor proves executable, release, manifest,
-  listener, and health identity before commit
-- **AND** failure restores the exact verified predecessor without two accepting
-  listeners.
-
-### Requirement: One direct predecessor migration
-
-An upgrade SHALL recognize only the immediately preceding supported installed
-schema and inventory. Release versions SHALL be data read from manifests, not
-version-shaped program symbols or a general historical compatibility registry.
-
-#### Scenario: An unsupported historical payload is present
-
-- **WHEN** installation finds an owned payload other than the exact supported
-  predecessor or current schema
-- **THEN** mutation is refused with a bounded diagnostic
-- **AND** no force option bypasses payload, process, or identity proof.
-
-### Requirement: Runtime independence from development and governance systems
-
-Installed operation MUST NOT call Git, a Forge, uv, Nox, ETHOS, Workstation
-Control Plane, AIGW, or a source-checkout tool. It may use only installed owned
-state, the provider manifest, request-supplied credentials, and platform-native
-supervision.
-
-#### Scenario: Development systems are absent
-
-- **WHEN** the source repository and contributor environment are unavailable
-- **THEN** service start, status, doctor, reload, and uninstall continue from
-  installed product state
-- **AND** no external product lifecycle or configuration implementation is
-  imported or invoked.
+- **WHEN** purge removes every manifest-owned file
+- **THEN** unknown content remains untouched
+- **AND** the command reports that the directory is not fully purged.

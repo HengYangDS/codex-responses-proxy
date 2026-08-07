@@ -17,14 +17,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  python-matrix:
+    name: Resolve supported Python versions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      versions: ${{ steps.versions.outputs.value }}
+      floor: ${{ steps.versions.outputs.floor }}
+      latest: ${{ steps.versions.outputs.latest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the repository Python matrix
+        id: versions
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+
+          versions = Path(".python-versions").read_text(encoding="utf-8").splitlines()
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              print(f"value={json.dumps(versions)}", file=output)
+              print(f"floor={versions[0]}", file=output)
+              print(f"latest={versions[-1]}", file=output)
+
   python:
     name: Python ${{ matrix.python-version }}
+    needs: python-matrix
     runs-on: macos-26
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ${{ fromJSON(needs.python-matrix.outputs.versions) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,12 +68,13 @@ jobs:
 
   python-windows:
     name: Python ${{ matrix.python-version }} (Windows)
+    needs: python-matrix
     runs-on: windows-2025
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ${{ fromJSON(needs.python-matrix.outputs.versions) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -59,15 +85,16 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Compile and test
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
+          $ErrorActionPreference = "Stop"
           python --version
           uv sync --locked --only-group quality
           uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"
 
   governance:
     name: Governance and presentation
+    needs: python-matrix
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -77,7 +104,10 @@ jobs:
           fetch-tags: true
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: ${{ needs.python-matrix.outputs.latest }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Install the complete locked tool environment
+        run: uv sync --locked --all-groups
       - name: Fetch the exact annotated tag object
         if: github.ref_type == 'tag'
         run: |
@@ -90,12 +120,12 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"
+            uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"
           else
-            python tools/release/metadata.py --provider github
+            uv run --locked --no-sync python tools/release/metadata.py --provider github
           fi
-          python tools/quality/markdown.py
-          python tools/quality/repository.py
+          uv run --locked --no-sync python tools/quality/markdown.py
+          uv run --locked --no-sync python tools/quality/repository.py
           sh tests/forge/contracts/test-github-actions.sh
           sh tests/forge/contracts/test-github-release.sh
           sh tests/forge/contracts/test-gitlab-tagging.sh
@@ -104,13 +134,14 @@ jobs:
 
   python-quality:
     name: Python quality
+    needs: python-matrix
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: ${{ needs.python-matrix.outputs.floor }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Verify lint, format, types, structure, docstrings, and product branch coverage
         run: |
@@ -121,6 +152,7 @@ jobs:
   native-assets:
     name: Native asset (${{ matrix.platform }})
     if: github.ref_type == 'tag'
+    needs: python-matrix
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -140,7 +172,7 @@ jobs:
           fetch-tags: true
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: ${{ needs.python-matrix.outputs.latest }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Build and accept the native release asset
         shell: bash
@@ -158,18 +190,21 @@ jobs:
   release-assets:
     name: Release assets
     if: github.ref_type == 'tag'
-    needs: native-assets
+    needs: [python-matrix, native-assets]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: ${{ needs.python-matrix.outputs.latest }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: native-*
           path: ${{ runner.temp }}/native
+      - name: Install the complete locked tool environment
+        run: uv sync --locked --all-groups
       - name: Assemble, sign, and verify the release set
         env:
           RELEASE_ASSET_SIGNING_KEY: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY }}
@@ -179,7 +214,7 @@ jobs:
           test -n "$RELEASE_ASSET_SIGNING_KEY"
           test -n "$RELEASE_ASSET_TRUST"
           release="$RUNNER_TEMP/release-assets"
-          python -m tools.release.assemble_assets \
+          uv run --locked --no-sync python tools/release/assemble_assets.py \
             --input "$RUNNER_TEMP/native/native-linux-x86_64" \
             --input "$RUNNER_TEMP/native/native-macos-arm64" \
             --input "$RUNNER_TEMP/native/native-windows-x86_64" \
@@ -197,7 +232,7 @@ jobs:
           ssh-keygen -Y verify -f "$anchor" -I "$principal" \
             -n codex-responses-proxy-release -s "$release/SHA256SUMS.sig" \
             < "$release/SHA256SUMS"
-          python -m tools.release.assemble_assets --verify "$release"
+          uv run --locked --no-sync python tools/release/assemble_assets.py --verify "$release"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-assets

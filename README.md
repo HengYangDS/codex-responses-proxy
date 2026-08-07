@@ -21,12 +21,12 @@ flowchart LR
 | Owner | Responsibility |
 | --- | --- |
 | Codex | Conversations, tools, and per-conversation model selection |
-| AIGW or another client control plane | Credentials, provider selection, and client configuration |
+| Client control plane | Credentials, provider selection, and client configuration |
 | Codex Responses Proxy | Responses normalization, replay portability, bounded recovery, and native service lifecycle |
 | Provider | Model execution, quotas, and upstream availability |
 
-The proxy does not configure Codex or AIGW. AIGW does not manage the proxy
-process. Either product can be installed and verified independently.
+The proxy does not configure or restart clients. A client control plane does
+not manage the proxy process. Each product is installed and verified independently.
 
 ## Requirements
 
@@ -43,7 +43,7 @@ requirements.
 
 ```bash
 codex-responses-proxy install \
-  --asset ~/Downloads/codex-responses-proxy-2.0.13-macos-arm64.tar.gz \
+  --asset ~/Downloads/codex-responses-proxy-2.0.15-macos-arm64.tar.gz \
   --trust-anchor ~/Downloads/codex-responses-proxy-allowed-signers
 ```
 
@@ -60,7 +60,7 @@ local service:
 
 ```bash
 codex-responses-proxy install \
-  --asset ~/Downloads/codex-responses-proxy-2.0.13-macos-arm64.tar.gz \
+  --asset ~/Downloads/codex-responses-proxy-2.0.15-macos-arm64.tar.gz \
   --trust-anchor ~/Downloads/codex-responses-proxy-allowed-signers \
   --port 8801
 ```
@@ -78,18 +78,21 @@ The listener exposes one provider-scoped namespace per admitted provider:
 | UCloud | `http://127.0.0.1:8792/ucloud/v1` |
 | AIHubMix | `http://127.0.0.1:8792/aihubmix/v1` |
 
-For AIGW:
+Configure these URLs in the client control plane. For example:
 
-```bash
-aigw account edit dmxapi --openai-url http://127.0.0.1:8792/dmxapi/v1
-aigw account edit ucloud --openai-url http://127.0.0.1:8792/ucloud/v1
-aigw account edit aihubmix --openai-url http://127.0.0.1:8792/aihubmix/v1
-aigw sync --dry-run --json
-aigw sync --json
+```toml
+[providers.dmxapi]
+base_url = "http://127.0.0.1:8792/dmxapi/v1"
+
+[providers.ucloud]
+base_url = "http://127.0.0.1:8792/ucloud/v1"
+
+[providers.aihubmix]
+base_url = "http://127.0.0.1:8792/aihubmix/v1"
 ```
 
-A different control plane may configure the same ordinary loopback URLs. The
-proxy has no package or configuration dependency on AIGW.
+The table names are illustrative; use the client's native configuration
+grammar. The proxy has no package or configuration dependency on that client.
 
 ## Operate
 
@@ -134,7 +137,7 @@ leaves the loopback listener.
 | `response_failed` | Uses strictly shrinking, pair-safe recovery; one final dialogue-only attempt is bounded |
 | Invalid `input` union | Uses one smaller current-dialogue fallback, then stops |
 
-The proxy never rewrites historical conversations to obtain portability.
+The proxy never rewrites conversation storage to obtain portability.
 
 ## Request boundary
 
@@ -196,7 +199,8 @@ See [CONTRIBUTING](CONTRIBUTING.md) for source verification and release work.
 | Runtime architecture | [Architecture](docs/architecture/authority-and-runtime-boundary.md) |
 | Release governance | [Release policy](docs/governance/release-and-change-policy.md) |
 | Forge publication | [Forge operations](docs/operations/forge-operations.md) |
-| Durable product boundary | [ADR-0001](docs/decisions/0001-control-plane-data-plane-boundary.md) |
+| Decision register | [Decision Records](docs/decisions/README.md) |
+| Durable product boundary | [DR-0001](docs/decisions/dr-0001-control-plane-data-plane-boundary.md) |
 | Release history | [CHANGELOG](CHANGELOG.md) |
 
 Licensed under the [MIT License](LICENSE).

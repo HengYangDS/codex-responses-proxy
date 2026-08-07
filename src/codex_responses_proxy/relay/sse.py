@@ -1,4 +1,4 @@
-"""Sanitized Server-Sent Events relay for Codex Responses Proxy.
+"""Validated Server-Sent Events relay for Codex Responses Proxy.
 
 The module owns SSE framing, lazy downstream commitment, bounded pre-content
 reconnects, and stream outcome accounting. JSON event mutation is delegated to
@@ -17,7 +17,7 @@ from contextlib import suppress
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Protocol, TypedDict
 
-from codex_responses_proxy.protocol import response as replay_response
+from codex_responses_proxy.protocol import response as live_response
 from codex_responses_proxy.relay import operational_log, telemetry
 from codex_responses_proxy.runtime import config as runtime_config
 
@@ -141,7 +141,7 @@ def _read_one_stream(
     if deadline is None:
         deadline = time.monotonic() + UPSTREAM_TIMEOUT
     buffer = b""
-    stripped_events = stripped_keys = event_count = 0
+    event_count = 0
     terminal_event = None
     upstream_detail = "eof"
     upstream_error: BaseException | None = None
@@ -172,20 +172,17 @@ def _read_one_stream(
         raw_write(data)
 
     def process_event(event: bytes) -> None:
-        nonlocal stripped_events, stripped_keys, event_count, terminal_event
+        nonlocal event_count, terminal_event
         nonlocal upstream_detail, upstream_error
         try:
-            sanitized, removed = replay_response.sanitize_sse_event(event)
+            validated = live_response.validate_sse_event(event)
         except ValueError as error:
             upstream_detail = "projection_failed"
             upstream_error = error
             return
-        if removed:
-            stripped_events += 1
-            stripped_keys += removed
         event_count += 1
-        terminal_event = _terminal_type(sanitized) or terminal_event
-        emit(sanitized)
+        terminal_event = _terminal_type(validated) or terminal_event
+        emit(validated)
 
     armed: float | None = None
     while True:
@@ -230,12 +227,6 @@ def _read_one_stream(
         process_event(buffer)
     if terminal_event in _CLEAN_TERMINALS:
         flush_prelude()
-    if stripped_keys:
-        telemetry.record_counter("encrypted_sse_keys_stripped", stripped_keys)
-        operational_log.log(
-            f"req={request_id} event=sse_sanitized encrypted_events={stripped_events} "
-            f"encrypted_keys={stripped_keys} path={operational_log.safe_request_path(path)}"
-        )
     detail = terminal_event.rpartition(".")[2] if terminal_event else upstream_detail
     return {
         "terminal": terminal_event,
@@ -254,7 +245,7 @@ def relay(
     reopen: Callable[[], ResponseLike] | None = None,
     send_headers: Callable[[], None] | None = None,
 ) -> RelayResult:
-    """Relay sanitized SSE with retries only before downstream commitment."""
+    """Relay validated SSE with retries only before downstream commitment."""
     headers_sent = False
     send_headers = send_headers or (lambda: None)
 

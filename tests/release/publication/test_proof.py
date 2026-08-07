@@ -69,7 +69,7 @@ def _gitlab_forge(*, tree: str = "c" * 40) -> dict[str, object]:
         tag_object_oid="a" * 40,
         commit_oid="d" * 40,
         jobs=tuple(
-            "verify-python-3.12 verify-python-3.13 verify-python-3.14 verify-release-metadata "
+            "verify-python-matrix verify-release-metadata "
             "verify-release-tag verify-python-quality build-gitlab-native-asset publish-gitlab-release".split()
         ),
         tree=tree,

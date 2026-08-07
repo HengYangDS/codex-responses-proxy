@@ -1,7 +1,9 @@
 # Release and Change Policy
 
-This document defines current invariants. Historical changes and incidents
-belong in Git, OpenSpec archive, evidence, and the Changelog.
+This document defines current invariants. Git, Forge records, the Changelog,
+OpenSpec lifecycle records, and admitted evidence preserve history within their
+own authority boundaries. Historical material does not become current product
+authority merely because it remains retained.
 
 ## Authority
 
@@ -40,9 +42,29 @@ flowchart LR
 
 - Use one active atomic OpenSpec change for material product work.
 - Keep source, tests, docs, and specification synchronized.
-- Do not reopen archived changes as mutation authority.
+- Complete and archive OpenSpec changes through the declared lifecycle after
+  canonical specifications and durable decisions absorb their surviving
+  semantics. Archived changes remain historical inputs, not mutation authority.
 - Do not preserve aliases, facades, or compatibility residue without a current requirement.
 - Do not write personal identity, local path, credential, key, fingerprint, or private Forge coordinate into product source.
+
+## Decision records and names
+
+- OpenSpec authorizes a bounded change; `docs/decisions/` preserves only its
+  durable rationale. Do not duplicate specifications, task status, or incident
+  narratives in a Decision Record.
+- Project-owned Decision Records use
+  `dr-<four-digit-sequence>-<concise-kebab-case-description>.md` and the matching
+  `DR-<sequence>` title.
+- Project-owned prose, scripts, modules, fixtures, and tests use concise names
+  that identify their semantic owner and responsibility. Generic buckets such
+  as `common`, `helpers`, `misc`, `shared`, or an unexplained bare sequence are
+  invalid.
+- Ecosystem protocol names remain unchanged: examples include `README.md`,
+  `CHANGELOG.md`, `pyproject.toml`, `__init__.py`, and OpenSpec carrier names.
+- A Decision Record is required for durable product boundaries, foundational
+  architecture or dependency choices, compatibility and retention policy,
+  release trust, security posture, or another costly-to-reverse ruling.
 
 ## Quality
 

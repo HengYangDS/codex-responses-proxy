@@ -103,7 +103,7 @@ class TestPayloadValidation:
             ):
                 payload_candidate.validate(candidate_blobs, version, digest, candidate_receipt)
 
-    def test_digest_boundary_and_retired_residue_types_fail_closed(self, *, mocker) -> None:
+    def test_digest_and_unowned_collision_boundaries_fail_closed(self, *, mocker) -> None:
         valid = {
             relative: hashlib.sha256(relative.encode()).hexdigest() for relative in runtime_files()
         }
@@ -115,11 +115,11 @@ class TestPayloadValidation:
             payload_projection.serving_payload_sha256(invalid)
 
         ctx = install_context(Path(tempfile.mkdtemp()))
-        retired_directory = Path(ctx.install_dir, "tests")
-        retired_directory.parent.mkdir(parents=True, exist_ok=True)
-        retired_directory.write_text("not a directory", encoding="utf-8")
+        collision = Path(ctx.install_dir, inventory.PROVIDER_MANIFEST)
+        collision.parent.mkdir(parents=True, exist_ok=True)
+        collision.write_text("unowned", encoding="utf-8")
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
-        with pytest.raises(errors.InstallError, match="manifest is required"):
+        with pytest.raises(errors.InstallError, match="unowned install content conflicts"):
             transaction.commit_projection()
 
     def test_transaction_filesystem_failures_remain_fail_closed(self, *, mocker) -> None:
@@ -132,13 +132,10 @@ class TestPayloadValidation:
 
         rollback = Path(payload_state.transaction_root(ctx), "rollback")
         rollback.mkdir(parents=True)
-        retired = "proxy/dmx_responses_proxy.py"
         snapshot = {
-            "schema_version": 2,
-            "present": {retired: {"sha256": "0" * 64, "mode": 0o644}},
-            "retired": [retired],
-            "retired_owned_sha256": payload_rollback.path_set_sha256({retired}),
-            "previous_owned": [retired],
+            "schema_version": 3,
+            "present": {inventory.PROVIDER_MANIFEST: {"sha256": "0" * 64, "mode": 0o644}},
+            "owned": list(owned_files.OWNED_PAYLOAD_FILES),
         }
         (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
         with pytest.raises(errors.InstallError, match="rollback.*unavailable"):
@@ -257,36 +254,30 @@ class TestPayloadValidation:
         rollback = Path(payload_state.transaction_root(ctx), "rollback")
         rollback.mkdir(parents=True)
         cases = (
-            ({"schema_version": 1, "present": {}}, "schema is unsupported"),
+            ({"schema_version": 1, "present": {}}, "snapshot is invalid"),
             (
                 {
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "present": [],
-                    "retired": [],
-                    "retired_owned_sha256": "0" * 64,
-                    "previous_owned": [],
+                    "owned": [],
                 },
                 "snapshot is invalid",
             ),
             (
                 {
-                    "schema_version": 2,
-                    "present": {"VERSION": {"sha256": "short", "mode": 0o644}},
-                    "retired": [],
-                    "retired_owned_sha256": payload_rollback.path_set_sha256(set()),
-                    "previous_owned": ["VERSION"],
+                    "schema_version": 3,
+                    "present": {inventory.PROVIDER_MANIFEST: {"sha256": "short", "mode": 0o644}},
+                    "owned": list(owned_files.OWNED_PAYLOAD_FILES),
                 },
                 "metadata is invalid",
             ),
             (
                 {
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "present": {},
-                    "retired": ["proxy/owned.py"],
-                    "retired_owned_sha256": payload_rollback.path_set_sha256({"proxy/owned.py"}),
-                    "previous_owned": ["proxy/owned.py"],
+                    "owned": [inventory.PROVIDER_MANIFEST],
                 },
-                "retired inventory is incomplete",
+                "owned inventory is invalid",
             ),
         )
         for snapshot, message in cases:

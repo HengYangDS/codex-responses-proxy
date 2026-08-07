@@ -51,9 +51,7 @@ _COUNTERS = {
     "input_variant_dialogue_recovery_accepted": 0,
     "input_variant_dialogue_recovery_exhausted": 0,
     "encrypted_replayed_reasoning_items_stripped": 0,
-    "encrypted_content_blocks_stripped": 0,
-    "encrypted_sse_keys_stripped": 0,
-    "encrypted_response_keys_stripped": 0,
+    "encrypted_replay_content_blocks_stripped": 0,
     "invalid_responses_success_bodies": 0,
     "unreplayable_images_stripped": 0,
     "wire_failure_retry_attempts": 0,
@@ -87,7 +85,7 @@ def record_failure(classification: str) -> None:
 def record_sanitization(metrics: SanitizationMetrics) -> None:
     """Account for replay projection changes without parsing display text."""
     record_counter("encrypted_replayed_reasoning_items_stripped", metrics.reasoning_items)
-    record_counter("encrypted_content_blocks_stripped", metrics.encrypted_blocks)
+    record_counter("encrypted_replay_content_blocks_stripped", metrics.encrypted_blocks)
     record_counter("unreplayable_images_stripped", metrics.local_image_items)
 
 

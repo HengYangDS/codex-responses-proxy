@@ -3,26 +3,22 @@
 
 from __future__ import annotations
 
-import argparse
+import sys
 from pathlib import Path
+
+from cyclopts import App
 
 from tools.release import product_assets as assets
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def main() -> None:
+def _command(*, executable: Path, platform: str, output: Path) -> None:
     """Write one platform archive, machine manifest, and checksum manifest."""
 
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--executable", type=Path, required=True)
-    parser.add_argument("--platform", required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    arguments = parser.parse_args()
-    output = arguments.output
     if output.exists() and any(output.iterdir()):
         raise SystemExit("release asset output directory must be empty")
-    executable = arguments.executable.resolve(strict=True)
+    executable = executable.resolve(strict=True)
     if not executable.is_file():
         raise SystemExit("native executable must be a regular file")
     version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
@@ -34,12 +30,12 @@ def main() -> None:
         "providers.toml": (ROOT / "src/codex_responses_proxy/providers/manifest.toml").read_bytes(),
         "LICENSE": (ROOT / "LICENSE").read_bytes(),
     }
-    archive_name = assets.archive_name(version, arguments.platform)
-    archive = assets.archive_bytes(files, version, arguments.platform)
-    manifest_name = assets.manifest_name(arguments.platform)
+    archive_name = assets.archive_name(version, platform)
+    archive = assets.archive_bytes(files, version, platform)
+    manifest_name = assets.manifest_name(platform)
     manifest = assets.asset_manifest(
         version=version,
-        platform=arguments.platform,
+        platform=platform,
         archive_name=archive_name,
         archive=archive,
         files=files,
@@ -52,10 +48,18 @@ def main() -> None:
     assets.release_digests(
         {**release_files, assets.CHECKSUM_NAME: checksums},
         version,
-        (arguments.platform,),
+        (platform,),
         require_signature=False,
     )
     print(f"release assets: {archive_name} {manifest_name} {assets.CHECKSUM_NAME} OK")
+
+
+def main(argv: tuple[str, ...] | None = None) -> None:
+    """Run asset assembly through the repository's single parser stack."""
+
+    App(default_command=_command, help=__doc__, result_action="return_value")(
+        tuple(sys.argv[1:] if argv is None else argv)
+    )
 
 
 if __name__ == "__main__":

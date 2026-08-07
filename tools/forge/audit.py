@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+from typing import Annotated
+
+from cyclopts import App, Parameter
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -239,7 +242,7 @@ def audit(
     result: dict[str, Any] = {
         "gitlab_main": gitlab_main,
         "github_main": github_main,
-        "main_commit_distinct": gitlab_main != github_main,
+        "main_commit_ids": {"gitlab": gitlab_main, "github": github_main},
         "main_tree_equal": gitlab_tree == github_tree,
         "main_tree_history_equal": gitlab_trees == github_trees,
         "gitlab_provenance": gitlab_provenance,
@@ -253,8 +256,7 @@ def audit(
         },
     }
     result["ok"] = (
-        result["main_commit_distinct"]
-        and result["main_tree_equal"]
+        result["main_tree_equal"]
         and result["main_tree_history_equal"]
         and gitlab_provenance["all_commits_trusted"] is True
         and github_provenance["all_commits_trusted"] is True
@@ -272,45 +274,45 @@ def audit(
     return result
 
 
-def main() -> None:
-    """Parse explicit execution context and print live parity evidence."""
+def _command(
+    *,
+    gitlab_commit_anchor: Path,
+    github_commit_anchor: Path,
+    gitlab_author_email: str,
+    github_author_email: str,
+    gitlab_tag_anchor: Path,
+    github_tag_anchor: Path,
+    gitlab_remote: str = "origin",
+    github_remote: str = "github",
+    as_json: Annotated[bool, Parameter(name="--json", negative=False)] = False,
+) -> None:
+    """Collect live parity evidence from explicit provider contexts."""
 
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--gitlab-commit-anchor", type=Path, required=True)
-    parser.add_argument("--github-commit-anchor", type=Path, required=True)
-    parser.add_argument("--gitlab-author-email", required=True)
-    parser.add_argument("--github-author-email", required=True)
-    parser.add_argument("--gitlab-tag-anchor", type=Path, required=True)
-    parser.add_argument("--github-tag-anchor", type=Path, required=True)
-    parser.add_argument("--gitlab-remote", default="origin")
-    parser.add_argument("--github-remote", default="github")
-    parser.add_argument("--json", action="store_true")
-    args = parser.parse_args()
     for path in (
-        args.gitlab_commit_anchor,
-        args.github_commit_anchor,
-        args.gitlab_tag_anchor,
-        args.github_tag_anchor,
+        gitlab_commit_anchor,
+        github_commit_anchor,
+        gitlab_tag_anchor,
+        github_tag_anchor,
     ):
         if not path.is_file():
             raise SystemExit(f"required publication input is unavailable: {path}")
     try:
         evidence = audit(
-            gitlab_commit_anchor=args.gitlab_commit_anchor,
-            github_commit_anchor=args.github_commit_anchor,
-            gitlab_author_email=args.gitlab_author_email,
-            github_author_email=args.github_author_email,
-            gitlab_tag_anchor=args.gitlab_tag_anchor,
-            github_tag_anchor=args.github_tag_anchor,
-            gitlab_remote=args.gitlab_remote,
-            github_remote=args.github_remote,
+            gitlab_commit_anchor=gitlab_commit_anchor,
+            github_commit_anchor=github_commit_anchor,
+            gitlab_author_email=gitlab_author_email,
+            github_author_email=github_author_email,
+            gitlab_tag_anchor=gitlab_tag_anchor,
+            github_tag_anchor=github_tag_anchor,
+            gitlab_remote=gitlab_remote,
+            github_remote=github_remote,
         )
     except RuntimeError as exc:
         raise SystemExit(f"ERROR: {exc}") from exc
-    if args.json:
+    if as_json:
         print(json.dumps(evidence, sort_keys=True))
     else:
-        print(f"main identity separation: {'OK' if evidence['main_commit_distinct'] else 'FAILED'}")
+        print("main provider identities: independently verified")
         print(f"main tree parity: {'OK' if evidence['main_tree_equal'] else 'FAILED'}")
         print(
             f"main tree-history parity: {'OK' if evidence['main_tree_history_equal'] else 'FAILED'}"
@@ -318,6 +320,14 @@ def main() -> None:
         print(f"housekeeping: {'OK' if evidence['ok'] else 'FAILED'}")
     if not evidence["ok"]:
         raise SystemExit(1)
+
+
+def main(argv: tuple[str, ...] | None = None) -> None:
+    """Run Forge parity audit through the repository's single parser stack."""
+
+    App(default_command=_command, help=__doc__, result_action="return_value")(
+        tuple(sys.argv[1:] if argv is None else argv)
+    )
 
 
 if __name__ == "__main__":

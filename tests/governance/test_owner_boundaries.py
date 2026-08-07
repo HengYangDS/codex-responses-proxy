@@ -161,6 +161,22 @@ class ProxyOwnerBoundaryContracts:
                 offenders.append(path.relative_to(PACKAGE).as_posix())
         assert offenders == []
 
+    def test_payload_transaction_roles_remain_concrete_owners(self) -> None:
+        owners = {
+            "transaction.py": "PayloadTransaction",
+            "candidate.py": "write_projection",
+            "state.py": "write_journal",
+            "rollback.py": "write_snapshot",
+        }
+        for module, symbol in owners.items():
+            tree = ast.parse((PACKAGE / "lifecycle" / module).read_text(encoding="utf-8"))
+            definitions = {
+                node.name
+                for node in tree.body
+                if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            assert symbol in definitions, module
+
     def test_replay_projection_returns_structured_metrics(self) -> None:
         result = replay_request.sanitize_responses_body(
             json.dumps(

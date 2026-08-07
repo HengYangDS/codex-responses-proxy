@@ -11,7 +11,7 @@ CLI, and repository-owned delivery system.
 | Never mutate | Reason |
 | --- | --- |
 | Codex JSONL, SQLite, history, stored items, model metadata | Portability belongs at the network edge |
-| AIGW or client configuration | The proxy is not a client control plane |
+| Client configuration | The proxy is not a client control plane |
 | Provider credentials | Credentials pass through; the proxy does not store them |
 | Another repository environment | Verification must be reproducible from this repository |
 
@@ -56,7 +56,10 @@ flowchart LR
 - Keep expected failures free of traceback and warning noise.
 - Keep statement and measured branch coverage strictly above 95%.
 - Use focused Conventional Commits: `fix:`, `feat:`, `docs:`, `test:`, `ci:`.
-- Preserve historical records; remove stale claims from current documentation.
+- Preserve released history in Git, signed Forge records, the Changelog,
+  completed OpenSpec lifecycle records, and admitted evidence. Keep historical
+  carriers outside current mutation authority; remove only redundant current
+  projections after their surviving semantics have an authoritative owner.
 
 ## Provider extension
 

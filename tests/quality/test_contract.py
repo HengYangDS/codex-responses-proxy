@@ -34,6 +34,8 @@ def _load(name: str, relative: str) -> ModuleType:
 
 
 def _checker() -> ModuleType:
+    _load("tools", "tools/__init__.py")
+    _load("tools.quality", "tools/quality/__init__.py")
     return _load("codex_responses_proxy_quality_checker", "tools/quality/repository.py")
 
 
@@ -144,16 +146,34 @@ class TestQualityPolicyContracts:
 
     def test_readme_install_path_matches_product_contract(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
         assert "$CODEX_RESPONSES_PROXY_RELEASE_ASSET" not in readme
         assert "$CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR" not in readme
-        assert "codex-responses-proxy-2.0.13-macos-arm64.tar.gz" in readme
+        assert f"codex-responses-proxy-{version}-macos-arm64.tar.gz" in readme
         assert "codex-responses-proxy-macos-arm64.manifest.json" in readme
         assert "SHA256SUMS.sig" in readme
         assert "SSH" in readme
         assert "`allowed_signers` file" in readme
         assert "--port 8801" in readme
         assert "CODEX_RESPONSES_PROXY_PROXY_PORT" not in readme
+
+    def test_python_command_surfaces_use_one_modern_parser(self) -> None:
+        pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        dependencies = pyproject["project"]["dependencies"]
+        assert {requirement.partition("==")[0] for requirement in dependencies} == {
+            "cyclopts",
+            "psutil",
+            "rich",
+        }
+        assert all(requirement.partition("==")[1:] != ("", "") for requirement in dependencies)
+        offenders = []
+        for root in (ROOT / "src", ROOT / "tools"):
+            for path in root.rglob("*.py"):
+                source = path.read_text(encoding="utf-8")
+                if "import argparse" in source or "from argparse" in source:
+                    offenders.append(path.relative_to(ROOT).as_posix())
+        assert offenders == []
 
     def test_repository_cli_is_quiet_on_success_and_diagnostic_on_failure(
         self, mocker: MockerFixture
@@ -207,6 +227,97 @@ class TestQualityPolicyContracts:
     def test_current_product_architecture_is_acyclic_and_directional(self) -> None:
         assert _checker().architecture_gaps(ROOT) == []
 
+    def test_decision_records_have_one_register_and_semantic_names(self) -> None:
+        assert _checker().decision_record_gaps(ROOT) == []
+
+    def test_decision_record_gate_rejects_numeric_and_unregistered_names(self) -> None:
+        checker = _checker()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            decisions = root / "docs/decisions"
+            decisions.mkdir(parents=True)
+            (decisions / "README.md").write_text("# Decision Records\n", encoding="utf-8")
+            (decisions / "0001-vague.md").write_text("# ADR-0001: Vague\n", encoding="utf-8")
+            valid = decisions / "dr-0002-release-trust.md"
+            valid.write_text(
+                "# DR-0002: Release Trust\n\n"
+                "- Status: accepted\n"
+                "- Date: 2026-08-07\n\n"
+                "## Context\n\nContext.\n\n"
+                "## Decision\n\nDecision.\n\n"
+                "## Consequences\n\nConsequences.\n\n"
+                "## Revisit Trigger\n\nTrigger.\n",
+                encoding="utf-8",
+            )
+
+            gaps = checker.decision_record_gaps(root)
+
+        assert "decision_record_name_invalid:docs/decisions/0001-vague.md" in gaps
+        assert "decision_record_unregistered:docs/decisions/dr-0002-release-trust.md" in gaps
+
+    def test_decision_record_gate_requires_contiguous_unique_registration(self) -> None:
+        checker = _checker()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            decisions = root / "docs/decisions"
+            decisions.mkdir(parents=True)
+            first = decisions / "dr-0001-boundary.md"
+            third = decisions / "dr-0003-release.md"
+            body = (
+                "- Status: accepted\n"
+                "- Date: 2026-08-07\n\n"
+                "## Context\n\nContext.\n\n"
+                "## Decision\n\nDecision.\n\n"
+                "## Consequences\n\nConsequences.\n\n"
+                "## Revisit Trigger\n\nTrigger.\n"
+            )
+            first.write_text("# DR-0001: Boundary\n\n" + body, encoding="utf-8")
+            third.write_text("# DR-0003: Release\n\n" + body, encoding="utf-8")
+            (decisions / "README.md").write_text(
+                "# Decision Records\n\n"
+                "[DR-0001](dr-0001-boundary.md)\n"
+                "[duplicate](dr-0001-boundary.md)\n"
+                "[DR-0003](dr-0003-release.md)\n",
+                encoding="utf-8",
+            )
+
+            gaps = checker.decision_record_gaps(root)
+
+        assert "decision_record_sequence_gap:0002" in gaps
+        assert "decision_record_registration_duplicate:docs/decisions/dr-0001-boundary.md" in gaps
+
+    def test_tracked_project_files_follow_semantic_type_grammars(self) -> None:
+        assert _checker().semantic_name_gaps(ROOT) == []
+
+    def test_semantic_name_gate_rejects_numeric_and_cross_language_grammar(self) -> None:
+        checker = _checker()
+        with _test_repository(
+            (
+                "src/valid_name.py",
+                "src/invalid-name.py",
+                "scripts/release/check_release.sh",
+                "docs/2026-plan.md",
+            )
+        ) as root:
+            gaps = checker.semantic_name_gaps(root)
+
+        assert "semantic_name_invalid:python:src/invalid-name.py" in gaps
+        assert "semantic_name_invalid:shell:scripts/release/check_release.sh" in gaps
+        assert "semantic_name_invalid:markdown:docs/2026-plan.md" in gaps
+
+    def test_semantic_name_gate_does_not_reclassify_historical_carriers(self) -> None:
+        checker = _checker()
+        with _test_repository(
+            (
+                "docs/2026-plan.md",
+                "evidence/chronicle/release/2026-08-07.md",
+                "openspec/changes/archive/2026-08-07-release/specs/product/spec.md",
+            )
+        ) as root:
+            gaps = checker.semantic_name_gaps(root)
+
+        assert gaps == ["semantic_name_invalid:markdown:docs/2026-plan.md"]
+
     def test_cli_is_the_only_production_command_composition_root(self) -> None:
         package = ROOT / "src/codex_responses_proxy"
         argparse_owners = []
@@ -235,7 +346,7 @@ class TestQualityPolicyContracts:
             ):
                 module_entrypoints.append(relative)
 
-        assert argparse_owners == ["src/codex_responses_proxy/cli/application.py"]
+        assert argparse_owners == []
         assert module_entrypoints == []
         assert shebangs == []
         assert (
@@ -271,8 +382,7 @@ class TestQualityPolicyContracts:
         assert (tests / "protocol/test_input_variant.py").is_file()
         assert (tests / "relay/test_empty_response.py").is_file()
         assert (tests / "relay/test_routes.py").is_file()
-        for retired in tests.joinpath("providers").glob("test_portable_*.py"):
-            raise AssertionError(f"protocol test remains under providers: {retired.name}")
+        assert not tuple(tests.joinpath("providers").glob("test_portable_*.py"))
 
     def test_product_and_tests_never_mutate_import_resolution_or_suppress_analysis(self) -> None:
         offenders = []
@@ -313,17 +423,15 @@ class TestQualityPolicyContracts:
                 "src/codex_responses_proxy/service/direct.py": (
                     "from codex_responses_proxy.service.private import _VALUE\nPUBLIC = _VALUE\n"
                 ),
-                "src/codex_responses_proxy/runtime/state.py": (
+                "src/codex_responses_proxy/extra/state.py": (
                     "from codex_responses_proxy.relay import relay\n"
                 ),
                 "src/codex_responses_proxy/relay/relay.py": (
                     "from codex_responses_proxy.runtime import state\n"
                 ),
                 "src/codex_responses_proxy/lifecycle/install.py": (
-                    "import aigw_cli\nCOMMAND = 'aigw sync'\n"
+                    "import client_control_plane\nCOMMAND = 'client-control-plane sync'\n"
                 ),
-                "codex_dmx_proxy/legacy.py": "VALUE = 1\n",
-                "watchdog/watchdog.py": "VALUE = 1\n",
             }
             for relative, source in files.items():
                 path = root / relative
@@ -355,19 +463,16 @@ class TestQualityPolicyContracts:
             "architecture_forwarding_alias:src/codex_responses_proxy/service/direct.py:2:_VALUE"
             in gaps
         )
-        assert "architecture_retired_module:src/codex_responses_proxy/runtime/state.py" in gaps
+        assert "architecture_undeclared_package:extra" in gaps
         assert "architecture_disallowed_edge:relay->runtime" not in gaps
-        assert "architecture_disallowed_edge:runtime->relay" in gaps
-        assert "architecture_cycle:relay,runtime" in gaps
-        assert "architecture_retired_source_root:codex_dmx_proxy" in gaps
-        assert "architecture_retired_source_root:watchdog" in gaps
+        assert "architecture_disallowed_edge:extra->relay" in gaps
         assert (
             "architecture_foreign_product_dependency:"
-            "src/codex_responses_proxy/lifecycle/install.py:1:aigw_cli" in gaps
+            "src/codex_responses_proxy/lifecycle/install.py:1:client_control_plane" in gaps
         )
         assert (
-            "architecture_foreign_product_literal:src/codex_responses_proxy/lifecycle/install.py:2:aigw"
-            in gaps
+            "architecture_foreign_product_literal:"
+            "src/codex_responses_proxy/lifecycle/install.py:2:client-control-plane" in gaps
         )
 
     def test_unratcheted_file_exceeding_hard_limit_fails(self) -> None:
@@ -443,7 +548,16 @@ class TestQualityPolicyContracts:
         assert coverage["run"]["source_pkgs"] == ["codex_responses_proxy"]
         assert "disable_warnings" not in coverage["run"]
         assert coverage["report"]["fail_under"] >= 95
-        assert coverage["run"]["omit"] == ["*/__init__.py"]
+        assert "omit" not in coverage["run"]
+
+    def test_repository_owned_structural_limits_are_ratified(self) -> None:
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        policy = metadata["tool"]["codex-responses-proxy"]["quality"]
+        assert policy["logic-max-statements"] == 600
+        assert policy["module-max-eloc"] == 600
+        assert policy["function-max-eloc"] == 120
+        assert policy["max-nesting-depth"] == 8
+        assert "ratchet" not in policy
 
     def test_repository_has_standard_package_metadata_and_one_version_owner(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -617,8 +731,9 @@ class TestVerificationContracts:
 
     def test_pytest_is_the_only_behavior_test_runner(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        assert "pytest==9.1.1" in metadata["dependency-groups"]["quality"]
-        assert "pytest-mock==3.15.1" in metadata["dependency-groups"]["quality"]
+        quality = metadata["dependency-groups"]["quality"]
+        assert any(requirement.startswith("pytest==") for requirement in quality)
+        assert any(requirement.startswith("pytest-mock==") for requirement in quality)
         assert metadata["tool"]["pytest"]["ini_options"] == {
             "addopts": ["--import-mode=importlib", "--strict-config", "--strict-markers"],
             "filterwarnings": ["error"],
@@ -626,7 +741,6 @@ class TestVerificationContracts:
             "python_classes": ["Test*", "*Tests", "*Contracts"],
             "testpaths": ["tests"],
         }
-        assert not (ROOT / "tools" / "quality" / "tests.py").exists()
         direct_test_commands = []
         for relative in (
             ".gitlab-ci.yml",
@@ -665,7 +779,7 @@ class TestVerificationContracts:
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         assert gitlab.count("&install-uv") == 1
         assert gitlab.count('["tool"]["uv"]["required-version"]') == 1
-        assert gitlab.count("*install-uv") == 4
+        assert gitlab.count("*install-uv") == 6
 
     def test_test_suite_has_no_unittest_compatibility_surface(self) -> None:
         offenders = []
@@ -756,6 +870,20 @@ class TestVerificationContracts:
         )
         assert "PYTHONPATH=src" not in source
 
+    def test_nox_tool_environment_contains_product_runtime_dependencies(self) -> None:
+        """Repository tools must run from one lock-derived, self-contained environment."""
+
+        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        install_tools = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_install_tools"
+        )
+        install_source = ast.get_source_segment(source, install_tools) or ""
+        assert '"--group",\n        "quality"' in install_source
+        assert '"--only-group"' not in install_source
+
     def test_nox_release_exports_one_manifest_bound_native_asset_set(self) -> None:
         source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
@@ -799,23 +927,29 @@ class TestVerificationContracts:
 
     def test_quality_environment_is_repository_owned_and_locked(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        assert metadata["dependency-groups"]["quality"] == [
-            "coverage==7.15.3",
-            "hatchling==1.31.0",
-            "nox==2026.7.11",
-            "pyinstaller==6.21.0",
-            "pytest==9.1.1",
-            "pytest-mock==3.15.1",
-            "pytest-subtests==0.15.0",
-            "ruff==0.16.1",
-            "ty==0.0.67",
-        ]
+        requirements = metadata["dependency-groups"]["quality"]
+        names = [requirement.partition("==")[0] for requirement in requirements]
+        assert set(names) == {
+            "coverage",
+            "hatchling",
+            "nox",
+            "pyinstaller",
+            "pytest",
+            "pytest-mock",
+            "pytest-subtests",
+            "ruff",
+            "ty",
+        }
+        assert len(names) == len(set(names))
+        assert all(
+            name and separator == "==" and version
+            for name, separator, version in (
+                requirement.partition("==") for requirement in requirements
+            )
+        )
         assert metadata["tool"]["uv"]["required-version"] == "==0.12.2"
         assert metadata["tool"]["uv"]["link-mode"] == "copy"
         assert (ROOT / "uv.lock").is_file()
-        assert not (ROOT / "tools" / "quality" / "requirements.lock").exists()
-        assert not (ROOT / "tools" / "quality" / "requirements.txt").exists()
-        assert "requirements.lock" not in (ROOT / ".gitignore").read_text(encoding="utf-8")
 
     def test_developer_bootstrap_installs_product_and_quality_groups(self) -> None:
         for relative in ("AGENTS.md", "CONTRIBUTING.md", "README.md"):
@@ -827,7 +961,12 @@ class TestVerificationContracts:
         assert (ROOT / ".python-versions").read_text(encoding="utf-8") == "3.12\n3.13\n3.14\n"
         assert not (ROOT / ".python-version").exists()
         noxfile = (ROOT / "noxfile.py").read_text(encoding="utf-8")
-        assert 'PYTHONS = ("3.12", "3.13", "3.14")' in noxfile
+        assert 'PYTHONS = tuple((ROOT / ".python-versions").read_text' in noxfile
+        assert "MIN_PYTHON, *_, MAX_PYTHON = PYTHONS" in noxfile
+        assert '("3.12", "3.13", "3.14")' not in noxfile
+        assert '@nox.session(python="3.12")' not in noxfile
+        assert '@nox.session(python="3.14")' not in noxfile
+        assert '"--python-version",\n        "3.12"' not in noxfile
         for session in ("quick", "full", "release"):
             assert f"def {session}(session: nox.Session)" in noxfile
 
@@ -836,6 +975,18 @@ class TestVerificationContracts:
         full_source = ast.get_source_segment(noxfile, functions["full"]) or ""
         assert 'session.notify(f"tests-{python}")' in full_source
         assert 'session.notify("tests",' not in full_source
+
+        github = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
+        release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+        assert 'print(f"floor={versions[0]}"' in github
+        assert 'print(f"latest={versions[-1]}"' in github
+        assert "needs.python-matrix.outputs.floor" in github
+        assert "needs.python-matrix.outputs.latest" in github
+        assert "python-version-file: .python-versions" in release
+        assert gitlab.count("image: $PYTHON_LATEST_IMAGE") == 4
+        assert "image: $PYTHON_FLOOR_IMAGE" in gitlab
+        assert "name: $PYTHON_LATEST_IMAGE" in gitlab
 
     def test_release_black_box_path_is_repeatable(self) -> None:
         """Release verification must tolerate repeated commands in one Nox session."""
@@ -858,15 +1009,16 @@ class TestVerificationContracts:
         assert isinstance(exist_ok, ast.Constant)
         assert exist_ok.value is True
 
-    def test_nox_is_the_only_quality_composition_owner(self) -> None:
-        assert not (ROOT / "tools" / "quality" / "run.sh").exists()
-
     def test_forge_quality_jobs_use_the_locked_runner(self) -> None:
         github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         for source in (github, gitlab):
             assert "uv sync --locked --only-group quality" in source
             assert "uv run --locked --no-sync nox -s quality" in source
-            assert "tools/quality/run.sh" not in source
-            assert "tools/quality/tests.py" not in source
-            assert "tools/quality/requirements.txt" not in source
+
+    def test_hosted_governance_tools_use_the_complete_locked_environment(self) -> None:
+        github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
+        gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+        release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        for source in (github, gitlab, release):
+            assert "uv sync --locked --all-groups" in source

@@ -9,16 +9,17 @@ from typing import cast
 
 import nox
 
-PYTHONS = ("3.12", "3.13", "3.14")
-ROOTS = ("src/codex_responses_proxy", "tools", "tests")
 ROOT = Path(__file__).parent.resolve()
+PYTHONS = tuple((ROOT / ".python-versions").read_text(encoding="utf-8").splitlines())
+MIN_PYTHON, *_, MAX_PYTHON = PYTHONS
+ROOTS = ("src/codex_responses_proxy", "tools", "tests")
 
 nox.options.default_venv_backend = "uv"
 nox.options.error_on_missing_interpreters = True
 nox.options.reuse_existing_virtualenvs = False
 
 
-@nox.session(python="3.14")
+@nox.session(python=MAX_PYTHON)
 def quick(session: nox.Session) -> None:
     """Run the cheapest deterministic contract and source checks."""
 
@@ -27,7 +28,7 @@ def quick(session: nox.Session) -> None:
     session.run("ruff", "check", "--no-cache", ".", env=environment)
     session.run("ruff", "format", "--no-cache", "--check", ".", env=environment)
     session.run("python", "tools/quality/portability.py", env=environment)
-    session.run("python", "tools/quality/repository.py", env=environment)
+    session.run("python", "-m", "tools.quality.repository", env=environment)
     session.run("python", "-m", "pytest", "-q", "tests/quality/test_contract.py", env=environment)
 
 
@@ -55,7 +56,7 @@ def tests(session: nox.Session) -> None:
     session.run("python", "-m", "pytest", "-m", "not native_distribution", env=environment)
 
 
-@nox.session(python="3.12")
+@nox.session(python=MIN_PYTHON)
 def quality(session: nox.Session) -> None:
     """Run static analysis and branch-aware coverage at the compatibility floor."""
 
@@ -71,12 +72,12 @@ def quality(session: nox.Session) -> None:
     session.run("ruff", "check", "--no-cache", ".", env=environment)
     session.run("ruff", "format", "--no-cache", "--check", ".", env=environment)
     session.run("python", "tools/quality/portability.py", env=environment)
-    session.run("python", "tools/quality/repository.py", env=environment)
+    session.run("python", "-m", "tools.quality.repository", env=environment)
     session.run(
         "ty",
         "check",
         "--python-version",
-        "3.12",
+        MIN_PYTHON,
         "--python-platform",
         "all",
         "--error-on-warning",
@@ -108,7 +109,7 @@ def full(session: nox.Session) -> None:
         session.notify(f"tests-{python}")
 
 
-@nox.session(python="3.14")
+@nox.session(python=MAX_PYTHON)
 def release(session: nox.Session) -> None:
     """Build and black-box test this platform's self-contained executable."""
 
@@ -148,7 +149,7 @@ def _install_tools(session: nox.Session) -> None:
         "uv",
         "export",
         "--locked",
-        "--only-group",
+        "--group",
         "quality",
         "--no-emit-project",
         "--format",

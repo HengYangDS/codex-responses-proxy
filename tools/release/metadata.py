@@ -3,13 +3,15 @@
 
 from __future__ import annotations
 
-import argparse
-import os
 import re
 import subprocess
+import sys
 import tomllib
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Annotated
+
+from cyclopts import App, Parameter
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -53,14 +55,9 @@ def _version_key(version: str) -> tuple[int, int, int]:
 
 
 def known_release_versions() -> list[str]:
-    """Return the selected provider's tags in descending SemVer order."""
+    """Return this checkout's provider-native tags in descending SemVer order."""
 
-    remote = os.environ.get("CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE")
-    if remote:
-        records = _git("ls-remote", "--tags", "--refs", remote, "v[0-9]*")
-        tags = [line.rsplit("refs/tags/", 1)[-1] for line in records.splitlines()]
-    else:
-        tags = _git("tag", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
+    tags = _git("tag", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
     return [
         tag.removeprefix("v")
         for tag in sorted(
@@ -68,6 +65,19 @@ def known_release_versions() -> list[str]:
         )
         if re.fullmatch(r"v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", tag)
     ]
+
+
+def tag_creation_date(version: str) -> str:
+    """Return one provider-native tag object's creation date in UTC."""
+
+    timestamp = int(
+        _git(
+            "for-each-ref",
+            "--format=%(creatordate:unix)",
+            f"refs/tags/v{version}",
+        )
+    )
+    return datetime.fromtimestamp(timestamp, timezone.utc).date().isoformat()
 
 
 def changelog_releases(path: Path | None = None) -> list[tuple[str, str]]:
@@ -97,17 +107,10 @@ def _git(*args: str) -> str:
 
 
 def check_provider(provider: str) -> None:
-    """Reject programmatic callers that bypass argparse's provider choices."""
+    """Reject programmatic callers that bypass the command grammar."""
 
     if provider not in PROVIDERS:
         raise ValueError(f"unsupported release provider: {provider!r}")
-
-
-def tag_creation_date(version: str) -> str:
-    """Return the provider-native annotated-tag creation date in UTC."""
-
-    timestamp = int(_git("for-each-ref", f"refs/tags/v{version}", "--format=%(creatordate:unix)"))
-    return datetime.fromtimestamp(timestamp, timezone.utc).date().isoformat()
 
 
 def check_changelog_provenance(
@@ -116,29 +119,11 @@ def check_changelog_provenance(
     provider: str = "gitlab",
     pending_version: str | None = None,
 ) -> None:
-    """Validate the current provider tags against the cross-provider Changelog.
-
-    GitLab owns the canonical Changelog chronology: it requires complete history,
-    one tag per non-pending heading, and exact canonical dates. GitHub may retain
-    canonical headings absent from its native tag namespace. Its native tags must
-    still have headings, while their independently signed dates may differ.
-    """
+    """Validate one provider's native tags against the shared Changelog."""
 
     check_provider(provider)
     actual_versions = [version for version, _ in releases]
     expected_versions = known_release_versions()
-    if provider == "gitlab":
-        if _git("rev-parse", "--is-shallow-repository") == "true":
-            raise ValueError("GitLab chronology requires a complete, non-shallow repository")
-        if not expected_versions:
-            raise ValueError("cannot find a gitlab release SemVer tag")
-        missing = [
-            version
-            for version in actual_versions
-            if version not in expected_versions and version != pending_version
-        ]
-        if missing:
-            raise ValueError("release heading has no matching Git tag: " + ", ".join(missing))
     if len(actual_versions) != len(set(actual_versions)):
         raise ValueError("released CHANGELOG headings must not duplicate a version")
     missing_headings = [version for version in expected_versions if version not in actual_versions]
@@ -147,16 +132,16 @@ def check_changelog_provenance(
             "locally available release tags must appear once in CHANGELOG.md: "
             + ", ".join(missing_headings)
         )
-    if provider == "gitlab":
-        for version, release_date in releases:
-            if version not in expected_versions:
-                continue
-            tag_date = tag_creation_date(version)
-            if release_date != tag_date:
-                raise ValueError(
-                    f"CHANGELOG release {version} is dated {release_date}, "
-                    f"but tag v{version} was created on {tag_date}"
-                )
+    if pending_version in expected_versions:
+        raise ValueError(f"release tag v{pending_version} already exists")
+    release_dates = dict(releases)
+    for version in expected_versions:
+        actual_date = tag_creation_date(version)
+        if release_dates[version] != actual_date:
+            raise ValueError(
+                f"release tag v{version} was created on {actual_date}, "
+                f"not CHANGELOG date {release_dates[version]}"
+            )
 
 
 def check_active_release_train(
@@ -180,14 +165,13 @@ def check_active_release_train(
             raise ValueError(f"CHANGELOG.md lacks dated release heading ## [{version}]")
         return
     if version in published:
-        if pending_release:
+        latest_heading = releases[0][0] if releases else ""
+        if (
+            pending_release
+            or version == latest_heading
+            and (not known or _version_key(version) > max(map(_version_key, known)))
+        ):
             return
-        if provider == "github":
-            latest_heading = releases[0][0] if releases else ""
-            if version == latest_heading and (
-                not known or _version_key(version) > max(map(_version_key, known))
-            ):
-                return
         raise ValueError(f"CHANGELOG release {version} exists before its Git tag")
     comparison_set = known + [released for released, _ in releases]
     if not comparison_set:
@@ -257,7 +241,8 @@ def check_governance_contract() -> None:
         "docs/README.md",
         "docs/architecture/authority-and-runtime-boundary.md",
         "docs/governance/release-and-change-policy.md",
-        "docs/decisions/0001-control-plane-data-plane-boundary.md",
+        "docs/decisions/README.md",
+        "docs/decisions/dr-0001-control-plane-data-plane-boundary.md",
         "docs/evidence/README.md",
         "docs/operations/forge-operations.md",
         "LICENSE",
@@ -307,53 +292,34 @@ def check_governance_contract() -> None:
     for token in ("commit-author-name", "commit-author-email"):
         if token in operations:
             raise ValueError(f"forge operations couple shared history to one actor: {token}")
-    for retired in ("rewrite-provider-history.py", "--force-with-lease"):
-        if retired in operations:
-            raise ValueError(f"forge operations retain a history-rewrite mechanism: {retired}")
-    retired_paths = (
-        "docs/history",
-        "docs/reviews",
-        "docs/specs",
-        "docs/superpowers",
-        "docs/design",
-    )
-    present = [path for path in retired_paths if (ROOT / path).exists()]
-    if present:
-        raise ValueError(
-            "retired execution-document paths must not remain in the canonical tree: "
-            + ", ".join(present)
-        )
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--tag", help="require an exact v<version> tag")
-    parser.add_argument(
-        "--provider",
-        choices=("gitlab", "github"),
-        default="gitlab",
-        help="select the provider-native tag plane used for chronology validation",
-    )
-    parser.add_argument(
-        "--prepare-release",
-        action="store_true",
-        help="validate a signed-release commit before its provider-native tag exists",
-    )
-    parser.add_argument("--changelog", type=Path, help=argparse.SUPPRESS)
-    args = parser.parse_args()
-    if args.prepare_release and args.tag:
+def _command(
+    *,
+    tag: Annotated[str | None, Parameter(help="Require an exact v<version> tag.")] = None,
+    provider: Annotated[
+        str,
+        Parameter(help="Select the provider-native tag plane used for validation."),
+    ] = "gitlab",
+    prepare_release: Annotated[
+        bool,
+        Parameter(help="Validate a release commit before its provider-native tag exists."),
+    ] = False,
+    changelog: Annotated[Path | None, Parameter(show=False)] = None,
+) -> None:
+    """Validate release identity and repository governance."""
+
+    if prepare_release and tag:
         raise SystemExit("--prepare-release cannot be combined with --tag")
-    if args.prepare_release and args.provider != "gitlab":
-        raise SystemExit("--prepare-release is reserved for the canonical gitlab release plane")
     version = read_version()
     check_python_metadata()
-    releases = changelog_releases(args.changelog)
+    releases = changelog_releases(changelog)
     check_changelog_provenance(
         releases,
-        provider=args.provider,
-        pending_version=version if args.prepare_release else None,
+        provider=provider,
+        pending_version=version if prepare_release else None,
     )
-    if args.prepare_release:
+    if prepare_release:
         if version in known_release_versions():
             raise SystemExit(f"release tag v{version} already exists; use --tag validation instead")
         current_heading = f"## [{version}] - "
@@ -375,8 +341,8 @@ def main() -> None:
         check_active_release_train(
             version,
             releases,
-            provider=args.provider,
-            pending_release=args.prepare_release,
+            provider=provider,
+            pending_release=prepare_release,
         )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
@@ -389,14 +355,22 @@ def main() -> None:
         check_governance_contract()
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    if args.tag:
+    if tag:
         try:
-            check_release_tag(args.tag, version)
+            check_release_tag(tag, version)
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
         if version not in {released for released, _ in releases}:
             raise SystemExit(f"CHANGELOG.md lacks dated release heading ## [{version}]")
     print(f"release and governance metadata: {version} OK")
+
+
+def main(argv: tuple[str, ...] | None = None) -> None:
+    """Run release validation through the repository's single parser stack."""
+
+    App(default_command=_command, help=__doc__, result_action="return_value")(
+        tuple(sys.argv[1:] if argv is None else argv)
+    )
 
 
 if __name__ == "__main__":

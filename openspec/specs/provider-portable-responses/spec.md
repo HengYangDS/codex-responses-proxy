@@ -23,7 +23,7 @@ unchanged.
 - **THEN** none of that provider-bound state is sent to the selected upstream
 - **AND** the upstream receives `store=false` with the remaining portable
   dialogue, complete tool history, and supported controls
-- **AND** no AIGW setting, JSONL, SQLite, history item, or model metadata is
+- **AND** no client setting, JSONL, SQLite, history item, or model metadata is
   read or modified.
 
 #### Scenario: A new request has no replay state
@@ -161,19 +161,19 @@ namespace SHALL resolve only exact, lexically normalized Responses and model
 catalog paths against the release-owned HTTPS upstream mapping. A downstream
 request SHALL NOT supply or override an upstream URL or host.
 
-#### Scenario: AIGW selects each governed provider
+#### Scenario: A client selects each governed provider
 
-- **WHEN** AIGW sends otherwise equivalent Requests traffic to
+- **WHEN** a client sends otherwise equivalent Responses traffic to
   `/dmxapi/v1/responses`, `/ucloud/v1/responses`, or
   `/aihubmix/v1/responses`
 - **THEN** the proxy sends it only to the matching DMXAPI, UCloud, or
   AIHubMix HTTPS upstream
-- **AND** credentials continue to come from the AIGW-managed client request.
+- **AND** credentials continue to come from that client request.
 
 #### Scenario: A caller uses an unknown namespace
 
-- **WHEN** a request path does not match a control endpoint, one of the three
-  canonical namespaces, or the bounded DMX migration route
+- **WHEN** a request path matches neither a control endpoint nor one of the
+  three canonical namespaces
 - **THEN** the proxy rejects it locally
 - **AND** it performs no remote network request.
 
@@ -220,27 +220,29 @@ and exact.
 - **THEN** the proxy does not apply the DMXAPI `empty_response` policy unless
   the request was routed to DMXAPI and the exact DMX error contract matched.
 
-### Requirement: Streamed opaque output is not reintroduced into replay
+### Requirement: Live response control data survives the current turn
 
-For Responses event streams, the proxy SHALL remove provider-bound reasoning,
-agent, and tool-output ciphertext before writing events downstream. If removal
-would empty an agent or tool-output content list, the same omission-marker rule
-SHALL apply. Malformed events SHALL be relayed unchanged only when no claimed
-rewrite was partially applied.
+For Responses event streams, the proxy SHALL preserve upstream event bytes,
+including encrypted reasoning, agent, and tool-control data needed by Codex to
+complete the current turn. Provider portability SHALL be enforced only when a
+later request replays prior output. JSON-bearing data events SHALL be validated
+atomically before downstream commitment.
 
 #### Scenario: An upstream emits encrypted agent content
 
 - **WHEN** a streamed output item contains plaintext plus encrypted agent or
   tool-output blocks
-- **THEN** downstream receives the plaintext and no effective encrypted block
-- **AND** later Codex replay cannot send that ciphertext to another provider.
+- **THEN** downstream receives the complete event unchanged so Codex can decrypt
+  and dispatch the current collaboration action
+- **AND** a later outbound replay removes that provider-bound ciphertext before
+  another provider receives it.
 
-### Requirement: Non-stream Responses are projected before commitment
+### Requirement: Non-stream Responses are validated before commitment
 
 Successful non-stream Responses SHALL be buffered within an eight-MiB limit
 before downstream HTTP commitment, required to be a valid `completed` or
-`incomplete` Response JSON document, and projected with the same
-provider-ciphertext rules as SSE. Empty, truncated, oversized, malformed,
+`incomplete` Response JSON document, and preserved byte-for-byte for the
+current turn. Empty, truncated, oversized, malformed,
 failed, or otherwise non-terminal HTTP 2xx bodies SHALL produce a local
 retryable failure without committing partial upstream bytes.
 
@@ -248,7 +250,8 @@ retryable failure without committing partial upstream bytes.
 
 - **WHEN** a terminal non-stream Response contains visible output plus opaque
   reasoning, agent, or tool-output ciphertext
-- **THEN** downstream receives the visible output without the ciphertext
+- **THEN** downstream receives the complete terminal Response unchanged
+- **AND** Codex can decrypt and execute the current-turn control payload
 - **AND** the response is committed with a correct bounded content length.
 
 #### Scenario: HTTP 2xx does not contain a proved terminal Response
@@ -257,6 +260,13 @@ retryable failure without committing partial upstream bytes.
   missing a terminal status
 - **THEN** downstream receives a local retryable failure
 - **AND** no upstream success status or partial body has been committed.
+
+#### Scenario: A successful response exceeds the integrity bound
+
+- **WHEN** an upstream HTTP 2xx body exceeds eight MiB before terminal JSON is
+  proved
+- **THEN** the proxy returns a bounded retryable local failure
+- **AND** no upstream bytes are committed as success.
 
 ### Requirement: Request-changing recovery uses structured errors
 
@@ -278,25 +288,27 @@ metadata. Success SHALL require an unchanged original conversation to complete
 multiple turns after the provider sequence DMXAPI, UCloud, AIHubMix, and
 DMXAPI again.
 
-#### Scenario: The integrated fix is accepted
+#### Scenario: The proxy fix is accepted
 
-- **WHEN** the released proxy and AIGW projections are installed and the same
-  original conversation completes at least two turns on each leg of
+- **WHEN** the released proxy is installed, an external client selects each
+  route, and the same original conversation completes at least two turns on each leg of
   DMXAPI to UCloud to AIHubMix to DMXAPI
 - **THEN** no turn reports missing `rs_` items, encrypted-content decode or
   decrypt failure, or proxy-generated empty-response 503
-- **AND** acceptance evidence confirms the session files and model metadata
-  were not modified by the repair.
+- **AND** acceptance evidence confirms that the exact pre-acceptance JSONL byte
+  prefix remains unchanged while normal replies append only a suffix
+- **AND** the observed SQLite stores and per-conversation model metadata remain
+  unchanged by the repair.
 
 ### Requirement: Client endpoint ownership is external
 
 The proxy SHALL expose provider-scoped loopback Responses endpoints without
-reading, writing, backing up, or restoring AIGW or client configuration. It
-SHALL NOT execute an AIGW command or persist consumer route state.
+reading, writing, backing up, or restoring client configuration. It SHALL NOT
+execute a client-control command or persist consumer route state.
 
 #### Scenario: A consumer selects a provider endpoint
 
-- **WHEN** AIGW or another client selects `/dmxapi/v1`, `/ucloud/v1`, or
+- **WHEN** a client selects `/dmxapi/v1`, `/ucloud/v1`, or
   `/aihubmix/v1` through its own control plane
 - **THEN** the proxy serves that data-plane request without depending on the
   consumer package, configuration path, credential store, or projection model.
@@ -307,43 +319,6 @@ SHALL NOT execute an AIGW command or persist consumer route state.
 - **THEN** only the proxy's released payload, product-owned state, listener,
   and native supervision are observed or mutated
 - **AND** consumer endpoint configuration is unchanged.
-
-### Requirement: Successful non-stream Responses are projected atomically
-
-The proxy SHALL buffer a successful non-stream Responses body within one fixed
-eight-MiB limit before downstream commitment, remove provider-bound reasoning,
-agent, and tool-output ciphertext, reject any unknown residual ciphertext
-carrier, and emit only a structurally proved completed or incomplete Response
-JSON document. Empty, truncated, oversized, malformed, or semantically
-incomplete successful bodies SHALL fail locally without committing partial
-upstream bytes.
-
-#### Scenario: A non-stream response contains provider ciphertext
-
-- **WHEN** an upstream JSON Response contains visible output and encrypted
-  reasoning, agent, or tool-output content
-- **THEN** downstream receives the visible output and no effective ciphertext
-- **AND** later replay cannot carry that ciphertext to another provider.
-
-#### Scenario: A successful response body is not complete and proved
-
-- **WHEN** an upstream returns HTTP 2xx with an empty, truncated, malformed, or
-  non-terminal Responses body
-- **THEN** the proxy returns a bounded retryable local failure
-- **AND** no partial body or successful upstream status is committed downstream.
-
-#### Scenario: A successful response exceeds the integrity bound
-
-- **WHEN** an upstream HTTP 2xx body exceeds eight MiB before terminal JSON is
-  proved
-- **THEN** the proxy returns a bounded retryable local failure
-- **AND** no upstream bytes are committed as success.
-
-#### Scenario: An unknown output carrier retains ciphertext
-
-- **WHEN** known projection rules leave any `encrypted_content` key in the
-  terminal JSON document
-- **THEN** the proxy fails closed rather than forwarding an unproved carrier.
 
 ### Requirement: Responses admission is closed at the HTTP boundary
 

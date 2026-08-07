@@ -3,15 +3,17 @@
 
 from __future__ import annotations
 
-import argparse
 import datetime as dt
 import hashlib
 import subprocess
+import sys
 from collections import defaultdict
 from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+
+from cyclopts import App
 
 
 class HistoryError(ValueError):
@@ -102,27 +104,30 @@ def map_histories(
     )
 
 
-def main() -> None:
+def _command(
+    *, repository: Path, canonical: Path, projected: Path, remote_commit: str, output: Path
+) -> None:
     """Map two commit lists for the Forge projector in one bounded process."""
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--repository", type=Path, required=True)
-    parser.add_argument("--canonical", type=Path, required=True)
-    parser.add_argument("--projected", type=Path, required=True)
-    parser.add_argument("--remote-commit", required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
     try:
         base, mapping = map_histories(
-            args.repository,
-            args.canonical.read_text(encoding="utf-8").splitlines(),
-            args.projected.read_text(encoding="utf-8").splitlines(),
-            args.remote_commit,
+            repository,
+            canonical.read_text(encoding="utf-8").splitlines(),
+            projected.read_text(encoding="utf-8").splitlines(),
+            remote_commit,
         )
-        _write_rows(args.output, mapping)
+        _write_rows(output, mapping)
         print(base)
     except (HistoryError, OSError, subprocess.CalledProcessError, UnicodeError) as error:
-        parser.exit(1, f"{error}\n")
+        raise SystemExit(str(error)) from error
+
+
+def main(argv: tuple[str, ...] | None = None) -> None:
+    """Run history mapping through the repository's single parser stack."""
+
+    App(default_command=_command, help=__doc__, result_action="return_value")(
+        tuple(sys.argv[1:] if argv is None else argv)
+    )
 
 
 def _fingerprint(raw: bytes, hash_factory: Callable[[bytes], Any]) -> str:

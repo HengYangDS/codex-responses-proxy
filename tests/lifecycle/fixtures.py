@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 from pathlib import Path
 from pathlib import PurePosixPath, PureWindowsPath
@@ -139,89 +138,3 @@ def install_payload(
     transaction.commit_projection()
     transaction.finalize({"pid": 1})
     return transaction
-
-
-def write_retired_projection(
-    ctx: runtime_context.RuntimeContext,
-    *,
-    version: str = "1.0.27",
-    schema: int = 2,
-    overrides: dict[str, bytes] | None = None,
-) -> dict[str, bytes]:
-    """Write one exact historical manifest inventory for lifecycle tests."""
-
-    files = {
-        relative: (f"{version}\n".encode() if relative == "VERSION" else f"{relative}\n".encode())
-        for relative in projection._RETIRED_RUNTIME_FILES[schema]
-    }
-    files.update(overrides or {})
-    if set(files) != set(projection._RETIRED_RUNTIME_FILES[schema]):
-        raise AssertionError("retired fixture must match one exact historical inventory")
-    install = Path(ctx.install_dir)
-    for relative, content in files.items():
-        target = install / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(content)
-    manifest = {
-        "schema_version": schema,
-        "release": version,
-        "files": {
-            relative: hashlib.sha256(content).hexdigest() for relative, content in files.items()
-        },
-    }
-    (install / inventory.MANIFEST_FILENAME).write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    return files
-
-
-def write_direct_predecessor_projection(
-    ctx: runtime_context.RuntimeContext,
-) -> dict[str, bytes]:
-    """Write the exact installed projection accepted for direct upgrade."""
-
-    version = "2.0.10"
-    files, serving_paths = projection._DIRECT_PREDECESSOR_INVENTORY
-    contents = {
-        relative: (f"{version}\n".encode() if relative == "VERSION" else f"{relative}\n".encode())
-        for relative in files
-    }
-    install = Path(ctx.install_dir)
-    for relative, content in contents.items():
-        target = install / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(content)
-    serving = {
-        relative: hashlib.sha256(contents[relative]).hexdigest() for relative in serving_paths
-    }
-    receipt = payload_digest.canonical_json(
-        {"schema_version": 1, "version": version, "fixture": "direct-predecessor"}
-    )
-    receipt_sha256 = hashlib.sha256(receipt).hexdigest()
-    manifest = {
-        "schema_version": 2,
-        "release": version,
-        "files": {
-            relative: hashlib.sha256(content).hexdigest() for relative, content in contents.items()
-        },
-        "serving_files": serving,
-        "serving_payload_sha256": payload_digest.serving_payload_sha256(serving),
-        "release_receipt_sha256": receipt_sha256,
-    }
-    (install / inventory.MANIFEST_FILENAME).write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    predecessor_receipt = install / "release-source-receipt.json"
-    predecessor_receipt.write_bytes(receipt)
-    (install / inventory.INSTALLED_RELEASE_STATE_FILENAME).write_bytes(
-        payload_digest.canonical_json(
-            {
-                "schema_version": 1,
-                "version": version,
-                "receipt_sha256": receipt_sha256,
-                "transaction_id": "fixture-direct-predecessor",
-                "runtime": {"release": version},
-            }
-        )
-    )
-    return contents

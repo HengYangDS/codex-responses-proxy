@@ -21,15 +21,15 @@ source checkout, or repository script.
 ### Requirement: Small public lifecycle grammar
 
 The public command grammar SHALL contain only `install`, `status`, `doctor`,
-`reload`, `uninstall`, and `version`. Private service execution and migration
-mechanics MUST NOT appear as public commands or compatibility aliases.
+`reload`, `recover`, `uninstall`, and `version`. Private service execution MUST
+NOT appear as public commands or aliases.
 
 #### Scenario: Public help is rendered
 
 - **WHEN** a user requests top-level help
 - **THEN** exactly the supported lifecycle commands are presented
-- **AND** Python module commands, internal service entrypoints, and retired
-  aliases are absent.
+- **AND** Python module commands, internal service entrypoints, and aliases are
+  absent.
 
 ### Requirement: Quiet actionable diagnostics
 
@@ -64,7 +64,7 @@ dependency resolution.
 
 After release and runtime acceptance, the repository family SHALL contain no
 delivery worktree, work branch, lease, detached temporary checkout, obsolete
-service, retired product directory, or generated closeout residue.
+service, temporary product directory, or generated closeout residue.
 
 #### Scenario: Closeout audit completes
 
