@@ -228,14 +228,17 @@ class ProviderProjectionTests:
                         if provider == "gitlab"
                         else fixture["github_remote"]
                     )
-                    remote_head = run(
-                        "git", "rev-parse", "refs/heads/main", cwd=remote
-                    ).stdout.strip()
+                    remote_heads = {
+                        branch: run(
+                            "git", "rev-parse", f"refs/heads/{branch}", cwd=remote
+                        ).stdout.strip()
+                        for branch in ("main", "dev")
+                    }
                     remote_tree = run(
                         "git", "rev-parse", "refs/heads/main^{tree}", cwd=remote
                     ).stdout.strip()
                     assert source_tree == remote_tree
-                    assert remote_head == projection["projected_commit"]
+                    assert set(remote_heads.values()) == {projection["projected_commit"]}
                     assert source_head == projection["source_commit"]
                     assert source_tree == projection["tree"]
                     emails = run(
