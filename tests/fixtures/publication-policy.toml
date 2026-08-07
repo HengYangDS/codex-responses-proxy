@@ -3,9 +3,7 @@ schema-version = 1
 [gitlab]
 required-jobs = [
   "build-gitlab-native-asset",
-  "verify-python-3.12",
-  "verify-python-3.13",
-  "verify-python-3.14",
+  "verify-python-matrix",
   "verify-release-metadata",
   "verify-release-tag",
   "verify-python-quality",

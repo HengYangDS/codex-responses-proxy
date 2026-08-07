@@ -114,7 +114,7 @@ class OperationalLogPrivacyContracts:
             <= operational_log.LOG_LINE_MAX_BYTES + 96
         )
 
-    def test_log_rotation_discards_an_oversized_legacy_segment_without_reading_it(self):
+    def test_log_rotation_discards_an_oversized_segment_without_reading_it(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "proxy.log"
             log_path.write_bytes(b"x" * 8192)

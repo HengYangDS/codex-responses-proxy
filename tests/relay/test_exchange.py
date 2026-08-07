@@ -471,13 +471,9 @@ class InputTransportContracts:
                 )
             )
         assert results == [(terminal, detail, True) for _, terminal, detail, _ in cases]
-        counters = cast("dict[str, int]", self._status_snapshot()["counters"])
-        assert counters["encrypted_sse_keys_stripped"] == 1
-        assert b"secret" not in handler.output()
+        assert b"secret" in handler.output()
 
-    def test_sse_projection_failure_after_commit_terminates_without_ciphertext(
-        self, *, mocker
-    ) -> None:
+    def test_live_sse_preserves_ciphertext_after_commit(self, *, mocker) -> None:
         plaintext = b'data: {"type":"response.output_text.delta","delta":"visible"}\n\n'
         encrypted = (
             b'data: {"type":"response.completed","response":{"output":['
@@ -495,15 +491,15 @@ class InputTransportContracts:
 
         assert not result["pre_content_exhausted"]
         assert result["result"] is not None
-        assert result["result"]["detail"] == "projection_failed"
-        assert result["result"]["error"] is not None
+        assert result["result"]["detail"] == "completed"
+        assert result["result"]["error"] is None
         assert b"visible" in handler.output()
-        assert b"secret" not in handler.output()
+        assert b"secret" in handler.output()
         assert handler.output().endswith(b"0\r\n\r\n")
         counters = cast("dict[str, int]", self._status_snapshot()["counters"])
-        assert counters["stream_projection_failures"] == 1
+        assert counters["stream_projection_failures"] == 0
 
-    def test_sse_projection_failure_before_commit_returns_retryable_error(self, *, mocker) -> None:
+    def test_live_sse_preserves_ciphertext_before_commit(self, *, mocker) -> None:
         body = _request_body(stream=True)
         encrypted = (
             b'data: {"type":"response.completed","response":{"output":['
@@ -529,17 +525,78 @@ class InputTransportContracts:
             mocker.patch.object(
                 response_projection.json, "dumps", side_effect=fail_encrypted_payload
             )
-            with pytest.raises(urllib.error.HTTPError) as raised:
-                request(port, body)
-            with raised.value as response:
-                status = response.code
-                payload = json.loads(response.read())
+            with request(port, body) as response:
+                status = response.status
+                payload = response.read()
 
-        assert status == 503
-        assert payload["error"]["code"] == "stream_projection_failed"
-        assert b"secret" not in json.dumps(payload).encode()
+        assert status == 200
+        assert b"secret" in payload
+        counters = cast("dict[str, int]", self._status_snapshot()["counters"])
+        assert counters["stream_projection_failures"] == 0
+
+    def test_malformed_sse_fails_before_downstream_commit(self) -> None:
+        malformed = b'data: {"type":\n\n'
+        handler = _MemoryHandler()
+
+        result = sse.relay(
+            handler,
+            _DirectResponse(malformed),
+            "/dmxapi/v1/responses",
+            1,
+            send_headers=lambda: None,
+        )
+
+        assert result["pre_content_exhausted"]
+        assert result["result"] is not None
+        assert result["result"]["detail"] == "projection_failed"
+        assert handler.output() == b""
         counters = cast("dict[str, int]", self._status_snapshot()["counters"])
         assert counters["stream_projection_failures"] == 1
+
+    def test_public_sse_relay_rejects_an_unprojectable_stream(self, *, mocker) -> None:
+        handler = _MemoryHandler()
+        exchange = mocker.Mock(
+            handler=handler,
+            request_id=7,
+            used_input_variant_dialogue=False,
+        )
+        mocker.patch.object(
+            sse,
+            "relay",
+            return_value={
+                "result": {"detail": "projection_failed"},
+                "pre_content_exhausted": True,
+                "attempts": 1,
+            },
+        )
+
+        downstream.relay_sse(exchange, _DirectResponse())
+
+        assert handler.statuses == [503]
+        assert b"stream_projection_failed" in handler.output()
+        exchange.log.assert_called_once_with("sse_projection_failed")
+
+    def test_unexpected_terminal_validator_failure_is_bounded(self, *, mocker) -> None:
+        handler = _MemoryHandler()
+        exchange = mocker.Mock(handler=handler)
+        mocker.patch.object(
+            response_projection,
+            "validate_json_response",
+            side_effect=RuntimeError("private-validator-detail"),
+        )
+
+        downstream.relay_responses_json(
+            exchange,
+            _DirectResponse(b'{"status":"completed","output":[]}'),
+        )
+
+        assert handler.statuses == [503]
+        payload = json.loads(handler.output())
+        assert payload["error"]["code"] == "invalid_responses_success_body"
+        assert payload["error"]["reason"] == "RuntimeError"
+        exchange.log.assert_called_once_with(
+            "invalid_responses_success_body", "reason=RuntimeError "
+        )
 
     def test_direct_sse_relay_handles_reopen_failure_and_incomplete_terminal(
         self, *, mocker
@@ -860,7 +917,7 @@ class InputTransportContracts:
             statuses.append(handler.statuses)
         assert statuses == [[200], [200]]
 
-    def test_non_stream_responses_strip_ciphertext_before_downstream_commit(
+    def test_non_stream_responses_preserve_ciphertext_for_current_turn_decryption(
         self, *, mocker
     ) -> None:
         upstream = json.dumps(
@@ -887,7 +944,8 @@ class InputTransportContracts:
         responses.relay(handler, "POST", PROVIDERS)
 
         assert handler.statuses == [200]
-        assert b"secret" not in handler.output()
+        assert b"reasoning-secret" in handler.output()
+        assert b"agent-secret" in handler.output()
         assert b"visible" in handler.output()
 
     def test_empty_responses_request_fails_before_upstream_io(self, *, mocker) -> None:

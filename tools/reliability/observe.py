@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Evaluate one secret-free Codex Responses Proxy runtime observation.
 
-This tool consumes the JSON produced by ``python3 -m codex_responses_proxy.lifecycle.control status --json``.  It does
-not contact a listener, read configuration, retain request data, or change the
-proxy lifecycle.  A caller may opt into a small local baseline with ``--state``
-to compute deltas across comparable observations.
+This tool consumes the JSON produced by ``codex-responses-proxy status --json``.
+It does not contact a listener, read configuration, retain request data, or
+change the proxy lifecycle. A caller may opt into a small local baseline with
+``--state`` to compute deltas across comparable observations.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import re
@@ -17,8 +16,11 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Annotated
 from typing import Any
 from typing import TypeGuard
+
+from cyclopts import App, Parameter
 
 
 SCHEMA_VERSION = 1
@@ -397,34 +399,44 @@ def _read_status(path: str) -> object:
         raise ObservationError(f"status snapshot is unreadable: {exc}") from exc
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Evaluate a secret-free Codex Responses Proxy reliability snapshot."
-    )
-    parser.add_argument(
-        "--status-file",
-        default="-",
-        help=("codex_responses_proxy.lifecycle.control status --json output, or - for stdin"),
-    )
-    parser.add_argument("--state", help="explicit optional path for a normalized local baseline")
-    parser.add_argument(
-        "--allow-drain",
-        action="store_true",
-        help="classify new local drain rejections as observe during approved maintenance",
-    )
-    args = parser.parse_args(argv)
+def _command(
+    *,
+    status_file: Annotated[
+        str,
+        Parameter(name="--status-file", help="Status JSON path, or - for standard input."),
+    ] = "-",
+    state: Annotated[
+        Path | None,
+        Parameter(help="Optional normalized local baseline path."),
+    ] = None,
+    allow_drain: Annotated[
+        bool,
+        Parameter(help="Classify new local drain rejections during approved maintenance."),
+    ] = False,
+) -> int:
+    """Evaluate one secret-free reliability snapshot."""
+
     try:
-        baseline = _load_state(Path(args.state)) if args.state else None
+        baseline = _load_state(state) if state else None
         report, next_baseline = evaluate(
-            _read_status(args.status_file), baseline, allow_drain=args.allow_drain
+            _read_status(status_file), baseline, allow_drain=allow_drain
         )
-        if args.state:
-            _write_state(Path(args.state), next_baseline)
+        if state:
+            _write_state(state, next_baseline)
     except ObservationError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the observer through the repository's single parser stack."""
+
+    result = App(default_command=_command, help=__doc__, result_action="return_value")(
+        tuple(sys.argv[1:] if argv is None else argv)
+    )
+    return result if isinstance(result, int) else 0
 
 
 if __name__ == "__main__":

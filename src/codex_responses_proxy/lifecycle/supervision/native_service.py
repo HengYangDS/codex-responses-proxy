@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from importlib import import_module
+from types import ModuleType
 from typing import Protocol, cast
 
 from codex_responses_proxy import errors
@@ -22,18 +22,30 @@ class NativeServiceAdapter(Protocol):
     def status(self, ctx: runtime_context.RuntimeContext) -> str: ...
 
 
-def adapter() -> NativeServiceAdapter:
-    """Return the native supervision module for the current platform."""
+def _platform_adapters() -> tuple[tuple[str, ModuleType], ...]:
+    """Load every supported adapter through imports visible to bundlers."""
 
-    for prefix, name in (("darwin", "macos"), ("linux", "linux"), ("win", "windows")):
+    try:
+        from codex_responses_proxy.lifecycle.supervision import linux, macos, windows
+    except ImportError as error:
+        raise errors.ProductAssemblyError(
+            "product installation is incomplete; reinstall the verified release"
+        ) from error
+    return (("darwin", macos), ("linux", linux), ("win", windows))
+
+
+def adapter() -> NativeServiceAdapter:
+    """Return the statically bundled supervision module for the current platform."""
+
+    for prefix, implementation in _platform_adapters():
         if sys.platform.startswith(prefix):
-            return cast(
-                "NativeServiceAdapter",
-                import_module(f"codex_responses_proxy.lifecycle.supervision.{name}"),
-            )
+            return cast("NativeServiceAdapter", implementation)
     if sys.platform == "cygwin":
-        return cast(
-            "NativeServiceAdapter",
-            import_module("codex_responses_proxy.lifecycle.supervision.windows"),
-        )
+        try:
+            from codex_responses_proxy.lifecycle.supervision import windows
+        except ImportError as error:
+            raise errors.ProductAssemblyError(
+                "product installation is incomplete; reinstall the verified release"
+            ) from error
+        return cast("NativeServiceAdapter", windows)
     raise errors.UnsupportedPlatform(f"unsupported platform: {sys.platform}")

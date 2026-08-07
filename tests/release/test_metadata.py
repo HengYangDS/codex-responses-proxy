@@ -91,8 +91,8 @@ def expect_value_error(action: Callable[[], object], message: str, description: 
         raise SystemExit(f"release metadata checker accepted {description}")
 
 
-def test_cross_provider_changelog_provenance() -> None:
-    """Keep GitLab strict while validating GitHub's native tag subset."""
+def test_each_provider_validates_its_native_tags_against_shared_history() -> None:
+    """Treat GitLab and GitHub as independent projections of one release history."""
 
     checker = load_checker()
     releases = [
@@ -101,85 +101,37 @@ def test_cross_provider_changelog_provenance() -> None:
         ("1.0.1", "2026-07-01"),
     ]
     original_known = getattr(checker, "known_release_versions")
-    original_git = getattr(checker, "_git")
     original_tag_date = getattr(checker, "tag_creation_date")
     try:
-        setattr(checker, "known_release_versions", lambda: ["1.0.2"])
-        checker.check_changelog_provenance(releases, provider="github")
-        setattr(checker, "known_release_versions", lambda: ["1.0.2", "1.0.1"])
-        setattr(checker, "_git", lambda *args: "false")
-        setattr(
-            checker,
-            "tag_creation_date",
-            lambda version: {"1.0.2": "2026-07-02", "1.0.1": "2026-07-01"}[version],
-        )
-        checker.check_changelog_provenance(releases, pending_version="1.0.3")
-        setattr(checker, "known_release_versions", lambda: ["1.0.2"])
-        expect_value_error(
-            lambda: checker.check_changelog_provenance(
-                [("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")],
-                provider="github",
-            ),
-            "must appear once",
-            "a GitHub-native tag without a canonical heading",
-        )
+        for provider in ("gitlab", "github"):
+            setattr(checker, "known_release_versions", lambda: ["1.0.2", "1.0.1"])
+            setattr(
+                checker,
+                "tag_creation_date",
+                lambda version: {"1.0.2": "2026-07-02", "1.0.1": "2026-07-01"}[version],
+            )
+            checker.check_changelog_provenance(releases, provider=provider, pending_version="1.0.3")
+            setattr(checker, "known_release_versions", lambda: ["1.0.2"])
+            expect_value_error(
+                lambda provider=provider: checker.check_changelog_provenance(
+                    [("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")],
+                    provider=provider,
+                ),
+                "must appear once",
+                f"a {provider}-native tag without a shared heading",
+            )
         expect_value_error(
             lambda: checker.check_changelog_provenance(releases, provider="gitbucket"),
             "unsupported release provider",
             "an invalid provider",
         )
-        expect_value_error(
-            lambda: checker.check_changelog_provenance(releases),
-            "1.0.3",
-            "a provider-external heading on canonical GitLab",
-        )
-        setattr(checker, "known_release_versions", lambda: ["1.0.3", "1.0.2", "1.0.1"])
-        setattr(checker, "tag_creation_date", lambda version: "2000-01-01")
-        expect_value_error(
-            lambda: checker.check_changelog_provenance(releases),
-            "was created on",
-            "GitLab canonical date drift",
-        )
-        setattr(checker, "_git", lambda *args: "true")
-        expect_value_error(
-            lambda: checker.check_changelog_provenance(releases, pending_version="1.0.3"),
-            "non-shallow",
-            "canonical chronology from a shallow repository",
-        )
-        setattr(checker, "known_release_versions", lambda: ["1.0.2"])
-        checker.check_active_release_train("1.0.3", releases, provider="github")
-        checker.check_active_release_train(
-            "1.0.4",
-            [("1.0.3", "2026-07-03"), ("1.0.2", "2026-07-02")],
-            provider="github",
-        )
-        expect_value_error(
-            lambda: checker.check_active_release_train("1.0.1", releases, provider="github"),
-            "exists before its Git tag",
-            "a stale GitHub VERSION",
-        )
-        setattr(checker, "known_release_versions", lambda: [])
-        checker.check_changelog_provenance(releases, provider="github")
-        checker.check_active_release_train("1.0.3", releases, provider="github")
-        expect_value_error(
-            lambda: checker.check_active_release_train("1.0.2", releases, provider="github"),
-            "exists before its Git tag",
-            "a stale VERSION in a zero-tag GitHub projection",
-        )
-        setattr(checker, "_git", lambda *args: "false")
-        expect_value_error(
-            lambda: checker.check_changelog_provenance(releases),
-            "cannot find a gitlab release SemVer tag",
-            "a zero-tag canonical GitLab projection",
-        )
     finally:
         setattr(checker, "known_release_versions", original_known)
-        setattr(checker, "_git", original_git)
         setattr(checker, "tag_creation_date", original_tag_date)
 
 
 def test_tag_creation_date_uses_utc() -> None:
-    """Normalize a local-midnight tagger timestamp to its UTC release date."""
+    """Normalize a provider-native tag timestamp to its UTC release date."""
 
     checker = load_checker()
     original_git = getattr(checker, "_git")
@@ -187,7 +139,7 @@ def test_tag_creation_date_uses_utc() -> None:
         setattr(checker, "_git", lambda *args: "1785342943")
         require(
             checker.tag_creation_date("1.0.29") == "2026-07-29",
-            "tag creation date followed the tagger offset instead of UTC",
+            "tag creation date followed the local offset instead of UTC",
         )
     finally:
         setattr(checker, "_git", original_git)
@@ -277,15 +229,9 @@ def test_exact_release_tag_contract() -> None:
         setattr(checker, "_git", original_git)
 
 
-def test_retired_cli_is_rejected() -> None:
-    """Keep the deleted unpublished-history bypass outside the parser grammar."""
+def test_github_can_independently_prepare_the_release() -> None:
+    """Keep release preparation provider-parametric without bypass flags."""
 
-    completed = _run(sys.executable, str(CHECKER), "--allow-unpublished-history")
-    require(completed.returncode != 0, "retired unpublished-history parser flag was accepted")
-    require(
-        "unrecognized arguments" in completed.stderr,
-        "retired unpublished-history parser flag returned an unclear error",
-    )
     completed = _run(
         sys.executable,
         str(CHECKER),
@@ -293,8 +239,7 @@ def test_retired_cli_is_rejected() -> None:
         "github",
         "--prepare-release",
     )
-    require(completed.returncode != 0, "GitHub accepted canonical release preparation")
-    require("reserved for" in completed.stderr, "GitHub preparation returned an unclear error")
+    require(completed.returncode == 0, "GitHub could not independently prepare the same release")
 
 
 def test_provider_tag_scripts_preflight_before_signing() -> None:
@@ -311,7 +256,7 @@ def test_provider_tag_scripts_preflight_before_signing() -> None:
     )
     github = (ROOT / "tools" / "release" / "tag-github.sh").read_text(encoding="utf-8")
     exact = (
-        '"$release_python" "$projection/tools/release/metadata.py" --provider github --tag "$tag"'
+        '"$release_python" "$repository/tools/release/metadata.py" --provider github --tag "$tag"'
     )
     require(exact in github, "tag-github.sh lacks exact projected tag validation")
     require(
@@ -328,12 +273,10 @@ def test_forward_only_forge_publication_contract() -> None:
         source,
         (
             "--provider",
-            "merge-base --is-ancestor",
             "refs/heads/main",
             "GIT_CONFIG_GLOBAL=/dev/null",
             "verify-commit",
-            "CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS",
-            "CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT",
+            "COMMIT_ALLOWED_SIGNERS",
             "commit-tree -S",
             "runner_admission.py",
             "CODEX_RESPONSES_PROXY_GITLAB_PROJECT",
@@ -343,20 +286,18 @@ def test_forward_only_forge_publication_contract() -> None:
         "provider identity projector",
     )
     require(
+        "canonical GitLab" not in source and "GitLab receives" not in source,
+        "Forge projection still treats GitLab as source authority",
+    )
+    context_source = (ROOT / "tools" / "forge" / "context.sh").read_text(encoding="utf-8")
+    require(
+        "CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT" in context_source,
+        "provider identity context is not externally supplied",
+    )
+    require(
         all(token not in source for token in ("filter-branch", "--force", "--force-with-lease")),
         "forge projector can rewrite or force-update history",
     )
-    for retired in (
-        "project-github.sh",
-        "project-gitlab.sh",
-        "rewrite-provider-history.py",
-        "test-github-provider-projection.sh",
-        "test-gitlab-provider-projection.sh",
-    ):
-        require(
-            not (ROOT / "tools" / "forge" / retired).exists(),
-            f"retired history mechanism remains: {retired}",
-        )
     context = (ROOT / "tools" / "forge" / "context.sh").read_text(encoding="utf-8")
     require_tokens(
         context,
@@ -482,7 +423,7 @@ def test_github_governance_fetches_complete_provider_tags() -> None:
 
 
 def test_github_release_metadata_is_strict() -> None:
-    """Forbid the retired broad bypass in exact GitHub tag validation."""
+    """Require exact provider-tag validation in the GitHub release path."""
 
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     require(
@@ -563,27 +504,20 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
     """Require GitLab's Python matrix to use the canonical test owner."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    block = ci_block(ci, ".python-verify:", "\n\nverify-python-3.12:")
+    block = ci_block(ci, "verify-python-matrix:", "\n\nverify-release-metadata:")
     require_tokens(
         block,
         (
             'GIT_DEPTH: "0"',
             "git fetch --unshallow --tags --force origin",
             "git fetch --tags --force origin",
-            'uv run --locked --no-sync nox -s "tests-${PYTHON_VERSION}"',
+            "uv python install $(tr '\\n' ' ' < .python-versions)",
+            "uv run --locked --no-sync nox -s full",
             f"{APT_INSTALL} binutils git openssh-client",
         ),
-        ".python-verify template",
+        "GitLab Python matrix job",
     )
-    require_tokens(
-        ci,
-        (
-            'PYTHON_VERSION: "3.12"',
-            'PYTHON_VERSION: "3.13"',
-            'PYTHON_VERSION: "3.14"',
-        ),
-        "GitLab supported Python lines",
-    )
+    require("PYTHON_VERSION" not in ci, "GitLab duplicated the Python matrix")
     for patch_pin in ("3.12.", "3.13.", "3.14."):
         require(
             patch_pin not in ci,
@@ -617,13 +551,12 @@ def test_current_release_metadata_chronology() -> None:
     heading = f"## [{version}]"
     tag_exists = _run("git", "rev-parse", "--verify", f"refs/tags/v{version}").returncode == 0
     if heading in source and not tag_exists:
-        expect_rejection(source, "an untagged pending release in ordinary verification")
-        args = (
-            ["--provider", "github"]
-            if os.environ.get("GITHUB_ACTIONS") == "true"
-            else ["--prepare-release"]
-        )
-        subprocess.run([sys.executable, str(CHECKER), *args], cwd=ROOT, check=True)
+        for provider in ("gitlab", "github"):
+            subprocess.run(
+                [sys.executable, str(CHECKER), "--provider", provider, "--prepare-release"],
+                cwd=ROOT,
+                check=True,
+            )
     else:
         args = ["--provider", "github"] if os.environ.get("GITHUB_ACTIONS") == "true" else []
         subprocess.run([sys.executable, str(CHECKER), *args], cwd=ROOT, check=True)
@@ -638,12 +571,9 @@ def test_current_release_metadata_chronology() -> None:
         "a tag/date mismatch",
     )
     expect_rejection(source.replace("## [1.0.4] - 2026-07-14\n", "", 1), "a missing reachable tag")
-    expect_rejection(
-        source.replace(
-            "## [1.0.8] - 2026-07-14", "## [1.0.9] - 2026-07-17\n\n## [1.0.8] - 2026-07-14", 1
-        ),
-        "an untagged published release",
-    )
+    # A shared Changelog may contain a release published independently on the
+    # other Forge. Each provider validates its own native tags; parity is a
+    # separate post-publication audit, not a release prerequisite.
     subprocess.run(
         [sys.executable, str(CHECKER), "--provider", "github"],
         cwd=ROOT,

@@ -7,7 +7,7 @@ import json
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Protocol
 
-from codex_responses_proxy.protocol import response as replay_response
+from codex_responses_proxy.protocol import response as live_response
 from codex_responses_proxy.relay import operational_log, telemetry
 from codex_responses_proxy.relay import sse
 from codex_responses_proxy.providers import registry as provider_registry
@@ -219,7 +219,7 @@ def _invalid_responses_success(exchange: Exchange, reason: str) -> None:
 
 
 def relay_responses_json(exchange: Exchange, response) -> None:
-    """Project one complete non-stream Responses body before commitment."""
+    """Validate one complete non-stream Responses body before commitment."""
     chunks: list[bytes] = []
     total = 0
     try:
@@ -236,7 +236,7 @@ def relay_responses_json(exchange: Exchange, response) -> None:
                 return
             if not chunk:
                 break
-        payload, removed = replay_response.sanitize_json_response(b"".join(chunks))
+        payload = live_response.validate_json_response(b"".join(chunks))
     except ValueError:
         _invalid_responses_success(exchange, "invalid_terminal_json")
         return
@@ -245,8 +245,5 @@ def relay_responses_json(exchange: Exchange, response) -> None:
         return
 
     send_payload(exchange.handler, response.status, payload)
-    if removed:
-        telemetry.record_counter("encrypted_response_keys_stripped", removed)
-        exchange.log("response_sanitized", f"encrypted_keys={removed} ")
     telemetry.record_counter("responses_completed")
     exchange.input_variant_accepted()

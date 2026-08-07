@@ -197,7 +197,7 @@ class ProviderProjectionTests:
         }
 
     def test_each_forge_uses_its_identity_and_preserves_the_source_tree(self) -> None:
-        """Keep GitLab canonical while GitHub gets a signed identity projection."""
+        """Project one local source independently into each signed Forge history."""
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -238,10 +238,6 @@ class ProviderProjectionTests:
                     assert remote_head == projection["projected_commit"]
                     assert source_head == projection["source_commit"]
                     assert source_tree == projection["tree"]
-                    if provider == "gitlab":
-                        assert source_head == remote_head
-                    else:
-                        assert source_head != remote_head
                     emails = run(
                         "git", "log", "--format=%ae%n%ce", "main", cwd=remote
                     ).stdout.splitlines()
@@ -375,14 +371,13 @@ class ProviderProjectionTests:
             new_tip = run("git", "rev-parse", "refs/heads/main", cwd=github_remote).stdout.strip()
             run("git", "merge-base", "--is-ancestor", old_tip, new_tip, cwd=github_remote)
 
-    def test_untrusted_canonical_commit_is_rejected_without_ref_change(self) -> None:
-        """Reject source history outside canonical GitLab identity and trust."""
+    def test_source_history_is_not_required_to_use_a_forge_identity(self) -> None:
+        """Keep accepted local history independent from both publication identities."""
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             fixture = self.fixture(root)
             source = fixture["source"]
-            gitlab_remote = fixture["gitlab_remote"]
             outsider = root / "outsider-signing"
             run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(outsider), cwd=root)
             run("git", "config", "user.email", "untrusted@example.test", cwd=source)
@@ -397,20 +392,16 @@ class ProviderProjectionTests:
                     "--provider",
                     "gitlab",
                     cwd=source,
-                    check=False,
                     env=self.environment(fixture, agent),
                 )
-            assert 0 != result.returncode
-            assert "canonical GitLab identity" in result.stderr
+            assert result.returncode == 0
+            remote = fixture["gitlab_remote"]
             assert (
-                ""
-                == run(
-                    "git",
-                    "for-each-ref",
-                    "refs/heads/main",
-                    "--format=%(objectname)",
-                    cwd=gitlab_remote,
-                ).stdout.strip()
+                run("git", "rev-parse", "HEAD^{tree}", cwd=source).stdout.strip()
+                == run("git", "rev-parse", "main^{tree}", cwd=remote).stdout.strip()
+            )
+            assert {fixture["gitlab_email"]} == set(
+                run("git", "log", "--format=%ae%n%ce", "main", cwd=remote).stdout.splitlines()
             )
 
     def test_divergent_github_tree_is_rejected_without_ref_change(self) -> None:

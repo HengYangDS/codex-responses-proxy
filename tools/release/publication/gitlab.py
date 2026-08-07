@@ -12,9 +12,7 @@ from tools.release.publication import hosted
 from tools.release import product_assets as release_assets
 
 DEFAULT_REQUIRED_JOBS: Final = (
-    "verify-python-3.12",
-    "verify-python-3.13",
-    "verify-python-3.14",
+    "verify-python-matrix",
     "verify-release-metadata",
     "verify-release-tag",
     "verify-python-quality",

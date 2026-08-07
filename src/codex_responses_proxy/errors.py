@@ -11,5 +11,9 @@ class InstallError(RuntimeError):
     """Report a fail-closed installation, route, or lifecycle contract violation."""
 
 
+class ProductAssemblyError(RuntimeError):
+    """Report that a released executable is missing an internal product component."""
+
+
 class ManualStartRequired(RuntimeError):
     """Report that durable service persistence could not be established."""

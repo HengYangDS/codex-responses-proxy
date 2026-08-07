@@ -16,6 +16,8 @@ stages:
 variables:
   DEBIAN_FRONTEND: noninteractive
   CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
+  PYTHON_FLOOR_IMAGE: python:3.12-slim
+  PYTHON_LATEST_IMAGE: python:3.14-slim
 
 default:
   tags: [$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG]
@@ -26,9 +28,9 @@ default:
       UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
       python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore "uv${UV_REQUIREMENT}"
 
-.python-verify:
+verify-python-matrix:
   stage: verify
-  image: python:${PYTHON_VERSION}-slim
+  image: $PYTHON_LATEST_IMAGE
   variables:
     # The canonical test inventory includes release chronology contracts.
     # Every matrix interpreter therefore needs the same complete Git history.
@@ -43,23 +45,12 @@ default:
   script:
     - python --version
     - uv sync --locked --only-group quality
-    - uv run --locked --no-sync nox -s "tests-${PYTHON_VERSION}"
-
-verify-python-3.12:
-  extends: .python-verify
-  variables: { PYTHON_VERSION: "3.12" }
-
-verify-python-3.13:
-  extends: .python-verify
-  variables: { PYTHON_VERSION: "3.13" }
-
-verify-python-3.14:
-  extends: .python-verify
-  variables: { PYTHON_VERSION: "3.14" }
+    - uv python install $(tr '\n' ' ' < .python-versions)
+    - uv run --locked --no-sync nox -s full
 
 verify-release-metadata:
   stage: verify
-  image: python:3.14-slim
+  image: $PYTHON_LATEST_IMAGE
   variables:
     # Release chronology compares the whole provider tag namespace. A shallow
     # checkout cannot establish that history, so this job must receive it.
@@ -93,7 +84,7 @@ verify-release-metadata:
 
 verify-release-tag:
   stage: release
-  image: python:3.14-slim
+  image: $PYTHON_LATEST_IMAGE
   variables: { GIT_DEPTH: "0" }
   rules:
     - if: '$CI_COMMIT_TAG'
@@ -102,13 +93,15 @@ verify-release-tag:
     - apt-get install -qq -y --no-install-recommends git openssh-client
     - git fetch --tags --force --prune --prune-tags origin
     - test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"
+    - *install-uv
+    - uv sync --locked --all-groups
   script:
-    - python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
+    - uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
     - CODEX_RESPONSES_PROXY_RELEASE_ALLOWED_SIGNERS="$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST" sh tools/forge/check-tag-signature.sh . "$CI_COMMIT_TAG" gitlab
 
 verify-python-quality:
   stage: verify
-  image: python:3.12-slim
+  image: $PYTHON_FLOOR_IMAGE
   variables:
     # The canonical quality suite also executes release chronology tests.
     # Keep this checkout equivalent to every other full-suite job.
@@ -125,7 +118,7 @@ verify-python-quality:
 build-gitlab-native-asset:
   stage: release
   image:
-    name: python:3.14-slim
+    name: $PYTHON_LATEST_IMAGE
     docker: { platform: linux/amd64 }
   variables: { GIT_DEPTH: "0" }
   rules:
@@ -146,13 +139,11 @@ build-gitlab-native-asset:
 
 publish-gitlab-release:
   stage: release
-  image: python:3.14-slim
+  image: $PYTHON_LATEST_IMAGE
   variables: { GIT_DEPTH: "0" }
   needs:
     - build-gitlab-native-asset
-    - verify-python-3.12
-    - verify-python-3.13
-    - verify-python-3.14
+    - verify-python-matrix
     - verify-release-metadata
     - verify-release-tag
     - verify-python-quality
@@ -162,8 +153,10 @@ publish-gitlab-release:
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends curl git openssh-client
     - git fetch --tags --force --prune --prune-tags origin
+    - *install-uv
+    - uv sync --locked --all-groups
   script:
-    - python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
+    - uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
     - test -f "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY:-}"
     - test -n "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST:-}"
     - CODEX_RESPONSES_PROXY_RELEASE_ASSET_DIR="$CI_PROJECT_DIR/.release-assets" sh tools/release/publish-gitlab.sh

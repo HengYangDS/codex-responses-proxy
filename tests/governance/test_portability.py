@@ -49,35 +49,21 @@ class PortabilityContracts:
             "personal-identity",
         }
 
-    def test_scanner_keeps_only_immutable_records_out_of_product_scope(self) -> None:
-        scanner = _scanner()
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            for relative in (
-                "evidence/chronicle/receipt.md",
-                "openspec/changes/archive/retired.md",
-            ):
-                path = root / relative
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(
-                    f'fixture = "{Path("/") / "Users" / "example" / "test"}"\n'
-                    f'actor = "fixture{"@"}example.test"\n',
-                    encoding="utf-8",
-                )
-
-            findings = scanner.audit(
-                root,
-                paths=(
-                    "evidence/chronicle/receipt.md",
-                    "openspec/changes/archive/retired.md",
-                ),
-            )
-
-        assert findings == ()
-
     def test_scanner_has_no_mutable_surface_allowlist(self) -> None:
         scanner = _scanner()
         assert not hasattr(scanner, "_FIXTURE_FILES")
+
+    def test_scanner_classifies_current_product_not_historical_records(self) -> None:
+        scanner = _scanner()
+        current = "docs/operator-guide.md"
+        historical = (
+            "evidence/claims/release.toml",
+            "evidence/chronicle/release/observation.md",
+            "openspec/changes/archive/2026-08-07-release/specs/product/spec.md",
+        )
+
+        assert scanner._in_scope(current)
+        assert all(not scanner._in_scope(path) for path in historical)
 
     def test_current_product_surfaces_have_no_wrong_owner_bindings(self) -> None:
         assert _scanner().audit(ROOT) == ()

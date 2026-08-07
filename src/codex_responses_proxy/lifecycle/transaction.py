@@ -1,7 +1,7 @@
 """Source-side state machine for one admitted payload transaction.
 
 The transaction consumes one admitted payload capability and coordinates the
-candidate, migration, rollback, projection, and journal owners. It owns only
+candidate, rollback, projection, and journal owners. It owns only
 state transitions and transaction-root cleanup; it does not reimplement those
 collaborators or own installed manifest reads and purge.
 """
@@ -20,7 +20,6 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.service import digest, identity, inventory
 from codex_responses_proxy.lifecycle import (
     candidate as payload_candidate,
-    migration,
     owned_files,
     projection,
     rollback as payload_rollback,
@@ -53,22 +52,33 @@ def rollback_recovery(
             for relative in (inventory.EXECUTABLE, inventory.WINDOWS_EXECUTABLE)
             if (rollback / relative).is_file()
         ),
-        rollback / inventory.executable_name(),
+        None,
     )
-    previous = identity.committed_payload(previous_executable)
+    previous = (
+        identity.committed_payload(previous_executable) if previous_executable is not None else None
+    )
     if previous is None:
         raise errors.InstallError("payload recovery rollback runtime identity is invalid")
     candidate = identity.committed_payload(Path(ctx.executable))
     if candidate is None:
         raise errors.InstallError("payload recovery candidate projection identity is invalid")
+    if candidate.release != journal["version"] or candidate.release_receipt_sha256 != journal.get(
+        "receipt_sha256"
+    ):
+        raise errors.InstallError("payload recovery candidate does not match the transaction")
     expected_runtime = {
-        **previous.handoff(),
-        "payload_manifest_sha256": candidate.manifest_sha256,
+        "release": previous.release,
+        "serving_payload_sha256": previous.serving_payload_sha256,
+        "release_receipt_sha256": previous.release_receipt_sha256,
+        "payload_manifest_sha256": previous.manifest_sha256,
         "accepting": True,
-        "handoff_state": "idle",
+        "draining": False,
     }
-    expected_runtime.pop("manifest_sha256")
-    if runtime is None or any(runtime.get(key) != value for key, value in expected_runtime.items()):
+    if (
+        runtime is None
+        or any(runtime.get(key) != value for key, value in expected_runtime.items())
+        or runtime.get("handoff_state") not in {"idle", "serving", "finalized"}
+    ):
         raise errors.InstallError("payload recovery runtime does not match the rollback projection")
     payload_rollback.restore_snapshot(ctx, rollback)
     result = {
@@ -159,9 +169,8 @@ class PayloadTransaction:
         rollback.mkdir(mode=0o700)
         mutated = False
         try:
-            snapshot = payload_rollback.write_snapshot(self._ctx, rollback, self._version)
-            payload_candidate.reject_unowned_collisions(self._ctx, snapshot.previous_owned)
-            migration.remove_retired_paths(self._ctx, snapshot)
+            snapshot = payload_rollback.write_snapshot(self._ctx, rollback)
+            payload_candidate.reject_unowned_collisions(self._ctx, snapshot.owned)
             mutated = True
             payload_candidate.write_projection(
                 self._ctx,
@@ -266,7 +275,6 @@ def begin_transaction(
             raise errors.InstallError("released payload downgrade is refused")
         if comparison == 0:
             raise errors.InstallError("released payload replay is refused")
-    migration.remove_legacy_captures(ctx)
     fresh = previous is None and not Path(ctx.install_dir).exists()
     root.parent.mkdir(parents=True, exist_ok=True)
     root.mkdir(mode=0o700)

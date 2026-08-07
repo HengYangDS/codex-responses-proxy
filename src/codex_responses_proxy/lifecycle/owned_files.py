@@ -12,7 +12,6 @@ from typing import Any
 from codex_responses_proxy import errors
 from codex_responses_proxy.service import digest, inventory
 
-RETIRED_INSTALL_DIRECTORIES = ("platform_adapters", "proxy", "tests")
 OWNED_PAYLOAD_METADATA = (
     inventory.MANIFEST_FILENAME,
     inventory.RELEASE_RECEIPT_FILENAME,

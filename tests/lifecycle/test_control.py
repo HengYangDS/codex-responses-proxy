@@ -105,15 +105,22 @@ class TestControllerLifecycle:
             control.projection, "verify_payload_manifest", side_effect=current_error
         )
         mocker.patch.object(
-            control.projection,
-            "verify_historical_projection",
-            side_effect=errors.InstallError("historical manifest invalid"),
+            control,
+            "adapter",
+            side_effect=errors.InstallError("service unavailable"),
         )
-        mocker.patch.object(control, "adapter", side_effect=RuntimeError("service unavailable"))
         mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
         evidence = control.status(ctx)
         assert evidence["payload_integrity"] == {"ok": False, "detail": str(current_error)}
         assert evidence["service"] == "unknown"
+
+        mocker.patch.object(
+            control,
+            "adapter",
+            side_effect=errors.ProductAssemblyError("product assembly incomplete"),
+        )
+        with pytest.raises(errors.ProductAssemblyError, match="product assembly incomplete"):
+            control.status(ctx)
 
         mocker.patch.object(control, "_runtime_metrics", return_value={"pid": 7})
         mocker.patch.object(control.handoff, "runtime_supports_handoff", return_value=True)
@@ -239,7 +246,7 @@ class TestControllerLifecycle:
             mocker.patch.object(application.control, "_runtime_metrics", return_value=None)
             adapter = mocker.patch.object(application.control, "adapter")
             adapter.return_value.status.return_value = "running"
-            evidence = application.dispatch("status", mocker.Mock(port=ctx.port))
+            evidence = application.dispatch("status", port=ctx.port)
             assert evidence["payload_transaction"]["state"] == "recovery_required"
             assert "reason" not in evidence["payload_transaction"]
             rendered = json.dumps(evidence)
@@ -247,10 +254,10 @@ class TestControllerLifecycle:
                 assert forbidden not in rendered
             assert journal_path.read_bytes() == before
 
-    def test_reload_refuses_legacy_listener_without_mutation(self, *, mocker):
+    def test_reload_refuses_incompatible_listener_without_mutation(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
         mocker.patch.object(control, "_runtime_metrics", return_value={"pid": 12345})
         terminate = mocker.patch.object(process, "terminate_pid")
-        with pytest.raises(errors.InstallError, match="verified successor release"):
+        with pytest.raises(errors.InstallError, match="transactional reload"):
             control.reload(ctx)
         terminate.assert_not_called()

@@ -16,7 +16,11 @@ from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import identity as listener_identity
 from codex_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import executable_relative, install_context
-from tests.lifecycle.fixtures import begin_transaction, install_payload, released_artifact
+from tests.lifecycle.fixtures import (
+    begin_transaction,
+    install_payload,
+    released_artifact,
+)
 from tests.lifecycle.fixtures import runtime_files
 import pytest
 
@@ -95,7 +99,7 @@ class TestPayloadTransaction:
         assert Path(payload_state.installed_path(ctx)).read_bytes() == before_state
         assert not Path(payload_state.transaction_root(ctx)).exists()
 
-    def test_upgrade_rollback_preserves_unknown_retired_content(self, *, mocker) -> None:
+    def test_upgrade_rollback_preserves_unknown_content(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install_payload(ctx, "1.2.2", mocker=mocker)
         unknown = Path(ctx.install_dir, "proxy", "local.py")
@@ -154,8 +158,9 @@ class TestPayloadTransaction:
         assert candidate_identity is not None
         runtime = {
             **previous_identity.handoff(),
-            "payload_manifest_sha256": candidate_identity.manifest_sha256,
+            "payload_manifest_sha256": previous_identity.manifest_sha256,
             "accepting": True,
+            "draining": False,
             "handoff_state": "idle",
         }
         runtime.pop("manifest_sha256")

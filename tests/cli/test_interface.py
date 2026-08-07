@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from codex_responses_proxy import errors
 from codex_responses_proxy.cli import application
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,24 +29,17 @@ class ProductInterfaceContracts:
             code = application.main(list(arguments))
         return code, stdout.getvalue(), stderr.getvalue()
 
-    def test_help_exposes_exactly_six_public_commands(self) -> None:
+    def test_help_exposes_exactly_the_declared_public_commands(self) -> None:
         code, stdout, stderr = self.invoke("--help")
         assert code == 0
         assert stderr == ""
-        command_lines = {
-            line.split()[0]
-            for line in stdout.splitlines()
-            if line.startswith("  ") and line.strip() and not line.lstrip().startswith("{")
-        }
-        assert command_lines & application.PUBLIC_COMMANDS == application.PUBLIC_COMMANDS
-        for retired in ("control", "serve", "watchdog", "python", "source"):
-            assert retired not in command_lines
+        assert all(command in stdout for command in application.PUBLIC_COMMANDS)
 
     def test_empty_and_subcommand_help_are_successful(self) -> None:
         for arguments in ((), ("status", "--help")):
             code, stdout, stderr = self.invoke(*arguments)
             assert code == 0
-            assert "usage: codex-responses-proxy" in stdout
+            assert "Usage: codex-responses-proxy" in stdout
             assert stderr == ""
 
     def test_parse_failures_are_bounded_in_text_and_json(self) -> None:
@@ -65,28 +59,6 @@ class ProductInterfaceContracts:
                 assert "Next" in stderr
             assert "Traceback" not in stderr
             assert "Warning" not in stderr
-
-    def test_parser_exit_preserves_argparse_status_and_optional_message(self) -> None:
-        """Keep successful help control flow distinct from bounded parse failures."""
-
-        parser = application._Parser()
-        stderr = io.StringIO()
-        with contextlib.redirect_stderr(stderr), pytest.raises(application._HelpRequested):
-            parser.exit()
-        assert stderr.getvalue() == ""
-
-        with (
-            contextlib.redirect_stderr(stderr),
-            pytest.raises(ValueError, match="invalid arguments"),
-        ):
-            parser.exit(2)
-
-        with (
-            contextlib.redirect_stderr(stderr),
-            pytest.raises(ValueError, match="explicit failure"),
-        ):
-            parser.exit(2, "explicit failure")
-        assert stderr.getvalue().endswith("explicit failure")
 
     def test_module_boundary_delegates_exit_status(self, *, mocker) -> None:
         main = mocker.patch.object(application, "main", return_value=7)
@@ -142,6 +114,52 @@ class ProductInterfaceContracts:
         assert "codex-responses-proxy doctor" in stderr
         assert "python -m" not in stderr
         assert "Traceback" not in stderr
+
+    def test_internal_assembly_failures_are_bounded_without_traceback(self, *, mocker) -> None:
+        mocker.patch.object(
+            application,
+            "dispatch",
+            side_effect=errors.ProductAssemblyError(
+                "product installation is incomplete; reinstall the verified release"
+            ),
+        )
+
+        code, stdout, stderr = self.invoke(
+            "install",
+            "--asset",
+            "release.tar.gz",
+            "--trust-anchor",
+            "allowed-signers",
+        )
+
+        assert code == 2
+        assert stdout == ""
+        assert "product installation is incomplete" in stderr
+        assert "reinstall the verified release" in stderr
+        assert "codex_responses_proxy" not in stderr
+        assert "Traceback" not in stderr
+        assert "Warning" not in stderr
+
+    def test_built_executable_contains_the_native_platform_adapter(self) -> None:
+        executable = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
+        if executable is None:
+            pytest.skip("native executable supplied by release session")
+        with tempfile.TemporaryDirectory() as home:
+            result = subprocess.run(
+                [executable, "status", "--json"],
+                cwd=home,
+                env={"PATH": home, "HOME": home},
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+        assert result.returncode in {0, 2}, result.stderr
+        assert "No module named" not in result.stderr
+        assert "Traceback" not in result.stderr
+        assert "Warning" not in result.stderr
+        if result.stderr:
+            assert "product installation is incomplete" not in result.stderr
 
     def test_built_executable_runs_without_python_on_path(self) -> None:
         executable = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")

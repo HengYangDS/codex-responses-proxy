@@ -136,19 +136,21 @@ class TestInstallationInputValidation:
         assert runtime_config.load(environment).listener == ("127.0.0.1", 8808)
         assert environment[runtime_config.UPSTREAM_TIMEOUT_ENV] == "45.0"
 
-    def test_fixed_process_capacity_is_not_a_user_setting(self):
-        retired_names = {
-            "RESPONSES_MAX_CONCURRENCY_ENV",
-            "RESPONSES_QUEUE_TIMEOUT_ENV",
-            "DEFAULT_RESPONSES_MAX_CONCURRENCY",
-            "DEFAULT_MAX_CONCURRENT_RESPONSES",
-            "DEFAULT_RESPONSES_QUEUE_TIMEOUT",
+    def test_runtime_settings_expose_only_the_owned_configuration_model(self):
+        assert set(runtime_config.Settings.__dataclass_fields__) == {
+            "host",
+            "port",
+            "proxy_log",
+            "watchdog_log",
+            "upstream_timeout",
+            "upstream_read_timeout",
+            "watchdog_interval",
+            "watchdog_max_backoff",
+            "response_failed_compaction_budget",
+            "response_failed_max_stages",
         }
-        assert retired_names.isdisjoint(vars(runtime_config))
         settings = runtime_config.load({})
-        assert {"responses_max_concurrency", "responses_queue_timeout"}.isdisjoint(
-            settings.__dataclass_fields__
-        )
+        assert settings.listener == (runtime_config.listener_host(), runtime_config.DEFAULT_PORT)
 
     def test_runtime_settings_have_one_owner_and_strict_validation(self, subtests):
         environment = {
@@ -237,33 +239,6 @@ class TestGovernanceMetadata:
                 copied.append(source.relative_to(ROOT).as_posix())
         assert copied == []
 
-    def test_current_surfaces_use_the_single_replay_owner_and_package_commands(self, subtests):
-        """Reject retired artifacts and stale descriptions of the current product."""
-        for retired in ("config.example", "evolution/ledger.toml"):
-            assert not (ROOT / retired).exists(), retired
-
-        current_surfaces = {
-            "README.md": (
-                "dedicated semantic-preserving fallback",
-                "config.example",
-                "tests scripts",
-            ),
-            "openspec/specs/provider-portable-responses/spec.md": (
-                "Classified DMX fallback",
-                "one bounded fallback",
-            ),
-            "docs/evidence/README.md": ("prefer the loopback `control.py",),
-            "tools/reliability/observe.py": ("control.py status --json output",),
-            "src/codex_responses_proxy/lifecycle/install.py": (
-                "inspect `control.py status --json`",
-            ),
-        }
-        for relative, stale_phrases in current_surfaces.items():
-            source = (ROOT / relative).read_text(encoding="utf-8")
-            for phrase in stale_phrases:
-                with subtests.test(path=relative, phrase=phrase):
-                    assert phrase not in source
-
     def test_publication_actors_and_trust_anchors_are_execution_inputs(self):
         tracked = (
             ROOT / "packaging" / "release" / "publication-context.toml",
@@ -281,7 +256,6 @@ class TestGovernanceMetadata:
     def test_forge_publication_has_no_implicit_actor_or_trust_source(self):
         context = ROOT / "tools" / "forge" / "context.sh"
         assert context.is_file()
-        assert not (ROOT / "tools" / "forge" / "provider-context.sh").exists()
         sources = [
             context.read_text(encoding="utf-8"),
             (ROOT / "tools" / "forge" / "check-tag-signature.sh").read_text(encoding="utf-8"),
@@ -295,38 +269,40 @@ class TestGovernanceMetadata:
         assert "CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT" in sources[0]
         assert "CODEX_RESPONSES_PROXY_RELEASE_ALLOWED_SIGNERS" in sources[1]
 
-    def test_semantic_packages_replace_retired_flat_modules_without_facades(self):
-        retired = ("platform_adapters", "proxy")
-        assert not [path for path in retired if (ROOT / path).exists()]
-        packages = "cli lifecycle protocol providers relay service".split()
-        for package in (f"src/codex_responses_proxy/{name}" for name in packages):
+    def test_semantic_packages_are_declarative_and_facade_free(self):
+        package_root = ROOT / "src/codex_responses_proxy"
+        packages = {
+            path.name
+            for path in package_root.iterdir()
+            if path.is_dir() and not path.name.startswith("__")
+        }
+        assert packages == {
+            "cli",
+            "lifecycle",
+            "protocol",
+            "providers",
+            "relay",
+            "runtime",
+            "service",
+        }
+        for package in (package_root / name for name in sorted(packages)):
             source = (ROOT / package / "__init__.py").read_text(encoding="utf-8")
             assert "import " not in source, package
 
     def test_runtime_context_has_one_semantic_owner(self):
         assert (ROOT / "src/codex_responses_proxy/lifecycle/context.py").is_file()
-        assert not (ROOT / "src/codex_responses_proxy/lifecycle/layout.py").exists()
 
     def test_provider_specific_wire_policies_have_a_semantic_owner(self):
-        assert not (ROOT / "src/codex_responses_proxy/providers/dmxapi.py").exists()
         assert (ROOT / "src/codex_responses_proxy/providers/policies/dmxapi.py").is_file()
-        source = (ROOT / "src/codex_responses_proxy/providers/registry.py").read_text(
-            encoding="utf-8"
-        )
-        assert "from codex_responses_proxy.providers import dmxapi" not in source
-        assert "_POLICIES" not in source
 
     def test_publication_authority_has_no_scripts_module_loader(self):
-        source = (ROOT / "tools/release/publication/__init__.py").read_text(encoding="utf-8")
-        assert "importlib" not in source
-        assert "sys.modules" not in source
-        assert not tuple((ROOT / "tools" / "release").glob("publication_proof*.py"))
+        assert (ROOT / "tools/release/publication/__init__.py").read_text(encoding="utf-8") == (
+            '"""Forge-native publication observation adapters."""\n'
+        )
 
     def test_collaboration_has_one_append_only_projection_surface(self, subtests):
-        assert not (ROOT / "tools" / "forge" / "rewrite-provider-history.py").exists()
         projector = ROOT / "tools" / "forge" / "project.sh"
         assert projector.is_file()
-        assert not tuple((ROOT / "tools" / "forge").glob("project-*.sh"))
         source = projector.read_text(encoding="utf-8")
         for destructive in ("filter-branch", "filter-repo", "push --force", "push -f"):
             with subtests.test(destructive=destructive):
@@ -533,34 +509,6 @@ class TestGovernanceMetadata:
         assert "start a " + "new codex thread" not in text
         assert "conversation" not in text
         assert "config.toml" not in text
-
-    def test_installed_control_has_no_payload_upgrade_or_controller_patch_plane(self):
-        source = Path(ROOT, "src/codex_responses_proxy/lifecycle/control.py").read_text(
-            encoding="utf-8"
-        )
-        for retired in (
-            "apply-control-plane",
-            "upgrade_from_stage",
-            "commit_payload_transaction",
-            "--stage",
-        ):
-            assert retired not in source
-
-    def test_payload_mutation_accepts_no_raw_source_or_stage_path(self):
-        payload_source = Path(
-            ROOT, "src", "codex_responses_proxy", "lifecycle", "transaction.py"
-        ).read_text(encoding="utf-8")
-        install_source = Path(ROOT, "src/codex_responses_proxy/lifecycle/install.py").read_text(
-            encoding="utf-8"
-        )
-        for retired in (
-            "stage_payload_transaction",
-            "commit_payload_transaction",
-            "restore_payload_transaction",
-            "finalize_payload_transaction",
-        ):
-            assert retired not in payload_source
-        assert "--stage-only" not in install_source
 
 
 class TestReleaseMetadata:

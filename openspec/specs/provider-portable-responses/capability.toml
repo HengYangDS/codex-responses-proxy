@@ -4,8 +4,8 @@ routing_question = "Does this change alter Responses replay normalization, provi
 decision_axes = ["lifecycle", "surface", "authority"]
 boundary_rules = [
   "Codex owns stored conversation state and per-conversation model metadata.",
-  "AIGW owns accounts, credentials, profile selection, storage policy, and client projection.",
-  "The proxy owns request-local portable replay, fixed upstream routing, and streamed ciphertext removal.",
+  "The client control plane owns accounts, credentials, profile selection, storage policy, and client projection.",
+  "The proxy owns request-local portable replay, fixed upstream routing, and live-response integrity.",
   "Unknown replay structures fail closed before upstream I/O.",
   "Provider-specific recovery and cooldown never cross route boundaries.",
 ]
@@ -18,7 +18,7 @@ scope = "Provider-portable Responses replay across DMXAPI, UCloud, and AIHubMix"
 [recommended_facets]
 lifecycle = ["request", "stream", "installation", "release"]
 surface = ["listener", "compatibility", "test", "docs", "openspec"]
-authority = ["source", "test", "docs", "openspec", "claim", "evidence"]
+authority = ["source", "test", "docs", "openspec"]
 
 [proof_profile]
 default_command = "ethos prove --json"

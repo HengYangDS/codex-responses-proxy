@@ -54,7 +54,7 @@ def _redact_log_message(message: str) -> str:
 
 
 def _rotate_log_if_needed(path: Path, incoming_bytes: int) -> int:
-    """Enforce bounded local retention and return discarded legacy bytes."""
+    """Enforce bounded local retention and return discarded prior bytes."""
     try:
         metadata = path.lstat()
     except OSError:
