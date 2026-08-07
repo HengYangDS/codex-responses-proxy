@@ -1,0 +1,21 @@
+schema_version = 1
+id = "change:declare-publication-topology"
+intent = "Declare the sole local-first publication topology for independent GitLab and GitHub delivery."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/declare-publication-topology/**",
+    ".gitleaks.toml",
+    ".ethos/release.toml",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []

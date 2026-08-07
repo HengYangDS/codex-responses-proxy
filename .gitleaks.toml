@@ -1,0 +1,4 @@
+title = "Codex Responses Proxy secret scanning"
+
+[extend]
+useDefault = true
