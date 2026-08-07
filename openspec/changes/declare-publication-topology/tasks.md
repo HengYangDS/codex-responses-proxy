@@ -12,4 +12,4 @@
 ## 3. Verification
 
 - [x] 3.1 Validate the declaration with ETHOS and OpenSpec.
-- [ ] 3.2 Re-run exact-HEAD publish readiness after the implementation commit.
+- [x] 3.2 Re-run exact-HEAD publish readiness after the implementation commit.
