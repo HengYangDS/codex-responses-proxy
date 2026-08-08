@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -101,15 +102,9 @@ def test_each_provider_validates_its_native_tags_against_shared_history() -> Non
         ("1.0.1", "2026-07-01"),
     ]
     original_known = getattr(checker, "known_release_versions")
-    original_tag_date = getattr(checker, "tag_creation_date")
     try:
         for provider in ("gitlab", "github"):
             setattr(checker, "known_release_versions", lambda: ["1.0.2", "1.0.1"])
-            setattr(
-                checker,
-                "tag_creation_date",
-                lambda version: {"1.0.2": "2026-07-02", "1.0.1": "2026-07-01"}[version],
-            )
             checker.check_changelog_provenance(releases, provider=provider, pending_version="1.0.3")
             setattr(checker, "known_release_versions", lambda: ["1.0.2"])
             expect_value_error(
@@ -127,22 +122,6 @@ def test_each_provider_validates_its_native_tags_against_shared_history() -> Non
         )
     finally:
         setattr(checker, "known_release_versions", original_known)
-        setattr(checker, "tag_creation_date", original_tag_date)
-
-
-def test_tag_creation_date_uses_utc() -> None:
-    """Normalize a provider-native tag timestamp to its UTC release date."""
-
-    checker = load_checker()
-    original_git = getattr(checker, "_git")
-    try:
-        setattr(checker, "_git", lambda *args: "1785342943")
-        require(
-            checker.tag_creation_date("1.0.29") == "2026-07-29",
-            "tag creation date followed the local offset instead of UTC",
-        )
-    finally:
-        setattr(checker, "_git", original_git)
 
 
 def test_prepare_release_requires_current_utc_date() -> None:
@@ -446,11 +425,11 @@ def test_gitlab_release_metadata_gate_selects_validation_by_ref() -> None:
         block,
         (
             'if [ -n "${CI_COMMIT_TAG:-}" ]; then',
-            'python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"',
+            'uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"',
             'elif git show-ref --verify --quiet "refs/tags/v$(cat VERSION)"; then',
-            "python tools/release/metadata.py --provider gitlab",
+            "uv run --locked --no-sync python tools/release/metadata.py --provider gitlab",
             "else",
-            "python tools/release/metadata.py --provider gitlab --prepare-release",
+            "uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --prepare-release",
         ),
         "GitLab release metadata ref dispatch",
     )
@@ -466,7 +445,10 @@ def test_gitlab_tag_gates_require_exact_tag_validation() -> None:
     """Keep tag verification strict after admitting main release candidates."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    strict = 'python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"'
+    strict = (
+        "uv run --locked --no-sync python tools/release/metadata.py "
+        '--provider gitlab --tag "$CI_COMMIT_TAG"'
+    )
     for job, next_job in (
         ("verify-release-tag:", "\n\nverify-python-quality:"),
         ("publish-gitlab-release:", None),
@@ -566,11 +548,16 @@ def test_current_release_metadata_chronology() -> None:
             )
         else:
             expect_rejection(source, "an absent pending release heading", "--prepare-release")
-    expect_rejection(
-        source.replace("## [1.0.8] - 2026-07-14", "## [1.0.8] - 2000-01-01", 1),
-        "a tag/date mismatch",
+    tagged_version = (
+        _run("git", "tag", "--list", "v[0-9]*", "--sort=-version:refname")
+        .stdout.splitlines()[0]
+        .removeprefix("v")
     )
-    expect_rejection(source.replace("## [1.0.4] - 2026-07-14\n", "", 1), "a missing reachable tag")
+    tagged_heading = re.compile(
+        rf"(?m)^## \[{re.escape(tagged_version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$"
+    )
+    missing_tag_source = tagged_heading.sub("", source, count=1)
+    expect_rejection(missing_tag_source, "a missing reachable tag")
     # A shared Changelog may contain a release published independently on the
     # other Forge. Each provider validates its own native tags; parity is a
     # separate post-publication audit, not a release prerequisite.

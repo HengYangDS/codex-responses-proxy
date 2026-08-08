@@ -758,6 +758,9 @@ class TestVerificationContracts:
         )[0]
         assert "*install-uv" in metadata_job
         assert "uv sync --locked --only-group quality" in metadata_job
+        assert "python tools/" not in metadata_job.replace(
+            "uv run --locked --no-sync python tools/", ""
+        )
         assert "uv run --locked --no-sync pytest -q tests/release/test_metadata.py" in metadata_job
 
     def test_forge_bootstrap_derives_uv_requirement_from_project_metadata(self) -> None:
@@ -947,7 +950,7 @@ class TestVerificationContracts:
                 requirement.partition("==") for requirement in requirements
             )
         )
-        assert metadata["tool"]["uv"]["required-version"] == "==0.12.2"
+        assert metadata["tool"]["uv"]["required-version"] == "==0.12.3"
         assert metadata["tool"]["uv"]["link-mode"] == "copy"
         assert (ROOT / "uv.lock").is_file()
 

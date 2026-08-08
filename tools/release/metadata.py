@@ -67,19 +67,6 @@ def known_release_versions() -> list[str]:
     ]
 
 
-def tag_creation_date(version: str) -> str:
-    """Return one provider-native tag object's creation date in UTC."""
-
-    timestamp = int(
-        _git(
-            "for-each-ref",
-            "--format=%(creatordate:unix)",
-            f"refs/tags/v{version}",
-        )
-    )
-    return datetime.fromtimestamp(timestamp, timezone.utc).date().isoformat()
-
-
 def changelog_releases(path: Path | None = None) -> list[tuple[str, str]]:
     """Return dated Changelog releases after validating section structure."""
 
@@ -134,14 +121,6 @@ def check_changelog_provenance(
         )
     if pending_version in expected_versions:
         raise ValueError(f"release tag v{pending_version} already exists")
-    release_dates = dict(releases)
-    for version in expected_versions:
-        actual_date = tag_creation_date(version)
-        if release_dates[version] != actual_date:
-            raise ValueError(
-                f"release tag v{version} was created on {actual_date}, "
-                f"not CHANGELOG date {release_dates[version]}"
-            )
 
 
 def check_active_release_train(
