@@ -1,0 +1,22 @@
+schema_version = 1
+id = "change:release-metadata-and-toolchain-forward-fix"
+intent = "Align the 2.0.15 release date with current UTC and admit the current stable uv toolchain without changing product behavior."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/release-metadata-and-toolchain-forward-fix/**",
+    "CHANGELOG.md",
+    "pyproject.toml",
+    "tests/quality/test_contract.py",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
