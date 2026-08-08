@@ -76,7 +76,7 @@ verify-release-metadata:
     - uv run --locked --no-sync python tools/quality/markdown.py
     - uv run --locked --no-sync pytest -q tests/release/test_metadata.py
     - uv run --locked --no-sync python -m tools.quality.repository
-    - sh tests/release/contracts/test-publish-gitlab.sh
+    - uv run --locked --no-sync pytest -q tests/release/test_publish_gitlab.py
     - uv run --locked --no-sync pytest -q tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py
 
 verify-release-tag:
@@ -156,4 +156,4 @@ publish-gitlab-release:
     - uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
     - test -f "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY:-}"
     - test -n "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST:-}"
-    - CODEX_RESPONSES_PROXY_RELEASE_ASSET_DIR="$CI_PROJECT_DIR/.release-assets" sh tools/release/publish-gitlab.sh
+    - uv run --locked --no-sync python -m tools.release.publish_gitlab --api-base "$CI_API_V4_URL" --project-id "$CI_PROJECT_ID" --tag "$CI_COMMIT_TAG" --token "$CI_JOB_TOKEN" --assets "$CI_PROJECT_DIR/.release-assets" --signing-key "$CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY" --trust "$CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST"
