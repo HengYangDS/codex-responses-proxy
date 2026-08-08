@@ -20,6 +20,9 @@ required = [
     "branches: [main]",
     'tags: ["v*"]',
     "permissions:\n  contents: read",
+    'GIT_CONFIG_COUNT: "1"',
+    "GIT_CONFIG_KEY_0: init.defaultBranch",
+    "GIT_CONFIG_VALUE_0: main",
     "runs-on: macos-26",
     "runs-on: ubuntu-24.04",
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
@@ -85,6 +88,9 @@ windows_start = text.index("\n  python-windows:")
 governance_start = text.index("\n  governance:")
 mac_block = text[mac_start:windows_start]
 windows_block = text[windows_start:governance_start]
+setup_uv = "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9"
+if mac_block.count(setup_uv) != 1 or 'cache-suffix: ${{ matrix.python-version }}' not in mac_block:
+    raise SystemExit("macOS Python matrix must isolate setup-uv caches by interpreter")
 test_owner = 'uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"'
 if test_owner not in mac_block:
     raise SystemExit(f"macOS Python matrix must run {test_owner}")
