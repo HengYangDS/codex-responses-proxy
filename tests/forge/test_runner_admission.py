@@ -55,3 +55,27 @@ def test_github_requires_actions_and_both_active_workflows() -> None:
     assert not admission.github_ready(
         [{**workflows[0], "state": "disabled_manually"}, workflows[1]], {"enabled": True}
     )
+
+
+def test_gitlab_encodes_namespaced_project_coordinates(monkeypatch) -> None:
+    admission = _load()
+    calls: list[tuple[str, ...]] = []
+
+    def command(*args: str) -> object:
+        calls.append(args)
+        if args[-1].startswith("projects/"):
+            return [{"id": 35}]
+        return {
+            "id": 35,
+            "active": True,
+            "runner_type": "project_type",
+            "online": True,
+            "paused": False,
+            "run_untagged": False,
+            "access_level": "ref_protected",
+            "tag_list": ["docker-linux-amd64"],
+        }
+
+    monkeypatch.setattr(admission, "_command", command)
+    assert admission._gitlab("dig/misc/tools/proxy", "docker-linux-amd64")["ready"] is True
+    assert calls[0][-1] == "projects/dig%2Fmisc%2Ftools%2Fproxy/runners?per_page=100"

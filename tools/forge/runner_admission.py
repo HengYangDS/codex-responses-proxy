@@ -8,6 +8,7 @@ import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from typing import Annotated, cast
+from urllib.parse import quote
 
 from cyclopts import App, Parameter
 
@@ -75,7 +76,10 @@ def github_ready(
 
 
 def _gitlab(project: str, runner_tag: str | None) -> dict[str, object]:
-    listed = _records(_command("glab", "api", f"projects/{project}/runners?per_page=100"))
+    project_coordinate = quote(project, safe="")
+    listed = _records(
+        _command("glab", "api", f"projects/{project_coordinate}/runners?per_page=100")
+    )
     details = [_command("glab", "api", f"runners/{runner['id']}") for runner in listed]
     runners = [_mapping(runner) for runner in details]
     eligible = [runner for runner in runners if gitlab_ready([runner], runner_tag)]

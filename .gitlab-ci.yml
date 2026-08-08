@@ -67,15 +67,15 @@ verify-release-metadata:
   script:
     - |
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
+        uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
       elif git show-ref --verify --quiet "refs/tags/v$(cat VERSION)"; then
-        python tools/release/metadata.py --provider gitlab
+        uv run --locked --no-sync python tools/release/metadata.py --provider gitlab
       else
-        python tools/release/metadata.py --provider gitlab --prepare-release
+        uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --prepare-release
       fi
-    - python tools/quality/markdown.py
+    - uv run --locked --no-sync python tools/quality/markdown.py
     - uv run --locked --no-sync pytest -q tests/release/test_metadata.py
-    - python tools/quality/repository.py
+    - uv run --locked --no-sync python tools/quality/repository.py
     - sh tests/release/contracts/test-publish-gitlab.sh
     - sh tests/forge/contracts/test-github-actions.sh
     - sh tests/forge/contracts/test-github-release.sh

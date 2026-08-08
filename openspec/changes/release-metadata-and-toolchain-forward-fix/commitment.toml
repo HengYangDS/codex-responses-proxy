@@ -6,9 +6,14 @@ subjects = [
 ]
 scope = [
     "openspec/changes/release-metadata-and-toolchain-forward-fix/**",
+    ".gitlab-ci.yml",
     "CHANGELOG.md",
     "pyproject.toml",
     "tests/quality/test_contract.py",
+    "tests/forge/test_runner_admission.py",
+    "tests/release/test_metadata.py",
+    "tools/forge/runner_admission.py",
+    "tools/release/metadata.py",
 ]
 invariants = []
 acceptance = []
