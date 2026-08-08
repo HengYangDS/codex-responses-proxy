@@ -5,10 +5,21 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
 
 from tools.release import product_assets, publish_gitlab
+
+
+class _PublicationArguments(TypedDict):
+    api_base: str
+    project_id: int
+    tag: str
+    token: str
+    source: Path
+    key: Path
+    trust: str
 
 
 def _assets(root: Path, version: str) -> None:
@@ -47,30 +58,32 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
     store: dict[str, bytes] = {}
     release: dict[str, object] = {}
 
-    def request(url: str, _token: str, *, data=None, method="GET") -> bytes:
+    def request(url: str, _token: str, *, data: bytes | None = None, method: str = "GET") -> bytes:
         name = url.rsplit("/", 1)[-1]
         if "/packages/generic/" in url:
             if method == "PUT":
+                assert data is not None
                 store[name] = data
                 return b""
             return store[name]
         if method == "POST":
             if release:
                 raise FileExistsError(url)
+            assert data is not None
             release.update(json.loads(data))
             return b"{}"
         return json.dumps(release).encode()
 
     mocker.patch.object(publish_gitlab, "_request", side_effect=request)
-    arguments = dict(
-        api_base="https://gitlab.example/api/v4",
-        project_id=453,
-        tag="v1.2.3",
-        token="redacted",
-        source=assets,
-        key=key,
-        trust=trust,
-    )
+    arguments: _PublicationArguments = {
+        "api_base": "https://gitlab.example/api/v4",
+        "project_id": 453,
+        "tag": "v1.2.3",
+        "token": "redacted",
+        "source": assets,
+        "key": key,
+        "trust": trust,
+    }
     assert publish_gitlab.publish(**arguments) == "created"
     assert publish_gitlab.publish(**arguments) == "matched"
     release["name"] = "wrong"
