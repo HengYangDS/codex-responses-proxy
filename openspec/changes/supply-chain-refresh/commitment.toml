@@ -1,0 +1,23 @@
+schema_version = 1
+id = "change:supply-chain-refresh"
+intent = "Refresh the locked Python quality, packaging, and hosted CI dependencies to their current stable releases while preserving exact reproducibility."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/supply-chain-refresh/**",
+    "pyproject.toml",
+    "uv.lock",
+    ".github/workflows/verify.yml",
+    "tests/forge/contracts/test-github-actions.sh",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
