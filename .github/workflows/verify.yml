@@ -11,6 +11,9 @@ permissions:
 
 env:
   CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
 
 concurrency:
   group: verify-${{ github.workflow }}-${{ github.ref }}
@@ -59,6 +62,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          cache-suffix: ${{ matrix.python-version }}
       - name: Compile and test
         run: |
           set -euo pipefail
