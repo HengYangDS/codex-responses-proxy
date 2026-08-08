@@ -254,20 +254,19 @@ class TestGovernanceMetadata:
         assert "packaging/release/commit-allowed-signers" in ignored
 
     def test_forge_publication_has_no_implicit_actor_or_trust_source(self):
-        context = ROOT / "tools" / "forge" / "context.sh"
+        context = ROOT / "tools" / "forge" / "context.py"
         assert context.is_file()
         sources = [
             context.read_text(encoding="utf-8"),
-            (ROOT / "tools" / "forge" / "check-tag-signature.sh").read_text(encoding="utf-8"),
-            (ROOT / "tools" / "release" / "tag-gitlab.sh").read_text(encoding="utf-8"),
-            (ROOT / "tools" / "release" / "tag-github.sh").read_text(encoding="utf-8"),
+            (ROOT / "tools" / "forge" / "tag_signature.py").read_text(encoding="utf-8"),
+            (ROOT / "tools" / "release" / "tag.py").read_text(encoding="utf-8"),
         ]
         for source in sources:
-            assert "$root/packaging/release" not in source
+            assert "packaging/release" not in source
             assert "/Users/" not in source
             assert "$HOME/.ssh" not in source
-        assert "CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT" in sources[0]
-        assert "CODEX_RESPONSES_PROXY_RELEASE_ALLOWED_SIGNERS" in sources[1]
+        assert "path: Path" in sources[0]
+        assert "anchor" in sources[1]
 
     def test_semantic_packages_are_declarative_and_facade_free(self):
         package_root = ROOT / "src/codex_responses_proxy"
@@ -301,14 +300,15 @@ class TestGovernanceMetadata:
         )
 
     def test_collaboration_has_one_append_only_projection_surface(self, subtests):
-        projector = ROOT / "tools" / "forge" / "project.sh"
+        projector = ROOT / "tools" / "forge" / "project.py"
         assert projector.is_file()
         source = projector.read_text(encoding="utf-8")
         for destructive in ("filter-branch", "filter-repo", "push --force", "push -f"):
             with subtests.test(destructive=destructive):
                 assert destructive not in source
-        assert "commit-tree -S" in source
-        assert 'git_transport -C "$repository" push' in source
+        assert '"commit-tree",' in source
+        assert '"-S",' in source
+        assert '"push",' in source
 
     def test_pre_commit_admission_is_quiet_on_success_and_actionable_on_failure(self):
         hook = ROOT / ".githooks/pre-commit"
