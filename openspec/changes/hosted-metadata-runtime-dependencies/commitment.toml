@@ -1,0 +1,21 @@
+schema_version = 1
+id = "change:hosted-metadata-runtime-dependencies"
+intent = "Install the locked product runtime when hosted release metadata executes product code."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/hosted-metadata-runtime-dependencies/**",
+    ".gitlab-ci.yml",
+    "tests/quality/test_contract.py",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
