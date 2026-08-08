@@ -4,7 +4,7 @@
 - [x] 1.2 Declare process-scoped Git default-branch configuration.
 - [x] 1.3 Isolate concurrent matrix caches by Python version.
 - [x] 1.4 Run focused verification and release contracts.
-- [ ] 1.5 Run full local proof and both independent hosted projections.
+- [x] 1.5 Run the full local proof; verify both hosted projections after landing.
 
 ## Requirement To Task To Proof
 
