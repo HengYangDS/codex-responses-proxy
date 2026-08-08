@@ -7,7 +7,7 @@ publication authority.
 
 ## [Unreleased]
 
-## [2.0.15] - 2026-08-07
+## [2.0.15] - 2026-08-08
 
 ### Changed
 
