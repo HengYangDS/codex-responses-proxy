@@ -99,6 +99,12 @@ if text.count("actions/setup-python@") != 6:
     raise SystemExit("every Python-bearing verification or asset job must use pinned setup-python")
 if windows_block.count("actions/setup-python@") != 1:
     raise SystemExit("Windows verification must use exactly one pinned setup-python action")
+quality_start = text.index("\n  python-quality:")
+quality_end = text.index("\n  native-assets:", quality_start)
+quality_block = text[quality_start:quality_end]
+for token in ("fetch-depth: 0", "fetch-tags: true"):
+    if token not in quality_block:
+        raise SystemExit(f"quality checkout must contain {token!r}")
 for patch_pin in ("3.12.", "3.13.", "3.14."):
     if patch_pin in text or patch_pin in release_text:
         raise SystemExit(

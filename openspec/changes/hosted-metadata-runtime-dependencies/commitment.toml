@@ -7,11 +7,19 @@ subjects = [
 scope = [
     "openspec/changes/hosted-metadata-runtime-dependencies/**",
     ".gitlab-ci.yml",
+    ".github/workflows/verify.yml",
+    "tests/forge/contracts/test-github-actions.sh",
     "tests/quality/test_contract.py",
 ]
 invariants = []
-acceptance = []
-risks = []
+acceptance = [
+    "Hosted metadata jobs install product runtime dependencies from uv.lock.",
+    "Hosted repository tools execute through import-safe module entrypoints.",
+    "Quality jobs receive full tag history before chronology tests run.",
+]
+risks = [
+    "The complete metadata environment is larger than a quality-only environment.",
+]
 authority_refs = []
 permissions = [
     "repository.read",

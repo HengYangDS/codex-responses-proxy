@@ -125,7 +125,7 @@ jobs:
             uv run --locked --no-sync python tools/release/metadata.py --provider github
           fi
           uv run --locked --no-sync python tools/quality/markdown.py
-          uv run --locked --no-sync python tools/quality/repository.py
+          uv run --locked --no-sync python -m tools.quality.repository
           sh tests/forge/contracts/test-github-actions.sh
           sh tests/forge/contracts/test-github-release.sh
           sh tests/forge/contracts/test-gitlab-tagging.sh
@@ -139,6 +139,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ needs.python-matrix.outputs.floor }}
