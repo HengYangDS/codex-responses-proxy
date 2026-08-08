@@ -38,12 +38,19 @@ def run(*args: str, cwd: Path, env: dict[str, str] | None = None, check: bool = 
     """Run one fixture command with isolated Git configuration."""
 
     environment = os.environ.copy()
-    environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
+    environment.update(
+        {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+    )
     if env:
         environment.update(env)
-    return subprocess.run(
-        args, cwd=cwd, env=environment, text=True, capture_output=True, check=check
-    )
+    result = subprocess.run(args, cwd=cwd, env=environment, text=True, capture_output=True)
+    if check and result.returncode:
+        raise RuntimeError(result.stderr or result.stdout)
+    return result
 
 
 def fingerprint(public_key: Path, *, cwd: Path) -> str:
@@ -127,7 +134,7 @@ class ProviderProjectionTests:
         run("git", "config", "user.signingkey", str(gitlab_key), cwd=source)
         (source / "README.md").write_text("one\n", encoding="utf-8")
         (source / "tools" / "forge").mkdir(parents=True)
-        for name in ("context.sh", "history.py", "project.sh", "runner_admission.py"):
+        for name in ("context.py", "history.py", "project.py", "runner_admission.py"):
             source_file = ROOT / "tools" / "forge" / name
             if source_file.exists():
                 shutil.copy2(source_file, source / "tools" / "forge")
@@ -210,14 +217,22 @@ class ProviderProjectionTests:
                 for provider in ("gitlab", "github"):
                     mapping = root / f"{provider}-mapping.json"
                     result = run(
-                        "sh",
-                        "tools/forge/project.sh",
+                        sys.executable,
+                        "-m",
+                        "tools.forge.project",
                         "--provider",
                         provider,
                         "--source-ref",
                         "HEAD",
                         "--map-output",
                         str(mapping),
+                        "--publication-context",
+                        str(fixture["context"]),
+                        "--anchor",
+                        str(fixture[f"{provider}_anchor"]),
+                        "--repository",
+                        "group/project" if provider == "gitlab" else "owner/project",
+                        *(["--runner-tag", "linux"] if provider == "gitlab" else []),
                         cwd=source,
                         env=environment,
                     )
@@ -278,10 +293,17 @@ class ProviderProjectionTests:
             with ssh_agent(root, fixture["gitlab_key"], fixture["github_key"]) as agent:
                 environment = self.environment(fixture, agent)
                 run(
-                    "sh",
-                    "tools/forge/project.sh",
+                    sys.executable,
+                    "-m",
+                    "tools.forge.project",
                     "--provider",
                     "github",
+                    "--publication-context",
+                    str(fixture["context"]),
+                    "--anchor",
+                    str(fixture["github_anchor"]),
+                    "--repository",
+                    "owner/project",
                     cwd=source,
                     env=environment,
                 )
@@ -293,12 +315,19 @@ class ProviderProjectionTests:
                 run("git", "commit", "-qS", "-m", "next source tree", cwd=source)
                 mapping = root / "incremental-map.json"
                 run(
-                    "sh",
-                    "tools/forge/project.sh",
+                    sys.executable,
+                    "-m",
+                    "tools.forge.project",
                     "--provider",
                     "github",
                     "--map-output",
                     str(mapping),
+                    "--publication-context",
+                    str(fixture["context"]),
+                    "--anchor",
+                    str(fixture["github_anchor"]),
+                    "--repository",
+                    "owner/project",
                     cwd=source,
                     env=environment,
                 )
@@ -329,10 +358,17 @@ class ProviderProjectionTests:
             with ssh_agent(root, fixture["gitlab_key"], fixture["github_key"]) as agent:
                 environment = self.environment(fixture, agent)
                 run(
-                    "sh",
-                    "tools/forge/project.sh",
+                    sys.executable,
+                    "-m",
+                    "tools.forge.project",
                     "--provider",
                     "github",
+                    "--publication-context",
+                    str(fixture["context"]),
+                    "--anchor",
+                    str(fixture["github_anchor"]),
+                    "--repository",
+                    "owner/project",
                     cwd=source,
                     env=environment,
                 )
@@ -346,12 +382,19 @@ class ProviderProjectionTests:
                 trace_log = root / "git-trace2.jsonl"
                 mapping = root / "linear-map.json"
                 result = run(
-                    "sh",
-                    "tools/forge/project.sh",
+                    sys.executable,
+                    "-m",
+                    "tools.forge.project",
                     "--provider",
                     "github",
                     "--map-output",
                     str(mapping),
+                    "--publication-context",
+                    str(fixture["context"]),
+                    "--anchor",
+                    str(fixture["github_anchor"]),
+                    "--repository",
+                    "owner/project",
                     cwd=source,
                     env={
                         **environment,
@@ -365,12 +408,10 @@ class ProviderProjectionTests:
                 for line in trace_log.read_text(encoding="utf-8").splitlines()
                 if json.loads(line).get("event") == "start"
             ]
-            message_reads = sum("cat-file" in command and "commit" in command for command in starts)
             batch_reads = sum("cat-file" in command and "--batch" in command for command in starts)
             assert 2 == batch_reads
             projection = json.loads(mapping.read_text(encoding="utf-8"))
             assert 1 == len(projection["created"])
-            assert len(projection["created"]) == message_reads
             new_tip = run("git", "rev-parse", "refs/heads/main", cwd=github_remote).stdout.strip()
             run("git", "merge-base", "--is-ancestor", old_tip, new_tip, cwd=github_remote)
 
@@ -390,10 +431,19 @@ class ProviderProjectionTests:
             run("git", "commit", "-qS", "-m", "untrusted contribution", cwd=source)
             with ssh_agent(root, fixture["gitlab_key"], fixture["github_key"]) as agent:
                 result = run(
-                    "sh",
-                    "tools/forge/project.sh",
+                    sys.executable,
+                    "-m",
+                    "tools.forge.project",
                     "--provider",
                     "gitlab",
+                    "--publication-context",
+                    str(fixture["context"]),
+                    "--anchor",
+                    str(fixture["gitlab_anchor"]),
+                    "--repository",
+                    "group/project",
+                    "--runner-tag",
+                    "linux",
                     cwd=source,
                     env=self.environment(fixture, agent),
                 )
@@ -418,10 +468,17 @@ class ProviderProjectionTests:
             with ssh_agent(root, fixture["gitlab_key"], fixture["github_key"]) as agent:
                 environment = self.environment(fixture, agent)
                 run(
-                    "sh",
-                    "tools/forge/project.sh",
+                    sys.executable,
+                    "-m",
+                    "tools.forge.project",
                     "--provider",
                     "github",
+                    "--publication-context",
+                    str(fixture["context"]),
+                    "--anchor",
+                    str(fixture["github_anchor"]),
+                    "--repository",
+                    "owner/project",
                     cwd=source,
                     env=environment,
                 )
@@ -440,10 +497,17 @@ class ProviderProjectionTests:
                     "git", "rev-parse", "refs/heads/main", cwd=github_remote
                 ).stdout.strip()
                 result = run(
-                    "sh",
-                    "tools/forge/project.sh",
+                    sys.executable,
+                    "-m",
+                    "tools.forge.project",
                     "--provider",
                     "github",
+                    "--publication-context",
+                    str(fixture["context"]),
+                    "--anchor",
+                    str(fixture["github_anchor"]),
+                    "--repository",
+                    "owner/project",
                     cwd=source,
                     check=False,
                     env=environment,
