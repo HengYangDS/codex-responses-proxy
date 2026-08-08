@@ -6,7 +6,7 @@
 - [x] 1.4 Fetch tags in GitHub quality verification.
 - [x] 1.5 Run focused metadata and workflow contract tests.
 - [x] 1.6 Run full local repository proof.
-- [ ] 1.7 Run hosted verification on both independent Forge projections.
+- [x] 1.7 Run hosted verification on both independent Forge projections.
 
 ## Requirement To Task To Proof
 
