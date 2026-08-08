@@ -7,7 +7,7 @@
 - [x] 1.4 Advance artifact Actions without mutable references or compatibility
   shims.
 - [x] 1.5 Run focused lock and workflow contracts.
-- [ ] 1.6 Run full repository proof and archive the Change.
+- [x] 1.6 Run full repository proof and archive the Change.
 
 ## Requirement To Task To Proof
 
