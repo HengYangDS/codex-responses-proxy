@@ -230,7 +230,7 @@ def check_governance_contract() -> None:
         "tools/forge/audit.py",
         "tools/release/tag.py",
         "tools/forge/tag_signature.py",
-        "tools/release/publish-gitlab.sh",
+        "tools/release/publish_gitlab.py",
         "tools/reliability/observe.py",
         ".github/workflows/verify.yml",
         ".github/workflows/release.yml",
@@ -250,7 +250,7 @@ def check_governance_contract() -> None:
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     if "python tools/release/metadata.py" not in ci:
         raise ValueError("GitLab CI must execute the release and governance checker")
-    if "publish-gitlab-release:" not in ci or "tools/release/publish-gitlab.sh" not in ci:
+    if "publish-gitlab-release:" not in ci or "tools.release.publish_gitlab" not in ci:
         raise ValueError("GitLab CI must publish a formal provider-native release record")
     if "CI_COMMIT_BRANCH =~ /^release\\/" not in ci:
         raise ValueError("GitLab CI must suppress untagged release-preparation branches")
