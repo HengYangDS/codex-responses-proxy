@@ -216,6 +216,11 @@ class ProviderProjectionTests:
                 environment = self.environment(fixture, agent)
                 for provider in ("gitlab", "github"):
                     mapping = root / f"{provider}-mapping.json"
+                    anchor = (
+                        fixture["gitlab_anchor"]
+                        if provider == "gitlab"
+                        else fixture["github_anchor"]
+                    )
                     result = run(
                         sys.executable,
                         "-m",
@@ -229,7 +234,7 @@ class ProviderProjectionTests:
                         "--publication-context",
                         str(fixture["context"]),
                         "--anchor",
-                        str(fixture[f"{provider}_anchor"]),
+                        str(anchor),
                         "--repository",
                         "group/project" if provider == "gitlab" else "owner/project",
                         *(["--runner-tag", "linux"] if provider == "gitlab" else []),
