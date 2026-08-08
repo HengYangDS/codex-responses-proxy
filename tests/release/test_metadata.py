@@ -221,46 +221,36 @@ def test_github_can_independently_prepare_the_release() -> None:
     require(completed.returncode == 0, "GitHub could not independently prepare the same release")
 
 
-def test_provider_tag_scripts_preflight_before_signing() -> None:
-    """Require canonical preparation before GitLab signs its release tag."""
+def test_provider_tag_owner_validates_before_and_after_signing() -> None:
+    """Require one provider-parametric tag transaction with exact validation."""
 
-    source = (ROOT / "tools" / "release" / "tag-gitlab.sh").read_text(encoding="utf-8")
-    preflight = (
-        '"$release_python" "$root/tools/release/metadata.py" --provider gitlab --prepare-release'
-    )
-    require(preflight in source, "tag-gitlab.sh lacks canonical metadata preparation")
+    source = (ROOT / "tools" / "release" / "tag.py").read_text(encoding="utf-8")
+    prepare = '_metadata(repository, provider, "--prepare-release")'
+    exact = '_metadata(repository, provider, "--tag", tag)'
+    signing = '"tag",\n            "-s",'
+    push = '"push", "--quiet", "origin"'
+    require_tokens(source, (prepare, exact, signing, push), "provider tag owner")
     require(
-        source.index(preflight) < source.index("tag -s -a"),
-        "tag-gitlab.sh prepares metadata after signing",
-    )
-    github = (ROOT / "tools" / "release" / "tag-github.sh").read_text(encoding="utf-8")
-    exact = (
-        '"$release_python" "$repository/tools/release/metadata.py" --provider github --tag "$tag"'
-    )
-    require(exact in github, "tag-github.sh lacks exact projected tag validation")
-    require(
-        github.index("tag -s -a") < github.index(exact) < github.index("push --quiet origin"),
-        "tag-github.sh must validate the new native tag before pushing it",
+        source.index(prepare) < source.index(signing) < source.index(exact) < source.index(push),
+        "provider tag validation order is unsafe",
     )
 
 
 def test_forward_only_forge_publication_contract() -> None:
     """Require one provider-parametric, append-only identity projector."""
 
-    source = (ROOT / "tools" / "forge" / "project.sh").read_text(encoding="utf-8")
+    source = (ROOT / "tools" / "forge" / "project.py").read_text(encoding="utf-8")
     require_tokens(
         source,
         (
-            "--provider",
+            "provider: str",
             "refs/heads/main",
-            "GIT_CONFIG_GLOBAL=/dev/null",
+            '"GIT_CONFIG_GLOBAL": os.devnull',
             "verify-commit",
-            "COMMIT_ALLOWED_SIGNERS",
-            "commit-tree -S",
-            "runner_admission.py",
-            "CODEX_RESPONSES_PROXY_GITLAB_PROJECT",
-            "CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY",
-            "--map-output",
+            '"commit-tree",',
+            '"-S",',
+            "runner_admission",
+            "map_output",
         ),
         "provider identity projector",
     )
@@ -268,25 +258,24 @@ def test_forward_only_forge_publication_contract() -> None:
         "canonical GitLab" not in source and "GitLab receives" not in source,
         "Forge projection still treats GitLab as source authority",
     )
-    context_source = (ROOT / "tools" / "forge" / "context.sh").read_text(encoding="utf-8")
+    context_source = (ROOT / "tools" / "forge" / "context.py").read_text(encoding="utf-8")
     require(
-        "CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT" in context_source,
+        "publication context" in context_source,
         "provider identity context is not externally supplied",
     )
     require(
         all(token not in source for token in ("filter-branch", "--force", "--force-with-lease")),
         "forge projector can rewrite or force-update history",
     )
-    context = (ROOT / "tools" / "forge" / "context.sh").read_text(encoding="utf-8")
+    context = (ROOT / "tools" / "forge" / "context.py").read_text(encoding="utf-8")
     require_tokens(
         context,
         (
-            "CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT",
             "active-signing-fingerprint",
-            "command -v ssh-add",
-            "command -v ssh-keygen",
-            '"$ssh_add" -L',
-            '"$ssh_add" -T',
+            'shutil.which("ssh-add")',
+            'shutil.which("ssh-keygen")',
+            '(ssh_add, "-L")',
+            '(ssh_add, "-T", str(destination))',
         ),
         "provider publication context",
     )
@@ -297,30 +286,15 @@ def test_forward_only_forge_publication_contract() -> None:
         ),
         "provider publication must not hard-code a workstation or manage credentials",
     )
-    for script_name in ("tag-gitlab.sh", "tag-github.sh"):
-        tagger = (ROOT / "tools" / "release" / script_name).read_text(encoding="utf-8")
-        require_tokens(
-            tagger,
-            (
-                "tools/forge/context.sh",
-                "load_publication_context",
-                "select_agent_signing_key",
-            ),
-            "provider tagger",
-        )
-        require(
-            all(
-                token not in tagger
-                for token in (
-                    "/Users/",
-                    "$HOME/.ssh",
-                    "id_" + "ed25519",
-                    "AUTHOR_NAME",
-                    "AUTHOR_EMAIL",
-                )
-            ),
-            "provider tagger contains a personal or host-specific default",
-        )
+    tagger = (ROOT / "tools" / "release" / "tag.py").read_text(encoding="utf-8")
+    require_tokens(tagger, ("context.load", "context.select_signing_key"), "provider tagger")
+    require(
+        all(
+            token not in tagger
+            for token in ("/Users/", "$HOME/.ssh", "id_" + "ed25519", "AUTHOR_EMAIL")
+        ),
+        "provider tagger contains a personal or host-specific default",
+    )
 
 
 def test_prune_tags_removes_deleted_remote_tag() -> None:
@@ -462,7 +436,7 @@ def test_gitlab_tag_gates_require_exact_tag_validation() -> None:
         tag_gate,
         (
             "CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST",
-            "CODEX_RESPONSES_PROXY_RELEASE_ALLOWED_SIGNERS",
+            "tools.forge.tag_signature",
         ),
         "GitLab external tag trust",
     )

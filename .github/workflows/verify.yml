@@ -131,11 +131,8 @@ jobs:
           fi
           uv run --locked --no-sync python tools/quality/markdown.py
           uv run --locked --no-sync python -m tools.quality.repository
-          sh tests/forge/contracts/test-github-actions.sh
-          sh tests/forge/contracts/test-github-release.sh
-          sh tests/forge/contracts/test-gitlab-tagging.sh
-          sh tests/forge/contracts/test-github-tagging.sh
-          sh tests/release/contracts/test-publish-gitlab.sh
+          uv run --locked --no-sync pytest -q tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py
+                              sh tests/release/contracts/test-publish-gitlab.sh
 
   python-quality:
     name: Python quality
