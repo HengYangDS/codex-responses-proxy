@@ -127,8 +127,7 @@ jobs:
           anchor="$RUNNER_TEMP/github-tag-allowed-signers"
           printf '%s\n' "$CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST" > "$anchor"
           chmod 600 "$anchor"
-          CODEX_RESPONSES_PROXY_RELEASE_ALLOWED_SIGNERS="$anchor" \
-            sh tools/forge/check-tag-signature.sh . "$SELECTED_TAG" github
+          uv run --locked --no-sync python -m tools.forge.tag_signature . "$SELECTED_TAG" github "$anchor"
           uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$SELECTED_TAG"
           uv run --locked --no-sync python tools/quality/markdown.py
       - name: Publish or verify exact GitHub release record
