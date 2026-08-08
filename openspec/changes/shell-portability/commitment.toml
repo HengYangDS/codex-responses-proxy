@@ -5,6 +5,7 @@ subjects = ["repository:self"]
 scope = [
   "tools/**",
   "tests/forge/**",
+  "tests/governance/**",
   "tests/release/**",
   ".github/workflows/**",
   ".gitlab-ci.yml",
