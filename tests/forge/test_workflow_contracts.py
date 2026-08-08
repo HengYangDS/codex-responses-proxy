@@ -44,7 +44,7 @@ def test_github_verification_workflow_contract() -> None:
         "uv sync --locked --only-group quality",
         "uv run --locked --no-sync nox -s quality",
         "tests/forge/test_tagging.py",
-        "tests/release/contracts/test-publish-gitlab.sh",
+        "tests/release/test_publish_gitlab.py",
         "native-assets:",
         "name: Native asset (${{ matrix.platform }})",
         "platform: linux-x86_64",
