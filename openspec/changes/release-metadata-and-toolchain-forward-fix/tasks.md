@@ -7,4 +7,4 @@
 - [x] 1.5 Encode namespaced GitLab project coordinates in runner admission.
 - [x] 2.1 Run focused metadata, CI, and strict OpenSpec validation.
 - [x] 2.2 Run quick, quality, Python 3.12/3.13/3.14, and release sessions from the locked environment.
-- [ ] 3.1 Bind exact proof, archive the Change, and resume governed landing.
+- [x] 3.1 Bind exact proof, archive the Change, and resume governed landing.
