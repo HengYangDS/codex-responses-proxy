@@ -757,7 +757,8 @@ class TestVerificationContracts:
             "verify-release-tag:", 1
         )[0]
         assert "*install-uv" in metadata_job
-        assert "uv sync --locked --only-group quality" in metadata_job
+        assert "uv sync --locked --all-groups" in metadata_job
+        assert "uv sync --locked --only-group quality" not in metadata_job
         assert "python tools/" not in metadata_job.replace(
             "uv run --locked --no-sync python tools/", ""
         )
@@ -1018,6 +1019,11 @@ class TestVerificationContracts:
         for source in (github, gitlab):
             assert "uv sync --locked --only-group quality" in source
             assert "uv run --locked --no-sync nox -s quality" in source
+        quality_job = github.split("  python-quality:", 1)[1].split("  native-assets:", 1)[0]
+        assert "fetch-depth: 0" in quality_job
+        assert "fetch-tags: true" in quality_job
+        assert "python -m tools.quality.repository" in github
+        assert "python -m tools.quality.repository" in gitlab
 
     def test_hosted_governance_tools_use_the_complete_locked_environment(self) -> None:
         github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")

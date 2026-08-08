@@ -63,7 +63,7 @@ verify-release-metadata:
     # release namespace, not runner-local history.
     - git fetch --tags --force --prune --prune-tags origin
     - *install-uv
-    - uv sync --locked --only-group quality
+    - uv sync --locked --all-groups
   script:
     - |
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
@@ -75,7 +75,7 @@ verify-release-metadata:
       fi
     - uv run --locked --no-sync python tools/quality/markdown.py
     - uv run --locked --no-sync pytest -q tests/release/test_metadata.py
-    - uv run --locked --no-sync python tools/quality/repository.py
+    - uv run --locked --no-sync python -m tools.quality.repository
     - sh tests/release/contracts/test-publish-gitlab.sh
     - sh tests/forge/contracts/test-github-actions.sh
     - sh tests/forge/contracts/test-github-release.sh
