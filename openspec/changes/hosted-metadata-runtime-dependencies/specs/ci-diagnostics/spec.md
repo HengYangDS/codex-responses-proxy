@@ -1,6 +1,6 @@
 # CI diagnostics delta
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Hosted product-tool execution uses the locked product environment
 
