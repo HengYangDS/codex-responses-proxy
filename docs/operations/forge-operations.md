@@ -44,8 +44,13 @@ local checkout path.
 ## Branch publication
 
 ```bash
-sh tools/forge/project.sh --provider gitlab
-sh tools/forge/project.sh --provider github
+uv run --locked --no-sync python -m tools.forge.project \
+  --provider gitlab --publication-context "$PUBLICATION_CONTEXT" \
+  --anchor "$GITLAB_COMMIT_ANCHOR" --repository "$GITLAB_REPOSITORY" \
+  --runner-tag "$GITLAB_RUNNER_TAG"
+uv run --locked --no-sync python -m tools.forge.project \
+  --provider github --publication-context "$PUBLICATION_CONTEXT" \
+  --anchor "$GITHUB_COMMIT_ANCHOR" --repository "$GITHUB_REPOSITORY"
 ```
 
 Each projection:
@@ -69,8 +74,10 @@ admitted.
 ## Tags and releases
 
 ```bash
-sh tools/release/tag-gitlab.sh v<VERSION>
-sh tools/release/tag-github.sh v<VERSION>
+uv run --locked --no-sync python -m tools.release.tag --provider gitlab --tag v<VERSION> \
+  --publication-context "$PUBLICATION_CONTEXT" --anchor "$GITLAB_TAG_ANCHOR"
+uv run --locked --no-sync python -m tools.release.tag --provider github --tag v<VERSION> \
+  --publication-context "$PUBLICATION_CONTEXT" --anchor "$GITHUB_TAG_ANCHOR"
 ```
 
 Each Forge builds and publishes its own assets. A GitLab job does not query or
