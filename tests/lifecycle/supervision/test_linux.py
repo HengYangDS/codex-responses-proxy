@@ -5,11 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import linux
 from codex_responses_proxy.service import runtime as service_runtime
 from tests.lifecycle.fixtures import platform_context
-from tests.lifecycle.supervision.fixtures import assert_executable_mode as _assert_executable_mode
 from tests.lifecycle.supervision.fixtures import completed as _completed
 from tests.lifecycle.supervision.fixtures import set_file as _set_file
 from tests.lifecycle.supervision.fixtures import temporary_context as _temporary_context
@@ -32,16 +30,16 @@ class TestLinuxLifecycle:
             mocker.stopall()
 
         ctx = platform_context()
-        for available, target, skipped in (
-            (False, "_install_cron", "_install_systemd"),
-            (True, "_install_systemd", "_install_cron"),
-        ):
+        for available in (False, True):
             mocker.patch.object(linux, "_has_user_systemd", return_value=available)
-            called = mocker.patch.object(linux, target)
-            not_called = mocker.patch.object(linux, skipped)
-            linux.install(ctx)
-            called.assert_called_once_with(ctx)
-            not_called.assert_not_called()
+            called = mocker.patch.object(linux, "_install_systemd")
+            if available:
+                linux.install(ctx)
+                called.assert_called_once_with(ctx)
+            else:
+                with pytest.raises(errors.ManualStartRequired, match="systemd user manager"):
+                    linux.install(ctx)
+                called.assert_not_called()
             mocker.stopall()
 
     def test_native_service_contract_never_persists_python_or_source_paths(self):
@@ -72,47 +70,11 @@ class TestLinuxLifecycle:
             with pytest.raises(errors.InstallError, match="systemctl enable failed: denied"):
                 linux._install_systemd(ctx)
 
-    def test_cron_install_and_service_removal(self, *, mocker):
-        assert not issubclass(errors.ManualStartRequired, errors.InstallError)
-        with _temporary_context("install_dir") as ctx:
-            wrapper = linux._cron_wrapper_path(ctx)
-            existing = f"@reboot {wrapper} # {runtime_context.SERVICE_ID}\n@reboot /keep-me\n"
-            mocker.patch.object(linux.shutil, "which", return_value="crontab")
-            invoked = mocker.patch.object(
-                linux.subprocess,
-                "run",
-                side_effect=[_completed(stdout=existing), _completed()],
-            )
-            popen = mocker.patch.object(linux.subprocess, "Popen")
-            linux._install_cron(ctx)
-            text = Path(wrapper).read_text(encoding="utf-8")
-            assert 'export CODEX_RESPONSES_PROXY_PROXY_PORT="8791"' in text
-            _assert_executable_mode(self, Path(wrapper).stat().st_mode & 0o777)
-            installed = invoked.call_args_list[1].kwargs["input"]
-            assert installed.count(runtime_context.SERVICE_ID) == 1
-            assert "@reboot /keep-me" in installed
-            popen.assert_called_once()
-            mocker.patch.object(linux.shutil, "which", return_value=None)
-            popen = mocker.patch.object(linux.subprocess, "Popen")
-
-            with pytest.raises(errors.ManualStartRequired):
-                linux._install_cron(ctx)
-            popen.assert_not_called()
-            mocker.patch.object(linux.shutil, "which", return_value="crontab")
-            mocker.patch.object(
-                linux.subprocess,
-                "run",
-                side_effect=[_completed(stdout=existing), _completed(returncode=1)],
-            )
-            with pytest.raises(errors.InstallError):
-                linux._install_cron(ctx)
-
     def test_uninstall_and_status(self, *, mocker):
         with _temporary_context("home") as ctx:
             unit = Path(linux._unit_path(ctx))
-            owned = f"@reboot /owned # {runtime_context.SERVICE_ID}\n@reboot /keep-me\n"
             _set_file(unit, "unit")
-            mocker.patch.object(linux.shutil, "which", return_value="crontab")
+            mocker.patch.object(linux.shutil, "which", return_value="systemctl")
             invoked = mocker.patch.object(
                 linux.subprocess,
                 "run",
@@ -120,35 +82,19 @@ class TestLinuxLifecycle:
                     _completed(),
                     _completed(),
                     _completed(stdout="inactive"),
-                    _completed(stdout=owned),
-                    _completed(),
-                    _completed(stdout="@reboot /keep-me\n"),
                 ],
             )
             mocker.patch.object(linux.process, "pids_naming_executable", return_value=[])
             linux.uninstall(ctx)
             assert not unit.exists()
-            assert invoked.call_args_list[-2].kwargs["input"] == "@reboot /keep-me\n"
             mocker.patch.object(linux.shutil, "which", return_value=None)
             invoked = mocker.patch.object(linux.subprocess, "run")
             mocker.patch.object(linux.process, "pids_naming_executable", return_value=[])
             linux.uninstall(ctx)
             invoked.assert_not_called()
-            mocker.patch.object(linux.shutil, "which", return_value="crontab")
-            invoked = mocker.patch.object(
-                linux.subprocess,
-                "run",
-                return_value=_completed(stdout="@reboot /keep-me\n"),
-            )
-            mocker.patch.object(linux.process, "pids_naming_executable", return_value=[])
-            linux.uninstall(ctx)
-            invoked.assert_called_once()
-
             for systemd, executable, output, expected in (
-                (True, "crontab", "active\n", "running"),
-                (True, "crontab", "inactive\n", "installed"),
-                (False, "crontab", f"@reboot x # {runtime_context.SERVICE_ID}\n", "installed"),
-                (False, "crontab", "@reboot /other\n", "absent"),
+                (True, "systemctl", "active\n", "running"),
+                (True, "systemctl", "inactive\n", "installed"),
                 (False, None, "", "absent"),
             ):
                 _set_file(unit, "unit" if systemd else None)
@@ -168,8 +114,7 @@ class TestLinuxLifecycle:
                 linux.uninstall(ctx)
             assert unit.exists()
 
-            owned = f"@reboot /owned # {runtime_context.SERVICE_ID}\n"
-            mocker.patch.object(linux.shutil, "which", return_value="crontab")
+            mocker.patch.object(linux.shutil, "which", return_value="systemctl")
             mocker.patch.object(
                 linux.subprocess,
                 "run",
@@ -182,7 +127,7 @@ class TestLinuxLifecycle:
             assert unit.exists()
 
             _set_file(unit, "unit")
-            mocker.patch.object(linux.shutil, "which", return_value="crontab")
+            mocker.patch.object(linux.shutil, "which", return_value="systemctl")
             mocker.patch.object(
                 linux.subprocess,
                 "run",
@@ -202,50 +147,10 @@ class TestLinuxLifecycle:
             with pytest.raises(errors.InstallError, match="remains registered"):
                 linux.uninstall(ctx)
 
-            _set_file(unit, None)
-            mocker.patch.object(linux.shutil, "which", return_value="crontab")
-            mocker.patch.object(
-                linux.subprocess,
-                "run",
-                side_effect=[
-                    _completed(stdout=owned),
-                    _completed(returncode=1, stderr="denied"),
-                ],
-            )
-            with pytest.raises(errors.InstallError, match="crontab removal failed"):
-                linux.uninstall(ctx)
-
-    def test_uninstall_refuses_unproved_cron_and_process_terminal_states(
-        self, subtests, *, mocker
-    ) -> None:
+    def test_uninstall_refuses_unproved_process_terminal_states(self, subtests, *, mocker) -> None:
         ctx = platform_context()
         mocker.patch.object(linux.os.path, "exists", return_value=False)
-        mocker.patch.object(linux.shutil, "which", return_value="crontab")
         mocker.patch.object(linux.process, "pids_naming_executable", return_value=[])
-        mocker.patch.object(
-            linux.subprocess,
-            "run",
-            return_value=_completed(returncode=2, stderr="inventory denied"),
-        )
-        with (
-            subtests.test("inventory"),
-            pytest.raises(errors.InstallError, match="inventory failed"),
-        ):
-            linux.uninstall(ctx)
-
-        owned = f"@reboot /owned # {runtime_context.SERVICE_ID}\n"
-        mocker.patch.object(
-            linux.subprocess,
-            "run",
-            side_effect=[_completed(stdout=owned), _completed(), _completed(stdout=owned)],
-        )
-        with (
-            subtests.test("verification"),
-            pytest.raises(errors.InstallError, match="remains registered"),
-        ):
-            linux.uninstall(ctx)
-
-        mocker.patch.object(linux.shutil, "which", return_value=None)
         mocker.patch.object(linux.process, "pids_naming_executable", side_effect=[[17], []])
         mocker.patch.object(linux.process, "terminate_executable", return_value=False)
         with (
