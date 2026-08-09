@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.16] - 2026-08-09
+
+### Fixed
+
+- Validate release preparation from each Forge's own tag namespace. A GitLab
+  tag pipeline no longer executes a GitHub-history assertion; cross-Forge
+  consistency remains a read-only post-publication audit.
+
 ## [2.0.15] - 2026-08-08
 
 ### Changed
