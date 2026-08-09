@@ -786,7 +786,9 @@ class TestVerificationContracts:
         assert "python tools/" not in metadata_job.replace(
             "uv run --locked --no-sync python tools/", ""
         )
-        assert "uv run --locked --no-sync pytest -q tests/release/test_metadata.py" in metadata_job
+        assert (
+            "uv run --locked --no-sync python -m pytest -q tests/release/test_metadata.py"
+        ) in metadata_job
 
     def test_forge_bootstrap_derives_uv_requirement_from_project_metadata(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))

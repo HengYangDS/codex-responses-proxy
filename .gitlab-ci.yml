@@ -74,10 +74,10 @@ verify-release-metadata:
         uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --prepare-release
       fi
     - uv run --locked --no-sync python tools/quality/markdown.py
-    - uv run --locked --no-sync pytest -q tests/release/test_metadata.py
+    - uv run --locked --no-sync python -m pytest -q tests/release/test_metadata.py
     - uv run --locked --no-sync python -m tools.quality.repository
-    - uv run --locked --no-sync pytest -q tests/release/test_publish_gitlab.py
-    - uv run --locked --no-sync pytest -q tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py
+    - uv run --locked --no-sync python -m pytest -q tests/release/test_publish_gitlab.py
+    - uv run --locked --no-sync python -m pytest -q tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py
 
 verify-release-tag:
   stage: release
