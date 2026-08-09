@@ -183,16 +183,11 @@ def test_github_release_workflow_contract() -> None:
         "timeout-minutes: 45",
         "actions: read",
         "contents: read",
-        'test "$GITHUB_REF_TYPE" = tag',
-        "actions/workflows/verify.yml/runs?branch=$GITHUB_REF_NAME&event=push&per_page=100",
-        'run.get("path") == ".github/workflows/verify.yml"',
-        'run.get("head_branch") == tag',
-        'run.get("head_sha") == sha',
-        "if len(matches) > 1:",
-        'not matches or matches[0].get("status") != "completed"',
-        'print(matches[0].get("conclusion") or "failed")',
-        "deadline=$((SECONDS + 2400))",
-        "sleep 10",
+        "python -m tools.release.publish_github wait-verify",
+        '--repository "$GITHUB_REPOSITORY"',
+        '--tag "$GITHUB_REF_NAME"',
+        '--commit-oid "$GITHUB_SHA"',
+        '--output "$GITHUB_OUTPUT"',
         "needs: require-verify",
         "runs-on: ubuntu-24.04",
         "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
@@ -242,16 +237,18 @@ def test_github_release_workflow_contract() -> None:
     release_start = text.index("\n  verify-and-publish:")
     gate = text[gate_start:release_start]
     release = text[release_start:]
-    if "actions/checkout@" in gate or "contents: write" in gate:
+    if "ref: main" not in gate or "persist-credentials: false" not in gate:
         raise AssertionError(
-            "GitHub-hosted release gate must not checkout source or receive write permission"
+            "GitHub-hosted release gate must execute only the protected main publication owner"
         )
+    if "contents: write" in gate:
+        raise AssertionError("GitHub-hosted release gate must remain read-only")
     if "sleep 10" in release or "deadline=" in release:
         raise AssertionError("trusted release publisher must not wait for another workflow")
     if "--allow-unpublished-history" in text:
         raise AssertionError("GitHub release workflow must not bypass provider chronology")
-    if text.count("actions/setup-python@") != 1:
-        raise AssertionError("release workflow must use one pinned portable Python setup")
+    if text.count("actions/setup-python@") != 2:
+        raise AssertionError("both release jobs must use pinned portable Python setup")
     for forbidden in (
         "self-hosted",
         "/opt/homebrew",
