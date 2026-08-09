@@ -10,6 +10,7 @@ scope = [
   "tests/governance/**",
   "tests/release/**",
   ".github/workflows/**",
+  ".githooks/**",
   ".gitlab-ci.yml",
   "pyproject.toml",
   "uv.lock",
