@@ -196,7 +196,7 @@ def publish(
     ):
         raise GitHubPublishError("GitHub publication inputs are invalid")
     workspace.mkdir(parents=True, exist_ok=True)
-    tag_oid, checked_commit = _prepare_checkout(checkout, tag, commit_oid)
+    tag_oid, checked_commit = prepare_checkout(checkout, tag, commit_oid)
     _verify_source(checkout, tag, tag_trust)
     _verify_remote_identity(repository, tag, tag_oid, checked_commit)
     existing = select_release(_release_records(repository), tag)
@@ -213,7 +213,9 @@ def publish(
     return state
 
 
-def _prepare_checkout(checkout: Path, tag: str, commit_oid: str) -> tuple[str, str]:
+def prepare_checkout(checkout: Path, tag: str, commit_oid: str) -> tuple[str, str]:
+    """Fetch, validate, and detach one exact annotated release tag."""
+
     git = hosted.executable("git", GitHubPublishError)
     _run(
         (
@@ -449,6 +451,13 @@ def _app() -> App:
             workspace=workspace,
         )
         print(f"GitHub release {state}: {tag}")
+
+    @app.command(name="prepare-checkout")
+    def prepare_checkout_command(*, tag: str, commit_oid: str, checkout: Path = Path.cwd()) -> None:
+        """Prepare one exact annotated release checkout."""
+
+        tag_oid, target = prepare_checkout(checkout, tag, commit_oid)
+        print(f"GitHub release checkout prepared: {tag_oid} -> {target}")
 
     return app
 

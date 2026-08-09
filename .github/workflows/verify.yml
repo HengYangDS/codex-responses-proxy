@@ -32,17 +32,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Read the repository Python matrix
         id: versions
-        shell: python
-        run: |
-          import json
-          import os
-          from pathlib import Path
-
-          versions = Path(".python-versions").read_text(encoding="utf-8").splitlines()
-          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
-              print(f"value={json.dumps(versions)}", file=output)
-              print(f"floor={versions[0]}", file=output)
-              print(f"latest={versions[-1]}", file=output)
+        run: python -m tools.quality.python_matrix
 
   python:
     name: Python ${{ matrix.python-version }}
@@ -65,11 +55,7 @@ jobs:
         with:
           cache-suffix: ${{ matrix.python-version }}
       - name: Compile and test
-        run: |
-          set -euo pipefail
-          python --version
-          uv sync --locked --only-group quality
-          uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"
+        run: uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"
 
   python-windows:
     name: Python ${{ matrix.python-version }} (Windows)
@@ -90,12 +76,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Compile and test
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          python --version
-          uv sync --locked --only-group quality
-          uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"
+        run: uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"
 
   governance:
     name: Governance and presentation
@@ -115,24 +96,15 @@ jobs:
         run: uv sync --locked --all-groups
       - name: Fetch the exact annotated tag object
         if: github.ref_type == 'tag'
-        run: |
-          set -euo pipefail
-          git fetch --force --no-tags origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
-          test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag
-          test "$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")" = "$GITHUB_SHA"
-          git checkout --detach "$GITHUB_SHA"
-      - name: Verify release and source contracts
-        run: |
-          set -euo pipefail
-          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"
-          else
-            uv run --locked --no-sync python tools/release/metadata.py --provider github
-          fi
-          uv run --locked --no-sync python tools/quality/markdown.py
-          uv run --locked --no-sync python -m tools.quality.repository
-          uv run --locked --no-sync pytest -q tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py
-                              uv run --locked --no-sync pytest -q tests/release/test_publish_gitlab.py
+        run: uv run --locked --no-sync python -m tools.release.publish_github prepare-checkout --tag "$GITHUB_REF_NAME" --commit-oid "$GITHUB_SHA"
+      - name: Verify exact release metadata
+        if: github.ref_type == 'tag'
+        run: uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"
+      - name: Verify mainline metadata
+        if: github.ref_type != 'tag'
+        run: uv run --locked --no-sync python tools/release/metadata.py --provider github
+      - name: Verify repository governance
+        run: uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/test_publish_gitlab.py
 
   python-quality:
     name: Python quality
@@ -149,10 +121,7 @@ jobs:
           python-version: ${{ needs.python-matrix.outputs.floor }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Verify lint, format, types, structure, docstrings, and product branch coverage
-        run: |
-          set -euo pipefail
-          uv sync --locked --only-group quality
-          uv run --locked --no-sync nox -s quality
+        run: uv run --locked --group quality nox -s quality
 
   native-assets:
     name: Native asset (${{ matrix.platform }})
@@ -212,30 +181,7 @@ jobs:
         env:
           RELEASE_ASSET_SIGNING_KEY: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY }}
           RELEASE_ASSET_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}
-        run: |
-          set -euo pipefail
-          test -n "$RELEASE_ASSET_SIGNING_KEY"
-          test -n "$RELEASE_ASSET_TRUST"
-          release="$RUNNER_TEMP/release-assets"
-          uv run --locked --no-sync python tools/release/assemble_assets.py \
-            --input "$RUNNER_TEMP/native/native-linux-x86_64" \
-            --input "$RUNNER_TEMP/native/native-macos-arm64" \
-            --input "$RUNNER_TEMP/native/native-windows-x86_64" \
-            --output "$release"
-          key="$RUNNER_TEMP/release-asset-key"
-          anchor="$RUNNER_TEMP/release-asset-trust"
-          printf '%s\n' "$RELEASE_ASSET_SIGNING_KEY" > "$key"
-          printf '%s\n' "$RELEASE_ASSET_TRUST" > "$anchor"
-          chmod 600 "$key" "$anchor"
-          (cd "$release" && ssh-keygen -Y sign -q -f "$key" \
-            -n codex-responses-proxy-release SHA256SUMS)
-          principal=$(ssh-keygen -Y find-principals -s "$release/SHA256SUMS.sig" \
-            -f "$anchor" < "$release/SHA256SUMS")
-          test "$principal" = codex-responses-proxy-release
-          ssh-keygen -Y verify -f "$anchor" -I "$principal" \
-            -n codex-responses-proxy-release -s "$release/SHA256SUMS.sig" \
-            < "$release/SHA256SUMS"
-          uv run --locked --no-sync python tools/release/assemble_assets.py --verify "$release"
+        run: uv run --locked --no-sync python -m tools.release.assemble_assets --input "$RUNNER_TEMP/native/native-linux-x86_64" --input "$RUNNER_TEMP/native/native-macos-arm64" --input "$RUNNER_TEMP/native/native-windows-x86_64" --output "$RUNNER_TEMP/release-assets" --sign
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-assets

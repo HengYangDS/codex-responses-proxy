@@ -1,9 +1,23 @@
 """Portable contracts for GitHub verification and release workflows."""
 
+import importlib
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> None:
+    module = importlib.import_module("tools.quality.python_matrix")
+    versions = tmp_path / ".python-versions"
+    output = tmp_path / "github-output"
+    versions.write_text("3.12\n3.13\n3.14\n", encoding="ascii")
+
+    module.write(versions=versions, output=output)
+
+    assert output.read_text(encoding="utf-8") == (
+        'value=["3.12", "3.13", "3.14"]\nfloor=3.12\nlatest=3.14\n'
+    )
 
 
 def test_github_verification_workflow_contract() -> None:
@@ -22,28 +36,22 @@ def test_github_verification_workflow_contract() -> None:
         "runs-on: macos-26",
         "runs-on: ubuntu-24.04",
         "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-        'versions = Path(".python-versions").read_text(encoding="utf-8").splitlines()',
+        "python -m tools.quality.python_matrix",
         "python-version: ${{ fromJSON(needs.python-matrix.outputs.versions) }}",
-        'uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"',
+        'uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"',
         "python-windows:",
         "windows-2025",
         "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
         "# v7.0.0",
-        "shell: pwsh",
         "fetch-tags: true",
         "if: github.ref_type == 'tag'",
-        'git fetch --force --no-tags origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"',
-        'git cat-file -t "refs/tags/$GITHUB_REF_NAME"',
-        'git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}"',
-        'git checkout --detach "$GITHUB_SHA"',
-        'if [[ "$GITHUB_REF_TYPE" == tag ]]; then',
+        "python -m tools.release.publish_github prepare-checkout",
         'uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"',
         "uv run --locked --no-sync python tools/release/metadata.py --provider github",
         "python-quality:",
         "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
-        "uv sync --locked --only-group quality",
-        "uv run --locked --no-sync nox -s quality",
-        "tests/forge/test_tagging.py",
+        "uv run --locked --group quality nox -s quality",
+        "tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py",
         "tests/release/test_publish_gitlab.py",
         "native-assets:",
         "name: Native asset (${{ matrix.platform }})",
@@ -59,11 +67,10 @@ def test_github_verification_workflow_contract() -> None:
         "python-version: ${{ needs.python-matrix.outputs.latest }}",
         "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
         "# v8.0.1",
-        "uv run --locked --no-sync python tools/release/assemble_assets.py",
+        "uv run --locked --no-sync python -m tools.release.assemble_assets",
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY",
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
-        "ssh-keygen -Y sign",
-        'uv run --locked --no-sync python tools/release/assemble_assets.py --verify "$release"',
+        "--sign",
         "name: release-assets",
     ]
     for token in required:
@@ -91,7 +98,7 @@ def test_github_verification_workflow_contract() -> None:
         or "cache-suffix: ${{ matrix.python-version }}" not in mac_block
     ):
         raise AssertionError("macOS Python matrix must isolate setup-uv caches by interpreter")
-    test_owner = 'uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"'
+    test_owner = 'uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"'
     if test_owner not in mac_block:
         raise AssertionError(f"macOS Python matrix must run {test_owner}")
     for token in (
@@ -99,8 +106,7 @@ def test_github_verification_workflow_contract() -> None:
         "python-version: ${{ fromJSON(needs.python-matrix.outputs.versions) }}",
         "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
         "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
-        "shell: pwsh",
-        'uv run --locked --no-sync nox -s "tests-${{ matrix.python-version }}"',
+        'uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"',
     ):
         if token not in windows_block:
             raise AssertionError(f"Windows Python matrix must contain {token!r}")
@@ -123,13 +129,18 @@ def test_github_verification_workflow_contract() -> None:
             )
     governance_end = text.index("\n  python-quality:", governance_start)
     governance_block = text[governance_start:governance_end]
-    checkout_block = governance_block.split("- name: Verify release", 1)[0]
+    checkout_block = governance_block.split("- name: Fetch the exact", 1)[0]
     for token in ("fetch-depth: 0", "fetch-tags: true"):
         if token not in checkout_block:
             raise AssertionError(f"governance checkout must contain {token!r}")
     tag_check = 'uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"'
     branch_check = "uv run --locked --no-sync python tools/release/metadata.py --provider github"
-    for token in ('if [[ "$GITHUB_REF_TYPE" == tag ]]; then', tag_check, "else", branch_check):
+    for token in (
+        "if: github.ref_type == 'tag'",
+        "if: github.ref_type != 'tag'",
+        tag_check,
+        branch_check,
+    ):
         if token not in governance_block:
             raise AssertionError(f"governance ref dispatch must contain {token!r}")
     if governance_block.count(branch_check) != 2:
@@ -147,7 +158,7 @@ def test_github_verification_workflow_contract() -> None:
     native_block = text[native_start:native_end]
     if "shell: bash" in native_block or "set -euo pipefail" in native_block:
         raise AssertionError("native asset builds must use each runner's native command shell")
-    if "shell: bash" in windows_block or ".sh" in windows_block:
+    if "shell:" in windows_block or ".sh" in windows_block:
         raise AssertionError("Windows verification must not depend on Bash or POSIX shell scripts")
     if "secrets:" in windows_block or "permissions:" in windows_block:
         raise AssertionError(
@@ -243,4 +254,9 @@ def test_github_release_workflow_contract() -> None:
             )
     if "@main" in text or "@master" in text:
         raise AssertionError("GitHub Actions must use immutable action revisions")
+    for forbidden in ("set -euo pipefail", "ssh-keygen -Y", "$ErrorActionPreference"):
+        if forbidden in text:
+            raise AssertionError(
+                f"GitHub Actions verification logic escaped its Python owner: {forbidden}"
+            )
     print("GitHub Actions release contract: OK")
