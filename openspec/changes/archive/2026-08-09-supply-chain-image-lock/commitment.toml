@@ -17,6 +17,8 @@ authority_refs = []
 permissions = [
     "repository.read",
     "work-lane.write",
+    "git.ref.compare-and-swap",
+    "local-proof.execute",
 ]
 hypotheses = []
 dependencies = []
