@@ -20,3 +20,9 @@ Actions SHALL use immutable revisions, and GitLab Python images SHALL use suppor
   supersedes the repository pin
 - **THEN** its existing SSOT is updated without adding a parallel version owner
 - **AND** lock, workflow, and repository quality contracts pass together.
+
+## Requirement To Task To Proof
+
+| Requirement | Task | Proof |
+|---|---|---|
+| `ci-diagnostics:Supply-chain pins are current and reproducible` | `1.1` | `nox:quality` |
