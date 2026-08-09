@@ -179,12 +179,10 @@ jobs:
         with:
           python-version: ${{ needs.python-matrix.outputs.latest }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Install the locked release tool environment
+        run: uv sync --locked --only-group quality
       - name: Build and accept the native release asset
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv sync --locked --only-group quality
-          uv run --locked --no-sync nox -s release -- "$RUNNER_TEMP/native-assets"
+        run: uv run --locked --no-sync nox -s release -- "${{ runner.temp }}/native-assets"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-${{ matrix.platform }}
