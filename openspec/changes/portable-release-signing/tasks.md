@@ -6,4 +6,5 @@
 - [x] 1.4 Document the ownership and trust boundary.
 - [x] 2.1 Run focused release, workflow, format, and static checks.
 - [x] 2.2 Run quick, quality, Python 3.12/3.13/3.14, and release sessions.
-- [ ] 3.1 Execute exact full proof, archive the Change, and land it.
+- [x] 3.1 Execute exact full proof.
+- [x] 3.2 Prove archive and candidate-landing readiness.
