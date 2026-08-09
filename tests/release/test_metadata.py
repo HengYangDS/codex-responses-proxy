@@ -485,9 +485,16 @@ def test_python_quality_gate_is_cross_forge() -> None:
 
     gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
-    owner = "uv run --locked --no-sync nox -s quality"
-    require_tokens(gitlab, (owner,), "GitLab quality projection")
-    require_tokens(github, (owner,), "GitHub quality projection")
+    require_tokens(
+        gitlab,
+        ("uv run --locked --no-sync nox -s quality",),
+        "GitLab quality projection",
+    )
+    require_tokens(
+        github,
+        ("uv run --locked --group quality nox -s quality",),
+        "GitHub quality projection",
+    )
     require("tools/quality/run.sh" not in gitlab, "GitLab retains a duplicate quality runner")
     require("tools/quality/run.sh" not in github, "GitHub retains a duplicate quality runner")
     require_tokens(gitlab, ("DEBIAN_FRONTEND: noninteractive",), "GitLab pipeline")
