@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
 from pathlib import Path
 from typing import Annotated
 
@@ -66,19 +65,15 @@ def verify(root: Path, *, require_signature: bool = True) -> dict[str, str]:
 
 
 def assemble_sign_verify(
-    *, inputs: tuple[Path, ...], output: Path, key_text: str, trust: str
+    *, inputs: tuple[Path, ...], output: Path, key: Path, trust: str
 ) -> dict[str, str]:
     """Assemble, sign, and verify one complete release asset set."""
 
-    if not key_text.strip() or not trust.strip():
+    if not key.is_file() or key.is_symlink() or not trust.strip():
         raise assets.AssetError("release signing inputs are unavailable")
     assemble(inputs, output)
     try:
-        with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-signing-key-") as name:
-            key = Path(name) / "key"
-            key.write_bytes(key_text.encode("utf-8"))
-            key.chmod(0o600)
-            signing.sign_and_verify(assets=output, key=key, trust=trust)
+        signing.sign_and_verify(assets=output, key=key, trust=trust)
         return verify(output)
     except signing.SignatureError as error:
         raise assets.AssetError("release asset signature is invalid") from error
@@ -117,7 +112,7 @@ def _command(
         release = assemble_sign_verify(
             inputs=inputs,
             output=output,
-            key_text=os.environ.get("RELEASE_ASSET_SIGNING_KEY", ""),
+            key=Path(os.environ.get("RELEASE_ASSET_SIGNING_KEY_PATH", "")),
             trust=os.environ.get("RELEASE_ASSET_TRUST", ""),
         )
         print(f"assembled signed release assets: {len(release)} files")
