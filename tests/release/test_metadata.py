@@ -380,7 +380,7 @@ def test_github_release_metadata_is_strict() -> None:
 
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     require(
-        'python tools/release/metadata.py --provider github --tag "$SELECTED_TAG"' in workflow,
+        "python -m tools.release.publish_github publish" in workflow,
         "GitHub release must validate its exact provider tag",
     )
     require(
