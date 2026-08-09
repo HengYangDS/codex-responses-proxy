@@ -3,13 +3,15 @@
 
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Annotated
 
 from cyclopts import App, Parameter
 
-from tools.release import product_assets as assets
+from tools.release import product_assets as assets, signing
 
 
 def assemble(inputs: tuple[Path, ...], output: Path) -> dict[str, bytes]:
@@ -63,6 +65,25 @@ def verify(root: Path, *, require_signature: bool = True) -> dict[str, str]:
     )
 
 
+def assemble_sign_verify(
+    *, inputs: tuple[Path, ...], output: Path, key_text: str, trust: str
+) -> dict[str, str]:
+    """Assemble, sign, and verify one complete release asset set."""
+
+    if not key_text.strip() or not trust.strip():
+        raise assets.AssetError("release signing inputs are unavailable")
+    assemble(inputs, output)
+    try:
+        with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-signing-key-") as name:
+            key = Path(name) / "key"
+            key.write_text(key_text, encoding="utf-8")
+            key.chmod(0o600)
+            signing.sign_and_verify(assets=output, key=key, trust=trust)
+        return verify(output)
+    except signing.SignatureError as error:
+        raise assets.AssetError("release asset signature is invalid") from error
+
+
 def _version(discovered: dict[str, bytes]) -> str:
     versions = {
         name.removeprefix("codex-responses-proxy-").removesuffix(f"-{platform}.tar.gz")
@@ -80,6 +101,7 @@ def _command(
     inputs: Annotated[tuple[Path, ...], Parameter(name="--input")] = (),
     output: Path | None = None,
     verify_path: Annotated[Path | None, Parameter(name="--verify")] = None,
+    sign: bool = False,
 ) -> None:
     """Assemble or verify one complete release asset set."""
 
@@ -91,6 +113,15 @@ def _command(
         return
     if not inputs or not output:
         raise SystemExit("--input and --output are required when assembling")
+    if sign:
+        release = assemble_sign_verify(
+            inputs=inputs,
+            output=output,
+            key_text=os.environ.get("RELEASE_ASSET_SIGNING_KEY", ""),
+            trust=os.environ.get("RELEASE_ASSET_TRUST", ""),
+        )
+        print(f"assembled signed release assets: {len(release)} files")
+        return
     release = assemble(inputs, output)
     print(f"assembled release assets: {len(release)} files")
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -157,6 +158,43 @@ class ReleaseAssetContracts:
         assert set(assemble_assets.verify(output)) == assets.release_asset_names(
             version, assets.RELEASE_PLATFORMS
         )
+
+    def test_native_outputs_are_assembled_signed_and_verified_by_one_owner(
+        self, tmp_path: Path
+    ) -> None:
+        inputs: list[Path] = []
+        for platform in assets.RELEASE_PLATFORMS:
+            root = tmp_path / platform
+            root.mkdir()
+            executable = (
+                "codex-responses-proxy.exe"
+                if platform.startswith("windows-")
+                else "codex-responses-proxy"
+            )
+            files = {executable: assets.ArchiveFile(platform.encode(), 0o755)}
+            archive_name = assets.archive_name("1.2.3", platform)
+            archive = assets.archive_bytes(files, "1.2.3", platform)
+            (root / archive_name).write_bytes(archive)
+            (root / assets.manifest_name(platform)).write_bytes(
+                assets.asset_manifest(
+                    version="1.2.3",
+                    platform=platform,
+                    archive_name=archive_name,
+                    archive=archive,
+                    files=files,
+                )
+            )
+            inputs.append(root)
+        key = tmp_path / "signing"
+        subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
+        public = key.with_suffix(".pub").read_text().strip()
+        trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+
+        digests = assemble_assets.assemble_sign_verify(
+            inputs=tuple(inputs), output=tmp_path / "release", key_text=key.read_text(), trust=trust
+        )
+
+        assert set(digests) == assets.release_asset_names("1.2.3", assets.RELEASE_PLATFORMS)
 
     def test_invalid_paths_and_manifests_fail_closed(self, subtests) -> None:
         with pytest.raises(assets.AssetError):

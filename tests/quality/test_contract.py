@@ -983,8 +983,9 @@ class TestVerificationContracts:
         github = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-        assert 'print(f"floor={versions[0]}"' in github
-        assert 'print(f"latest={versions[-1]}"' in github
+        assert "python -m tools.quality.python_matrix" in github
+        assert 'print(f"floor={versions[0]}"' not in github
+        assert 'print(f"latest={versions[-1]}"' not in github
         assert "needs.python-matrix.outputs.floor" in github
         assert "needs.python-matrix.outputs.latest" in github
         assert "python-version-file: .python-versions" in release
@@ -1016,13 +1017,15 @@ class TestVerificationContracts:
     def test_forge_quality_jobs_use_the_locked_runner(self) -> None:
         github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-        for source in (github, gitlab):
-            assert "uv sync --locked --only-group quality" in source
-            assert "uv run --locked --no-sync nox -s quality" in source
         quality_job = github.split("  python-quality:", 1)[1].split("  native-assets:", 1)[0]
+        assert "uv run --locked --group quality nox -s quality" in quality_job
+        assert "uv sync --locked --only-group quality" not in quality_job
+        assert "uv sync --locked --only-group quality" in gitlab
+        assert "uv run --locked --no-sync nox -s quality" in gitlab
         assert "fetch-depth: 0" in quality_job
         assert "fetch-tags: true" in quality_job
-        assert "python -m tools.quality.repository" in github
+        assert "python -m tools.quality.repository" not in github
+        assert "uv run --locked --group quality nox -s quality" in github
         assert "python -m tools.quality.repository" in gitlab
 
     def test_hosted_governance_tools_use_the_complete_locked_environment(self) -> None:
