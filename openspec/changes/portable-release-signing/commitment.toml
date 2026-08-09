@@ -1,0 +1,42 @@
+schema_version = 1
+id = "change:portable-release-signing"
+intent = "Unify release signing on one explicit private-key file boundary and remove platform-dependent temporary key materialization."
+subjects = ["repository:self"]
+scope = [
+  "openspec/changes/portable-release-signing/**",
+  "openspec/changes/archive/*-portable-release-signing/**",
+  ".github/workflows/verify.yml",
+  "docs/operations/forge-operations.md",
+  "tests/forge/test_workflow_contracts.py",
+  "tests/release/test_assets.py",
+  "tools/release/assemble_assets.py",
+  "tools/release/signing.py",
+]
+invariants = [
+  "gitlab_and_github_remain_independent_publication_endpoints",
+  "private_key_material_is_owned_and_permissioned_by_the_secret_provider",
+  "the_signer_never_copies_private_key_text_to_a_temporary_file",
+  "signature_namespace_principal_and_explicit_trust_anchor_remain_unchanged",
+  "windows_is_not_skipped_or_weakened",
+]
+acceptance = [
+  "the_regression_fails_before_the_fix_and_passes_after_it",
+  "both_forge_workflows_supply_one_explicit_signing_key_path",
+  "release_asset_signing_and_openssh_verification_pass_on_macos_linux_and_windows",
+  "complete_locked_release_quality_and_source_gates_pass",
+]
+risks = ["forge_secret_file_materialization_drift"]
+authority_refs = [
+  ".github/workflows/verify.yml",
+  ".gitlab-ci.yml",
+  "tools/release/signing.py",
+  "docs/operations/forge-operations.md",
+]
+permissions = [
+  "repository.read",
+  "work-lane.write",
+  "local-proof.execute",
+  "git.ref.compare-and-swap",
+]
+hypotheses = ["a_single_explicit_file_boundary_removes_windows_acl_divergence"]
+dependencies = ["openssh:stable"]
