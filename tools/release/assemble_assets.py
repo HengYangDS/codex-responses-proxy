@@ -76,7 +76,7 @@ def assemble_sign_verify(
     try:
         with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-signing-key-") as name:
             key = Path(name) / "key"
-            key.write_text(key_text, encoding="utf-8")
+            key.write_bytes(key_text.encode("utf-8"))
             key.chmod(0o600)
             signing.sign_and_verify(assets=output, key=key, trust=trust)
         return verify(output)
