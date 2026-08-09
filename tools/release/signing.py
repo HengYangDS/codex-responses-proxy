@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 NAMESPACE = "codex-responses-proxy-release"
@@ -23,9 +24,7 @@ def sign_and_verify(*, assets: Path, key: Path, trust: str) -> None:
     checksums = assets / "SHA256SUMS"
     if not checksums.is_file() or checksums.is_symlink():
         raise SignatureError("release checksum inventory is unavailable")
-    anchor = assets / ".release-asset-trust"
     signature = assets / "SHA256SUMS.sig"
-    anchor.write_text(trust.rstrip("\n") + "\n", encoding="utf-8")
     signature.unlink(missing_ok=True)
     try:
         subprocess.run(
@@ -34,37 +33,58 @@ def sign_and_verify(*, assets: Path, key: Path, trust: str) -> None:
             check=True,
             capture_output=True,
         )
-        principal = (
+    except (OSError, subprocess.CalledProcessError, UnicodeError) as error:
+        raise SignatureError("release asset signature verification failed") from error
+    verify(assets=assets, trust=trust)
+
+
+def verify(*, assets: Path, trust: str) -> None:
+    """Verify the canonical checksum signature with one ephemeral trust anchor."""
+
+    ssh_keygen = shutil.which("ssh-keygen")
+    checksums, signature = assets / "SHA256SUMS", assets / "SHA256SUMS.sig"
+    if (
+        not ssh_keygen
+        or not trust.strip()
+        or not checksums.is_file()
+        or checksums.is_symlink()
+        or not signature.is_file()
+        or signature.is_symlink()
+    ):
+        raise SignatureError("release signature inputs are unavailable")
+    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-release-trust-") as name:
+        anchor = Path(name) / "allowed-signers"
+        anchor.write_text(trust.rstrip("\n") + "\n", encoding="utf-8")
+        try:
+            principal = (
+                subprocess.run(
+                    (ssh_keygen, "-Y", "find-principals", "-s", str(signature), "-f", str(anchor)),
+                    input=checksums.read_bytes(),
+                    check=True,
+                    capture_output=True,
+                )
+                .stdout.decode("ascii")
+                .strip()
+            )
+            if principal != PRINCIPAL:
+                raise SignatureError("release asset signature principal is invalid")
             subprocess.run(
-                (ssh_keygen, "-Y", "find-principals", "-s", str(signature), "-f", str(anchor)),
+                (
+                    ssh_keygen,
+                    "-Y",
+                    "verify",
+                    "-f",
+                    str(anchor),
+                    "-I",
+                    principal,
+                    "-n",
+                    NAMESPACE,
+                    "-s",
+                    str(signature),
+                ),
                 input=checksums.read_bytes(),
                 check=True,
                 capture_output=True,
             )
-            .stdout.decode("ascii")
-            .strip()
-        )
-        if principal != PRINCIPAL:
-            raise SignatureError("release asset signature principal is invalid")
-        subprocess.run(
-            (
-                ssh_keygen,
-                "-Y",
-                "verify",
-                "-f",
-                str(anchor),
-                "-I",
-                principal,
-                "-n",
-                NAMESPACE,
-                "-s",
-                str(signature),
-            ),
-            input=checksums.read_bytes(),
-            check=True,
-            capture_output=True,
-        )
-    except (OSError, subprocess.CalledProcessError, UnicodeError) as error:
-        raise SignatureError("release asset signature verification failed") from error
-    finally:
-        anchor.unlink(missing_ok=True)
+        except (OSError, subprocess.CalledProcessError, UnicodeError) as error:
+            raise SignatureError("release asset signature verification failed") from error

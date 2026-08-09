@@ -51,3 +51,86 @@ def test_wait_for_verify_run_is_bounded_and_writes_one_output(tmp_path: Path, *,
     )
     assert output.read_text(encoding="utf-8") == "run-id=42\n"
     sleep.assert_called_once_with(1)
+
+
+def test_release_record_selection_is_exact_and_fail_closed(subtests) -> None:
+    matching = {
+        "id": 7,
+        "tag_name": "v1.2.3",
+        "name": "Codex Responses Proxy v1.2.3",
+        "draft": False,
+        "prerelease": False,
+        "published_at": "2026-08-09T00:00:00Z",
+    }
+    assert publish_github.select_release([matching], "v1.2.3") == matching
+    assert publish_github.select_release([], "v1.2.3") is None
+    for records in (
+        [matching, matching],
+        [{**matching, "name": "wrong"}],
+        [{**matching, "published_at": None}],
+    ):
+        with subtests.test(records=records), pytest.raises(publish_github.GitHubPublishError):
+            publish_github.select_release(records, "v1.2.3")
+
+
+def test_remote_annotated_tag_is_bound_to_local_objects() -> None:
+    tag_oid, commit_oid = "b" * 40, "a" * 40
+    publish_github.verify_remote_tag(
+        ref={"ref": "refs/tags/v1.2.3", "object": {"type": "tag", "sha": tag_oid}},
+        tag_object={
+            "tag": "v1.2.3",
+            "sha": tag_oid,
+            "object": {"type": "commit", "sha": commit_oid},
+        },
+        tag="v1.2.3",
+        tag_oid=tag_oid,
+        commit_oid=commit_oid,
+    )
+    with pytest.raises(publish_github.GitHubPublishError):
+        publish_github.verify_remote_tag(
+            ref={"ref": "refs/tags/v1.2.3", "object": {"type": "commit", "sha": tag_oid}},
+            tag_object={},
+            tag="v1.2.3",
+            tag_oid=tag_oid,
+            commit_oid=commit_oid,
+        )
+
+
+def test_publish_owns_download_validation_creation_and_byte_parity(tmp_path: Path, mocker) -> None:
+    source, downloaded = tmp_path / "source", tmp_path / "downloaded"
+    source.mkdir()
+    downloaded.mkdir()
+    (source / "SHA256SUMS").write_bytes(b"checksums")
+    (source / "SHA256SUMS.sig").write_bytes(b"signature")
+    (downloaded / "SHA256SUMS").write_bytes(b"checksums")
+    (downloaded / "SHA256SUMS.sig").write_bytes(b"signature")
+    mocker.patch.object(publish_github, "_prepare_checkout", return_value=("b" * 40, "a" * 40))
+    mocker.patch.object(publish_github, "_verify_source")
+    mocker.patch.object(publish_github, "_verify_remote_identity")
+    mocker.patch.object(publish_github, "_release_records", return_value=[])
+    mocker.patch.object(publish_github, "_download_run_assets", return_value=source)
+    mocker.patch.object(
+        publish_github,
+        "_verify_assets",
+        side_effect=(
+            {"SHA256SUMS": "1", "SHA256SUMS.sig": "2"},
+            {"SHA256SUMS": "1", "SHA256SUMS.sig": "2"},
+        ),
+    )
+    create = mocker.patch.object(publish_github, "_create_release")
+    mocker.patch.object(publish_github, "_download_release_assets", return_value=downloaded)
+
+    assert (
+        publish_github.publish(
+            repository="team/proxy",
+            tag="v1.2.3",
+            commit_oid="a" * 40,
+            run_id=42,
+            checkout=tmp_path,
+            tag_trust="tag trust",
+            asset_trust="asset trust",
+            workspace=tmp_path / "workspace",
+        )
+        == "created"
+    )
+    create.assert_called_once()
