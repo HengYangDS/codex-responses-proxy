@@ -191,43 +191,25 @@ def test_github_release_workflow_contract() -> None:
         "needs: require-verify",
         "runs-on: ubuntu-24.04",
         "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-        'git fetch --force --no-tags origin "+refs/tags/$SELECTED_TAG:refs/tags/$SELECTED_TAG"',
-        'git cat-file -t "refs/tags/$SELECTED_TAG"',
-        'target=$(git rev-parse "refs/tags/$SELECTED_TAG^{commit}")',
-        'test "$target" = "$VERIFIED_SHA"',
-        'git checkout --detach "$target"',
         "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
-        'uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$SELECTED_TAG"',
         "CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST",
-        'anchor="$RUNNER_TEMP/github-tag-allowed-signers"',
-        "tools.forge.tag_signature",
-        "expected_sha=$(git rev-parse 'HEAD^{commit}')",
-        'git rev-parse "$SELECTED_TAG^{tag}"',
-        'test "$tag_oid" = "$expected_tag_oid"',
-        'release.get("published_at")',
-        "releases?per_page=100",
-        "duplicate GitHub release records for exact tag",
-        "GitHub release tag does not resolve to the checked-out commit",
-        "gh release create",
-        "--verify-tag",
-        "--generate-notes",
         "run-id: ${{ steps.verify.outputs.run-id }}",
-        "VERIFIED_RUN_ID: ${{ needs.require-verify.outputs.run-id }}",
-        'gh run download "$VERIFIED_RUN_ID"',
-        "--name release-assets",
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
-        "ssh-keygen -Y find-principals",
-        "ssh-keygen -Y verify",
-        'uv run --locked --no-sync python tools/release/assemble_assets.py --verify "$assets"',
-        '"$assets"/*',
-        'gh release download "$SELECTED_TAG"',
-        'uv run --locked --no-sync python tools/release/assemble_assets.py --verify "$downloaded"',
-        'diff -qr "$assets" "$downloaded"',
-        "existing GitHub release does not match exact release identity",
+        "python -m tools.release.publish_github publish",
+        '--repository "$GITHUB_REPOSITORY"',
+        '--tag "$GITHUB_REF_NAME"',
+        '--commit-oid "$GITHUB_SHA"',
+        '--run-id "${{ needs.require-verify.outputs.run-id }}"',
+        '--workspace "$RUNNER_TEMP/github-release"',
     ]
     for token in required:
         if token not in text:
             raise AssertionError(f"GitHub Actions release contract is missing {token!r}")
+    for forbidden in ("set -euo pipefail", "python3 -", "ssh-keygen -Y", "gh release"):
+        if forbidden in text:
+            raise AssertionError(
+                f"GitHub Actions release logic escaped its Python owner: {forbidden}"
+            )
     for retired in ("workflow_run:", "workflow_dispatch:"):
         if retired in text:
             raise AssertionError(
