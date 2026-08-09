@@ -8,6 +8,7 @@ scope = [
   "tests/lifecycle/supervision/**",
   "tests/forge/**",
   "tests/governance/**",
+  "tests/quality/**",
   "tests/release/**",
   ".github/workflows/**",
   ".githooks/**",
