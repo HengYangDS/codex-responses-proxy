@@ -70,6 +70,9 @@ def test_github_verification_workflow_contract() -> None:
         "uv run --locked --no-sync python -m tools.release.assemble_assets",
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY",
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
+        'install -m 600 /dev/null "$RUNNER_TEMP/release-asset-signing-key"',
+        'printf \'%s\' "$RELEASE_ASSET_SIGNING_KEY_TEXT" > "$RUNNER_TEMP/release-asset-signing-key"',
+        "RELEASE_ASSET_SIGNING_KEY_PATH: ${{ runner.temp }}/release-asset-signing-key",
         "--sign",
         "name: release-assets",
     ]
@@ -94,6 +97,11 @@ def test_github_verification_workflow_contract() -> None:
         raise AssertionError(
             "release assembly must read the Python SSOT, not a pass-through job output"
         )
+    if (
+        "RELEASE_ASSET_SIGNING_KEY_PATH: "
+        "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY }}"
+    ) in text:
+        raise AssertionError("the product signer must receive a key path, not secret text")
     if "pull_request:" in text or "pull_request_target:" in text:
         raise AssertionError("verification workflow must not execute pull-request workflow code")
     if "@main" in text or "@master" in text:
