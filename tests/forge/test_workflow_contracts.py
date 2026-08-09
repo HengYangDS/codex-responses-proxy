@@ -36,7 +36,7 @@ def test_github_verification_workflow_contract() -> None:
         "runs-on: macos-26",
         "runs-on: ubuntu-24.04",
         "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-        "python -m tools.quality.python_matrix",
+        "uv run --locked --no-sync python -m tools.quality.python_matrix",
         "python-version: ${{ fromJSON(needs.python-matrix.outputs.versions) }}",
         'uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"',
         "python-windows:",
@@ -51,7 +51,7 @@ def test_github_verification_workflow_contract() -> None:
         "python-quality:",
         "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
         "uv run --locked --group quality nox -s quality",
-        "tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py",
+        "python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py",
         "tests/release/test_publish_gitlab.py",
         "native-assets:",
         "name: Native asset (${{ matrix.platform }})",
@@ -78,6 +78,18 @@ def test_github_verification_workflow_contract() -> None:
             raise AssertionError(f"GitHub Actions verification contract is missing {token!r}")
     if "contents: write" in text:
         raise AssertionError("verification workflow must use read-only repository permissions")
+    matrix_start = text.index("\n  python-matrix:")
+    matrix_end = text.index("\n  python:", matrix_start)
+    matrix_block = text[matrix_start:matrix_end]
+    for token in (
+        "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
+        "uv sync --locked --all-groups",
+        "uv run --locked --no-sync python -m tools.quality.python_matrix",
+    ):
+        if token not in matrix_block:
+            raise AssertionError(
+                f"Python matrix bootstrap must install and use the locked environment: {token!r}"
+            )
     if "needs.native-assets.outputs.python-version" in text:
         raise AssertionError(
             "release assembly must read the Python SSOT, not a pass-through job output"
@@ -181,6 +193,14 @@ def test_github_verification_workflow_contract() -> None:
                 f"GitHub workflows must not suppress Git diagnostics with {forbidden!r}"
             )
     print("GitHub Actions verification contract: OK")
+
+
+def test_gitlab_pytest_invocations_preserve_repository_module_resolution() -> None:
+    text = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+
+    if "uv run --locked --no-sync pytest" in text:
+        raise AssertionError("GitLab must not invoke the pytest console script directly")
+    assert text.count("uv run --locked --no-sync python -m pytest") == 3
 
 
 def test_github_release_workflow_contract() -> None:
