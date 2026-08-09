@@ -6,6 +6,8 @@ subjects = [
 ]
 scope = [
     "openspec/changes/hosted-ci-bootstrap/**",
+    "openspec/changes/archive/*-hosted-ci-bootstrap/**",
+    "openspec/specs/ci-diagnostics/spec.md",
     ".github/workflows/verify.yml",
     ".gitlab-ci.yml",
     "tests/forge/test_workflow_contracts.py",
