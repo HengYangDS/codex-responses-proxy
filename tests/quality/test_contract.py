@@ -725,6 +725,30 @@ class TestQualityPolicyContracts:
         }
         assert checker.package_gaps(files, 95) == []
 
+    def test_each_product_module_must_clear_both_coverage_floors(self) -> None:
+        checker = _load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
+        files = {
+            "/site-packages/codex_responses_proxy/relay/exchange.py": {
+                "summary": {
+                    "num_statements": 100,
+                    "covered_lines": 99,
+                    "num_branches": 20,
+                    "covered_branches": 19,
+                }
+            },
+            "/site-packages/codex_responses_proxy/relay/__init__.py": {
+                "summary": {
+                    "num_statements": 0,
+                    "covered_lines": 0,
+                    "num_branches": 0,
+                    "covered_branches": 0,
+                }
+            },
+        }
+        assert checker.module_gaps(files, 95) == [
+            "module_branch_coverage_not_strictly_above_floor:relay/exchange.py:95.00<=95.00"
+        ]
+
 
 class TestVerificationContracts:
     """Keep verification on mature tools and the released product artifact."""

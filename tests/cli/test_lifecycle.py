@@ -148,6 +148,9 @@ class CliLifecycleContracts:
         installed = application.presentation.render("install", {"runtime": {"release": "2.0.11"}})
         assert "Installed" in installed and "2.0.11" in installed
         assert "Reloaded" in application.presentation.render("reload", {"old_pid": 1, "new_pid": 2})
+        assert "Recovered" in application.presentation.render(
+            "recover", {"version": "2.0.11", "state": "rolled_back"}
+        )
         assert "Purged" in application.presentation.render(
             "uninstall", {"stopped": 1, "purged": True}
         )

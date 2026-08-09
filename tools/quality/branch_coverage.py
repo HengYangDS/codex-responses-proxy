@@ -112,6 +112,40 @@ def _package_gap(package: str, gap: str) -> str:
     return f"package_{reason}:{package}{separator}{detail}"
 
 
+def _module_name(path: str) -> str | None:
+    """Return one stable product-relative module name from coverage output."""
+
+    marker = "codex_responses_proxy/"
+    normalized = path.replace("\\", "/")
+    return normalized.split(marker, 1)[1] if marker in normalized else None
+
+
+def _module_gap(module: str, gap: str) -> str:
+    """Qualify one stable coverage gap with its product module."""
+
+    reason, separator, detail = gap.partition(":")
+    return f"module_{reason}:{module}{separator}{detail}"
+
+
+def module_gaps(files: Mapping[str, Any], floor: int | float) -> list[str]:
+    """Require every executable product module to clear both coverage floors."""
+
+    gaps: list[str] = []
+    for path, detail in sorted(files.items()):
+        module = _module_name(path)
+        summary = detail.get("summary") if isinstance(detail, dict) else None
+        if module is None or not isinstance(summary, dict):
+            continue
+        statements = summary.get("num_statements")
+        if not isinstance(statements, int) or isinstance(statements, bool) or statements == 0:
+            continue
+        gaps.extend(_module_gap(module, gap) for gap in statement_gaps(summary, floor))
+        branches = summary.get("num_branches")
+        if isinstance(branches, int) and not isinstance(branches, bool) and branches > 0:
+            gaps.extend(_module_gap(module, gap) for gap in branch_gaps(summary, floor))
+    return gaps
+
+
 def package_gaps(files: Mapping[str, Any], floor: int | float) -> list[str]:
     """Require statement and branch coverage above the floor per semantic package."""
 
@@ -155,6 +189,7 @@ def main() -> int:
         *statement_gaps(totals, coverage.config.fail_under),
         *branch_gaps(totals, coverage.config.fail_under),
         *package_gaps(report.get("files", {}), coverage.config.fail_under),
+        *module_gaps(report.get("files", {}), coverage.config.fail_under),
     ]
     print(json.dumps({"ok": not gaps, "gaps": gaps, **totals}, sort_keys=True))
     return 0 if not gaps else 1
