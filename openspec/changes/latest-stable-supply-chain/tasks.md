@@ -4,7 +4,7 @@
 - [x] 1.2 Apply only the stable resolver delta to `uv.lock`.
 - [x] 1.3 Run the complete locked native verification graph.
 - [x] 1.4 Execute exact-HEAD proof.
-- [ ] 1.5 Archive the Change.
+- [x] 1.5 Archive the Change.
 
 ## Requirement To Task To Proof
 
