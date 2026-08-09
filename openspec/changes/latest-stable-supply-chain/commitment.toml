@@ -6,15 +6,34 @@ subjects = [
 ]
 scope = [
     "openspec/changes/latest-stable-supply-chain/**",
+    "openspec/changes/archive/*-latest-stable-supply-chain/**",
     "uv.lock",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+    "uv_lock_remains_the_only_transitive_dependency_authority",
+    "product_runtime_and_public_interfaces_remain_unchanged",
+]
+acceptance = [
+    "resolver_delta_is_stable_on_repeat_resolution",
+    "complete_locked_verification_graph_passes",
+    "exact_head_proof_and_archive_complete",
+]
+risks = [
+    "packaging_or_environment_tool_regression",
+]
+authority_refs = [
+    "pyproject.toml",
+    "uv.lock",
+    "noxfile.py",
+]
 permissions = [
     "repository.read",
     "work-lane.write",
+    "local-proof.execute",
 ]
-hypotheses = []
-dependencies = []
+hypotheses = [
+    "the_resolver_selected_updates_are_behavior_preserving",
+]
+dependencies = [
+    "uv:0.12.3",
+]
