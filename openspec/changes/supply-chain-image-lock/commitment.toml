@@ -1,0 +1,22 @@
+schema_version = 1
+id = "change:supply-chain-image-lock"
+intent = "Lock GitLab Python build images to current stable patch releases and immutable registry digests through one positive consistency contract without duplicating version values in tests."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/supply-chain-image-lock/**",
+    ".gitlab-ci.yml",
+    "tests/quality/test_contract.py",
+    "openspec/specs/ci-diagnostics/spec.md",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
