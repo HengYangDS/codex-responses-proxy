@@ -9,6 +9,7 @@ scope = [
     ".github/workflows/verify.yml",
     ".gitlab-ci.yml",
     "tests/forge/test_workflow_contracts.py",
+    "tests/quality/test_contract.py",
 ]
 invariants = []
 acceptance = []
