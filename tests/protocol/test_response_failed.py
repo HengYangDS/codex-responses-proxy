@@ -48,6 +48,7 @@ class ResponseFailedContracts:
             (477, b'{"error":{"type":"dmx_api_error","code":"empty_response"}}', ""),
             (477, b'{"error":"unprocessable"}', ""),
             (477, b'{"error":{"type":"other_gateway","code":"empty_response"}}', ""),
+            (400, b'{"error":"not-an-object"}', ""),
             (400, b'{"error":{"type":"new_api_error","code":"response_failed"}}', "full"),
             (418, b"teapot", ""),
             (400, b"invalid_encrypted_content", ""),
@@ -161,6 +162,11 @@ class ResponseFailedContracts:
         assert compact is None
         assert detail is None
         assert json.loads(body)["prompt_cache_key"] == "must-remain-on-original-request"
+
+    def test_response_failed_compaction_rejects_every_unsafe_suffix(self, monkeypatch):
+        body = _body([_message("user", "old"), _message("user", "latest")])
+        monkeypatch.setattr(response_failed, "tool_pair_boundary_is_safe", lambda *_args: False)
+        assert response_failed.compact_request(body, COMPACTION_BUDGET) == (None, None)
 
     def test_response_failed_dialogue_recovery_keeps_latest_context_without_tool_replay(self):
         body = _body(

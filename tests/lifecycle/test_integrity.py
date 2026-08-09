@@ -141,6 +141,65 @@ class TestPayloadValidation:
         with pytest.raises(errors.InstallError, match="rollback.*unavailable"):
             payload_rollback.restore_snapshot(ctx, rollback)
 
+    def test_rollback_reports_symlink_and_read_failures(self, *, mocker, tmp_path: Path) -> None:
+        ctx = install_context(tmp_path / "install-root")
+        manifest = payload_projection.payload_manifest_path(ctx)
+        manifest.parent.mkdir(parents=True)
+        manifest.symlink_to(tmp_path / "missing")
+        with pytest.raises(errors.InstallError, match="manifest is a symlink"):
+            payload_rollback.write_snapshot(ctx, tmp_path / "snapshot")
+
+        source = tmp_path / "source"
+        source.write_bytes(b"payload")
+        read = mocker.patch.object(Path, "read_bytes", side_effect=OSError("blocked"))
+        with pytest.raises(errors.InstallError, match="snapshot read failed"):
+            payload_rollback._snapshot_file(source, tmp_path / "target")
+        mocker.stop(read)
+
+        ctx = install_context(tmp_path / "restore-root")
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
+        rollback.mkdir(parents=True)
+        content = b"retained"
+        snapshot = {
+            "schema_version": 3,
+            "present": {
+                inventory.PROVIDER_MANIFEST: {
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                    "mode": 0o644,
+                }
+            },
+            "owned": list(owned_files.OWNED_PAYLOAD_FILES),
+        }
+        (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
+        retained = rollback / inventory.PROVIDER_MANIFEST
+        retained.parent.mkdir(parents=True, exist_ok=True)
+        retained.write_bytes(content)
+
+        mocker.patch.object(
+            payload_rollback,
+            "load_inventory",
+            return_value=payload_rollback.RollbackInventory(
+                present={inventory.PROVIDER_MANIFEST: (hashlib.sha256(content).hexdigest(), 0o644)},
+                owned=frozenset(owned_files.OWNED_PAYLOAD_FILES),
+            ),
+        )
+        unreadable = mocker.patch.object(
+            retained.__class__, "read_bytes", side_effect=OSError("blocked")
+        )
+        with pytest.raises(errors.InstallError, match="rollback is unreadable"):
+            payload_rollback.restore_snapshot(ctx, rollback)
+        mocker.stop(unreadable)
+        mocker.stopall()
+
+        retained.write_bytes(b"tampered")
+        with pytest.raises(errors.InstallError, match="rollback digest mismatch"):
+            payload_rollback.restore_snapshot(ctx, rollback)
+
+        retained.write_bytes(content)
+        mocker.patch.object(payload_digest, "sha256_file", return_value="0" * 64)
+        with pytest.raises(errors.InstallError, match="restored payload digest mismatch"):
+            payload_rollback.restore_snapshot(ctx, rollback)
+
     def test_manifest_verifier_reports_each_metadata_boundary(self, subtests, *, mocker) -> None:
         def installed() -> tuple[runtime_context.RuntimeContext, Path, dict[str, object]]:
             ctx = install_context(Path(tempfile.mkdtemp()))
@@ -301,10 +360,22 @@ class TestPayloadValidation:
 
         root = tmp_path / "root"
         root.mkdir()
+        with pytest.raises(errors.InstallError, match="not canonical"):
+            owned_files.canonical_relative("../payload", "fixture")
         ancestor = root / "ancestor"
         ancestor.write_text("not a directory", encoding="utf-8")
         with pytest.raises(errors.InstallError, match="ancestor is not a directory"):
             owned_files.regular_file(root, "ancestor/payload", "fixture")
+
+        linked_ancestor = root / "linked-ancestor"
+        linked_ancestor.symlink_to(tmp_path, target_is_directory=True)
+        with pytest.raises(errors.InstallError, match="symlink ancestor"):
+            owned_files.regular_file(root, "linked-ancestor/payload", "fixture")
+
+        unavailable = mocker.patch.object(Path, "lstat", side_effect=PermissionError("blocked"))
+        with pytest.raises(errors.InstallError, match="path is unavailable"):
+            owned_files.regular_file(root, "payload", "fixture")
+        mocker.stop(unavailable)
 
         symlink = root / "symlink"
         symlink.symlink_to(ancestor)
@@ -336,6 +407,9 @@ class TestPayloadValidation:
         sequence.write_text("[]", encoding="utf-8")
         with pytest.raises(errors.InstallError, match="not a JSON object"):
             owned_files.read_json_object(sequence, "fixture JSON")
+        sequence.write_bytes(b"\xff")
+        with pytest.raises(errors.InstallError, match="unavailable or invalid"):
+            owned_files.read_json_object(sequence, "fixture JSON")
 
         outside = tmp_path / "outside" / "payload"
         with pytest.raises(errors.InstallError, match="escapes its root"):
@@ -352,3 +426,15 @@ class TestPayloadValidation:
         parent_file.write_text("not a directory", encoding="utf-8")
         with pytest.raises(errors.InstallError, match="ancestor is not a directory"):
             owned_files._real_parent(parent_file / "payload", real_root)
+
+        root_type = mocker.patch.object(Path, "mkdir")
+        directory_type = mocker.patch.object(Path, "is_dir", return_value=False)
+        with pytest.raises(errors.InstallError, match="root is not a real directory"):
+            owned_files._real_parent(real_root / "payload", real_root)
+        mocker.stop(root_type)
+        mocker.stop(directory_type)
+
+        linked_parent = real_root / "linked-parent"
+        linked_parent.symlink_to(tmp_path, target_is_directory=True)
+        with pytest.raises(errors.InstallError, match="symlink ancestor"):
+            owned_files._real_parent(linked_parent / "payload", real_root)

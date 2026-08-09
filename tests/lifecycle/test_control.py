@@ -8,7 +8,7 @@ from pathlib import Path
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.cli import application
-from codex_responses_proxy.lifecycle import control, uninstall
+from codex_responses_proxy.lifecycle import control, install, uninstall
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import digest as payload_digest
@@ -141,6 +141,7 @@ class TestControllerLifecycle:
 
     def test_lifecycle_helpers_cover_local_files_and_process_failures(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
+        assert uninstall._context(8801).port == 8801
         version = Path(ctx.install_dir) / "VERSION"
         version.parent.mkdir(parents=True, exist_ok=True)
         version.write_text("2.0.0\n", encoding="utf-8")
@@ -163,6 +164,14 @@ class TestControllerLifecycle:
         )
         with pytest.raises(errors.InstallError, match="listeners remain"):
             uninstall._stop_proxy(ctx)
+
+        mocker.patch.object(
+            uninstall.process,
+            "verified_proxy_listener_pids",
+            side_effect=[[7, 8], []],
+        )
+        mocker.patch.object(uninstall.process, "terminate_executable", return_value=True)
+        assert uninstall._stop_proxy(ctx) == 2
 
     def test_uninstall_product_covers_success_and_fail_closed_boundaries(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -195,6 +204,43 @@ class TestControllerLifecycle:
 
         with pytest.raises(errors.InstallError, match="unknown install content remains"):
             uninstall.uninstall_product(purge=True)
+
+    def test_install_and_uninstall_adapters_preserve_bounded_errors(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        released = mocker.Mock()
+        payload_transaction = mocker.Mock()
+        service = mocker.Mock()
+        mocker.patch.object(install, "build_context", return_value=ctx)
+        admit = mocker.patch.object(install.artifact, "admit", return_value=released)
+        begin = mocker.patch.object(
+            install.transaction, "begin_transaction", return_value=payload_transaction
+        )
+        mocker.patch(
+            "codex_responses_proxy.lifecycle.supervision.native_service.adapter",
+            return_value=service,
+        )
+        applied = mocker.patch.object(install.apply, "install", return_value={"release": "2.0.15"})
+        asset = Path(ctx.install_dir) / "release.tar.gz"
+        trust = Path(ctx.install_dir) / "release-trust"
+
+        assert install.install_asset(asset, trust_anchor=trust, port=8801, timeout_seconds=4) == {
+            "release": "2.0.15"
+        }
+        admit.assert_called_once_with(asset, trust_anchor=trust)
+        begin.assert_called_once_with(ctx, released)
+        applied.assert_called_once_with(
+            ctx,
+            payload_transaction,
+            adapter=service,
+            runtime_reader=install.apply.read_runtime,
+            timeout_seconds=4,
+        )
+
+        mocker.patch.object(
+            uninstall, "_context", side_effect=errors.UnsupportedPlatform("no host")
+        )
+        with pytest.raises(errors.InstallError, match="no host"):
+            uninstall.uninstall_product()
 
     def test_control_status_includes_secret_free_runtime_metrics_when_listener_is_available(
         self, *, mocker
