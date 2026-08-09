@@ -1,0 +1,22 @@
+schema_version = 1
+id = "change:hosted-ci-bootstrap"
+intent = "Make both hosted Forge verification bootstraps execute repository Python tools from the locked environment with stable module resolution."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/hosted-ci-bootstrap/**",
+    ".github/workflows/verify.yml",
+    ".gitlab-ci.yml",
+    "tests/forge/test_workflow_contracts.py",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
