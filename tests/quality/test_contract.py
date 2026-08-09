@@ -1007,6 +1007,20 @@ class TestVerificationContracts:
         github = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+        supported = (ROOT / ".python-versions").read_text(encoding="utf-8").splitlines()
+        image_pattern = re.compile(
+            r"^python:(?P<minor>\d+\.\d+)-slim@sha256:(?P<digest>[0-9a-f]{64})$"
+        )
+        image_values = dict(
+            re.findall(r"^  (PYTHON_(?:FLOOR|LATEST)_IMAGE): (\S+)$", gitlab, re.MULTILINE)
+        )
+        assert set(image_values) == {"PYTHON_FLOOR_IMAGE", "PYTHON_LATEST_IMAGE"}
+        floor_image = image_pattern.fullmatch(image_values["PYTHON_FLOOR_IMAGE"])
+        latest_image = image_pattern.fullmatch(image_values["PYTHON_LATEST_IMAGE"])
+        assert floor_image is not None
+        assert latest_image is not None
+        assert floor_image.group("minor") == supported[0]
+        assert latest_image.group("minor") == supported[-1]
         assert "python -m tools.quality.python_matrix" in github
         assert 'print(f"floor={versions[0]}"' not in github
         assert 'print(f"latest={versions[-1]}"' not in github
