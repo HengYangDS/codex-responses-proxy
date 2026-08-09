@@ -156,3 +156,40 @@ class TestPayloadProjection:
         mocker.patch.object(Path, "rmdir", side_effect=OSError("busy"))
         with pytest.raises(errors.InstallError, match="root removal failed"):
             payload_projection._remaining_paths(install)
+
+    def test_purge_and_residue_inventory_report_filesystem_failures(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        install_payload(ctx, mocker=mocker)
+        mocker.patch.object(Path, "unlink", side_effect=OSError("blocked"))
+        with pytest.raises(errors.InstallError, match="purge failed"):
+            payload_projection.purge_installed_projection(ctx)
+        mocker.stopall()
+
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        install_payload(ctx, mocker=mocker)
+        residual = mocker.patch.object(Path, "exists", return_value=True)
+        with pytest.raises(errors.InstallError, match="remains after purge"):
+            payload_projection.purge_installed_projection(ctx)
+        mocker.stop(residual)
+
+        absent = Path(tempfile.mkdtemp()) / "absent"
+        assert payload_projection._remaining_paths(absent) == ()
+        linked = absent.with_name("linked")
+        linked.symlink_to(absent.parent, target_is_directory=True)
+        with pytest.raises(errors.InstallError, match="root is not a real directory"):
+            payload_projection._remaining_paths(linked)
+
+        root = Path(tempfile.mkdtemp())
+        mocker.patch.object(Path, "rglob", side_effect=OSError("blocked"))
+        with pytest.raises(errors.InstallError, match="residue inventory failed"):
+            payload_projection._remaining_paths(root)
+
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        for blob in released_artifact().peek_blobs():
+            target = Path(ctx.install_dir, blob.path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(blob.content)
+        manifest = payload_projection._write_payload_manifest_for_fixture(
+            ctx, release_receipt_sha256="0" * 64
+        )
+        assert json.loads(manifest.read_text())["release_receipt_sha256"] == "0" * 64

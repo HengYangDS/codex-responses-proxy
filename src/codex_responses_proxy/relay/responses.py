@@ -186,46 +186,42 @@ def relay(
         return
     length = int(handler.headers.get("Content-Length") or 0)
     body = handler.rfile.read(length) if length else b""
-    note = ""
-    if is_responses:
-        projection = replay_request.sanitize_responses_body(body)
-        note = projection.diagnostic()
-        telemetry.record_sanitization(projection.metrics)
-        if projection.body is None:
-            reason = projection.reason or "unknown"
-            telemetry.record_counter("provider_portable_projection_rejected")
-            telemetry.record_failure("provider_portable_projection_rejected")
-            downstream.send_payload(
-                handler,
-                400,
-                downstream.json_error(
-                    "Responses replay contains an unproved provider-portable structure",
-                    "invalid_request_error",
-                    "provider_portable_projection_rejected",
-                    reason=reason,
-                ),
-            )
-            operational_log.log(
-                f"req={request_id} event=provider_portable_projection_rejected "
-                f"provider={profile.name} reason={reason} "
-                f"path={operational_log.safe_request_path(handler.path)}"
-            )
-            return
-        body = projection.body
-        if len(body) >= 400_000:
-            path = operational_log.safe_request_path(handler.path)
-            operational_log.log(
-                f"req={request_id} event=large_request provider={profile.name} "
-                f"bytes={len(body)} path={path}"
-            )
-    if note:
+    projection = replay_request.sanitize_responses_body(body)
+    note = projection.diagnostic()
+    telemetry.record_sanitization(projection.metrics)
+    if projection.body is None:
+        reason = projection.reason or "unknown"
+        telemetry.record_counter("provider_portable_projection_rejected")
+        telemetry.record_failure("provider_portable_projection_rejected")
+        downstream.send_payload(
+            handler,
+            400,
+            downstream.json_error(
+                "Responses replay contains an unproved provider-portable structure",
+                "invalid_request_error",
+                "provider_portable_projection_rejected",
+                reason=reason,
+            ),
+        )
+        operational_log.log(
+            f"req={request_id} event=provider_portable_projection_rejected "
+            f"provider={profile.name} reason={reason} "
+            f"path={operational_log.safe_request_path(handler.path)}"
+        )
+        return
+    body = projection.body
+    if len(body) >= 400_000:
         path = operational_log.safe_request_path(handler.path)
         operational_log.log(
-            f"req={request_id} event=request_sanitized provider={profile.name} "
-            f"method={method} {note} path={path}"
+            f"req={request_id} event=large_request provider={profile.name} "
+            f"bytes={len(body)} path={path}"
         )
-    if is_responses:
-        telemetry.record_counter("responses_received")
+    path = operational_log.safe_request_path(handler.path)
+    operational_log.log(
+        f"req={request_id} event=request_sanitized provider={profile.name} "
+        f"method={method} {note} path={path}"
+    )
+    telemetry.record_counter("responses_received")
     exchange = upstream_exchange.Exchange(
         handler,
         method,
@@ -239,19 +235,15 @@ def relay(
     )
     if _cooldown_active(exchange) or not _admit(exchange):
         return
-    acquired = is_responses
     try:
         response = upstream_exchange.open_upstream(exchange)
         if response is None:
             return
         content_type = response.headers.get("Content-Type", "")
-        if is_responses and "text/event-stream" in content_type.lower():
+        if "text/event-stream" in content_type.lower():
             downstream.relay_sse(exchange, response)
-        elif is_responses:
-            downstream.relay_responses_json(exchange, response)
         else:
-            downstream.relay_body(exchange, response)
+            downstream.relay_responses_json(exchange, response)
     finally:
-        if acquired:
-            active_now = admission.release_response()
-            exchange.log("responses_released", f"active={active_now} ")
+        active_now = admission.release_response()
+        exchange.log("responses_released", f"active={active_now} ")

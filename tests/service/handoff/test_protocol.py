@@ -160,6 +160,10 @@ class TestHandoffPlatformHelpers:
         for pipes in ((None, mocker.Mock()), (mocker.Mock(), None)):
             reject_pipes(pipes)
 
+        child = self.p.HandoffChild(mocker.Mock(stdin=io.BytesIO(), stdout=io.BytesIO()))
+        with pytest.raises(self.p.HandoffError, match="runtime has not started"):
+            _ = child.runtime_pid
+
     def test_child_message_writer_rejects_invalid_oversized_and_broken_pipes(self, *, mocker):
         process = mocker.Mock(stdin=mocker.Mock(), stdout=mocker.Mock())
         child = self.p.HandoffChild(process)
@@ -206,6 +210,12 @@ class TestHandoffPlatformHelpers:
         child = self.p.HandoffChild(mocker.Mock(stdin=io.BytesIO(), stdout=broken))
         with pytest.raises(self.p.HandoffError, match="pipe read failed"):
             child.recv_message(0.1)
+
+        child = self.p.HandoffChild(
+            mocker.Mock(stdin=io.BytesIO(), stdout=io.BytesIO(b'{"type":"started","pid":false}\n'))
+        )
+        with pytest.raises(self.p.HandoffError, match="STARTED identity mismatch"):
+            child.await_runtime(1)
 
     def test_bounded_child_shutdown_handles_already_exited_success_and_timeout(self, *, mocker):
         def verify(case):

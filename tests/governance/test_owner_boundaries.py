@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 from types import ModuleType
 
+from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle.supervision import native_service
 from codex_responses_proxy.protocol import request as replay_request
 from codex_responses_proxy.relay import responses, sse
@@ -366,6 +367,32 @@ class ProxyOwnerBoundaryContracts:
                 assert native_service.adapter().__name__.rsplit(".", 1)[-1] == expected
         mocker.patch.object(sys, "platform", "plan9")
         with pytest.raises(RuntimeError, match="unsupported platform: plan9"):
+            native_service.adapter()
+
+    def test_native_service_selection_reports_incomplete_product(self, *, mocker) -> None:
+        real_import = __import__
+
+        def missing_adapters(name, *args, **kwargs):
+            if name.endswith("lifecycle.supervision"):
+                raise ImportError("missing bundled adapter")
+            return real_import(name, *args, **kwargs)
+
+        mocker.patch("builtins.__import__", side_effect=missing_adapters)
+        with pytest.raises(errors.ProductAssemblyError, match="installation is incomplete"):
+            native_service._platform_adapters()
+
+    def test_cygwin_selection_reports_missing_windows_adapter(self, *, mocker) -> None:
+        real_import = __import__
+
+        def missing_windows(name, globals=None, locals=None, fromlist=(), level=0):
+            if name.endswith("lifecycle.supervision") and fromlist == ("windows",):
+                raise ImportError("missing bundled Windows adapter")
+            return real_import(name, globals, locals, fromlist, level)
+
+        mocker.patch.object(native_service, "_platform_adapters", return_value=())
+        mocker.patch.object(sys, "platform", "cygwin")
+        mocker.patch("builtins.__import__", side_effect=missing_windows)
+        with pytest.raises(errors.ProductAssemblyError, match="installation is incomplete"):
             native_service.adapter()
 
 
