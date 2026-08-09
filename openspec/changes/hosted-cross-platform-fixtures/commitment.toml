@@ -1,0 +1,23 @@
+schema_version = 1
+id = "change:hosted-cross-platform-fixtures"
+intent = "Make hosted test fixtures deterministic across runner Git defaults and Windows OpenSSH key parsing."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/hosted-cross-platform-fixtures/**",
+    "openspec/changes/archive/*-hosted-cross-platform-fixtures/**",
+    "tests/forge/test_forward_only.py",
+    "tools/release/signing.py",
+    "tests/release/test_assets.py",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
