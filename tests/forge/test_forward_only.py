@@ -489,7 +489,7 @@ class ProviderProjectionTests:
                 )
                 divergent = root / "divergent"
                 run("git", "clone", "-q", str(github_remote), str(divergent), cwd=root)
-                run("git", "checkout", "-qb", "main", "origin/main", cwd=divergent)
+                run("git", "checkout", "-qB", "main", "origin/main", cwd=divergent)
                 run("git", "config", "user.name", "GitHub Publisher", cwd=divergent)
                 run("git", "config", "user.email", str(fixture["github_email"]), cwd=divergent)
                 run("git", "config", "gpg.format", "ssh", cwd=divergent)
