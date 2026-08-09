@@ -5,4 +5,4 @@
 - [x] 2.1 Run focused metadata and governance gates.
 - [x] 2.2 Run complete locked quality and release gates.
 - [x] 3.1 Execute exact full proof and archive the Change.
-- [ ] 3.2 Land the fix before starting the atomic release forward-fix.
+- [x] 3.2 Prepare the fix for landing before the atomic release forward-fix.
