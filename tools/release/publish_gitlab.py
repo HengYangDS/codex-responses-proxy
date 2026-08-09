@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 import sys
 import tempfile
 import urllib.error
@@ -14,6 +13,7 @@ from pathlib import Path
 from cyclopts import App
 
 from tools.release import product_assets
+from tools.release import signing
 from tools.release.publication.git import _TAG
 
 
@@ -39,64 +39,10 @@ def _request(url: str, token: str, *, data: bytes | None = None, method: str = "
 
 def _sign(assets: Path, key: Path, trust: str) -> None:
     """Sign and verify the canonical checksum inventory."""
-
-    if not key.is_file() or key.is_symlink():
-        raise GitLabPublishError("release signing key file is unavailable")
-    anchor = assets / ".release-asset-trust"
-    anchor.write_text(trust.rstrip("\n") + "\n", encoding="utf-8")
-    signature = assets / "SHA256SUMS.sig"
-    signature.unlink(missing_ok=True)
     try:
-        subprocess.run(
-            (
-                "ssh-keygen",
-                "-Y",
-                "sign",
-                "-q",
-                "-f",
-                str(key),
-                "-n",
-                "codex-responses-proxy-release",
-                "SHA256SUMS",
-            ),
-            cwd=assets,
-            check=True,
-            capture_output=True,
-        )
-        principal = (
-            subprocess.run(
-                ("ssh-keygen", "-Y", "find-principals", "-s", str(signature), "-f", str(anchor)),
-                input=(assets / "SHA256SUMS").read_bytes(),
-                check=True,
-                capture_output=True,
-            )
-            .stdout.decode("ascii")
-            .strip()
-        )
-        if principal != "codex-responses-proxy-release":
-            raise GitLabPublishError("release asset signature principal is invalid")
-        subprocess.run(
-            (
-                "ssh-keygen",
-                "-Y",
-                "verify",
-                "-f",
-                str(anchor),
-                "-I",
-                principal,
-                "-n",
-                "codex-responses-proxy-release",
-                "-s",
-                str(signature),
-            ),
-            input=(assets / "SHA256SUMS").read_bytes(),
-            check=True,
-            capture_output=True,
-        )
-    except (OSError, subprocess.CalledProcessError, UnicodeError) as error:
+        signing.sign_and_verify(assets=assets, key=key, trust=trust)
+    except signing.SignatureError as error:
         raise GitLabPublishError("release asset signature verification failed") from error
-    finally:
-        anchor.unlink(missing_ok=True)
 
 
 def _verify(assets: Path, version: str) -> list[str]:
