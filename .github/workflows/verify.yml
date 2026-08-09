@@ -30,9 +30,12 @@ jobs:
       latest: ${{ steps.versions.outputs.latest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Install the locked matrix tool environment
+        run: uv sync --locked --all-groups
       - name: Read the repository Python matrix
         id: versions
-        run: python -m tools.quality.python_matrix
+        run: uv run --locked --no-sync python -m tools.quality.python_matrix
 
   python:
     name: Python ${{ matrix.python-version }}
