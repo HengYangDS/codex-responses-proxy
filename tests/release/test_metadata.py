@@ -207,17 +207,31 @@ def test_exact_release_tag_contract() -> None:
         setattr(checker, "_git", original_git)
 
 
-def test_github_can_independently_prepare_the_release() -> None:
-    """Keep release preparation provider-parametric without bypass flags."""
+def test_each_provider_can_independently_prepare_the_release() -> None:
+    """Validate either Forge from an equivalent pre-tag source checkout."""
 
-    completed = _run(
-        sys.executable,
-        str(CHECKER),
-        "--provider",
-        "github",
-        "--prepare-release",
-    )
-    require(completed.returncode == 0, "GitHub could not independently prepare the same release")
+    with tempfile.TemporaryDirectory(prefix="provider-release-preparation-") as temp:
+        repository = Path(temp) / "repository"
+        require_success(
+            _run("git", "clone", "--quiet", "--no-checkout", str(ROOT), str(repository))
+        )
+        require_success(_run("git", "checkout", "--quiet", "--detach", "HEAD", cwd=repository))
+        version = (repository / "VERSION").read_text(encoding="utf-8").strip()
+        _run("git", "tag", "--delete", f"v{version}", cwd=repository)
+        checker = repository / "tools" / "release" / "metadata.py"
+        for provider in ("gitlab", "github"):
+            completed = _run(
+                sys.executable,
+                str(checker),
+                "--provider",
+                provider,
+                "--prepare-release",
+                cwd=repository,
+            )
+            require(
+                completed.returncode == 0,
+                f"{provider} could not independently prepare the same release: {completed.stderr}",
+            )
 
 
 def test_provider_tag_owner_validates_before_and_after_signing() -> None:
