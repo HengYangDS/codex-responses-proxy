@@ -29,63 +29,21 @@ jobs:
     outputs:
       run-id: ${{ steps.verify.outputs.run-id }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-versions
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Install the locked publication tool environment
+        run: uv sync --locked --all-groups
       - name: Require exact successful Verify run
         id: verify
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          test "$GITHUB_REF_TYPE" = tag
-          deadline=$((SECONDS + 2400))
-          while :; do
-            runs=$(gh api --paginate --slurp \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yml/runs?branch=$GITHUB_REF_NAME&event=push&per_page=100")
-            verdict=$(RUNS_JSON="$runs" python3 - "$GITHUB_REF_NAME" "$GITHUB_SHA" <<'PY'
-          import json, os, sys
-          tag, sha = sys.argv[1:]
-          pages = json.loads(os.environ["RUNS_JSON"])
-          matches = [
-              run for page in pages for run in page.get("workflow_runs", [])
-              if run.get("path") == ".github/workflows/verify.yml"
-              and run.get("event") == "push"
-              and run.get("head_branch") == tag
-              and run.get("head_sha") == sha
-          ]
-          if len(matches) > 1:
-              print("ambiguous")
-          elif not matches or matches[0].get("status") != "completed":
-              print("waiting")
-          else:
-              print(matches[0].get("conclusion") or "failed")
-          PY
-            )
-            case "$verdict" in
-              success)
-                run_id=$(RUNS_JSON="$runs" python3 - "$GITHUB_REF_NAME" "$GITHUB_SHA" <<'PY'
-          import json, os, sys
-          tag, sha = sys.argv[1:]
-          pages = json.loads(os.environ["RUNS_JSON"])
-          matches = [run for page in pages for run in page.get("workflow_runs", [])
-                     if run.get("path") == ".github/workflows/verify.yml"
-                     and run.get("event") == "push" and run.get("head_branch") == tag
-                     and run.get("head_sha") == sha]
-          if len(matches) != 1 or not isinstance(matches[0].get("id"), int):
-              raise SystemExit("exact successful Verify run is ambiguous")
-          print(matches[0]["id"])
-          PY
-                )
-                echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
-                break ;;
-              waiting)
-                test "$SECONDS" -lt "$deadline" || {
-                  echo "exact tag Verify run timed out" >&2
-                  exit 1
-                }
-                sleep 10
-                ;;
-              *) echo "exact tag Verify run is not successful: $verdict" >&2; exit 1 ;;
-            esac
-          done
+        run: uv run --locked --no-sync python -m tools.release.publish_github wait-verify --repository "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" --commit-oid "$GITHUB_SHA" --output "$GITHUB_OUTPUT"
 
   verify-and-publish:
     name: Verify tag and publish record
