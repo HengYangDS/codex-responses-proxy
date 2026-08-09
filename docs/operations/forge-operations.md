@@ -36,7 +36,16 @@ tag_allowed_signers = "/protected/path"
 The command plane consumes, among other protected values:
 
 - `CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS`;
-- `CODEX_RESPONSES_PROXY_GITHUB_COMMIT_ALLOWED_SIGNERS`.
+- `CODEX_RESPONSES_PROXY_GITHUB_COMMIT_ALLOWED_SIGNERS`;
+- `CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY`, a protected Forge secret;
+- `CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST`, the matching allowed-signers
+  entry.
+
+The GitLab file variable supplies its protected file path directly. The fixed
+Ubuntu GitHub release job materializes its text secret once with mode `0600`.
+Both adapters then supply the same file-path contract to release tooling.
+Product code never accepts private-key text, recreates permissions, or writes a
+second copy.
 
 Product source contains no actor email, personal key, fingerprint, token, or
 local checkout path.
