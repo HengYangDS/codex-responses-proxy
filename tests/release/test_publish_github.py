@@ -104,7 +104,7 @@ def test_publish_owns_download_validation_creation_and_byte_parity(tmp_path: Pat
     (source / "SHA256SUMS.sig").write_bytes(b"signature")
     (downloaded / "SHA256SUMS").write_bytes(b"checksums")
     (downloaded / "SHA256SUMS.sig").write_bytes(b"signature")
-    mocker.patch.object(publish_github, "_prepare_checkout", return_value=("b" * 40, "a" * 40))
+    mocker.patch.object(publish_github, "prepare_checkout", return_value=("b" * 40, "a" * 40))
     mocker.patch.object(publish_github, "_verify_source")
     mocker.patch.object(publish_github, "_verify_remote_identity")
     mocker.patch.object(publish_github, "_release_records", return_value=[])
@@ -134,3 +134,19 @@ def test_publish_owns_download_validation_creation_and_byte_parity(tmp_path: Pat
         == "created"
     )
     create.assert_called_once()
+
+
+def test_prepare_checkout_is_the_public_exact_tag_owner(tmp_path: Path, mocker) -> None:
+    run = mocker.patch.object(publish_github, "_run")
+    output = mocker.patch.object(
+        publish_github,
+        "_output",
+        side_effect=("tag", "b" * 40, "a" * 40),
+    )
+
+    assert publish_github.prepare_checkout(tmp_path, "v1.2.3", "a" * 40) == (
+        "b" * 40,
+        "a" * 40,
+    )
+    assert run.call_count == 2
+    assert output.call_count == 3
