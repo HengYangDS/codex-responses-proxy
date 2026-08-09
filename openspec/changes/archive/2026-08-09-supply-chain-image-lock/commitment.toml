@@ -6,6 +6,7 @@ subjects = [
 ]
 scope = [
     "openspec/changes/supply-chain-image-lock/**",
+    "openspec/changes/archive/*-supply-chain-image-lock/**",
     ".gitlab-ci.yml",
     "tests/quality/test_contract.py",
     "openspec/specs/ci-diagnostics/spec.md",
