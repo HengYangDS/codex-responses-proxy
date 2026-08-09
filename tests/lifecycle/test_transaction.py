@@ -113,6 +113,21 @@ class TestPayloadTransaction:
 
         assert unknown.read_bytes() == b"local content\n"
 
+    def test_nonfresh_rollback_without_retained_snapshot_only_closes_transaction(
+        self, *, mocker
+    ) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
+        rollback.mkdir()
+        rollback.rmdir()
+
+        transaction.rollback()
+
+        assert not Path(payload_state.transaction_root(ctx)).exists()
+        transaction.rollback()
+
     def test_replay_and_downgrade_are_rejected_before_any_live_write(
         self, subtests, *, mocker
     ) -> None:
@@ -232,6 +247,14 @@ class TestPayloadTransaction:
                 ctx,
                 runtime={**runtime, "release": "wrong"},
             )
+        journal_path = Path(payload_state.journal_path(ctx))
+        journal = json.loads(journal_path.read_text())
+        journal["receipt_sha256"] = "0" * 64
+        journal_path.write_bytes(payload_digest.canonical_json(journal))
+        with pytest.raises(errors.InstallError, match="candidate does not match"):
+            payload_transaction.rollback_recovery(ctx, runtime=runtime)
+        journal["receipt_sha256"] = candidate.receipt_sha256
+        journal_path.write_bytes(payload_digest.canonical_json(journal))
         candidate_executable = Path(ctx.executable)
         candidate_bytes = candidate_executable.read_bytes()
         candidate_executable.write_bytes(b"tampered\n")

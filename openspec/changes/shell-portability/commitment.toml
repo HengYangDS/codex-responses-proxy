@@ -3,12 +3,18 @@ id = "change:shell-portability"
 intent = "Replace Shell-owned Forge, release, and contract semantics with the repository-native Python command and pytest surfaces."
 subjects = ["repository:self"]
 scope = [
+  "src/codex_responses_proxy/relay/responses.py",
   "src/codex_responses_proxy/lifecycle/supervision/**",
   "tools/**",
   "tests/lifecycle/supervision/**",
+  "tests/lifecycle/**",
+  "tests/cli/**",
   "tests/forge/**",
   "tests/governance/**",
   "tests/quality/**",
+  "tests/protocol/**",
+  "tests/relay/**",
+  "tests/service/**",
   "tests/release/**",
   ".github/workflows/**",
   ".githooks/**",

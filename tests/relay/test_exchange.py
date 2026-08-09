@@ -837,6 +837,100 @@ class InputTransportContracts:
         assert handler.statuses == [502]
         assert b"upstream_transport_error" in handler.output()
 
+    def test_response_failed_recovery_stops_after_dialogue_and_transport_retries(
+        self, *, mocker
+    ) -> None:
+        exchange = mocker.Mock(
+            is_responses=True,
+            response_failed_stages=upstream_exchange.RESPONSE_FAILED_MAX_STAGES,
+            used_response_failed_dialogue=True,
+        )
+        assert not upstream_exchange._recover_response_failed(exchange, 400, "full")
+
+        handler = _MemoryHandler(json.dumps({"input": []}).encode())
+        exchange = upstream_exchange.Exchange(
+            handler,
+            "POST",
+            1,
+            b"{}",
+            "https://upstream.test/v1/responses",
+            {},
+            True,
+            b"{}",
+            PROVIDERS.profiles["dmxapi"],
+        )
+        mocker.patch.object(upstream_exchange, "_transport_error", return_value="retry")
+        mocker.patch.object(
+            upstream_exchange.Exchange,
+            "upstream",
+            side_effect=OSError("retry"),
+        )
+        mocker.patch.object(upstream_exchange, "_MAX_ATTEMPTS", 1)
+        mocker.patch.object(upstream_exchange, "RESPONSE_FAILED_MAX_STAGES", 0)
+        mocker.patch.object(upstream_exchange, "RESPONSE_FAILED_DIALOGUE_SLOTS", 0)
+        mocker.patch.object(upstream_exchange, "INPUT_VARIANT_DIALOGUE_SLOTS", 0)
+        assert upstream_exchange.open_upstream(exchange) is None
+
+    def test_responses_relay_dispatches_non_responses_body_and_empty_note(self, *, mocker) -> None:
+        handler = _MemoryHandler(b"", path="/dmxapi/v1/models")
+        response = _DirectResponse(b'{"data":[]}')
+        mocker.patch.object(upstream_exchange, "urlopen_direct", return_value=response)
+        responses.relay(handler, "GET", PROVIDERS)
+        assert b'"data":[]' in handler.output()
+
+        handler = _MemoryHandler(json.dumps({"input": []}).encode())
+        projected = rewrite.ProjectionResult(b'{"input":[],"store":false}', "clean")
+        mocker.patch.object(rewrite, "sanitize_responses_body", return_value=projected)
+        mocker.patch.object(
+            upstream_exchange,
+            "urlopen_direct",
+            return_value=_DirectResponse(b'{"status":"completed","output":[]}'),
+        )
+        responses.relay(handler, "POST", PROVIDERS)
+        assert handler.statuses == [200]
+
+    def test_sse_deadline_and_reconnect_deadline_are_bounded(self, *, mocker) -> None:
+        handler = _MemoryHandler()
+        read_budget = mocker.patch.object(sse, "_arm_read_budget", return_value=None)
+        result = sse._read_one_stream(handler, _DirectResponse(), "/v1/responses", 1, lambda: None)
+        assert result["detail"] == "deadline"
+        mocker.stop(read_budget)
+
+        handler = _MemoryHandler()
+        mocker.patch.object(
+            sse,
+            "_read_one_stream",
+            return_value={
+                "terminal": None,
+                "events": 0,
+                "wrote_downstream": False,
+                "detail": "deadline",
+                "error": None,
+            },
+        )
+        mocker.patch.object(sse.time, "monotonic", side_effect=[0.0, sse.UPSTREAM_TIMEOUT])
+        result = sse.relay(
+            handler,
+            _DirectResponse(b""),
+            "/v1/responses",
+            2,
+            reopen=mocker.Mock(),
+        )
+        assert result["attempts"] == 1
+
+        mocker.stopall()
+        handler = _MemoryHandler()
+        mocker.patch.object(sse.time, "monotonic", return_value=2.0)
+        result = sse._read_one_stream(
+            handler,
+            _DirectResponse(socket.timeout("late")),
+            "/v1/responses",
+            3,
+            lambda: None,
+            deadline=1.0,
+        )
+        assert result["detail"] == "deadline"
+
     def test_direct_non_responses_body_covers_empty_and_terminal_chunks(self, *, mocker) -> None:
         handler = _MemoryHandler(path="/dmxapi/v1/health")
         exchange = mocker.Mock(handler=handler, is_responses=True)
