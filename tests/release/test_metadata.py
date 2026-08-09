@@ -124,21 +124,20 @@ def test_each_provider_validates_its_native_tags_against_shared_history() -> Non
         setattr(checker, "known_release_versions", original_known)
 
 
-def test_prepare_release_requires_current_utc_date() -> None:
-    """Reject a pending release whose heading date is not current in UTC."""
+def test_prepare_release_rejects_only_future_dates() -> None:
+    """Keep prepared metadata stable across days while rejecting impossible chronology."""
 
     checker = load_checker()
     current = date(2026, 7, 27)
     checker.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-27")], today=current)
-    try:
-        checker.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-26")], today=current)
-    except ValueError as exc:
-        if "current UTC date" not in str(exc):
-            raise SystemExit(
-                f"stale pending-release date returned an unclear error: {exc}"
-            ) from exc
-    else:
-        raise SystemExit("release metadata checker accepted a stale pending-release date")
+    checker.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-26")], today=current)
+    expect_value_error(
+        lambda: checker.check_pending_release_date(
+            "1.2.3", [("1.2.3", "2026-07-28")], today=current
+        ),
+        "future UTC date",
+        "a pending release dated in the future",
+    )
 
 
 def test_exact_release_tag_contract() -> None:

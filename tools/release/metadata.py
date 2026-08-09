@@ -201,13 +201,17 @@ def check_pending_release_date(
     *,
     today: date | None = None,
 ) -> None:
-    """Require a pending release heading to use the current UTC date."""
+    """Reject a prepared release heading dated after the current UTC day."""
 
     current_date = today or datetime.now(timezone.utc).date()
-    release_date = next((item_date for item, item_date in releases if item == version), None)
-    if release_date != current_date.isoformat():
+    value = next((item_date for item, item_date in releases if item == version), None)
+    try:
+        release_date = date.fromisoformat(value or "")
+    except ValueError as error:
+        raise ValueError(f"pending release {version} has no valid release date") from error
+    if release_date > current_date:
         raise ValueError(
-            f"pending release {version} must use the current UTC date {current_date.isoformat()}"
+            f"pending release {version} uses future UTC date {release_date.isoformat()}"
         )
 
 
