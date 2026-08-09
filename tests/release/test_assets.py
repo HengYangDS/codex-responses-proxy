@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -191,10 +192,34 @@ class ReleaseAssetContracts:
         trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
 
         digests = assemble_assets.assemble_sign_verify(
-            inputs=tuple(inputs), output=tmp_path / "release", key_text=key.read_text(), trust=trust
+            inputs=tuple(inputs), output=tmp_path / "release", key=key, trust=trust
         )
 
         assert set(digests) == assets.release_asset_names("1.2.3", assets.RELEASE_PLATFORMS)
+        assert key.is_file()
+
+    def test_asset_command_reads_the_signing_key_from_an_explicit_path(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        key = tmp_path / "signing"
+        key.write_text("private key fixture", encoding="utf-8")
+        assemble = mocker.patch.object(assemble_assets, "assemble_sign_verify", return_value={})
+        mocker.patch.dict(
+            os.environ,
+            {
+                "RELEASE_ASSET_SIGNING_KEY_PATH": str(key),
+                "RELEASE_ASSET_TRUST": "trust fixture",
+            },
+        )
+
+        assemble_assets._command(inputs=(tmp_path,), output=tmp_path / "release", sign=True)
+
+        assemble.assert_called_once_with(
+            inputs=(tmp_path,),
+            output=tmp_path / "release",
+            key=key,
+            trust="trust fixture",
+        )
 
     def test_invalid_paths_and_manifests_fail_closed(self, subtests) -> None:
         with pytest.raises(assets.AssetError):
