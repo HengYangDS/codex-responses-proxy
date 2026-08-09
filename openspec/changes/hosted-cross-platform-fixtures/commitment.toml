@@ -8,7 +8,7 @@ scope = [
     "openspec/changes/hosted-cross-platform-fixtures/**",
     "openspec/changes/archive/*-hosted-cross-platform-fixtures/**",
     "tests/forge/test_forward_only.py",
-    "tools/release/signing.py",
+    "tools/release/assemble_assets.py",
     "tests/release/test_assets.py",
 ]
 invariants = []
