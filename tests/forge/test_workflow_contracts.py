@@ -50,7 +50,7 @@ def test_github_verification_workflow_contract() -> None:
         "platform: linux-x86_64",
         "platform: macos-arm64",
         "platform: windows-x86_64",
-        'uv run --locked --no-sync nox -s release -- "$RUNNER_TEMP/native-assets"',
+        'uv run --locked --no-sync nox -s release -- "${{ runner.temp }}/native-assets"',
         "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
         "# v7.0.1",
         "release-assets:",
@@ -142,6 +142,11 @@ def test_github_verification_workflow_contract() -> None:
         raise AssertionError(
             "governance ref dispatch must select tag validation before branch fallback"
         )
+    native_start = text.index("\n  native-assets:")
+    native_end = text.index("\n  release-assets:", native_start)
+    native_block = text[native_start:native_end]
+    if "shell: bash" in native_block or "set -euo pipefail" in native_block:
+        raise AssertionError("native asset builds must use each runner's native command shell")
     if "shell: bash" in windows_block or ".sh" in windows_block:
         raise AssertionError("Windows verification must not depend on Bash or POSIX shell scripts")
     if "secrets:" in windows_block or "permissions:" in windows_block:
