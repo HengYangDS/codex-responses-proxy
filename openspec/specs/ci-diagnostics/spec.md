@@ -196,9 +196,10 @@ entrypoint.
 
 ### Requirement: Supply-chain pins are current and reproducible
 
-Project metadata SHALL declare exact audited stable quality and packaging
+Project metadata SHALL declare exact audited stable direct quality and packaging
 dependencies, the committed uv lock SHALL own their transitive closure, hosted
-Actions SHALL use immutable revisions, and GitLab Python images SHALL use supported minor tags bound to immutable registry digests.
+Actions SHALL use immutable revisions, and GitLab Python images SHALL use
+supported minor tags bound to immutable registry digests.
 
 #### Scenario: A GitLab Python image is selected
 
@@ -214,6 +215,13 @@ Actions SHALL use immutable revisions, and GitLab Python images SHALL use suppor
   supersedes the repository pin
 - **THEN** its existing SSOT is updated without adding a parallel version owner
 - **AND** lock, workflow, and repository quality contracts pass together.
+
+#### Scenario: A stable transitive dependency advances
+
+- **WHEN** the declared uv resolver selects a newer stable transitive dependency
+- **THEN** the repository SHALL update only `uv.lock`
+- **AND** a repeated resolution SHALL produce no further diff
+- **AND** the complete locked verification graph SHALL pass before integration.
 
 ### Requirement: Hosted setup is deterministic and contention-free
 
