@@ -252,3 +252,15 @@ depending on a runner's Git default branch or text newline translation.
 - **THEN** the serialized key bytes are preserved exactly
 - **AND** `ssh-keygen` can sign the checksum inventory
 
+### Requirement: Terminal candidate integration is exact and local
+
+A proven work lane SHALL advance the local candidate only through an explicit
+compare-and-swap authority bound to the complete accumulated lane delta.
+
+#### Scenario: The candidate remains the observed ancestor
+
+- **WHEN** full proof passes for the clean archived work-lane HEAD
+- **THEN** ETHOS SHALL move `candidate/dev` only from the previously observed ref
+- **AND** any candidate, Lease, tree, or proof drift SHALL fail closed
+- **AND** no remote Forge SHALL be queried or mutated.
+
