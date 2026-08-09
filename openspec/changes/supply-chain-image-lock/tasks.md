@@ -4,4 +4,4 @@
 - [x] 1.2 Add a positive semantic contract against `.python-versions`.
 - [x] 1.3 Document the CI reproducibility requirement.
 - [x] 1.4 Run focused, quick, quality, matrix, and release gates.
-- [ ] 1.5 Execute exact-HEAD proof, archive, land, and close out the lane.
+- [x] 1.5 Execute exact-HEAD proof, then archive, land, and close out the lane.
