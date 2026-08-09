@@ -53,116 +53,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.ref_name }}
+          ref: main
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-versions
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Install the complete locked tool environment
         run: uv sync --locked --all-groups
-      - name: Fetch the exact annotated tag object
-        env:
-          SELECTED_TAG: ${{ github.ref_name }}
-          VERIFIED_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          case "$SELECTED_TAG" in v*) ;; *) echo "release requires a v* tag" >&2; exit 2 ;; esac
-          git fetch --force --no-tags origin "+refs/tags/$SELECTED_TAG:refs/tags/$SELECTED_TAG"
-          test "$(git cat-file -t "refs/tags/$SELECTED_TAG")" = tag
-          target=$(git rev-parse "refs/tags/$SELECTED_TAG^{commit}")
-          test "$target" = "$VERIFIED_SHA"
-          git checkout --detach "$target"
-      - name: Verify provider-native release tag
-        env:
-          SELECTED_TAG: ${{ github.ref_name }}
-          CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST }}
-        run: |
-          set -euo pipefail
-          case "$SELECTED_TAG" in v*) ;; *) echo "release requires a v* tag" >&2; exit 2 ;; esac
-          test "$SELECTED_TAG" = "$(git describe --tags --exact-match HEAD)"
-          test -n "$CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST"
-          anchor="$RUNNER_TEMP/github-tag-allowed-signers"
-          printf '%s\n' "$CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST" > "$anchor"
-          chmod 600 "$anchor"
-          uv run --locked --no-sync python -m tools.forge.tag_signature . "$SELECTED_TAG" github "$anchor"
-          uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$SELECTED_TAG"
-          uv run --locked --no-sync python tools/quality/markdown.py
       - name: Publish or verify exact GitHub release record
         env:
           GH_TOKEN: ${{ github.token }}
-          SELECTED_TAG: ${{ github.ref_name }}
-          VERIFIED_RUN_ID: ${{ needs.require-verify.outputs.run-id }}
+          CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST }}
           RELEASE_ASSET_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}
-        run: |
-          set -euo pipefail
-          expected_sha=$(git rev-parse 'HEAD^{commit}')
-          expected_tag_oid=$(git rev-parse "$SELECTED_TAG^{tag}")
-          releases=$(gh api --paginate --slurp \
-            "repos/$GITHUB_REPOSITORY/releases?per_page=100")
-          verdict=$(RELEASES_JSON="$releases" python3 - "$SELECTED_TAG" <<'PY'
-          import json, os, sys
-          tag = sys.argv[1]
-          pages = json.loads(os.environ["RELEASES_JSON"])
-          matches = [release for page in pages for release in page if release.get("tag_name") == tag]
-          if len(matches) > 1:
-              raise SystemExit("duplicate GitHub release records for exact tag")
-          if not matches:
-              print("missing")
-              raise SystemExit(0)
-          release = matches[0]
-          expected = {"tag_name": tag, "name": f"Codex Responses Proxy {tag}", "draft": False, "prerelease": False}
-          if (any(release.get(key) != value for key, value in expected.items())
-                  or not isinstance(release.get("id"), int)
-                  or not release.get("published_at")):
-              raise SystemExit("existing GitHub release does not match exact release identity")
-          print("matching")
-          PY
-          )
-          case "$verdict" in
-            matching) echo "GitHub release already matches: $SELECTED_TAG" ;;
-            missing) ;;
-            *) echo "unexpected GitHub release verdict: $verdict" >&2; exit 1 ;;
-          esac
-          ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$SELECTED_TAG")
-          tag_oid=$(REF_JSON="$ref" python3 - <<'PY'
-          import json, os
-          object_ = json.loads(os.environ["REF_JSON"]).get("object", {})
-          if object_.get("type") != "tag" or not object_.get("sha"):
-              raise SystemExit("GitHub release tag is not an annotated provider tag")
-          print(object_["sha"])
-          PY
-          )
-          tag_object=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_oid")
-          test "$tag_oid" = "$expected_tag_oid"
-          TAG_JSON="$tag_object" python3 - "$SELECTED_TAG" "$tag_oid" "$expected_sha" <<'PY'
-          import json, os, sys
-          tag, oid, commit = sys.argv[1:]
-          record = json.loads(os.environ["TAG_JSON"])
-          target = record.get("object", {})
-          if (record.get("tag"), record.get("sha"), target.get("type"), target.get("sha")) != (tag, oid, "commit", commit):
-              raise SystemExit("GitHub release tag does not resolve to the checked-out commit")
-          PY
-          assets="$RUNNER_TEMP/release-assets"
-          gh run download "$VERIFIED_RUN_ID" --repo "$GITHUB_REPOSITORY" \
-            --name release-assets --dir "$assets"
-          anchor="$RUNNER_TEMP/release-asset-trust"
-          printf '%s\n' "$RELEASE_ASSET_TRUST" > "$anchor"
-          principal=$(ssh-keygen -Y find-principals -s "$assets/SHA256SUMS.sig" \
-            -f "$anchor" < "$assets/SHA256SUMS")
-          test "$principal" = codex-responses-proxy-release
-          ssh-keygen -Y verify -f "$anchor" -I "$principal" \
-            -n codex-responses-proxy-release -s "$assets/SHA256SUMS.sig" \
-            < "$assets/SHA256SUMS"
-          uv run --locked --no-sync python tools/release/assemble_assets.py --verify "$assets"
-          if [ "$verdict" = missing ]; then
-            gh release create "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" \
-              --verify-tag --title "Codex Responses Proxy $SELECTED_TAG" --generate-notes \
-              "$assets"/*
-          fi
-          downloaded="$RUNNER_TEMP/downloaded-assets"
-          mkdir -p "$downloaded"
-          gh release download "$SELECTED_TAG" --repo "$GITHUB_REPOSITORY" --dir "$downloaded" \
-            --pattern 'codex-responses-proxy-*' --pattern 'SHA256SUMS*'
-          uv run --locked --no-sync python tools/release/assemble_assets.py --verify "$downloaded"
-          diff -qr "$assets" "$downloaded"
+        run: uv run --locked --no-sync python -m tools.release.publish_github publish --repository "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" --commit-oid "$GITHUB_SHA" --run-id "${{ needs.require-verify.outputs.run-id }}" --workspace "$RUNNER_TEMP/github-release"
