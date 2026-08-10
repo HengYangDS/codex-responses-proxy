@@ -1,0 +1,24 @@
+schema_version = 1
+id = "change:evidence-taxonomy-positive-contract"
+intent = "Make the durable evidence taxonomy a single positive repository contract and remove retired parity terminology from active specifications and tests."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/evidence-taxonomy-positive-contract/**",
+    "docs/evidence/README.md",
+    "tools/quality/repository.py",
+    "tests/quality/test_contract.py",
+    "openspec/changes/archive/*-evidence-taxonomy-positive-contract/**",
+    "openspec/specs/evidence-layout/spec.md",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
