@@ -197,6 +197,15 @@ class TestQualityPolicyContracts:
             pattern.fullmatch("materialize quality-policy-ssot carrier") for pattern in generated
         )
 
+    def test_commit_subject_grammar_allows_internal_semver_periods(self) -> None:
+        policy = tomllib.loads(
+            (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
+        )
+        human = re.compile(policy["human_pattern"])
+
+        assert human.fullmatch("chore(release): prepare v2.0.22")
+        assert not human.fullmatch("chore(release): prepare v2.0.22.")
+
     def test_commit_subjects_use_remote_main_when_candidate_is_local_only(self) -> None:
         checker = _checker()
         with _test_repository(("tracked.txt",)) as root:
