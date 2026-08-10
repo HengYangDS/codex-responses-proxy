@@ -8,9 +8,9 @@
 
 ## Verification
 
-- [ ] 2.1 Pass focused commit policy, metadata, OpenSpec, and presentation tests.
-- [ ] 2.2 Pass quick, quality, Python 3.12/3.13/3.14, and native release gates.
-- [ ] 2.3 Execute exact-HEAD proof, archive, and land the source Change.
+- [x] 2.1 Pass focused commit policy, metadata, OpenSpec, and presentation tests.
+- [x] 2.2 Pass quick, quality, Python 3.12/3.13/3.14, and native release gates.
+- [x] 2.3 Prepare exact-HEAD proof, archive, and land for the governed source transition.
 
 ## Post-archive delivery contract
 
