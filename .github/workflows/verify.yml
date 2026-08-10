@@ -185,7 +185,7 @@ jobs:
           RELEASE_ASSET_SIGNING_KEY_TEXT: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY }}
         run: |
           install -m 600 /dev/null "$RUNNER_TEMP/release-asset-signing-key"
-          printf '%s' "$RELEASE_ASSET_SIGNING_KEY_TEXT" > "$RUNNER_TEMP/release-asset-signing-key"
+          printf '%s\n' "$RELEASE_ASSET_SIGNING_KEY_TEXT" > "$RUNNER_TEMP/release-asset-signing-key"
       - name: Assemble, sign, and verify the release set
         env:
           RELEASE_ASSET_SIGNING_KEY_PATH: ${{ runner.temp }}/release-asset-signing-key

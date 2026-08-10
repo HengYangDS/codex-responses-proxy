@@ -71,7 +71,7 @@ def test_github_verification_workflow_contract() -> None:
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY",
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
         'install -m 600 /dev/null "$RUNNER_TEMP/release-asset-signing-key"',
-        'printf \'%s\' "$RELEASE_ASSET_SIGNING_KEY_TEXT" > "$RUNNER_TEMP/release-asset-signing-key"',
+        'printf \'%s\\n\' "$RELEASE_ASSET_SIGNING_KEY_TEXT" > "$RUNNER_TEMP/release-asset-signing-key"',
         "RELEASE_ASSET_SIGNING_KEY_PATH: ${{ runner.temp }}/release-asset-signing-key",
         "--sign",
         "name: release-assets",

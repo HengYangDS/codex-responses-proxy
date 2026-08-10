@@ -33,8 +33,12 @@ def sign_and_verify(*, assets: Path, key: Path, trust: str) -> None:
             check=True,
             capture_output=True,
         )
-    except (OSError, subprocess.CalledProcessError, UnicodeError) as error:
-        raise SignatureError("release asset signature verification failed") from error
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or b"").decode("utf-8", errors="replace").strip()
+        message = "OpenSSH rejected the release signing key"
+        raise SignatureError(f"{message}: {detail}" if detail else message) from None
+    except (OSError, UnicodeError):
+        raise SignatureError("release asset signing failed") from None
     verify(assets=assets, trust=trust)
 
 
