@@ -1,7 +1,10 @@
-# evidence-layout Specification
+# Evidence layout Specification
 
 ## Purpose
-TBD - created by archiving change evidence-surface-convergence. Update Purpose after archive.
+
+Define the durable project-owned evidence roots and preserve one semantic owner
+for independent Forge parity auditing.
+
 ## Requirements
 ### Requirement: Durable evidence roots have one project meaning
 
