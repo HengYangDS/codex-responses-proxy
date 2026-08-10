@@ -124,9 +124,13 @@ def _command(
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run release assembly through the repository's single parser stack."""
 
-    App(default_command=_command, help=__doc__, result_action="return_value")(
-        tuple(sys.argv[1:] if argv is None else argv)
-    )
+    try:
+        App(default_command=_command, help=__doc__, result_action="return_value")(
+            tuple(sys.argv[1:] if argv is None else argv)
+        )
+    except (assets.AssetError, signing.SignatureError) as error:
+        print(str(error), file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
