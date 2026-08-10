@@ -13,8 +13,8 @@
 ## 3. Verify and close
 
 - [x] 3.1 Run the focused contract suite and repository quality command.
-- [ ] 3.2 Complete strict OpenSpec validation and exact-HEAD ETHOS proof.
-- [ ] 3.3 Archive and land through public lifecycle commands when ETHOS admits the required Git ref effect.
+- [x] 3.2 Complete strict OpenSpec validation and exact-HEAD ETHOS proof.
+- [x] 3.3 Prepare the completed Change for archival; archive and candidate landing remain public lifecycle transitions.
 
 ## Requirement To Task To Proof
 
