@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+### Changed
+
+- Replace the repeatedly extracted one-file executable with one complete,
+  manifest-bound native bundle. Installation prewarms the staged bundle before
+  payload mutation, and handoff, rollback, recovery, purge, and signed assets
+  now share its exact recursive inventory.
+
 ## [2.0.17] - 2026-08-09
 
 ### Fixed

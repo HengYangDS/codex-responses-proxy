@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -37,7 +36,7 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
     manifest = owned_files.read_json_object(manifest_path, "installed payload manifest")
     files = manifest["files"]
     assert isinstance(files, dict)
-    owned = set(files) | set(owned_files.OWNED_PAYLOAD_METADATA)
+    owned = set(owned_files.declared_files(manifest)) | set(owned_files.OWNED_PAYLOAD_METADATA)
     for relative in owned:
         owned_files.regular_file(install, relative, "installed payload purge")
     for relative in sorted(owned, key=lambda value: len(PurePosixPath(value).parts), reverse=True):
@@ -57,30 +56,17 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
 
 
 def _payload_relative_paths(root: str) -> list[str]:
-    files = (
-        inventory.runtime_files(windows=True)
-        if os.path.isfile(os.path.join(root, inventory.WINDOWS_EXECUTABLE))
-        else inventory.runtime_files()
+    manifest = owned_files.read_json_object(
+        Path(root, inventory.MANIFEST_FILENAME), "installed payload manifest"
     )
-    if missing := [
-        relative for relative in files if not os.path.isfile(os.path.join(root, relative))
-    ]:
-        raise errors.InstallError("installed payload is incomplete: " + ", ".join(missing))
-    return list(files)
+    return sorted(owned_files.declared_files(manifest))
 
 
 def serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
-    """Return the canonical identity of the executable and provider manifest."""
+    """Return the canonical identity of every manifest-owned serving file."""
 
-    executable_paths = {inventory.EXECUTABLE, inventory.WINDOWS_EXECUTABLE}
-    if (
-        set(file_digests).difference(executable_paths) != {inventory.PROVIDER_MANIFEST}
-        or len(file_digests) != 2
-        or not set(file_digests).intersection(executable_paths)
-    ):
-        raise errors.InstallError("serving payload file set mismatch")
     try:
-        return digest.serving_payload_sha256(file_digests)
+        return inventory.serving_payload_sha256(file_digests)
     except digest.PayloadDigestError as exc:
         raise errors.InstallError(str(exc)) from exc
 
@@ -154,7 +140,9 @@ def _write_payload_manifest_for_fixture(
 ) -> Path:
     """Write the production manifest shape for a current test payload."""
 
-    paths = _payload_relative_paths(ctx.install_dir)
+    install = Path(ctx.install_dir)
+    windows = (install / inventory.WINDOWS_EXECUTABLE).is_file()
+    paths = sorted(inventory.required_runtime_files(windows=windows))
     digests = {relative: digest.sha256_file(Path(ctx.install_dir, relative)) for relative in paths}
     manifest: dict[str, Any] = {
         "schema_version": PAYLOAD_MANIFEST_SCHEMA_VERSION,
@@ -198,7 +186,17 @@ def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, 
     ):
         return False, "manifest is incomplete"
     try:
-        expected_files = _payload_relative_paths(ctx.install_dir)
+        expected_files = sorted(owned_files.declared_files(manifest))
+        required = inventory.required_runtime_files(
+            windows=inventory.WINDOWS_EXECUTABLE in expected_files
+        )
+        if not required.issubset(expected_files) or any(
+            not inventory.is_runtime_file(
+                relative, windows=inventory.WINDOWS_EXECUTABLE in expected_files
+            )
+            for relative in expected_files
+        ):
+            return False, "manifest file set mismatch"
     except errors.InstallError as exc:
         return False, str(exc)
     if sorted(files) != sorted(expected_files):

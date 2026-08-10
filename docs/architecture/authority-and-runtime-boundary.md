@@ -21,7 +21,7 @@ flowchart LR
 | --- | --- |
 | Codex | Conversations, tool state, JSONL, SQLite, stored items, model metadata |
 | Client control plane | Credentials, provider selection, and client endpoint configuration |
-| Proxy source and release | Provider manifest, protocol policy, native executable, lifecycle contract |
+| Proxy source and release | Provider manifest, protocol policy, native bundle, lifecycle contract |
 | Installed proxy | Manifest-owned payload and native service projection |
 | Provider | Model execution, quota, and upstream availability |
 | GitLab / GitHub | Independent CI, tag, Release, and asset records |
@@ -120,8 +120,9 @@ stateDiagram-v2
     Serving --> [*]
 ```
 
-Artifact admission verifies the release asset and external trust anchor. The
-payload transaction owns exact files and receipts. Installation finalizes only
+Artifact admission verifies the release asset, complete bundle inventory, and
+external trust anchor. The installer prewarms the staged executable before the
+payload transaction can replace installed bytes. Installation finalizes only
 after one listener proves the expected release, payload digest, manifest digest,
 receipt digest, PID, and accepting state.
 

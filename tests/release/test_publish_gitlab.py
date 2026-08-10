@@ -30,7 +30,7 @@ def _assets(root: Path, version: str) -> None:
             if platform.startswith("windows-")
             else "codex-responses-proxy"
         )
-        files = {executable: product_assets.ArchiveFile(platform.encode(), 0o755)}
+        files = {f"bin/{executable}": product_assets.ArchiveFile(platform.encode(), 0o755)}
         archive_name = product_assets.archive_name(version, platform)
         archive = product_assets.archive_bytes(files, version, platform)
         release[archive_name] = archive
