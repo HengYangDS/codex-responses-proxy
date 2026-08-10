@@ -1,7 +1,7 @@
 owner = "repository-quality"
 types = ["build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "spec", "test"]
 scopes = ["architecture", "cli", "docs", "forge", "governance", "lifecycle", "openspec", "protocol", "providers", "quality", "relay", "release", "runtime", "service", "tests"]
-human_pattern = "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|spec|test)\\((architecture|cli|docs|forge|governance|lifecycle|openspec|protocol|providers|quality|relay|release|runtime|service|tests)\\): [a-z][^\\n.]*[^\\s.]$"
+human_pattern = "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|spec|test)\\((architecture|cli|docs|forge|governance|lifecycle|openspec|protocol|providers|quality|relay|release|runtime|service|tests)\\): [a-z](?:[^\\n]*[^\\s.]|[^\\n\\s.])$"
 generated_patterns = [
   "^start OpenSpec change [a-z0-9]+(?:-[a-z0-9]+)*$",
   "^archive OpenSpec change [a-z0-9]+(?:-[a-z0-9]+)*$",
