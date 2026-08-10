@@ -197,6 +197,98 @@ class TestQualityPolicyContracts:
             pattern.fullmatch("materialize quality-policy-ssot carrier") for pattern in generated
         )
 
+    def test_commit_subjects_use_remote_main_when_candidate_is_local_only(self) -> None:
+        checker = _checker()
+        with _test_repository(("tracked.txt",)) as root:
+            _git(
+                root,
+                "-c",
+                "user.name=Test Author",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-q",
+                "-m",
+                "test(quality): establish hosted baseline",
+            )
+            base = _git(root, "rev-parse", "HEAD").stdout.strip().decode()
+            _git(root, "update-ref", "refs/remotes/origin/main", base)
+            (root / "tracked.txt").write_text("changed\n", encoding="utf-8")
+            _git(root, "add", "tracked.txt")
+            _git(
+                root,
+                "-c",
+                "user.name=Test Author",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-q",
+                "-m",
+                "invalid hosted subject",
+            )
+
+            assert checker.commit_subject_gaps(root) == [
+                "commit_subject_invalid:invalid hosted subject"
+            ]
+
+    def test_commit_subjects_validate_head_without_an_integration_ref(self) -> None:
+        checker = _checker()
+        with _test_repository(("tracked.txt",)) as root:
+            _git(
+                root,
+                "-c",
+                "user.name=Test Author",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-q",
+                "-m",
+                "invalid root subject",
+            )
+            branch = _git(root, "branch", "--show-current").stdout.strip().decode()
+            _git(root, "switch", "--detach", "-q")
+            _git(root, "branch", "-D", branch)
+
+            assert checker.commit_subject_gaps(root) == [
+                "commit_subject_invalid:invalid root subject"
+            ]
+
+    def test_commit_subjects_skip_an_integration_ref_ahead_of_head(self) -> None:
+        checker = _checker()
+        with _test_repository(("tracked.txt",)) as root:
+            _git(
+                root,
+                "-c",
+                "user.name=Test Author",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-q",
+                "-m",
+                "invalid root subject",
+            )
+            head = _git(root, "rev-parse", "HEAD").stdout.strip().decode()
+            (root / "tracked.txt").write_text("candidate\n", encoding="utf-8")
+            _git(root, "add", "tracked.txt")
+            _git(
+                root,
+                "-c",
+                "user.name=Test Author",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-q",
+                "-m",
+                "test(quality): candidate ahead of checkout",
+            )
+            candidate = _git(root, "rev-parse", "HEAD").stdout.strip().decode()
+            _git(root, "update-ref", "refs/heads/candidate/dev", candidate)
+            _git(root, "reset", "--hard", "-q", head)
+
+            assert checker.commit_subject_gaps(root) == [
+                "commit_subject_invalid:invalid root subject"
+            ]
+
     def test_readme_install_path_matches_product_contract(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()

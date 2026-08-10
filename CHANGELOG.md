@@ -7,6 +7,15 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.21] - 2026-08-10
+
+### Fixed
+
+- Derive commit-subject verification from the first integration ref available as a HEAD ancestor in
+  the current checkout. Local Work Lanes still prefer `candidate/dev`, while
+  GitLab and GitHub tag checkouts no longer require a forbidden remote candidate
+  ref.
+
 ## [2.0.20] - 2026-08-10
 
 ### Fixed
