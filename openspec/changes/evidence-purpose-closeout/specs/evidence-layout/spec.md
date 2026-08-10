@@ -19,3 +19,15 @@ specified and gated.
 - **WHEN** repository quality reads the canonical evidence-layout specification
 - **THEN** its purpose SHALL describe durable evidence ownership directly
 - **AND** no generated placeholder SHALL remain.
+
+### Requirement: Forge parity retains its existing semantic owner
+
+Dual-Forge source and release equality SHALL remain a publication concern owned
+by the Forge auditor. It SHALL NOT be projected into a generic adopter-parity
+directory merely to preserve an empty layout.
+
+#### Scenario: Cross-Forge parity is audited
+
+- **WHEN** GitLab and GitHub publication state is compared
+- **THEN** `tools/forge/audit.py` produces the read-only parity result
+- **AND** no `evidence/parity` carrier is required.
