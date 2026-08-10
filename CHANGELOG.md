@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.19] - 2026-08-10
+
+### Fixed
+
+- Normalize the host `commonpath` result before Windows bundle containment
+  comparison and keep POSIX symlink materialization on compatible filesystems.
+
 ## [2.0.18] - 2026-08-10
 
 ### Fixed
