@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.22] - 2026-08-11
+
+### Fixed
+
+- Make hosted Git fixtures independent of the machine's default branch.
+- Retain and terminate every authenticated native handoff successor before
+  releasing its temporary payload, including when process inventory misses it.
+
 ## [2.0.21] - 2026-08-10
 
 ### Fixed
