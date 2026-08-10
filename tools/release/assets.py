@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -13,6 +14,14 @@ from tools.release import product_assets as assets
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _is_within(bundle: Path, member: Path) -> bool:
+    """Return whether two resolved paths share the host's bundle identity."""
+
+    canonical_bundle = os.path.normcase(str(bundle))
+    canonical_member = os.path.normcase(str(member))
+    return os.path.commonpath((canonical_bundle, canonical_member)) == canonical_bundle
+
+
 def _bundle_files(bundle: Path) -> tuple[tuple[Path, Path], ...]:
     """Return logical bundle files after safely materializing internal links."""
 
@@ -21,7 +30,8 @@ def _bundle_files(bundle: Path) -> tuple[tuple[Path, Path], ...]:
     def visit(logical: Path, source: Path, ancestors: frozenset[Path]) -> None:
         try:
             resolved = source.resolve(strict=True)
-            resolved.relative_to(bundle)
+            if not _is_within(bundle, resolved):
+                raise ValueError
         except (OSError, ValueError) as error:
             raise SystemExit("native bundle symlink escapes the bundle") from error
         if resolved.is_file():

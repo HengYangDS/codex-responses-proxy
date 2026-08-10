@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.18] - 2026-08-10
+
+### Fixed
+
+- Compare resolved native-bundle containment through the host filesystem's
+  canonical path identity. Windows no longer rejects an internal member whose
+  resolved path differs only by case, while real escapes remain fail-closed.
+
 ### Changed
 
 - Replace the repeatedly extracted one-file executable with one complete,
