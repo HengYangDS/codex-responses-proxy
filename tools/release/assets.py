@@ -19,7 +19,8 @@ def _is_within(bundle: Path, member: Path) -> bool:
 
     canonical_bundle = os.path.normcase(str(bundle))
     canonical_member = os.path.normcase(str(member))
-    return os.path.commonpath((canonical_bundle, canonical_member)) == canonical_bundle
+    shared = os.path.normcase(os.path.commonpath((canonical_bundle, canonical_member)))
+    return shared == canonical_bundle
 
 
 def _bundle_files(bundle: Path) -> tuple[tuple[Path, Path], ...]:
