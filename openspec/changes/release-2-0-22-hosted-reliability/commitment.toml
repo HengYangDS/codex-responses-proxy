@@ -14,6 +14,7 @@ scope = [
   "VERSION",
   "CHANGELOG.md",
   "README.md",
+  ".config/checks/commits/policy.toml",
 ]
 invariants = [
   "isolated_git_fixtures_do_not_inherit_product_branch_identity",
