@@ -5,13 +5,16 @@ from __future__ import annotations
 
 import json
 import sys
+import tomllib
 import tempfile
 from collections import defaultdict
 from collections.abc import Mapping
 from decimal import Decimal
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Annotated, Any, Protocol
+
+from cyclopts import App, Parameter
 
 
 class CoverageConfig(Protocol):
@@ -178,22 +181,37 @@ def package_gaps(files: Mapping[str, Any], floor: int | float) -> list[str]:
     return gaps
 
 
-def main() -> int:
+def _command(
+    *,
+    policy_path: Annotated[Path, Parameter(name="--policy")],
+) -> int:
     """Load current coverage data and report one machine-readable verdict."""
 
+    policy = tomllib.loads(policy_path.read_text(encoding="utf-8"))
+    floor = policy["minimum_percent"]
     coverage: CoverageData = import_module("coverage").Coverage()
     coverage.load()
     report = measured_report(coverage)
     totals = report["totals"]
     gaps = [
-        *statement_gaps(totals, coverage.config.fail_under),
-        *branch_gaps(totals, coverage.config.fail_under),
-        *package_gaps(report.get("files", {}), coverage.config.fail_under),
-        *module_gaps(report.get("files", {}), coverage.config.fail_under),
+        *statement_gaps(totals, floor),
+        *branch_gaps(totals, floor),
+        *package_gaps(report.get("files", {}), floor),
+        *module_gaps(report.get("files", {}), floor),
     ]
     print(json.dumps({"ok": not gaps, "gaps": gaps, **totals}, sort_keys=True))
     return 0 if not gaps else 1
 
 
+def main(argv: tuple[str, ...] | None = None) -> None:
+    """Run the coverage policy through the repository parser stack."""
+
+    result = App(default_command=_command, help=__doc__, result_action="return_value")(
+        tuple(sys.argv[1:] if argv is None else argv)
+    )
+    if isinstance(result, int):
+        raise SystemExit(result)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

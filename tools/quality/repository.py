@@ -17,25 +17,15 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from cyclopts import App
+from tools.quality.architecture import architecture_gaps
+from tools.quality.commits import commit_subject_gaps
 from tools.quality.decision_records import decision_record_gaps
 from tools.quality.repository_state import worktree_fingerprint
 from tools.quality.semantic_names import semantic_name_gaps
 
 ROOT = Path(__file__).resolve().parents[2]
-CONFIG = ROOT / "pyproject.toml"
-_FORBIDDEN_PACKAGES = frozenset({"common", "helpers", "lib", "shared", "support"})
-_CONTROL_PLANE_IMPORT_FIXTURES = frozenset({"client_control_plane"})
-_CONTROL_PLANE_LITERAL = re.compile(r"(?<![A-Za-z0-9])client-control-plane(?![A-Za-z0-9])")
-_ROOT_CONFIGURATION_MODULES = frozenset({"noxfile.py"})
-_ALLOWED_PACKAGE_EDGES = {
-    "cli": frozenset({"lifecycle", "service"}),
-    "lifecycle": frozenset({"protocol", "providers", "relay", "runtime", "service"}),
-    "protocol": frozenset(),
-    "providers": frozenset(),
-    "relay": frozenset({"protocol", "providers", "runtime"}),
-    "service": frozenset({"protocol", "providers", "relay", "runtime"}),
-    "runtime": frozenset(),
-}
+CONFIG = ROOT / ".config/checks/architecture/policy.toml"
+PROJECT = ROOT / "pyproject.toml"
 _DEFINITION_TYPES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 _EVIDENCE_SPEC = Path("openspec/specs/evidence-layout/spec.md")
 _EVIDENCE_TAXONOMY = re.compile(r"```toml evidence-taxonomy\n(?P<body>.*?)\n```", re.DOTALL)
@@ -287,163 +277,6 @@ def _public_docstring_gaps(root: Path, path: Path, tree: ast.Module) -> list[str
     return gaps
 
 
-def _package_edges(package: Path) -> dict[str, set[str]]:
-    """Return direct semantic-package imports for the product source tree."""
-
-    edges: dict[str, set[str]] = {}
-    if not package.is_dir():
-        return edges
-    for path in sorted(package.rglob("*.py")):
-        relative = path.relative_to(package)
-        if len(relative.parts) < 2:
-            continue
-        owner = relative.parts[0]
-        edges.setdefault(owner, set())
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                modules = (node.module,) if node.module else ()
-            elif isinstance(node, ast.Import):
-                modules = tuple(alias.name for alias in node.names)
-            else:
-                continue
-            for module in modules:
-                prefix = "codex_responses_proxy."
-                if not module.startswith(prefix):
-                    continue
-                target = module.removeprefix(prefix).split(".", 1)[0]
-                if target != owner:
-                    edges[owner].add(target)
-    return edges
-
-
-def _dependency_cycles(edges: Mapping[str, set[str]]) -> list[tuple[str, ...]]:
-    """Return deterministic strongly connected package components."""
-
-    index = 0
-    indices: dict[str, int] = {}
-    lowlinks: dict[str, int] = {}
-    stack: list[str] = []
-    active: set[str] = set()
-    cycles: list[tuple[str, ...]] = []
-
-    def visit(node: str) -> None:
-        nonlocal index
-        indices[node] = lowlinks[node] = index
-        index += 1
-        stack.append(node)
-        active.add(node)
-        for target in sorted(edges.get(node, ())):
-            if target not in indices:
-                visit(target)
-                lowlinks[node] = min(lowlinks[node], lowlinks[target])
-            elif target in active:
-                lowlinks[node] = min(lowlinks[node], indices[target])
-        if lowlinks[node] != indices[node]:
-            return
-        component: list[str] = []
-        while stack:
-            target = stack.pop()
-            active.remove(target)
-            component.append(target)
-            if target == node:
-                break
-        if len(component) > 1:
-            cycles.append(tuple(sorted(component)))
-
-    nodes = set(edges) | {target for targets in edges.values() for target in targets}
-    for node in sorted(nodes):
-        if node not in indices:
-            visit(node)
-    return sorted(cycles)
-
-
-def _foreign_product_gaps(root: Path, package: Path) -> list[str]:
-    """Reject data-plane ownership of an independent client control plane."""
-
-    gaps: list[str] = []
-    for path in sorted(package.rglob("*.py")):
-        relative = path.relative_to(root).as_posix()
-        source = path.read_text(encoding="utf-8")
-        tree = ast.parse(source, filename=str(path))
-        for node in ast.walk(tree):
-            imported: tuple[str, ...] = ()
-            if isinstance(node, ast.ImportFrom) and node.module:
-                imported = (node.module,)
-            elif isinstance(node, ast.Import):
-                imported = tuple(alias.name for alias in node.names)
-            for module in imported:
-                owner = module.split(".", 1)[0]
-                if owner in _CONTROL_PLANE_IMPORT_FIXTURES:
-                    gaps.append(
-                        "architecture_foreign_product_dependency:"
-                        f"{relative}:{getattr(node, 'lineno', 0)}:{owner}"
-                    )
-        for number, line in enumerate(source.splitlines(), 1):
-            if _CONTROL_PLANE_LITERAL.search(line):
-                gaps.append(
-                    f"architecture_foreign_product_literal:{relative}:{number}:client-control-plane"
-                )
-    return gaps
-
-
-def _semantic_owner_gaps(root: Path, package: Path) -> list[str]:
-    """Reject hidden peer APIs, forwarding aliases, and undeclared packages."""
-
-    gaps: list[str] = []
-    for path in sorted(package.rglob("*.py")):
-        relative = path.relative_to(root).as_posix()
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        if path.name == "__init__.py" and ast.get_docstring(tree, clean=False) is None:
-            gaps.append(f"architecture_package_declaration_missing:{relative}")
-        peer_modules: set[str] = set()
-        peer_symbols: set[str] = set()
-        current_package = path.parent.relative_to(package.parent).as_posix().replace("/", ".")
-        for node in tree.body:
-            if isinstance(node, ast.ImportFrom) and node.module:
-                if node.module == current_package:
-                    peer_modules.update(alias.asname or alias.name for alias in node.names)
-                elif node.module.startswith(f"{current_package}."):
-                    for alias in node.names:
-                        peer_symbols.add(alias.asname or alias.name)
-                        if alias.name.startswith("_"):
-                            gaps.append(
-                                f"architecture_private_cross_module:{relative}:"
-                                f"{node.lineno}:{alias.name}"
-                            )
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name.startswith(f"{current_package}."):
-                        peer_modules.add(alias.asname or alias.name.rsplit(".", 1)[-1])
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Attribute)
-                and isinstance(node.value, ast.Name)
-                and node.value.id in peer_modules
-                and node.attr.startswith("_")
-            ):
-                gaps.append(
-                    f"architecture_private_cross_module:{relative}:"
-                    f"{node.lineno}:{node.value.id}.{node.attr}"
-                )
-        for node in tree.body:
-            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-                continue
-            value = node.value
-            if (
-                isinstance(value, ast.Attribute)
-                and isinstance(value.value, ast.Name)
-                and value.value.id in peer_modules
-            ):
-                gaps.append(
-                    f"architecture_forwarding_alias:{relative}:"
-                    f"{node.lineno}:{value.value.id}.{value.attr}"
-                )
-            elif isinstance(value, ast.Name) and value.id in peer_symbols:
-                gaps.append(f"architecture_forwarding_alias:{relative}:{node.lineno}:{value.id}")
-    return gaps
-
-
 def evidence_layout_gaps(root: Path = ROOT) -> list[str]:
     """Validate physical evidence roots against the canonical positive taxonomy."""
 
@@ -472,53 +305,6 @@ def evidence_layout_gaps(root: Path = ROOT) -> list[str]:
         for path in sorted(evidence.iterdir())
         if path.is_dir() and not path.name.startswith(".") and path.name not in owned_roots
     ]
-
-
-def architecture_gaps(root: Path = ROOT) -> list[str]:
-    """Enforce the semantic-to-physical product dependency contract."""
-
-    package = root / "src" / "codex_responses_proxy"
-    gaps: list[str] = []
-    for path in sorted(root.glob("*.py")):
-        if path.name not in _ROOT_CONFIGURATION_MODULES and (path.is_file() or path.is_symlink()):
-            gaps.append(f"architecture_root_implementation:{path.name}")
-    if not package.is_dir():
-        return sorted([*gaps, "architecture_package_missing:codex_responses_proxy"])
-    actual_packages = {
-        child.name
-        for child in package.iterdir()
-        if child.is_dir() and not child.name.startswith("__")
-    }
-    expected_packages = set(_ALLOWED_PACKAGE_EDGES)
-    for name in sorted(actual_packages - expected_packages):
-        gaps.append(f"architecture_undeclared_package:{name}")
-    for name in sorted(expected_packages - actual_packages):
-        gaps.append(f"architecture_package_missing:{name}")
-    for child in sorted(package.iterdir()):
-        if child.is_dir() and child.name in _FORBIDDEN_PACKAGES:
-            gaps.append(f"architecture_forbidden_package:{child.name}")
-    for path in sorted(package.rglob("__init__.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        body = list(tree.body)
-        if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
-            if isinstance(body[0].value.value, str):
-                body.pop(0)
-        if body:
-            relative = path.relative_to(root).as_posix()
-            gaps.append(f"architecture_init_behavior:{relative}")
-    edges = _package_edges(package)
-    for owner, targets in sorted(edges.items()):
-        allowed = _ALLOWED_PACKAGE_EDGES.get(owner, frozenset())
-        gaps.extend(
-            f"architecture_disallowed_edge:{owner}->{target}"
-            for target in sorted(targets - allowed)
-        )
-    gaps.extend(
-        f"architecture_cycle:{','.join(component)}" for component in _dependency_cycles(edges)
-    )
-    gaps.extend(_foreign_product_gaps(root, package))
-    gaps.extend(_semantic_owner_gaps(root, package))
-    return sorted(gaps)
 
 
 def audit_paths(
@@ -588,7 +374,7 @@ def audit_paths(
 def _string_list(policy: Mapping[str, Any], key: str, errors: list[str]) -> list[str]:
     value = policy.get(key)
     if not isinstance(value, list) or not value or not all(isinstance(item, str) for item in value):
-        errors.append(f"quality_policy_{key.replace('-', '_')}_must_be_nonempty_string_list")
+        errors.append(f"quality_policy_{key}_must_be_nonempty_string_list")
         return []
     return value
 
@@ -596,11 +382,11 @@ def _string_list(policy: Mapping[str, Any], key: str, errors: list[str]) -> list
 def audit() -> dict[str, object]:
     """Return one deterministic quality report for CI and local verification."""
 
-    config = tomllib.loads(CONFIG.read_text(encoding="utf-8"))
+    policy = tomllib.loads(CONFIG.read_text(encoding="utf-8"))
+    config = tomllib.loads(PROJECT.read_text(encoding="utf-8"))
     tool = config.get("tool", {})
     repository = tool.get("codex-responses-proxy", {})
     project = config.get("project", {})
-    policy = repository.get("quality", {}) if isinstance(repository, dict) else {}
     policy_errors: list[str] = []
     if not isinstance(project, dict) or project.get("requires-python") != ">=3.12":
         policy_errors.append("requires_python_must_be_3_12_without_upper_bound")
@@ -612,10 +398,10 @@ def audit() -> dict[str, object]:
     if not isinstance(policy, dict):
         policy_errors.append("quality_policy_must_be_a_table")
         policy = {}
-    source_roots = _string_list(policy, "source-roots", policy_errors)
-    test_roots = _string_list(policy, "test-roots", policy_errors)
-    logic_limit = policy.get("logic-max-statements")
-    test_limit = policy.get("test-max-statements")
+    source_roots = _string_list(policy, "source_roots", policy_errors)
+    test_roots = _string_list(policy, "test_roots", policy_errors)
+    logic_limit = policy.get("logic_max_statements")
+    test_limit = policy.get("test_max_statements")
     if not isinstance(logic_limit, int) or isinstance(logic_limit, bool) or logic_limit <= 0:
         policy_errors.append("logic_max_statements_must_be_positive_integer")
         logic_limit = 0
@@ -623,10 +409,10 @@ def audit() -> dict[str, object]:
         policy_errors.append("test_max_statements_must_be_positive_integer")
         test_limit = 0
     structural_limits: dict[str, int] = {}
-    for key in ("module-max-eloc", "function-max-eloc", "max-nesting-depth"):
+    for key in ("module_max_eloc", "function_max_eloc", "max_nesting_depth"):
         value = policy.get(key)
         if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-            policy_errors.append(f"quality_policy_{key.replace('-', '_')}_must_be_positive_integer")
+            policy_errors.append(f"quality_policy_{key}_must_be_positive_integer")
         else:
             structural_limits[key] = value
     raw_ratchets = policy.get("ratchet", {})
@@ -649,9 +435,9 @@ def audit() -> dict[str, object]:
         test_limit=test_limit,
         ratchets=ratchets,
         module_public_definition_docstrings_required=True,
-        module_eloc_limit=structural_limits.get("module-max-eloc"),
-        function_eloc_limit=structural_limits.get("function-max-eloc"),
-        nesting_depth_limit=structural_limits.get("max-nesting-depth"),
+        module_eloc_limit=structural_limits.get("module_max_eloc"),
+        function_eloc_limit=structural_limits.get("function_max_eloc"),
+        nesting_depth_limit=structural_limits.get("max_nesting_depth"),
     )
     configured_paths = {"source_roots": source_roots, "test_roots": test_roots}
     for key, values in configured_paths.items():
@@ -664,7 +450,8 @@ def audit() -> dict[str, object]:
             *policy_errors,
             *repository_inventory.gaps,
             *gaps,
-            *architecture_gaps(ROOT),
+            *architecture_gaps(ROOT, policy),
+            *commit_subject_gaps(ROOT),
             *evidence_layout_gaps(ROOT),
             *decision_record_gaps(ROOT),
             *semantic_name_gaps(ROOT),

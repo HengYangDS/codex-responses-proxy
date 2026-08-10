@@ -55,7 +55,7 @@ flowchart LR
 - Add a failing regression before changing behavior.
 - Keep expected failures free of traceback and warning noise.
 - Keep statement and measured branch coverage strictly above 95%.
-- Use focused Conventional Commits: `fix:`, `feat:`, `docs:`, `test:`, `ci:`.
+- Use `type(scope): imperative subject`; `.config/checks/commits/policy.toml` is the machine-enforced grammar.
 - Preserve released history in Git, signed Forge records, the Changelog,
   completed OpenSpec lifecycle records, and admitted evidence. Keep historical
   carriers outside current mutation authority; remove only redundant current

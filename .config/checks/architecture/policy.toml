@@ -1,0 +1,19 @@
+owner = "repository-quality"
+source_roots = ["src/codex_responses_proxy", "tools"]
+test_roots = ["tests"]
+root_configuration_modules = ["noxfile.py"]
+forbidden_packages = ["common", "helpers", "lib", "shared", "support"]
+logic_max_statements = 600
+test_max_statements = 800
+module_max_eloc = 600
+function_max_eloc = 120
+max_nesting_depth = 8
+
+[allowed_package_edges]
+cli = ["lifecycle", "service"]
+lifecycle = ["protocol", "providers", "relay", "runtime", "service"]
+protocol = []
+providers = []
+relay = ["protocol", "providers", "runtime"]
+service = ["protocol", "providers", "relay", "runtime"]
+runtime = []
