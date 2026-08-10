@@ -96,6 +96,7 @@ class ReleaseAssetContracts:
                 require_signature=False,
             )
 
+    @pytest.mark.skipif(os.name == "nt", reason="models POSIX bundle symlink semantics")
     def test_asset_command_materializes_safe_bundle_symlinks(self, tmp_path: Path, mocker) -> None:
         bundle = tmp_path / "codex-responses-proxy"
         framework = bundle / "_internal" / "Python.framework" / "Versions" / "3.14"
@@ -129,7 +130,16 @@ class ReleaseAssetContracts:
     def test_bundle_files_uses_platform_canonical_path_identity(self, mocker) -> None:
         bundle = Path("C:/Product/Proxy")
         member = Path("c:/product/proxy/_internal/runtime.dat")
+        commonpath = os.path.commonpath
         mocker.patch("os.path.normcase", lambda value: value.casefold().replace("\\", "/"))
+        mocker.patch(
+            "os.path.commonpath",
+            lambda paths: (
+                "c:\\product\\proxy"
+                if tuple(paths) == ("c:/product/proxy", "c:/product/proxy/_internal/runtime.dat")
+                else commonpath(paths)
+            ),
+        )
 
         assert asset_command._is_within(bundle, member)
 
