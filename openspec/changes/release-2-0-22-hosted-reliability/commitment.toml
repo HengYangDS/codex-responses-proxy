@@ -15,13 +15,41 @@ scope = [
   "CHANGELOG.md",
   "README.md",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+  "isolated_git_fixtures_do_not_inherit_product_branch_identity",
+  "native_fixture_payload_removal_follows_exact_successor_exit",
+  "failed_release_tags_runs_and_assets_remain_immutable",
+  "gitlab_and_github_remain_independent_publication_planes",
+]
+acceptance = [
+  "host_default_branch_and_windows_successor_lifecycle_regressions_pass",
+  "quick_quality_python_3_12_3_13_3_14_and_native_release_gates_pass",
+  "exact_head_full_proof_and_candidate_accepted_closeout_pass",
+  "signed_gitlab_and_github_release_assets_are_complete_and_hash_equivalent",
+  "trusted_installation_and_provider_runtime_session_acceptance_pass",
+]
+risks = [
+  "host_git_configuration_changes_fixture_history",
+  "health_proven_successor_keeps_windows_native_payload_mapped",
+  "local_success_overstates_hosted_cross_platform_release_readiness",
+]
+authority_refs = [
+  "AGENTS.md",
+  "tests/quality/test_contract.py",
+  "tests/service/handoff/test_subprocess.py",
+  "tests/service/handoff/fixtures.py",
+  ".github/workflows/verify.yml",
+  ".gitlab-ci.yml",
+]
 permissions = [
   "repository.read",
   "work-lane.write",
+  "local-proof.execute",
+  "git.ref.compare-and-swap",
+  "terminal-publication.execute",
 ]
-hypotheses = []
+hypotheses = [
+  "explicit_fixture_branch_identity_removes_host_git_default_dependence",
+  "retaining_the_health_proven_successor_pid_closes_native_payload_ownership",
+]
 dependencies = []
