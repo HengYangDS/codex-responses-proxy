@@ -1,0 +1,31 @@
+schema_version = 1
+id = "change:quality-policy-ssot"
+intent = "Make repository quality and commit semantics derive from explicit positive policy under .config/checks instead of scattered tool-local constants."
+subjects = ["repository:self"]
+scope = [
+  ".config/checks/**",
+  "CONTRIBUTING.md",
+  "docs/governance/release-and-change-policy.md",
+  "noxfile.py",
+  "pyproject.toml",
+  "tools/quality/**",
+  "tests/quality/**",
+  "openspec/changes/quality-policy-ssot/**",
+  "openspec/changes/archive/*-quality-policy-ssot/**",
+]
+invariants = [
+  "quality_thresholds_and_topology_have_one_positive_policy_owner",
+  "tool_configuration_contains_execution_settings_not_duplicate_policy",
+  "human_commit_subjects_use_one_scoped_conventional_grammar",
+  "governed_lifecycle_commits_are_classified_by_the_same_commit_policy",
+]
+acceptance = [
+  "coverage_architecture_and_commit_policy_are_loaded_from_config_checks",
+  "pyproject_no_longer_owns_repository_quality_thresholds",
+  "focused_contract_tests_fail_without_the_policy_and_pass_with_it",
+  "complete_quality_and_python_matrix_gates_pass",
+]
+risks = ["moving policy can silently weaken a gate unless tests prove equivalence"]
+authority_refs = [".config/checks", "tests/quality/test_contract.py", "CONTRIBUTING.md"]
+permissions = ["repository.read", "work-lane.write", "local-proof.execute", "git.ref.compare-and-swap"]
+dependencies = []
