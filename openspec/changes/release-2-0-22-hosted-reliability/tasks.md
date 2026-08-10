@@ -15,3 +15,14 @@
 - [ ] 2.4 Archive, land, and close out the accepted source.
 - [ ] 2.5 Publish independent signed GitLab and GitHub releases; prove each Forge independently and compare the complete asset names and SHA256 values.
 - [ ] 2.6 Install one trusted formal asset and prove UCloud, DMXAPI, AIHubMix, provider-scoped 429 handling, unchanged-session continuity, and PyCharm MCP non-regression.
+
+## Requirement To Task To Proof
+
+| Requirement | Task | Proof |
+| --- | --- | --- |
+| `ci-diagnostics:Hosted fixtures own deterministic repository and process identities` | `1.2` | `isolated-git-fixture-contract` |
+| `ci-diagnostics:Hosted fixtures own deterministic repository and process identities` | `1.4` | `native-successor-identity-contract` |
+| `ci-diagnostics:Hosted fixtures own deterministic repository and process identities` | `2.3` | `exact-head-local-and-native-release-proof` |
+
+Local proof establishes source readiness only. Hosted publication, installation,
+and runtime acceptance require fresh evidence from their respective planes.
