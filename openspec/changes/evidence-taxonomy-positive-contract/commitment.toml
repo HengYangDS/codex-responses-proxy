@@ -12,10 +12,26 @@ scope = [
     "openspec/changes/archive/*-evidence-taxonomy-positive-contract/**",
     "openspec/specs/evidence-layout/spec.md",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+    "claims_and_chronicle_are_the_only_durable_evidence_families",
+    "the_taxonomy_is_declared_once_and_consumed_by_the_quality_gate",
+    "forge_comparison_remains_a_forge_audit_concern",
+    "historical_archives_remain_immutable",
+]
+acceptance = [
+    "active_specification_and_tests_use_only_positive_evidence_taxonomy_language",
+    "the_quality_gate_consumes_the_canonical_taxonomy_without_a_duplicate_allowlist",
+    "repository_quality_and_strict_openspec_validation_pass",
+]
+risks = [
+    "the_taxonomy_is_duplicated_between_documentation_and_code",
+    "a_transient_report_is_misclassified_as_durable_evidence",
+]
+authority_refs = [
+    "docs/evidence/README.md",
+    "openspec/specs/evidence-layout/spec.md",
+    "tools/quality/repository.py",
+]
 permissions = [
     "repository.read",
     "work-lane.write",
