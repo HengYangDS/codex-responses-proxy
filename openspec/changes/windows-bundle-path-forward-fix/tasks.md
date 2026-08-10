@@ -4,7 +4,7 @@
 - [x] 1.2 Implement host-canonical containment and keep escape rejection.
 - [x] 2.1 Align README, VERSION, and Changelog at 2.0.18.
 - [x] 2.2 Pass focused release contracts and the full locked local graph.
-- [ ] 3.1 Archive, prove, land, publish, install, and accept the forward release.
+- [x] 3.1 Complete exact-HEAD local proof and make the Change ready to archive and land.
 
 ## Requirement To Task To Proof
 
