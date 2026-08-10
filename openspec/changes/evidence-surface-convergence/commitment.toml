@@ -1,0 +1,22 @@
+schema_version = 1
+id = "change:evidence-surface-convergence"
+intent = "Remove the unused generic parity placeholder and enforce the project-owned evidence surface."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/evidence-surface-convergence/**",
+    "evidence/parity/**",
+    "tools/quality/**",
+    "tests/quality/**",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
