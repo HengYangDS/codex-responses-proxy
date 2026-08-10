@@ -59,7 +59,7 @@ def _test_repository(
 ) -> Iterator[Path]:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        _git(root, "init", "-q")
+        _git(root, "init", "-q", "--initial-branch=fixture-root")
         for relative in files:
             path = root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
