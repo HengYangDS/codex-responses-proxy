@@ -4,6 +4,17 @@ Status: canonical.
 
 A claim is accepted only with its scope, verifier, evidence, and limit stated.
 
+## Durable families
+
+| Family | Root | Meaning |
+| --- | --- | --- |
+| Claim | `evidence/claims/` | Bounded machine-verifiable assertions |
+| Chronicle | `evidence/chronicle/` | Human-readable historical execution context |
+
+The active evidence-layout specification owns the machine-readable taxonomy.
+Tool reports remain transient unless a later governed Change admits another
+durable family.
+
 - **Source evidence:** unit tests, compile checks, metadata checker, and CI.
 - **Runtime evidence:** installed payload manifest,
   `codex-responses-proxy status --json`,
