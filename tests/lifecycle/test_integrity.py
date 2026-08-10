@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Literal, cast
@@ -107,7 +108,7 @@ class TestPayloadValidation:
         valid = {
             relative: hashlib.sha256(relative.encode()).hexdigest() for relative in runtime_files()
         }
-        with pytest.raises(errors.InstallError, match="file set mismatch"):
+        with pytest.raises(errors.InstallError, match="declared inventory"):
             payload_projection.serving_payload_sha256({})
         invalid = dict(valid)
         invalid[inventory.PROVIDER_MANIFEST] = "invalid"
@@ -119,8 +120,57 @@ class TestPayloadValidation:
         collision.parent.mkdir(parents=True, exist_ok=True)
         collision.write_text("unowned", encoding="utf-8")
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
-        with pytest.raises(errors.InstallError, match="unowned install content conflicts"):
+        with pytest.raises(errors.InstallError, match="candidate unowned collision"):
             transaction.commit_projection()
+
+    def test_bundle_payload_accepts_manifested_nested_runtime_files(self) -> None:
+        candidate = released_artifact()
+        blobs = candidate.peek_blobs()
+        nested_content = b"frozen-runtime"
+        nested = artifact.ArtifactFile(
+            path="bin/_internal/runtime.dat",
+            mode="100644",
+            blob_oid=hashlib.sha256(nested_content).hexdigest(),
+            sha256=hashlib.sha256(nested_content).hexdigest(),
+            content=nested_content,
+        )
+        expanded = (*blobs, nested)
+        receipt = dict(candidate.receipt)
+        receipt["serving_files"] = [item.path for item in expanded]
+        receipt["serving_payload_sha256"] = payload_projection.serving_payload_sha256(
+            {item.path: item.sha256 for item in expanded}
+        )
+
+        payload_candidate.validate(expanded, "1.2.3", "0" * 64, receipt)
+
+    def test_bundle_prewarm_materializes_runs_and_rejects_failures(
+        self, tmp_path: Path, subtests, *, mocker
+    ) -> None:
+        blobs = released_artifact().peek_blobs()
+        completed = mocker.patch.object(
+            subprocess,
+            "run",
+            return_value=subprocess.CompletedProcess(("proxy", "version"), 0),
+        )
+        payload_candidate.prewarm(blobs)
+        arguments = completed.call_args.args[0]
+        assert arguments[1:] == ["version"]
+        assert completed.call_args.kwargs["timeout"] == 120
+
+        for effect in (
+            subprocess.CompletedProcess(("proxy", "version"), 2),
+            OSError("cannot execute"),
+            subprocess.TimeoutExpired(("proxy", "version"), 120),
+        ):
+            with subtests.test(effect=type(effect).__name__):
+                mocker.patch.object(
+                    subprocess,
+                    "run",
+                    side_effect=effect if isinstance(effect, BaseException) else None,
+                    return_value=effect if not isinstance(effect, BaseException) else None,
+                )
+                with pytest.raises(errors.InstallError, match="prewarm failed"):
+                    payload_candidate.prewarm(blobs)
 
     def test_transaction_filesystem_failures_remain_fail_closed(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -135,7 +185,7 @@ class TestPayloadValidation:
         snapshot = {
             "schema_version": 3,
             "present": {inventory.PROVIDER_MANIFEST: {"sha256": "0" * 64, "mode": 0o644}},
-            "owned": list(owned_files.OWNED_PAYLOAD_FILES),
+            "owned": sorted({*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA}),
         }
         (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
         with pytest.raises(errors.InstallError, match="rollback.*unavailable"):
@@ -168,7 +218,7 @@ class TestPayloadValidation:
                     "mode": 0o644,
                 }
             },
-            "owned": list(owned_files.OWNED_PAYLOAD_FILES),
+            "owned": sorted({*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA}),
         }
         (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
         retained = rollback / inventory.PROVIDER_MANIFEST
@@ -180,7 +230,7 @@ class TestPayloadValidation:
             "load_inventory",
             return_value=payload_rollback.RollbackInventory(
                 present={inventory.PROVIDER_MANIFEST: (hashlib.sha256(content).hexdigest(), 0o644)},
-                owned=frozenset(owned_files.OWNED_PAYLOAD_FILES),
+                owned=frozenset({*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA}),
             ),
         )
         unreadable = mocker.patch.object(
@@ -261,7 +311,7 @@ class TestPayloadValidation:
         Path(ctx.executable).unlink()
         ok, detail = payload_projection.verify_payload_manifest(ctx)
         assert not ok
-        assert "installed payload is incomplete" in detail
+        assert "payload unavailable" in detail
 
         ctx, _, _ = installed()
         invalid_aggregate = mocker.patch.object(
@@ -326,7 +376,7 @@ class TestPayloadValidation:
                 {
                     "schema_version": 3,
                     "present": {inventory.PROVIDER_MANIFEST: {"sha256": "short", "mode": 0o644}},
-                    "owned": list(owned_files.OWNED_PAYLOAD_FILES),
+                    "owned": sorted({*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA}),
                 },
                 "metadata is invalid",
             ),

@@ -12,10 +12,12 @@ states that the current product no longer needs.
 
 ## Decision
 
-The installed product has one manifest-owned native executable payload and one
-native supervision lifecycle. Installation accepts an empty target or one
-verified current listener. An incompatible installation fails before mutation
-and must be removed explicitly.
+The installed product has one manifest-owned native bundle and one native
+supervision lifecycle. The bundle exposes one executable and carries its frozen
+runtime dependencies as adjacent manifest-owned files. Installation prewarms
+the staged executable, then accepts an empty target or one verified current
+listener. An incompatible installation fails before mutation and must be
+removed explicitly.
 
 Rollback and recovery use exact current manifests, receipts, preimages, and
 runtime identities. Source-level compatibility shims, forwarding facades,

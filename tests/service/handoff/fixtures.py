@@ -6,6 +6,7 @@ import errno
 import hashlib
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -348,9 +349,7 @@ def write_installed_payload(
     install_dir = Path(ctx.install_dir)
     source = Path(os.environ["CODEX_RESPONSES_PROXY_EXECUTABLE"])
     target = Path(ctx.executable)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(source.read_bytes())
-    target.chmod(source.stat().st_mode)
+    shutil.copytree(source.parent, target.parent, copy_function=shutil.copy2)
     provider_manifest = install_dir / inventory.PROVIDER_MANIFEST
     provider_manifest.write_text(
         f'version = 1\n\n[providers.dmxapi]\nbase_url = "{upstream_url}"\npolicy = "dmxapi"\n',
@@ -432,9 +431,8 @@ def start_real_proxy(
             stderr=diagnostic,
             close_fds=True,
         )
-    # PyInstaller one-file executables must unpack before the listener can bind.
-    # Keep the native acceptance budget bounded, but large enough for a cold
-    # start on a busy hosted runner or developer workstation.
+    # Keep native acceptance bounded while allowing for a cold hosted-runner
+    # start under contention.
     if not wait_until(
         lambda: process.poll() is not None or proxy_is_up(ctx.port),
         timeout=PACKAGED_EXECUTABLE_START_TIMEOUT_SECONDS,

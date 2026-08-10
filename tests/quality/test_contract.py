@@ -963,7 +963,7 @@ class TestVerificationContracts:
         assert "_package_release_asset" in release_calls
         package_source = ast.get_source_segment(source, functions["_package_release_asset"]) or ""
         assert "tools.release.assets" in package_source
-        assert "--executable" in package_source
+        assert "--bundle" in package_source
         assert "--platform" in package_source
         assert "session.posargs" in package_source
 

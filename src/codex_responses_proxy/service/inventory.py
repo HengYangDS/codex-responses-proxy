@@ -13,8 +13,6 @@ INSTALLED_RELEASE_STATE_FILENAME = "release-install-state.json"
 PROVIDER_MANIFEST = "providers.toml"
 EXECUTABLE = "bin/codex-responses-proxy"
 WINDOWS_EXECUTABLE = "bin/codex-responses-proxy.exe"
-RUNTIME_FILES = (EXECUTABLE, PROVIDER_MANIFEST)
-SERVING_FILES = RUNTIME_FILES
 
 
 def executable_name(*, windows: bool = False) -> str:
@@ -23,10 +21,17 @@ def executable_name(*, windows: bool = False) -> str:
     return WINDOWS_EXECUTABLE if windows else EXECUTABLE
 
 
-def runtime_files(*, windows: bool = False) -> tuple[str, str]:
-    """Return the exact installed file set for one native platform."""
+def required_runtime_files(*, windows: bool = False) -> frozenset[str]:
+    """Return members required in every native bundle for one platform."""
 
-    return executable_name(windows=windows), PROVIDER_MANIFEST
+    return frozenset((executable_name(windows=windows), PROVIDER_MANIFEST))
+
+
+def is_runtime_file(relative: str, *, windows: bool = False) -> bool:
+    """Return whether a canonical member belongs to the current native bundle."""
+
+    executable = executable_name(windows=windows)
+    return relative == PROVIDER_MANIFEST or relative == executable or relative.startswith("bin/")
 
 
 def installed_executable(root: str, *, windows: bool = False) -> str:
@@ -38,10 +43,10 @@ def installed_executable(root: str, *, windows: bool = False) -> str:
 def serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
     """Return the aggregate only for the exact serving file set."""
 
-    if (
-        len(file_digests) != 2
-        or PROVIDER_MANIFEST not in file_digests
-        or not set(file_digests).intersection({EXECUTABLE, WINDOWS_EXECUTABLE})
+    paths = set(file_digests)
+    windows = WINDOWS_EXECUTABLE in paths
+    if not required_runtime_files(windows=windows).issubset(paths) or any(
+        not is_runtime_file(relative, windows=windows) for relative in paths
     ):
         raise digest.PayloadDigestError("serving payload files do not match the declared inventory")
     return digest.serving_payload_sha256(file_digests)

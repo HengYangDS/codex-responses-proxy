@@ -31,12 +31,12 @@ def validate(
     if receipt.get("version") != version:
         raise errors.InstallError("released payload receipt version mismatch")
     actual_paths = tuple(blob.path for blob in blobs)
-    expected_paths = {inventory.PROVIDER_MANIFEST}
-    executable_paths = {inventory.EXECUTABLE, inventory.WINDOWS_EXECUTABLE}
+    actual_set = set(actual_paths)
+    windows = inventory.WINDOWS_EXECUTABLE in actual_set
     if (
-        set(actual_paths).difference(executable_paths) != expected_paths
-        or len(set(actual_paths)) != 2
-        or not set(actual_paths).intersection(executable_paths)
+        len(actual_set) != len(actual_paths)
+        or not inventory.required_runtime_files(windows=windows).issubset(actual_set)
+        or any(not inventory.is_runtime_file(path, windows=windows) for path in actual_set)
     ):
         raise errors.InstallError("released payload file set mismatch")
     for blob in blobs:
@@ -65,11 +65,12 @@ def manifest_for(
 def reject_unowned_collisions(
     ctx: runtime_context.RuntimeContext,
     previous_owned: Set[str],
+    candidate_paths: Set[str],
 ) -> None:
     """Refuse to overwrite a candidate path not owned by the prior projection."""
 
     install = Path(ctx.install_dir)
-    for relative in owned_files.OWNED_PAYLOAD_FILES:
+    for relative in candidate_paths | set(owned_files.OWNED_PAYLOAD_METADATA):
         path = owned_files.path(install, relative)
         if relative not in previous_owned and (path.exists() or path.is_symlink()):
             raise errors.InstallError(f"candidate unowned collision: {relative}")
@@ -108,12 +109,44 @@ def write_projection(
     )
 
 
-def remove_projection(ctx: runtime_context.RuntimeContext) -> None:
+def remove_projection(ctx: runtime_context.RuntimeContext, paths: Set[str]) -> None:
     """Remove only files owned by an uncommitted fresh candidate."""
 
     install = Path(ctx.install_dir)
-    for relative in owned_files.OWNED_PAYLOAD_FILES:
+    for relative in paths | set(owned_files.OWNED_PAYLOAD_METADATA):
         owned_files.path(install, relative).unlink(missing_ok=True)
+
+
+def prewarm(blobs: tuple[artifact.ArtifactFile, ...]) -> None:
+    """Run the staged native executable before it can replace installed bytes."""
+
+    import subprocess
+    import tempfile
+
+    executable = next(
+        blob for blob in blobs if blob.path in {inventory.EXECUTABLE, inventory.WINDOWS_EXECUTABLE}
+    )
+    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-prewarm-") as temporary:
+        root = Path(temporary)
+        for blob in blobs:
+            owned_files.write_bytes(
+                owned_files.path(root, blob.path),
+                blob.content,
+                mode=0o755 if blob.mode == "100755" else 0o644,
+                root=root,
+            )
+        try:
+            completed = subprocess.run(
+                [str(owned_files.path(root, executable.path)), "version"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise errors.InstallError("native bundle prewarm failed") from exc
+        if completed.returncode:
+            raise errors.InstallError("native bundle prewarm failed")
 
 
 def _json_value(value: Any) -> Any:

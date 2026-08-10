@@ -6,6 +6,7 @@ subjects = [
 ]
 scope = [
     "openspec/changes/native-bundle-startup/**",
+    "openspec/changes/archive/*-native-bundle-startup/**",
     "openspec/specs/product-interface/spec.md",
     "openspec/specs/runtime-upgrade/spec.md",
     "noxfile.py",
@@ -15,16 +16,48 @@ scope = [
     "tests/lifecycle/**",
     "tests/service/**",
     "tests/release/**",
+    "tests/quality/test_contract.py",
+    "tests/governance/test_owner_boundaries.py",
     "docs/**",
+    "README.md",
     "CHANGELOG.md",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+    "one_native_bundle_is_the_only_released_payload_shape",
+    "every_serving_byte_is_manifest_bound_before_installation",
+    "prewarm_completes_before_installed_payload_mutation",
+    "handoff_rollback_and_recovery_share_one_complete_inventory",
+    "no_python_runtime_or_source_checkout_is_required_by_users",
+]
+acceptance = [
+    "recursive_bundle_inventory_is_reproducible_and_signed",
+    "prewarm_failure_leaves_the_installed_projection_unchanged",
+    "native_handoff_starts_within_the_bounded_release_window",
+    "quick_quality_python_matrix_and_release_sessions_pass",
+    "exact_head_full_proof_archive_and_candidate_land_complete",
+]
+risks = [
+    "platform_freezer_layout_drift",
+    "incomplete_bundle_inventory",
+    "transactional_rollback_of_nested_paths",
+]
+authority_refs = [
+    "noxfile.py",
+    "tools/release/assets.py",
+    "tools/release/product_assets.py",
+    "src/codex_responses_proxy/service/inventory.py",
+    "src/codex_responses_proxy/lifecycle/artifact.py",
+    "src/codex_responses_proxy/lifecycle/candidate.py",
+]
 permissions = [
     "repository.read",
     "work-lane.write",
+    "local-proof.execute",
+    "git.ref.compare-and-swap",
 ]
-hypotheses = []
-dependencies = []
+hypotheses = [
+    "prewarming_the_directory_bundle_removes_repeated_extraction_latency",
+]
+dependencies = [
+    "pyinstaller:latest-stable-locked",
+]

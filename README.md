@@ -65,8 +65,9 @@ codex-responses-proxy install \
   --port 8801
 ```
 
-Installation verifies the selected asset before changing the native user
-service. It never downloads dependencies or reads provider credentials.
+Installation verifies and prewarms the selected native bundle before changing
+the native user service. It never downloads dependencies or reads provider
+credentials.
 
 ## Configure a client route
 
