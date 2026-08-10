@@ -2,7 +2,7 @@
 
 - [x] 1.1 Advance `VERSION`, `CHANGELOG.md`, and README asset examples to `2.0.20`.
 - [x] 1.2 Pass focused metadata, documentation, and OpenSpec validation.
-- [ ] 2.1 Pass quick, quality, Python 3.12/3.13/3.14, native release, and exact-HEAD ETHOS proof.
+- [x] 2.1 Pass quick, quality, Python 3.12/3.13/3.14, native release, and exact-HEAD ETHOS proof.
 - [ ] 2.2 Archive and land the release change from the proven commit.
 - [ ] 3.1 Publish signed v2.0.20 tags, Releases, and complete assets independently on GitLab and GitHub.
 - [ ] 3.2 Prove both Forge projections use the same source commit and byte-identical platform assets.
