@@ -8,6 +8,7 @@ import json
 import socket
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -33,6 +34,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 
 PACKAGED_SUCCESSOR_TIMEOUT_SECONDS = 60
+PAYLOAD_UNLOCK_TIMEOUT_SECONDS = 5
 
 pytestmark = pytest.mark.native_distribution
 
@@ -99,7 +101,15 @@ class TestRealSubprocessHandoffIntegration:
             remaining = set(process.pids_naming_executable(proxy_script)) - initial
             assert not remaining, f"orphaned proxy children for {proxy_script}: {remaining}"
         finally:
-            temporary.cleanup()
+            deadline = time.monotonic() + PAYLOAD_UNLOCK_TIMEOUT_SECONDS
+            while True:
+                try:
+                    temporary.cleanup()
+                    break
+                except PermissionError:
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.05)
 
     def test_fixture_cleanup_terminates_before_removing_temporary_payload(self, *, mocker) -> None:
         events = []
@@ -128,6 +138,14 @@ class TestRealSubprocessHandoffIntegration:
             cleanup()
 
         assert events == ["inventory", "identity", "terminate", "inventory", "cleanup"]
+
+    def test_fixture_cleanup_retries_a_transient_native_payload_lock(self, *, mocker) -> None:
+        temporary = mocker.Mock()
+        temporary.cleanup.side_effect = [PermissionError("mapped module"), None]
+
+        self._cleanup_installed_fixture(temporary, "/tmp/owned/proxy.py", set())
+
+        assert temporary.cleanup.call_count == 2
 
     def test_owned_child_cleanup_is_bound_to_its_temporary_proxy_path(self, *, mocker) -> None:
         proxy_script = "/tmp/owned/.codex/responses-proxy/proxy.py"
