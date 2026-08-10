@@ -442,6 +442,20 @@ def _semantic_owner_gaps(root: Path, package: Path) -> list[str]:
     return gaps
 
 
+def evidence_layout_gaps(root: Path = ROOT) -> list[str]:
+    """Reject evidence roots without a project-owned acceptance meaning."""
+
+    evidence = root / "evidence"
+    if not evidence.is_dir():
+        return []
+    owned_roots = {"claims", "chronicle"}
+    return [
+        f"evidence_root_unowned:evidence/{path.name}"
+        for path in sorted(evidence.iterdir())
+        if path.is_dir() and not path.name.startswith(".") and path.name not in owned_roots
+    ]
+
+
 def architecture_gaps(root: Path = ROOT) -> list[str]:
     """Enforce the semantic-to-physical product dependency contract."""
 
@@ -633,6 +647,7 @@ def audit() -> dict[str, object]:
             *repository_inventory.gaps,
             *gaps,
             *architecture_gaps(ROOT),
+            *evidence_layout_gaps(ROOT),
             *decision_record_gaps(ROOT),
             *semantic_name_gaps(ROOT),
         ]
