@@ -1,0 +1,27 @@
+schema_version = 1
+id = "change:release-2-0-22-hosted-reliability"
+intent = "Root-cause the hosted Git fixture and Windows native process-lifecycle failures, then publish forward-only release 2.0.22."
+subjects = [
+  "repository:self",
+]
+scope = [
+  "openspec/changes/release-2-0-22-hosted-reliability/**",
+  "openspec/specs/ci-diagnostics/spec.md",
+  "tests/quality/test_contract.py",
+  "tests/service/handoff/test_subprocess.py",
+  "tests/service/handoff/fixtures.py",
+  "src/codex_responses_proxy/lifecycle/supervision/process.py",
+  "VERSION",
+  "CHANGELOG.md",
+  "README.md",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+  "repository.read",
+  "work-lane.write",
+]
+hypotheses = []
+dependencies = []
