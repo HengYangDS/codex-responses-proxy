@@ -1,0 +1,21 @@
+schema_version = 1
+id = "change:evidence-purpose-closeout"
+intent = "Replace the generated evidence-layout placeholder with its current project-owned purpose."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/evidence-purpose-closeout/**",
+    "openspec/changes/archive/*-evidence-purpose-closeout/**",
+    "openspec/specs/evidence-layout/spec.md",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
