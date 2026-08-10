@@ -37,6 +37,8 @@ _ALLOWED_PACKAGE_EDGES = {
     "runtime": frozenset(),
 }
 _DEFINITION_TYPES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+_EVIDENCE_SPEC = Path("openspec/specs/evidence-layout/spec.md")
+_EVIDENCE_TAXONOMY = re.compile(r"```toml evidence-taxonomy\n(?P<body>.*?)\n```", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -443,12 +445,28 @@ def _semantic_owner_gaps(root: Path, package: Path) -> list[str]:
 
 
 def evidence_layout_gaps(root: Path = ROOT) -> list[str]:
-    """Reject evidence roots without a project-owned acceptance meaning."""
+    """Validate physical evidence roots against the canonical positive taxonomy."""
 
     evidence = root / "evidence"
     if not evidence.is_dir():
         return []
-    owned_roots = {"claims", "chronicle"}
+    specification = root / _EVIDENCE_SPEC
+    try:
+        text = specification.read_text(encoding="utf-8")
+        match = _EVIDENCE_TAXONOMY.search(text)
+        taxonomy = tomllib.loads(match.group("body")) if match else {}
+        owned_roots = {
+            Path(entry["root"]).name
+            for entry in taxonomy.values()
+            if isinstance(entry, dict)
+            and isinstance(entry.get("root"), str)
+            and isinstance(entry.get("meaning"), str)
+            and Path(entry["root"]).parent == Path("evidence")
+        }
+    except (OSError, tomllib.TOMLDecodeError, TypeError):
+        owned_roots = set()
+    if not owned_roots:
+        return ["evidence_taxonomy_unavailable:openspec/specs/evidence-layout/spec.md"]
     return [
         f"evidence_root_unowned:evidence/{path.name}"
         for path in sorted(evidence.iterdir())
