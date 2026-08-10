@@ -24,6 +24,21 @@ from tests.lifecycle.fixtures import (
 from tests.lifecycle.fixtures import runtime_files
 import pytest
 
+
+def test_begin_transaction_prewarms_staged_bundle_before_install_mutation(
+    tmp_path: Path, *, mocker
+) -> None:
+    ctx = install_context(tmp_path)
+    candidate = released_artifact()
+    prewarm = mocker.patch.object(payload_transaction.payload_candidate, "prewarm")
+
+    transaction = payload_transaction.begin_transaction(ctx, candidate)
+
+    prewarm.assert_called_once()
+    assert not Path(ctx.install_dir).exists()
+    transaction.rollback()
+
+
 ROOT = Path(__file__).resolve().parents[2]
 
 

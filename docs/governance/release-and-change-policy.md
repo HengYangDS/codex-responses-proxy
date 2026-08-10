@@ -126,10 +126,11 @@ It has no GitLab, GitHub, CI, or source-checkout dependency.
 The installer must:
 
 1. verify asset identity and signature;
-2. prepare an owned transaction;
-3. commit exact payload files;
-4. prove one accepting native listener;
-5. finalize or retain an explicit recovery-required state.
+2. verify and prewarm the complete staged native bundle;
+3. prepare an owned transaction;
+4. commit exact payload files;
+5. prove one accepting native listener;
+6. finalize or retain an explicit recovery-required state.
 
 ## Runtime operations
 

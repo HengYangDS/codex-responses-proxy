@@ -23,7 +23,11 @@ def _release_assets(
             if platform.startswith("windows-")
             else "codex-responses-proxy"
         )
-        files = {executable: release_assets.ArchiveFile(f"native-{platform}".encode(), mode=0o755)}
+        files = {
+            f"bin/{executable}": release_assets.ArchiveFile(
+                f"native-{platform}".encode(), mode=0o755
+            )
+        }
         archive_name = release_assets.archive_name(version, platform)
         archive = release_assets.archive_bytes(files, version, platform)
         platform_assets[archive_name] = archive

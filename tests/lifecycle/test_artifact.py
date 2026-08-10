@@ -28,7 +28,9 @@ NAMESPACE = "codex-responses-proxy-release"
 
 def _release_files(platform: str = PLATFORM) -> dict[str, product_assets.ArchiveFile | bytes]:
     executable = (
-        "codex-responses-proxy.exe" if platform.startswith("windows-") else "codex-responses-proxy"
+        "bin/codex-responses-proxy.exe"
+        if platform.startswith("windows-")
+        else "bin/codex-responses-proxy"
     )
     return {
         executable: product_assets.ArchiveFile(b"native-executable", 0o755),

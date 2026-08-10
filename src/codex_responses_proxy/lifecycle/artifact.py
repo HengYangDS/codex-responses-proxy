@@ -374,12 +374,22 @@ def _verify_archive(archive: bytes, manifest: bytes, identity: dict[str, str]) -
 def _archive_blobs(archive: bytes, document: dict[str, Any]) -> tuple[ArtifactFile, ...]:
     platform = str(document["platform"])
     version = str(document["version"])
-    executable_name = (
-        "codex-responses-proxy.exe" if platform.startswith("windows-") else "codex-responses-proxy"
-    )
-    expected = {executable_name, "providers.toml", "LICENSE"}
     files = document["files"]
-    if not isinstance(files, dict) or set(files) != expected:
+    executable_name = (
+        "bin/codex-responses-proxy.exe"
+        if platform.startswith("windows-")
+        else "bin/codex-responses-proxy"
+    )
+    expected = set(files) if isinstance(files, dict) else set()
+    if (
+        not expected
+        or not {executable_name, "providers.toml", "LICENSE"}.issubset(expected)
+        or any(
+            relative != "LICENSE"
+            and not inventory.is_runtime_file(relative, windows=platform.startswith("windows-"))
+            for relative in expected
+        )
+    ):
         raise errors.InstallError("release archive inventory is invalid")
     prefix = f"codex-responses-proxy-{version}-{platform}/"
     blobs: list[ArtifactFile] = []
@@ -403,14 +413,8 @@ def _archive_blobs(archive: bytes, document: dict[str, Any]) -> tuple[ArtifactFi
                     raise errors.InstallError("release archive member digest mismatch")
                 if relative == "LICENSE":
                     continue
-                target = (
-                    inventory.WINDOWS_EXECUTABLE
-                    if relative.endswith(".exe")
-                    else inventory.EXECUTABLE
-                    if relative == "codex-responses-proxy"
-                    else inventory.PROVIDER_MANIFEST
-                )
-                expected_mode = 0o755 if target != inventory.PROVIDER_MANIFEST else 0o644
+                target = relative
+                expected_mode = 0o755 if target == executable_name else 0o644
                 if member.mode != expected_mode:
                     raise errors.InstallError("release archive member mode is invalid")
                 digest_value = hashlib.sha256(content).hexdigest()

@@ -22,7 +22,7 @@ class ReleaseAssetContracts:
 
     def test_platform_archive_is_reproducible_and_manifest_bound(self) -> None:
         files = {
-            "codex-responses-proxy": assets.ArchiveFile(b"native-executable", 0o755),
+            "bin/codex-responses-proxy": assets.ArchiveFile(b"native-executable", 0o755),
             "providers.toml": b"version = 1\n",
             "LICENSE": b"MIT\n",
         }
@@ -50,16 +50,20 @@ class ReleaseAssetContracts:
     def test_asset_command_packages_only_native_runtime_inputs(self, *, mocker) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            executable = root / "codex-responses-proxy"
+            bundle = root / "codex-responses-proxy"
+            executable = bundle / "codex-responses-proxy"
+            dependency = bundle / "_internal" / "runtime.dat"
+            dependency.parent.mkdir(parents=True)
             executable.write_bytes(b"native-executable")
+            dependency.write_bytes(b"frozen-runtime")
             output = root / "release"
             mocker.patch.object(asset_command, "ROOT", ROOT)
             mocker.patch(
                 "sys.argv",
                 [
                     "assets",
-                    "--executable",
-                    str(executable),
+                    "--bundle",
+                    str(bundle),
                     "--platform",
                     "linux-x86_64",
                     "--output",
@@ -78,6 +82,13 @@ class ReleaseAssetContracts:
             }
             assert {path.name for path in output.iterdir()} == expected
             release_files = {path.name: path.read_bytes() for path in output.iterdir()}
+            manifest = json.loads(release_files[assets.manifest_name("linux-x86_64")])
+            assert set(manifest["files"]) == {
+                "LICENSE",
+                "bin/_internal/runtime.dat",
+                "bin/codex-responses-proxy",
+                "providers.toml",
+            }
             assets.release_digests(
                 release_files,
                 (ROOT / "VERSION").read_text(encoding="ascii").strip(),
@@ -85,9 +96,57 @@ class ReleaseAssetContracts:
                 require_signature=False,
             )
 
+    def test_asset_command_materializes_safe_bundle_symlinks(self, tmp_path: Path, mocker) -> None:
+        bundle = tmp_path / "codex-responses-proxy"
+        framework = bundle / "_internal" / "Python.framework" / "Versions" / "3.14"
+        framework.mkdir(parents=True)
+        executable = bundle / "codex-responses-proxy"
+        executable.write_bytes(b"native-executable")
+        runtime = framework / "Python"
+        runtime.write_bytes(b"python-runtime")
+        (bundle / "_internal" / "Python").symlink_to("Python.framework/Versions/3.14/Python")
+        resources = framework / "Resources"
+        resources.mkdir()
+        (resources / "Info.plist").write_bytes(b"framework-resources")
+        (bundle / "_internal" / "Python.framework" / "Resources").symlink_to(
+            "Versions/3.14/Resources"
+        )
+        output = tmp_path / "release"
+        mocker.patch.object(asset_command, "ROOT", ROOT)
+
+        asset_command._command(bundle=bundle, platform="macos-arm64", output=output)
+
+        manifest = json.loads((output / assets.manifest_name("macos-arm64")).read_bytes())
+        runtime_digest = hashlib.sha256(b"python-runtime").hexdigest()
+        assert manifest["files"]["bin/_internal/Python"] == runtime_digest
+        assert manifest["files"]["bin/_internal/Python.framework/Versions/3.14/Python"] == (
+            runtime_digest
+        )
+        assert manifest["files"]["bin/_internal/Python.framework/Resources/Info.plist"] == (
+            hashlib.sha256(b"framework-resources").hexdigest()
+        )
+
+    def test_asset_command_rejects_bundle_symlinks_outside_the_bundle(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        bundle = tmp_path / "codex-responses-proxy"
+        bundle.mkdir()
+        (bundle / "codex-responses-proxy").write_bytes(b"native-executable")
+        outside = tmp_path / "outside"
+        outside.write_bytes(b"private")
+        (bundle / "escape").symlink_to(outside)
+        mocker.patch.object(asset_command, "ROOT", ROOT)
+
+        with pytest.raises(SystemExit, match="escapes"):
+            asset_command._command(
+                bundle=bundle,
+                platform="macos-arm64",
+                output=tmp_path / "release",
+            )
+
     def test_checksum_manifest_round_trips_and_rejects_drift(self, subtests) -> None:
         platform = "linux-x86_64"
-        files = {"codex-responses-proxy": assets.ArchiveFile(b"native", 0o755)}
+        files = {"bin/codex-responses-proxy": assets.ArchiveFile(b"native", 0o755)}
         archive_name = assets.archive_name("1.2.3", platform)
         archive = assets.archive_bytes(files, "1.2.3", platform)
         payload = {
@@ -134,7 +193,7 @@ class ReleaseAssetContracts:
                 if platform.startswith("windows-")
                 else "codex-responses-proxy"
             )
-            files = {executable: assets.ArchiveFile(platform.encode(), 0o755)}
+            files = {f"bin/{executable}": assets.ArchiveFile(platform.encode(), 0o755)}
             archive_name = assets.archive_name(version, platform)
             archive = assets.archive_bytes(files, version, platform)
             (root / archive_name).write_bytes(archive)
@@ -172,7 +231,7 @@ class ReleaseAssetContracts:
                 if platform.startswith("windows-")
                 else "codex-responses-proxy"
             )
-            files = {executable: assets.ArchiveFile(platform.encode(), 0o755)}
+            files = {f"bin/{executable}": assets.ArchiveFile(platform.encode(), 0o755)}
             archive_name = assets.archive_name("1.2.3", platform)
             archive = assets.archive_bytes(files, "1.2.3", platform)
             (root / archive_name).write_bytes(archive)

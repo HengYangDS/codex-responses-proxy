@@ -11,7 +11,7 @@ from typing import Any
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import owned_files, projection
-from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import digest, inventory
 
 
 @dataclass(frozen=True)
@@ -27,16 +27,8 @@ def write_snapshot(ctx: runtime_context.RuntimeContext, root: Path) -> RollbackI
 
     install = Path(ctx.install_dir)
     manifest = projection.payload_manifest_path(ctx)
-    owned = frozenset(owned_files.OWNED_PAYLOAD_FILES)
     if not (manifest.exists() or manifest.is_symlink()):
-        collisions = [
-            relative
-            for relative in owned
-            if owned_files.path(install, relative).exists()
-            or owned_files.path(install, relative).is_symlink()
-        ]
-        if collisions:
-            raise errors.InstallError("unowned install content conflicts: " + ", ".join(collisions))
+        owned = frozenset(owned_files.OWNED_PAYLOAD_METADATA)
         present: dict[str, dict[str, object]] = {}
     else:
         if manifest.is_symlink():
@@ -44,6 +36,7 @@ def write_snapshot(ctx: runtime_context.RuntimeContext, root: Path) -> RollbackI
         ok, detail = projection.verify_payload_manifest(ctx)
         if not ok:
             raise errors.InstallError(f"installed payload integrity check failed: {detail}")
+        owned = owned_files.current_inventory(install)
         present = {}
         for relative in sorted(owned):
             source = owned_files.path(install, relative)
@@ -75,7 +68,17 @@ def read_inventory(snapshot: Mapping[str, Any]) -> RollbackInventory:
     ):
         raise errors.InstallError("payload rollback snapshot is invalid")
     owned = {owned_files.canonical_relative(value, "payload rollback") for value in raw_owned}
-    if len(owned) != len(raw_owned) or owned != set(owned_files.OWNED_PAYLOAD_FILES):
+    metadata = set(owned_files.OWNED_PAYLOAD_METADATA)
+    payload = owned - metadata
+    if not payload and not raw_present:
+        return RollbackInventory(present={}, owned=frozenset(owned))
+    windows = inventory.WINDOWS_EXECUTABLE in payload
+    if (
+        len(owned) != len(raw_owned)
+        or not metadata.issubset(owned)
+        or not inventory.required_runtime_files(windows=windows).issubset(payload)
+        or any(not inventory.is_runtime_file(relative, windows=windows) for relative in payload)
+    ):
         raise errors.InstallError("payload rollback owned inventory is invalid")
     present: dict[str, tuple[str, int]] = {}
     for raw_relative, metadata in raw_present.items():
