@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.17] - 2026-08-09
+
+### Fixed
+
+- Preserve the terminal newline when GitHub materializes an OpenSSH private-key
+  text secret, and report the actionable OpenSSH rejection without a Python
+  traceback.
+
 ## [2.0.16] - 2026-08-09
 
 ### Fixed
