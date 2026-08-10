@@ -1,20 +1,5 @@
-# Evidence layout Specification
+## MODIFIED Requirements
 
-## Purpose
-
-Define the positive durable evidence taxonomy and preserve one semantic owner
-for independent Forge comparison.
-
-```toml evidence-taxonomy
-[claims]
-root = "evidence/claims"
-meaning = "bounded machine-verifiable assertions"
-
-[chronicle]
-root = "evidence/chronicle"
-meaning = "human-readable historical execution context"
-```
-## Requirements
 ### Requirement: Durable evidence families have one positive taxonomy
 
 The evidence-layout specification SHALL declare every durable evidence family,

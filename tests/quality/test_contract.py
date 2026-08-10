@@ -292,18 +292,34 @@ class TestQualityPolicyContracts:
     def test_evidence_uses_only_project_owned_semantic_roots(self) -> None:
         assert _checker().evidence_layout_gaps(ROOT) == []
 
-    def test_evidence_layout_gate_rejects_unowned_top_level_surfaces(self) -> None:
+    def test_evidence_layout_gate_rejects_unknown_top_level_surfaces(self) -> None:
         checker = _checker()
         with _test_repository(
             (
                 "evidence/claims/release.toml",
                 "evidence/chronicle/release/2026-08-10.md",
-                "evidence/parity/README.md",
+                "evidence/unclassified/README.md",
+                "openspec/specs/evidence-layout/spec.md",
             )
         ) as root:
+            (root / "openspec/specs/evidence-layout/spec.md").write_text(
+                "# Evidence layout Specification\n\n"
+                "```toml evidence-taxonomy\n"
+                '[claims]\nroot = "evidence/claims"\nmeaning = "bounded assertions"\n\n'
+                '[chronicle]\nroot = "evidence/chronicle"\nmeaning = "historical context"\n'
+                "```\n",
+                encoding="utf-8",
+            )
             gaps = checker.evidence_layout_gaps(root)
 
-        assert gaps == ["evidence_root_unowned:evidence/parity"]
+        assert gaps == ["evidence_root_unowned:evidence/unclassified"]
+
+    def test_evidence_layout_gate_requires_the_canonical_taxonomy(self) -> None:
+        checker = _checker()
+        with _test_repository(("evidence/claims/release.toml",)) as root:
+            gaps = checker.evidence_layout_gaps(root)
+
+        assert gaps == ["evidence_taxonomy_unavailable:openspec/specs/evidence-layout/spec.md"]
 
     def test_semantic_name_gate_rejects_numeric_and_cross_language_grammar(self) -> None:
         checker = _checker()
