@@ -1,0 +1,25 @@
+schema_version = 1
+id = "change:github-release-key-materialization"
+intent = "Make GitHub materialize a complete OpenSSH private-key file and report release-signing failures without Python tracebacks."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/github-release-key-materialization/**",
+    ".github/workflows/verify.yml",
+    "tests/forge/test_workflow_contracts.py",
+    "tests/release/test_signing.py",
+    "tests/release/test_assets.py",
+    "tools/release/signing.py",
+    "tools/release/assemble_assets.py",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
