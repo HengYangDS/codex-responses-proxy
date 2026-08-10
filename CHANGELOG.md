@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.20] - 2026-08-10
+
+### Fixed
+
+- Tolerate only transient Windows mapped-module locks while native handoff
+  fixtures remove their verified temporary payload, preserving bounded failure
+  when a lock persists.
+
 ## [2.0.19] - 2026-08-10
 
 ### Fixed
