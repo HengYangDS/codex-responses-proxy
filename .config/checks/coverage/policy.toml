@@ -1,0 +1,6 @@
+minimum_percent = 95.01
+comparison = "strictly-greater-than"
+scopes = ["aggregate", "package", "module"]
+metrics = ["statement", "branch"]
+owner = "repository-quality"
+source = ".config/checks/coverage/coverage.ini"

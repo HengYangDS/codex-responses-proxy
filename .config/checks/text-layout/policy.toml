@@ -1,0 +1,7 @@
+owner = "repository-quality"
+encoding = "utf-8"
+line_ending = "lf"
+insert_final_newline = true
+trim_trailing_whitespace = true
+tracked_suffixes = [".ini", ".md", ".py", ".toml", ".yaml", ".yml"]
+tracked_names = [".editorconfig", ".gitignore", "LICENSE", "VERSION"]

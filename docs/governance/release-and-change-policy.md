@@ -68,6 +68,8 @@ flowchart LR
 
 ## Quality
 
+`.config/checks/<concern>/` owns quality policy. Nox executes those owners; `.ethos/profile.toml` registers gates, and CI/hooks only project them.
+
 Required local evidence includes:
 
 ```bash

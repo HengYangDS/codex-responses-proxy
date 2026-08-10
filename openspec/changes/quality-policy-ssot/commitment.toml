@@ -4,6 +4,8 @@ intent = "Make repository quality and commit semantics derive from explicit posi
 subjects = ["repository:self"]
 scope = [
   ".config/checks/**",
+  ".editorconfig",
+  ".ethos/profile.toml",
   "CONTRIBUTING.md",
   "docs/governance/release-and-change-policy.md",
   "noxfile.py",
