@@ -8,7 +8,7 @@
 - [x] 2.4 Align product, installation, and release documentation with the actual bundle UX.
 - [x] 3.1 Run focused release and lifecycle tests.
 - [x] 3.2 Run locked quick, quality, Python 3.12/3.13/3.14, and release sessions.
-- [ ] 3.3 Execute exact-HEAD full proof, archive the Change, and land it to the candidate train.
+- [x] 3.3 Execute exact-HEAD full proof, archive the Change, and land it to the candidate train.
 
 ## Requirement To Task To Proof
 
