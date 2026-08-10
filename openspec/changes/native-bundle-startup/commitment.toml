@@ -1,0 +1,30 @@
+schema_version = 1
+id = "change:native-bundle-startup"
+intent = "Replace the repeated-extraction one-file payload with one manifest-bound prewarmed native bundle so startup, handoff, installation, and release remain fast and portable without compatibility paths."
+subjects = [
+    "repository:self",
+]
+scope = [
+    "openspec/changes/native-bundle-startup/**",
+    "openspec/specs/product-interface/spec.md",
+    "openspec/specs/runtime-upgrade/spec.md",
+    "noxfile.py",
+    "tools/release/**",
+    "src/codex_responses_proxy/lifecycle/**",
+    "src/codex_responses_proxy/service/**",
+    "tests/lifecycle/**",
+    "tests/service/**",
+    "tests/release/**",
+    "docs/**",
+    "CHANGELOG.md",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+    "repository.read",
+    "work-lane.write",
+]
+hypotheses = []
+dependencies = []
