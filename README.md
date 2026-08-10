@@ -43,7 +43,7 @@ requirements.
 
 ```bash
 codex-responses-proxy install \
-  --asset ~/Downloads/codex-responses-proxy-2.0.17-macos-arm64.tar.gz \
+  --asset ~/Downloads/codex-responses-proxy-2.0.18-macos-arm64.tar.gz \
   --trust-anchor ~/Downloads/codex-responses-proxy-allowed-signers
 ```
 
@@ -60,7 +60,7 @@ local service:
 
 ```bash
 codex-responses-proxy install \
-  --asset ~/Downloads/codex-responses-proxy-2.0.17-macos-arm64.tar.gz \
+  --asset ~/Downloads/codex-responses-proxy-2.0.18-macos-arm64.tar.gz \
   --trust-anchor ~/Downloads/codex-responses-proxy-allowed-signers \
   --port 8801
 ```
