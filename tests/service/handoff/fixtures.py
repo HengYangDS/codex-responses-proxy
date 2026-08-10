@@ -170,13 +170,19 @@ def child_pid_matching_health(port: int, expected: dict, *, exclude_pid: int | N
 
 
 def child_pid_observer(
-    port: int, expected: dict, *, exclude_pid: int | None
+    port: int,
+    expected: dict,
+    *,
+    exclude_pid: int | None,
+    owned_pids: set[int] | None = None,
 ) -> tuple[dict[str, int | None], Callable[[], bool]]:
-    """Return a successor-PID cell and the bounded health predicate that fills it."""
+    """Return a successor-PID cell and record the exact observed test process."""
     observed: dict[str, int | None] = {"value": None}
 
     def matches() -> bool:
         observed["value"] = child_pid_matching_health(port, expected, exclude_pid=exclude_pid)
+        if owned_pids is not None and observed["value"] is not None:
+            owned_pids.add(observed["value"])
         return observed["value"] is not None
 
     return observed, matches
