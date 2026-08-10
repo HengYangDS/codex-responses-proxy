@@ -5,7 +5,7 @@
 - [x] 2.1 Move tool policy into the declared owners without weakening gates.
 - [x] 2.2 Make repository structure and commit semantics consume tracked policy.
 - [x] 3.1 Pass focused, quick, quality, and Python-matrix verification.
-- [ ] 3.2 Execute exact-HEAD proof, archive, land, and retire the lane.
+- [x] 3.2 Execute exact-HEAD proof, archive, land, and retire the lane.
 
 ## Requirement To Task To Proof
 
