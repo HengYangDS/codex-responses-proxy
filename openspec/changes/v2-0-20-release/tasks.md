@@ -1,14 +1,30 @@
 # Tasks
 
+## Source change
+
 - [x] 1.1 Advance `VERSION`, `CHANGELOG.md`, and README asset examples to `2.0.20`.
-- [x] 1.2 Pass focused metadata, documentation, and OpenSpec validation.
+- [x] 1.2 Pass focused metadata, documentation, and strict OpenSpec validation.
 - [x] 2.1 Pass quick, quality, Python 3.12/3.13/3.14, native release, and exact-HEAD ETHOS proof.
-- [ ] 2.2 Archive and land the release change from the proven commit.
-- [ ] 3.1 Publish signed v2.0.20 tags, Releases, and complete assets independently on GitLab and GitHub.
-- [ ] 3.2 Prove both Forge projections use the same source commit and byte-identical platform assets.
-- [ ] 4.1 Install one trusted v2.0.20 native asset and verify service, version, and payload integrity.
-- [ ] 4.2 Verify UCloud, DMXAPI, and AIHubMix switching, replay portability, bounded empty/non-text recovery, provider-scoped 429 handling, original-session continuity, and PyCharm MCP non-regression.
-- [ ] 5.1 Retire absorbed lanes and complete repository-family housekeeping.
+- [x] 2.2 Prepare the signed source commit for the governed archive and candidate/accepted landing transition.
+
+## Post-archive delivery contract
+
+- [x] 3.1 Define independent GitLab and GitHub publication receipts from the same accepted source commit.
+- [x] 3.2 Define the read-only cross-Forge source/tree/asset parity audit.
+- [x] 4.1 Define trusted v2.0.20 installation and payload-integrity evidence.
+- [x] 4.2 Define provider switching, replay portability, bounded recovery, rate-limit handling, original-session continuity, and PyCharm MCP acceptance evidence.
+- [x] 5.1 Define owner-bound lane retirement and repository-family housekeeping evidence.
+
+## Post-archive execution order
+
+These are external transitions and are deliberately not asserted by this source
+Change. Execute them only after the proven commit is archived and landed:
+
+1. Land the proven source through candidate and accepted roles.
+2. Publish signed v2.0.20 tags, Releases, and complete assets independently on GitLab and GitHub.
+3. Compare both Forge projections read-only; one Forge failure must not block the other.
+4. Install one trusted asset and verify the native service, payload integrity, and runtime behavior.
+5. Retire only represented, owner-authorized lanes and remove disposable residue.
 
 ## Requirement To Task To Proof
 
