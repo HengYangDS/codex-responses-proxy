@@ -289,6 +289,22 @@ class TestQualityPolicyContracts:
     def test_tracked_project_files_follow_semantic_type_grammars(self) -> None:
         assert _checker().semantic_name_gaps(ROOT) == []
 
+    def test_evidence_uses_only_project_owned_semantic_roots(self) -> None:
+        assert _checker().evidence_layout_gaps(ROOT) == []
+
+    def test_evidence_layout_gate_rejects_unowned_top_level_surfaces(self) -> None:
+        checker = _checker()
+        with _test_repository(
+            (
+                "evidence/claims/release.toml",
+                "evidence/chronicle/release/2026-08-10.md",
+                "evidence/parity/README.md",
+            )
+        ) as root:
+            gaps = checker.evidence_layout_gaps(root)
+
+        assert gaps == ["evidence_root_unowned:evidence/parity"]
+
     def test_semantic_name_gate_rejects_numeric_and_cross_language_grammar(self) -> None:
         checker = _checker()
         with _test_repository(

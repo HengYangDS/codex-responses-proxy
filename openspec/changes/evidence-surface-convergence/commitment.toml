@@ -1,22 +1,35 @@
 schema_version = 1
 id = "change:evidence-surface-convergence"
 intent = "Remove the unused generic parity placeholder and enforce the project-owned evidence surface."
-subjects = [
-    "repository:self",
-]
+subjects = ["repository:self"]
 scope = [
     "openspec/changes/evidence-surface-convergence/**",
     "evidence/parity/**",
     "tools/quality/**",
     "tests/quality/**",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+    "claims_and_chronicles_remain_the_only_project_owned_evidence_roots",
+    "dual_forge_parity_remains_owned_by_the_forge_auditor",
+]
+acceptance = [
+    "unused_generic_parity_placeholder_is_absent",
+    "unknown_top_level_evidence_roots_fail_repository_quality",
+    "focused_and_full_repository_quality_pass",
+]
+risks = [
+    "a_future_evidence_family_requires_an_explicit_layout_decision",
+]
+authority_refs = [
+    "AGENTS.md",
+    "docs/evidence/README.md",
+    "tools/forge/audit.py",
+]
 permissions = [
     "repository.read",
     "work-lane.write",
 ]
-hypotheses = []
+hypotheses = [
+    "removing_unowned_semantic_surfaces_reduces_evidence_ambiguity",
+]
 dependencies = []
