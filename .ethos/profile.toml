@@ -2,6 +2,8 @@ profile_id = "codex-responses-proxy"
 
 [openspec]
 material_paths = [
+  ".config/**",
+  ".editorconfig",
   ".ethos/**",
   ".github/**",
   ".gitlab-ci.yml",

@@ -13,6 +13,10 @@ ROOT = Path(__file__).parent.resolve()
 PYTHONS = tuple((ROOT / ".python-versions").read_text(encoding="utf-8").splitlines())
 MIN_PYTHON, *_, MAX_PYTHON = PYTHONS
 ROOTS = ("src/codex_responses_proxy", "tools", "tests")
+RUFF_CONFIG = ROOT / ".config/checks/ruff/ruff.toml"
+PYTEST_CONFIG = ROOT / ".config/checks/pytest/pytest.ini"
+TY_CONFIG = ROOT / ".config/checks/ty/ty.toml"
+COVERAGE_CONFIG = ROOT / ".config/checks/coverage/coverage.ini"
 
 nox.options.default_venv_backend = "uv"
 nox.options.error_on_missing_interpreters = True
@@ -25,11 +29,30 @@ def quick(session: nox.Session) -> None:
 
     _install_tools(session)
     environment = _environment()
-    session.run("ruff", "check", "--no-cache", ".", env=environment)
-    session.run("ruff", "format", "--no-cache", "--check", ".", env=environment)
+    session.run("ruff", "check", "--config", str(RUFF_CONFIG), "--no-cache", ".", env=environment)
+    session.run(
+        "ruff",
+        "format",
+        "--config",
+        str(RUFF_CONFIG),
+        "--no-cache",
+        "--check",
+        ".",
+        env=environment,
+    )
     session.run("python", "tools/quality/portability.py", env=environment)
+    session.run("python", "tools/quality/text_layout.py", env=environment)
     session.run("python", "-m", "tools.quality.repository", env=environment)
-    session.run("python", "-m", "pytest", "-q", "tests/quality/test_contract.py", env=environment)
+    session.run(
+        "python",
+        "-m",
+        "pytest",
+        "--config-file",
+        str(PYTEST_CONFIG),
+        "-q",
+        "tests/quality/test_contract.py",
+        env=environment,
+    )
 
 
 @nox.session(python=PYTHONS)
@@ -53,7 +76,16 @@ def tests(session: nox.Session) -> None:
         *ROOTS,
         env={**environment, "PYTHONPYCACHEPREFIX": str(work / "pycache")},
     )
-    session.run("python", "-m", "pytest", "-m", "not native_distribution", env=environment)
+    session.run(
+        "python",
+        "-m",
+        "pytest",
+        "--config-file",
+        str(PYTEST_CONFIG),
+        "-m",
+        "not native_distribution",
+        env=environment,
+    )
 
 
 @nox.session(python=MIN_PYTHON)
@@ -69,13 +101,25 @@ def quality(session: nox.Session) -> None:
         **_environment(),
         "CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session)),
     }
-    session.run("ruff", "check", "--no-cache", ".", env=environment)
-    session.run("ruff", "format", "--no-cache", "--check", ".", env=environment)
+    session.run("ruff", "check", "--config", str(RUFF_CONFIG), "--no-cache", ".", env=environment)
+    session.run(
+        "ruff",
+        "format",
+        "--config",
+        str(RUFF_CONFIG),
+        "--no-cache",
+        "--check",
+        ".",
+        env=environment,
+    )
     session.run("python", "tools/quality/portability.py", env=environment)
+    session.run("python", "tools/quality/text_layout.py", env=environment)
     session.run("python", "-m", "tools.quality.repository", env=environment)
     session.run(
         "ty",
         "check",
+        "--config-file",
+        str(TY_CONFIG),
         "--python-version",
         MIN_PYTHON,
         "--python-platform",
@@ -85,18 +129,28 @@ def quality(session: nox.Session) -> None:
         *ROOTS,
         env=environment,
     )
-    session.run("coverage", "erase", env=environment)
+    session.run("coverage", "erase", "--rcfile", str(COVERAGE_CONFIG), env=environment)
     session.run(
         "coverage",
         "run",
+        "--rcfile",
+        str(COVERAGE_CONFIG),
         "-m",
         "pytest",
+        "--config-file",
+        str(PYTEST_CONFIG),
         "-m",
         "not native_distribution",
         env=environment,
     )
-    session.run("coverage", "report", env=environment)
-    session.run("python", "tools/quality/branch_coverage.py", env=environment)
+    session.run("coverage", "report", "--rcfile", str(COVERAGE_CONFIG), env=environment)
+    session.run(
+        "python",
+        "tools/quality/branch_coverage.py",
+        "--policy",
+        str(ROOT / ".config/checks/coverage/policy.toml"),
+        env=environment,
+    )
 
 
 @nox.session(python=False)
@@ -128,6 +182,8 @@ def release(session: nox.Session) -> None:
         "python",
         "-m",
         "pytest",
+        "--config-file",
+        str(PYTEST_CONFIG),
         "-q",
         "tests/cli/test_interface.py",
         "tests/service/handoff/test_subprocess.py",

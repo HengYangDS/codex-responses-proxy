@@ -144,6 +144,59 @@ class TestQualityPolicyContracts:
         ):
             assert path in inventoried
 
+    def test_quality_policy_has_one_explicit_owner_per_concern(self) -> None:
+        pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        tool = pyproject.get("tool", {})
+
+        for path in (
+            ".config/checks/ruff/ruff.toml",
+            ".config/checks/pytest/pytest.ini",
+            ".config/checks/ty/ty.toml",
+            ".config/checks/coverage/coverage.ini",
+            ".config/checks/coverage/policy.toml",
+            ".config/checks/architecture/policy.toml",
+            ".config/checks/commits/policy.toml",
+            ".config/checks/text-layout/policy.toml",
+            ".editorconfig",
+        ):
+            assert (ROOT / path).is_file(), path
+
+        for duplicate in ("ruff", "pytest", "ty", "coverage"):
+            assert duplicate not in tool
+        repository = tool.get("codex-responses-proxy", {})
+        assert "quality" not in repository
+
+    def test_editor_defaults_and_text_layout_policy_are_aligned(self) -> None:
+        editor = (ROOT / ".editorconfig").read_text(encoding="utf-8")
+        policy = tomllib.loads(
+            (ROOT / ".config/checks/text-layout/policy.toml").read_text(encoding="utf-8")
+        )
+
+        assert "charset = utf-8" in editor
+        assert "end_of_line = lf" in editor
+        assert "insert_final_newline = true" in editor
+        assert "trim_trailing_whitespace = true" in editor
+        assert policy["encoding"] == "utf-8"
+        assert policy["line_ending"] == "lf"
+        assert policy["insert_final_newline"] is True
+        assert policy["trim_trailing_whitespace"] is True
+
+    def test_commit_subjects_consume_the_tracked_positive_grammar(self) -> None:
+        checker = _checker()
+        assert checker.commit_subject_gaps(ROOT) == []
+
+        policy = tomllib.loads(
+            (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
+        )
+        human = re.compile(policy["human_pattern"])
+        generated = tuple(re.compile(pattern) for pattern in policy["generated_patterns"])
+
+        assert human.fullmatch("refactor(quality): centralize repository policy owners")
+        assert not human.fullmatch("refactor: centralize repository policy owners")
+        assert any(
+            pattern.fullmatch("materialize quality-policy-ssot carrier") for pattern in generated
+        )
+
     def test_readme_install_path_matches_product_contract(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
@@ -574,21 +627,25 @@ class TestQualityPolicyContracts:
         assert inventory[0]["max_nesting_depth"] == 1
 
     def test_coverage_floor_is_branch_aware_and_at_least_ninety_five_percent(self) -> None:
-        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        coverage = metadata["tool"]["coverage"]
-        assert coverage["run"]["branch"] is True
-        assert coverage["run"]["source_pkgs"] == ["codex_responses_proxy"]
-        assert "disable_warnings" not in coverage["run"]
-        assert coverage["report"]["fail_under"] >= 95
-        assert "omit" not in coverage["run"]
+        coverage = (ROOT / ".config/checks/coverage/coverage.ini").read_text(encoding="utf-8")
+        policy = tomllib.loads(
+            (ROOT / ".config/checks/coverage/policy.toml").read_text(encoding="utf-8")
+        )
+        assert "branch = True" in coverage
+        assert "source_pkgs = codex_responses_proxy" in coverage
+        assert "omit" not in coverage
+        assert policy["minimum_percent"] > 95
+        assert policy["comparison"] == "strictly-greater-than"
+        assert policy["scopes"] == ["aggregate", "package", "module"]
 
     def test_repository_owned_structural_limits_are_ratified(self) -> None:
-        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        policy = metadata["tool"]["codex-responses-proxy"]["quality"]
-        assert policy["logic-max-statements"] == 600
-        assert policy["module-max-eloc"] == 600
-        assert policy["function-max-eloc"] == 120
-        assert policy["max-nesting-depth"] == 8
+        policy = tomllib.loads(
+            (ROOT / ".config/checks/architecture/policy.toml").read_text(encoding="utf-8")
+        )
+        assert policy["logic_max_statements"] == 600
+        assert policy["module_max_eloc"] == 600
+        assert policy["function_max_eloc"] == 120
+        assert policy["max_nesting_depth"] == 8
         assert "ratchet" not in policy
 
     def test_repository_has_standard_package_metadata_and_one_version_owner(self) -> None:
@@ -790,13 +847,14 @@ class TestVerificationContracts:
         quality = metadata["dependency-groups"]["quality"]
         assert any(requirement.startswith("pytest==") for requirement in quality)
         assert any(requirement.startswith("pytest-mock==") for requirement in quality)
-        assert metadata["tool"]["pytest"]["ini_options"] == {
-            "addopts": ["--import-mode=importlib", "--strict-config", "--strict-markers"],
-            "filterwarnings": ["error"],
-            "markers": ["native_distribution: requires the self-contained released executable"],
-            "python_classes": ["Test*", "*Tests", "*Contracts"],
-            "testpaths": ["tests"],
-        }
+        pytest_config = (ROOT / ".config/checks/pytest/pytest.ini").read_text(encoding="utf-8")
+        assert "addopts = --import-mode=importlib --strict-config --strict-markers" in pytest_config
+        assert "filterwarnings = error" in pytest_config
+        assert (
+            "native_distribution: requires the self-contained released executable" in pytest_config
+        )
+        assert "python_classes = Test* *Tests *Contracts" in pytest_config
+        assert "testpaths = tests" in pytest_config
         direct_test_commands = []
         for relative in (
             ".gitlab-ci.yml",
@@ -920,8 +978,9 @@ class TestVerificationContracts:
         tests_source = ast.get_source_segment(source, functions["tests"]) or ""
         quality_source = ast.get_source_segment(source, functions["quality"]) or ""
         assert '"compileall",' in tests_source
-        assert '"pytest", "-m", "not native_distribution"' in tests_source
-        assert '"pytest",\n        "-m",\n        "not native_distribution"' in quality_source
+        for owner_source in (tests_source, quality_source):
+            assert "str(PYTEST_CONFIG)" in owner_source
+            assert '"not native_distribution"' in owner_source
         assert (
             '"CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session))'
             in tests_source
@@ -980,10 +1039,10 @@ class TestVerificationContracts:
         assert native_build_owners == {"release"}
 
     def test_native_distribution_tests_are_explicit_and_release_owned(self) -> None:
-        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        assert metadata["tool"]["pytest"]["ini_options"]["markers"] == [
-            "native_distribution: requires the self-contained released executable"
-        ]
+        pytest_config = (ROOT / ".config/checks/pytest/pytest.ini").read_text(encoding="utf-8")
+        assert (
+            "native_distribution: requires the self-contained released executable" in pytest_config
+        )
         source = (ROOT / "tests/service/handoff/test_subprocess.py").read_text(encoding="utf-8")
         assert "pytestmark = pytest.mark.native_distribution" in source
 
