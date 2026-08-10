@@ -11,13 +11,33 @@ ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / ".config/checks/commits/policy.toml"
 
 
-def _subjects(root: Path) -> tuple[tuple[str, ...], str | None]:
-    result = subprocess.run(
-        ["git", "-C", str(root), "log", "--format=%s", "candidate/dev..HEAD"],
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
         text=True,
         capture_output=True,
         check=False,
     )
+
+
+def _base_ref(root: Path) -> str | None:
+    """Select the first available integration base for this checkout."""
+
+    for ref in ("candidate/dev", "origin/dev", "origin/main", "dev", "main"):
+        result = _git(root, "merge-base", "--is-ancestor", ref, "HEAD")
+        if result.returncode == 0:
+            return ref
+    return None
+
+
+def _subjects(root: Path) -> tuple[tuple[str, ...], str | None]:
+    base = _base_ref(root)
+    args = ["log", "--format=%s"]
+    if base is not None:
+        args.append(f"{base}..HEAD")
+    else:
+        args.append("HEAD")
+    result = _git(root, *args)
     if result.returncode:
         detail = result.stderr.strip() or str(result.returncode)
         return (), f"commit_history_unavailable:{detail}"
