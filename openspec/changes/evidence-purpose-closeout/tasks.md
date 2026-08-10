@@ -5,7 +5,7 @@
 
 ## 2. Verify
 
-- [ ] 2.1 Run focused repository and documentation gates.
+- [x] 2.1 Run focused repository and documentation gates.
 - [ ] 2.2 Execute exact-HEAD proof, archive, and post-archive proof.
 
 ## Requirement To Task To Proof
