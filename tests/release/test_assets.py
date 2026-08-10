@@ -126,6 +126,13 @@ class ReleaseAssetContracts:
             hashlib.sha256(b"framework-resources").hexdigest()
         )
 
+    def test_bundle_files_uses_platform_canonical_path_identity(self, mocker) -> None:
+        bundle = Path("C:/Product/Proxy")
+        member = Path("c:/product/proxy/_internal/runtime.dat")
+        mocker.patch("os.path.normcase", lambda value: value.casefold().replace("\\", "/"))
+
+        assert asset_command._is_within(bundle, member)
+
     def test_asset_command_rejects_bundle_symlinks_outside_the_bundle(
         self, tmp_path: Path, mocker
     ) -> None:
