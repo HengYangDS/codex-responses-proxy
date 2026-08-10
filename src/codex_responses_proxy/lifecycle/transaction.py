@@ -170,7 +170,8 @@ class PayloadTransaction:
         mutated = False
         try:
             snapshot = payload_rollback.write_snapshot(self._ctx, rollback)
-            payload_candidate.reject_unowned_collisions(self._ctx, snapshot.owned)
+            candidate_paths = {blob.path for blob in self._blobs}
+            payload_candidate.reject_unowned_collisions(self._ctx, snapshot.owned, candidate_paths)
             mutated = True
             payload_candidate.write_projection(
                 self._ctx,
@@ -233,7 +234,7 @@ class PayloadTransaction:
         if rollback.exists():
             payload_rollback.restore_snapshot(self._ctx, rollback)
         elif self._fresh:
-            payload_candidate.remove_projection(self._ctx)
+            payload_candidate.remove_projection(self._ctx, {blob.path for blob in self._blobs})
         self._state = "rolled_back"
         _remove_transaction_root(self._ctx)
 
@@ -257,6 +258,8 @@ class PayloadTransaction:
 def begin_transaction(
     ctx: runtime_context.RuntimeContext,
     candidate: artifact.VerifiedArtifact,
+    *,
+    prewarm: bool = True,
 ) -> PayloadTransaction:
     """Claim one admitted release and create its private transaction journal."""
 
@@ -268,6 +271,8 @@ def begin_transaction(
     except artifact.ArtifactError as exc:
         raise errors.InstallError(str(exc)) from exc
     payload_candidate.validate(blobs, version, receipt_sha256, receipt)
+    if prewarm:
+        payload_candidate.prewarm(blobs)
     previous = state.read_installed(ctx)
     if previous is not None:
         comparison = state.compare_versions(version, state.require_version(previous))

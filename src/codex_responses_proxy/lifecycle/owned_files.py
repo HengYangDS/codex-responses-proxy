@@ -17,12 +17,22 @@ OWNED_PAYLOAD_METADATA = (
     inventory.RELEASE_RECEIPT_FILENAME,
     inventory.INSTALLED_RELEASE_STATE_FILENAME,
 )
-OWNED_PAYLOAD_FILES = (
-    inventory.EXECUTABLE,
-    inventory.WINDOWS_EXECUTABLE,
-    inventory.PROVIDER_MANIFEST,
-    *OWNED_PAYLOAD_METADATA,
-)
+
+
+def declared_files(manifest: dict[str, Any]) -> frozenset[str]:
+    """Return the canonical payload inventory declared by one manifest."""
+
+    files = manifest.get("files")
+    if not isinstance(files, dict) or not files:
+        raise errors.InstallError("installed payload manifest file set is invalid")
+    return frozenset(canonical_relative(value, "installed payload") for value in files)
+
+
+def current_inventory(root: Path) -> frozenset[str]:
+    """Return current manifest-owned payload and metadata paths."""
+
+    manifest = read_json_object(root / inventory.MANIFEST_FILENAME, "installed payload manifest")
+    return declared_files(manifest) | frozenset(OWNED_PAYLOAD_METADATA)
 
 
 def path(root: Path, relative: str) -> Path:

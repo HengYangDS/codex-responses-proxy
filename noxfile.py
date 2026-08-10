@@ -118,7 +118,7 @@ def release(session: nox.Session) -> None:
     wheel = _build_wheel(session, work)
     _install_wheel(session, wheel)
     _assert_installed_product(session, work)
-    executable = _build_executable(session, work)
+    bundle, executable = _build_executable(session, work)
     environment = {
         **_environment(),
         "CODEX_RESPONSES_PROXY_EXECUTABLE": str(executable),
@@ -136,7 +136,7 @@ def release(session: nox.Session) -> None:
     _run_without_python(session, executable, "--help")
     _run_without_python(session, executable, "version")
     _run_without_python(session, executable, "status", "--json", success_codes=(0, 2))
-    _package_release_asset(session, executable, work)
+    _package_release_asset(session, bundle, work)
     session.log(f"native executable accepted: {executable.name}")
 
 
@@ -241,8 +241,8 @@ def _installed_executable(session: nox.Session) -> Path:
     return executable
 
 
-def _build_executable(session: nox.Session, work: Path) -> Path:
-    """Build one native executable with only release-owned data."""
+def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
+    """Build one native directory bundle with only release-owned data."""
 
     name = "codex-responses-proxy.exe" if os.name == "nt" else "codex-responses-proxy"
     dist = work / "dist"
@@ -252,7 +252,7 @@ def _build_executable(session: nox.Session, work: Path) -> Path:
         "--noconfirm",
         "--log-level",
         "ERROR",
-        "--onefile",
+        "--onedir",
         "--name",
         "codex-responses-proxy",
         "--distpath",
@@ -271,13 +271,15 @@ def _build_executable(session: nox.Session, work: Path) -> Path:
         str(ROOT / "src/codex_responses_proxy/cli/__main__.py"),
     )
     session.run(*command, env=_environment())
-    executable = dist / name
+    bundle = dist / "codex-responses-proxy"
+    executable = bundle / name
     if not executable.is_file():
         session.error(f"native executable was not produced: {executable}")
-    return executable
+    _run_without_python(session, executable, "version")
+    return bundle, executable
 
 
-def _package_release_asset(session: nox.Session, executable: Path, work: Path) -> None:
+def _package_release_asset(session: nox.Session, bundle: Path, work: Path) -> None:
     """Export one manifest-bound native asset set after black-box acceptance."""
 
     output = Path(session.posargs[0]).resolve() if session.posargs else work / "release-assets"
@@ -294,8 +296,8 @@ def _package_release_asset(session: nox.Session, executable: Path, work: Path) -
         "python",
         "-m",
         "tools.release.assets",
-        "--executable",
-        str(executable),
+        "--bundle",
+        str(bundle),
         "--platform",
         platform_id,
         "--output",

@@ -166,7 +166,13 @@ def verify_platform_archive(archive: bytes, manifest: bytes) -> dict[str, object
                 if not _safe_relative(relative) or relative in actual:
                     raise AssetError("release archive contains an invalid member")
                 expected_mode = (
-                    0o755 if relative.endswith(("codex-responses-proxy", ".exe")) else 0o644
+                    0o755
+                    if relative
+                    in {
+                        "bin/codex-responses-proxy",
+                        "bin/codex-responses-proxy.exe",
+                    }
+                    else 0o644
                 )
                 if member.mode != expected_mode:
                     raise AssetError("release archive member mode is invalid")

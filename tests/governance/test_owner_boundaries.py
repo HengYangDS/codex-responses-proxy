@@ -254,7 +254,7 @@ class ProxyOwnerBoundaryContracts:
             )
             files = {
                 relative: digest.sha256_file(root / relative)
-                for relative in inventory.RUNTIME_FILES
+                for relative in inventory.required_runtime_files()
             }
             manifest = {
                 "release": "1.2.3",

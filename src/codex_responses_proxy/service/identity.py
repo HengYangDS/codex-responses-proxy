@@ -54,13 +54,13 @@ def freeze_loaded_payload(executable: Path) -> LoadedPayloadIdentity | None:
             return None
         serving_files = cast("dict[str, str]", raw_files)
         executable_relative = executable.relative_to(root).as_posix()
-        expected_files = {executable_relative, inventory.PROVIDER_MANIFEST}
-        if set(serving_files) != expected_files:
+        expected_files = set(serving_files)
+        windows = executable_relative == inventory.WINDOWS_EXECUTABLE
+        if not inventory.required_runtime_files(windows=windows).issubset(expected_files) or any(
+            not inventory.is_runtime_file(path, windows=windows) for path in expected_files
+        ):
             return None
-        digests = {
-            executable_relative: digest.sha256_file(executable),
-            inventory.PROVIDER_MANIFEST: digest.sha256_file(root / inventory.PROVIDER_MANIFEST),
-        }
+        digests = {path: digest.sha256_file(root / path) for path in serving_files}
         if digests != serving_files:
             return None
         aggregate = inventory.serving_payload_sha256(digests)
@@ -117,8 +117,13 @@ def committed_payload(executable: Path) -> LoadedPayloadIdentity | None:
         ):
             raise ValueError("installed manifest digest mapping is invalid")
         executable_relative = executable.relative_to(root).as_posix()
-        expected_files = {executable_relative, inventory.PROVIDER_MANIFEST}
-        if set(files) != expected_files or set(serving) != expected_files:
+        expected_files = set(files)
+        windows = executable_relative == inventory.WINDOWS_EXECUTABLE
+        if (
+            set(serving) != expected_files
+            or not inventory.required_runtime_files(windows=windows).issubset(expected_files)
+            or any(not inventory.is_runtime_file(path, windows=windows) for path in expected_files)
+        ):
             raise ValueError("installed inventory mismatch")
         if any(digest.sha256_file(root / path) != expected for path, expected in files.items()):
             raise ValueError("installed payload digest mismatch")

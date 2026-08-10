@@ -51,10 +51,10 @@ def platform_context(port: int = 8791, *, windows: bool = False) -> runtime_cont
     )
 
 
-def runtime_files(*, windows: bool = False) -> tuple[str, str]:
+def runtime_files(*, windows: bool = False) -> tuple[str, ...]:
     """Return the installed payload inventory for the modeled platform."""
 
-    return inventory.runtime_files(windows=windows)
+    return tuple(sorted(inventory.required_runtime_files(windows=windows)))
 
 
 def executable_relative(*, windows: bool = False) -> str:
@@ -121,12 +121,12 @@ def begin_transaction(
     """Begin a transaction through the artifact claim authority boundary."""
 
     if not isinstance(candidate, artifact.VerifiedArtifact):
-        return payload_transaction.begin_transaction(ctx, candidate)
+        return payload_transaction.begin_transaction(ctx, candidate, prewarm=False)
     blobs = candidate.peek_blobs()
     receipt = candidate.receipt
     claimed = (blobs, candidate.version, candidate.receipt_sha256, receipt, {})
     mocker.patch.object(artifact, "claim", return_value=claimed)
-    return payload_transaction.begin_transaction(ctx, candidate)
+    return payload_transaction.begin_transaction(ctx, candidate, prewarm=False)
 
 
 def install_payload(

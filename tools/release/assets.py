@@ -13,23 +13,57 @@ from tools.release import product_assets as assets
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def _command(*, executable: Path, platform: str, output: Path) -> None:
+def _bundle_files(bundle: Path) -> tuple[tuple[Path, Path], ...]:
+    """Return logical bundle files after safely materializing internal links."""
+
+    files: list[tuple[Path, Path]] = []
+
+    def visit(logical: Path, source: Path, ancestors: frozenset[Path]) -> None:
+        try:
+            resolved = source.resolve(strict=True)
+            resolved.relative_to(bundle)
+        except (OSError, ValueError) as error:
+            raise SystemExit("native bundle symlink escapes the bundle") from error
+        if resolved.is_file():
+            files.append((logical, resolved))
+            return
+        if not resolved.is_dir():
+            raise SystemExit("native bundle contains a non-regular member")
+        if resolved in ancestors:
+            raise SystemExit("native bundle contains a symlink cycle")
+        descendants = ancestors | {resolved}
+        for child in sorted(resolved.iterdir(), key=lambda path: path.name):
+            visit(logical / child.name, child, descendants)
+
+    for child in sorted(bundle.iterdir(), key=lambda path: path.name):
+        visit(Path(child.name), child, frozenset({bundle}))
+    return tuple(files)
+
+
+def _command(*, bundle: Path, platform: str, output: Path) -> None:
     """Write one platform archive, machine manifest, and checksum manifest."""
 
     if output.exists() and any(output.iterdir()):
         raise SystemExit("release asset output directory must be empty")
-    executable = executable.resolve(strict=True)
-    if not executable.is_file():
-        raise SystemExit("native executable must be a regular file")
+    bundle = bundle.resolve(strict=True)
+    if not bundle.is_dir():
+        raise SystemExit("native bundle must be a directory")
     version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
     executable_name = (
-        "codex-responses-proxy.exe" if executable.suffix == ".exe" else "codex-responses-proxy"
+        "codex-responses-proxy.exe" if platform.startswith("windows-") else "codex-responses-proxy"
     )
-    files = {
-        executable_name: assets.ArchiveFile(executable.read_bytes(), 0o755),
+    executable = bundle / executable_name
+    if not executable.is_file() or executable.is_symlink():
+        raise SystemExit("native bundle executable is unavailable")
+    files: dict[str, bytes | assets.ArchiveFile] = {
+        f"bin/{executable_name}": assets.ArchiveFile(executable.read_bytes(), 0o755),
         "providers.toml": (ROOT / "src/codex_responses_proxy/providers/manifest.toml").read_bytes(),
         "LICENSE": (ROOT / "LICENSE").read_bytes(),
     }
+    for relative, source in _bundle_files(bundle):
+        if relative == Path(executable_name):
+            continue
+        files[f"bin/{relative.as_posix()}"] = source.read_bytes()
     archive_name = assets.archive_name(version, platform)
     archive = assets.archive_bytes(files, version, platform)
     manifest_name = assets.manifest_name(platform)
