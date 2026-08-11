@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -26,19 +27,33 @@ def sign_and_verify(*, assets: Path, key: Path, trust: str) -> None:
         raise SignatureError("release checksum inventory is unavailable")
     signature = assets / "SHA256SUMS.sig"
     signature.unlink(missing_ok=True)
-    try:
-        subprocess.run(
-            (ssh_keygen, "-Y", "sign", "-q", "-f", str(key), "-n", NAMESPACE, checksums.name),
-            cwd=assets,
-            check=True,
-            capture_output=True,
-        )
-    except subprocess.CalledProcessError as error:
-        detail = (error.stderr or b"").decode("utf-8", errors="replace").strip()
-        message = "OpenSSH rejected the release signing key"
-        raise SignatureError(f"{message}: {detail}" if detail else message) from None
-    except (OSError, UnicodeError):
-        raise SignatureError("release asset signing failed") from None
+    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-release-key-") as name:
+        signing_key = Path(name) / "key"
+        signing_key.write_bytes(key.read_bytes().rstrip(b"\n") + b"\n")
+        os.chmod(signing_key, 0o600)
+        try:
+            subprocess.run(
+                (
+                    ssh_keygen,
+                    "-Y",
+                    "sign",
+                    "-q",
+                    "-f",
+                    str(signing_key),
+                    "-n",
+                    NAMESPACE,
+                    checksums.name,
+                ),
+                cwd=assets,
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as error:
+            detail = (error.stderr or b"").decode("utf-8", errors="replace").strip()
+            message = "OpenSSH rejected the release signing key"
+            raise SignatureError(f"{message}: {detail}" if detail else message) from None
+        except (OSError, UnicodeError):
+            raise SignatureError("release asset signing failed") from None
     verify(assets=assets, trust=trust)
 
 
@@ -62,7 +77,15 @@ def verify(*, assets: Path, trust: str) -> None:
         try:
             principal = (
                 subprocess.run(
-                    (ssh_keygen, "-Y", "find-principals", "-s", str(signature), "-f", str(anchor)),
+                    (
+                        ssh_keygen,
+                        "-Y",
+                        "find-principals",
+                        "-s",
+                        str(signature),
+                        "-f",
+                        str(anchor),
+                    ),
                     input=checksums.read_bytes(),
                     check=True,
                     capture_output=True,
