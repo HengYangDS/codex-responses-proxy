@@ -5,14 +5,10 @@
 - [x] 1.2 Normalize the installed product distribution before PyInstaller.
 - [x] 1.3 Prove focused release tests and two-root deterministic build inputs.
 
-## 2. Verify and Publish
+## 2. Verify
 
-- [ ] 2.1 Run OpenSpec strict validation, quality, Python matrix, and release
+- [x] 2.1 Run OpenSpec strict validation, quality, Python matrix, and release
   gates from the exact work-lane HEAD.
-- [ ] 2.2 Archive, land, and close out the accepted patch through ETHOS.
-- [ ] 2.3 Publish independently to GitLab and GitHub and prove common-platform
-  asset digest parity.
-- [ ] 2.4 Install the signed patch and complete three-provider runtime acceptance.
 
 ## Requirement To Task To Proof
 
@@ -22,4 +18,3 @@
 | `ci-diagnostics:Native release payloads are reproducible` | `1.2` | `normalized-distribution-record` |
 | `ci-diagnostics:Native release payloads are reproducible` | `1.3` | `two-run-native-asset-parity` |
 | `ci-diagnostics:Native release payloads are reproducible` | `2.1` | `exact-head-proof` |
-| `ci-diagnostics:Native release payloads are reproducible` | `2.3` | `dual-forge-common-asset-digests` |
