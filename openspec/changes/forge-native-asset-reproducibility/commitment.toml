@@ -1,0 +1,27 @@
+schema_version = 1
+id = "change:forge-native-asset-reproducibility"
+intent = "Make common native release assets byte-identical across independent Forge builders by pinning the exact managed runtime artifact and removing build-path metadata."
+subjects = [
+  "repository:self",
+]
+scope = [
+  "openspec/changes/forge-native-asset-reproducibility/**",
+  "noxfile.py",
+  ".github/workflows/**",
+  ".gitlab-ci.yml",
+  "tests/release/**",
+  "tools/release/**",
+  "openspec/specs/ci-diagnostics/spec.md",
+  "VERSION",
+  "CHANGELOG.md",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+  "repository.read",
+  "work-lane.write",
+]
+hypotheses = []
+dependencies = []
