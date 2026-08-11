@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.30] - 2026-08-11
+
+### Fixed
+
+- Write the GitHub Linux asset through the container's runtime workspace path
+  while the host-side upload action reads the equivalent workspace expression.
+
 ## [2.0.29] - 2026-08-11
 
 ### Fixed
