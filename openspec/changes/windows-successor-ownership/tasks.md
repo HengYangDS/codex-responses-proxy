@@ -4,4 +4,4 @@
 - [x] 1.2 Capture the exact PID generation without a second argv dependency.
 - [x] 1.3 Use generation capture only after exact successor health proof.
 - [x] 1.4 Prove focused, local quality, Python matrix, and native release gates.
-- [ ] 2.1 Produce exact-HEAD proof and archive the completed Change.
+- [x] 2.1 Produce exact-HEAD proof and archive the completed Change.
