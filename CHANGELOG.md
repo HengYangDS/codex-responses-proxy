@@ -12,6 +12,7 @@ publication authority.
 ### Fixed
 
 - Preserve the active virtual-environment interpreter during hosted GitHub release validation.
+- Normalize ephemeral release signing keys so GitLab file variables without a terminal newline remain valid OpenSSH inputs.
 
 ## [2.0.24] - 2026-08-11
 
