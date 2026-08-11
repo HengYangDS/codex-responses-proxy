@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from dataclasses import astuple
 from pathlib import Path
 
 import pytest
@@ -179,10 +180,46 @@ class TestTermination:
             roles={"--internal-handoff-child"},
         )
 
-        assert owned == process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+        assert owned is not None
+        assert astuple(owned) == (
+            123,
+            os.path.normcase(os.path.realpath("/installed/codex-responses-proxy")),
+            42.0,
+        )
         assert process.terminate_owned_process(owned, timeout_seconds=1.0)
         candidate.terminate.assert_called_once_with()
         candidate.wait.assert_called_once_with(timeout=1.0)
+
+    def test_captured_native_identity_failure_edges_are_portable(self, *, mocker):
+        denied = mocker.Mock()
+        denied.cmdline.return_value = ["/foreign/proxy", "--internal-handoff-child"]
+        exited = mocker.Mock()
+        exited.create_time.side_effect = process.psutil.NoSuchProcess(123)
+        empty = mocker.Mock(pid=7)
+        empty.cmdline.return_value = []
+        inaccessible = mocker.Mock(pid=8)
+        inaccessible.cmdline.side_effect = process.psutil.AccessDenied(8)
+
+        constructor = mocker.patch.object(
+            process.psutil,
+            "Process",
+            side_effect=[denied, exited],
+        )
+        assert (
+            process.capture_executable(
+                123,
+                "/installed/codex-responses-proxy",
+                roles={"--internal-handoff-child"},
+            )
+            is None
+        )
+        assert process.terminate_owned_process(
+            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+        )
+        assert constructor.call_count == 2
+
+        mocker.patch.object(process.psutil, "process_iter", return_value=[empty, inaccessible])
+        assert process._process_inventory() == []
 
     def test_captured_native_identity_rejects_pid_reuse(self, *, mocker):
         candidate = mocker.Mock()
