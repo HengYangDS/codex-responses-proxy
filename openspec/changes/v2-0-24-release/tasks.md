@@ -8,7 +8,7 @@
 ## Verification
 
 - [x] 2.1 Pass quick, quality, Python 3.12/3.13/3.14, and native release gates.
-- [ ] 2.2 Produce exact-HEAD executed proof from the signed release commit.
+- [x] 2.2 Produce exact-HEAD executed proof from the signed release commit.
 
 ## Accepted-source boundary
 
