@@ -94,12 +94,11 @@ class ReleaseAssetContracts:
     def test_native_freeze_input_discards_installer_provenance(self, tmp_path: Path) -> None:
         """Normalize metadata before it can alter the frozen executable."""
 
-        module = __import__("noxfile")
         first = _installed_distribution(tmp_path / "github", "/workspace/github")
         second = _installed_distribution(tmp_path / "gitlab", "/builds/gitlab")
 
-        module._normalize_installed_distribution(first)
-        module._normalize_installed_distribution(second)
+        asset_command.normalize_installed_distribution(first)
+        asset_command.normalize_installed_distribution(second)
 
         def snapshot(root: Path) -> dict[str, bytes]:
             return {

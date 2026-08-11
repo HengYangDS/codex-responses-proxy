@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import csv
 import os
 import sys
 from pathlib import Path
@@ -13,6 +14,32 @@ from tools.release import product_assets as assets
 
 ROOT = Path(__file__).resolve().parents[2]
 INSTALLER_PROVENANCE = frozenset({"direct_url.json", "uv_cache.json"})
+
+
+def normalize_installed_distribution(packages: Path) -> None:
+    """Remove installer-local product metadata before executable freezing."""
+
+    metadata = tuple(packages.glob("codex_responses_proxy-*.dist-info"))
+    if len(metadata) != 1 or not metadata[0].is_dir() or metadata[0].is_symlink():
+        raise RuntimeError("installed product distribution metadata is ambiguous")
+    record = metadata[0] / "RECORD"
+    if not record.is_file() or record.is_symlink():
+        raise RuntimeError("installed product distribution inventory is unavailable")
+    relative_metadata = metadata[0].relative_to(packages).as_posix()
+    provenance = {f"{relative_metadata}/{name}" for name in INSTALLER_PROVENANCE}
+    with record.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.reader(stream))
+    names = {row[0] for row in rows if len(row) == 3}
+    if any(len(row) != 3 for row in rows) or not provenance <= names:
+        raise RuntimeError("installed product distribution inventory is malformed")
+    for name in provenance:
+        path = packages.joinpath(*Path(name).parts)
+        if not path.is_file() or path.is_symlink():
+            raise RuntimeError("installed product provenance metadata is unavailable")
+        path.unlink()
+    with record.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream, lineterminator="\n")
+        writer.writerows(row for row in rows if row[0] not in provenance)
 
 
 def _is_within(bundle: Path, member: Path) -> bool:
