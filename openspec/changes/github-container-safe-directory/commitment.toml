@@ -12,10 +12,25 @@ scope = [
   "CHANGELOG.md",
   "README.md",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+  "git_trust_is_scoped_to_the_exact_github_workspace",
+  "gitlab_and_github_remain_independent_release_planes",
+  "failed_v2_0_26_publication_history_remains_immutable",
+]
+acceptance = [
+  "the_github_linux_container_archives_the_exact_tag_checkout",
+  "the_release_workflow_does_not_add_global_or_wildcard_git_trust",
+  "v2_0_27_is_the_only_forward_fix_release",
+]
+risks = [
+  "container_checkout_ownership_can_differ_from_the_container_user",
+]
+authority_refs = [
+  ".github/workflows/verify.yml",
+  "tests/forge/test_workflow_contracts.py",
+  "VERSION",
+  "CHANGELOG.md",
+]
 permissions = [
   "repository.read",
   "work-lane.write",

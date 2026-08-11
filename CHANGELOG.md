@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.27] - 2026-08-11
+
+### Fixed
+
+- Trust only the exact GitHub Actions workspace while the Linux release
+  container archives the checked-out release commit.
+
 ## [2.0.26] - 2026-08-11
 
 ### Fixed

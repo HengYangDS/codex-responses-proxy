@@ -175,7 +175,7 @@ jobs:
           fetch-tags: true
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Materialize the canonical release source root
-        run: install -d /workspace && git archive --format=tar HEAD | tar -xf - -C /workspace
+        run: install -d /workspace && git -c safe.directory="$GITHUB_WORKSPACE" archive --format=tar HEAD | tar -xf - -C /workspace
       - name: Install the locked release tool environment
         run: cd /workspace && uv sync --locked --only-group quality --python python --no-python-downloads
       - name: Build and accept the native release asset
