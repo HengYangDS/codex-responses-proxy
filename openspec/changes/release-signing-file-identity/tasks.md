@@ -9,7 +9,7 @@
 
 | Requirement | Task | Proof |
 | --- | --- | --- |
-| `ci-diagnostics:Release signing preserves provider-owned key security` | `1.1` | `tests/release/test_signing.py::test_sign_and_verify_preserves_complete_provider_key_path` |
-| `ci-diagnostics:Release signing preserves provider-owned key security` | `1.1` | `tests/release/test_signing.py::test_sign_and_verify_does_not_rewrite_incomplete_windows_key` |
-| `ci-diagnostics:Release signing preserves provider-owned key security` | `1.2` | `tools/release/signing.py::_signing_key` |
-| `ci-diagnostics:Release signing preserves provider-owned key security` | `2.1` | `uv run --locked --no-sync nox -s quick quality tests-3.12 tests-3.13 tests-3.14` |
+| `ci-diagnostics:Release signing uses one provider-owned key path` | `1.1` | `tests/release/test_signing.py::test_sign_and_verify_preserves_complete_provider_key_path` |
+| `ci-diagnostics:Release signing uses one provider-owned key path` | `1.1` | `tests/release/test_signing.py::test_sign_and_verify_does_not_rewrite_incomplete_windows_key` |
+| `ci-diagnostics:Release signing uses one provider-owned key path` | `1.2` | `tools/release/signing.py::_signing_key` |
+| `ci-diagnostics:Release signing uses one provider-owned key path` | `2.1` | `uv run --locked --no-sync nox -s quick quality tests-3.12 tests-3.13 tests-3.14` |

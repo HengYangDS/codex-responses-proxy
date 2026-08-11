@@ -1,10 +1,23 @@
 ## MODIFIED Requirements
 
-### Requirement: Release signing preserves provider-owned key security
+### Requirement: Release signing uses one provider-owned key path
 
 Release signing MUST use a complete caller-provided private-key file without
-copying it, MUST normalize a missing terminal newline only on POSIX, and MUST
-leave Windows ACL ownership to the secret provider.
+copying it. It MAY create one process-scoped private copy only to restore a
+missing terminal newline on POSIX, and MUST leave Windows ACL ownership to the
+secret provider.
+
+#### Scenario: A Forge signs release assets
+
+- **WHEN** GitHub or GitLab assembles one release asset set
+- **THEN** the protected environment supplies an existing private-key path
+- **AND** repository code preserves a complete key's path and security metadata
+- **AND** OpenSSH signs and independently verifies the checksum inventory.
+
+#### Scenario: The signing input is unsafe
+
+- **WHEN** the path is absent, a symbolic link, or the trust input is empty
+- **THEN** release assembly fails closed before publication.
 
 #### Scenario: The provider supplies a complete key
 
