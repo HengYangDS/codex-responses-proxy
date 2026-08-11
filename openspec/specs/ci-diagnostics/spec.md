@@ -534,3 +534,15 @@ A hosted native asset job SHALL write each accepted platform bundle to the exact
 - **THEN** the output directory is mounted into both the container and host action
 - **AND** the upload action reads that exact directory without path translation
 - **AND** GitLab and GitHub continue to build and publish independently
+
+### Requirement: Container and action paths share one mounted workspace
+
+The GitHub Linux release job SHALL write its output through the container's
+runtime `GITHUB_WORKSPACE` path. The upload action SHALL read the equivalent
+`${{ github.workspace }}` path.
+
+#### Scenario: Linux native asset crosses the container boundary
+
+- **WHEN** the tagged Linux job builds the native release asset
+- **THEN** the container writes below `$GITHUB_WORKSPACE/.release-assets`
+- **AND** the upload action reads `${{ github.workspace }}/.release-assets`
