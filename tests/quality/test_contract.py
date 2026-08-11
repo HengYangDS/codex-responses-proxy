@@ -144,6 +144,35 @@ class TestQualityPolicyContracts:
         ):
             assert path in inventoried
 
+    def test_publication_topology_has_only_declared_independent_peers(self) -> None:
+        publication = tomllib.loads((ROOT / ".ethos/release.toml").read_text(encoding="utf-8"))[
+            "publication"
+        ]
+
+        assert set(publication) == {
+            "local_verification_command",
+            "local_installation_command",
+            "peers",
+        }
+        assert publication["peers"] == [
+            {
+                "id": "gitlab",
+                "provider": "gitlab",
+                "role": "organization_collaboration",
+                "git_remote": "gitlab-release",
+                "capabilities": ["repository", "ci_cd", "publication"],
+                "ci_surface": ".gitlab-ci.yml",
+            },
+            {
+                "id": "github",
+                "provider": "github",
+                "role": "public_distribution",
+                "git_remote": "github",
+                "capabilities": ["repository", "ci_cd", "publication"],
+                "ci_surface": ".github/workflows/verify.yml",
+            },
+        ]
+
     def test_quality_policy_has_one_explicit_owner_per_concern(self) -> None:
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         tool = pyproject.get("tool", {})
