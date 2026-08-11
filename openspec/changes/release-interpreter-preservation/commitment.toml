@@ -1,0 +1,23 @@
+schema_version = 1
+id = "change:release-interpreter-preservation"
+intent = "Preserve the repository virtual-environment interpreter through hosted release validation and forward-fix version 2.0.25."
+subjects = [
+  "repository:self",
+]
+scope = [
+  "openspec/changes/release-interpreter-preservation/**",
+  "VERSION",
+  "CHANGELOG.md",
+  "tools/release/publish_github.py",
+  "tests/release/publication/test_github.py",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+  "repository.read",
+  "work-lane.write",
+]
+hypotheses = []
+dependencies = []
