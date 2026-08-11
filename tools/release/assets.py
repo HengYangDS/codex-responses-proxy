@@ -12,6 +12,7 @@ from cyclopts import App
 from tools.release import product_assets as assets
 
 ROOT = Path(__file__).resolve().parents[2]
+INSTALLER_PROVENANCE = frozenset({"direct_url.json", "uv_cache.json"})
 
 
 def _is_within(bundle: Path, member: Path) -> bool:
@@ -36,6 +37,8 @@ def _bundle_files(bundle: Path) -> tuple[tuple[Path, Path], ...]:
         except (OSError, ValueError) as error:
             raise SystemExit("native bundle symlink escapes the bundle") from error
         if resolved.is_file():
+            if logical.parent.name.endswith(".dist-info") and logical.name in INSTALLER_PROVENANCE:
+                return
             files.append((logical, resolved))
             return
         if not resolved.is_dir():

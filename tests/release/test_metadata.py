@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 from datetime import date
 from pathlib import Path
 from types import ModuleType
@@ -489,9 +490,33 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
     require("PYTHON_VERSION" not in ci, "GitLab duplicated the Python matrix")
     for patch_pin in ("3.12.", "3.13.", "3.14."):
         require(
-            patch_pin not in ci,
-            f"GitLab CI must select supported Python lines, not patch releases: {patch_pin}",
+            patch_pin not in block,
+            f"GitLab test matrix must select supported Python lines, not patches: {patch_pin}",
         )
+
+
+def test_linux_release_builders_share_the_repository_runtime() -> None:
+    """Require both independent Forges to project one immutable Linux runtime."""
+
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    image = metadata["tool"]["codex-responses-proxy"]["linux-release-image"]
+    require("@sha256:" in image, "Linux release runtime must be immutable")
+
+    gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
+    require(image in gitlab, "GitLab must project the release runtime SSOT")
+    require(
+        "linux-release-image: ${{ steps.versions.outputs.linux-release-image }}" in github,
+        "GitHub must project the release runtime SSOT",
+    )
+    require(
+        "container: ${{ needs.python-matrix.outputs.linux-release-image }}" in github,
+        "GitHub Linux native build must execute in the repository runtime",
+    )
+    require(
+        "name: $LINUX_RELEASE_IMAGE" in gitlab,
+        "GitLab Linux native build must execute in the repository runtime",
+    )
 
 
 def test_python_quality_gate_is_cross_forge() -> None:
