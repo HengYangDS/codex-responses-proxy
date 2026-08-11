@@ -269,7 +269,7 @@ compare-and-swap authority bound to the complete accumulated lane delta.
 Release signing MUST use a complete caller-provided private-key file without
 copying it. It MAY create one process-scoped private copy only to restore a
 missing terminal newline on POSIX, and MUST leave Windows ACL ownership to the
-secret provider.
+secret provider. Tests MUST model these platform contracts independently.
 
 #### Scenario: A Forge signs release assets
 
@@ -293,13 +293,15 @@ secret provider.
 
 - **WHEN** a valid POSIX private-key file lacks its terminal newline
 - **THEN** signing uses one process-scoped `0600` normalized copy
-- **AND** removes the copy after signing.
+- **AND** removes the copy after signing
+- **AND** the success integration test runs only on POSIX.
 
 #### Scenario: Windows input is incomplete
 
 - **WHEN** a Windows private-key file lacks its terminal newline
 - **THEN** the signer does not copy or rewrite the file
-- **AND** OpenSSH rejects invalid input through the concise signing diagnostic.
+- **AND** OpenSSH rejects invalid input through the concise signing diagnostic
+- **AND** the Windows regression proves fail-closed behavior rather than POSIX repair.
 
 ### Requirement: Native bundle containment uses filesystem identity
 
