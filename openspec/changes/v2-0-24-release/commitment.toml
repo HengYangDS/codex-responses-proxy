@@ -1,6 +1,6 @@
 schema_version = 1
 id = "change:v2-0-24-release"
-intent = "Publish version 2.0.24 from accepted source after terminal native handoff reliability and independent Forge publication passed local acceptance."
+intent = "Prepare one proven version 2.0.24 accepted source tree for subsequent independent Forge publication and runtime acceptance."
 subjects = ["repository:self"]
 scope = [
   "CHANGELOG.md",
@@ -18,9 +18,8 @@ invariants = [
 acceptance = [
   "version_readme_and_changelog_agree_on_2_0_24",
   "complete_release_gates_pass_at_the_release_commit",
-  "each_forge_publishes_its_own_signed_tag_release_and_identical_assets",
-  "trusted_asset_install_and_three_provider_runtime_acceptance_pass",
-  "original_codex_session_continues_without_session_state_mutation",
+  "exact_head_full_proof_passes_before_candidate_landing",
+  "external_publication_installation_and_runtime_claims_remain_unasserted_until_fresh_post_landing_evidence_exists",
 ]
 risks = [
   "hosted_windows_signing_or_publication_can_fail_after_local_proof",

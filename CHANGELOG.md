@@ -7,6 +7,15 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.24] - 2026-08-11
+
+### Changed
+
+- Publish the accepted terminal reliability contract as an independent,
+  provider-native release on GitLab and GitHub.
+- Keep release identity, installation, and runtime acceptance bound to one
+  verified source tree while preserving the failed v2.0.23 records.
+
 ## [2.0.23] - 2026-08-11
 
 ### Fixed
