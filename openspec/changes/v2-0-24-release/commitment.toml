@@ -1,0 +1,37 @@
+schema_version = 1
+id = "change:v2-0-24-release"
+intent = "Publish version 2.0.24 from accepted source after terminal native handoff reliability and independent Forge publication passed local acceptance."
+subjects = ["repository:self"]
+scope = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "openspec/changes/v2-0-24-release/**",
+  "openspec/changes/archive/*-v2-0-24-release/**",
+]
+invariants = [
+  "version_metadata_comes_from_one_accepted_source_tree",
+  "gitlab_and_github_publish_independently",
+  "failed_v2_0_23_tags_runs_and_assets_remain_immutable",
+  "runtime_acceptance_does_not_modify_codex_conversation_storage_or_jetbrains_state",
+]
+acceptance = [
+  "version_readme_and_changelog_agree_on_2_0_24",
+  "complete_release_gates_pass_at_the_release_commit",
+  "each_forge_publishes_its_own_signed_tag_release_and_identical_assets",
+  "trusted_asset_install_and_three_provider_runtime_acceptance_pass",
+  "original_codex_session_continues_without_session_state_mutation",
+]
+risks = [
+  "hosted_windows_signing_or_publication_can_fail_after_local_proof",
+  "runtime_cutover_can_interrupt_the_current_model_service",
+]
+authority_refs = ["VERSION", "CHANGELOG.md", "README.md", "AGENTS.md"]
+permissions = [
+  "repository.read",
+  "work-lane.write",
+  "local-proof.execute",
+  "git.ref.compare-and-swap",
+  "terminal-publication.execute",
+]
+dependencies = []
