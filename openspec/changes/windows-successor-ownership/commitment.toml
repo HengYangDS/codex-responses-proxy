@@ -1,0 +1,26 @@
+schema_version = 1
+id = "change:windows-successor-ownership"
+intent = "Make native successor ownership capture independent of Windows command-line executable projection and guarantee bounded cleanup of the exact observed generation."
+subjects = ["repository:self"]
+scope = [
+  "src/codex_responses_proxy/lifecycle/supervision/process.py",
+  "tests/lifecycle/supervision/test_process.py",
+  "tests/service/handoff/fixtures.py",
+  "tests/service/handoff/test_subprocess.py",
+  "openspec/changes/windows-successor-ownership/**",
+]
+invariants = [
+  "process_ownership_is_bound_to_exact_pid_generation",
+  "foreign_processes_are_never_signalled",
+  "windows_native_successors_are_terminated_before_payload_cleanup",
+]
+acceptance = [
+  "windows_native_handoff_successor_is_observed_and_cleaned",
+  "full_cross_platform_quality_and_release_gates_pass",
+  "exact_head_full_proof_passes",
+]
+risks = ["pid_reuse", "argv_projection_drift", "native_payload_lock"]
+authority_refs = ["AGENTS.md", "openspec/specs/ci-diagnostics/spec.md"]
+permissions = ["repository.read", "work-lane.write", "local-proof.execute"]
+hypotheses = ["pid_and_creation_time_are_the_portable_process_generation_identity_after_the_successor_pid_is_proven_by_protocol_health"]
+dependencies = []
