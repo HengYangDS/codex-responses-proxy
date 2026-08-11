@@ -50,6 +50,7 @@ evidence_class = "proof"
 trust_bearing = true
 tool_adapter = "repository-native"
 network_policy = "offline"
+writes_files = true
 
 [[proof.gates]]
 id = "python-matrix"
@@ -71,3 +72,4 @@ evidence_class = "proof"
 trust_bearing = true
 tool_adapter = "repository-native"
 network_policy = "offline"
+writes_files = true
