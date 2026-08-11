@@ -1252,7 +1252,7 @@ class TestVerificationContracts:
         assert "python-version-file: .python-versions" in release
         assert gitlab.count("image: $PYTHON_LATEST_IMAGE") == 4
         assert "image: $PYTHON_FLOOR_IMAGE" in gitlab
-        assert "name: $PYTHON_LATEST_IMAGE" in gitlab
+        assert "name: $LINUX_RELEASE_IMAGE" in gitlab
 
     def test_release_black_box_path_is_repeatable(self) -> None:
         """Release verification must tolerate repeated commands in one Nox session."""
@@ -1274,6 +1274,30 @@ class TestVerificationContracts:
         exist_ok = keywords.get("exist_ok")
         assert isinstance(exist_ok, ast.Constant)
         assert exist_ok.value is True
+
+    def test_linux_release_runtime_uses_the_session_interpreter(
+        self, mocker: MockerFixture
+    ) -> None:
+        """Compare the release session interpreter, not the Nox launcher."""
+
+        module = _load("codex_responses_proxy_noxfile", "noxfile.py")
+        session = mocker.Mock()
+        session.run.return_value = "3.14.7\n"
+        mocker.patch.object(module.platform, "system", return_value="Linux")
+
+        module._assert_release_runtime(session)
+
+        session.run.assert_called_once_with(
+            "python",
+            "-c",
+            "import platform; print(platform.python_version())",
+            env=module._environment(),
+            silent=True,
+        )
+        session.run.return_value = "3.14.6\n"
+        with pytest.raises(RuntimeError):
+            session.error.side_effect = RuntimeError
+            module._assert_release_runtime(session)
 
     def test_forge_quality_jobs_use_the_locked_runner(self) -> None:
         github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")

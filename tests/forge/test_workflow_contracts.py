@@ -1,6 +1,7 @@
 """Portable contracts for GitHub verification and release workflows."""
 
 import importlib
+import tomllib
 from pathlib import Path
 
 
@@ -10,14 +11,54 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> None:
     module = importlib.import_module("tools.quality.python_matrix")
     versions = tmp_path / ".python-versions"
+    metadata = tmp_path / "pyproject.toml"
     output = tmp_path / "github-output"
     versions.write_text("3.12\n3.13\n3.14\n", encoding="ascii")
+    metadata.write_text(
+        '[tool.codex-responses-proxy]\nlinux-release-image = "python:3.14.7-bookworm@sha256:'
+        + "a" * 64
+        + '"\n',
+        encoding="ascii",
+    )
 
-    module.write(versions=versions, output=output)
+    module.write(versions=versions, metadata=metadata, output=output)
 
     assert output.read_text(encoding="utf-8") == (
         'value=["3.12", "3.13", "3.14"]\nfloor=3.12\nlatest=3.14\n'
+        f"linux-release-image=python:3.14.7-bookworm@sha256:{'a' * 64}\n"
     )
+
+
+def test_linux_native_workflows_use_the_same_container_runtime() -> None:
+    """Keep the common native asset independent of Forge host toolchains."""
+
+    github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
+    gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+
+    assert "container: ${{ needs.python-matrix.outputs.linux-release-image }}" in github
+    assert "name: $LINUX_RELEASE_IMAGE" in gitlab
+    image = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
+        "codex-responses-proxy"
+    ]["linux-release-image"]
+    assert image in gitlab
+    assert "linux-release-image: ${{ steps.versions.outputs.linux-release-image }}" in github
+    release_environment = (
+        "uv sync --locked --only-group quality --python python --no-python-downloads"
+    )
+    release_command = (
+        "uv run --locked --no-sync --python python --no-python-downloads nox -s release"
+    )
+    materialize_source = "git archive --format=tar HEAD | tar -xf - -C /workspace"
+    github_linux = github.split("\n  native-linux:", 1)[1].split("\n  release-assets:", 1)[0]
+    gitlab_linux = gitlab.split("\nbuild-gitlab-native-asset:", 1)[1].split(
+        "\npublish-gitlab-release:", 1
+    )[0]
+    for job in (github_linux, gitlab_linux):
+        assert materialize_source in job
+        assert "cd /workspace" in job
+        assert release_environment in job
+        assert release_command in job
+        assert "apt-get" not in job
 
 
 def test_github_verification_workflow_contract() -> None:
@@ -55,15 +96,17 @@ def test_github_verification_workflow_contract() -> None:
         "tests/release/test_publish_gitlab.py",
         "native-assets:",
         "name: Native asset (${{ matrix.platform }})",
-        "platform: linux-x86_64",
         "platform: macos-arm64",
         "platform: windows-x86_64",
+        "native-linux:",
+        "name: Native asset (linux-x86_64)",
+        "container: ${{ needs.python-matrix.outputs.linux-release-image }}",
         'uv run --locked --no-sync nox -s release -- "${{ runner.temp }}/native-assets"',
         "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
         "# v7.0.1",
         "release-assets:",
         "name: Release assets",
-        "needs: [python-matrix, native-assets]",
+        "needs: [python-matrix, native-assets, native-linux]",
         "python-version: ${{ needs.python-matrix.outputs.latest }}",
         "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
         "# v8.0.1",
@@ -132,7 +175,7 @@ def test_github_verification_workflow_contract() -> None:
             raise AssertionError(f"Windows Python matrix must contain {token!r}")
     if text.count("actions/setup-python@") != 6:
         raise AssertionError(
-            "every Python-bearing verification or asset job must use pinned setup-python"
+            "host-native Python jobs must use pinned setup-python; Linux release uses its container"
         )
     if windows_block.count("actions/setup-python@") != 1:
         raise AssertionError("Windows verification must use exactly one pinned setup-python action")
