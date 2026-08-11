@@ -190,6 +190,21 @@ class TestTermination:
         candidate.terminate.assert_called_once_with()
         candidate.wait.assert_called_once_with(timeout=1.0)
 
+    def test_protocol_proven_pid_capture_does_not_depend_on_native_argv(self, *, mocker):
+        candidate = mocker.Mock()
+        candidate.create_time.return_value = 42.0
+        candidate.cmdline.side_effect = process.psutil.AccessDenied(123)
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        owned = process.capture_generation(123, "/installed/codex-responses-proxy")
+
+        assert owned is not None
+        assert astuple(owned) == (
+            123,
+            os.path.normcase(os.path.realpath("/installed/codex-responses-proxy")),
+            42.0,
+        )
+
     def test_captured_native_identity_failure_edges_are_portable(self, *, mocker):
         denied = mocker.Mock()
         denied.cmdline.return_value = ["/foreign/proxy", "--internal-handoff-child"]
