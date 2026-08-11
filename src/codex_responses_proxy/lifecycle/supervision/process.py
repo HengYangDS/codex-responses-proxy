@@ -63,7 +63,11 @@ def owned_process_alive(owned: OwnedProcess) -> bool:
 
     try:
         candidate = psutil.Process(owned.pid)
-        return candidate.create_time() == owned.created_at and candidate.is_running()
+        return (
+            candidate.create_time() == owned.created_at
+            and candidate.status() != psutil.STATUS_ZOMBIE
+            and candidate.is_running()
+        )
     except (OSError, psutil.Error):
         return False
 
@@ -75,10 +79,22 @@ def terminate_owned_process(owned: OwnedProcess, *, timeout_seconds: float = 5.0
         candidate = psutil.Process(owned.pid)
         if candidate.create_time() != owned.created_at:
             return False
+        if candidate.status() == psutil.STATUS_ZOMBIE:
+            return True
         candidate.terminate()
         candidate.wait(timeout=timeout_seconds)
     except psutil.NoSuchProcess:
         return True
+    except psutil.TimeoutExpired:
+        try:
+            return (
+                candidate.create_time() == owned.created_at
+                and candidate.status() == psutil.STATUS_ZOMBIE
+            )
+        except psutil.NoSuchProcess:
+            return True
+        except (OSError, psutil.Error):
+            return False
     except (OSError, psutil.Error):
         return False
     return True

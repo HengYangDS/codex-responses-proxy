@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.28] - 2026-08-11
+
+### Fixed
+
+- Treat an exact-generation Linux zombie retained by a non-reaping container
+  parent as exited after handoff teardown, while preserving PID-reuse and
+  inaccessible-process safeguards.
+
 ## [2.0.27] - 2026-08-11
 
 ### Fixed

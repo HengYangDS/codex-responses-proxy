@@ -10,16 +10,37 @@ scope = [
   "tests/lifecycle/supervision/test_process.py",
   "tests/service/handoff/test_subprocess.py",
   "openspec/specs/process-ownership/spec.md",
+  "README.md",
   "CHANGELOG.md",
   "VERSION",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+  "exact_pid_generation_identity_remains_fail_closed",
+  "zombie_tombstones_are_not_executable_processes",
+  "native_handoff_teardown_remains_strict",
+]
+acceptance = [
+  "focused_tests_fail_before_and_pass_after_the_fix",
+  "the_linux_release_image_reproduces_and_accepts_the_zombie_tombstone",
+  "quality_matrix_release_and_exact_head_proof_pass",
+]
+risks = [
+  "misclassifying_an_inaccessible_running_process_as_exited",
+  "weakening_pid_reuse_protection",
+]
+authority_refs = [
+  "src/codex_responses_proxy/lifecycle/supervision/process.py",
+  "tests/lifecycle/supervision/test_process.py",
+  "openspec/specs/process-ownership/spec.md",
+  "README.md",
+]
 permissions = [
   "repository.read",
   "work-lane.write",
+  "local-proof.execute",
+  "terminal-publication.execute",
 ]
-hypotheses = []
+hypotheses = [
+  "the_linux_failure_is_an_exited_zombie_retained_by_a_non_reaping_pid_1",
+]
 dependencies = []
