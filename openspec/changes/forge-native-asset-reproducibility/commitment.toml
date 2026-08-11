@@ -6,22 +6,48 @@ subjects = [
 ]
 scope = [
   "openspec/changes/forge-native-asset-reproducibility/**",
+  "pyproject.toml",
+  "uv.lock",
   "noxfile.py",
   ".github/workflows/**",
   ".gitlab-ci.yml",
   "tests/release/**",
+  "tests/quality/test_contract.py",
+  "tests/forge/test_workflow_contracts.py",
+  "tools/quality/python_matrix.py",
   "tools/release/**",
   "openspec/specs/ci-diagnostics/spec.md",
   "VERSION",
   "CHANGELOG.md",
+  "README.md",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+  "each_forge_builds_without_consuming_another_forge_asset",
+  "one_repository_ssot_selects_the_exact_native_release_runtime",
+  "build_paths_timestamps_and_runner_private_metadata_do_not_enter_release_payloads",
+]
+acceptance = [
+  "independent_linux_builds_from_distinct_checkout_paths_are_byte_identical",
+  "the_native_bundle_contains_no_checkout_path_or_installer_cache_metadata",
+  "gitlab_and_github_select_the_same_immutable_linux_release_runtime",
+  "v2_0_25_history_remains_immutable_and_the_forward_fix_is_v2_0_26",
+]
+risks = [
+  "hosted_runner_container_support_can_differ_between_forges",
+  "native_toolchains_can_embed undiscovered_nondeterminism",
+]
+authority_refs = [
+  "pyproject.toml",
+  "noxfile.py",
+  ".github/workflows/verify.yml",
+  ".gitlab-ci.yml",
+]
 permissions = [
   "repository.read",
   "work-lane.write",
 ]
-hypotheses = []
+hypotheses = [
+  "an_identical_linux_container_image_and_locked_python_environment_remove_toolchain_variance",
+  "removing_installer_provenance_closes_checkout_path_and_timestamp_variance",
+]
 dependencies = []

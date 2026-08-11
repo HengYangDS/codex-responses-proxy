@@ -28,6 +28,7 @@ jobs:
       versions: ${{ steps.versions.outputs.value }}
       floor: ${{ steps.versions.outputs.floor }}
       latest: ${{ steps.versions.outputs.latest }}
+      linux-release-image: ${{ steps.versions.outputs.linux-release-image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -136,8 +137,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: linux-x86_64
-            runner: ubuntu-24.04
           - platform: macos-arm64
             runner: macos-26
           - platform: windows-x86_64
@@ -162,10 +161,36 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  native-linux:
+    name: Native asset (linux-x86_64)
+    if: github.ref_type == 'tag'
+    needs: python-matrix
+    runs-on: ubuntu-24.04
+    container: ${{ needs.python-matrix.outputs.linux-release-image }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Materialize the canonical release source root
+        run: install -d /workspace && git archive --format=tar HEAD | tar -xf - -C /workspace
+      - name: Install the locked release tool environment
+        run: cd /workspace && uv sync --locked --only-group quality --python python --no-python-downloads
+      - name: Build and accept the native release asset
+        run: cd /workspace && uv run --locked --no-sync --python python --no-python-downloads nox -s release -- "${{ runner.temp }}/native-assets"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-linux-x86_64
+          path: ${{ runner.temp }}/native-assets
+          if-no-files-found: error
+          retention-days: 7
+
   release-assets:
     name: Release assets
     if: github.ref_type == 'tag'
-    needs: [python-matrix, native-assets]
+    needs: [python-matrix, native-assets, native-linux]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

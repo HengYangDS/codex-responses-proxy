@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling==1.31.0"]
+requires = ["hatchling==1.32.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -20,12 +20,13 @@ codex-responses-proxy = "codex_responses_proxy.cli.application:main"
 
 [tool.codex-responses-proxy]
 distribution = "native-executable"
+linux-release-image = "python:3.14.7-bookworm@sha256:8771427e2ac3e39208c1632f17e8b09e464333d262844a03705cc5e0023c16e2"
 
 [dependency-groups]
 quality = [
     "coverage==7.15.4",
-    "hatchling==1.31.0",
-    "nox==2026.7.11",
+    "hatchling==1.32.0",
+    "nox==2026.8.10",
     "pyinstaller==6.22.0",
     "pytest==9.1.1",
     "pytest-mock==3.15.1",

@@ -20,6 +20,48 @@ ROOT = Path(__file__).resolve().parents[2]
 class ReleaseAssetContracts:
     """Keep published bytes portable, reproducible, and exactly enumerable."""
 
+    def test_bundle_rejects_installer_provenance(self, tmp_path: Path) -> None:
+        """Exclude checkout paths and installer timestamps from release payloads."""
+
+        bundle = tmp_path / "codex-responses-proxy"
+        metadata = bundle / "_internal" / "codex_responses_proxy-2.0.25.dist-info"
+        metadata.mkdir(parents=True)
+        (bundle / "codex-responses-proxy").write_bytes(b"native")
+        (metadata / "direct_url.json").write_text(
+            '{"url":"file:///private/build/checkout/product.whl"}', encoding="utf-8"
+        )
+        (metadata / "uv_cache.json").write_text(
+            '{"timestamp":{"secs_since_epoch":1}}', encoding="utf-8"
+        )
+
+        files = dict(asset_command._bundle_files(bundle))
+
+        assert not any(path.name in {"direct_url.json", "uv_cache.json"} for path in files)
+
+    def test_distinct_checkout_roots_produce_identical_archives(self, tmp_path: Path) -> None:
+        """Prove checkout-local installer provenance cannot perturb release bytes."""
+
+        archives = []
+        for index, checkout in enumerate(("gitlab-build", "github-runner")):
+            bundle = tmp_path / checkout / "codex-responses-proxy"
+            metadata = bundle / "_internal" / "codex_responses_proxy-2.0.26.dist-info"
+            metadata.mkdir(parents=True)
+            (bundle / "codex-responses-proxy").write_bytes(b"native")
+            (metadata / "METADATA").write_bytes(b"Name: codex-responses-proxy\n")
+            (metadata / "direct_url.json").write_text(
+                f'{{"url":"file://{bundle}/wheelhouse/product.whl"}}', encoding="utf-8"
+            )
+            (metadata / "uv_cache.json").write_text(
+                f'{{"timestamp":{{"secs_since_epoch":{index + 1}}}}}', encoding="utf-8"
+            )
+            files = {
+                path.as_posix(): source.read_bytes()
+                for path, source in asset_command._bundle_files(bundle)
+            }
+            archives.append(assets.archive_bytes(files, "2.0.26", "linux-x86_64"))
+
+        assert archives[0] == archives[1]
+
     def test_platform_archive_is_reproducible_and_manifest_bound(self) -> None:
         files = {
             "bin/codex-responses-proxy": assets.ArchiveFile(b"native-executable", 0o755),
