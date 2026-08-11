@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -38,7 +39,8 @@ def test_sign_and_verify_preserves_complete_provider_key_path(tmp_path: Path, mo
     assert temporary.call_count == 1  # Verification trust anchor only.
 
 
-def test_sign_and_verify_accepts_file_variable_key_without_final_newline(
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file-variable newline repair")
+def test_sign_and_verify_accepts_posix_file_variable_key_without_final_newline(
     tmp_path: Path,
 ) -> None:
     key, assets = tmp_path / "signing", tmp_path / "assets"
