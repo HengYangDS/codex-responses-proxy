@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import os
 import platform
 import re
@@ -174,6 +175,7 @@ def release(session: nox.Session) -> None:
     work = Path(session.create_tmp()).resolve()
     wheel = _build_wheel(session, work)
     _install_wheel(session, wheel)
+    _normalize_installed_distribution(_session_packages(session))
     _assert_installed_product(session, work)
     bundle, executable = _build_executable(session, work)
     environment = {
@@ -263,6 +265,50 @@ def _install_wheel(session: nox.Session, wheel: Path) -> None:
         env={"PYTHONNOUSERSITE": "1", "UV_NO_PROGRESS": "1"},
         external=True,
     )
+
+
+def _session_packages(session: nox.Session) -> Path:
+    """Return this session interpreter's installed package directory."""
+
+    packages = session.run(
+        "python",
+        "-c",
+        "import sysconfig; print(sysconfig.get_path('purelib'))",
+        silent=True,
+        env=_environment(),
+    )
+    if not isinstance(packages, str):
+        session.error("release session package directory is unavailable")
+    return Path(packages.strip()).resolve(strict=True)
+
+
+def _normalize_installed_distribution(packages: Path) -> None:
+    """Remove installer-local product metadata before executable freezing."""
+
+    metadata = tuple(packages.glob("codex_responses_proxy-*.dist-info"))
+    if len(metadata) != 1 or not metadata[0].is_dir() or metadata[0].is_symlink():
+        raise RuntimeError("installed product distribution metadata is ambiguous")
+    record = metadata[0] / "RECORD"
+    if not record.is_file() or record.is_symlink():
+        raise RuntimeError("installed product distribution inventory is unavailable")
+    relative_metadata = metadata[0].relative_to(packages).as_posix()
+    provenance = {
+        f"{relative_metadata}/direct_url.json",
+        f"{relative_metadata}/uv_cache.json",
+    }
+    with record.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.reader(stream))
+    names = {row[0] for row in rows if len(row) == 3}
+    if any(len(row) != 3 for row in rows) or not provenance <= names:
+        raise RuntimeError("installed product distribution inventory is malformed")
+    for name in provenance:
+        path = packages.joinpath(*Path(name).parts)
+        if not path.is_file() or path.is_symlink():
+            raise RuntimeError("installed product provenance metadata is unavailable")
+        path.unlink()
+    with record.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream, lineterminator="\n")
+        writer.writerows(row for row in rows if row[0] not in provenance)
 
 
 def _session_python(session: nox.Session) -> str:

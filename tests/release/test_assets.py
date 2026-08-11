@@ -17,6 +17,35 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _installed_distribution(root: Path, provenance: str) -> Path:
+    """Create one installed product distribution with local installer metadata."""
+
+    metadata = root / "codex_responses_proxy-2.0.30.dist-info"
+    package = root / "codex_responses_proxy"
+    metadata.mkdir(parents=True)
+    package.mkdir()
+    (package / "__init__.py").write_text('__version__ = "2.0.30"\n', encoding="utf-8")
+    (metadata / "METADATA").write_text(
+        "Metadata-Version: 2.4\nName: codex-responses-proxy\nVersion: 2.0.30\n",
+        encoding="utf-8",
+    )
+    (metadata / "direct_url.json").write_text(
+        json.dumps({"url": f"file://{provenance}/product.whl"}), encoding="utf-8"
+    )
+    (metadata / "uv_cache.json").write_text(
+        json.dumps({"timestamp": {"secs_since_epoch": len(provenance)}}), encoding="utf-8"
+    )
+    rows = [
+        "codex_responses_proxy/__init__.py,,",
+        "codex_responses_proxy-2.0.30.dist-info/METADATA,,",
+        "codex_responses_proxy-2.0.30.dist-info/direct_url.json,,",
+        "codex_responses_proxy-2.0.30.dist-info/uv_cache.json,,",
+        "codex_responses_proxy-2.0.30.dist-info/RECORD,,",
+    ]
+    (metadata / "RECORD").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return root
+
+
 class ReleaseAssetContracts:
     """Keep published bytes portable, reproducible, and exactly enumerable."""
 
@@ -61,6 +90,28 @@ class ReleaseAssetContracts:
             archives.append(assets.archive_bytes(files, "2.0.26", "linux-x86_64"))
 
         assert archives[0] == archives[1]
+
+    def test_native_freeze_input_discards_installer_provenance(self, tmp_path: Path) -> None:
+        """Normalize metadata before it can alter the frozen executable."""
+
+        module = __import__("noxfile")
+        first = _installed_distribution(tmp_path / "github", "/workspace/github")
+        second = _installed_distribution(tmp_path / "gitlab", "/builds/gitlab")
+
+        module._normalize_installed_distribution(first)
+        module._normalize_installed_distribution(second)
+
+        def snapshot(root: Path) -> dict[str, bytes]:
+            return {
+                path.relative_to(root).as_posix(): path.read_bytes()
+                for path in sorted(root.rglob("*"))
+                if path.is_file()
+            }
+
+        assert snapshot(first) == snapshot(second)
+        assert not any(
+            path.name in {"direct_url.json", "uv_cache.json"} for path in first.rglob("*")
+        )
 
     def test_platform_archive_is_reproducible_and_manifest_bound(self) -> None:
         files = {
