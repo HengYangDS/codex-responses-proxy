@@ -163,6 +163,80 @@ class TestProcessIdentity:
 
 
 class TestTermination:
+    def test_captured_native_identity_survives_later_argv_denial(self, *, mocker):
+        candidate = mocker.Mock()
+        candidate.pid = 123
+        candidate.create_time.return_value = 42.0
+        candidate.cmdline.side_effect = [
+            ["/installed/codex-responses-proxy", "--internal-handoff-child"],
+            process.psutil.AccessDenied(123),
+        ]
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        owned = process.capture_executable(
+            123,
+            "/installed/codex-responses-proxy",
+            roles={"--internal-handoff-child"},
+        )
+
+        assert owned == process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+        assert process.terminate_owned_process(owned, timeout_seconds=1.0)
+        candidate.terminate.assert_called_once_with()
+        candidate.wait.assert_called_once_with(timeout=1.0)
+
+    def test_captured_native_identity_rejects_pid_reuse(self, *, mocker):
+        candidate = mocker.Mock()
+        candidate.create_time.return_value = 43.0
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+        owned = process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+
+        assert not process.terminate_owned_process(owned, timeout_seconds=1.0)
+        candidate.terminate.assert_not_called()
+
+    def test_captured_native_identity_observation_is_fail_closed(self, subtests, *, mocker):
+        owned = process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+        for case, failure in (
+            ("capture", process.psutil.AccessDenied(123)),
+            ("alive", process.psutil.NoSuchProcess(123)),
+            ("terminate", process.psutil.TimeoutExpired(123, 1)),
+        ):
+            with subtests.test(case=case):
+                candidate = mocker.Mock()
+                candidate.cmdline.return_value = [
+                    "/installed/codex-responses-proxy",
+                    "--internal-handoff-child",
+                ]
+                candidate.create_time.return_value = 42.0
+                if case == "terminate":
+                    candidate.wait.side_effect = failure
+                constructor = (
+                    mocker.patch.object(process.psutil, "Process", return_value=candidate)
+                    if case == "terminate"
+                    else mocker.patch.object(process.psutil, "Process", side_effect=failure)
+                )
+
+                if case == "capture":
+                    assert (
+                        process.capture_executable(123, "/installed/codex-responses-proxy") is None
+                    )
+                elif case == "alive":
+                    assert not process.owned_process_alive(owned)
+                else:
+                    assert not process.terminate_owned_process(owned, timeout_seconds=1.0)
+                    candidate.terminate.assert_called_once_with()
+                constructor.assert_called_once_with(123)
+                mocker.stopall()
+
+    def test_captured_native_identity_reports_the_same_running_generation(self, *, mocker):
+        candidate = mocker.Mock()
+        candidate.create_time.return_value = 42.0
+        candidate.is_running.return_value = True
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        assert process.owned_process_alive(
+            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+        )
+
     def test_script_termination_rechecks_identity_and_waits(self, *, mocker):
         mocker.patch.object(process, "pid_names_path", side_effect=[True, True])
         candidate = mocker.Mock()
