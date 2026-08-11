@@ -8,4 +8,4 @@
 
 - [x] 2.1 Prepare v2.0.25 metadata.
 - [x] 2.2 Prove, archive, and land the change.
-- [ ] 2.3 Publish and verify both independent Forge releases.
+- [x] 2.3 Publish and verify both independent Forge releases.
