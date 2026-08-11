@@ -7,6 +7,7 @@ scope = [
   "tests/forge/test_workflow_contracts.py",
   "openspec/changes/linux-asset-upload-path/**",
   "CHANGELOG.md",
+  "README.md",
   "VERSION",
 ]
 invariants = [
