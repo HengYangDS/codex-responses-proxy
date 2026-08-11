@@ -11,8 +11,6 @@ from typing import cast
 
 import nox
 
-from tools.release import assets as release_assets
-
 ROOT = Path(__file__).parent.resolve()
 PYTHONS = tuple((ROOT / ".python-versions").read_text(encoding="utf-8").splitlines())
 MIN_PYTHON, *_, MAX_PYTHON = PYTHONS
@@ -176,7 +174,15 @@ def release(session: nox.Session) -> None:
     work = Path(session.create_tmp()).resolve()
     wheel = _build_wheel(session, work)
     _install_wheel(session, wheel)
-    release_assets.normalize_installed_distribution(_session_packages(session))
+    session.run(
+        "python",
+        "-m",
+        "tools.release.assets",
+        "normalize",
+        "--packages",
+        str(_session_packages(session)),
+        env=_environment(),
+    )
     _assert_installed_product(session, work)
     bundle, executable = _build_executable(session, work)
     environment = {
