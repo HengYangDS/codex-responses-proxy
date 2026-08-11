@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import platform
+import re
+import tomllib
 from pathlib import Path
 from typing import cast
 
@@ -168,6 +170,7 @@ def release(session: nox.Session) -> None:
     """Build and black-box test this platform's self-contained executable."""
 
     _install_tools(session)
+    _assert_release_runtime(session)
     work = Path(session.create_tmp()).resolve()
     wheel = _build_wheel(session, work)
     _install_wheel(session, wheel)
@@ -335,6 +338,25 @@ def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
     return bundle, executable
 
 
+def _assert_release_runtime(session: nox.Session) -> None:
+    """Reject Linux native builds outside the repository-declared runtime."""
+
+    if platform.system() != "Linux":
+        return
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    image = metadata["tool"]["codex-responses-proxy"]["linux-release-image"]
+    match = re.search(r"python:(\d+\.\d+\.\d+)-", image)
+    version = session.run(
+        "python",
+        "-c",
+        "import platform; print(platform.python_version())",
+        env=_environment(),
+        silent=True,
+    )
+    if match is None or not isinstance(version, str) or version.strip() != match.group(1):
+        session.error("Linux release interpreter differs from the immutable release runtime")
+
+
 def _package_release_asset(session: nox.Session, bundle: Path, work: Path) -> None:
     """Export one manifest-bound native asset set after black-box acceptance."""
 
@@ -393,9 +415,11 @@ def _environment() -> dict[str, str]:
     """Return the deterministic environment shared by every session."""
 
     return {
+        "PYTHONHASHSEED": "0",
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
         "PYTHONWARNINGS": "error",
+        "SOURCE_DATE_EPOCH": "315532800",
         "UV_LINK_MODE": "copy",
         **(
             {

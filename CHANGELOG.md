@@ -7,6 +7,15 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.26] - 2026-08-11
+
+### Fixed
+
+- Build the common Linux asset in one immutable runtime on both independent Forges.
+- Materialize the release commit at the same canonical build root on both Forges.
+- Remove checkout paths and installer timestamps from native release payloads.
+- Refresh Hatchling and Nox to their latest stable releases.
+
 ## [2.0.25] - 2026-08-11
 
 ### Fixed
