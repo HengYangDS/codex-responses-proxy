@@ -3,7 +3,7 @@
 - [x] 1.1 Add regressions for complete provider-owned keys and incomplete Windows input.
 - [x] 1.2 Preserve original key identity unless POSIX newline repair is required.
 - [x] 2.1 Run focused release tests and the locked quick, quality, and Python matrix gates.
-- [ ] 2.2 Execute exact-HEAD ETHOS proof, archive the Change, and land the forward fix.
+- [x] 2.2 Execute exact-HEAD ETHOS proof, archive the Change, and land the forward fix.
 
 ## Requirement To Task To Proof
 
