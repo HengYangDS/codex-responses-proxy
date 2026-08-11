@@ -7,5 +7,5 @@
 ## 2. Forward release
 
 - [x] 2.1 Prepare v2.0.25 metadata.
-- [ ] 2.2 Prove, archive, and land the change.
+- [x] 2.2 Prove, archive, and land the change.
 - [ ] 2.3 Publish and verify both independent Forge releases.
