@@ -84,25 +84,33 @@ class TestRealSubprocessHandoffIntegration:
 
     def _installed_fixture(
         self, *, release: str, port: int, upstream_url: str
-    ) -> tuple[Path, runtime_context.RuntimeContext, set[int]]:
+    ) -> tuple[Path, runtime_context.RuntimeContext, dict[int, process.OwnedProcess]]:
         temporary = tempfile.TemporaryDirectory()
         root = Path(temporary.name)
         ctx = write_installed_payload(root, release=release, port=port, upstream_url=upstream_url)
-        owned_pids: set[int] = set()
+        owned_processes: dict[int, process.OwnedProcess] = {}
         self._cleanups.callback(
-            self._cleanup_installed_fixture, temporary, ctx.executable, owned_pids
+            self._cleanup_installed_fixture, temporary, ctx.executable, owned_processes
         )
-        return root, ctx, owned_pids
+        return root, ctx, owned_processes
 
     def _cleanup_installed_fixture(
-        self, temporary: tempfile.TemporaryDirectory, proxy_script: str, owned_pids: set[int]
+        self,
+        temporary: tempfile.TemporaryDirectory,
+        proxy_script: str,
+        owned_processes: dict[int, process.OwnedProcess],
     ) -> None:
         try:
-            discovered = set(process.pids_naming_executable(proxy_script))
-            for pid in owned_pids | discovered:
-                terminate_owned_proxy(pid, proxy_script)
-            remaining = set(process.pids_naming_executable(proxy_script)) | {
-                pid for pid in owned_pids if process.pid_names_executable(pid, proxy_script)
+            for pid in process.pids_naming_executable(proxy_script):
+                owned = process.capture_executable(pid, proxy_script)
+                if owned is not None:
+                    owned_processes[pid] = owned
+            for owned in owned_processes.values():
+                process.terminate_owned_process(owned)
+            remaining = {
+                owned.pid
+                for owned in owned_processes.values()
+                if process.owned_process_alive(owned)
             }
             assert not remaining, f"orphaned proxy children for {proxy_script}: {remaining}"
         finally:
@@ -127,28 +135,30 @@ class TestRealSubprocessHandoffIntegration:
 
         try:
             mocker.patch.object(process, "pids_naming_executable", side_effect=inventory)
+            captured = process.OwnedProcess(123, "/tmp/owned/proxy.py", 42.0)
             mocker.patch.object(
                 process,
-                "pid_names_executable",
-                side_effect=lambda *_args, **_kwargs: events.append("identity") or True,
+                "capture_executable",
+                side_effect=lambda *_args, **_kwargs: events.append("capture") or captured,
             )
             mocker.patch.object(
                 process,
-                "terminate_executable",
+                "terminate_owned_process",
                 side_effect=lambda *_args, **_kwargs: events.append("terminate") or True,
             )
+            mocker.patch.object(process, "owned_process_alive", return_value=False)
             mocker.patch.object(temporary, "cleanup", side_effect=lambda: events.append("cleanup"))
-            self._cleanup_installed_fixture(temporary, "/tmp/owned/proxy.py", set())
+            self._cleanup_installed_fixture(temporary, "/tmp/owned/proxy.py", {})
         finally:
             cleanup()
 
-        assert events == ["inventory", "identity", "terminate", "inventory", "cleanup"]
+        assert events == ["inventory", "capture", "terminate", "cleanup"]
 
     def test_fixture_cleanup_retries_a_transient_native_payload_lock(self, *, mocker) -> None:
         temporary = mocker.Mock()
         temporary.cleanup.side_effect = [PermissionError("mapped module"), None]
 
-        self._cleanup_installed_fixture(temporary, "/tmp/owned/proxy.py", set())
+        self._cleanup_installed_fixture(temporary, "/tmp/owned/proxy.py", {})
 
         assert temporary.cleanup.call_count == 2
 
@@ -156,14 +166,15 @@ class TestRealSubprocessHandoffIntegration:
         self, *, mocker
     ) -> None:
         temporary = mocker.Mock()
+        owned = process.OwnedProcess(123, "/tmp/owned/proxy.py", 42.0)
         mocker.patch.object(process, "pids_naming_executable", return_value=[])
-        owns = mocker.patch.object(process, "pid_names_executable", side_effect=[True, False])
-        terminate = mocker.patch.object(process, "terminate_executable", return_value=True)
+        terminate = mocker.patch.object(process, "terminate_owned_process", return_value=True)
+        alive = mocker.patch.object(process, "owned_process_alive", return_value=False)
 
-        self._cleanup_installed_fixture(temporary, "/tmp/owned/proxy.py", {123})
+        self._cleanup_installed_fixture(temporary, "/tmp/owned/proxy.py", {123: owned})
 
-        terminate.assert_called_once()
-        assert owns.call_count == 2
+        terminate.assert_called_once_with(owned)
+        alive.assert_called_once_with(owned)
         temporary.cleanup.assert_called_once_with()
 
     def test_owned_child_cleanup_is_bound_to_its_temporary_proxy_path(self, *, mocker) -> None:
@@ -201,7 +212,7 @@ class TestRealSubprocessHandoffIntegration:
         upstream.push((200, b'{"id":"ok","status":"completed"}'))
 
         port = free_port()
-        root, ctx, owned_pids = self._installed_fixture(
+        root, ctx, owned_processes = self._installed_fixture(
             release="1.0.25", port=port, upstream_url=upstream.base_url()
         )
         log_path = root / "proxy.log"
@@ -222,7 +233,11 @@ class TestRealSubprocessHandoffIntegration:
         assert status_code == 202
         assert ready.get("transaction_id") == expected["transaction_id"]
         child_pid, observe = child_pid_observer(
-            port, expected, exclude_pid=old_runtime_pid, owned_pids=owned_pids
+            port,
+            expected,
+            exclude_pid=old_runtime_pid,
+            owned_processes=owned_processes,
+            executable=ctx.executable,
         )
 
         assert wait_until(observe, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS), (
@@ -236,7 +251,7 @@ class TestRealSubprocessHandoffIntegration:
         upstream = ScriptedUpstream()
         self._cleanups.callback(upstream.close)
         port = free_port()
-        root, ctx, owned_pids = self._installed_fixture(
+        root, ctx, owned_processes = self._installed_fixture(
             release="1.0.25", port=port, upstream_url=upstream.base_url()
         )
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=root / "proxy.log")
@@ -249,7 +264,11 @@ class TestRealSubprocessHandoffIntegration:
         )
         assert status_code == 202
         child_one, observe_first = child_pid_observer(
-            port, first, exclude_pid=old.pid, owned_pids=owned_pids
+            port,
+            first,
+            exclude_pid=old.pid,
+            owned_processes=owned_processes,
+            executable=ctx.executable,
         )
 
         assert wait_until(observe_first, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS)
@@ -266,7 +285,11 @@ class TestRealSubprocessHandoffIntegration:
         )
         assert status_code == 202
         child_two, observe_second = child_pid_observer(
-            port, second, exclude_pid=child_one["value"], owned_pids=owned_pids
+            port,
+            second,
+            exclude_pid=child_one["value"],
+            owned_processes=owned_processes,
+            executable=ctx.executable,
         )
 
         assert wait_until(observe_second, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS)
@@ -300,7 +323,7 @@ class TestRealSubprocessHandoffIntegration:
         upstream.push(long_response)
 
         port = free_port()
-        root, ctx, owned_pids = self._installed_fixture(
+        root, ctx, owned_processes = self._installed_fixture(
             release="1.0.25", port=port, upstream_url=upstream.base_url()
         )
         log_path = root / "proxy.log"
@@ -327,7 +350,11 @@ class TestRealSubprocessHandoffIntegration:
         assert status_code == 202
 
         child_pid, observe = child_pid_observer(
-            port, expected, exclude_pid=old.pid, owned_pids=owned_pids
+            port,
+            expected,
+            exclude_pid=old.pid,
+            owned_processes=owned_processes,
+            executable=ctx.executable,
         )
 
         assert wait_until(observe, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS), (
@@ -367,7 +394,7 @@ class TestRealSubprocessHandoffIntegration:
         upstream.push(never_finishes)
 
         port = free_port()
-        root, ctx, owned_pids = self._installed_fixture(
+        root, ctx, owned_processes = self._installed_fixture(
             release="1.0.25", port=port, upstream_url=upstream.base_url()
         )
         log_path = root / "proxy.log"
@@ -394,7 +421,11 @@ class TestRealSubprocessHandoffIntegration:
         assert status_code == 202
 
         child_pid, observe = child_pid_observer(
-            port, expected, exclude_pid=old.pid, owned_pids=owned_pids
+            port,
+            expected,
+            exclude_pid=old.pid,
+            owned_processes=owned_processes,
+            executable=ctx.executable,
         )
 
         assert wait_until(observe, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS), (
@@ -419,7 +450,7 @@ class TestRealSubprocessHandoffIntegration:
         upstream = ScriptedUpstream()
         self._cleanups.callback(upstream.close)
         port = free_port()
-        root, ctx, owned_pids = self._installed_fixture(
+        root, ctx, owned_processes = self._installed_fixture(
             release="1.0.25", port=port, upstream_url=upstream.base_url()
         )
         old = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=root / "proxy.log")
@@ -438,7 +469,11 @@ class TestRealSubprocessHandoffIntegration:
             controller.shutdown(socket.SHUT_RDWR)
 
         child_pid, observe = child_pid_observer(
-            port, expected, exclude_pid=old.pid, owned_pids=owned_pids
+            port,
+            expected,
+            exclude_pid=old.pid,
+            owned_processes=owned_processes,
+            executable=ctx.executable,
         )
         assert wait_until(observe, timeout=PACKAGED_SUCCESSOR_TIMEOUT_SECONDS), (
             "listener-owned transaction did not survive controller disconnect"
