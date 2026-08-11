@@ -1,0 +1,21 @@
+schema_version = 1
+id = "change:publication-topology-peer-cutover"
+intent = "Replace retired Forge-specific publication scalars with one declared peer topology and prevent legacy fields from returning."
+subjects = [
+  "repository:self",
+]
+scope = [
+  "openspec/changes/publication-topology-peer-cutover/**",
+  ".ethos/release.toml",
+  "tests/quality/test_contract.py",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+  "repository.read",
+  "work-lane.write",
+]
+hypotheses = []
+dependencies = []
