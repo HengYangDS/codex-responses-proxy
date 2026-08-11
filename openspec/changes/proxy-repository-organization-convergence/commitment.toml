@@ -1,0 +1,19 @@
+schema_version = 1
+id = "change:proxy-repository-organization-convergence"
+intent = "Unify Proxy repository-level organization, release contract, and quality surfaces without changing its data-plane boundary."
+subjects = ["repository:codex-responses-proxy"]
+scope = ["VERSION", "CHANGELOG.md", "CONTRIBUTING.md", "README.md", "docs/**", ".config/**", ".ethos/**", "tools/**", "tests/**", "pyproject.toml", "noxfile.py", "openspec/**"]
+invariants = [
+  "version_remains_one_source_of_truth",
+  "repository_native_quality_and_release_contract",
+  "provider_independent_local_first_publication",
+  "semantic_layout_and_documentation_are_consistent",
+]
+acceptance = [
+  "release_contract_is_portable_and_machine_verified",
+  "dev_to_main_closeout_is_governed",
+  "cross_repository_contract_differences_are_justified",
+]
+authority_refs = ["user_instruction", "AGENTS.md", ".ethos/profile.toml"]
+permissions = ["repository.read", "work-lane.write", "git.ref.compare-and-swap"]
+dependencies = []
