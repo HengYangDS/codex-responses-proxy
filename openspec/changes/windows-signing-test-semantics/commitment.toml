@@ -8,13 +8,29 @@ scope = [
   "openspec/changes/windows-signing-test-semantics/**",
   "tests/release/test_signing.py",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+  "posix_newline_repair_remains_platform_scoped",
+  "windows_provider_owned_key_identity_remains_unchanged",
+  "production_signing_behavior_and_forge_boundaries_remain_unchanged",
+]
+acceptance = [
+  "the_posix_success_test_is_collected_only_on_posix",
+  "the_windows_fail_closed_regression_remains_platform_explicit",
+  "focused_quick_quality_python_matrix_release_and_exact_head_proof_pass",
+]
+risks = [
+  "a_cross_platform_test_can_accidentally_reintroduce_posix_semantics_on_windows",
+]
+authority_refs = [
+  "openspec/specs/ci-diagnostics/spec.md",
+  "tests/release/test_signing.py",
+]
 permissions = [
   "repository.read",
   "work-lane.write",
+  "local-proof.execute",
 ]
-hypotheses = []
+hypotheses = [
+  "platform_scoping_the_posix_integration_test_removes_the_windows_ci_contradiction_without_changing_production_code",
+]
 dependencies = []
