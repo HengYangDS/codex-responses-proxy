@@ -97,8 +97,8 @@ class ReleaseAssetContracts:
         first = _installed_distribution(tmp_path / "github", "/workspace/github")
         second = _installed_distribution(tmp_path / "gitlab", "/builds/gitlab")
 
-        asset_command.normalize_installed_distribution(first)
-        asset_command.normalize_installed_distribution(second)
+        asset_command.main(("normalize", "--packages", str(first)))
+        asset_command.main(("normalize", "--packages", str(second)))
 
         def snapshot(root: Path) -> dict[str, bytes]:
             return {
