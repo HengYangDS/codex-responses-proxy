@@ -13,3 +13,13 @@
 - [ ] 2.3 Publish independently to GitLab and GitHub and prove common-platform
   asset digest parity.
 - [ ] 2.4 Install the signed patch and complete three-provider runtime acceptance.
+
+## Requirement To Task To Proof
+
+| Requirement | Task | Proof |
+| --- | --- | --- |
+| `ci-diagnostics:Native release payloads are reproducible` | `1.1` | `red-test-installer-provenance` |
+| `ci-diagnostics:Native release payloads are reproducible` | `1.2` | `normalized-distribution-record` |
+| `ci-diagnostics:Native release payloads are reproducible` | `1.3` | `two-run-native-asset-parity` |
+| `ci-diagnostics:Native release payloads are reproducible` | `2.1` | `exact-head-proof` |
+| `ci-diagnostics:Native release payloads are reproducible` | `2.3` | `dual-forge-common-asset-digests` |
