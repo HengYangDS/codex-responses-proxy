@@ -6,6 +6,8 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 NAMESPACE = "codex-responses-proxy-release"
@@ -14,6 +16,21 @@ PRINCIPAL = "codex-responses-proxy-release"
 
 class SignatureError(RuntimeError):
     """Release asset signing or verification failed."""
+
+
+@contextmanager
+def _signing_key(key: Path) -> Iterator[Path]:
+    """Preserve provider-owned key identity unless POSIX newline repair is needed."""
+
+    content = key.read_bytes()
+    if content.endswith(b"\n") or os.name != "posix":
+        yield key
+        return
+    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-release-key-") as name:
+        normalized = Path(name) / "key"
+        normalized.write_bytes(content + b"\n")
+        os.chmod(normalized, 0o600)
+        yield normalized
 
 
 def sign_and_verify(*, assets: Path, key: Path, trust: str) -> None:
@@ -27,10 +44,7 @@ def sign_and_verify(*, assets: Path, key: Path, trust: str) -> None:
         raise SignatureError("release checksum inventory is unavailable")
     signature = assets / "SHA256SUMS.sig"
     signature.unlink(missing_ok=True)
-    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-release-key-") as name:
-        signing_key = Path(name) / "key"
-        signing_key.write_bytes(key.read_bytes().rstrip(b"\n") + b"\n")
-        os.chmod(signing_key, 0o600)
+    with _signing_key(key) as signing_key:
         try:
             subprocess.run(
                 (
