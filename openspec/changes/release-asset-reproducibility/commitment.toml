@@ -4,6 +4,7 @@ intent = "Make common native release assets byte-identical across independent Fo
 subjects = ["repository:self"]
 scope = [
   "noxfile.py",
+  "tools/release/assets.py",
   "tests/release/test_assets.py",
   "openspec/changes/release-asset-reproducibility/**",
   "CHANGELOG.md",
@@ -25,6 +26,7 @@ acceptance = [
 risks = ["installed_distribution_metadata_can_change_when_the_installer_changes"]
 authority_refs = [
   "noxfile.py",
+  "tools/release/assets.py",
   "tests/release/test_assets.py",
   "docs/governance/release-and-change-policy.md",
 ]
