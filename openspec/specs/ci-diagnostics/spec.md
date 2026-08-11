@@ -139,7 +139,9 @@ normal source files SHALL receive no path-specific allowance above them.
 Hosted jobs SHALL use supported native shells and filesystem semantics, install
 their explicit operating-system prerequisites, and reach a terminal result on
 an admitted project runner. A reused self-hosted checkout SHALL preserve Git
-diagnostic integrity without changing runner-global configuration.
+diagnostic integrity without changing runner-global configuration. A container
+whose user does not own the GitHub checkout SHALL grant Git trust only to the
+exact workflow workspace for the one archive command.
 
 #### Scenario: Windows verifies the product
 
@@ -160,6 +162,14 @@ diagnostic integrity without changing runner-global configuration.
 - **WHEN** Forge admission cannot match every job to an allowed runner
 - **THEN** publication is blocked before a pipeline is treated as accepted
 - **AND** a pending job is not reported as verification success.
+
+#### Scenario: A GitHub release container reads the checked-out tag
+
+- **WHEN** the Linux container user does not own `GITHUB_WORKSPACE`
+- **THEN** the archive command trusts that exact workspace for that invocation
+- **AND** no global, repository-local, system, or wildcard safe-directory rule
+  is created
+- **AND** the canonical `/workspace` source materialization continues.
 
 ### Requirement: Hosted product-tool execution uses the locked product environment
 
