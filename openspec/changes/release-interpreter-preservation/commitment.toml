@@ -8,8 +8,9 @@ scope = [
   "openspec/changes/release-interpreter-preservation/**",
   "VERSION",
   "CHANGELOG.md",
+  "README.md",
   "tools/release/publish_github.py",
-  "tests/release/publication/test_github.py",
+  "tests/release/test_publish_github.py",
 ]
 invariants = []
 acceptance = []

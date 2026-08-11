@@ -251,7 +251,9 @@ def _verify_source(checkout: Path, tag: str, trust: str) -> None:
             tag_signature.verify(checkout, tag, "github", anchor)
         except tag_signature.TagSignatureError as error:
             raise GitHubPublishError("GitHub release tag signature is invalid") from error
-    python = Path(sys.executable).resolve()
+    # Keep the active repository environment; resolving a venv executable
+    # escapes it to the system interpreter on hosted runners.
+    python = Path(sys.executable)
     _run(
         (
             str(python),
