@@ -1,0 +1,20 @@
+schema_version = 1
+id = "change:windows-signing-test-semantics"
+intent = "Align release-signing tests with the platform-specific key-ownership contract: POSIX may normalize a missing terminal newline; Windows preserves provider-owned ACL and fails closed."
+subjects = [
+  "repository:self",
+]
+scope = [
+  "openspec/changes/windows-signing-test-semantics/**",
+  "tests/release/test_signing.py",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+  "repository.read",
+  "work-lane.write",
+]
+hypotheses = []
+dependencies = []
