@@ -289,6 +289,68 @@ class TestTermination:
             process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
         )
 
+    def test_captured_native_identity_treats_a_zombie_as_exited(self, *, mocker):
+        candidate = mocker.Mock()
+        candidate.create_time.return_value = 42.0
+        candidate.status.return_value = process.psutil.STATUS_ZOMBIE
+        candidate.is_running.return_value = True
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        assert not process.owned_process_alive(
+            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+        )
+
+    def test_bounded_termination_accepts_an_adopted_zombie_tombstone(self, *, mocker):
+        candidate = mocker.Mock()
+        candidate.create_time.return_value = 42.0
+        candidate.status.side_effect = [process.psutil.STATUS_RUNNING, process.psutil.STATUS_ZOMBIE]
+        candidate.wait.side_effect = process.psutil.TimeoutExpired(123, 1)
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        assert process.terminate_owned_process(
+            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0),
+            timeout_seconds=1.0,
+        )
+        candidate.terminate.assert_called_once_with()
+
+    def test_bounded_termination_accepts_an_already_zombie_generation(self, *, mocker):
+        candidate = mocker.Mock()
+        candidate.create_time.return_value = 42.0
+        candidate.status.return_value = process.psutil.STATUS_ZOMBIE
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        assert process.terminate_owned_process(
+            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+        )
+        candidate.terminate.assert_not_called()
+
+    def test_bounded_termination_observes_disappearance_after_timeout(self, *, mocker):
+        candidate = mocker.Mock()
+        candidate.create_time.side_effect = [42.0, process.psutil.NoSuchProcess(123)]
+        candidate.status.return_value = process.psutil.STATUS_RUNNING
+        candidate.wait.side_effect = process.psutil.TimeoutExpired(123, 1)
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        assert process.terminate_owned_process(
+            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0),
+            timeout_seconds=1.0,
+        )
+
+    def test_bounded_termination_fails_closed_when_timeout_state_is_unreadable(self, *, mocker):
+        candidate = mocker.Mock()
+        candidate.create_time.return_value = 42.0
+        candidate.status.side_effect = [
+            process.psutil.STATUS_RUNNING,
+            process.psutil.AccessDenied(123),
+        ]
+        candidate.wait.side_effect = process.psutil.TimeoutExpired(123, 1)
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        assert not process.terminate_owned_process(
+            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0),
+            timeout_seconds=1.0,
+        )
+
     def test_script_termination_rechecks_identity_and_waits(self, *, mocker):
         mocker.patch.object(process, "pid_names_path", side_effect=[True, True])
         candidate = mocker.Mock()
