@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.31] - 2026-08-11
+
+### Fixed
+
+- Remove installer-local metadata before native executable freezing so common
+  platform assets built independently by GitLab and GitHub are byte-identical.
+
 ## [2.0.30] - 2026-08-11
 
 ### Fixed
