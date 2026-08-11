@@ -7,6 +7,12 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.25] - 2026-08-11
+
+### Fixed
+
+- Preserve the active virtual-environment interpreter during hosted GitHub release validation.
+
 ## [2.0.24] - 2026-08-11
 
 ### Changed
