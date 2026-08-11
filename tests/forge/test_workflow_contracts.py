@@ -48,17 +48,22 @@ def test_linux_native_workflows_use_the_same_container_runtime() -> None:
     release_command = (
         "uv run --locked --no-sync --python python --no-python-downloads nox -s release"
     )
-    materialize_source = "git archive --format=tar HEAD | tar -xf - -C /workspace"
+    materialize_source = (
+        'git -c safe.directory="$GITHUB_WORKSPACE" archive --format=tar HEAD '
+        "| tar -xf - -C /workspace"
+    )
     github_linux = github.split("\n  native-linux:", 1)[1].split("\n  release-assets:", 1)[0]
     gitlab_linux = gitlab.split("\nbuild-gitlab-native-asset:", 1)[1].split(
         "\npublish-gitlab-release:", 1
     )[0]
     for job in (github_linux, gitlab_linux):
-        assert materialize_source in job
         assert "cd /workspace" in job
         assert release_environment in job
         assert release_command in job
         assert "apt-get" not in job
+    assert materialize_source in github_linux
+    assert "safe.directory=*" not in github_linux
+    assert "git archive --format=tar HEAD | tar -xf - -C /workspace" in gitlab_linux
 
 
 def test_github_verification_workflow_contract() -> None:
