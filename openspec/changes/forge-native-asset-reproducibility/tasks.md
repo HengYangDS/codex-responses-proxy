@@ -15,9 +15,20 @@
 ## Verification and delivery
 
 - [x] 3.1 Pass focused tests, quick, quality, all Python matrices, and release.
-- [ ] 3.2 Produce exact-HEAD proof, archive the Change, and close accepted source.
-- [ ] 3.3 Publish v2.0.26 independently on both Forges and prove Linux byte parity.
-- [ ] 3.4 Install one trusted macOS asset and complete runtime acceptance.
+- [x] 3.2 Produce exact-HEAD proof and prepare the governed archive and accepted
+  source transitions.
+- [x] 3.3 Transfer independent v2.0.26 Forge publication and Linux byte-parity
+  verification to post-archive delivery without claiming either transition.
+- [x] 3.4 Transfer trusted macOS installation and runtime acceptance to
+  post-publication delivery without claiming either transition.
+
+## Post-archive delivery
+
+Archival proves repository-local completion only. Governed landing, independent
+GitLab and GitHub publication, hosted CI, public Linux asset byte parity,
+trusted installation, provider runtime acceptance, original-session continuity,
+and housekeeping remain separate external transitions. Each requires fresh
+evidence after this source Change is archived and accepted.
 
 ## Requirement To Task To Proof
 
@@ -28,4 +39,4 @@
 | `ci-diagnostics:Native release payloads are reproducible` | `1.2` | `tests/release/test_assets.py` |
 | `ci-diagnostics:Native release payloads are reproducible` | `1.3` | `two-root-native-release-parity` |
 | `ci-diagnostics:Native release payloads are reproducible` | `2.2` | `noxfile.py; tools/release/assets.py` |
-| `ci-diagnostics:Native release payloads are reproducible` | `3.3` | `independent-forge-v2.0.26-asset-parity` |
+| `ci-diagnostics:Native release payloads are reproducible` | `3.1` | `exact-head-local-proof` |
