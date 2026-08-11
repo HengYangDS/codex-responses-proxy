@@ -185,7 +185,7 @@ def child_pid_observer(
         if owned_processes is not None and observed["value"] is not None:
             if executable is None:
                 raise ValueError("executable is required when capturing an owned process")
-            owned = process.capture_executable(observed["value"], executable)
+            owned = process.capture_generation(observed["value"], executable)
             if owned is None:
                 observed["value"] = None
                 return False

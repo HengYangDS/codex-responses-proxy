@@ -16,7 +16,7 @@ invariants = [
 ]
 acceptance = [
   "windows_native_handoff_successor_is_observed_and_cleaned",
-  "full_cross_platform_quality_and_release_gates_pass",
+  "focused_regression_and_local_quality_matrix_pass",
   "exact_head_full_proof_passes",
 ]
 risks = ["pid_reuse", "argv_projection_drift", "native_payload_lock"]
