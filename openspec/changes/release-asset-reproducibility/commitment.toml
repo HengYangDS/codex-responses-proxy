@@ -1,0 +1,38 @@
+schema_version = 1
+id = "change:release-asset-reproducibility"
+intent = "Make common native release assets byte-identical across independent Forge builds by removing installer-local provenance before executable freezing."
+subjects = ["repository:self"]
+scope = [
+  "noxfile.py",
+  "tests/release/test_assets.py",
+  "openspec/changes/release-asset-reproducibility/**",
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+]
+invariants = [
+  "gitlab_and_github_remain_independent_publication_planes",
+  "common_platform_assets_are_byte_identical_for_the_same_source_tree_and_locked_toolchain",
+  "release_payloads_contain_no_checkout_local_or_installer_local_provenance",
+  "failed_v2_0_30_release_history_remains_immutable",
+]
+acceptance = [
+  "a_red_test_reproduces_executable_input_drift_from_uv_installer_metadata",
+  "the_release_build_normalizes_installed_metadata_before_pyinstaller_analysis",
+  "two_distinct_install_roots_produce_identical_frozen_inputs_and_common_asset_digests",
+  "exact_head_quality_python_matrix_and_release_gates_pass",
+]
+risks = ["installed_distribution_metadata_can_change_when_the_installer_changes"]
+authority_refs = [
+  "noxfile.py",
+  "tests/release/test_assets.py",
+  "docs/governance/release-and-change-policy.md",
+]
+permissions = [
+  "repository.read",
+  "work-lane.write",
+  "local-proof.execute",
+  "terminal-publication.execute",
+]
+hypotheses = ["uv_cache_digest_in_record_is_the_only_forge_specific_frozen_input"]
+dependencies = []
