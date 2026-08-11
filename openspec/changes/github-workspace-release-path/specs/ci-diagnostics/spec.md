@@ -1,6 +1,6 @@
 # CI diagnostics delta
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Container and action paths share one mounted workspace
 
