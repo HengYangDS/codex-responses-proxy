@@ -1,0 +1,21 @@
+schema_version = 1
+id = "change:windows-native-process-ownership"
+intent = "Bind native handoff cleanup to a captured process identity so Windows payload modules are released before fixture removal."
+subjects = [
+  "repository:self",
+]
+scope = [
+  "openspec/changes/windows-native-process-ownership/**",
+  "tests/service/handoff/**",
+  "src/codex_responses_proxy/lifecycle/supervision/process.py",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+  "repository.read",
+  "work-lane.write",
+]
+hypotheses = []
+dependencies = []
