@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.29] - 2026-08-11
+
+### Fixed
+
+- Publish the Linux native asset from a workspace path shared by the GitHub
+  job container and host-side artifact uploader.
+
 ## [2.0.28] - 2026-08-11
 
 ### Fixed
