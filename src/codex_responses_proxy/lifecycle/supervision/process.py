@@ -22,6 +22,20 @@ class OwnedProcess:
     created_at: float
 
 
+def capture_generation(pid: int, expected_path: str) -> OwnedProcess | None:
+    """Capture an already-proven PID as one exact process generation."""
+
+    try:
+        created_at = psutil.Process(pid).create_time()
+    except (OSError, psutil.Error):
+        return None
+    return OwnedProcess(
+        pid,
+        os.path.normcase(os.path.realpath(os.path.abspath(expected_path))),
+        created_at,
+    )
+
+
 def capture_executable(
     pid: int,
     expected_path: str,
