@@ -150,3 +150,22 @@ def test_prepare_checkout_is_the_public_exact_tag_owner(tmp_path: Path, mocker) 
     )
     assert run.call_count == 2
     assert output.call_count == 3
+
+
+def test_release_validation_preserves_the_active_environment(tmp_path: Path, mocker) -> None:
+    """Do not resolve a virtual-environment interpreter into the host Python."""
+
+    host_python = tmp_path / "host-python"
+    host_python.write_text("", encoding="utf-8")
+    environment_python = tmp_path / "environment-python"
+    environment_python.symlink_to(host_python)
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    mocker.patch.object(publish_github.sys, "executable", str(environment_python))
+    mocker.patch.object(publish_github.tag_signature, "verify")
+    run = mocker.patch.object(publish_github, "_run")
+
+    publish_github._verify_source(checkout, "v1.2.3", "trust")
+
+    assert run.call_count == 2
+    assert all(call.args[0][0] == str(environment_python) for call in run.call_args_list)
