@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 INSTALLER_PROVENANCE = frozenset({"direct_url.json", "uv_cache.json"})
 
 
-def normalize_installed_distribution(packages: Path) -> None:
+def _normalize(packages: Path) -> None:
     """Remove installer-local product metadata before executable freezing."""
 
     metadata = tuple(packages.glob("codex_responses_proxy-*.dist-info"))
@@ -132,9 +132,9 @@ def _command(*, bundle: Path, platform: str, output: Path) -> None:
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run asset assembly through the repository's single parser stack."""
 
-    App(default_command=_command, help=__doc__, result_action="return_value")(
-        tuple(sys.argv[1:] if argv is None else argv)
-    )
+    app = App(default_command=_command, help=__doc__, result_action="return_value")
+    app.command(_normalize, name="normalize")
+    app(tuple(sys.argv[1:] if argv is None else argv))
 
 
 if __name__ == "__main__":
