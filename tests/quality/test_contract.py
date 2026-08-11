@@ -221,6 +221,7 @@ class TestQualityPolicyContracts:
         generated = tuple(re.compile(pattern) for pattern in policy["generated_patterns"])
 
         assert human.fullmatch("refactor(quality): centralize repository policy owners")
+        assert human.fullmatch("fix(supervision): classify zombie tombstones")
         assert not human.fullmatch("refactor: centralize repository policy owners")
         assert any(
             pattern.fullmatch("materialize quality-policy-ssot carrier") for pattern in generated

@@ -5,11 +5,13 @@ subjects = [
   "repository:self",
 ]
 scope = [
+  ".config/checks/commits/policy.toml",
   ".ethos/profile.toml",
   "openspec/changes/linux-process-tombstone-semantics/**",
   "src/codex_responses_proxy/lifecycle/supervision/process.py",
   "tests/lifecycle/supervision/test_process.py",
   "tests/service/handoff/test_subprocess.py",
+  "tests/quality/test_contract.py",
   "openspec/specs/process-ownership/spec.md",
   "README.md",
   "CHANGELOG.md",
@@ -19,6 +21,7 @@ invariants = [
   "exact_pid_generation_identity_remains_fail_closed",
   "zombie_tombstones_are_not_executable_processes",
   "native_handoff_teardown_remains_strict",
+  "semantic_commit_scopes_follow_repository_ownership",
   "shared_repository_native_gate_state_is_serialized",
 ]
 acceptance = [
@@ -31,6 +34,7 @@ risks = [
   "weakening_pid_reuse_protection",
 ]
 authority_refs = [
+  ".config/checks/commits/policy.toml",
   "src/codex_responses_proxy/lifecycle/supervision/process.py",
   "tests/lifecycle/supervision/test_process.py",
   "openspec/specs/process-ownership/spec.md",
