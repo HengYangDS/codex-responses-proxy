@@ -7,6 +7,15 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.23] - 2026-08-11
+
+### Fixed
+
+- Bind native handoff teardown to the PID generation captured at authenticated
+  health. Windows now releases every mapped bundle module before payload
+  removal even when argv becomes unreadable during exit, while PID reuse remains
+  fail-safe.
+
 ## [2.0.22] - 2026-08-10
 
 ### Fixed

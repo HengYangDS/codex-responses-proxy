@@ -18,7 +18,56 @@ class OwnedProcess:
     """A PID bound to the exact process entry path proven to own it."""
 
     pid: int
-    script: str
+    executable: str
+    created_at: float
+
+
+def capture_executable(
+    pid: int,
+    expected_path: str,
+    *,
+    roles: set[str] | frozenset[str] | None = None,
+) -> OwnedProcess | None:
+    """Capture one native process identity before later argv access can disappear."""
+
+    try:
+        candidate = psutil.Process(pid)
+        argv = candidate.cmdline()
+        if not argv_names_executable(argv, expected_path, roles=roles):
+            return None
+        return OwnedProcess(
+            pid,
+            os.path.normcase(os.path.realpath(os.path.abspath(expected_path))),
+            candidate.create_time(),
+        )
+    except (OSError, psutil.Error):
+        return None
+
+
+def owned_process_alive(owned: OwnedProcess) -> bool:
+    """Return whether the same captured PID generation is still alive."""
+
+    try:
+        candidate = psutil.Process(owned.pid)
+        return candidate.create_time() == owned.created_at and candidate.is_running()
+    except (OSError, psutil.Error):
+        return False
+
+
+def terminate_owned_process(owned: OwnedProcess, *, timeout_seconds: float = 5.0) -> bool:
+    """Terminate a previously captured process without requiring later argv access."""
+
+    try:
+        candidate = psutil.Process(owned.pid)
+        if candidate.create_time() != owned.created_at:
+            return False
+        candidate.terminate()
+        candidate.wait(timeout=timeout_seconds)
+    except psutil.NoSuchProcess:
+        return True
+    except (OSError, psutil.Error):
+        return False
+    return True
 
 
 def listener_pids(port: int) -> list[int]:

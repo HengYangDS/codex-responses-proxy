@@ -174,15 +174,22 @@ def child_pid_observer(
     expected: dict,
     *,
     exclude_pid: int | None,
-    owned_pids: set[int] | None = None,
+    owned_processes: dict[int, process.OwnedProcess] | None = None,
+    executable: str | None = None,
 ) -> tuple[dict[str, int | None], Callable[[], bool]]:
     """Return a successor-PID cell and record the exact observed test process."""
     observed: dict[str, int | None] = {"value": None}
 
     def matches() -> bool:
         observed["value"] = child_pid_matching_health(port, expected, exclude_pid=exclude_pid)
-        if owned_pids is not None and observed["value"] is not None:
-            owned_pids.add(observed["value"])
+        if owned_processes is not None and observed["value"] is not None:
+            if executable is None:
+                raise ValueError("executable is required when capturing an owned process")
+            owned = process.capture_executable(observed["value"], executable)
+            if owned is None:
+                observed["value"] = None
+                return False
+            owned_processes[owned.pid] = owned
         return observed["value"] is not None
 
     return observed, matches
