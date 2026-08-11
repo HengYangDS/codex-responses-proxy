@@ -62,6 +62,10 @@ def test_linux_native_workflows_use_the_same_container_runtime() -> None:
         assert release_command in job
         assert "apt-get" not in job
     assert materialize_source in github_linux
+    shared_linux_assets = "${{ github.workspace }}/.release-assets/linux-x86_64"
+    assert f'nox -s release -- "{shared_linux_assets}"' in github_linux
+    assert f"path: {shared_linux_assets}" in github_linux
+    assert "${{ runner.temp }}/native-assets" not in github_linux
     assert "safe.directory=*" not in github_linux
     assert "git archive --format=tar HEAD | tar -xf - -C /workspace" in gitlab_linux
 
