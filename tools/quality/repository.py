@@ -353,19 +353,12 @@ def audit_paths(
                 gaps.append(f"code_size_ratchet_increased:{relative}:{logical}>{ratchet}")
         elif logical > limit:
             gaps.append(f"code_size_exceeded:{relative}:{logical}>{limit}")
-        if not relative.startswith("tests/"):
-            if module_eloc_limit is not None and effective_lines > module_eloc_limit:
-                gaps.append(
-                    f"module_eloc_exceeded:{relative}:{effective_lines}>{module_eloc_limit}"
-                )
-            if function_eloc_limit is not None and function_eloc > function_eloc_limit:
-                gaps.append(
-                    f"function_eloc_exceeded:{relative}:{function_eloc}>{function_eloc_limit}"
-                )
-            if nesting_depth_limit is not None and nesting_depth > nesting_depth_limit:
-                gaps.append(
-                    f"nesting_depth_exceeded:{relative}:{nesting_depth}>{nesting_depth_limit}"
-                )
+        if module_eloc_limit is not None and effective_lines > module_eloc_limit:
+            gaps.append(f"module_eloc_exceeded:{relative}:{effective_lines}>{module_eloc_limit}")
+        if function_eloc_limit is not None and function_eloc > function_eloc_limit:
+            gaps.append(f"function_eloc_exceeded:{relative}:{function_eloc}>{function_eloc_limit}")
+        if nesting_depth_limit is not None and nesting_depth > nesting_depth_limit:
+            gaps.append(f"nesting_depth_exceeded:{relative}:{nesting_depth}>{nesting_depth_limit}")
         if module_public_definition_docstrings_required and not relative.startswith("tests/"):
             gaps.extend(_public_docstring_gaps(root, path, tree))
     return sorted(gaps), inventory
