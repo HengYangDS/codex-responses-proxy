@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import cast
 
+from codex_responses_proxy.protocol import content as portable_content
 from codex_responses_proxy.protocol import request as rewrite
 from codex_responses_proxy.providers.policies import dmxapi as policy
 from codex_responses_proxy.relay import admission, cooldown, telemetry
@@ -117,7 +118,7 @@ class EmptyResponseTransportTests:
 
         assert received == [sanitized, sanitized]
         retried = received[1].decode()
-        assert rewrite.OPAQUE_CONTENT_MARKER in retried
+        assert portable_content.OPAQUE_CONTENT_MARKER in retried
         assert secret not in retried
 
     def test_classified_477_retries_portable_remote_images(self):

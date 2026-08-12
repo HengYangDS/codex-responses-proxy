@@ -91,9 +91,7 @@ def test_gitlab_linux_jobs_pin_the_declared_container_platform() -> None:
     assert "docker: { platform: linux/amd64 }" in native
 
 
-def test_github_verification_workflow_contract() -> None:
-    text = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
-    release_text = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+def _assert_github_required_tokens(text: str) -> None:
     required = [
         "name: Verify",
         "push:",
@@ -154,6 +152,9 @@ def test_github_verification_workflow_contract() -> None:
             raise AssertionError(f"GitHub Actions verification contract is missing {token!r}")
     if "contents: write" in text:
         raise AssertionError("verification workflow must use read-only repository permissions")
+
+
+def _assert_github_matrix_contract(text: str, release_text: str) -> None:
     matrix_start = text.index("\n  python-matrix:")
     matrix_end = text.index("\n  python:", matrix_start)
     matrix_block = text[matrix_start:matrix_end]
@@ -180,6 +181,8 @@ def test_github_verification_workflow_contract() -> None:
     if "@main" in text or "@master" in text:
         raise AssertionError("GitHub Actions must use immutable action revisions")
 
+
+def _assert_github_platform_contract(text: str, release_text: str) -> None:
     mac_start = text.index("\n  python:")
     windows_start = text.index("\n  python-windows:")
     governance_start = text.index("\n  governance:")
@@ -220,6 +223,10 @@ def test_github_verification_workflow_contract() -> None:
             raise AssertionError(
                 f"GitHub workflows must select supported Python lines, not patch releases: {patch_pin!r}"
             )
+
+
+def _assert_github_governance_contract(text: str) -> None:
+    governance_start = text.index("\n  governance:")
     governance_end = text.index("\n  python-quality:", governance_start)
     governance_block = text[governance_start:governance_end]
     checkout_block = governance_block.split("- name: Fetch the exact", 1)[0]
@@ -246,6 +253,12 @@ def test_github_verification_workflow_contract() -> None:
         raise AssertionError(
             "governance ref dispatch must select tag validation before branch fallback"
         )
+
+
+def _assert_github_native_and_forbidden_contract(text: str, release_text: str) -> None:
+    windows_start = text.index("\n  python-windows:")
+    governance_start = text.index("\n  governance:")
+    windows_block = text[windows_start:governance_start]
     native_start = text.index("\n  native-assets:")
     native_end = text.index("\n  release-assets:", native_start)
     native_block = text[native_start:native_end]
@@ -274,6 +287,16 @@ def test_github_verification_workflow_contract() -> None:
                 f"GitHub workflows must not suppress Git diagnostics with {forbidden!r}"
             )
     print("GitHub Actions verification contract: OK")
+
+
+def test_github_verification_workflow_contract() -> None:
+    text = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
+    release_text = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    _assert_github_required_tokens(text)
+    _assert_github_matrix_contract(text, release_text)
+    _assert_github_platform_contract(text, release_text)
+    _assert_github_governance_contract(text)
+    _assert_github_native_and_forbidden_contract(text, release_text)
 
 
 def test_gitlab_pytest_invocations_preserve_repository_module_resolution() -> None:

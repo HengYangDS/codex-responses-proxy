@@ -9,13 +9,18 @@ codes and counters.
 from __future__ import annotations
 
 import json
-import urllib.parse
 from dataclasses import dataclass
 from typing import cast
 
+from codex_responses_proxy.protocol.content import (
+    ProjectionRejected,
+    project_assistant_text,
+    project_input_content,
+    reject as _reject,
+)
+
 type JsonObject = dict[str, object]
 
-OPAQUE_CONTENT_MARKER = "[opaque provider content omitted: not portable across providers]"
 EMPTY_TOOL_OUTPUT_MARKER = "[tool returned no textual output]"
 
 _PROVIDER_BINDINGS = ("previous_response_id", "conversation", "prompt_cache_key")
@@ -93,10 +98,6 @@ _OUTPUT_FIELDS = frozenset(
 )
 
 
-class ProjectionRejected(ValueError):
-    """A replay structure has no proved provider-portable representation."""
-
-
 @dataclass(frozen=True, slots=True)
 class ProjectionMetrics:
     """Secret-free aggregate changes made by one replay projection."""
@@ -146,10 +147,6 @@ class ProjectionResult:
         )
 
 
-def _reject(reason: str) -> None:
-    raise ProjectionRejected(reason)
-
-
 def _unknown_fields(item: JsonObject, allowed: frozenset[str], reason: str) -> None:
     if set(item) - allowed:
         _reject(reason)
@@ -171,182 +168,6 @@ def _valid_caller(value: object) -> bool:
     )
 
 
-def _is_replayable_remote_image_url(value: object) -> bool:
-    if not isinstance(value, str) or not value or any(character.isspace() for character in value):
-        return False
-    try:
-        parsed = urllib.parse.urlsplit(value)
-        if parsed.scheme not in ("http", "https") or not parsed.hostname:
-            return False
-        _ = parsed.port
-    except ValueError:
-        return False
-    return True
-
-
-def _text_block_value(typed: JsonObject, block_type: object) -> str:
-    if block_type == "input_text":
-        allowed = {"type", "text", "prompt_cache_breakpoint"}
-        if set(typed) - allowed:
-            _reject("invalid_text_block")
-        breakpoint = typed.get("prompt_cache_breakpoint")
-        if breakpoint is not None and breakpoint != {"mode": "explicit"}:
-            _reject("invalid_text_block")
-    else:
-        allowed = {"type", "text", "annotations", "logprobs"}
-        if set(typed) - allowed:
-            _reject("invalid_text_block")
-        if "annotations" in typed and not isinstance(typed["annotations"], list):
-            _reject("invalid_text_block")
-        if (
-            "logprobs" in typed
-            and typed["logprobs"] is not None
-            and not isinstance(typed["logprobs"], list)
-        ):
-            _reject("invalid_text_block")
-    text = typed.get("text")
-    if not isinstance(text, str):
-        _reject("invalid_text_block")
-    return cast(str, text)
-
-
-def _project_input_content(
-    value: object,
-    *,
-    allow_images: bool,
-    encrypted_marker: bool,
-    root_ciphertext: int = 0,
-) -> tuple[object, bool, int, int, int]:
-    """Return provider-neutral input content and bounded projection metrics."""
-    if isinstance(value, str):
-        if value:
-            return value, bool(root_ciphertext), root_ciphertext, 0, 0
-        if root_ciphertext and encrypted_marker:
-            return (
-                [{"type": "input_text", "text": OPAQUE_CONTENT_MARKER}],
-                True,
-                root_ciphertext,
-                1,
-                0,
-            )
-        _reject("empty_text_content")
-    if not isinstance(value, list):
-        if root_ciphertext and value is None and encrypted_marker:
-            return (
-                [{"type": "input_text", "text": OPAQUE_CONTENT_MARKER}],
-                True,
-                root_ciphertext,
-                1,
-                0,
-            )
-        _reject("invalid_content")
-    blocks = cast("list[object]", value)
-
-    projected: list[JsonObject] = []
-    changed = False
-    encrypted = root_ciphertext
-    local_images = 0
-    for block in blocks:
-        if not isinstance(block, dict):
-            _reject("invalid_content_block")
-        typed = cast(JsonObject, block)
-        block_type = typed.get("type")
-        if block_type in ("input_text", "output_text"):
-            text = _text_block_value(typed, block_type)
-            projected.append({"type": "input_text", "text": text})
-            changed = changed or set(typed) != {"type", "text"} or block_type != "input_text"
-        elif block_type == "refusal":
-            if set(typed) != {"type", "refusal"} or not isinstance(typed.get("refusal"), str):
-                _reject("invalid_refusal_block")
-            _reject("invalid_refusal_role")
-        elif block_type == "encrypted_content":
-            encrypted += 1
-            changed = True
-        elif block_type == "input_image" and allow_images:
-            allowed = {"type", "image_url", "detail"}
-            if set(typed) - allowed:
-                _reject("invalid_image_block")
-            if not _is_replayable_remote_image_url(typed.get("image_url")):
-                local_images += 1
-                changed = True
-                continue
-            image = {"type": "input_image", "image_url": typed["image_url"]}
-            detail = typed.get("detail")
-            if detail is not None:
-                if detail not in ("low", "high", "auto", "original"):
-                    _reject("invalid_image_detail")
-                image["detail"] = detail
-            projected.append(image)
-        else:
-            _reject("unknown_content_type")
-
-    markers = 0
-    only_empty_text = projected and all(
-        block.get("type") == "input_text" and block.get("text") == "" for block in projected
-    )
-    if encrypted and encrypted_marker and (not projected or only_empty_text):
-        projected.clear()
-        projected.append({"type": "input_text", "text": OPAQUE_CONTENT_MARKER})
-        markers = 1
-        changed = True
-    if not projected:
-        _reject("empty_portable_content")
-    return projected, changed, encrypted, markers, local_images
-
-
-def _project_assistant_text(
-    value: object,
-    *,
-    encrypted_marker: bool,
-    root_ciphertext: int = 0,
-) -> tuple[str, bool, int, int]:
-    """Project assistant history to the provider-neutral easy-message string."""
-    if isinstance(value, str):
-        if value:
-            return value, False, root_ciphertext, 0
-        if root_ciphertext and encrypted_marker:
-            return OPAQUE_CONTENT_MARKER, True, root_ciphertext, 1
-        _reject("empty_text_content")
-    if not isinstance(value, list):
-        if root_ciphertext and value is None and encrypted_marker:
-            return OPAQUE_CONTENT_MARKER, True, root_ciphertext, 1
-        _reject("invalid_content")
-
-    text_parts: list[str] = []
-    encrypted = root_ciphertext
-    changed = bool(root_ciphertext)
-    for block in cast("list[object]", value):
-        if not isinstance(block, dict):
-            _reject("invalid_content_block")
-        typed = cast(JsonObject, block)
-        block_type = typed.get("type")
-        if block_type in ("input_text", "output_text"):
-            text_parts.append(_text_block_value(typed, block_type))
-            changed = True
-        elif block_type == "refusal":
-            refusal = typed.get("refusal")
-            if set(typed) != {"type", "refusal"} or not isinstance(refusal, str):
-                _reject("invalid_refusal_block")
-            text_parts.append(cast(str, refusal))
-            changed = True
-        elif block_type == "encrypted_content":
-            encrypted += 1
-            changed = True
-        elif block_type == "input_image":
-            _reject("unsupported_assistant_image")
-        else:
-            _reject("unknown_content_type")
-
-    markers = 0
-    text = "".join(text_parts)
-    if not text and encrypted and encrypted_marker:
-        text = OPAQUE_CONTENT_MARKER
-        markers = 1
-    if not text:
-        _reject("empty_portable_content")
-    return text, changed, encrypted, markers
-
-
 def _project_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
     _unknown_fields(item, _MESSAGE_FIELDS, "unknown_message_field")
     role = item.get("role")
@@ -356,12 +177,12 @@ def _project_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
     if phase is not None and (role != "assistant" or phase not in _VALID_PHASES):
         _reject("invalid_message_phase")
     if role == "assistant":
-        content, changed, encrypted, markers = _project_assistant_text(
+        content, changed, encrypted, markers = project_assistant_text(
             item.get("content"), encrypted_marker=False
         )
         local_images = 0
     else:
-        content, changed, encrypted, markers, local_images = _project_input_content(
+        content, changed, encrypted, markers, local_images = project_input_content(
             item.get("content"), allow_images=True, encrypted_marker=False
         )
     projected: JsonObject = {"type": "message", "role": role, "content": content}
@@ -388,7 +209,7 @@ def _project_agent_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]
     if "encrypted_content" in item and not isinstance(root_value, str):
         _reject("invalid_encrypted_content")
     root_ciphertext = int(isinstance(root_value, str))
-    content, _changed, encrypted, markers = _project_assistant_text(
+    content, _changed, encrypted, markers = project_assistant_text(
         item.get("content"), encrypted_marker=True, root_ciphertext=root_ciphertext
     )
     header = json.dumps(
@@ -478,7 +299,7 @@ def _project_output(
             0,
         )
     else:
-        output, changed, encrypted, markers, local_images = _project_input_content(
+        output, changed, encrypted, markers, local_images = project_input_content(
             raw_output,
             allow_images=True,
             encrypted_marker=True,

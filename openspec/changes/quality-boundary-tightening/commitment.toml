@@ -2,22 +2,50 @@ schema_version = 1
 id = "change:quality-boundary-tightening"
 intent = "Make repository quality inventory enforce one tighter structural contract across production and tests without compatibility exceptions."
 subjects = [
-  "repository:self",
+  "repository:codex-responses-proxy",
 ]
 scope = [
   "openspec/changes/quality-boundary-tightening/**",
-  ".config/checks/architecture/**",
-  "tools/quality/**",
-  "tests/quality/**",
+  "openspec/changes/archive/*-quality-boundary-tightening/**",
   "openspec/specs/quality-boundaries/**",
+  ".config/checks/architecture/**",
+  "src/codex_responses_proxy/**",
+  "tests/**",
+  "tools/quality/**",
+  "tools/release/publication/**",
+  ".github/workflows/**",
+  ".gitlab-ci.yml",
+  "noxfile.py",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+  "production_tests_and_repository_tools_share_one_structural_policy",
+  "quality_debt_is_removed_by_semantic_split_not_exception_or_ratchet",
+  "test_discovery_and_behavior_remain_owned_by_pytest",
+  "coverage_floors_and_product_runtime_behavior_do_not_weaken",
+]
+acceptance = [
+  "every_tracked_python_owner_is_inside_the_quality_inventory",
+  "every_python_module_is_at_most_600_effective_lines",
+  "every_python_function_is_at_most_110_effective_lines",
+  "every_python_owner_has_at_most_8_levels_of_control_nesting",
+  "quick_quality_python_matrix_and_release_gates_pass",
+]
+risks = [
+  "test_discovery_drift_during_semantic_split",
+  "shared_fixture_ownership_becomes_ambiguous",
+]
+authority_refs = [
+  "user_instruction",
+  "AGENTS.md",
+  ".config/checks/architecture/policy.toml",
+]
 permissions = [
   "repository.read",
   "work-lane.write",
+  "local-proof.execute",
+  "git.ref.compare-and-swap",
 ]
-hypotheses = []
+hypotheses = [
+  "semantic_test_modules_reduce_maintenance_cost_without_behavior_change",
+]
 dependencies = []

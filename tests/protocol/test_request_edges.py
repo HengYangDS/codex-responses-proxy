@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from codex_responses_proxy.protocol import content as portable_content
 from codex_responses_proxy.protocol import request as rewrite
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,7 +65,9 @@ class ProviderPortableRequestEdgeTests:
         assert image_message["content"][0]["detail"] == "original"
         assert call["caller"] == {"type": "direct"}
         assert output["caller"] == {"type": "program", "caller_id": "planner"}
-        assert output["output"] == [{"type": "input_text", "text": rewrite.OPAQUE_CONTENT_MARKER}]
+        assert output["output"] == [
+            {"type": "input_text", "text": portable_content.OPAQUE_CONTENT_MARKER}
+        ]
         assert "provider-bound" not in projected_raw.decode()
 
     def test_projects_root_only_ciphertext_to_explicit_portable_markers(self, subtests) -> None:
@@ -106,8 +109,10 @@ class ProviderPortableRequestEdgeTests:
             "author": "planner",
             "recipient": "user",
         }
-        assert marker == rewrite.OPAQUE_CONTENT_MARKER
-        assert output["output"] == [{"type": "input_text", "text": rewrite.OPAQUE_CONTENT_MARKER}]
+        assert marker == portable_content.OPAQUE_CONTENT_MARKER
+        assert output["output"] == [
+            {"type": "input_text", "text": portable_content.OPAQUE_CONTENT_MARKER}
+        ]
         assert "encrypted_blocks=2" in note
         assert "omission_markers=2" in note
 
@@ -132,4 +137,4 @@ class ProviderPortableRequestEdgeTests:
                 note = _projection.diagnostic()
                 assert projected_raw is not None, note
                 projected = json.loads(projected_raw)["input"][0]
-                assert projected["content"].endswith(rewrite.OPAQUE_CONTENT_MARKER)
+                assert projected["content"].endswith(portable_content.OPAQUE_CONTENT_MARKER)
