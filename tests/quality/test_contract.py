@@ -1002,8 +1002,8 @@ class TestVerificationContracts:
             "verify-release-tag:", 1
         )[0]
         assert "*install-uv" in metadata_job
-        assert "uv sync --locked --all-groups" in metadata_job
-        assert "uv sync --locked --only-group quality" not in metadata_job
+        assert "uv sync --locked --only-group quality" in metadata_job
+        assert "uv sync --locked --all-groups" not in metadata_job
         assert "python tools/" not in metadata_job.replace(
             "uv run --locked --no-sync python tools/", ""
         )
@@ -1133,7 +1133,10 @@ class TestVerificationContracts:
             if isinstance(node, ast.FunctionDef) and node.name == "_install_tools"
         )
         install_source = ast.get_source_segment(source, install_tools) or ""
-        assert '"--group",\n        "quality"' in install_source
+        groups = install_tools.args.vararg
+        assert groups is not None and groups.arg == "groups"
+        assert 'groups or ("quality",)' in install_source
+        assert 'command.extend(("--group", group))' in install_source
         assert '"--only-group"' not in install_source
 
     def test_nox_release_exports_one_manifest_bound_native_asset_set(self) -> None:
@@ -1185,7 +1188,6 @@ class TestVerificationContracts:
             "coverage",
             "hatchling",
             "nox",
-            "pyinstaller",
             "pytest",
             "pytest-mock",
             "pytest-subtests",
@@ -1202,6 +1204,21 @@ class TestVerificationContracts:
         assert metadata["tool"]["uv"]["required-version"] == "==0.12.3"
         assert metadata["tool"]["uv"]["link-mode"] == "copy"
         assert (ROOT / "uv.lock").is_file()
+
+    def test_native_release_tools_are_isolated_from_quality(self) -> None:
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        groups = metadata["dependency-groups"]
+        quality = {requirement.partition("==")[0] for requirement in groups["quality"]}
+        release = {requirement.partition("==")[0] for requirement in groups["release"]}
+
+        assert quality.isdisjoint(release)
+        assert release == {"pyinstaller"}
+
+        noxfile = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+        release_session = noxfile.split("def release(session: nox.Session)", 1)[1].split(
+            "\ndef _install_tools", 1
+        )[0]
+        assert '_install_tools(session, "quality", "release")' in release_session
 
     def test_developer_bootstrap_installs_product_and_quality_groups(self) -> None:
         for relative in ("AGENTS.md", "CONTRIBUTING.md", "README.md"):
@@ -1251,8 +1268,15 @@ class TestVerificationContracts:
         assert "needs.python-matrix.outputs.floor" in github
         assert "needs.python-matrix.outputs.latest" in github
         assert "python-version-file: .python-versions" in release
-        assert gitlab.count("image: $PYTHON_LATEST_IMAGE") == 4
-        assert "image: $PYTHON_FLOOR_IMAGE" in gitlab
+        default = gitlab.split("\ndefault:", 1)[1].split("\n.uv-bootstrap:", 1)[0]
+        assert "name: $PYTHON_LATEST_IMAGE" in default
+        assert "docker: { platform: linux/amd64 }" in default
+        assert gitlab.count("name: $PYTHON_LATEST_IMAGE") == 1
+        quality = gitlab.split("\nverify-python-quality:", 1)[1].split(
+            "\nbuild-gitlab-native-asset:", 1
+        )[0]
+        assert "name: $PYTHON_FLOOR_IMAGE" in quality
+        assert "docker: { platform: linux/amd64 }" in quality
         assert "name: $LINUX_RELEASE_IMAGE" in gitlab
 
     def test_release_black_box_path_is_repeatable(self) -> None:
@@ -1318,5 +1342,6 @@ class TestVerificationContracts:
         github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-        for source in (github, gitlab, release):
+        assert "uv sync --locked --only-group quality" in gitlab
+        for source in (github, release):
             assert "uv sync --locked --all-groups" in source

@@ -71,6 +71,26 @@ def test_linux_native_workflows_use_the_same_container_runtime() -> None:
     assert "git archive --format=tar HEAD | tar -xf - -C /workspace" in gitlab_linux
 
 
+def test_gitlab_linux_jobs_pin_the_declared_container_platform() -> None:
+    """Do not label host-emulated arm64 jobs as Linux x86_64 verification."""
+
+    gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    default = gitlab.split("\ndefault:", 1)[1].split("\n.uv-bootstrap:", 1)[0]
+    quality = gitlab.split("\nverify-python-quality:", 1)[1].split(
+        "\nbuild-gitlab-native-asset:", 1
+    )[0]
+    native = gitlab.split("\nbuild-gitlab-native-asset:", 1)[1].split(
+        "\npublish-gitlab-release:", 1
+    )[0]
+
+    assert "name: $PYTHON_LATEST_IMAGE" in default
+    assert "docker: { platform: linux/amd64 }" in default
+    assert "name: $PYTHON_FLOOR_IMAGE" in quality
+    assert "docker: { platform: linux/amd64 }" in quality
+    assert "name: $LINUX_RELEASE_IMAGE" in native
+    assert "docker: { platform: linux/amd64 }" in native
+
+
 def test_github_verification_workflow_contract() -> None:
     text = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
     release_text = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
