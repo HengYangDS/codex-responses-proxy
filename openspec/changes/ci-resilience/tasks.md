@@ -13,7 +13,7 @@
 
 - [x] 3.1 Pass focused repository and Forge contracts.
 - [x] 3.2 Pass quick, quality, Python matrix, and native release gates.
-- [ ] 3.3 Produce exact-HEAD ETHOS proof and land the atomic change.
+- [x] 3.3 Produce exact-HEAD ETHOS proof and land the atomic change.
 
 Hosted GitLab and GitHub publication remain independent post-land transitions;
 they do not turn external Forge state into OpenSpec completion.
