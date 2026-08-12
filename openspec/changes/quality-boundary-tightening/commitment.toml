@@ -1,0 +1,23 @@
+schema_version = 1
+id = "change:quality-boundary-tightening"
+intent = "Make repository quality inventory enforce one tighter structural contract across production and tests without compatibility exceptions."
+subjects = [
+  "repository:self",
+]
+scope = [
+  "openspec/changes/quality-boundary-tightening/**",
+  ".config/checks/architecture/**",
+  "tools/quality/**",
+  "tests/quality/**",
+  "openspec/specs/quality-boundaries/**",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+permissions = [
+  "repository.read",
+  "work-lane.write",
+]
+hypotheses = []
+dependencies = []
