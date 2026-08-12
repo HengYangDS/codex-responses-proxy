@@ -169,7 +169,7 @@ def full(session: nox.Session) -> None:
 def release(session: nox.Session) -> None:
     """Build and black-box test this platform's self-contained executable."""
 
-    _install_tools(session)
+    _install_tools(session, "quality", "release")
     _assert_release_runtime(session)
     work = Path(session.create_tmp()).resolve()
     wheel = _build_wheel(session, work)
@@ -208,17 +208,15 @@ def release(session: nox.Session) -> None:
     session.log(f"native executable accepted: {executable.name}")
 
 
-def _install_tools(session: nox.Session) -> None:
+def _install_tools(session: nox.Session, *groups: str) -> None:
     """Install the repository-locked verification tool set into this session."""
 
-    requirements = Path(session.create_tmp()) / "quality-requirements.txt"
+    requirements = Path(session.create_tmp()) / "requirements.txt"
     python = _session_python(session)
-    session.run_install(
+    command = [
         "uv",
         "export",
         "--locked",
-        "--group",
-        "quality",
         "--no-emit-project",
         "--format",
         "requirements.txt",
@@ -226,6 +224,11 @@ def _install_tools(session: nox.Session) -> None:
         str(requirements),
         "--project",
         str(ROOT),
+    ]
+    for group in groups or ("quality",):
+        command.extend(("--group", group))
+    session.run_install(
+        *command,
         silent=True,
         env={"PYTHONNOUSERSITE": "1", "UV_NO_PROGRESS": "1"},
         external=True,
