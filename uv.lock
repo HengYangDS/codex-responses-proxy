@@ -47,12 +47,14 @@ quality = [
     { name = "coverage" },
     { name = "hatchling" },
     { name = "nox" },
-    { name = "pyinstaller" },
     { name = "pytest" },
     { name = "pytest-mock" },
     { name = "pytest-subtests" },
     { name = "ruff" },
     { name = "ty" },
+]
+release = [
+    { name = "pyinstaller" },
 ]
 
 [package.metadata]
@@ -67,13 +69,13 @@ quality = [
     { name = "coverage", specifier = "==7.15.4" },
     { name = "hatchling", specifier = "==1.32.0" },
     { name = "nox", specifier = "==2026.8.10" },
-    { name = "pyinstaller", specifier = "==6.22.0" },
     { name = "pytest", specifier = "==9.1.1" },
     { name = "pytest-mock", specifier = "==3.15.1" },
     { name = "pytest-subtests", specifier = "==0.15.0" },
     { name = "ruff", specifier = "==0.16.2" },
     { name = "ty", specifier = "==0.0.69" },
 ]
+release = [{ name = "pyinstaller", specifier = "==6.22.0" }]
 
 [[package]]
 name = "colorama"
