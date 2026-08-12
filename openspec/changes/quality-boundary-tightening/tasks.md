@@ -15,8 +15,8 @@
 ## 3. Acceptance
 
 - [x] 3.1 Pass the focused quality-contract suite.
-- [ ] 3.2 Pass quick, quality, Python 3.12/3.13/3.14, and release sessions.
-- [ ] 3.3 Produce exact-HEAD proof, archive, and candidate/accepted land.
+- [x] 3.2 Pass quick, quality, Python 3.12/3.13/3.14, and release sessions.
+- [x] 3.3 Produce exact-HEAD proof, archive, and candidate/accepted land.
 
 ## Requirement To Task To Proof
 
