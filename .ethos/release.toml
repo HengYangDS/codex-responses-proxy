@@ -1,6 +1,6 @@
 [publication]
 local_verification_command = "uv run --locked --no-sync nox -s full"
-local_installation_command = ".venv/bin/codex-responses-proxy install --asset $CODEX_RESPONSES_PROXY_RELEASE_ASSET --trust-anchor $CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR"
+local_installation_command = "uv run --locked --no-sync nox -s release"
 
 [[publication.peers]]
 id = "gitlab"
