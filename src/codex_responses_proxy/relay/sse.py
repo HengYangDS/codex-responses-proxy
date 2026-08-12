@@ -129,6 +129,20 @@ def _arm_read_budget(response: ResponseLike, deadline: float, armed: float | Non
     return budget
 
 
+def _pop_event(buffer: bytes) -> tuple[bytes, bytes] | None:
+    """Split the first complete SSE event from a byte buffer."""
+    separators = tuple(
+        (index, len(marker))
+        for marker in (b"\n\n", b"\r\n\r\n")
+        if (index := buffer.find(marker)) >= 0
+    )
+    if not separators:
+        return None
+    index, separator_length = min(separators)
+    boundary = index + separator_length
+    return buffer[:boundary], buffer[boundary:]
+
+
 def _read_one_stream(
     handler: BaseHTTPRequestHandler,
     response: ResponseLike,
@@ -206,17 +220,8 @@ def _read_one_stream(
         if not chunk:
             break
         buffer += chunk
-        while True:
-            separators = tuple(
-                (index, len(marker))
-                for marker in (b"\n\n", b"\r\n\r\n")
-                if (index := buffer.find(marker)) >= 0
-            )
-            if not separators:
-                break
-            index, separator_length = min(separators)
-            event = buffer[: index + separator_length]
-            buffer = buffer[index + separator_length :]
+        while split := _pop_event(buffer):
+            event, buffer = split
             process_event(event)
             if upstream_detail == "projection_failed":
                 buffer = b""

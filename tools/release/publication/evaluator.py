@@ -144,36 +144,14 @@ def _evaluate_forge(
     ):
         return None, [f"{provider}.invalid_evidence"]
 
+    assets = evidence.get("assets")
+    typed_assets = _validated_assets(provider, tag, assets)
+    if typed_assets is None:
+        return None, [f"{provider}.invalid_evidence"]
+
     reasons: list[str] = []
     if evidence.get("signature_verified") is not True:
         reasons.append(f"{provider}.signature_unverified")
-    assets = evidence.get("assets")
-    if not isinstance(assets, Mapping):
-        return None, [f"{provider}.invalid_evidence"]
-    typed_assets = cast(Mapping[str, object], assets)
-    names = set(typed_assets)
-    if "SHA256SUMS" not in names:
-        return None, [f"{provider}.invalid_evidence"]
-    archive_prefix = f"codex-responses-proxy-{tag.removeprefix('v')}-"
-    platforms = {
-        name.removeprefix(archive_prefix).removesuffix(".tar.gz")
-        for name in names
-        if name.startswith(archive_prefix) and name.endswith(".tar.gz")
-    }
-    expected_assets = {
-        *(f"{archive_prefix}{platform}.tar.gz" for platform in platforms),
-        *(f"codex-responses-proxy-{platform}.manifest.json" for platform in platforms),
-        "SHA256SUMS",
-        "SHA256SUMS.sig",
-    }
-    if not platforms or names != expected_assets:
-        return None, [f"{provider}.invalid_evidence"]
-    if any(
-        not isinstance(typed_assets.get(name), str)
-        or not _SHA256.fullmatch(cast(str, typed_assets[name]))
-        for name in expected_assets
-    ):
-        return None, [f"{provider}.invalid_evidence"]
     ci = evidence.get("ci")
     release = evidence.get("release")
     if not isinstance(ci, Mapping) or not isinstance(release, Mapping):
@@ -232,3 +210,33 @@ def _evaluate_forge(
         },
     }
     return normalized, reasons
+
+
+def _validated_assets(provider: str, tag: str, assets: object) -> Mapping[str, object] | None:
+    """Return one exact, digest-addressed release inventory."""
+    del provider
+    if not isinstance(assets, Mapping):
+        return None
+    typed_assets = cast(Mapping[str, object], assets)
+    names = set(typed_assets)
+    archive_prefix = f"codex-responses-proxy-{tag.removeprefix('v')}-"
+    platforms = {
+        name.removeprefix(archive_prefix).removesuffix(".tar.gz")
+        for name in names
+        if name.startswith(archive_prefix) and name.endswith(".tar.gz")
+    }
+    expected_assets = {
+        *(f"{archive_prefix}{platform}.tar.gz" for platform in platforms),
+        *(f"codex-responses-proxy-{platform}.manifest.json" for platform in platforms),
+        "SHA256SUMS",
+        "SHA256SUMS.sig",
+    }
+    if not platforms or names != expected_assets:
+        return None
+    if any(
+        not isinstance(typed_assets.get(name), str)
+        or not _SHA256.fullmatch(cast(str, typed_assets[name]))
+        for name in expected_assets
+    ):
+        return None
+    return typed_assets
