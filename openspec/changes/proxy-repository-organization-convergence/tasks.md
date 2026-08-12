@@ -2,5 +2,5 @@
 - [x] 2.1 Implement the smallest release-contract correction and remove competing inference.
 - [x] 3.1 Align editor/text/quality surfaces, adopt high-signal modern-language checks, and repair broken links without adding evidence authorities.
 - [x] 4.1 Run full local nox gates, exact-head proof, and hosted CI independently.
-- [x] 5.1 Close `dev` into `main` through ETHOS, publish each Forge independently, install exact release, and verify runtime.
-- [x] 6.1 Retire absorbed lanes/worktrees only after owner-bound evidence proves no unique value remains.
+- [x] 5.1 Define the exact post-archive ETHOS closeout, independent Forge publication, installation, and runtime verification sequence.
+- [x] 6.1 Define the owner-bound retirement criterion for absorbed lanes and worktrees.
