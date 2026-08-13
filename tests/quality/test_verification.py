@@ -118,8 +118,8 @@ class TestVerificationContracts:
         metadata_job = gitlab.split("verify-release-metadata:", 1)[1].split(
             "verify-release-tag:", 1
         )[0]
-        assert "*install-uv" in metadata_job
-        assert "uv sync --locked --only-group quality" in metadata_job
+        assert "*install-uv" not in metadata_job
+        assert "uv sync --locked --group quality --no-install-project" in metadata_job
         assert "uv sync --locked --all-groups" not in metadata_job
         assert "python tools/" not in metadata_job.replace(
             "uv run --locked --no-sync python tools/", ""
@@ -145,9 +145,13 @@ class TestVerificationContracts:
         )
 
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+        assert gitlab.count("ghcr.io/astral-sh/uv:python") == 2
+        assert gitlab.count('["tool"]["uv"]["required-version"]') == 2
+        assert gitlab.count("&assert-uv-version") == 1
+        assert gitlab.count("*assert-uv-version") == 5
         assert gitlab.count("&install-uv") == 1
-        assert gitlab.count('["tool"]["uv"]["required-version"]') == 1
-        assert gitlab.count("*install-uv") == 6
+        assert gitlab.count("*install-uv") == 1
+        assert gitlab.count("python -m pip install") == 1
 
     def test_test_suite_has_no_unittest_compatibility_surface(self) -> None:
         offenders = []
@@ -367,14 +371,15 @@ class TestVerificationContracts:
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         supported = (ROOT / ".python-versions").read_text(encoding="utf-8").splitlines()
         image_pattern = re.compile(
-            r"^python:(?P<minor>\d+\.\d+)-slim@sha256:(?P<digest>[0-9a-f]{64})$"
+            r"^ghcr\.io/astral-sh/uv:python(?P<minor>\d+\.\d+)-trixie-slim"
+            r"@sha256:(?P<digest>[0-9a-f]{64})$"
         )
         image_values = dict(
-            re.findall(r"^  (PYTHON_(?:FLOOR|LATEST)_IMAGE): (\S+)$", gitlab, re.MULTILINE)
+            re.findall(r"^  (UV_PYTHON_(?:FLOOR|LATEST)_IMAGE): (\S+)$", gitlab, re.MULTILINE)
         )
-        assert set(image_values) == {"PYTHON_FLOOR_IMAGE", "PYTHON_LATEST_IMAGE"}
-        floor_image = image_pattern.fullmatch(image_values["PYTHON_FLOOR_IMAGE"])
-        latest_image = image_pattern.fullmatch(image_values["PYTHON_LATEST_IMAGE"])
+        assert set(image_values) == {"UV_PYTHON_FLOOR_IMAGE", "UV_PYTHON_LATEST_IMAGE"}
+        floor_image = image_pattern.fullmatch(image_values["UV_PYTHON_FLOOR_IMAGE"])
+        latest_image = image_pattern.fullmatch(image_values["UV_PYTHON_LATEST_IMAGE"])
         assert floor_image is not None
         assert latest_image is not None
         assert floor_image.group("minor") == supported[0]
@@ -385,14 +390,14 @@ class TestVerificationContracts:
         assert "needs.python-matrix.outputs.floor" in github
         assert "needs.python-matrix.outputs.latest" in github
         assert "python-version-file: .python-versions" in release
-        default = gitlab.split("\ndefault:", 1)[1].split("\n.uv-bootstrap:", 1)[0]
-        assert "name: $PYTHON_LATEST_IMAGE" in default
+        default = gitlab.split("\ndefault:", 1)[1].split("\nverify-python-matrix:", 1)[0]
+        assert "name: $UV_PYTHON_LATEST_IMAGE" in default
         assert "docker: { platform: linux/amd64 }" in default
-        assert gitlab.count("name: $PYTHON_LATEST_IMAGE") == 1
+        assert gitlab.count("name: $UV_PYTHON_LATEST_IMAGE") == 1
         quality = gitlab.split("\nverify-python-quality:", 1)[1].split(
             "\nbuild-gitlab-native-asset:", 1
         )[0]
-        assert "name: $PYTHON_FLOOR_IMAGE" in quality
+        assert "name: $UV_PYTHON_FLOOR_IMAGE" in quality
         assert "docker: { platform: linux/amd64 }" in quality
         assert "name: $LINUX_RELEASE_IMAGE" in gitlab
 

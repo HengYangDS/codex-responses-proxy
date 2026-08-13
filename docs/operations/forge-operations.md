@@ -139,3 +139,10 @@ boundary.
 
 Missing or mismatched runner capability blocks the job; it is not an allowed
 failure and must not be disguised by platform monkeypatching.
+
+GitLab verification starts from digest-pinned official UV/Python images. The
+image owns only the executor; `uv.lock` owns project dependencies and Nox owns
+the verification graph. A project-scoped runner cache may shorten downloads,
+but an empty cache must remain correct. Ordinary verification must not reinstall
+UV, redownload its primary interpreter, or build an editable source package
+before Nox builds and tests the wheel.

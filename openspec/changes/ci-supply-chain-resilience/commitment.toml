@@ -28,10 +28,10 @@ invariants = [
 ]
 acceptance = [
   "tests_reproduce_and_reject_redundant_network_bootstrap",
-  "gitlab_jobs_use_one_digest_pinned_modern_uv_python_runtime",
-  "locked_dependencies_build_without_isolated_backend_redownload",
+  "gitlab_jobs_use_digest_pinned_uv_python_runtimes_for_supported_boundaries",
+  "locked_bootstrap_dependencies_install_without_a_redundant_project_build",
   "quick_quality_python_matrix_and_release_gates_pass",
-  "exact_tip_gitlab_and_github_ci_pass",
+  "local_source_readiness_is_proved_from_one_frozen_overlay",
 ]
 risks = [
   "ci_runtime_drift_from_repository_lock",

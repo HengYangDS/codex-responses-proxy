@@ -71,11 +71,11 @@ def test_linux_native_workflows_use_the_same_container_runtime() -> None:
     assert "git archive --format=tar HEAD | tar -xf - -C /workspace" in gitlab_linux
 
 
-def test_gitlab_linux_jobs_pin_the_declared_container_platform() -> None:
-    """Do not label host-emulated arm64 jobs as Linux x86_64 verification."""
+def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
+    """Start verification from immutable UV/Python executors, not pip bootstrap."""
 
     gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    default = gitlab.split("\ndefault:", 1)[1].split("\n.uv-bootstrap:", 1)[0]
+    default = gitlab.split("\ndefault:", 1)[1].split("\nverify-python-matrix:", 1)[0]
     quality = gitlab.split("\nverify-python-quality:", 1)[1].split(
         "\nbuild-gitlab-native-asset:", 1
     )[0]
@@ -83,12 +83,24 @@ def test_gitlab_linux_jobs_pin_the_declared_container_platform() -> None:
         "\npublish-gitlab-release:", 1
     )[0]
 
-    assert "name: $PYTHON_LATEST_IMAGE" in default
+    assert "name: $UV_PYTHON_LATEST_IMAGE" in default
     assert "docker: { platform: linux/amd64 }" in default
-    assert "name: $PYTHON_FLOOR_IMAGE" in quality
+    assert "UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv" in gitlab
+    assert "paths: [.cache/uv/]" in default
+    assert "name: $UV_PYTHON_FLOOR_IMAGE" in quality
     assert "docker: { platform: linux/amd64 }" in quality
     assert "name: $LINUX_RELEASE_IMAGE" in native
     assert "docker: { platform: linux/amd64 }" in native
+    for image in ("UV_PYTHON_LATEST_IMAGE", "UV_PYTHON_FLOOR_IMAGE"):
+        reference = gitlab.split(f"{image}: ", 1)[1].splitlines()[0]
+        assert reference.startswith("ghcr.io/astral-sh/uv:python3.")
+        assert "@sha256:" in reference
+    regular_jobs = gitlab.split("\nbuild-gitlab-native-asset:", 1)[0]
+    assert "*install-uv" not in regular_jobs
+    assert regular_jobs.count("python -m pip install") == 1
+    assert gitlab.count("&assert-uv-version") == 1
+    assert gitlab.count("*assert-uv-version") == 5
+    assert "uv sync --locked --group quality --no-install-project" in gitlab
 
 
 def _assert_github_required_tokens(text: str) -> None:
