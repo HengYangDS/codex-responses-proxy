@@ -16,17 +16,27 @@ stages:
 variables:
   DEBIAN_FRONTEND: noninteractive
   CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
-  PYTHON_FLOOR_IMAGE: python:3.12-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
-  PYTHON_LATEST_IMAGE: python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc
+  UV_PYTHON_FLOOR_IMAGE: ghcr.io/astral-sh/uv:python3.12-trixie-slim@sha256:13a15bf8da80cc7cad97711a8a2e094756a9e79feb247d0b496a8cc647fd7d3b
+  UV_PYTHON_LATEST_IMAGE: ghcr.io/astral-sh/uv:python3.14-trixie-slim@sha256:93035a1ae478ef905cc75b107bfe1fde62cdebf5b1996206dd4e5089a9f0a6d3
+  UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
   LINUX_RELEASE_IMAGE: python:3.14.7-bookworm@sha256:8771427e2ac3e39208c1632f17e8b09e464333d262844a03705cc5e0023c16e2
 
 default:
   image:
-    name: $PYTHON_LATEST_IMAGE
+    name: $UV_PYTHON_LATEST_IMAGE
     docker: { platform: linux/amd64 }
   tags: [$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG]
+  cache:
+    key: uv-$CI_RUNNER_EXECUTABLE_ARCH
+    paths: [.cache/uv/]
 
-.uv-bootstrap:
+.uv-runtime-contract:
+  before_script:
+    - &assert-uv-version |
+      UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
+      test "$(uv --version)" = "uv ${UV_REQUIREMENT#==}"
+
+.release-uv-bootstrap:
   before_script:
     - &install-uv |
       UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
@@ -39,15 +49,15 @@ verify-python-matrix:
     # Every matrix interpreter therefore needs the same complete Git history.
     GIT_DEPTH: "0"
   before_script:
+    - *assert-uv-version
     - apt-get update -qq
     # PyInstaller inspects native objects with objdump on Linux.  Keep that
     # platform dependency explicit instead of relying on a runner image layer.
     - apt-get install -qq -y --no-install-recommends binutils git openssh-client
     - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
-    - *install-uv
   script:
     - python --version
-    - uv sync --locked --only-group quality
+    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
     - uv python install $(tr '\n' ' ' < .python-versions)
     - uv run --locked --no-sync nox -s full
 
@@ -58,14 +68,14 @@ verify-release-metadata:
     # checkout cannot establish that history, so this job must receive it.
     GIT_DEPTH: "0"
   before_script:
+    - *assert-uv-version
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends git openssh-client
     # Shared runners can retain deleted tags in a reused checkout.  Fetching
     # with tag pruning makes the checker reason about the provider's current
     # release namespace, not runner-local history.
     - git fetch --tags --force --prune --prune-tags origin
-    - *install-uv
-    - uv sync --locked --only-group quality
+    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
   script:
     - |
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
@@ -87,12 +97,12 @@ verify-release-tag:
   rules:
     - if: '$CI_COMMIT_TAG'
   before_script:
+    - *assert-uv-version
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends git openssh-client
     - git fetch --tags --force --prune --prune-tags origin
     - test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"
-    - *install-uv
-    - uv sync --locked --only-group quality
+    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
   script:
     - uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
     - uv run --locked --no-sync python -m tools.forge.tag_signature . "$CI_COMMIT_TAG" gitlab "$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST"
@@ -100,19 +110,19 @@ verify-release-tag:
 verify-python-quality:
   stage: verify
   image:
-    name: $PYTHON_FLOOR_IMAGE
+    name: $UV_PYTHON_FLOOR_IMAGE
     docker: { platform: linux/amd64 }
   variables:
     # The canonical quality suite also executes release chronology tests.
     # Keep this checkout equivalent to every other full-suite job.
     GIT_DEPTH: "0"
   before_script:
+    - *assert-uv-version
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends binutils git openssh-client
     - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
-    - *install-uv
   script:
-    - uv sync --locked --only-group quality
+    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
     - uv run --locked --no-sync nox -s quality
 
 build-gitlab-native-asset:
@@ -151,11 +161,11 @@ publish-gitlab-release:
   rules:
     - if: '$CI_COMMIT_TAG'
   before_script:
+    - *assert-uv-version
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends curl git openssh-client
     - git fetch --tags --force --prune --prune-tags origin
-    - *install-uv
-    - uv sync --locked --only-group quality
+    - uv sync --locked --only-group quality --python python --no-python-downloads
   script:
     - uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
     - test -f "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY:-}"
