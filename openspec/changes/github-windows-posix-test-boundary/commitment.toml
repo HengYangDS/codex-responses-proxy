@@ -1,0 +1,12 @@
+schema_version = 1
+id = "change:github-windows-posix-test-boundary"
+intent = "Keep the GitLab POSIX shell regression executable on POSIX hosts without requiring a foreign shell on Windows."
+subjects = ["repository:codex-responses-proxy"]
+scope = ["tests/quality/test_verification.py", "openspec/changes/github-windows-posix-test-boundary/**"]
+invariants = ["windows_product_tests_remain_enabled", "gitlab_posix_contract_remains_executed_on_posix", "production_code_does_not_change"]
+acceptance = ["windows_matrix_does_not_invoke_bin_sh", "posix_positive_and_negative_shell_cases_pass", "complete_repository_gates_pass"]
+risks = ["platform_specific_test_scope_is_ambiguous"]
+authority_refs = ["AGENTS.md", ".github/workflows/verify.yml", ".gitlab-ci.yml"]
+permissions = ["repository.read", "work-lane.write", "git.ref.compare-and-swap"]
+hypotheses = []
+dependencies = []
