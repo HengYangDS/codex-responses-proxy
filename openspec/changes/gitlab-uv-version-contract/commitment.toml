@@ -1,0 +1,12 @@
+schema_version = 1
+id = "change:gitlab-uv-version-contract"
+intent = "Compare the machine UV version token instead of unstable human display text in GitLab verification."
+subjects = ["repository:codex-responses-proxy"]
+scope = [".gitlab-ci.yml", "tests/quality/test_verification.py", "tests/forge/test_workflow_contracts.py", "openspec/changes/gitlab-uv-version-contract/**"]
+invariants = ["pyproject_metadata_remains_the_single_uv_version_owner", "gitlab_uses_digest_pinned_official_uv_python_images", "product_runtime_and_release_semantics_do_not_change"]
+acceptance = ["the_current_linux_uv_display_suffix_is_accepted", "a_mismatched_machine_version_is_rejected", "focused_and_complete_repository_gates_pass"]
+risks = ["uv_human_version_output_changes"]
+authority_refs = ["AGENTS.md", "pyproject.toml", ".gitlab-ci.yml"]
+permissions = ["repository.read", "work-lane.write", "git.ref.compare-and-swap"]
+hypotheses = []
+dependencies = []
