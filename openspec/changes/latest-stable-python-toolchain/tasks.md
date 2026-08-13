@@ -12,5 +12,5 @@
   aggregate coverage remain strictly above 95 percent.
 - [x] 2.3 Run the complete Python 3.12, 3.13, and 3.14 matrix.
 - [x] 2.4 Build and black-box test the native release asset.
-- [ ] 2.5 Execute exact-HEAD ETHOS proof, archive the Change, and land through
+- [x] 2.5 Execute exact-HEAD ETHOS proof, archive the Change, and land through
   the public lifecycle.
