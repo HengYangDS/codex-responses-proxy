@@ -34,7 +34,9 @@ default:
   before_script:
     - &assert-uv-version |
       UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
-      test "$(uv --version)" = "uv ${UV_REQUIREMENT#==}"
+      UV_VERSION="$(uv --version)"
+      UV_VERSION="${UV_VERSION#uv }"
+      test "${UV_VERSION%% *}" = "${UV_REQUIREMENT#==}"
 
 .release-uv-bootstrap:
   before_script:
