@@ -163,6 +163,7 @@ class TestVerificationContracts:
             ("uv 9.9.9 (x86_64-unknown-linux-musl)", 1),
         ],
     )
+    @pytest.mark.skipif(os.name == "nt", reason="GitLab executes this contract with POSIX sh")
     def test_gitlab_uv_contract_uses_the_machine_version_token(
         self, tmp_path: Path, reported_version: str, expected_returncode: int
     ) -> None:
