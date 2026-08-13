@@ -219,17 +219,17 @@ class TestStructuralQualityContracts:
         assert policy["comparison"] == "strictly-greater-than"
         assert policy["scopes"] == ["aggregate", "package", "module"]
 
-    def repository_owned_structural_limits_are_ratified(self) -> None:
+    def test_repository_owned_structural_limits_are_ratified(self) -> None:
         policy = tomllib.loads(
             (ROOT / ".config/checks/architecture/policy.toml").read_text(encoding="utf-8")
         )
         assert policy["logic_max_statements"] == 600
         assert policy["module_max_eloc"] == 600
-        assert policy["function_max_eloc"] == 120
+        assert policy["function_max_eloc"] == 110
         assert policy["max_nesting_depth"] == 8
         assert "ratchet" not in policy
 
-    def repository_has_standard_package_metadata_and_one_version_owner(self) -> None:
+    def test_repository_has_standard_package_metadata_and_one_version_owner(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         project = metadata["project"]
         assert project["name"] == "codex-responses-proxy"
