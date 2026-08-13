@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 import tomllib
 from contextlib import contextmanager
 from pathlib import Path
@@ -149,9 +150,38 @@ class TestVerificationContracts:
         assert gitlab.count('["tool"]["uv"]["required-version"]') == 2
         assert gitlab.count("&assert-uv-version") == 1
         assert gitlab.count("*assert-uv-version") == 5
+        assert 'UV_VERSION="${UV_VERSION#uv }"' in gitlab
+        assert 'test "${UV_VERSION%% *}" = "${UV_REQUIREMENT#==}"' in gitlab
         assert gitlab.count("&install-uv") == 1
         assert gitlab.count("*install-uv") == 1
         assert gitlab.count("python -m pip install") == 1
+
+    @pytest.mark.parametrize(
+        ("reported_version", "expected_returncode"),
+        [
+            ("uv 0.12.3 (x86_64-unknown-linux-musl)", 0),
+            ("uv 9.9.9 (x86_64-unknown-linux-musl)", 1),
+        ],
+    )
+    def test_gitlab_uv_contract_uses_the_machine_version_token(
+        self, tmp_path: Path, reported_version: str, expected_returncode: int
+    ) -> None:
+        gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+        script = textwrap.dedent(
+            gitlab.split("- &assert-uv-version |\n", 1)[1].split("\n\n.release-uv-bootstrap:", 1)[0]
+        )
+        executable = tmp_path / "uv"
+        executable.write_text(f"#!/bin/sh\nprintf '%s\\n' '{reported_version}'\n")
+        executable.chmod(0o700)
+
+        completed = subprocess.run(
+            ["/bin/sh", "-eu", "-c", script],
+            cwd=ROOT,
+            env=os.environ | {"PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}"},
+            check=False,
+        )
+
+        assert completed.returncode == expected_returncode
 
     def test_test_suite_has_no_unittest_compatibility_surface(self) -> None:
         offenders = []
