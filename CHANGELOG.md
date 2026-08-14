@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.33] - 2026-08-14
+
+### Fixed
+
+- Restore failed native upgrades exactly by removing bundle members introduced
+  only by the rejected candidate.
+
 ## [2.0.32] - 2026-08-14
 
 ### Fixed

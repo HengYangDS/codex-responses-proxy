@@ -159,7 +159,7 @@ class TestVerificationContracts:
     @pytest.mark.parametrize(
         ("reported_version", "expected_returncode"),
         [
-            ("uv 0.12.3 (x86_64-unknown-linux-musl)", 0),
+            ("uv 0.12.4 (x86_64-unknown-linux-musl)", 0),
             ("uv 9.9.9 (x86_64-unknown-linux-musl)", 1),
         ],
     )
@@ -353,7 +353,7 @@ class TestVerificationContracts:
                 requirement.partition("==") for requirement in requirements
             )
         )
-        assert metadata["tool"]["uv"]["required-version"] == "==0.12.3"
+        assert metadata["tool"]["uv"]["required-version"] == "==0.12.4"
         assert metadata["tool"]["uv"]["link-mode"] == "copy"
         assert (ROOT / "uv.lock").is_file()
 

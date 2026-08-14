@@ -51,6 +51,13 @@ unchanged.
 - **AND** any additional field on that control is rejected locally as an
   unproved request shape.
 
+#### Scenario: A conversation changes providers repeatedly
+
+- **WHEN** a subsequent request switches among UCloud, DMXAPI, and AIHubMix
+- **THEN** the outbound request uses `store=false`
+- **AND** no `rs_*`, provider item identifier, or unproved provider-specific replay structure crosses the provider boundary
+- **AND** portable user and agent content remains replayable.
+
 ### Requirement: Portable dialogue and tool relationships are preserved
 
 The proxy SHALL preserve textual system, developer, user, and assistant
@@ -108,6 +115,12 @@ annotations, and opaque metadata SHALL NOT be required.
   receives the exact classified DMX empty-response error
 - **THEN** the byte-identical retry preserves that image on input grammar
 - **AND** it does not turn valid non-text input into a local exhausted 503.
+
+#### Scenario: Recovery contains non-text agent content
+
+- **WHEN** a recoverable response contains valid non-text agent items
+- **THEN** recovery preserves their provider-portable semantic representation
+- **AND** does not fabricate text or require provider-bound identifiers.
 
 ### Requirement: Paired empty tool results remain explicit
 
@@ -219,6 +232,12 @@ and exact.
 - **WHEN** UCloud or AIHubMix returns HTTP 477
 - **THEN** the proxy does not apply the DMXAPI `empty_response` policy unless
   the request was routed to DMXAPI and the exact DMX error contract matched.
+
+#### Scenario: DMXAPI exhausts empty-response recovery
+
+- **WHEN** DMXAPI yields the exact classified empty response through the bounded retry policy
+- **THEN** the proxy emits a typed terminal error only after the budget is exhausted
+- **AND** UCloud and AIHubMix remain independently usable.
 
 ### Requirement: Live response control data survives the current turn
 
@@ -413,6 +432,12 @@ undocumented provider quota.
 
 - **WHEN** a provider supplies a positive `Retry-After` above five minutes
 - **THEN** the process-local cooldown is capped at five minutes.
+
+#### Scenario: One provider is rate-limited
+
+- **WHEN** UCloud, DMXAPI, or AIHubMix records an active provider-scoped cooldown
+- **THEN** no other provider inherits that cooldown or loses ordinary concurrency
+- **AND** client-owned per-session concurrency remains outside the proxy.
 
 ### Requirement: Active provider cooldown deadlines do not move backward
 

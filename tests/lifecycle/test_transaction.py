@@ -2,27 +2,30 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import projection as payload_projection
 from codex_responses_proxy.lifecycle import artifact
+from codex_responses_proxy.lifecycle import projection as payload_projection
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle import transaction as payload_transaction
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import identity as listener_identity
 from codex_responses_proxy.service import inventory
-from tests.lifecycle.fixtures import executable_relative, install_context
 from tests.lifecycle.fixtures import (
     begin_transaction,
+    executable_relative,
+    install_context,
     install_payload,
     released_artifact,
+    runtime_files,
 )
-from tests.lifecycle.fixtures import runtime_files
-import pytest
 
 
 def test_begin_transaction_prewarms_staged_bundle_before_install_mutation(
@@ -37,6 +40,54 @@ def test_begin_transaction_prewarms_staged_bundle_before_install_mutation(
     prewarm.assert_called_once()
     assert not Path(ctx.install_dir).exists()
     transaction.rollback()
+
+
+def test_upgrade_rollback_removes_candidate_only_runtime_members(tmp_path: Path, *, mocker) -> None:
+    ctx = install_context(tmp_path)
+    install_payload(ctx, "1.2.2", mocker=mocker)
+    base = released_artifact("1.2.3")
+    content = b"candidate-only-runtime"
+    extra = artifact.ArtifactFile(
+        path="bin/_internal/runtime.dat",
+        mode="100644",
+        blob_oid=hashlib.sha256(content).hexdigest(),
+        sha256=hashlib.sha256(content).hexdigest(),
+        content=content,
+    )
+    blobs = (*base.peek_blobs(), extra)
+    serving = {item.path: item.sha256 for item in blobs}
+    receipt = {
+        "schema_version": 1,
+        "version": "1.2.3",
+        "serving_payload_sha256": payload_projection.serving_payload_sha256(serving),
+        "serving_files": [item.path for item in blobs],
+        "payload": [
+            {
+                "path": item.path,
+                "mode": item.mode,
+                "blob_oid": item.blob_oid,
+                "sha256": item.sha256,
+            }
+            for item in blobs
+        ],
+    }
+    receipt_sha256 = hashlib.sha256(payload_digest.canonical_json(receipt)).hexdigest()
+    candidate = artifact.mint(
+        blobs,
+        receipt,
+        {
+            "schema_version": 1,
+            "algorithm": "sha256",
+            "receipt_sha256": receipt_sha256,
+            "serving_payload_sha256": receipt["serving_payload_sha256"],
+        },
+    )
+    transaction = begin_transaction(ctx, candidate, mocker=mocker)
+    transaction.commit_projection()
+    introduced = Path(ctx.install_dir, extra.path)
+    assert introduced.read_bytes() == content
+    transaction.rollback()
+    assert not introduced.exists()
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -363,7 +414,9 @@ class TestPayloadTransaction:
             )
 
         fresh = begin_transaction(
-            install_context(Path(tempfile.mkdtemp())), released_artifact(), mocker=mocker
+            install_context(Path(tempfile.mkdtemp())),
+            released_artifact(),
+            mocker=mocker,
         )
         fresh.rollback()
         payload_transaction._remove_transaction_root(fresh._ctx)
@@ -381,7 +434,8 @@ class TestPayloadTransaction:
         with (
             subtests.test("integrity"),
             pytest.raises(
-                errors.InstallError, match="committed payload integrity check failed: tampered"
+                errors.InstallError,
+                match="committed payload integrity check failed: tampered",
             ),
         ):
             transaction.commit_projection()

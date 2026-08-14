@@ -1,0 +1,41 @@
+schema_version = 1
+id = "change:install-rollback-residue"
+intent = "Make failed native upgrades restore the exact prior payload by removing candidate-only bundle members."
+subjects = ["repository:self"]
+scope = [
+  "openspec/changes/install-rollback-residue/**",
+  "openspec/changes/archive/*-install-rollback-residue/**",
+  "src/codex_responses_proxy/lifecycle/artifact.py",
+  "src/codex_responses_proxy/lifecycle/rollback.py",
+  "src/codex_responses_proxy/lifecycle/transaction.py",
+  "tests/lifecycle/test_artifact.py",
+  "tests/lifecycle/test_transaction.py",
+  "README.md",
+  "pyproject.toml",
+  "uv.lock",
+  "tests/quality/test_verification.py",
+  ".config/checks/commits/policy.toml",
+  "tools/quality/commits.py",
+  "tests/quality/test_contract.py",
+  "VERSION",
+  "CHANGELOG.md",
+]
+invariants = [
+  "failed_upgrades_leave_the_previous_installed_payload_byte_exact",
+  "unknown_install_content_remains_preserved",
+  "runtime_listeners_are_not_signalled_outside_the_handoff_protocol",
+]
+acceptance = [
+  "candidate_only_bundle_members_are_removed_on_rollback",
+  "focused_transaction_and_integrity_tests_pass",
+  "quick_quality_matrix_and_release_gates_pass",
+  "forward_release_installs_transactionally",
+]
+risks = ["rollback_removes_content_not_owned_by_the_candidate"]
+authority_refs = [
+  "AGENTS.md",
+  "docs/decisions/dr-0005-single-native-payload-lifecycle.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+]
+hypotheses = ["binding_cleanup_to_the_verified_candidate_inventory_closes_partial_rollback"]
+dependencies = []

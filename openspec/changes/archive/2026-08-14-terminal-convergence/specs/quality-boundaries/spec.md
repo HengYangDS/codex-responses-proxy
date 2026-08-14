@@ -1,8 +1,5 @@
-# quality-boundaries Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change quality-boundary-tightening. Update Purpose after archive.
-## Requirements
 ### Requirement: One structural quality boundary
 
 Source, tests, tools, documentation, configuration, and release assets SHALL

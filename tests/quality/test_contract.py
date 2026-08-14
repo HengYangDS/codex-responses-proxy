@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import importlib.util
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -35,6 +34,12 @@ def _checker() -> ModuleType:
     _load("tools", "tools/__init__.py")
     _load("tools.quality", "tools/quality/__init__.py")
     return _load("codex_responses_proxy_quality_checker", "tools/quality/repository.py")
+
+
+def _commit_checker() -> ModuleType:
+    _load("tools", "tools/__init__.py")
+    _load("tools.quality", "tools/quality/__init__.py")
+    return _load("codex_responses_proxy_commit_checker", "tools/quality/commits.py")
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
@@ -171,6 +176,30 @@ class TestQualityPolicyContracts:
             },
         ]
 
+    def test_branch_roles_delegate_local_release_transition_to_ethos(self) -> None:
+        policy = tomllib.loads((ROOT / ".ethos/workspace.toml").read_text(encoding="utf-8"))[
+            "branch_roles"
+        ]
+
+        assert {key: policy[key] for key in policy if key != "transitions"} == {
+            "release_branch": "main",
+            "accepted_branch": "dev",
+            "candidate_branch": "candidate/dev",
+            "work_branch_prefix": "work/",
+            "proposal_branch_prefix": "proposal/",
+        }
+        assert policy["transitions"] == [
+            {
+                "id": "accepted-to-release",
+                "source_role": "accepted_root",
+                "target_role": "release_root",
+                "capability": "repository.release",
+                "required_gates": [],
+                "required_evidence": ["proof:execution"],
+                "coupled_with": "",
+            }
+        ]
+
     def test_quality_policy_has_one_explicit_owner_per_concern(self) -> None:
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         tool = pyproject.get("tool", {})
@@ -215,12 +244,13 @@ class TestQualityPolicyContracts:
         policy = tomllib.loads(
             (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
         )
-        human = re.compile(policy["human_pattern"])
-        generated = tuple(re.compile(pattern) for pattern in policy["generated_patterns"])
+        human, *generated = _commit_checker().commit_subject_patterns(policy)
 
         assert human.fullmatch("refactor(quality): centralize repository policy owners")
+        assert human.fullmatch("fix(install): restore exact payload on rollback")
         assert human.fullmatch("fix(supervision): classify zombie tombstones")
         assert not human.fullmatch("refactor: centralize repository policy owners")
+        assert not human.fullmatch("fix(arbitrary): restore exact payload on rollback")
         assert any(
             pattern.fullmatch("materialize quality-policy-ssot carrier") for pattern in generated
         )
@@ -229,7 +259,7 @@ class TestQualityPolicyContracts:
         policy = tomllib.loads(
             (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
         )
-        human = re.compile(policy["human_pattern"])
+        human, *_ = _commit_checker().commit_subject_patterns(policy)
 
         assert human.fullmatch("chore(release): prepare v2.0.22")
         assert not human.fullmatch("chore(release): prepare v2.0.22.")
