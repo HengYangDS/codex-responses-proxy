@@ -1,0 +1,28 @@
+schema_version = 1
+id = "change:release-role-transition"
+intent = "Declare the repository branch-role transition that advances accepted dev to local release main through ETHOS."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  ".ethos/workspace.toml",
+  "openspec/changes/release-role-transition/**",
+  "openspec/changes/archive/*-release-role-transition/**",
+  "tests/quality/test_contract.py",
+]
+invariants = [
+  "ethos_is_the_only_local_dev_to_main_transition_owner",
+  "main_advances_only_from_the_exact_accepted_dev_head",
+  "remote_forges_remain_independent_post_transition_projections",
+]
+acceptance = [
+  "workspace_declares_accepted_to_release",
+  "repository_contract_rejects_missing_or_duplicated_transition_ownership",
+  "ethos_transition_dry_run_admits_exact_dev_to_main_compare_and_swap",
+]
+risks = ["release_role_configuration_diverges_from_the_accepted_repository_contract"]
+authority_refs = [
+  "AGENTS.md",
+  "openspec/specs/repository-organization/spec.md",
+  "docs/operations/forge-operations.md",
+]
+hypotheses = ["one_declarative_edge_closes_the_release_root_authority_gap"]
+dependencies = []
