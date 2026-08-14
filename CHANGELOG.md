@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.34] - 2026-08-14
+
+### Fixed
+
+- Keep every GitLab post-sync command on the Python environment selected by
+  uv, and cache UV-managed compatibility runtimes by target platform.
+
 ## [2.0.33] - 2026-08-14
 
 ### Fixed
