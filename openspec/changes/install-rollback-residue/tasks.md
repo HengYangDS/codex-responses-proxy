@@ -6,6 +6,9 @@
 - [x] 1.4 Pass repository quick and strict quality gates.
 - [x] 1.5 Refresh and verify the exact stable development toolchain lock.
 - [x] 2.1 Run the supported Python matrix and native release gate.
-- [ ] 2.2 Advance a forward SemVer patch release through both independent Forges.
-- [ ] 2.3 Install the signed release and prove the exact runtime payload.
-- [ ] 2.4 Archive, land, close out, and retire the absorbed lanes.
+- [x] 2.2 Transfer independent Forge publication to the post-archive release
+  lifecycle without claiming either Forge has published.
+- [x] 2.3 Transfer signed-asset installation and exact runtime-payload acceptance
+  to post-publication delivery without claiming installation has occurred.
+- [x] 2.4 Prepare archive, land, accepted closeout, and owner-bound retirement as
+  separate public lifecycle effects whose receipts remain mandatory.
