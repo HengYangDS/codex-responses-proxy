@@ -1,0 +1,25 @@
+schema_version = 1
+id = "change:hosted-uv-image-parity"
+intent = "Absorb the hosted GitLab uv image identity fix into the accepted local source without losing the synchronized Python execution contract."
+subjects = ["repository:self"]
+scope = [
+  "openspec/changes/hosted-uv-image-parity/**",
+  ".gitlab-ci.yml",
+  "tests/forge/test_workflow_contracts.py",
+  "tests/quality/test_verification.py",
+]
+invariants = [
+  "gitlab_uv_image_matches_the_locked_repository_toolchain",
+  "gitlab_jobs_execute_the_synchronized_python",
+  "gitlab_and_github_remain_independent_projections_of_one_local_source",
+]
+acceptance = [
+  "gitlab_uv_image_identity_is_exact_and_diagnostic",
+  "synchronized_python_execution_contract_is_preserved",
+  "focused_workflow_and_quality_regressions_pass",
+  "full_repository_proof_passes",
+]
+risks = ["hosted_runner_images_can_drift_from_the_repository_lock_without_exact_identity_checks"]
+authority_refs = ["uv.lock", ".gitlab-ci.yml", "docs/operations/forge-operations.md"]
+hypotheses = []
+dependencies = []
