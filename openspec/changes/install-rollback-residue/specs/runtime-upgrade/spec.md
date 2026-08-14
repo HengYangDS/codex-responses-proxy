@@ -1,10 +1,19 @@
 ## MODIFIED Requirements
 
-### Requirement: Failed upgrades restore the exact prior payload
+### Requirement: Rollback owns only current product files
 
-When a released upgrade fails after projecting candidate bytes, rollback MUST
-restore every retained prior byte and MUST remove every verified candidate file
-that was absent from the prior snapshot.
+Rollback SHALL snapshot the complete current owned inventory or its complete
+absence. Unknown install content SHALL be preserved and SHALL never become
+implicitly owned. Candidate paths that collide with unknown content SHALL block
+mutation. When an upgrade fails after projecting candidate bytes, rollback
+SHALL restore every retained prior byte and remove every verified candidate
+file that was absent from the prior snapshot.
+
+#### Scenario: Current payload upgrade fails
+
+- **WHEN** candidate commit or successor proof fails
+- **THEN** every prior owned bundle byte and mode is restored
+- **AND** unknown content remains unchanged.
 
 #### Scenario: Candidate adds a new frozen-runtime member
 
@@ -18,4 +27,4 @@ that was absent from the prior snapshot.
 
 | Requirement | Task | Proof |
 |---|---|---|
-| `runtime-upgrade:Failed upgrades restore the exact prior payload` | `1.2` | `tests/lifecycle/test_transaction.py::test_upgrade_rollback_removes_candidate_only_runtime_members` |
+| `runtime-upgrade:Rollback owns only current product files` | `1.2` | `tests/lifecycle/test_transaction.py::test_upgrade_rollback_removes_candidate_only_runtime_members` |
