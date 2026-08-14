@@ -1,23 +1,22 @@
 ## MODIFIED Requirements
 
-### Requirement: Physical structure follows semantic ownership
+### Requirement: Portable product and repository UX
 
-Source, tests, tools, documentation, configuration, and release assets SHALL be
-organized by one explicit semantic owner. Cross-package private imports,
-forwarding facades, concatenated semantic package names, and root-level script
-sprawl SHALL not create parallel authority.
+Users SHALL operate the installed `codex-responses-proxy` command for status,
+lifecycle, and diagnostics. It SHALL not require Python, module execution, a
+source checkout, uv, Nox, ETHOS, repository-specific shell variables, personal
+paths, identities, or Forge coupling. Repository verification SHALL expose one
+documented locked command graph as a distinct developer surface.
 
-#### Scenario: A contributor locates behavior
+#### Scenario: Operator installs a release
 
-- **WHEN** a contributor follows a public command or runtime behavior
-- **THEN** its implementation, tests, specification, and documentation point to one semantic owner
-- **AND** no compatibility module or duplicated policy must be consulted.
+- **WHEN** an operator invokes the documented product installation command
+- **THEN** the command accepts explicit release metadata or a resolved manifest without personal paths, identities, or Forge coupling
 
-### Requirement: User and developer interfaces remain distinct
+#### Scenario: Contributor verifies a checkout
 
-Users SHALL operate the installed `codex-responses-proxy` command. Development
-commands and module execution SHALL remain documented only as repository-local
-DX surfaces.
+- **WHEN** a contributor runs the documented local gate
+- **THEN** the same `uv`/`nox` graph is used by CI and ETHOS proof without a second test runner or compatibility wrapper
 
 #### Scenario: A user installs a signed release
 

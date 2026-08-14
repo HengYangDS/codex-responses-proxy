@@ -1,27 +1,29 @@
 ## MODIFIED Requirements
 
-### Requirement: Quality evidence covers the complete product surface
+### Requirement: One structural quality boundary
 
-The repository SHALL enforce formatting, linting, typing, security, dependency,
-documentation-link, architecture, release, and platform gates. Statement,
-branch, and package coverage SHALL each be strictly greater than 95% for the
-declared production surface.
+Source, tests, tools, documentation, configuration, and release assets SHALL
+follow one explicit semantic owner and dependency direction. Every tracked Python
+module and function in the configured source, tool, and test roots MUST use the
+same effective-line, function-size, and control-nesting limits declared in the
+architecture policy. Cross-package private imports, forwarding facades,
+concatenated semantic package names, compatibility modules, duplicated policy,
+and root-level script sprawl SHALL NOT create parallel authority.
 
-#### Scenario: A release candidate is proved
+#### Scenario: A large test module is rejected
 
-- **WHEN** full local and hosted verification completes
-- **THEN** every required gate reports pass for the exact candidate revision
-- **AND** no warning, traceback, skipped required platform, or missing runner is represented as success
-- **AND** coverage evidence proves all three thresholds independently.
+- **WHEN** a test module exceeds the declared effective-line or statement limit
+- **THEN** the repository quality command reports a deterministic gap
+- **AND** no test-only exception or ratchet is accepted.
 
-### Requirement: Supply-chain versions have one maintained authority
+#### Scenario: A test owner exceeds function or nesting limits
 
-Supported runtimes and tools SHALL use current stable releases through one lock
-or declarative source appropriate to their ecosystem. CI SHALL consume that
-authority rather than duplicate versions in workflow scripts.
+- **WHEN** a test function exceeds the declared function limit or nesting depth
+- **THEN** the quality command rejects the repository
+- **AND** pytest remains the only behavior test runner.
 
-#### Scenario: A tool version changes
+#### Scenario: A contributor locates behavior
 
-- **WHEN** the stable locked supply chain is refreshed
-- **THEN** local development and both Forge pipelines resolve the same declared version
-- **AND** obsolete pins and compatibility fallbacks are removed.
+- **WHEN** a contributor follows a public command or runtime behavior
+- **THEN** its implementation, tests, specification, and documentation point to one semantic owner
+- **AND** no compatibility module or duplicated policy must be consulted.

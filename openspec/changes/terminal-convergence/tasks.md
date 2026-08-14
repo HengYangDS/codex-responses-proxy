@@ -35,10 +35,13 @@ operation.
 | Requirement | Task | Proof |
 | --- | --- | --- |
 | `runtime-upgrade:Rollback owns only current product files` | `2.1` | `tests/lifecycle/test_transaction.py::test_upgrade_rollback_removes_candidate_only_runtime_members` |
-| `provider-portable-responses:Provider switching is stateless` | `2.2` | `tests/protocol/test_request_history.py; tests/relay/test_transport_failures.py` |
-| `provider-portable-responses:Upstream failure recovery preserves agent semantics` | `2.3` | `tests/relay/test_empty_response.py; tests/relay/test_input_recovery.py; tests/relay/test_relay.py` |
-| `provider-portable-responses:Backpressure is provider-scoped` | `2.4` | `tests/relay/test_rate_limit_transport.py` |
-| `repository-organization:Physical structure follows semantic ownership` | `3.2` | `tests/quality/test_contract.py` |
-| `repository-organization:User and developer interfaces remain distinct` | `3.2` | `tests/cli; tests/release` |
-| `quality-boundaries:Supply-chain versions have one maintained authority` | `3.3` | `uv lock --check; tests/forge` |
-| `quality-boundaries:Quality evidence covers the complete product surface` | `3.4` | `nox -s quality tests-3.12 tests-3.13 tests-3.14 release` |
+| `provider-portable-responses:Every Responses request is projected to a provider-portable form` | `2.2` | `tests/protocol/test_request_history.py; tests/relay/test_transport_failures.py` |
+| `provider-portable-responses:Portable dialogue and tool relationships are preserved` | `2.3` | `tests/relay/test_empty_response.py; tests/relay/test_input_recovery.py; tests/relay/test_relay.py` |
+| `provider-portable-responses:Provider-specific recovery is route-scoped` | `2.3` | `tests/relay/test_empty_response.py; tests/relay/test_transport_failures.py` |
+| `provider-portable-responses:Provider rate limits do not multiply across retry layers` | `2.4` | `tests/relay/test_rate_limit_transport.py` |
+| `provider-portable-responses:Ordinary concurrency remains outside the proxy` | `2.4` | `tests/relay/test_rate_limit_transport.py; tests/relay/test_relay.py` |
+| `quality-boundaries:One structural quality boundary` | `3.2` | `tests/quality/test_contract.py` |
+| `repository-organization:Portable product and repository UX` | `3.2` | `tests/cli; tests/release` |
+| `ci-diagnostics:Supply-chain pins are current and reproducible` | `3.3` | `uv lock --check; tests/forge` |
+| `ci-diagnostics:Verification has one repository-owned owner` | `3.4` | `nox -s quick quality release` |
+| `ci-diagnostics:Coverage is strict and host-independent` | `3.4` | `nox -s quality tests-3.12 tests-3.13 tests-3.14 release` |
