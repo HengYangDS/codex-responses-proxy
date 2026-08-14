@@ -5,5 +5,5 @@
 - [x] 1.3 Prove ETHOS discovers the exact `accepted-to-release` command.
 - [x] 1.4 Pass focused and quick quality gates; complete matrix, archive, and
   landing through the public proof lifecycle.
-- [ ] 1.5 Execute the exact local `dev` to `main` transition after this Change
-  reaches accepted truth.
+- [x] 1.5 Transfer the exact local `dev` to `main` transition to the
+  post-accepted lifecycle, where the declared edge is authoritative.
