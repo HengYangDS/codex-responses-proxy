@@ -425,6 +425,14 @@ without querying, mutating, or depending on the other Forge.
 - **THEN** the installer verifies the complete release set and external trust anchor before mutation
 - **AND** the installed executable reports that exact version and passes runtime acceptance.
 
+#### Scenario: Accepted source advances after a release
+
+- **WHEN** an accepted unreleased repair changes the source tree after the
+  version in the latest immutable tag
+- **THEN** `VERSION` advances to one newer SemVer patch before publication
+- **AND** the Changelog records the repair under that same version
+- **AND** existing tags, runs, Releases, and assets remain unchanged.
+
 ### Requirement: Commit grammar follows the checkout's available integration boundary
 
 Commit-subject verification MUST validate the change range after the most local
