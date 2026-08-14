@@ -26,3 +26,9 @@ replacement.
 - **WHEN** verification or publication invokes Nox, pytest, or a repository module
 - **THEN** UV selects the Python executable synchronized for that job
 - **AND** no ambient interpreter or implicit Python download contributes to success.
+
+## Requirement To Task To Proof
+
+| Requirement | Task | Proof |
+| --- | --- | --- |
+| `hosted-verification:Hosted Python verification uses the repository toolchain` | `1.1` | `tests/forge/test_workflow_contracts.py; tests/quality/test_verification.py; uv run --locked --no-sync nox -s quick; ethos prove --execute` |
