@@ -14,6 +14,9 @@ scope = [
   "pyproject.toml",
   "uv.lock",
   "tests/quality/test_verification.py",
+  ".config/checks/commits/policy.toml",
+  "tools/quality/commits.py",
+  "tests/quality/test_contract.py",
   "VERSION",
   "CHANGELOG.md",
 ]

@@ -215,12 +215,18 @@ class TestQualityPolicyContracts:
         policy = tomllib.loads(
             (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
         )
-        human = re.compile(policy["human_pattern"])
+        types = "|".join(map(re.escape, policy["types"]))
+        scopes = "|".join(map(re.escape, policy["scopes"]))
+        human = re.compile(
+            rf"^(?:{types})\((?:{scopes})\): [a-z](?:[^\n]*[^\s.]|[^\n\s.])$"
+        )
         generated = tuple(re.compile(pattern) for pattern in policy["generated_patterns"])
 
         assert human.fullmatch("refactor(quality): centralize repository policy owners")
+        assert human.fullmatch("fix(install): restore exact payload on rollback")
         assert human.fullmatch("fix(supervision): classify zombie tombstones")
         assert not human.fullmatch("refactor: centralize repository policy owners")
+        assert not human.fullmatch("fix(arbitrary): restore exact payload on rollback")
         assert any(
             pattern.fullmatch("materialize quality-policy-ssot carrier") for pattern in generated
         )
@@ -229,7 +235,11 @@ class TestQualityPolicyContracts:
         policy = tomllib.loads(
             (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
         )
-        human = re.compile(policy["human_pattern"])
+        types = "|".join(map(re.escape, policy["types"]))
+        scopes = "|".join(map(re.escape, policy["scopes"]))
+        human = re.compile(
+            rf"^(?:{types})\((?:{scopes})\): [a-z](?:[^\n]*[^\s.]|[^\n\s.])$"
+        )
 
         assert human.fullmatch("chore(release): prepare v2.0.22")
         assert not human.fullmatch("chore(release): prepare v2.0.22.")

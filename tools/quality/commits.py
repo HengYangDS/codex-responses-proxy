@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / ".config/checks/commits/policy.toml"
+_SUBJECT_SUFFIX = r"[a-z](?:[^\n]*[^\s.]|[^\n\s.])"
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -48,8 +49,11 @@ def commit_subject_gaps(root: Path = ROOT) -> list[str]:
     """Report lane-local subjects not admitted by one positive grammar."""
 
     policy = tomllib.loads(POLICY.read_text(encoding="utf-8"))
-    patterns = tuple(
-        re.compile(pattern) for pattern in (policy["human_pattern"], *policy["generated_patterns"])
+    types = "|".join(map(re.escape, policy["types"]))
+    scopes = "|".join(map(re.escape, policy["scopes"]))
+    patterns = (
+        re.compile(rf"^(?:{types})\((?:{scopes})\): {_SUBJECT_SUFFIX}$"),
+        *(re.compile(pattern) for pattern in policy["generated_patterns"]),
     )
     subjects, error = _subjects(root)
     if error is not None:
