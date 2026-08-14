@@ -250,7 +250,7 @@ def admit(asset: Path, *, trust_anchor: Path) -> VerifiedArtifact:
         archive.name: hashlib.sha256(archive_bytes).hexdigest(),
         manifest_path.name: hashlib.sha256(manifest_bytes).hexdigest(),
     }
-    if checksum_map != expected:
+    if any(checksum_map.get(name) != sha256 for name, sha256 in expected.items()):
         raise errors.InstallError("release assets do not match signed SHA256SUMS")
     document = _verify_archive(archive_bytes, manifest_bytes, match.groupdict())
     blobs = _archive_blobs(archive_bytes, document)
