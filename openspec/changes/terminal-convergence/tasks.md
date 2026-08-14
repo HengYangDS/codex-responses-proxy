@@ -18,8 +18,8 @@
 - [ ] 3.1 Remove compatibility shells, forwarding facades, hard-coded host identity, paths, and Forge coupling.
 - [ ] 3.2 Converge semantic packages, UX/DX surfaces, docs, decisions, and configuration SSOTs.
 - [ ] 3.3 Refresh the latest stable locked supply chain without duplicated CI pins.
-- [ ] 3.4 Prove formatting, lint, typing, security, links, architecture, release, and all supported platforms.
-- [ ] 3.5 Prove statement, branch, and package coverage are each strictly above 95%.
+- [x] 3.4 Prove formatting, lint, typing, security, links, architecture, release, and all supported platforms.
+- [x] 3.5 Prove statement, branch, and package coverage are each strictly above 95%.
 
 ## 4. Delivery and acceptance
 
