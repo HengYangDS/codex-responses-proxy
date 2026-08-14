@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import importlib.util
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -35,6 +34,12 @@ def _checker() -> ModuleType:
     _load("tools", "tools/__init__.py")
     _load("tools.quality", "tools/quality/__init__.py")
     return _load("codex_responses_proxy_quality_checker", "tools/quality/repository.py")
+
+
+def _commit_checker() -> ModuleType:
+    _load("tools", "tools/__init__.py")
+    _load("tools.quality", "tools/quality/__init__.py")
+    return _load("codex_responses_proxy_commit_checker", "tools/quality/commits.py")
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
@@ -215,10 +220,7 @@ class TestQualityPolicyContracts:
         policy = tomllib.loads(
             (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
         )
-        types = "|".join(map(re.escape, policy["types"]))
-        scopes = "|".join(map(re.escape, policy["scopes"]))
-        human = re.compile(rf"^(?:{types})\((?:{scopes})\): [a-z](?:[^\n]*[^\s.]|[^\n\s.])$")
-        generated = tuple(re.compile(pattern) for pattern in policy["generated_patterns"])
+        human, *generated = _commit_checker().commit_subject_patterns(policy)
 
         assert human.fullmatch("refactor(quality): centralize repository policy owners")
         assert human.fullmatch("fix(install): restore exact payload on rollback")
@@ -233,9 +235,7 @@ class TestQualityPolicyContracts:
         policy = tomllib.loads(
             (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
         )
-        types = "|".join(map(re.escape, policy["types"]))
-        scopes = "|".join(map(re.escape, policy["scopes"]))
-        human = re.compile(rf"^(?:{types})\((?:{scopes})\): [a-z](?:[^\n]*[^\s.]|[^\n\s.])$")
+        human, *_ = _commit_checker().commit_subject_patterns(policy)
 
         assert human.fullmatch("chore(release): prepare v2.0.22")
         assert not human.fullmatch("chore(release): prepare v2.0.22.")
