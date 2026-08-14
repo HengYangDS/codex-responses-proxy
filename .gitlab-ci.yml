@@ -16,8 +16,8 @@ stages:
 variables:
   DEBIAN_FRONTEND: noninteractive
   CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
-  UV_PYTHON_FLOOR_IMAGE: ghcr.io/astral-sh/uv:python3.12-trixie-slim@sha256:13a15bf8da80cc7cad97711a8a2e094756a9e79feb247d0b496a8cc647fd7d3b
-  UV_PYTHON_LATEST_IMAGE: ghcr.io/astral-sh/uv:python3.14-trixie-slim@sha256:93035a1ae478ef905cc75b107bfe1fde62cdebf5b1996206dd4e5089a9f0a6d3
+  UV_PYTHON_FLOOR_IMAGE: ghcr.io/astral-sh/uv:0.12.4-python3.12-trixie-slim@sha256:73f4c257f96061b7c38e1a14416971f41d980fd3cd2837e5e1671140dc4affb9
+  UV_PYTHON_LATEST_IMAGE: ghcr.io/astral-sh/uv:0.12.4-python3.14-trixie-slim@sha256:731ebbfbba27d676b6eff0e5f170a88aaa9e25c5d352eea370e77330bd8edbc4
   UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
   UV_PYTHON_INSTALL_DIR: $CI_PROJECT_DIR/.cache/uv/python
   CODEX_RESPONSES_PROXY_CI_TARGET: linux-amd64
@@ -38,7 +38,12 @@ default:
       UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
       UV_VERSION="$(uv --version)"
       UV_VERSION="${UV_VERSION#uv }"
-      test "${UV_VERSION%% *}" = "${UV_REQUIREMENT#==}"
+      ACTUAL_UV_VERSION="${UV_VERSION%% *}"
+      EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"
+      if [ "$ACTUAL_UV_VERSION" != "$EXPECTED_UV_VERSION" ]; then
+        printf 'uv version mismatch: expected %s, actual %s\n' "$EXPECTED_UV_VERSION" "$ACTUAL_UV_VERSION" >&2
+        exit 1
+      fi
 
 .release-uv-bootstrap:
   before_script:

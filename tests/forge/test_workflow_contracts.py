@@ -96,9 +96,12 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     assert "docker: { platform: linux/amd64 }" in quality
     assert "name: $LINUX_RELEASE_IMAGE" in native
     assert "docker: { platform: linux/amd64 }" in native
+    uv_version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["uv"][
+        "required-version"
+    ].removeprefix("==")
     for image in ("UV_PYTHON_LATEST_IMAGE", "UV_PYTHON_FLOOR_IMAGE"):
         reference = gitlab.split(f"{image}: ", 1)[1].splitlines()[0]
-        assert reference.startswith("ghcr.io/astral-sh/uv:python3.")
+        assert reference.startswith(f"ghcr.io/astral-sh/uv:{uv_version}-python3.")
         assert "@sha256:" in reference
     regular_jobs = gitlab.split("\nbuild-gitlab-native-asset:", 1)[0]
     assert "*install-uv" not in regular_jobs
