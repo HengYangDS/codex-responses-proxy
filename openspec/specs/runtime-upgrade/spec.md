@@ -105,11 +105,17 @@ file that was absent from the prior snapshot.
 
 #### Scenario: Candidate adds a new frozen-runtime member
 
-- **WHEN** an upgrade projects a candidate-only file below `bin/`
-- **AND** the handoff fails and rollback runs
-- **THEN** the candidate-only file is absent
-- **AND** the previous manifest, receipt, installed state, executable, and provider manifest are restored exactly
-- **AND** content outside the prior-owned and candidate inventories remains unchanged
+- **WHEN** an upgrade projects a verified candidate-only file below `bin/`
+- **AND** handoff fails and rollback runs
+- **THEN** the candidate-only file is removed
+- **AND** every prior owned byte and mode is restored exactly
+- **AND** content outside prior-owned and candidate inventories is unchanged.
+
+#### Scenario: Candidate collides with unknown content
+
+- **WHEN** a candidate path already contains content outside the current owned inventory
+- **THEN** the upgrade blocks before payload mutation
+- **AND** rollback never claims ownership of that content.
 
 ### Requirement: Payload primitives have one semantic owner
 

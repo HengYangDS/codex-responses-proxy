@@ -8,9 +8,12 @@ product or release candidates.
 ## Requirements
 ### Requirement: Verification has one repository-owned owner
 
-Nox SHALL own the verification graph, the committed uv lock SHALL own Python
-tool resolution, and project metadata SHALL declare the exact current stable uv
-bootstrap used by local and hosted verification. A pending release heading SHALL
+Nox SHALL own the complete formatting, lint, typing, security, dependency,
+documentation-link, architecture, test, release, and platform verification graph.
+The committed uv lock SHALL own Python tool resolution, and project metadata
+SHALL declare the exact current stable uv bootstrap used by local and hosted
+verification. Warnings, tracebacks, skipped required platforms, and missing
+runners SHALL NOT be represented as success. A pending release heading SHALL
 match `VERSION` and the current UTC date before either Forge prepares a release.
 
 #### Scenario: A clean checkout is verified
@@ -206,10 +209,13 @@ entrypoint.
 
 ### Requirement: Supply-chain pins are current and reproducible
 
-Project metadata SHALL declare exact audited stable direct quality and packaging
-dependencies, the committed uv lock SHALL own their transitive closure, hosted
-Actions SHALL use immutable revisions, and GitLab Python images SHALL use
-supported minor tags bound to immutable registry digests.
+Supported runtimes, direct quality and packaging dependencies, hosted
+Actions, CI images, and release tools SHALL use current stable releases through
+one repository-owned declaration for each ecosystem. The committed uv lock SHALL
+own transitive closure, hosted Actions SHALL use immutable revisions, and GitLab
+Python images SHALL use supported minor tags bound to immutable registry digests.
+CI SHALL consume those authorities rather than duplicate version literals or
+retain obsolete compatibility fallbacks.
 
 #### Scenario: A GitLab Python image is selected
 
