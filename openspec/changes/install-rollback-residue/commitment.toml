@@ -5,9 +5,15 @@ subjects = ["repository:self"]
 scope = [
   "openspec/changes/install-rollback-residue/**",
   "openspec/changes/archive/*-install-rollback-residue/**",
+  "src/codex_responses_proxy/lifecycle/artifact.py",
   "src/codex_responses_proxy/lifecycle/rollback.py",
   "src/codex_responses_proxy/lifecycle/transaction.py",
+  "tests/lifecycle/test_artifact.py",
   "tests/lifecycle/test_transaction.py",
+  "README.md",
+  "pyproject.toml",
+  "uv.lock",
+  "tests/quality/test_verification.py",
   "VERSION",
   "CHANGELOG.md",
 ]

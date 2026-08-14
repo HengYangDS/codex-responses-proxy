@@ -348,6 +348,31 @@ def test_admission_rejects_nonfile_oversized_and_invalid_name(
         artifact.admit(paths["archive"], trust_anchor=paths["anchor"])
 
 
+def test_admission_accepts_selected_assets_from_complete_signed_release(
+    tmp_path: Path, mocker: MockerFixture
+) -> None:
+    paths = _write_asset_set(tmp_path)
+    extra = {
+        "codex-responses-proxy-1.2.3-macos-arm64.tar.gz": b"macos archive",
+        "codex-responses-proxy-macos-arm64.manifest.json": b"macos manifest",
+    }
+    paths["checksums"].write_bytes(
+        product_assets.checksums(
+            {
+                paths["archive"].name: paths["archive"].read_bytes(),
+                paths["manifest"].name: paths["manifest"].read_bytes(),
+                **extra,
+            }
+        )
+    )
+    mocker.patch.object(artifact, "_verify_signature")
+
+    candidate = artifact.admit(paths["archive"], trust_anchor=paths["anchor"])
+
+    assert candidate.version == VERSION
+    assert candidate.receipt["archive"] == paths["archive"].name
+
+
 def test_admission_requires_exact_signed_checksum_inventory(
     tmp_path: Path, mocker: MockerFixture
 ) -> None:

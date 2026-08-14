@@ -98,8 +98,13 @@ def read_inventory(snapshot: Mapping[str, Any]) -> RollbackInventory:
     return RollbackInventory(present=present, owned=frozenset(owned))
 
 
-def restore_snapshot(ctx: runtime_context.RuntimeContext, root: Path) -> None:
-    """Restore every retained byte and remove current bytes that were absent."""
+def restore_snapshot(
+    ctx: runtime_context.RuntimeContext,
+    root: Path,
+    *,
+    candidate_paths: frozenset[str] = frozenset(),
+) -> None:
+    """Restore retained bytes and remove candidate files absent beforehand."""
 
     snapshot = load_inventory(root)
     install = Path(ctx.install_dir)
@@ -113,7 +118,7 @@ def restore_snapshot(ctx: runtime_context.RuntimeContext, root: Path) -> None:
         if hashlib.sha256(content).hexdigest() != expected:
             raise errors.InstallError(f"payload rollback digest mismatch: {relative}")
         restored[relative] = content, mode
-    for relative in snapshot.owned - snapshot.present.keys():
+    for relative in (snapshot.owned | candidate_paths) - snapshot.present.keys():
         target = owned_files.path(install, relative)
         if target.exists() or target.is_symlink():
             owned_files.regular_file(install, relative, "live owned")

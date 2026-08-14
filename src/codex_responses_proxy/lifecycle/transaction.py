@@ -232,7 +232,11 @@ class PayloadTransaction:
             return
         rollback = state.transaction_root(self._ctx) / "rollback"
         if rollback.exists():
-            payload_rollback.restore_snapshot(self._ctx, rollback)
+            payload_rollback.restore_snapshot(
+                self._ctx,
+                rollback,
+                candidate_paths=frozenset(blob.path for blob in self._blobs),
+            )
         elif self._fresh:
             payload_candidate.remove_projection(self._ctx, {blob.path for blob in self._blobs})
         self._state = "rolled_back"
