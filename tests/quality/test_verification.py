@@ -146,12 +146,15 @@ class TestVerificationContracts:
         )
 
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-        assert gitlab.count("ghcr.io/astral-sh/uv:python") == 2
+        uv_version = requirement.removeprefix("==")
+        assert gitlab.count(f"ghcr.io/astral-sh/uv:{uv_version}-python") == 2
         assert gitlab.count('["tool"]["uv"]["required-version"]') == 2
         assert gitlab.count("&assert-uv-version") == 1
         assert gitlab.count("*assert-uv-version") == 5
         assert 'UV_VERSION="${UV_VERSION#uv }"' in gitlab
-        assert 'test "${UV_VERSION%% *}" = "${UV_REQUIREMENT#==}"' in gitlab
+        assert 'ACTUAL_UV_VERSION="${UV_VERSION%% *}"' in gitlab
+        assert 'EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"' in gitlab
+        assert "uv version mismatch: expected %s, actual %s" in gitlab
         assert gitlab.count("&install-uv") == 1
         assert gitlab.count("*install-uv") == 1
         assert gitlab.count("python -m pip install") == 1
@@ -401,8 +404,12 @@ class TestVerificationContracts:
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         supported = (ROOT / ".python-versions").read_text(encoding="utf-8").splitlines()
+        uv_version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
+            "uv"
+        ]["required-version"].removeprefix("==")
         image_pattern = re.compile(
-            r"^ghcr\.io/astral-sh/uv:python(?P<minor>\d+\.\d+)-trixie-slim"
+            r"^ghcr\.io/astral-sh/uv:(?P<uv>\d+\.\d+\.\d+)-python"
+            r"(?P<minor>\d+\.\d+)-trixie-slim"
             r"@sha256:(?P<digest>[0-9a-f]{64})$"
         )
         image_values = dict(
@@ -413,6 +420,8 @@ class TestVerificationContracts:
         latest_image = image_pattern.fullmatch(image_values["UV_PYTHON_LATEST_IMAGE"])
         assert floor_image is not None
         assert latest_image is not None
+        assert floor_image.group("uv") == uv_version
+        assert latest_image.group("uv") == uv_version
         assert floor_image.group("minor") == supported[0]
         assert latest_image.group("minor") == supported[-1]
         assert "python -m tools.quality.python_matrix" in github
