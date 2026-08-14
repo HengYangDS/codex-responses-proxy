@@ -7,10 +7,15 @@
 
 ## 2. Verification and delivery
 
-- [ ] 2.1 Pass release metadata, OpenSpec strict validation, and exact-HEAD proof.
-- [ ] 2.2 Archive and integrate the release Change into accepted truth.
-- [ ] 2.3 Publish independently on each available Forge and verify provider-native assets.
-- [ ] 2.4 Install the trusted native asset and pass runtime acceptance.
+- [x] 2.1 Pass release metadata, OpenSpec strict validation, and exact-HEAD proof.
+
+## Delivery Boundary
+
+Archive, candidate integration, accepted closeout, independent Forge
+publication, trusted installation, runtime acceptance, and lane retirement are
+post-Change lifecycle effects. Each remains incomplete until its own public
+command receipt proves it; none is a prerequisite for archiving this completed
+Change.
 
 ## Requirement To Task To Proof
 
@@ -21,6 +26,3 @@
 | `ci-diagnostics:A patch release has one source identity and independent Forge projections` | `1.3` | `OpenSpec strict validation` |
 | `ci-diagnostics:A patch release has one source identity and independent Forge projections` | `1.4` | `version-neutral README contract` |
 | `ci-diagnostics:A patch release has one source identity and independent Forge projections` | `2.1` | `exact-HEAD proof attestation` |
-| `ci-diagnostics:A patch release has one source identity and independent Forge projections` | `2.2` | `archive and land receipts` |
-| `ci-diagnostics:A patch release has one source identity and independent Forge projections` | `2.3` | `provider-native publication receipts` |
-| `ci-diagnostics:A patch release has one source identity and independent Forge projections` | `2.4` | `trusted installation and runtime receipt` |
