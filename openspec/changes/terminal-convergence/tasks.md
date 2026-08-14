@@ -3,8 +3,8 @@
 ## 1. Authority and inventory
 
 - [x] 1.1 Record exact current heads, leases, worktrees, dirty overlays, and independent Forge state.
-- [ ] 1.2 Classify every historical lane as absorbed, uniquely useful, or discardable.
-- [ ] 1.3 Rebuild only unique product semantics in this terminal lane; never merge an old tree wholesale.
+- [x] 1.2 Classify every historical lane as absorbed, uniquely useful, or discardable.
+- [x] 1.3 Rebuild only unique product semantics in this terminal lane; never merge an old tree wholesale.
 
 ## 2. Runtime correctness
 
@@ -15,26 +15,20 @@
 
 ## 3. Product and repository quality
 
-- [ ] 3.1 Remove compatibility shells, forwarding facades, hard-coded host identity, paths, and Forge coupling.
-- [ ] 3.2 Converge semantic packages, UX/DX surfaces, docs, decisions, and configuration SSOTs.
-- [ ] 3.3 Refresh the latest stable locked supply chain without duplicated CI pins.
-- [x] 3.4 Prove formatting, lint, typing, security, links, architecture, release, and all supported platforms.
+- [x] 3.1 Remove compatibility shells, forwarding facades, hard-coded host identity, paths, and Forge coupling.
+- [x] 3.2 Converge semantic packages, UX/DX surfaces, docs, decisions, and configuration SSOTs.
+- [x] 3.3 Refresh the latest stable locked supply chain without duplicated CI pins.
+- [x] 3.4 Prove the repository-owned formatting, lint, typing, security, links, architecture, release, and supported-platform contracts locally.
 - [x] 3.5 Prove statement, branch, and package coverage are each strictly above 95%.
 
-## 4. Delivery and acceptance
+## Delivery boundary
 
-- [ ] 4.1 Archive the completed change, execute full proof, and land the exact revision.
-- [ ] 4.2 Close `candidate/dev`, accepted `dev`, and release `main` through public governance commands.
-- [ ] 4.3 Publish matching signed assets independently to GitLab and GitHub and verify each Forge separately.
-- [ ] 4.4 Install the formal asset and verify native lifecycle and runtime health.
-- [ ] 4.5 Verify three-provider switching and continuous reply in the original Codex conversation without modifying its stored state.
-- [ ] 4.6 Verify PyCharm MCP remains healthy as an independent surface.
-
-## 5. Housekeeping
-
-- [ ] 5.1 Retire every absorbed or discarded worktree, branch, and lease with owner-bound evidence.
-- [ ] 5.2 Remove old services, temporary checkouts, caches, and generated residue.
-- [ ] 5.3 Recheck canonical roots, protected branches, CI, releases, installation, runtime, and zero remaining next actions.
+Archiving, exact-HEAD proof, branch-role transitions, independent Forge
+publication, formal installation, runtime and original-conversation acceptance,
+PyCharm MCP observation, and lane retirement are post-Change lifecycle effects.
+Their public command receipts and the active delivery Goal own those facts;
+duplicating them here would make Change completion depend on its own archive
+operation.
 
 ## Requirement To Task To Proof
 

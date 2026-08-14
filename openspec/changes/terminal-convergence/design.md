@@ -27,6 +27,20 @@ Historical lanes are inputs, not authorities. For each lane:
 
 No historical tree is merged wholesale.
 
+The 2026-08-14 exact inventory leaves one current carrier:
+`work/terminal-convergence`. The remaining Work Lane refs add no current
+product behavior:
+
+| Historical lane | Disposition | Current authority |
+| --- | --- | --- |
+| `work/github-container-workspace-path` | Absorbed | GitHub release verification already uses `$GITHUB_WORKSPACE` explicitly. |
+| `work/windows-bundle-path-identity` | Absorbed | Current release assets preserve Windows path identity and tests cover it. |
+| `work/20260814-install-full-release-checksums` | Absorbed | Current lifecycle consumes the complete signed manifest; its dirty rollback overlay is byte-identical to `dev`. |
+| Other linked or unbound historical Work Lanes | Discardable carrier residue | Their only unmatched bytes are obsolete OpenSpec carriers or superseded release chronology. |
+
+Retirement must preserve this classification evidence but must not copy the
+historical carriers into the terminal product tree.
+
 ## Runtime invariants
 
 | Concern | Single owner | Invariant |
