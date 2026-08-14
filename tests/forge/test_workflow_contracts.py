@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+GITLAB_LOCKED_PYTHON = "uv run --locked --no-sync --python python --no-python-downloads"
 
 
 def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> None:
@@ -86,6 +87,10 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     assert "name: $UV_PYTHON_LATEST_IMAGE" in default
     assert "docker: { platform: linux/amd64 }" in default
     assert "UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv" in gitlab
+    assert "UV_PYTHON_INSTALL_DIR: $CI_PROJECT_DIR/.cache/uv/python" in gitlab
+    assert "CODEX_RESPONSES_PROXY_CI_TARGET: linux-amd64" in gitlab
+    assert "key: uv-$CODEX_RESPONSES_PROXY_CI_TARGET" in default
+    assert "CI_RUNNER_EXECUTABLE_ARCH" not in default
     assert "paths: [.cache/uv/]" in default
     assert "name: $UV_PYTHON_FLOOR_IMAGE" in quality
     assert "docker: { platform: linux/amd64 }" in quality
@@ -101,6 +106,15 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     assert gitlab.count("&assert-uv-version") == 1
     assert gitlab.count("*assert-uv-version") == 5
     assert "uv sync --locked --group quality --no-install-project" in gitlab
+
+
+def test_gitlab_publish_uses_the_synchronized_python_identity() -> None:
+    """Publish through the exact interpreter selected during locked sync."""
+
+    gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    publish = gitlab.split("\npublish-gitlab-release:", 1)[1]
+    assert f"{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py" in publish
+    assert f"{GITLAB_LOCKED_PYTHON} python -m tools.release.publish_gitlab" in publish
 
 
 def _assert_github_required_tokens(text: str) -> None:
@@ -314,9 +328,9 @@ def test_github_verification_workflow_contract() -> None:
 def test_gitlab_pytest_invocations_preserve_repository_module_resolution() -> None:
     text = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
 
-    if "uv run --locked --no-sync pytest" in text:
+    if f"{GITLAB_LOCKED_PYTHON} pytest" in text:
         raise AssertionError("GitLab must not invoke the pytest console script directly")
-    assert text.count("uv run --locked --no-sync python -m pytest") == 3
+    assert text.count(f"{GITLAB_LOCKED_PYTHON} python -m pytest") == 3
 
 
 def test_github_release_workflow_contract() -> None:

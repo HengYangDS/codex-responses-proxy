@@ -20,6 +20,6 @@ acceptance = [
   "focused_ci_contracts_and_complete_quality_gates_pass",
 ]
 risks = ["cache_identity_can_drift_if_target_platform_dimensions_are_incomplete"]
-authority_refs = ["AGENTS.md", "pyproject.toml", "uv.lock"]
+authority_refs = ["AGENTS.md", ".gitlab-ci.yml", "pyproject.toml", "uv.lock"]
 hypotheses = []
 dependencies = []

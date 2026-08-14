@@ -122,11 +122,10 @@ class TestVerificationContracts:
         assert "*install-uv" not in metadata_job
         assert "uv sync --locked --group quality --no-install-project" in metadata_job
         assert "uv sync --locked --all-groups" not in metadata_job
-        assert "python tools/" not in metadata_job.replace(
-            "uv run --locked --no-sync python tools/", ""
-        )
+        locked_python = "uv run --locked --no-sync --python python --no-python-downloads"
+        assert "python tools/" not in metadata_job.replace(f"{locked_python} python tools/", "")
         assert (
-            "uv run --locked --no-sync python -m pytest -q tests/release/test_metadata.py"
+            f"{locked_python} python -m pytest -q tests/release/test_metadata.py"
         ) in metadata_job
 
     def test_forge_bootstrap_derives_uv_requirement_from_project_metadata(self) -> None:
@@ -484,7 +483,10 @@ class TestVerificationContracts:
         assert "uv run --locked --group quality nox -s quality" in quality_job
         assert "uv sync --locked --only-group quality" not in quality_job
         assert "uv sync --locked --only-group quality" in gitlab
-        assert "uv run --locked --no-sync nox -s quality" in gitlab
+        assert (
+            "uv run --locked --no-sync --python python --no-python-downloads nox -s quality"
+            in gitlab
+        )
         assert "fetch-depth: 0" in quality_job
         assert "fetch-tags: true" in quality_job
         assert "python -m tools.quality.repository" not in github

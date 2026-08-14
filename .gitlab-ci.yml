@@ -19,6 +19,8 @@ variables:
   UV_PYTHON_FLOOR_IMAGE: ghcr.io/astral-sh/uv:python3.12-trixie-slim@sha256:13a15bf8da80cc7cad97711a8a2e094756a9e79feb247d0b496a8cc647fd7d3b
   UV_PYTHON_LATEST_IMAGE: ghcr.io/astral-sh/uv:python3.14-trixie-slim@sha256:93035a1ae478ef905cc75b107bfe1fde62cdebf5b1996206dd4e5089a9f0a6d3
   UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
+  UV_PYTHON_INSTALL_DIR: $CI_PROJECT_DIR/.cache/uv/python
+  CODEX_RESPONSES_PROXY_CI_TARGET: linux-amd64
   LINUX_RELEASE_IMAGE: python:3.14.7-bookworm@sha256:8771427e2ac3e39208c1632f17e8b09e464333d262844a03705cc5e0023c16e2
 
 default:
@@ -27,7 +29,7 @@ default:
     docker: { platform: linux/amd64 }
   tags: [$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG]
   cache:
-    key: uv-$CI_RUNNER_EXECUTABLE_ARCH
+    key: uv-$CODEX_RESPONSES_PROXY_CI_TARGET
     paths: [.cache/uv/]
 
 .uv-runtime-contract:
@@ -61,7 +63,7 @@ verify-python-matrix:
     - python --version
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
     - uv python install $(tr '\n' ' ' < .python-versions)
-    - uv run --locked --no-sync nox -s full
+    - uv run --locked --no-sync --python python --no-python-downloads nox -s full
 
 verify-release-metadata:
   stage: verify
@@ -81,17 +83,17 @@ verify-release-metadata:
   script:
     - |
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
+        uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
       elif git show-ref --verify --quiet "refs/tags/v$(cat VERSION)"; then
-        uv run --locked --no-sync python tools/release/metadata.py --provider gitlab
+        uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --provider gitlab
       else
-        uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --prepare-release
+        uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --provider gitlab --prepare-release
       fi
-    - uv run --locked --no-sync python tools/quality/markdown.py
-    - uv run --locked --no-sync python -m pytest -q tests/release/test_metadata.py
-    - uv run --locked --no-sync python -m tools.quality.repository
-    - uv run --locked --no-sync python -m pytest -q tests/release/test_publish_gitlab.py
-    - uv run --locked --no-sync python -m pytest -q tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py
+    - uv run --locked --no-sync --python python --no-python-downloads python tools/quality/markdown.py
+    - uv run --locked --no-sync --python python --no-python-downloads python -m pytest -q tests/release/test_metadata.py
+    - uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
+    - uv run --locked --no-sync --python python --no-python-downloads python -m pytest -q tests/release/test_publish_gitlab.py
+    - uv run --locked --no-sync --python python --no-python-downloads python -m pytest -q tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py
 
 verify-release-tag:
   stage: release
@@ -106,8 +108,8 @@ verify-release-tag:
     - test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
   script:
-    - uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
-    - uv run --locked --no-sync python -m tools.forge.tag_signature . "$CI_COMMIT_TAG" gitlab "$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST"
+    - uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
+    - uv run --locked --no-sync --python python --no-python-downloads python -m tools.forge.tag_signature . "$CI_COMMIT_TAG" gitlab "$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST"
 
 verify-python-quality:
   stage: verify
@@ -125,7 +127,7 @@ verify-python-quality:
     - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
   script:
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
-    - uv run --locked --no-sync nox -s quality
+    - uv run --locked --no-sync --python python --no-python-downloads nox -s quality
 
 build-gitlab-native-asset:
   stage: release
@@ -169,7 +171,7 @@ publish-gitlab-release:
     - git fetch --tags --force --prune --prune-tags origin
     - uv sync --locked --only-group quality --python python --no-python-downloads
   script:
-    - uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
+    - uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"
     - test -f "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY:-}"
     - test -n "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST:-}"
-    - uv run --locked --no-sync python -m tools.release.publish_gitlab --api-base "$CI_API_V4_URL" --project-id "$CI_PROJECT_ID" --tag "$CI_COMMIT_TAG" --token "$CI_JOB_TOKEN" --assets "$CI_PROJECT_DIR/.release-assets" --signing-key "$CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY" --trust "$CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST"
+    - uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.publish_gitlab --api-base "$CI_API_V4_URL" --project-id "$CI_PROJECT_ID" --tag "$CI_COMMIT_TAG" --token "$CI_JOB_TOKEN" --assets "$CI_PROJECT_DIR/.release-assets" --signing-key "$CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY" --trust "$CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST"
