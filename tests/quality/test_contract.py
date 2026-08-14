@@ -217,9 +217,7 @@ class TestQualityPolicyContracts:
         )
         types = "|".join(map(re.escape, policy["types"]))
         scopes = "|".join(map(re.escape, policy["scopes"]))
-        human = re.compile(
-            rf"^(?:{types})\((?:{scopes})\): [a-z](?:[^\n]*[^\s.]|[^\n\s.])$"
-        )
+        human = re.compile(rf"^(?:{types})\((?:{scopes})\): [a-z](?:[^\n]*[^\s.]|[^\n\s.])$")
         generated = tuple(re.compile(pattern) for pattern in policy["generated_patterns"])
 
         assert human.fullmatch("refactor(quality): centralize repository policy owners")
@@ -237,9 +235,7 @@ class TestQualityPolicyContracts:
         )
         types = "|".join(map(re.escape, policy["types"]))
         scopes = "|".join(map(re.escape, policy["scopes"]))
-        human = re.compile(
-            rf"^(?:{types})\((?:{scopes})\): [a-z](?:[^\n]*[^\s.]|[^\n\s.])$"
-        )
+        human = re.compile(rf"^(?:{types})\((?:{scopes})\): [a-z](?:[^\n]*[^\s.]|[^\n\s.])$")
 
         assert human.fullmatch("chore(release): prepare v2.0.22")
         assert not human.fullmatch("chore(release): prepare v2.0.22.")
