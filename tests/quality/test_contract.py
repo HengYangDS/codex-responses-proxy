@@ -176,6 +176,30 @@ class TestQualityPolicyContracts:
             },
         ]
 
+    def test_branch_roles_delegate_local_release_transition_to_ethos(self) -> None:
+        policy = tomllib.loads((ROOT / ".ethos/workspace.toml").read_text(encoding="utf-8"))[
+            "branch_roles"
+        ]
+
+        assert {key: policy[key] for key in policy if key != "transitions"} == {
+            "release_branch": "main",
+            "accepted_branch": "dev",
+            "candidate_branch": "candidate/dev",
+            "work_branch_prefix": "work/",
+            "proposal_branch_prefix": "proposal/",
+        }
+        assert policy["transitions"] == [
+            {
+                "id": "accepted-to-release",
+                "source_role": "accepted_root",
+                "target_role": "release_root",
+                "capability": "repository.release",
+                "required_gates": [],
+                "required_evidence": ["proof:execution"],
+                "coupled_with": "",
+            }
+        ]
+
     def test_quality_policy_has_one_explicit_owner_per_concern(self) -> None:
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         tool = pyproject.get("tool", {})
