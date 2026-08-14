@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CHECKER = ROOT / "tools" / "release" / "metadata.py"
 TAG_REFRESH = "git fetch --tags --force --prune --prune-tags origin"
 APT_INSTALL = "apt-get install -qq -y --no-install-recommends"
+GITLAB_LOCKED_PYTHON = "uv run --locked --no-sync --python python --no-python-downloads"
 
 
 def _run(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
@@ -413,11 +414,11 @@ def test_gitlab_release_metadata_gate_selects_validation_by_ref() -> None:
         block,
         (
             'if [ -n "${CI_COMMIT_TAG:-}" ]; then',
-            'uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"',
+            f'{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"',
             'elif git show-ref --verify --quiet "refs/tags/v$(cat VERSION)"; then',
-            "uv run --locked --no-sync python tools/release/metadata.py --provider gitlab",
+            f"{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py --provider gitlab",
             "else",
-            "uv run --locked --no-sync python tools/release/metadata.py --provider gitlab --prepare-release",
+            f"{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py --provider gitlab --prepare-release",
         ),
         "GitLab release metadata ref dispatch",
     )
@@ -434,7 +435,7 @@ def test_gitlab_tag_gates_require_exact_tag_validation() -> None:
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     strict = (
-        "uv run --locked --no-sync python tools/release/metadata.py "
+        f"{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py "
         '--provider gitlab --tag "$CI_COMMIT_TAG"'
     )
     for job, next_job in (
@@ -482,7 +483,7 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
             "git fetch --unshallow --tags --force origin",
             "git fetch --tags --force origin",
             "uv python install $(tr '\\n' ' ' < .python-versions)",
-            "uv run --locked --no-sync nox -s full",
+            f"{GITLAB_LOCKED_PYTHON} nox -s full",
             f"{APT_INSTALL} binutils git openssh-client",
         ),
         "GitLab Python matrix job",
@@ -526,7 +527,7 @@ def test_python_quality_gate_is_cross_forge() -> None:
     github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
     require_tokens(
         gitlab,
-        ("uv run --locked --no-sync nox -s quality",),
+        (f"{GITLAB_LOCKED_PYTHON} nox -s quality",),
         "GitLab quality projection",
     )
     require_tokens(
