@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.32] - 2026-08-14
+
+### Fixed
+
+- Verify the selected native archive and platform manifest as members of the
+  complete signed multi-platform checksum manifest. Formal releases no longer
+  fail installation merely because the manifest also contains other platforms.
+
 ## [2.0.31] - 2026-08-11
 
 ### Fixed
