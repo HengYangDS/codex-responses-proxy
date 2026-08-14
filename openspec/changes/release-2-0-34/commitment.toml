@@ -6,6 +6,8 @@ scope = [
   "openspec/changes/release-2-0-34/**",
   "VERSION",
   "CHANGELOG.md",
+  "README.md",
+  "tests/quality/test_contract.py",
 ]
 invariants = [
   "version_has_one_repository_owner",
@@ -14,6 +16,7 @@ invariants = [
 ]
 acceptance = [
   "release_metadata_names_version_2_0_34",
+  "readme_install_examples_do_not_duplicate_release_identity",
   "local_release_and_install_acceptance_pass",
   "each_available_forge_publishes_its_own_verified_assets",
 ]

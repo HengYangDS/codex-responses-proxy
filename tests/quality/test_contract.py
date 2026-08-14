@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -358,11 +359,12 @@ class TestQualityPolicyContracts:
 
     def test_readme_install_path_matches_product_contract(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
         assert "$CODEX_RESPONSES_PROXY_RELEASE_ASSET" not in readme
         assert "$CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR" not in readme
-        assert f"codex-responses-proxy-{version}-macos-arm64.tar.gz" in readme
+        assert "codex-responses-proxy-<version>-macos-arm64.tar.gz" in readme
+        assert re.search(r"codex-responses-proxy-\d+\.\d+\.\d+-", readme) is None
+        assert "Replace `<version>` with the release version you downloaded." in readme
         assert "codex-responses-proxy-macos-arm64.manifest.json" in readme
         assert "SHA256SUMS.sig" in readme
         assert "SSH" in readme

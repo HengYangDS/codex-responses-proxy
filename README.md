@@ -43,14 +43,15 @@ requirements.
 
 ```bash
 codex-responses-proxy install \
-  --asset ~/Downloads/codex-responses-proxy-2.0.33-macos-arm64.tar.gz \
+  --asset "$HOME/Downloads/codex-responses-proxy-<version>-macos-arm64.tar.gz" \
   --trust-anchor ~/Downloads/codex-responses-proxy-allowed-signers
 ```
 
-Download the archive for the current platform together with `SHA256SUMS` and
-`SHA256SUMS.sig` from either official release plane. Keep the matching platform
-manifest—such as `codex-responses-proxy-macos-arm64.manifest.json`—in the same
-directory. `--asset` names the local archive. `--trust-anchor` names the SSH
+Replace `<version>` with the release version you downloaded. Download that
+platform archive together with `SHA256SUMS` and `SHA256SUMS.sig` from either
+official release plane. Keep the matching platform manifest—such as
+`codex-responses-proxy-macos-arm64.manifest.json`—in the same directory.
+`--asset` names the local archive. `--trust-anchor` names the SSH
 `allowed_signers` file distributed by the organization or release owner through
 a separate trusted channel. The installer requires the complete release set
 and verifies the signed checksum before changing the service.
@@ -60,7 +61,7 @@ local service:
 
 ```bash
 codex-responses-proxy install \
-  --asset ~/Downloads/codex-responses-proxy-2.0.33-macos-arm64.tar.gz \
+  --asset "$HOME/Downloads/codex-responses-proxy-<version>-macos-arm64.tar.gz" \
   --trust-anchor ~/Downloads/codex-responses-proxy-allowed-signers \
   --port 8801
 ```
