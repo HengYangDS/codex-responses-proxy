@@ -9,12 +9,13 @@ product or release candidates.
 ### Requirement: Verification has one repository-owned owner
 
 Nox SHALL own the complete formatting, lint, typing, security, dependency,
-documentation-link, architecture, test, release, and platform verification graph.
-The committed uv lock SHALL own Python tool resolution, and project metadata
-SHALL declare the exact current stable uv bootstrap used by local and hosted
-verification. Warnings, tracebacks, skipped required platforms, and missing
-runners SHALL NOT be represented as success. A pending release heading SHALL
-match `VERSION` and the current UTC date before either Forge prepares a release.
+documentation-link, architecture, test, release, and platform verification
+graph. The committed uv lock SHALL own Python tool resolution, and project
+metadata SHALL declare the exact current stable uv bootstrap used by local and
+hosted verification. Warnings, tracebacks, skipped required platforms, and
+missing runners SHALL NOT be represented as success. A pending release heading
+SHALL match `VERSION` and the current UTC date before either Forge prepares a
+release.
 
 #### Scenario: A clean checkout is verified
 
@@ -43,6 +44,7 @@ match `VERSION` and the current UTC date before either Forge prepares a release.
 
 - **WHEN** a GitLab job invokes release or quality Python code
 - **THEN** it runs through `uv run --locked --no-sync`
+- **AND** synchronized and executed Python identities are equal
 - **AND** no ambient interpreter or uninstalled runtime dependency contributes
   to the result.
 
@@ -597,10 +599,11 @@ Every GitLab job that represents Linux x86_64 behavior MUST execute an
 ### Requirement: Hosted verification bootstrap is bounded and repository-owned
 
 GitLab verification MUST start from an immutable image containing the
-repository-selected UV and Python runtime. It MUST reuse the runner cache for
-locked package artifacts and MUST NOT reinstall UV or download the job's
-primary Python runtime before repository verification. `uv.lock` remains the
-sole authority for project and quality dependencies.
+repository-selected UV and Python runtime. It MUST reuse one target-platform
+cache for locked package artifacts and UV-managed Python runtimes, and MUST NOT
+reinstall UV, download the job's primary Python runtime, or select a different
+Python after synchronizing the locked environment. `uv.lock` remains the sole
+authority for project and quality dependencies.
 
 #### Scenario: A fresh GitLab job starts verification
 
@@ -610,7 +613,8 @@ sole authority for project and quality dependencies.
   primary supported Python runtime
 - **AND** the job installs repository dependencies from `uv.lock`
 - **AND** it does not bootstrap UV through pip or download that primary Python
-  runtime before invoking the repository-owned Nox graph.
+  runtime before invoking the repository-owned Nox graph
+- **AND** subsequent no-sync commands use the synchronized Python identity.
 
 #### Scenario: A runner cache is empty or unavailable
 
@@ -623,5 +627,7 @@ sole authority for project and quality dependencies.
 
 - **WHEN** GitLab runs all Python compatibility sessions
 - **THEN** `.python-versions` remains the only supported-version inventory
-- **AND** additional matrix interpreters may be acquired by UV without making
-  their patch versions or installation paths a second repository authority.
+- **AND** additional matrix interpreters may be acquired by UV and stored in
+  the declared target-platform cache
+- **AND** their patch versions and installation paths do not become a second
+  repository authority.
