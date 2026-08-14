@@ -9,11 +9,13 @@ would violate the repository's release contract.
 
 - Advance the single release identity from 2.0.33 to 2.0.34.
 - Record the accepted GitLab execution and cache repair in the Changelog.
+- Remove the release version duplicated in README installation examples.
 - Require an accepted unreleased repair to advance through one newer SemVer
   patch without rewriting an existing tag, run, Release, or asset.
 
 ## Boundary
 
-This Change modifies release identity and its specification only. It does not
-change proxy runtime behavior, provider routing, client configuration, release
-payload construction, or either Forge's independent authority.
+This Change modifies release identity, its specification, and version-neutral
+installation examples only. It does not change proxy runtime behavior,
+provider routing, client configuration, release payload construction, or
+either Forge's independent authority.
