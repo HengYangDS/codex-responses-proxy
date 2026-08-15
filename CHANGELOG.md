@@ -7,6 +7,16 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.36] - 2026-08-15
+
+### Fixed
+
+- Install the locked project runtime together with the quality tool group in
+  GitLab publication jobs, so repository release commands can import their
+  declared Cyclopts dependency.
+- Preserve GitLab and GitHub as independent publication planes; the forward
+  patch does not change proxy runtime behavior or provider configuration.
+
 ## [2.0.35] - 2026-08-15
 
 ### Fixed
