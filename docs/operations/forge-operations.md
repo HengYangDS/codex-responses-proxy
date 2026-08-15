@@ -62,6 +62,25 @@ uv run --locked --no-sync python -m tools.forge.project \
   --anchor "$GITHUB_COMMIT_ANCHOR" --repository "$GITHUB_REPOSITORY"
 ```
 
+If a previously published provider tip was created as an exact forward-only
+checkpoint after a verified canonical ancestor, resume with all three observed
+coordinates:
+
+```bash
+uv run --locked --no-sync python -m tools.forge.project \
+  --provider <gitlab-or-github> \
+  --continuity-base <canonical-ancestor> \
+  --projected-anchor <provider-match-for-that-ancestor> \
+  --expect-remote-tip <observed-provider-tip> \
+  --publication-context "$PUBLICATION_CONTEXT" \
+  --anchor <provider-commit-anchor> --repository <provider-repository>
+```
+
+This is an exact continuity input, not a bypass: the projector verifies every
+existing provider commit, requires one unique identity-neutral match for the
+canonical base, compares the projected anchor and current provider tip, and
+then appends successors by ordinary atomic fast-forward.
+
 Each projection:
 
 1. reads the selected provider context;
@@ -120,6 +139,7 @@ or repair an incomplete release.
 | Compared | Rule |
 | --- | --- |
 | Version and tag target | Same accepted product version and equal source tree |
+| Branch lineage | Non-empty equal ordered tree suffix ending at the current tip |
 | Required CI | Each provider's own required jobs succeed |
 | Release record | Each provider has its own formal Release |
 | Common platform assets | Archive and manifest payload digests match |

@@ -35,24 +35,75 @@ class Projection:
         self.anchor = anchor
 
     def existing_mapping(
-        self, source_commits: list[str], remote_tip: str
-    ) -> tuple[str | None, list[tuple[str, str]]]:
+        self,
+        source_commits: list[str],
+        remote_tip: str,
+        *,
+        continuity_base: str | None = None,
+        projected_anchor: str | None = None,
+        expected_remote_tip: str | None = None,
+    ) -> tuple[str | None, list[tuple[str, str]], str | None]:
         """Validate and map an existing provider history."""
 
         if not remote_tip:
-            return None, []
+            if continuity_base or projected_anchor or expected_remote_tip:
+                raise ProjectionError("continuity coordinates require an existing provider tip")
+            return None, [], None
+        if len(
+            tuple(filter(None, (continuity_base, projected_anchor, expected_remote_tip)))
+        ) not in {
+            0,
+            3,
+        }:
+            raise ProjectionError(
+                "continuity base, projected anchor, and expected provider tip must be supplied together"
+            )
+        if expected_remote_tip and remote_tip != expected_remote_tip:
+            raise ProjectionError("provider tip changed after continuity observation")
+        if projected_anchor and not _is_ancestor(self.repository, projected_anchor, remote_tip):
+            raise ProjectionError("projected anchor is not an ancestor of the provider tip")
         projected_commits = _run(self.repository, "rev-list", remote_tip).splitlines()
+        trusted_commits = (
+            _run(
+                self.repository,
+                "rev-list",
+                "--ancestry-path",
+                f"{projected_anchor}^..{remote_tip}",
+            ).splitlines()
+            if projected_anchor
+            else projected_commits
+        )
         if any(
             not _commit_valid(
-                self.repository, commit, self.identity.email, self.anchor, self.signing.program
+                self.repository,
+                commit,
+                self.identity.email,
+                self.anchor,
+                self.signing.program,
             )
-            for commit in projected_commits
+            for commit in trusted_commits
         ):
             raise ProjectionError("existing provider identity or signature is invalid")
         try:
-            return history.map_histories(
+            if continuity_base:
+                observed_anchor, mapping = history.map_histories_from_base(
+                    self.repository,
+                    source_commits,
+                    projected_commits,
+                    continuity_base,
+                )
+                if observed_anchor != projected_anchor:
+                    raise ProjectionError(
+                        "provider history anchor differs from continuity observation"
+                    )
+                mapping = [pair for pair in mapping if pair[0] != continuity_base] + [
+                    (continuity_base, remote_tip)
+                ]
+                return continuity_base, mapping, observed_anchor
+            base, mapping = history.map_histories(
                 self.repository, source_commits, projected_commits, remote_tip
             )
+            return base, mapping, None
         except history.HistoryError as error:
             raise ProjectionError(str(error)) from error
 
@@ -167,6 +218,29 @@ def _run(repository: Path, *args: str, environment: dict[str, str] | None = None
         raise ProjectionError(detail or "Git projection operation failed") from error
 
 
+def _is_ancestor(repository: Path, ancestor: str, descendant: str) -> bool:
+    """Return whether one commit is an ancestor without weakening Git errors."""
+
+    result = subprocess.run(
+        (
+            "git",
+            "-C",
+            str(repository),
+            "merge-base",
+            "--is-ancestor",
+            ancestor,
+            descendant,
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_environment(),
+    )
+    if result.returncode in {0, 1}:
+        return result.returncode == 0
+    raise ProjectionError(result.stderr.strip() or "Git ancestry check failed")
+
+
 def _environment() -> dict[str, str]:
     value = os.environ.copy()
     value.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
@@ -207,6 +281,8 @@ def _write_mapping(
     base_projected: str | None,
     mapping: list[tuple[str, str]],
     created: list[tuple[str, str]],
+    continuity_source_base: str | None,
+    continuity_projected_anchor: str | None,
 ) -> None:
     payload = {
         "schema_version": 1,
@@ -216,13 +292,79 @@ def _write_mapping(
         "tree": tree,
         "base_source_commit": base_source,
         "base_projected_commit": base_projected,
-        "mapping": [dict(source=left, projected=right) for left, right in mapping],
-        "created": [dict(source=left, projected=right) for left, right in created],
+        "mapping": [{"source": left, "projected": right} for left, right in mapping],
+        "created": [{"source": left, "projected": right} for left, right in created],
+        "continuity_mode": "explicit-base" if continuity_source_base else "automatic",
+        "continuity_source_base": continuity_source_base,
+        "continuity_projected_anchor": continuity_projected_anchor,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
+
+
+def _prepare_projection(
+    *,
+    root: Path,
+    repository: Path,
+    remote: str,
+    provider: str,
+    publication_context: Path,
+    anchor: Path,
+    source: str,
+    continuity_base: str | None,
+    projected_anchor: str | None,
+    expected_remote_tip: str | None,
+    workspace: Path,
+) -> tuple[Projection, str, list[str], str | None, list[tuple[str, str]], str | None]:
+    """Prepare one isolated, exact-CAS projection transaction."""
+
+    remote_url = _run(root, "config", "--local", "--get", f"remote.{remote}.url")
+    subprocess.run(
+        (
+            "git",
+            "clone",
+            "--quiet",
+            "--no-local",
+            "--no-tags",
+            f"file://{root}",
+            str(repository),
+        ),
+        check=True,
+        env=_environment(),
+    )
+    _run(repository, "remote", "remove", "origin")
+    _run(repository, "remote", "add", "target", remote_url)
+    identity = context.load(publication_context, provider)
+    signing = context.select_signing_key(identity, workspace / "signing-key.pub")
+    remote_tip = _run(repository, "ls-remote", "--heads", "target", "refs/heads/main")
+    remote_tip = remote_tip.split(maxsplit=1)[0] if remote_tip else ""
+    if remote_tip:
+        _run(
+            repository,
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "target",
+            "refs/heads/main:refs/remotes/target/main",
+            environment=_environment(),
+        )
+    transaction = Projection(repository, identity, signing, anchor)
+    source_commits = _run(repository, "rev-list", "--reverse", "--topo-order", source).splitlines()
+    resolved_base = (
+        _run(repository, "rev-parse", "--verify", f"{continuity_base}^{{commit}}")
+        if continuity_base
+        else None
+    )
+    base_source, mapping, observed_anchor = transaction.existing_mapping(
+        source_commits,
+        remote_tip,
+        continuity_base=resolved_base,
+        projected_anchor=projected_anchor,
+        expected_remote_tip=expected_remote_tip,
+    )
+    return transaction, remote_tip, source_commits, base_source, mapping, observed_anchor
 
 
 def project(
@@ -236,6 +378,9 @@ def project(
     anchor: Path,
     repository_coordinate: str,
     runner_tag: str | None,
+    continuity_base: str | None,
+    projected_anchor: str | None,
+    expected_remote_tip: str | None,
 ) -> str:
     """Create and atomically publish one provider-specific history projection."""
 
@@ -245,10 +390,8 @@ def project(
         raise ProjectionError(f"{provider} commit trust anchor is unavailable")
     if _run(root, "status", "--porcelain"):
         raise ProjectionError("refusing Forge projection with a dirty checkout")
-    identity = context.load(publication_context, provider)
     source = _run(root, "rev-parse", "--verify", "--end-of-options", f"{source_ref}^{{commit}}")
     source_tree = _run(root, "rev-parse", f"{source}^{{tree}}")
-    remote_url = _run(root, "config", "--local", "--get", f"remote.{remote}.url")
     if provider == "gitlab":
         runner_admission._gitlab(repository_coordinate, runner_tag)
     else:
@@ -259,40 +402,28 @@ def project(
     ) as name:
         workspace = Path(name)
         repository = workspace / "repository"
-        subprocess.run(
-            (
-                "git",
-                "clone",
-                "--quiet",
-                "--no-local",
-                "--no-tags",
-                f"file://{root}",
-                str(repository),
-            ),
-            check=True,
-            env=_environment(),
+        if bool(continuity_base) != bool(projected_anchor):
+            raise ProjectionError("continuity base and projected anchor must be supplied together")
+        (
+            transaction,
+            remote_tip,
+            source_commits,
+            base_source,
+            mapping,
+            observed_projected_anchor,
+        ) = _prepare_projection(
+            root=root,
+            repository=repository,
+            remote=remote,
+            provider=provider,
+            publication_context=publication_context,
+            anchor=anchor,
+            source=source,
+            continuity_base=continuity_base,
+            projected_anchor=projected_anchor,
+            expected_remote_tip=expected_remote_tip,
+            workspace=workspace,
         )
-        _run(repository, "remote", "remove", "origin")
-        _run(repository, "remote", "add", "target", remote_url)
-        signing = context.select_signing_key(identity, workspace / "signing-key.pub")
-        remote_tip = _run(repository, "ls-remote", "--heads", "target", "refs/heads/main")
-        remote_tip = remote_tip.split(maxsplit=1)[0] if remote_tip else ""
-        if remote_tip:
-            _run(
-                repository,
-                "fetch",
-                "--quiet",
-                "--no-tags",
-                "target",
-                "refs/heads/main:refs/remotes/target/main",
-                environment=_environment(),
-            )
-
-        transaction = Projection(repository, identity, signing, anchor)
-        source_commits = _run(
-            repository, "rev-list", "--reverse", "--topo-order", source
-        ).splitlines()
-        base_source, mapping = transaction.existing_mapping(source_commits, remote_tip)
         base_projected = remote_tip or None
         projected, created = transaction.append(
             source, source_commits, base_source, mapping, remote_tip
@@ -321,6 +452,8 @@ def project(
                 base_projected=base_projected,
                 mapping=mapping,
                 created=created,
+                continuity_source_base=base_source if continuity_base else None,
+                continuity_projected_anchor=observed_projected_anchor,
             )
         return projected
 
@@ -331,11 +464,14 @@ def _command(
     source_ref: str = "HEAD",
     remote: str | None = None,
     map_output: Path | None = None,
-    root: Path = Path.cwd(),
+    root: Path | None = None,
     publication_context: Path,
     anchor: Path,
     repository: str,
     runner_tag: str | None = None,
+    continuity_base: str | None = None,
+    projected_anchor: str | None = None,
+    expect_remote_tip: str | None = None,
     as_json: Annotated[bool, Parameter(name="--json", negative=False)] = False,
 ) -> None:
     """Project one accepted source independently to GitLab or GitHub."""
@@ -343,7 +479,7 @@ def _command(
     selected_remote = remote or ("origin" if provider == "gitlab" else "github")
     try:
         projected = project(
-            root=root.resolve(),
+            root=(root or Path.cwd()).resolve(),
             provider=provider,
             source_ref=source_ref,
             remote=selected_remote,
@@ -352,6 +488,9 @@ def _command(
             anchor=anchor,
             repository_coordinate=repository,
             runner_tag=runner_tag,
+            continuity_base=continuity_base,
+            projected_anchor=projected_anchor,
+            expected_remote_tip=expect_remote_tip,
         )
     except (
         ProjectionError,
@@ -360,7 +499,11 @@ def _command(
     ) as error:
         print(str(error), file=sys.stderr)
         raise SystemExit(1) from error
-    result = {"provider": provider, "projected_commit": projected, "branches": ["main", "dev"]}
+    result = {
+        "provider": provider,
+        "projected_commit": projected,
+        "branches": ["main", "dev"],
+    }
     print(
         json.dumps(result, sort_keys=True)
         if as_json
