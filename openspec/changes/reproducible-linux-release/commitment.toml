@@ -1,0 +1,25 @@
+schema_version = 1
+id = "change:reproducible-linux-release"
+intent = "Make Linux native release assets reproducible across independent Forge builds and release the forward fix as 2.0.39."
+subjects = [
+  "repository:self",
+]
+scope = [
+  "openspec/changes/reproducible-linux-release/**",
+  "VERSION",
+  "CHANGELOG.md",
+  "noxfile.py",
+  "pyproject.toml",
+  "uv.lock",
+  "tests/**",
+  "tools/release/**",
+  ".github/**",
+  ".gitlab-ci.yml",
+  "openspec/**",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+hypotheses = []
+dependencies = []
