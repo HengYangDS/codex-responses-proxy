@@ -12,17 +12,19 @@ states that the current product no longer needs.
 
 ## Decision
 
-The installed product has one manifest-owned native bundle and one native
-supervision lifecycle. The bundle exposes one executable and carries its frozen
-runtime dependencies as adjacent manifest-owned files. Installation prewarms
-the staged executable, then accepts an empty target or one verified current
-listener. An incompatible installation fails before mutation and must be
-removed explicitly.
+The installed product has one manifest-owned native bundle, one native
+user-command link, and one native supervision lifecycle. The bundle exposes one
+executable and carries its frozen runtime dependencies as adjacent
+manifest-owned files. Installation prewarms the staged executable, then accepts
+an empty target or one verified current listener. It projects the executable
+through a platform-native link and records that exact path in the existing
+installed-state record. An incompatible installation or foreign command target
+fails before mutation and must be removed explicitly.
 
-Rollback and recovery use exact current manifests, receipts, preimages, and
-runtime identities. Source-level compatibility shims, forwarding facades,
-retired layout readers, and automatic migration from unsupported payloads are
-not product surfaces.
+Rollback and recovery use exact current manifests, receipts, preimages, command
+link ownership, and runtime identities. Source-level compatibility shims,
+forwarding facades, wrappers, shell-profile mutation, retired layout readers,
+and automatic migration from unsupported payloads are not product surfaces.
 
 ## Consequences
 

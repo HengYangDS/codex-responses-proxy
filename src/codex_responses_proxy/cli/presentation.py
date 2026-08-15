@@ -44,16 +44,23 @@ def render(command: str, result: Any) -> str:
         listener = "Unavailable"
         if isinstance(listeners, list) and len(listeners) == 1:
             listener = f"PID {listeners[0]}"
+        command_state = result.get("command")
+        command_available = (
+            isinstance(command_state, dict)
+            and command_state.get("available") is True
+            and command_state.get("owned") is True
+        )
         return _page(
             "Status",
             (
                 ("Release", result.get("release") or "Not installed"),
                 ("Payload", "Verified" if payload_ok else "Action required"),
+                ("Command", "Available" if command_available else "Action required"),
                 ("Service", str(result.get("service") or "Unknown").capitalize()),
                 ("Listener", listener),
             ),
             next_command="codex-responses-proxy doctor"
-            if not payload_ok or listener == "Unavailable"
+            if not payload_ok or not command_available or listener == "Unavailable"
             else None,
         )
     if command == "doctor":

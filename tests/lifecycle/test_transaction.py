@@ -124,7 +124,40 @@ class TestPayloadTransaction:
         state = json.loads(Path(payload_state.installed_path(ctx)).read_text(encoding="utf-8"))
         assert state["version"] == "1.2.3"
         assert state["receipt_sha256"] == transaction.receipt_sha256
+        assert state["command"] == ctx.command
         assert not Path(payload_state.transaction_root(ctx)).exists()
+
+    def test_fresh_transaction_projects_and_rolls_back_the_user_command(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+
+        transaction.commit_projection()
+
+        command_path = Path(ctx.command)
+        assert command_path.is_symlink()
+        assert command_path.resolve() == Path(ctx.executable).resolve()
+
+        transaction.rollback()
+
+        assert not command_path.exists()
+
+    def test_upgrade_rollback_restores_the_prior_user_command_target(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        prior_target = Path(ctx.executable).resolve()
+        command_path = Path(ctx.command)
+        assert command_path.resolve() == prior_target
+
+        transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        transaction.commit_projection()
+        transaction.rollback()
+
+        assert command_path.is_symlink()
+        assert command_path.resolve() == prior_target
 
     def test_failed_commit_rolls_back_before_propagating(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))

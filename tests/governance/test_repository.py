@@ -106,9 +106,10 @@ class TestInstallationInputValidation:
 
     def test_service_projection_is_derived_from_one_runtime_contract(self):
         context = runtime_context.RuntimeContext(
-            home="/home/team",
+            home="/fixture/user-root",
             install_dir="/opt/proxy",
             executable="/opt/proxy/bin/codex-responses-proxy",
+            command="/fixture/user-root/.local/bin/codex-responses-proxy",
             log_dir="/var/state/proxy",
             port=8808,
             upstream_timeout=45.0,

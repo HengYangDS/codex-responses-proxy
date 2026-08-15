@@ -4,9 +4,10 @@ intent = "Make the installed Proxy command natively discoverable without modifyi
 subjects = ["repository:codex-responses-proxy"]
 scope = [
   "src/codex_responses_proxy/lifecycle/**",
-  "src/codex_responses_proxy/presentation/**",
+  "src/codex_responses_proxy/cli/**",
   "tests/lifecycle/**",
   "tests/cli/**",
+  "tests/governance/**",
   "tests/quality/**",
   "README.md",
   "docs/**",

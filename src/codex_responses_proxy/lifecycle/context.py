@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from codex_responses_proxy import errors
+from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.runtime import config
 from codex_responses_proxy.service import inventory
 
@@ -20,6 +21,7 @@ class RuntimeContext:
     home: str
     install_dir: str
     executable: str
+    command: str
     log_dir: str
     port: int = config.DEFAULT_PORT
     proxy_log_max_bytes: int = config.DEFAULT_PROXY_LOG_MAX_BYTES
@@ -83,11 +85,13 @@ def create(
     """Validate command inputs and project all product-owned paths once."""
 
     install_dir = config.data_dir()
+    home = config.home_dir()
     return RuntimeContext(
-        home=config.home_dir(),
+        home=home,
         install_dir=install_dir,
         executable=executable
         or inventory.installed_executable(install_dir, windows=config.os.name == "nt"),
+        command=str(command.path(home, config.os.environ, windows=config.os.name == "nt")),
         log_dir=config.state_dir(),
         port=validate_port(port),
         proxy_log_max_bytes=validate_log_retention(

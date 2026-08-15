@@ -86,6 +86,15 @@ def require_version(state: Mapping[str, Any]) -> str:
     return version
 
 
+def require_command(state: Mapping[str, Any]) -> str:
+    """Return the absolute command path recorded at installation."""
+
+    command = state.get("command")
+    if not isinstance(command, str) or not command or not Path(command).is_absolute():
+        raise errors.InstallError("installed release state command path is invalid")
+    return command
+
+
 def compare_versions(left: str, right: str) -> int:
     """Compare two already validated semantic versions."""
     versions = tuple(tuple(map(int, version.split("."))) for version in (left, right))

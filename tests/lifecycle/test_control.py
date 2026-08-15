@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from codex_responses_proxy import errors
@@ -142,11 +143,13 @@ class TestControllerLifecycle:
     def test_lifecycle_helpers_cover_local_files_and_process_failures(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
         assert uninstall._context(8801).port == 8801
-        version = Path(ctx.install_dir) / "VERSION"
-        version.parent.mkdir(parents=True, exist_ok=True)
-        version.write_text("2.0.0\n", encoding="utf-8")
+        installed_state = mocker.patch.object(
+            control.payload_state,
+            "read_installed",
+            return_value={"schema_version": 1, "version": "2.0.0"},
+        )
         assert control._installed_release(ctx) == "2.0.0"
-        version.unlink()
+        installed_state.return_value = None
         assert control._installed_release(ctx) is None
         mocker.patch.object(
             uninstall.process,
@@ -181,7 +184,13 @@ class TestControllerLifecycle:
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
         mocker.patch.object(uninstall.projection, "purge_installed_projection", return_value=[])
-        assert uninstall.uninstall_product(purge=True) == {"stopped": 0, "purged": True}
+        remove_command = mocker.patch.object(uninstall.command, "remove", return_value=True)
+        assert uninstall.uninstall_product(purge=True) == {
+            "stopped": 0,
+            "command_removed": True,
+            "purged": True,
+        }
+        remove_command.assert_called_once_with(Path(ctx.command), Path(ctx.executable))
         service.uninstall.assert_called_once_with(ctx)
 
         service.status.return_value = "loaded"
@@ -192,7 +201,11 @@ class TestControllerLifecycle:
         mocker.patch.object(uninstall, "_context", return_value=ctx)
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
-        assert uninstall.uninstall_product() == {"stopped": 0, "purged": False}
+        assert uninstall.uninstall_product() == {
+            "stopped": 0,
+            "command_removed": True,
+            "purged": False,
+        }
         mocker.patch.object(uninstall, "_context", return_value=ctx)
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
@@ -204,6 +217,42 @@ class TestControllerLifecycle:
 
         with pytest.raises(errors.InstallError, match="unknown install content remains"):
             uninstall.uninstall_product(purge=True)
+
+    def test_status_and_uninstall_use_the_finalized_command_path(self, tmp_path: Path, *, mocker):
+        ctx = install_context(tmp_path)
+        installed_command = tmp_path / "original-bin" / "codex-responses-proxy"
+        changed_environment_command = tmp_path / "changed-bin" / "codex-responses-proxy"
+        ctx = replace(ctx, command=str(changed_environment_command))
+        installed_state = {
+            "schema_version": payload_state.INSTALLED_RELEASE_STATE_SCHEMA,
+            "version": "2.0.37",
+            "command": str(installed_command),
+        }
+        mocker.patch.object(payload_state, "read_installed", return_value=installed_state)
+        command_status = mocker.patch.object(
+            control.command,
+            "status",
+            return_value={"path": str(installed_command), "available": True, "owned": True},
+        )
+        mocker.patch.object(
+            control.projection, "verify_payload_manifest", return_value=(True, "ok")
+        )
+        mocker.patch.object(control, "adapter").return_value.status.return_value = "running"
+        mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
+        mocker.patch.object(control, "_runtime_metrics", return_value=None)
+
+        assert control.status(ctx)["command"]["path"] == str(installed_command)
+        command_status.assert_called_once_with(installed_command, Path(ctx.executable))
+
+        mocker.patch.object(uninstall, "_context", return_value=ctx)
+        service = mocker.patch.object(uninstall, "adapter").return_value
+        service.status.return_value = "absent"
+        mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
+        remove = mocker.patch.object(uninstall.command, "remove", return_value=True)
+
+        uninstall.uninstall_product()
+
+        remove.assert_called_once_with(installed_command, Path(ctx.executable))
 
     def test_install_and_uninstall_adapters_preserve_bounded_errors(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))

@@ -122,13 +122,17 @@ stateDiagram-v2
 
 Artifact admission verifies the release asset, complete bundle inventory, and
 external trust anchor. The installer prewarms the staged executable before the
-payload transaction can replace installed bytes. Installation finalizes only
-after one listener proves the expected release, payload digest, manifest digest,
-receipt digest, PID, and accepting state.
+payload transaction can replace installed bytes. The same transaction projects
+one native user-command link and records its exact path in installed state;
+rollback and uninstall therefore do not re-derive ownership from a later shell
+environment. Installation finalizes only after one listener proves the expected
+release, payload digest, manifest digest, receipt digest, PID, and accepting
+state.
 
 Reload is same-payload handoff. Upgrade is install. Uninstall removes native
-supervision first, proves owned listener exit, then optionally removes only
-manifest-owned payload files.
+supervision first, proves owned listener exit, removes only the recorded command
+link while it still targets the installed executable, then optionally removes
+only manifest-owned payload files.
 
 ## Human and machine surfaces
 

@@ -36,9 +36,10 @@ class TestRuntimeContext:
         assert config.listener_port({config.PROXY_PORT_ENV: "8808"}) == 8808
 
         projected = context.RuntimeContext(
-            home="/home/team",
+            home="/fixture/user-root",
             install_dir="/opt/proxy",
             executable="/opt/proxy/bin/codex-responses-proxy",
+            command="/fixture/user-root/.local/bin/codex-responses-proxy",
             log_dir="/var/state/proxy",
             port=8808,
         )
@@ -58,9 +59,10 @@ class TestRuntimeContext:
 
     def test_service_environment_derives_from_the_runtime_contract(self):
         projected = context.RuntimeContext(
-            home="/home/team",
+            home="/fixture/user-root",
             install_dir="/opt/proxy",
             executable="/opt/proxy/bin/codex-responses-proxy",
+            command="/fixture/user-root/.local/bin/codex-responses-proxy",
             log_dir="/var/state/proxy",
             port=8808,
             upstream_timeout=45.0,
@@ -75,9 +77,10 @@ class TestRuntimeContext:
 
     def test_posix_projection_is_not_reinterpreted_by_a_windows_host(self, *, mocker):
         projected = context.RuntimeContext(
-            home="/home/team",
+            home="/fixture/user-root",
             install_dir="/opt/proxy",
             executable="/opt/proxy/bin/codex-responses-proxy",
+            command="/fixture/user-root/.local/bin/codex-responses-proxy",
             log_dir="/var/state/proxy",
         )
         mocker.patch.object(config.os, "path", ntpath)
