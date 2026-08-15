@@ -76,10 +76,12 @@ uv run --locked --no-sync python -m tools.forge.project \
   --anchor <provider-commit-anchor> --repository <provider-repository>
 ```
 
-This is an exact continuity input, not a bypass: the projector verifies every
-existing provider commit, requires one unique identity-neutral match for the
-canonical base, compares the projected anchor and current provider tip, and
-then appends successors by ordinary atomic fast-forward.
+This is an exact continuity input, not a bypass: the projector verifies the
+active provider trust epoch, requires one unique identity-neutral match for the
+canonical base, cuts both ordered histories at that exact base and anchor,
+compares the current provider tip, and then appends successors by ordinary
+atomic fast-forward. Repeated fingerprints in retired prefixes do not
+participate; ambiguity among successors after the cut still fails closed.
 
 Each projection:
 
