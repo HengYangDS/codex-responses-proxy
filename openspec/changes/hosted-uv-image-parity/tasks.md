@@ -8,5 +8,5 @@
 ## 2. Verification
 
 - [x] 2.1 Run focused workflow and repository quality contract tests.
-- [ ] 2.2 Run the complete repository proof.
+- [x] 2.2 Run the complete repository proof.
 - [ ] 2.3 Archive, integrate, and close the accepted branches.
