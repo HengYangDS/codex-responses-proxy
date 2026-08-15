@@ -7,8 +7,8 @@
 ## 2. Verification
 
 - [x] 2.1 Pass release metadata and focused workflow contracts.
-- [ ] 2.2 Pass the complete exact-HEAD repository proof.
-- [ ] 2.3 Prepare the Change for governed archive and post-archive delivery.
+- [x] 2.2 Pass the complete exact-HEAD repository proof.
+- [x] 2.3 Prepare the Change for governed archive and post-archive delivery.
 
 ## Post-archive lifecycle
 
