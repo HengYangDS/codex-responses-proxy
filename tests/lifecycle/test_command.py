@@ -44,6 +44,13 @@ def test_windows_command_path_uses_the_user_application_alias_directory() -> Non
     )
 
 
+def assert_native_projection(command_path: Path, target: Path) -> None:
+    """Assert the host-native link identifies the exact installed executable."""
+
+    assert os.path.samefile(command_path, target)
+    assert command_path.is_symlink() is (os.name != "nt")
+
+
 def test_projection_replaces_only_absent_or_exact_owned_link(tmp_path: Path) -> None:
     ctx = install_context(tmp_path)
     target = Path(ctx.executable)
@@ -52,8 +59,7 @@ def test_projection_replaces_only_absent_or_exact_owned_link(tmp_path: Path) -> 
     command_path = tmp_path / "commands" / "codex-responses-proxy"
 
     command.project(command_path, target)
-    assert command_path.is_symlink()
-    assert command_path.resolve() == target.resolve()
+    assert_native_projection(command_path, target)
 
     foreign = tmp_path / "foreign"
     foreign.write_text("foreign", encoding="utf-8")
@@ -154,10 +160,11 @@ def test_project_rejects_invalid_target_and_reports_native_failures(
     with pytest.raises(errors.InstallError, match="target is not a regular file"):
         command.project(command_path, linked_target)
 
-    def fail_symlink(_target: Path, _link: Path) -> None:
+    def fail_projection(_target: Path, _link: Path) -> None:
         raise OSError("projection unavailable")
 
-    monkeypatch.setattr(command.os, "symlink", fail_symlink)
+    primitive = "link" if os.name == "nt" else "symlink"
+    monkeypatch.setattr(command.os, primitive, fail_projection)
     with pytest.raises(errors.InstallError, match="native command projection failed"):
         command.project(command_path, target)
     assert not list(command_path.parent.glob(".*.tmp-*"))
@@ -259,7 +266,7 @@ def test_restore_and_remove_cover_owned_absent_and_unlink_failure(
     command.project(command_path, target)
     owned = command.snapshot(command_path, target)
     command.restore(command_path, target, owned)
-    assert command_path.resolve() == target.resolve()
+    assert_native_projection(command_path, target)
     assert command.remove(command_path, target) is True
     assert command.remove(command_path, target) is False
 

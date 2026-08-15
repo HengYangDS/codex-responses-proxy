@@ -12,6 +12,8 @@ scope = [
   "tests/cli/test_lifecycle.py",
   "tests/lifecycle/test_command.py",
   "tests/lifecycle/test_transaction.py",
+  "VERSION",
+  "CHANGELOG.md",
 ]
 invariants = [
   "one_native_user_command_projection_per_platform",
@@ -23,6 +25,7 @@ acceptance = [
   "windows_status_accepts_the_installed_native_command_path",
   "macos_linux_symlink_semantics_remain_exact",
   "supported_python_matrix_and_quality_gates_pass",
+  "release_metadata_names_version_2_0_38",
 ]
 risks = ["native_link_semantics_differ_between_windows_and_posix"]
 authority_refs = [
