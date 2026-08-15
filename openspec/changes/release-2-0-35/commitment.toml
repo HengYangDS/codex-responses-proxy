@@ -1,0 +1,17 @@
+schema_version = 1
+id = "change:release-2-0-35"
+intent = "Release the accepted GitLab immutable runtime repair as version 2.0.35 through independent provider-native publication planes."
+subjects = [
+  "repository:self",
+]
+scope = [
+  "openspec/changes/release-2-0-35/**",
+  "VERSION",
+  "CHANGELOG.md",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+hypotheses = []
+dependencies = []
