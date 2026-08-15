@@ -31,6 +31,20 @@ obsolete compatibility fallbacks.
 - **AND** the repository-local Python install and cache directories remain in use
 - **AND** no ambient interpreter or implicit Python download contributes to success.
 
+#### Scenario: The supply chain advances
+
+- **WHEN** an audited stable dependency, hosted Action release, or CI base image
+  supersedes the repository pin
+- **THEN** its existing SSOT is updated without adding a parallel version owner
+- **AND** lock, workflow, and repository quality contracts pass together.
+
+#### Scenario: A stable transitive dependency advances
+
+- **WHEN** the declared uv resolver selects a newer stable transitive dependency
+- **THEN** the repository SHALL update only `uv.lock`
+- **AND** a repeated resolution SHALL produce no further diff
+- **AND** the complete locked verification graph SHALL pass before integration.
+
 ## Requirement To Task To Proof
 
 | Requirement | Task | Proof |
