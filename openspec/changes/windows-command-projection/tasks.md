@@ -13,8 +13,15 @@
 
 - [x] 3.1 Pass focused lifecycle and CLI tests.
 - [x] 3.2 Pass quick, quality, Python 3.12-3.14, and release sessions.
-- [ ] 3.3 Complete exact proof, archive, land, accepted closeout, and release 2.0.38.
-- [ ] 3.4 Verify both independent Forge publications and the installed runtime.
+- [x] 3.3 Pass exact-HEAD repository proof for release 2.0.38.
+
+## Post-archive delivery order
+
+Archive and candidate/accepted integration follow the proved source change.
+GitLab and GitHub then publish independently from equivalent accepted product
+trees. Formal-asset verification, installation, runtime health, and lane
+retirement require fresh external receipts and are not asserted by this source
+Change.
 
 ## Requirement To Task To Proof
 
