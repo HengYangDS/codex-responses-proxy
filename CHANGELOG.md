@@ -7,6 +7,16 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.38] - 2026-08-15
+
+### Fixed
+
+- Verify the native user-command projection by exact file identity on Windows,
+  where the product uses a hard link, while retaining exact symbolic-link
+  assertions on macOS and Linux.
+- Build lifecycle status fixtures from host-native absolute paths so the
+  Windows matrix tests installed-state validation instead of POSIX syntax.
+
 ## [2.0.37] - 2026-08-15
 
 ### Added

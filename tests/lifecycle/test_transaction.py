@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import cast
@@ -136,8 +137,8 @@ class TestPayloadTransaction:
         transaction.commit_projection()
 
         command_path = Path(ctx.command)
-        assert command_path.is_symlink()
-        assert command_path.resolve() == Path(ctx.executable).resolve()
+        assert os.path.samefile(command_path, ctx.executable)
+        assert command_path.is_symlink() is (os.name != "nt")
 
         transaction.rollback()
 
@@ -148,16 +149,16 @@ class TestPayloadTransaction:
     ) -> None:
         ctx = install_context(tmp_path)
         install_payload(ctx, "1.2.2", mocker=mocker)
-        prior_target = Path(ctx.executable).resolve()
+        prior_target = Path(ctx.executable)
         command_path = Path(ctx.command)
-        assert command_path.resolve() == prior_target
+        assert os.path.samefile(command_path, prior_target)
 
         transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         transaction.commit_projection()
         transaction.rollback()
 
-        assert command_path.is_symlink()
-        assert command_path.resolve() == prior_target
+        assert os.path.samefile(command_path, prior_target)
+        assert command_path.is_symlink() is (os.name != "nt")
 
     def test_failed_commit_rolls_back_before_propagating(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))

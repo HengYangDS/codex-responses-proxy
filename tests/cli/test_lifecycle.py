@@ -186,11 +186,12 @@ class CliLifecycleContracts:
         assert stderr == ""
 
     def test_status_binds_listener_identity_to_the_installed_executable(self, *, mocker) -> None:
+        fixture_root = Path.cwd().anchor or "/"
         context = mocker.Mock(
             port=8792,
-            install_dir="/product",
-            executable="/product/codex-responses-proxy",
-            command="/commands/codex-responses-proxy",
+            install_dir=str(Path(fixture_root, "product")),
+            executable=str(Path(fixture_root, "product", "codex-responses-proxy")),
+            command=str(Path(fixture_root, "commands", "codex-responses-proxy")),
         )
         mocker.patch.object(
             projection,
