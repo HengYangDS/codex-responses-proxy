@@ -93,7 +93,7 @@ def join_indexes_from_base(
     projected: list[tuple[str, str]],
     canonical_base: str,
 ) -> tuple[str, list[tuple[str, str]]]:
-    """Map histories from one explicit canonical continuity base."""
+    """Map only the unambiguous successor sequence after one explicit base."""
 
     canonical_fingerprint = next(
         (fingerprint for fingerprint, commit in canonical if commit == canonical_base),
@@ -110,14 +110,20 @@ def join_indexes_from_base(
             f"found {len(projected_matches)} identity-neutral matches"
         )
 
-    canonical_by_fingerprint: dict[str, list[str]] = defaultdict(list)
+    canonical_offset = next(
+        index for index, (_, commit) in enumerate(canonical) if commit == canonical_base
+    )
+    projected_anchor = projected_matches[0]
+    projected_offset = next(
+        index for index, (_, commit) in enumerate(projected) if commit == projected_anchor
+    )
+    canonical_suffix = canonical[canonical_offset + 1 :]
+    projected_suffix = projected[projected_offset + 1 :]
     projected_by_fingerprint: dict[str, list[str]] = defaultdict(list)
-    for fingerprint, commit in canonical:
-        canonical_by_fingerprint[fingerprint].append(commit)
-    for fingerprint, commit in projected:
+    for fingerprint, commit in projected_suffix:
         projected_by_fingerprint[fingerprint].append(commit)
     mapping: list[tuple[str, str]] = []
-    for fingerprint, canonical_commit in canonical:
+    for fingerprint, canonical_commit in canonical_suffix:
         matches = projected_by_fingerprint.get(fingerprint, [])
         if len(matches) > 1:
             raise HistoryError(
@@ -125,7 +131,7 @@ def join_indexes_from_base(
             )
         if matches:
             mapping.append((canonical_commit, matches[0]))
-    return projected_matches[0], mapping
+    return projected_anchor, mapping
 
 
 def map_histories(

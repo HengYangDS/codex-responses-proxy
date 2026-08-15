@@ -7,12 +7,15 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from tests.forge.test_forward_only import (
     ForgeFixture,
     ProviderProjectionTests,
     run,
     ssh_agent,
 )
+from tools.forge.history import HistoryError, join_indexes_from_base
 
 
 class ForgeContinuityContracts:
@@ -200,3 +203,37 @@ class ForgeContinuityContracts:
         ).stdout.strip()
         run("git", "push", "-q", "origin", f"{checkpoint}:main", cwd=checkout)
         return checkpoint
+
+
+class ForgeContinuityIndexContracts:
+    """Constrain explicit recovery to the ordered suffix after its exact base."""
+
+    def test_duplicate_fingerprints_before_base_do_not_block_successors(self) -> None:
+        canonical = [
+            ("duplicate", "canonical-old-one"),
+            ("duplicate", "canonical-old-two"),
+            ("base", "canonical-base"),
+            ("next", "canonical-next"),
+        ]
+        projected = [
+            ("duplicate", "provider-old-one"),
+            ("duplicate", "provider-old-two"),
+            ("base", "provider-base"),
+            ("next", "provider-next"),
+        ]
+
+        anchor, mapping = join_indexes_from_base(canonical, projected, "canonical-base")
+
+        assert anchor == "provider-base"
+        assert mapping == [("canonical-next", "provider-next")]
+
+    def test_duplicate_fingerprint_after_base_remains_ambiguous(self) -> None:
+        canonical = [("base", "canonical-base"), ("next", "canonical-next")]
+        projected = [
+            ("base", "provider-base"),
+            ("next", "provider-next-one"),
+            ("next", "provider-next-two"),
+        ]
+
+        with pytest.raises(HistoryError, match="ambiguous provider history matches"):
+            join_indexes_from_base(canonical, projected, "canonical-base")
