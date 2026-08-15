@@ -418,7 +418,7 @@ through explicit semantic patterns.
 The exact patch identity MUST come from tracked `VERSION`. Its package,
 Changelog, documentation, signed tag, and assets MUST derive from one accepted
 source commit. GitLab and GitHub MUST each complete their own signed publication
-without querying, mutating, or depending on the other Forge.
+without querying, mutating, or depending on the other Forge. Each Forge release job MUST use the repository-declared immutable runtime rather than installing operating-system packages during publication.
 
 #### Scenario: Both Forge planes publish the current patch
 
@@ -445,6 +445,11 @@ without querying, mutating, or depending on the other Forge.
 - **THEN** `VERSION` advances to one newer SemVer patch before publication
 - **AND** the Changelog records the repair under that same version
 - **AND** existing tags, runs, Releases, and assets remain unchanged.
+#### Scenario: GitLab publishes from the immutable runtime
+
+- **WHEN** GitLab publishes the current patch
+- **THEN** its release job uses the repository-declared immutable runtime
+- **AND** it performs no mutable operating-system package installation.
 
 ### Requirement: Commit grammar follows the checkout's available integration boundary
 
