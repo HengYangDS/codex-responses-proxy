@@ -8,4 +8,4 @@
 ## 2. Verification
 
 - [x] 2.1 Run focused Forge tests and OpenSpec validation.
-- [ ] 2.2 Run complete repository proof and governed integration.
+- [x] 2.2 Run complete repository proof; archive and integration follow through the governed lifecycle.
