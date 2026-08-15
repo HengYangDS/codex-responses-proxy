@@ -107,7 +107,8 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     assert "*install-uv" not in regular_jobs
     assert regular_jobs.count("python -m pip install") == 1
     assert gitlab.count("&assert-uv-version") == 1
-    assert gitlab.count("*assert-uv-version") == 5
+    assert gitlab.count("*assert-uv-version") == 4
+    assert gitlab.count("*install-uv") == 2
     assert "uv sync --locked --group quality --no-install-project" in gitlab
 
 
@@ -116,6 +117,10 @@ def test_gitlab_publish_uses_the_synchronized_python_identity() -> None:
 
     gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     publish = gitlab.split("\npublish-gitlab-release:", 1)[1]
+    assert "name: $LINUX_RELEASE_IMAGE" in publish
+    assert "docker: { platform: linux/amd64 }" in publish
+    assert "*install-uv" in publish
+    assert "apt-get" not in publish
     assert f"{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py" in publish
     assert f"{GITLAB_LOCKED_PYTHON} python -m tools.release.publish_gitlab" in publish
 

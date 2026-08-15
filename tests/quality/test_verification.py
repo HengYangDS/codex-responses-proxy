@@ -149,13 +149,13 @@ class TestVerificationContracts:
         assert gitlab.count(f"ghcr.io/astral-sh/uv:{uv_version}-python") == 2
         assert gitlab.count('["tool"]["uv"]["required-version"]') == 2
         assert gitlab.count("&assert-uv-version") == 1
-        assert gitlab.count("*assert-uv-version") == 5
+        assert gitlab.count("*assert-uv-version") == 4
         assert 'UV_VERSION="${UV_VERSION#uv }"' in gitlab
         assert 'ACTUAL_UV_VERSION="${UV_VERSION%% *}"' in gitlab
         assert 'EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"' in gitlab
         assert "uv version mismatch: expected %s, actual %s" in gitlab
         assert gitlab.count("&install-uv") == 1
-        assert gitlab.count("*install-uv") == 1
+        assert gitlab.count("*install-uv") == 2
         assert gitlab.count("python -m pip install") == 1
 
     @pytest.mark.parametrize(
