@@ -9,9 +9,18 @@ scope = [
   "VERSION",
   "CHANGELOG.md",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+  "version_has_one_repository_owner",
+  "gitlab_and_github_publish_independently",
+  "failed_release_provenance_is_immutable",
+]
+acceptance = [
+  "release_metadata_names_version_2_0_35",
+  "gitlab_publication_uses_the_immutable_repository_runtime",
+  "local_release_and_install_acceptance_pass",
+  "each_available_forge_publishes_its_own_verified_assets",
+]
+risks = ["forge_credentials_or_runners_can_delay_remote_projection_without_blocking_local_product_proof"]
+authority_refs = ["VERSION", "CHANGELOG.md", "docs/governance/release-and-change-policy.md"]
 hypotheses = []
 dependencies = []

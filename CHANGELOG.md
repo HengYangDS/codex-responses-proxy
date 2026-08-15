@@ -7,6 +7,15 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.35] - 2026-08-15
+
+### Fixed
+
+- Publish GitLab releases from the immutable repository runtime without mutable
+  operating-system package installation.
+- Preserve the failed GitLab 2.0.34 release while GitLab and GitHub publish the
+  forward patch independently.
+
 ## [2.0.34] - 2026-08-14
 
 ### Fixed
