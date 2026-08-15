@@ -6,9 +6,8 @@
 
 ## 2. Verification and delivery
 
-- [ ] 2.1 Pass release metadata, OpenSpec strict validation, and exact-HEAD proof.
-- [ ] 2.2 Publish independently on GitLab and GitHub and verify all signed assets.
-- [ ] 2.3 Install the trusted release and pass runtime acceptance.
+- [x] 2.1 Pass release metadata and OpenSpec strict validation before freezing
+  the exact HEAD for proof.
 
 ## Delivery Boundary
 
