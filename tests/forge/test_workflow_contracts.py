@@ -121,6 +121,7 @@ def test_gitlab_publish_uses_the_synchronized_python_identity() -> None:
     assert "docker: { platform: linux/amd64 }" in publish
     assert "*install-uv" in publish
     assert "apt-get" not in publish
+    assert "uv sync --locked --group quality --python python --no-python-downloads" in publish
     assert f"{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py" in publish
     assert f"{GITLAB_LOCKED_PYTHON} python -m tools.release.publish_gitlab" in publish
 
