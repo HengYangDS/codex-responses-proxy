@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Protocol, cast
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import command, context as runtime_context, state
 from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle.supervision.native_service import adapter
@@ -64,6 +65,11 @@ def uninstall_product(
 
     _remove_service(service, ctx)
     stopped = _stop_proxy(ctx)
+    installed = state.read_installed(ctx)
+    command_path = (
+        Path(state.require_command(installed)) if installed is not None else Path(ctx.command)
+    )
+    command_removed = command.remove(command_path, Path(ctx.executable))
 
     if purge:
         remaining = projection.purge_installed_projection(ctx)
@@ -72,4 +78,4 @@ def uninstall_product(
                 "manifest-owned payload was removed, but unknown install content remains: "
                 + ", ".join(remaining)
             )
-    return {"stopped": stopped, "purged": purge}
+    return {"stopped": stopped, "command_removed": command_removed, "purged": purge}

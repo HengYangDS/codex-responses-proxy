@@ -7,6 +7,23 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.37] - 2026-08-15
+
+### Added
+
+- Project the verified native executable into the current user's platform
+  command directory as part of the payload transaction, without wrappers or
+  shell-profile changes.
+- Report command discoverability in `status` and `doctor` from the same
+  installed-state authority used by upgrade and uninstall.
+
+### Fixed
+
+- Read the installed release from canonical installed state instead of a
+  nonexistent `VERSION` file inside the installed payload.
+- Roll back and uninstall only the exact command link owned by the installed
+  payload, including when the invoking shell's environment has changed.
+
 ## [2.0.36] - 2026-08-15
 
 ### Fixed

@@ -72,6 +72,11 @@ class CliLifecycleContracts:
             "listener_pids": [321],
             "runtime": {"pid": 321},
             "payload_transaction": None,
+            "command": {
+                "path": "/commands/codex-responses-proxy",
+                "available": True,
+                "owned": True,
+            },
         }
         context = mocker.patch.object(application.control, "_context", return_value="context")
         status = mocker.patch.object(application.control, "status", return_value=evidence)
@@ -90,6 +95,11 @@ class CliLifecycleContracts:
             "listener_pids": [321],
             "runtime": {"pid": 321, "accepting": True},
             "payload_transaction": None,
+            "command": {
+                "path": "/commands/codex-responses-proxy",
+                "available": True,
+                "owned": True,
+            },
         }
         mocker.patch.object(application.control, "status", return_value=evidence)
 
@@ -102,6 +112,7 @@ class CliLifecycleContracts:
         assert "Payload" in stdout and "Verified" in stdout
         assert "Service" in stdout and "Running" in stdout
         assert "Listener" in stdout and "PID 321" in stdout
+        assert "Command" in stdout and "Available" in stdout
         assert not stdout.lstrip().startswith("{")
         lines = stdout.splitlines()
         value_columns = {
@@ -175,13 +186,31 @@ class CliLifecycleContracts:
         assert stderr == ""
 
     def test_status_binds_listener_identity_to_the_installed_executable(self, *, mocker) -> None:
-        context = mocker.Mock(port=8792, executable="/product/codex-responses-proxy")
+        context = mocker.Mock(
+            port=8792,
+            install_dir="/product",
+            executable="/product/codex-responses-proxy",
+            command="/commands/codex-responses-proxy",
+        )
         mocker.patch.object(
             projection,
             "verify_payload_manifest",
             return_value=(True, "release 2.0.15; 2 files verified"),
         )
-        mocker.patch.object(application.control, "_installed_release", return_value="2.0.15")
+        mocker.patch.object(
+            application.control.payload_state,
+            "read_installed",
+            return_value={
+                "schema_version": 1,
+                "version": "2.0.15",
+                "command": context.command,
+            },
+        )
+        mocker.patch.object(
+            application.control.command,
+            "status",
+            return_value={"path": context.command, "available": True, "owned": True},
+        )
         adapter = mocker.patch.object(application.control, "adapter")
         pids = mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[321])
         mocker.patch.object(
@@ -230,19 +259,36 @@ class CliLifecycleContracts:
             "listener_pids": [321],
             "runtime": {"pid": 321, "accepting": True},
             "payload_transaction": None,
+            "command": {
+                "path": "/commands/codex-responses-proxy",
+                "available": True,
+                "owned": True,
+            },
         }
         cases = (
-            (healthy, True, ("passed", "passed", "passed")),
+            (healthy, True, ("passed", "passed", "passed", "passed")),
             (
                 {**healthy, "payload_integrity": {"ok": False, "detail": "hash mismatch"}},
                 False,
-                ("failed", "passed", "passed"),
+                ("failed", "passed", "passed", "passed"),
             ),
-            ({**healthy, "service": "unknown"}, False, ("passed", "failed", "passed")),
+            ({**healthy, "service": "unknown"}, False, ("passed", "failed", "passed", "passed")),
             (
                 {**healthy, "listener_pids": [654]},
                 False,
-                ("passed", "passed", "failed"),
+                ("passed", "passed", "failed", "passed"),
+            ),
+            (
+                {
+                    **healthy,
+                    "command": {
+                        "path": "/commands/codex-responses-proxy",
+                        "available": False,
+                        "owned": False,
+                    },
+                },
+                False,
+                ("passed", "passed", "passed", "failed"),
             ),
         )
         for evidence, expected_ok, statuses in cases:
@@ -252,7 +298,7 @@ class CliLifecycleContracts:
                 assert (
                     tuple(
                         report["checks"][name]["status"]
-                        for name in ("payload", "service", "listener")
+                        for name in ("payload", "service", "listener", "command")
                     )
                     == statuses
                 )
@@ -291,7 +337,9 @@ class CliLifecycleContracts:
         self, *, mocker
     ) -> None:
         uninstall = mocker.patch.object(
-            application.uninstall, "uninstall_product", return_value={"stopped": 1, "purged": False}
+            application.uninstall,
+            "uninstall_product",
+            return_value={"stopped": 1, "command_removed": True, "purged": False},
         )
         code, stdout, stderr = self.invoke("uninstall", "--port", "8801")
         assert code == 0
@@ -302,7 +350,7 @@ class CliLifecycleContracts:
         uninstall = mocker.patch.object(
             application.uninstall,
             "uninstall_product",
-            return_value={"stopped": 0, "purged": True},
+            return_value={"stopped": 0, "command_removed": True, "purged": True},
         )
         code, stdout, stderr = self.invoke("uninstall", "--purge")
         assert code == 0

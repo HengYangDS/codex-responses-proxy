@@ -67,7 +67,11 @@ codex-responses-proxy install \
 ```
 
 Installation verifies and prewarms the selected native bundle before changing
-the native user service. It never downloads dependencies or reads provider
+the native user service. It also projects `codex-responses-proxy` into the
+current user's platform command directory as a native link. It does not create
+a wrapper or edit a shell profile. The installed-state record retains that
+exact path so status, rollback, and uninstall do not depend on a later shell's
+environment. Installation never downloads dependencies or reads provider
 credentials.
 
 ## Configure a client route
@@ -158,7 +162,7 @@ cannot select another host.
 
 `status --json` reports secret-free local evidence:
 
-- installed release and payload integrity;
+- installed release, payload integrity, and command discoverability;
 - native service and exact listener identity;
 - transaction state;
 - accepting and draining state;

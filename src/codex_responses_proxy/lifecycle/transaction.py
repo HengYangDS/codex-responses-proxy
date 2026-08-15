@@ -24,6 +24,7 @@ from codex_responses_proxy.lifecycle import (
     projection,
     rollback as payload_rollback,
     artifact,
+    command,
     state,
 )
 
@@ -46,6 +47,7 @@ def rollback_recovery(
     ):
         raise errors.InstallError("payload recovery transaction is unavailable or invalid")
     rollback = state.transaction_root(ctx) / "rollback"
+    command_snapshot = command.read_snapshot(rollback)
     previous_executable = next(
         (
             rollback / relative
@@ -80,7 +82,9 @@ def rollback_recovery(
         or runtime.get("handoff_state") not in {"idle", "serving", "finalized"}
     ):
         raise errors.InstallError("payload recovery runtime does not match the rollback projection")
+    command.detach(Path(ctx.command), Path(ctx.executable), command_snapshot)
     payload_rollback.restore_snapshot(ctx, rollback)
+    command.restore(Path(ctx.command), Path(ctx.executable), command_snapshot)
     result = {
         "transaction_id": journal["transaction_id"],
         "version": journal["version"],
@@ -169,7 +173,9 @@ class PayloadTransaction:
         rollback.mkdir(mode=0o700)
         mutated = False
         try:
+            command_snapshot = command.snapshot(Path(self._ctx.command), Path(self._ctx.executable))
             snapshot = payload_rollback.write_snapshot(self._ctx, rollback)
+            command.write_snapshot(rollback, command_snapshot)
             candidate_paths = {blob.path for blob in self._blobs}
             payload_candidate.reject_unowned_collisions(self._ctx, snapshot.owned, candidate_paths)
             mutated = True
@@ -179,6 +185,11 @@ class PayloadTransaction:
                 self._version,
                 self._receipt,
                 self._receipt_sha256,
+            )
+            command.project(
+                Path(self._ctx.command),
+                Path(self._ctx.executable),
+                previous=command_snapshot,
             )
             ok, detail = projection.verify_payload_manifest(self._ctx)
             if not ok:
@@ -215,6 +226,7 @@ class PayloadTransaction:
             "version": self._version,
             "receipt_sha256": self._receipt_sha256,
             "transaction_id": self._transaction_id,
+            "command": self._ctx.command,
             "runtime": dict(runtime or {}),
         }
         owned_files.write_bytes(
@@ -232,11 +244,14 @@ class PayloadTransaction:
             return
         rollback = state.transaction_root(self._ctx) / "rollback"
         if rollback.exists():
+            command_snapshot = command.read_snapshot(rollback)
+            command.detach(Path(self._ctx.command), Path(self._ctx.executable), command_snapshot)
             payload_rollback.restore_snapshot(
                 self._ctx,
                 rollback,
                 candidate_paths=frozenset(blob.path for blob in self._blobs),
             )
+            command.restore(Path(self._ctx.command), Path(self._ctx.executable), command_snapshot)
         elif self._fresh:
             payload_candidate.remove_projection(self._ctx, {blob.path for blob in self._blobs})
         self._state = "rolled_back"

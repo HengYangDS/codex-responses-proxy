@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import projection, state as payload_state
+from codex_responses_proxy.lifecycle import command, projection, state as payload_state
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle.supervision.native_service import adapter
@@ -23,11 +23,19 @@ def _context(port: int = runtime_config.DEFAULT_PORT) -> runtime_context.Runtime
 
 
 def _installed_release(ctx: runtime_context.RuntimeContext) -> str | None:
-    try:
-        with open(os.path.join(ctx.install_dir, "VERSION"), encoding="utf-8") as handle:
-            return handle.read().strip()
-    except OSError:
-        return None
+    installed = payload_state.read_installed(ctx)
+    return payload_state.require_version(installed) if installed is not None else None
+
+
+def _installed_command(ctx: runtime_context.RuntimeContext) -> Path:
+    """Return the finalized command path, or the current projection before installation."""
+
+    installed = payload_state.read_installed(ctx)
+    return (
+        Path(payload_state.require_command(installed))
+        if installed is not None
+        else Path(ctx.command)
+    )
 
 
 def _runtime_metrics(ctx: runtime_context.RuntimeContext) -> dict | None:
@@ -63,6 +71,7 @@ def status(ctx: runtime_context.RuntimeContext) -> dict:
     listeners = process.verified_proxy_listener_pids(ctx)
     return {
         "release": _installed_release(ctx),
+        "command": command.status(_installed_command(ctx), Path(ctx.executable)),
         "payload_integrity": {"ok": integrity_ok, "detail": integrity_detail},
         "service": service,
         "listener_pids": listeners,

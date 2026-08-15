@@ -359,6 +359,8 @@ class TestPayloadValidation:
             payload_state.read_installed(ctx)
         with pytest.raises(errors.InstallError, match="state version is invalid"):
             payload_state.require_version({"version": "latest"})
+        with pytest.raises(errors.InstallError, match="state command path is invalid"):
+            payload_state.require_command({"command": "relative/command"})
 
         rollback = Path(payload_state.transaction_root(ctx), "rollback")
         rollback.mkdir(parents=True)

@@ -84,6 +84,12 @@ def _doctor(evidence: dict[str, Any]) -> dict[str, Any]:
         and runtime["pid"] == listeners[0]
         and runtime.get("accepting") is not False
     )
+    command = evidence.get("command")
+    command_ok = (
+        isinstance(command, dict)
+        and command.get("available") is True
+        and command.get("owned") is True
+    )
     checks = {
         "payload": {
             "status": "passed" if integrity_ok else _FAILURE_STATUS,
@@ -103,6 +109,13 @@ def _doctor(evidence: dict[str, Any]) -> dict[str, Any]:
             "status": "passed" if listener_ok else _FAILURE_STATUS,
             "detail": "accepting" if listener_ok else "unavailable or identity mismatch",
             "next": None if listener_ok else _RECOVERY_NEXT,
+        },
+        "command": {
+            "status": "passed" if command_ok else _FAILURE_STATUS,
+            "detail": str(command.get("path", "unavailable"))
+            if isinstance(command, dict)
+            else "unavailable",
+            "next": None if command_ok else "reinstall the verified release",
         },
     }
     return {"ok": all(check["status"] == "passed" for check in checks.values()), "checks": checks}
