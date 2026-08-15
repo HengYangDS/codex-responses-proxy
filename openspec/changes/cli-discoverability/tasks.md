@@ -13,7 +13,9 @@
 - [x] 3.1 Pass focused lifecycle and CLI tests.
 - [x] 3.2 Pass quick, strict quality, Python 3.12/3.13/3.14, and native release
   gates from the exact final HEAD.
-- [ ] 3.3 Archive, land, close accepted and release roots, publish independently,
-  install the signed asset, and prove command and runtime acceptance.
-- [ ] 3.4 Retire the owner lane and all already absorbed stale lanes through
-  public governance commands.
+
+## Post-archive lifecycle
+
+Archive, candidate integration, accepted closeout, independent Forge
+publication, signed-asset installation, runtime acceptance, and lane retirement
+are external lifecycle effects requiring fresh receipts.
