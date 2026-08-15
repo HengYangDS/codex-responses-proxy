@@ -518,6 +518,12 @@ def test_linux_release_builders_share_the_repository_runtime() -> None:
         "name: $LINUX_RELEASE_IMAGE" in gitlab,
         "GitLab Linux native build must execute in the repository runtime",
     )
+    publish = ci_block(gitlab, "publish-gitlab-release:")
+    require(
+        "name: $LINUX_RELEASE_IMAGE" in publish,
+        "GitLab release publication must execute in the repository runtime",
+    )
+    require("apt-get" not in publish, "GitLab publication retains mutable OS setup")
 
 
 def test_python_quality_gate_is_cross_forge() -> None:
