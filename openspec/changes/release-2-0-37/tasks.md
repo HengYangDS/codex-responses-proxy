@@ -6,8 +6,9 @@
 
 ## 2. Verification
 
-- [ ] 2.1 Pass the complete exact-HEAD repository proof.
-- [ ] 2.2 Archive the proved Change through the public lifecycle command.
+- [x] 2.1 Pass the complete exact-HEAD repository proof.
+- [x] 2.2 Prepare the proved Change for archival through the public lifecycle
+  command.
 
 ## Post-archive lifecycle
 
