@@ -9,11 +9,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
-from typing import Iterator, TypedDict
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -47,7 +48,9 @@ def run(*args: str, cwd: Path, env: dict[str, str] | None = None, check: bool = 
     )
     if env:
         environment.update(env)
-    result = subprocess.run(args, cwd=cwd, env=environment, text=True, capture_output=True)
+    result = subprocess.run(
+        args, cwd=cwd, env=environment, text=True, capture_output=True, check=False
+    )
     if check and result.returncode:
         raise RuntimeError(result.stderr or result.stdout)
     return result
@@ -287,7 +290,9 @@ class ProviderProjectionTests:
                             cwd=remote,
                         )
 
-    def test_github_projection_appends_without_rewriting_existing_projection(self) -> None:
+    def test_github_projection_appends_without_rewriting_existing_projection(
+        self,
+    ) -> None:
         """Append a new canonical tree while retaining the old GitHub tip."""
 
         with tempfile.TemporaryDirectory() as directory:
@@ -339,7 +344,14 @@ class ProviderProjectionTests:
                 new_tip = run(
                     "git", "rev-parse", "refs/heads/main", cwd=github_remote
                 ).stdout.strip()
-                run("git", "merge-base", "--is-ancestor", old_tip, new_tip, cwd=github_remote)
+                run(
+                    "git",
+                    "merge-base",
+                    "--is-ancestor",
+                    old_tip,
+                    new_tip,
+                    cwd=github_remote,
+                )
                 assert (
                     run("git", "rev-parse", "HEAD^{tree}", cwd=source).stdout.strip()
                     == run("git", "rev-parse", "main^{tree}", cwd=github_remote).stdout.strip()
@@ -418,7 +430,14 @@ class ProviderProjectionTests:
             projection = json.loads(mapping.read_text(encoding="utf-8"))
             assert 1 == len(projection["created"])
             new_tip = run("git", "rev-parse", "refs/heads/main", cwd=github_remote).stdout.strip()
-            run("git", "merge-base", "--is-ancestor", old_tip, new_tip, cwd=github_remote)
+            run(
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                old_tip,
+                new_tip,
+                cwd=github_remote,
+            )
 
     def test_source_history_is_not_required_to_use_a_forge_identity(self) -> None:
         """Keep accepted local history independent from both publication identities."""
@@ -428,7 +447,17 @@ class ProviderProjectionTests:
             fixture = self.fixture(root)
             source = fixture["source"]
             outsider = root / "outsider-signing"
-            run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(outsider), cwd=root)
+            run(
+                "ssh-keygen",
+                "-q",
+                "-t",
+                "ed25519",
+                "-N",
+                "",
+                "-f",
+                str(outsider),
+                cwd=root,
+            )
             run("git", "config", "user.email", "untrusted@example.test", cwd=source)
             run("git", "config", "user.signingkey", str(outsider), cwd=source)
             (source / "UNTRUSTED.md").write_text("three\n", encoding="utf-8")
@@ -491,9 +520,21 @@ class ProviderProjectionTests:
                 run("git", "clone", "-q", str(github_remote), str(divergent), cwd=root)
                 run("git", "checkout", "-qB", "main", "origin/main", cwd=divergent)
                 run("git", "config", "user.name", "GitHub Publisher", cwd=divergent)
-                run("git", "config", "user.email", str(fixture["github_email"]), cwd=divergent)
+                run(
+                    "git",
+                    "config",
+                    "user.email",
+                    str(fixture["github_email"]),
+                    cwd=divergent,
+                )
                 run("git", "config", "gpg.format", "ssh", cwd=divergent)
-                run("git", "config", "user.signingkey", str(fixture["github_key"]), cwd=divergent)
+                run(
+                    "git",
+                    "config",
+                    "user.signingkey",
+                    str(fixture["github_key"]),
+                    cwd=divergent,
+                )
                 (divergent / "REMOTE_ONLY.md").write_text("divergent\n", encoding="utf-8")
                 run("git", "add", ".", cwd=divergent)
                 run("git", "commit", "-qS", "-m", "remote-only tree", cwd=divergent)

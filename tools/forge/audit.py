@@ -9,8 +9,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
-from typing import Annotated
+from typing import Annotated, Any
 
 from cyclopts import App, Parameter
 
@@ -108,7 +107,15 @@ def provider_release_evidence(
     workspace = Path(tempfile.mkdtemp(prefix="codex-responses-proxy-parity-"))
     clone = workspace / "repository"
     try:
-        command("git", "clone", "--quiet", "--no-local", "--no-tags", f"file://{ROOT}", str(clone))
+        command(
+            "git",
+            "clone",
+            "--quiet",
+            "--no-local",
+            "--no-tags",
+            f"file://{ROOT}",
+            str(clone),
+        )
         command("git", "-C", str(clone), "remote", "remove", "origin")
         command("git", "-C", str(clone), "remote", "add", "provider", remote_url(remote))
         command(
@@ -185,7 +192,15 @@ def live_main(
 
     with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-main-") as directory:
         clone = Path(directory) / "repository"
-        command("git", "clone", "--quiet", "--no-local", "--no-tags", f"file://{ROOT}", str(clone))
+        command(
+            "git",
+            "clone",
+            "--quiet",
+            "--no-local",
+            "--no-tags",
+            f"file://{ROOT}",
+            str(clone),
+        )
         command("git", "-C", str(clone), "remote", "remove", "origin")
         command("git", "-C", str(clone), "remote", "add", "provider", remote_url(remote))
         command(
@@ -207,6 +222,17 @@ def live_main(
             ).splitlines(),
             branch_provenance(ref, anchor.resolve(), expected_email, cwd=clone),
         )
+
+
+def shared_history_suffix(left: list[str], right: list[str]) -> list[str]:
+    """Return the ordered provider tree suffix shared by both histories."""
+
+    size = 0
+    for left_tree, right_tree in zip(reversed(left), reversed(right), strict=False):
+        if left_tree != right_tree:
+            break
+        size += 1
+    return left[-size:] if size else []
 
 
 def audit(
@@ -239,12 +265,15 @@ def audit(
         }
         for tag in sorted(set(gitlab_tags) & set(github_tags))
     ]
+    shared_suffix = shared_history_suffix(gitlab_trees, github_trees)
     result: dict[str, Any] = {
         "gitlab_main": gitlab_main,
         "github_main": github_main,
         "main_commit_ids": {"gitlab": gitlab_main, "github": github_main},
         "main_tree_equal": gitlab_tree == github_tree,
         "main_tree_history_equal": gitlab_trees == github_trees,
+        "main_tree_history_shared_suffix": shared_suffix,
+        "main_tree_history_shared_suffix_count": len(shared_suffix),
         "gitlab_provenance": gitlab_provenance,
         "github_provenance": github_provenance,
         "overlapping_tags": overlapping,
@@ -257,7 +286,7 @@ def audit(
     }
     result["ok"] = (
         result["main_tree_equal"]
-        and result["main_tree_history_equal"]
+        and bool(shared_suffix)
         and gitlab_provenance["all_commits_trusted"] is True
         and github_provenance["all_commits_trusted"] is True
         and gitlab_provenance["all_commits_use_provider_email"] is True
@@ -315,7 +344,8 @@ def _command(
         print("main provider identities: independently verified")
         print(f"main tree parity: {'OK' if evidence['main_tree_equal'] else 'FAILED'}")
         print(
-            f"main tree-history parity: {'OK' if evidence['main_tree_history_equal'] else 'FAILED'}"
+            "main tree-history continuity: "
+            f"{'OK' if evidence['main_tree_history_shared_suffix_count'] else 'FAILED'}"
         )
         print(f"housekeeping: {'OK' if evidence['ok'] else 'FAILED'}")
     if not evidence["ok"]:

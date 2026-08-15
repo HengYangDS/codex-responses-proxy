@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Index and join identity-neutral Git commit history fingerprints."""
 
 from __future__ import annotations
@@ -89,6 +88,46 @@ def join_indexes(
     return base_matches[0], mapping
 
 
+def join_indexes_from_base(
+    canonical: list[tuple[str, str]],
+    projected: list[tuple[str, str]],
+    canonical_base: str,
+) -> tuple[str, list[tuple[str, str]]]:
+    """Map histories from one explicit canonical continuity base."""
+
+    canonical_fingerprint = next(
+        (fingerprint for fingerprint, commit in canonical if commit == canonical_base),
+        None,
+    )
+    if canonical_fingerprint is None:
+        raise HistoryError("continuity base is absent from canonical history")
+    projected_matches = [
+        commit for fingerprint, commit in projected if fingerprint == canonical_fingerprint
+    ]
+    if len(projected_matches) != 1:
+        raise HistoryError(
+            "continuity base has no unique provider history match; "
+            f"found {len(projected_matches)} identity-neutral matches"
+        )
+
+    canonical_by_fingerprint: dict[str, list[str]] = defaultdict(list)
+    projected_by_fingerprint: dict[str, list[str]] = defaultdict(list)
+    for fingerprint, commit in canonical:
+        canonical_by_fingerprint[fingerprint].append(commit)
+    for fingerprint, commit in projected:
+        projected_by_fingerprint[fingerprint].append(commit)
+    mapping: list[tuple[str, str]] = []
+    for fingerprint, canonical_commit in canonical:
+        matches = projected_by_fingerprint.get(fingerprint, [])
+        if len(matches) > 1:
+            raise HistoryError(
+                f"canonical commit has ambiguous provider history matches: {canonical_commit}"
+            )
+        if matches:
+            mapping.append((canonical_commit, matches[0]))
+    return projected_matches[0], mapping
+
+
 def map_histories(
     repository: Path,
     canonical_commits: list[str],
@@ -104,8 +143,28 @@ def map_histories(
     )
 
 
+def map_histories_from_base(
+    repository: Path,
+    canonical_commits: list[str],
+    projected_commits: list[str],
+    canonical_base: str,
+) -> tuple[str, list[tuple[str, str]]]:
+    """Index both histories and map one explicit continuity base."""
+
+    return join_indexes_from_base(
+        build_index(repository, canonical_commits),
+        build_index(repository, projected_commits),
+        canonical_base,
+    )
+
+
 def _command(
-    *, repository: Path, canonical: Path, projected: Path, remote_commit: str, output: Path
+    *,
+    repository: Path,
+    canonical: Path,
+    projected: Path,
+    remote_commit: str,
+    output: Path,
 ) -> None:
     """Map two commit lists for the Forge projector in one bounded process."""
 
@@ -118,7 +177,12 @@ def _command(
         )
         _write_rows(output, mapping)
         print(base)
-    except (HistoryError, OSError, subprocess.CalledProcessError, UnicodeError) as error:
+    except (
+        HistoryError,
+        OSError,
+        subprocess.CalledProcessError,
+        UnicodeError,
+    ) as error:
         raise SystemExit(str(error)) from error
 
 
