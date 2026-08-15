@@ -9,7 +9,9 @@ Define one self-contained executable UX, repository-owned DX, native distributio
 Codex Responses Proxy SHALL expose one `codex-responses-proxy` executable in a
 manifest-bound native bundle that contains the selected native supervision
 adapter and runs without an installed Python interpreter, package environment,
-source checkout, or repository script.
+source checkout, or repository script. Installation SHALL project that
+executable into the current user's platform command directory as a native link,
+not a wrapper, alias, shell-profile edit, or second copy.
 
 #### Scenario: A released product selects its native service adapter
 
@@ -35,6 +37,22 @@ source checkout, or repository script.
   bundle
 - **AND** no module path, virtual environment, source file, or missing-Python
   diagnostic appears.
+
+#### Scenario: A verified release is installed
+
+- **WHEN** installation finalizes a verified native payload
+- **THEN** `codex-responses-proxy` is discoverable through the user's platform
+  command directory
+- **AND** it resolves to the exact installed executable
+- **AND** no Python interpreter, source checkout, wrapper, or shell-profile
+  mutation is required.
+
+#### Scenario: A foreign command occupies the target
+
+- **WHEN** the derived command path is not absent and is not an exact link to
+  this product's installed executable
+- **THEN** installation fails before payload mutation
+- **AND** the foreign path remains unchanged.
 
 ### Requirement: Small public lifecycle grammar
 
@@ -157,13 +175,20 @@ default and stable JSON only when `--json` is requested. Human output SHALL use
 consistent sections, display-width alignment, actionable failure guidance, and
 no serialized object dump. Source modules, Python launch syntax, repository
 paths, and release-operator commands SHALL remain outside the end-user journey.
+Status SHALL report release identity from the verified installed-state record
+and command discoverability without consulting repository files or a second
+state authority.
 
 #### Scenario: An operator inspects the installed service
 
 - **WHEN** the operator runs `codex-responses-proxy status`
-- **THEN** the command presents release, payload, service, and listener state in a scannable layout
-- **AND** the same observation remains available without semantic drift through `status --json`
-- **AND** neither output exposes a Python module invocation or source-checkout requirement.
+- **THEN** the command presents release, payload, command, service, and listener
+  state in a scannable layout
+- **AND** `status --json` exposes the same semantics
+- **AND** `doctor` classifies a missing or foreign command projection as an
+  actionable failure
+- **AND** neither output exposes a Python module invocation or source-checkout
+  requirement.
 
 ### Requirement: Native lifecycle inspection is self-contained
 The released executable SHALL discover listener and process identity on each
@@ -194,4 +219,3 @@ product or repository policy.
 - **WHEN** its Python replacement and callers are complete
 - **THEN** the Shell file is deleted in the same change
 - **AND** no forwarding wrapper or parallel PowerShell implementation remains
-
