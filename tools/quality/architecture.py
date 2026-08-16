@@ -23,12 +23,13 @@ _POLICY_FIELDS = frozenset(
         "test_roots",
         "package_root",
         "root_configuration_modules",
+        "package_initializers",
         "allowed_package_edges",
     }
 )
 
 
-def _package_edges(package: Path) -> dict[str, set[str]]:
+def _package_edges(package: Path, package_name: str) -> dict[str, set[str]]:
     edges: dict[str, set[str]] = {}
     for path in sorted(package.rglob("*.py")) if package.is_dir() else ():
         relative = path.relative_to(package)
@@ -44,7 +45,7 @@ def _package_edges(package: Path) -> dict[str, set[str]]:
             elif isinstance(node, ast.Import):
                 modules = tuple(alias.name for alias in node.names)
             for module in modules:
-                prefix = "codex_responses_proxy."
+                prefix = f"{package_name}."
                 if module.startswith(prefix):
                     target = module.removeprefix(prefix).split(".", 1)[0]
                     if target != owner:
@@ -110,10 +111,13 @@ def _policy_gaps(policy: Mapping[str, Any]) -> list[str]:
         "remediation",
         "review_condition",
         "package_root",
+        "package_initializers",
     ):
         value = policy.get(field)
         if not isinstance(value, str) or not value.strip():
             gaps.append(f"architecture_policy_value:{field}")
+    if policy.get("package_initializers") not in {"declarations-only", "ordinary-modules"}:
+        gaps.append("architecture_policy_value:package_initializers")
     return gaps
 
 
@@ -126,6 +130,8 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, Any] | None = None
         return sorted(policy_gaps)
     package_root = str(policy["package_root"])
     package = root / package_root
+    package_name = package.name
+    package_initializers = str(policy["package_initializers"])
     root_modules = frozenset(policy.get("root_configuration_modules", ()))
     allowed_edges = {
         owner: frozenset(targets)
@@ -149,15 +155,16 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, Any] | None = None
     gaps.extend(
         f"architecture_package_missing:{name}" for name in sorted(allowed_edges.keys() - actual)
     )
-    for path in sorted(package.rglob("__init__.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        body = list(tree.body)
-        if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
-            if isinstance(body[0].value.value, str):
-                body.pop(0)
-        if body:
-            gaps.append(f"architecture_init_behavior:{path.relative_to(root).as_posix()}")
-    edges = _package_edges(package)
+    if package_initializers == "declarations-only":
+        for path in sorted(package.rglob("__init__.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            body = list(tree.body)
+            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+                if isinstance(body[0].value.value, str):
+                    body.pop(0)
+            if body:
+                gaps.append(f"architecture_init_behavior:{path.relative_to(root).as_posix()}")
+    edges = _package_edges(package, package_name)
     for owner, targets in sorted(edges.items()):
         gaps.extend(
             f"architecture_disallowed_edge:{owner}->{target}"

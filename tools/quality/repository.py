@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import json
 import os
-import re
 import subprocess
 import sys
 import tokenize
@@ -25,10 +24,9 @@ from tools.quality.semantic_names import semantic_name_gaps
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / ".config/checks/architecture/policy.toml"
+EVIDENCE_POLICY = ROOT / ".config/checks/evidence/policy.toml"
 PROJECT = ROOT / "pyproject.toml"
 _DEFINITION_TYPES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-_EVIDENCE_SPEC = Path("openspec/specs/evidence-layout/spec.md")
-_EVIDENCE_TAXONOMY = re.compile(r"```toml evidence-taxonomy\n(?P<body>.*?)\n```", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -258,48 +256,30 @@ def _logical_statements(path: Path, tree: ast.Module) -> int:
     )
 
 
-def _public_docstring_gaps(root: Path, path: Path, tree: ast.Module) -> list[str]:
-    """Report undocumented module-level public definitions."""
-
-    gaps = []
-    for node in tree.body:
-        if (
-            not isinstance(node, _DEFINITION_TYPES)
-            or node.name.startswith("_")
-            or node.name == "main"
-        ):
-            continue
-        if ast.get_docstring(node, clean=False) is None:
-            gaps.append(
-                "public_docstring_missing:"
-                f"{path.relative_to(root).as_posix()}:{node.lineno}:{node.name}"
-            )
-    return gaps
-
-
 def evidence_layout_gaps(root: Path = ROOT) -> list[str]:
     """Validate physical evidence roots against the canonical positive taxonomy."""
 
     evidence = root / "evidence"
     if not evidence.is_dir():
         return []
-    specification = root / _EVIDENCE_SPEC
+    policy_path = root / EVIDENCE_POLICY.relative_to(ROOT)
     try:
-        text = specification.read_text(encoding="utf-8")
-        match = _EVIDENCE_TAXONOMY.search(text)
-        taxonomy = tomllib.loads(match.group("body")) if match else {}
-        owned_roots = {
-            Path(entry["root"]).name
-            for entry in taxonomy.values()
-            if isinstance(entry, dict)
-            and isinstance(entry.get("root"), str)
-            and isinstance(entry.get("meaning"), str)
-            and Path(entry["root"]).parent == Path("evidence")
-        }
-    except (OSError, tomllib.TOMLDecodeError, TypeError):
-        owned_roots = set()
+        policy = tomllib.loads(policy_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        policy = {}
+    configured = policy.get("families")
+    owned_roots = (
+        set(configured)
+        if isinstance(configured, dict)
+        and configured
+        and all(
+            isinstance(name, str) and isinstance(meaning, str) and meaning.strip()
+            for name, meaning in configured.items()
+        )
+        else set()
+    )
     if not owned_roots:
-        return ["evidence_taxonomy_unavailable:openspec/specs/evidence-layout/spec.md"]
+        return ["evidence_taxonomy_unavailable:.config/checks/evidence/policy.toml"]
     return [
         f"evidence_root_unowned:evidence/{path.name}"
         for path in sorted(evidence.iterdir())
@@ -310,8 +290,6 @@ def evidence_layout_gaps(root: Path = ROOT) -> list[str]:
 def audit_paths(
     root: Path,
     paths: Iterable[Path],
-    *,
-    module_public_definition_docstrings_required: bool = True,
 ) -> tuple[list[str], list[dict[str, object]]]:
     """Audit semantic contracts and report descriptive source metrics."""
 
@@ -333,8 +311,6 @@ def audit_paths(
                 "max_nesting_depth": nesting_depth,
             }
         )
-        if module_public_definition_docstrings_required and not relative.startswith("tests/"):
-            gaps.extend(_public_docstring_gaps(root, path, tree))
     return sorted(gaps), inventory
 
 
@@ -368,11 +344,7 @@ def audit() -> dict[str, object]:
     source_roots = _string_list(policy, "source_roots", policy_errors)
     test_roots = _string_list(policy, "test_roots", policy_errors)
     repository_inventory = _repository_inventory(ROOT, source_roots, test_roots)
-    gaps, inventory = audit_paths(
-        ROOT,
-        repository_inventory.paths,
-        module_public_definition_docstrings_required=True,
-    )
+    gaps, inventory = audit_paths(ROOT, repository_inventory.paths)
     configured_paths = {"source_roots": source_roots, "test_roots": test_roots}
     for key, values in configured_paths.items():
         for value in values:

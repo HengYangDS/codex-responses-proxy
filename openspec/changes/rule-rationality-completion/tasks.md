@@ -14,6 +14,9 @@
 - [x] 2.7 Add explicit rationale to commit and text-layout policies.
 - [x] 2.8 Delete exact README prose matching from quality and release validation.
 - [x] 2.9 Make aggregate coverage the quantitative veto while retaining mandatory semantic-package observation and exact diagnostics.
+- [x] 2.10 Remove public-symbol docstring style as a merge veto while retaining package declarations, user-facing documentation, typing, and behavior tests.
+- [x] 2.11 Derive package identity from policy and remove tool-specific commit-message compatibility patterns.
+- [x] 2.12 Move durable evidence roots to structured policy and make the package-initializer contract explicit.
 
 ## 3. Verification
 
@@ -25,4 +28,5 @@
 
 | Requirement | Task | Proof |
 | --- | --- | --- |
-| `quality-boundaries:one structural quality boundary` | `2.1`-`2.6` | `focused-architecture-and-quality` |
+| `quality-boundaries:One structural quality boundary` | `2.1` | `focused-architecture-and-quality` |
+| `evidence-layout:Durable evidence families have one positive taxonomy` | `2.12` | `focused-architecture-and-quality` |

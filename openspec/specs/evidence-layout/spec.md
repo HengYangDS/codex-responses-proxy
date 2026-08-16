@@ -5,22 +5,14 @@
 Define the positive durable evidence taxonomy and preserve one semantic owner
 for independent Forge comparison.
 
-```toml evidence-taxonomy
-[claims]
-root = "evidence/claims"
-meaning = "bounded machine-verifiable assertions"
-
-[chronicle]
-root = "evidence/chronicle"
-meaning = "human-readable historical execution context"
-```
 ## Requirements
 ### Requirement: Durable evidence families have one positive taxonomy
 
-The evidence-layout specification SHALL declare every durable evidence family,
-its project meaning, and its physical root in one machine-readable taxonomy.
-The repository quality gate SHALL consume that taxonomy and SHALL report any
-physical top-level evidence directory that has no declared family.
+The evidence policy SHALL declare every durable evidence family and its precise
+meaning in one machine-readable collection. This specification SHALL explain
+that contract without becoming a second executable configuration format. The
+repository quality gate SHALL report any physical top-level evidence directory
+that has no declared family.
 
 #### Scenario: Declared families are present
 

@@ -1,13 +1,8 @@
 owner = "repository-quality"
 risk_model = "unstructured commit subjects make release history difficult to search, automate, and audit across independent publication planes"
-measurement = "parse each governed commit subject against the tracked type, scope, imperative-subject, and generated-lifecycle grammar"
-false_positive_cost = "a legitimate new semantic scope or lifecycle subject requires an intentional policy update before the commit can enter published history"
-remediation = "choose the nearest existing semantic scope or add one reviewed scope or generated pattern with the behavior that needs it"
-review_condition = "reassess when the product gains a durable semantic owner or two legitimate commits in one release train need the same missing scope or generated form"
+measurement = "parse each governed commit subject against the tracked type, scope, and concise subject grammar"
+false_positive_cost = "a legitimate new semantic scope requires an intentional policy update before the commit can enter published history"
+remediation = "choose the nearest existing semantic scope or add one reviewed scope with the behavior that needs it"
+review_condition = "reassess when the product gains a durable semantic owner or two legitimate commits in one release train need the same missing scope"
 types = ["build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "spec", "test"]
 scopes = ["architecture", "cli", "docs", "forge", "governance", "install", "lifecycle", "openspec", "protocol", "providers", "quality", "relay", "release", "runtime", "service", "supervision", "tests"]
-generated_patterns = [
-  "^start OpenSpec change [a-z0-9]+(?:-[a-z0-9]+)*$",
-  "^archive OpenSpec change [a-z0-9]+(?:-[a-z0-9]+)*$",
-  "^materialize [a-z0-9]+(?:-[a-z0-9]+)* carrier$",
-]

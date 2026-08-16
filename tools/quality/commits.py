@@ -31,11 +31,7 @@ def commit_subject_patterns(policy: dict[str, Any]) -> tuple[re.Pattern[str], ..
 
     types = "|".join(map(re.escape, _string_list(policy, "types")))
     scopes = "|".join(map(re.escape, _string_list(policy, "scopes")))
-    generated = _string_list(policy, "generated_patterns")
-    return (
-        re.compile(rf"^(?:{types})\((?:{scopes})\): {_SUBJECT_SUFFIX}$"),
-        *(re.compile(pattern) for pattern in generated),
-    )
+    return (re.compile(rf"^(?:{types})\((?:{scopes})\): {_SUBJECT_SUFFIX}$"),)
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:

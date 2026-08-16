@@ -8,6 +8,7 @@ scope = [
   ".gitlab-ci.yml",
   "docs/governance/**",
   "openspec/changes/rule-rationality-completion/**",
+  "openspec/specs/evidence-layout/spec.md",
   "openspec/specs/quality-boundaries/spec.md",
   "tools/quality/**",
   "tools/release/metadata.py",
@@ -38,6 +39,7 @@ authority_refs = [
   "user_instruction",
   "AGENTS.md",
   ".config/checks/architecture/policy.toml",
+  ".config/checks/evidence/policy.toml",
   "openspec/specs/quality-boundaries/spec.md",
 ]
 hypotheses = []

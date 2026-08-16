@@ -15,7 +15,9 @@ owns the quantitative product-risk boundary. Every semantic package SHALL have
 current non-zero execution evidence and an exact diagnostic ratio; package- and
 file-sized percentages SHALL NOT act as independent vetoes. The architecture gate owns the declared
 product package, semantic package set, dependency direction, root-module
-boundary, package declarations, and acyclic dependency graph. It SHALL NOT
+boundary, explicit package-initializer policy, package declarations, and
+acyclic dependency graph. The evidence policy separately owns durable evidence
+families. The architecture gate SHALL NOT
 encode authors, hosts, foreign product names, private-symbol syntax, aliases, or
 historical implementation shapes as generic merge blacklists. Portability SHALL
 be demonstrated by native execution, package isolation, explicit configuration
