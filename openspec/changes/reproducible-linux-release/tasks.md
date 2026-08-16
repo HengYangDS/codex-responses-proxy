@@ -29,4 +29,4 @@ fresh external receipts and are not asserted by this source Change.
 | --- | --- | --- |
 | `runtime-upgrade:Native release artifacts are reproducible` | `2.1` | `locked-linux-double-build-hashes` |
 | `runtime-upgrade:Source-side upgrade authority` | `2.3` | `exact-executable-prewarm-and-ready-deadline-tests` |
-| `product-interface:Native release validation exercises the installed product` | `3.3` | `supported-python-and-native-release-proof` |
+| `product-interface:Repository-owned verification separates wheel compatibility from native distribution` | `3.3` | `supported-python-and-native-release-proof` |
