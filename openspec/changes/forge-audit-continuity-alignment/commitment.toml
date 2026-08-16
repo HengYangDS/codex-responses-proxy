@@ -1,0 +1,36 @@
+schema_version = 1
+id = "change:forge-audit-continuity-alignment"
+intent = "Align read-only Forge parity audit with declared branch roles and explicit continuity epochs without rewriting published history."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "docs/operations/forge-operations.md",
+  "openspec/changes/forge-audit-continuity-alignment/**",
+  "tests/forge/test_audit.py",
+  "tools/forge/audit.py",
+]
+invariants = [
+  "published_history_remains_immutable",
+  "main_dev_and_candidate_roles_follow_workspace_policy",
+  "continuity_requires_explicit_exact_coordinates",
+  "current_release_tags_remain_independently_verified",
+]
+acceptance = [
+  "declared_role_branches_are_not_reported_as_residue",
+  "provenance_is_verified_from_the_explicit_continuity_epoch",
+  "missing_or_drifting_continuity_coordinates_fail_closed",
+  "repository_gates_pass",
+]
+risks = [
+  "continuity_epoch_is_underspecified",
+  "historical_untrusted_commits_are_silently_ignored",
+]
+authority_refs = [
+  "AGENTS.md",
+  ".ethos/workspace.toml",
+  "docs/operations/forge-operations.md",
+  "tools/forge/history.py",
+]
+hypotheses = [
+  "one_explicit_continuity_boundary_reconciles_current_provenance_without_legacy_exceptions",
+]
+dependencies = []
