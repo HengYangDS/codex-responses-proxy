@@ -10,9 +10,10 @@ arbitrary merge vetoes.
 
 Every enforced rule SHALL have one semantic owner and a proportionate evidence
 model. A blocking rule SHALL state its risk model, exact measurement,
-false-positive cost, remediation path, and review condition. Aggregate and
-semantic-package coverage own the quantitative product-risk boundary; file-sized
-coverage remains diagnostic evidence. The architecture gate owns the declared
+false-positive cost, remediation path, and review condition. Aggregate coverage
+owns the quantitative product-risk boundary. Every semantic package SHALL have
+current non-zero execution evidence and an exact diagnostic ratio; package- and
+file-sized percentages SHALL NOT act as independent vetoes. The architecture gate owns the declared
 product package, semantic package set, dependency direction, root-module
 boundary, package declarations, and acyclic dependency graph. It SHALL NOT
 encode authors, hosts, foreign product names, private-symbol syntax, aliases, or
@@ -24,11 +25,11 @@ configuration SHALL NOT duplicate a canonical policy decision.
 Release and documentation validation SHALL verify semantic identities, links,
 and behavior rather than requiring an exact explanatory sentence.
 
-#### Scenario: a small module has a volatile ratio
+#### Scenario: a small semantic package has a volatile ratio
 
-- **WHEN** its semantic package and the product aggregate satisfy the canonical coverage policy
-- **THEN** the file ratio remains diagnostic
-- **AND** promotion is decided by the declared product-risk scopes.
+- **WHEN** it has current execution evidence and the product aggregate satisfies the canonical coverage policy
+- **THEN** its exact ratio remains diagnostic
+- **AND** promotion is decided by aggregate product risk and package observation.
 
 #### Scenario: A contributor reviews a large owner
 

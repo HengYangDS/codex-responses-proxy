@@ -25,6 +25,8 @@ imports, and refactors.
   metadata and documentation links, not exact prose fragments.
 - Reject unknown or incomplete policy schema instead of silently inventing
   checker defaults.
+- Replace strict semantic-package coverage thresholds with aggregate product-risk
+  thresholds, mandatory package execution evidence, and exact diagnostic ratios.
 
 ## Boundaries
 

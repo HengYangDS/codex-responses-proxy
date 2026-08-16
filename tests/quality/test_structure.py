@@ -23,7 +23,9 @@ from tests.quality.fixtures import (
 
 
 class TestStructuralQualityContracts:
-    def test_product_and_tests_never_mutate_import_resolution_or_suppress_analysis(self) -> None:
+    def test_product_and_tests_never_mutate_import_resolution_or_suppress_analysis(
+        self,
+    ) -> None:
         offenders = []
         for root in (ROOT / "tests",):
             for path in root.rglob("*.py"):
@@ -46,7 +48,9 @@ class TestStructuralQualityContracts:
                     offenders.append(f"{path.relative_to(ROOT).as_posix()}:suppression")
         assert offenders == []
 
-    def test_architecture_gate_enforces_positive_topology_and_package_contracts(self) -> None:
+    def test_architecture_gate_enforces_positive_topology_and_package_contracts(
+        self,
+    ) -> None:
         quality_checker = checker()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -89,7 +93,9 @@ class TestStructuralQualityContracts:
         assert gaps == []
         assert inventory[0]["logical_statements"] == 1
 
-    def test_module_public_definition_docstring_switch_is_actually_enforced(self) -> None:
+    def test_module_public_definition_docstring_switch_is_actually_enforced(
+        self,
+    ) -> None:
         gaps, _ = audit_source(
             "def public_api():\n    return 1\n",
             require_public_docstrings=True,
@@ -129,7 +135,8 @@ class TestStructuralQualityContracts:
         assert set(policy) == {
             "minimum_percent",
             "comparison",
-            "scopes",
+            "threshold_scopes",
+            "package_observation",
             "metrics",
             "owner",
             "source",
@@ -140,10 +147,13 @@ class TestStructuralQualityContracts:
             "review_condition",
         }
         assert policy["minimum_percent"] == 95.0
-        assert policy["comparison"] == "strictly-greater-than"
-        assert policy["scopes"] == ["aggregate", "package"]
+        assert policy["comparison"] == "at-least"
+        assert policy["threshold_scopes"] == ["aggregate"]
+        assert policy["package_observation"] == "required"
 
-    def test_repository_policy_declares_positive_owners_without_numeric_vetoes(self) -> None:
+    def test_repository_policy_declares_positive_owners_without_numeric_vetoes(
+        self,
+    ) -> None:
         policy = tomllib.loads(
             (ROOT / ".config/checks/architecture/policy.toml").read_text(encoding="utf-8")
         )
@@ -184,7 +194,9 @@ class TestStructuralQualityContracts:
             )
         )
 
-    def test_repository_has_standard_package_metadata_and_one_version_owner(self) -> None:
+    def test_repository_has_standard_package_metadata_and_one_version_owner(
+        self,
+    ) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         project = metadata["project"]
         assert project["name"] == "codex-responses-proxy"
@@ -199,7 +211,9 @@ class TestStructuralQualityContracts:
         assert "requires-python" not in metadata["tool"]["codex-responses-proxy"]
         assert "version-source" not in metadata["tool"]["codex-responses-proxy"]
 
-    def test_quality_inventory_uses_index_ownership_with_staged_add_and_delete(self) -> None:
+    def test_quality_inventory_uses_index_ownership_with_staged_add_and_delete(
+        self,
+    ) -> None:
         with repository(("src/current.py", "tests/test_current.py")) as root:
             added = root / "src" / "added.py"
             added.write_text("pass\n", encoding="utf-8")
@@ -213,7 +227,9 @@ class TestStructuralQualityContracts:
             "tests/test_current.py",
         ]
 
-    def test_quality_inventory_rejects_untracked_missing_and_out_of_scope_is_ignored(self) -> None:
+    def test_quality_inventory_rejects_untracked_missing_and_out_of_scope_is_ignored(
+        self,
+    ) -> None:
         files = ("src/tracked.py", "tests/test_current.py", "outside/foreign.py")
         with repository(files, tracked=files[1:]) as root:
             (root / "tests/test_current.py").unlink()
@@ -224,14 +240,18 @@ class TestStructuralQualityContracts:
             "quality_inventory_untracked:src/tracked.py",
         )
 
-    def test_quality_inventory_glob_does_not_expand_beyond_its_configured_depth(self) -> None:
+    def test_quality_inventory_glob_does_not_expand_beyond_its_configured_depth(
+        self,
+    ) -> None:
         quality_checker = checker()
         assert quality_checker._in_scope("owner.py", ("*.py",))
         assert not quality_checker._in_scope("nested/foreign.py", ("*.py",))
         assert quality_checker._in_scope("tools/owner.py", ("tools/*.py",))
         assert not quality_checker._in_scope("tools/nested/foreign.py", ("tools/*.py",))
 
-    def test_quality_inventory_rejects_symlink_misnamed_test_and_empty_tests(self) -> None:
+    def test_quality_inventory_rejects_symlink_misnamed_test_and_empty_tests(
+        self,
+    ) -> None:
         with repository(("src/current.py", "tests/helper.py")) as root:
             target = root / "target.py"
             target.write_text("pass\n", encoding="utf-8")
@@ -264,13 +284,13 @@ class TestStructuralQualityContracts:
             (
                 {"num_branches": 20, "covered_branches": 19},
                 95,
-                ["branch_coverage_not_strictly_above_floor:95.00<=95.00"],
+                [],
             ),
             ({"num_branches": 200, "covered_branches": 191}, 95, []),
             (
                 {"num_branches": 21, "covered_branches": 20},
                 96,
-                ["branch_coverage_not_strictly_above_floor:95.24<=96.00"],
+                ["branch_coverage_below_floor:95.24<96.00"],
             ),
             (
                 {"num_branches": 0, "covered_branches": 0},
@@ -291,13 +311,13 @@ class TestStructuralQualityContracts:
             (
                 {"num_statements": 20, "covered_lines": 19},
                 95,
-                ["statement_coverage_not_strictly_above_floor:95.00<=95.00"],
+                [],
             ),
             ({"num_statements": 200, "covered_lines": 191}, 95, []),
             (
                 {"num_statements": 21, "covered_lines": 20},
                 96,
-                ["statement_coverage_not_strictly_above_floor:95.24<=96.00"],
+                ["statement_coverage_below_floor:95.24<96.00"],
             ),
             (
                 {"num_statements": 0, "covered_lines": 0},
@@ -312,7 +332,7 @@ class TestStructuralQualityContracts:
         checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
         assert checker.statement_gaps(totals, floor) == expected
 
-    def test_each_semantic_package_must_clear_both_coverage_floors(self) -> None:
+    def test_each_semantic_package_must_have_execution_evidence(self) -> None:
         checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
         files = {
             "/site-packages/codex_responses_proxy/cli/application.py": {
@@ -332,9 +352,7 @@ class TestStructuralQualityContracts:
                 }
             },
         }
-        assert checker.package_gaps(files, 95) == [
-            "package_branch_coverage_not_strictly_above_floor:cli:95.00<=95.00"
-        ]
+        assert checker.package_gaps(checker.package_totals(files, "codex_responses_proxy")) == []
 
     def test_branchless_root_package_is_governed_by_statement_coverage(self) -> None:
         checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
@@ -348,7 +366,7 @@ class TestStructuralQualityContracts:
                 }
             }
         }
-        assert checker.package_gaps(files, 95) == []
+        assert checker.package_gaps(checker.package_totals(files, "codex_responses_proxy")) == []
 
     def test_files_combine_into_their_semantic_package_before_admission(self) -> None:
         checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
@@ -370,4 +388,22 @@ class TestStructuralQualityContracts:
                 }
             },
         }
-        assert checker.package_gaps(files, 95) == []
+        assert checker.package_gaps(checker.package_totals(files, "codex_responses_proxy")) == []
+
+    def test_semantic_package_observation_rejects_wholly_unexecuted_owner(self) -> None:
+        checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
+        files = {
+            "/site-packages/codex_responses_proxy/relay/exchange.py": {
+                "summary": {
+                    "num_statements": 4,
+                    "covered_lines": 0,
+                    "num_branches": 2,
+                    "covered_branches": 0,
+                }
+            }
+        }
+        totals = checker.package_totals(files, "codex_responses_proxy")
+        assert checker.package_gaps(totals) == [
+            "package_statement_coverage_unobserved:relay",
+            "package_branch_coverage_unobserved:relay",
+        ]
