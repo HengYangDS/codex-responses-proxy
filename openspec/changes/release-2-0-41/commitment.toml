@@ -1,0 +1,35 @@
+schema_version = 1
+id = "change:release-2-0-41"
+intent = "Publish the accepted Forge audit continuity repair as immutable release 2.0.41 on independent GitLab and GitHub planes."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/archive/*-release-2-0-41/**",
+  "openspec/changes/release-2-0-41/**",
+]
+invariants = [
+  "accepted_product_behavior_is_unchanged_beyond_the_proven_continuity_repair",
+  "gitlab_and_github_publish_independently_from_the_same_accepted_source",
+  "published_release_history_remains_immutable",
+  "version_identity_has_one_owner",
+]
+acceptance = [
+  "both_forges_publish_verified_2_0_41_assets",
+  "exact_head_repository_proof_passes",
+  "release_metadata_validation_passes",
+  "the_installed_runtime_reports_2_0_41",
+  "version_and_changelog_identify_2_0_41",
+]
+risks = [
+  "one_forge_can_publish_without_the_other",
+  "release_metadata_can_diverge_from_the_accepted_source",
+]
+authority_refs = [
+  "CHANGELOG.md",
+  "VERSION",
+  "docs/governance/release-and-change-policy.md",
+  "docs/operations/forge-operations.md",
+]
+dependencies = []
+hypotheses = []
