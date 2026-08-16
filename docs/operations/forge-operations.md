@@ -123,20 +123,29 @@ Refresh the required tracking refs, then run:
 
 ```bash
 python3 tools/forge/audit.py \
-  --tag "v$(cat VERSION)" \
   --gitlab-remote "$GITLAB_REMOTE" \
-  --gitlab-api-base "$GITLAB_API_BASE" \
-  --gitlab-repo "$GITLAB_REPOSITORY" \
   --github-remote "$GITHUB_REMOTE" \
-  --github-repo "$GITHUB_REPOSITORY" \
-  --gitlab-anchor "$GITLAB_ANCHOR" \
-  --github-anchor "$GITHUB_ANCHOR" \
-  --policy "$PUBLICATION_JOB_POLICY" \
+  --gitlab-commit-anchor "$GITLAB_COMMIT_ANCHOR" \
+  --github-commit-anchor "$GITHUB_COMMIT_ANCHOR" \
+  --gitlab-author-email "$GITLAB_AUTHOR_EMAIL" \
+  --github-author-email "$GITHUB_AUTHOR_EMAIL" \
+  --gitlab-tag-anchor "$GITLAB_TAG_ANCHOR" \
+  --github-tag-anchor "$GITHUB_TAG_ANCHOR" \
+  --gitlab-projection-receipt "$GITLAB_PROJECTION_RECEIPT" \
+  --github-projection-receipt "$GITHUB_PROJECTION_RECEIPT" \
   --json
 ```
 
 The audit proves only the facts it observes. It does not authorize installation
-or repair an incomplete release.
+or repair an incomplete release. Each projection receipt must bind the current
+provider `main` tip and supply the exact projected continuity anchor created by
+the publication transaction. The audit verifies provenance from that anchor
+through the current tip; it rejects a missing, stale, or unreachable receipt
+instead of silently applying today's trust policy to unrelated retired history.
+
+Persistent branches are read from `.ethos/workspace.toml`. Local `main`, `dev`,
+and `candidate/dev`, plus remote `main` and `dev`, are therefore expected
+topology. Any other local or remote branch remains housekeeping residue.
 
 | Compared | Rule |
 | --- | --- |
@@ -145,7 +154,7 @@ or repair an incomplete release.
 | Required CI | Each provider's own required jobs succeed |
 | Release record | Each provider has its own formal Release |
 | Common platform assets | Archive and manifest payload digests match |
-| Signatures | Verified independently; byte equality is not required |
+| Signatures | Verified independently from each exact continuity anchor |
 | Platform-only assets | Valid on the publishing Forge; no false full-set equality |
 
 ## Runners
