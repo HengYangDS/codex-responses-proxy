@@ -27,11 +27,12 @@ operation. Neither path permits session-history mutation.
 
 ## Alternatives Considered
 
-| Alternative | Reason not selected |
-| --- | --- |
-| General multi-provider gateway | Adds routing, fallback, billing, and organization policy that belong outside this narrow compatibility edge. |
-| Proxy-owned client configuration | Creates two writers for endpoint and credential state. |
-| Control-plane-managed proxy lifecycle | Makes two independently useful products share one failure and release domain. |
+- **General multi-provider gateway:** rejected because routing, fallback,
+  billing, and organization policy belong outside this compatibility edge.
+- **Proxy-owned client configuration:** rejected because it creates two writers
+  for endpoint and credential state.
+- **Control-plane-managed proxy lifecycle:** rejected because independently
+  useful products should not share one failure and release domain.
 
 The proxy is intentionally complementary to, rather than a smaller clone of,
 general gateways. Its durable advantage is a closed portable grammar, bounded
