@@ -4,6 +4,18 @@ Codex Responses Proxy is a local Responses data plane. It normalizes outbound
 traffic and owns its native service lifecycle. It does not own client state or
 provider selection.
 
+## Product position
+
+The proxy is a narrow compatibility edge for proven Responses gaps. It is not
+a general AI gateway, provider catalog, configuration switcher, billing plane,
+or agent runtime. Direct provider access remains the default whenever the
+client and provider already share a sound protocol.
+
+Its value is the combination of a small authority surface and strong replay
+semantics: provider selection stays in the client control plane, while the
+proxy makes only the minimum transport changes needed for stateless,
+provider-portable Responses traffic.
+
 ## Product graph
 
 ```mermaid
@@ -68,6 +80,36 @@ The released manifest is the sole provider registry.
 - Headers, bodies, and query parameters cannot select an upstream host.
 - Adding an ordinary provider changes one manifest table.
 
+## Provider admission
+
+Provider integration follows one ordered test:
+
+```text
+direct endpoint
+-> manifest route
+-> portable contract tests
+-> exact failing payload
+-> smallest pure policy, only when proved necessary
+```
+
+| Observation | Admission result |
+| --- | --- |
+| Native Responses works directly | No proxy change |
+| Standard Bearer endpoint needs the existing portable projection | Manifest entry only |
+| Provider has a reproducible wire dialect difference | Narrow pure provider policy plus regression evidence |
+| Authentication needs request signing or another stateful exchange | Separate authentication boundary; not a manifest secret or name heuristic |
+| Provider requires a different invocation protocol | Separate protocol adapter or product decision; not an implicit Responses route |
+
+A provider name never creates behavior. The released manifest selects a route
+and, when necessary, an explicitly declared policy. This keeps ordinary
+Provider admission data-driven and makes a new policy pay for its permanent
+maintenance cost with exact evidence.
+
+AWS Bedrock illustrates the distinction. A Mantle endpoint that already speaks
+OpenAI Responses can be admitted as an ordinary route. Native IAM/SigV4 or
+Converse/InvokeModel would require explicit authentication and protocol work;
+it must not be represented as a Bearer-compatible route.
+
 ## Responses projection
 
 ```mermaid
@@ -106,6 +148,11 @@ become a retryable local `503`; partial success bytes are not committed.
 
 Each recovery consumes the same provider-portable request owner. No recovery
 path restores provider IDs, ciphertext, or an older request body.
+
+Retries are bounded by the semantic failure class. The proxy does not provide
+cross-provider fallback, a global work queue, or hidden model substitution.
+Those behaviors would combine transport ownership with routing policy and make
+provider switching less observable.
 
 ## Lifecycle transaction
 
