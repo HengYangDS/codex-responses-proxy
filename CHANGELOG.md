@@ -7,6 +7,16 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.40] - 2026-08-16
+
+### Changed
+
+- Replace heuristic quality checks with positive, risk-backed repository
+  contracts.
+- Clarify provider admission, authority boundaries, and repository information
+  architecture.
+- Update the locked development toolchain.
+
 ## [2.0.39] - 2026-08-16
 
 ### Fixed
