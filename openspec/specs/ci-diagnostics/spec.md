@@ -119,26 +119,6 @@ spoofing, exclusions, or CI-only production conditionals.
 - **AND** no required test is skipped merely because the quality host differs
   from the modeled platform.
 
-### Requirement: Python structure limits are repository-owned
-
-The repository quality owner SHALL measure production logical statements,
-module effective lines, maximum function lines, and control-flow nesting. The
-declared ceilings SHALL be positive, explicit, and exercised by contract tests;
-normal source files SHALL receive no path-specific allowance above them.
-
-#### Scenario: Structural policy drifts
-
-- **WHEN** a ceiling is missing, non-positive, raised above the ratified bound,
-  or bypassed for one production path
-- **THEN** repository quality fails before the candidate is accepted.
-
-#### Scenario: Production structure exceeds a ceiling
-
-- **WHEN** a production module exceeds any declared structural dimension
-- **THEN** the gate reports the exact path, measured value, and ceiling
-- **AND** the implementation is simplified rather than compensated by another
-  allowance.
-
 ### Requirement: Forge jobs are portable projections
 
 Hosted jobs SHALL use supported native shells and filesystem semantics, install

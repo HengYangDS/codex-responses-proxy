@@ -5,7 +5,6 @@
 Define the repository's positive semantic ownership, dependency direction, and
 portable verification boundary without turning descriptive source metrics into
 arbitrary merge vetoes.
-
 ## Requirements
 ### Requirement: One structural quality boundary
 
@@ -13,9 +12,9 @@ Source, tests, tools, documentation, configuration, and release assets SHALL
 follow one explicit semantic owner and dependency direction. The repository
 quality command SHALL report source size and nesting as descriptive review
 evidence. Those observations SHALL NOT become merge vetoes without an
-independently justified risk model. Cross-package private imports, forwarding
-facades, concatenated semantic package names, compatibility modules, duplicated
-policy, and root-level script sprawl SHALL NOT create parallel authority.
+independently justified risk model, exact measurement semantics,
+false-positive cost, remediation path, and review trigger. The positive package
+topology SHALL be the only package-admission authority.
 
 #### Scenario: A contributor reviews a large owner
 
