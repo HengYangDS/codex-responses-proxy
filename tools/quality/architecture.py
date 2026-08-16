@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import re
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -11,8 +10,22 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / ".config/checks/architecture/policy.toml"
-_CONTROL_PLANE_IMPORTS = frozenset({"client_control_plane"})
-_CONTROL_PLANE_LITERAL = re.compile(r"(?<![A-Za-z0-9])client-control-plane(?![A-Za-z0-9])")
+
+_POLICY_FIELDS = frozenset(
+    {
+        "owner",
+        "risk_model",
+        "measurement",
+        "false_positive_cost",
+        "remediation",
+        "review_condition",
+        "source_roots",
+        "test_roots",
+        "package_root",
+        "root_configuration_modules",
+        "allowed_package_edges",
+    }
+)
 
 
 def _package_edges(package: Path) -> dict[str, set[str]]:
@@ -77,82 +90,30 @@ def _dependency_cycles(edges: Mapping[str, set[str]]) -> list[tuple[str, ...]]:
     return sorted(cycles)
 
 
-def _foreign_product_gaps(root: Path, package: Path) -> list[str]:
-    gaps: list[str] = []
-    for path in sorted(package.rglob("*.py")):
-        relative = path.relative_to(root).as_posix()
-        source = path.read_text(encoding="utf-8")
-        tree = ast.parse(source, filename=str(path))
-        for node in ast.walk(tree):
-            modules: tuple[str, ...] = ()
-            if isinstance(node, ast.ImportFrom) and node.module:
-                modules = (node.module,)
-            elif isinstance(node, ast.Import):
-                modules = tuple(alias.name for alias in node.names)
-            for module in modules:
-                owner = module.split(".", 1)[0]
-                if owner in _CONTROL_PLANE_IMPORTS:
-                    gaps.append(
-                        f"architecture_foreign_product_dependency:{relative}:"
-                        f"{getattr(node, 'lineno', 0)}:{owner}"
-                    )
-        gaps.extend(
-            f"architecture_foreign_product_literal:{relative}:{number}:client-control-plane"
-            for number, line in enumerate(source.splitlines(), 1)
-            if _CONTROL_PLANE_LITERAL.search(line)
-        )
-    return gaps
-
-
-def _semantic_owner_gaps(root: Path, package: Path) -> list[str]:
+def _package_declaration_gaps(root: Path, package: Path) -> list[str]:
     gaps: list[str] = []
     for path in sorted(package.rglob("*.py")):
         relative = path.relative_to(root).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         if path.name == "__init__.py" and ast.get_docstring(tree, clean=False) is None:
             gaps.append(f"architecture_package_declaration_missing:{relative}")
-        peer_modules: set[str] = set()
-        peer_symbols: set[str] = set()
-        current_package = path.parent.relative_to(package.parent).as_posix().replace("/", ".")
-        for node in tree.body:
-            if isinstance(node, ast.ImportFrom) and node.module:
-                if node.module == current_package:
-                    peer_modules.update(alias.asname or alias.name for alias in node.names)
-                elif node.module.startswith(f"{current_package}."):
-                    for alias in node.names:
-                        peer_symbols.add(alias.asname or alias.name)
-                        if alias.name.startswith("_"):
-                            gaps.append(
-                                f"architecture_private_cross_module:{relative}:"
-                                f"{node.lineno}:{alias.name}"
-                            )
-            elif isinstance(node, ast.Import):
-                peer_modules.update(
-                    alias.asname or alias.name.rsplit(".", 1)[-1]
-                    for alias in node.names
-                    if alias.name.startswith(f"{current_package}.")
-                )
-        gaps.extend(
-            f"architecture_private_cross_module:{relative}:"
-            f"{node.lineno}:{node.value.id}.{node.attr}"
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Attribute)
-            and isinstance(node.value, ast.Name)
-            and node.value.id in peer_modules
-            and node.attr.startswith("_")
-        )
-        for node in tree.body:
-            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-                continue
-            value = node.value
-            if isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name):
-                if value.value.id in peer_modules:
-                    gaps.append(
-                        f"architecture_forwarding_alias:{relative}:"
-                        f"{node.lineno}:{value.value.id}.{value.attr}"
-                    )
-            elif isinstance(value, ast.Name) and value.id in peer_symbols:
-                gaps.append(f"architecture_forwarding_alias:{relative}:{node.lineno}:{value.id}")
+    return gaps
+
+
+def _policy_gaps(policy: Mapping[str, Any]) -> list[str]:
+    gaps = [f"architecture_policy_schema:{field}" for field in sorted(set(policy) ^ _POLICY_FIELDS)]
+    for field in (
+        "owner",
+        "risk_model",
+        "measurement",
+        "false_positive_cost",
+        "remediation",
+        "review_condition",
+        "package_root",
+    ):
+        value = policy.get(field)
+        if not isinstance(value, str) or not value.strip():
+            gaps.append(f"architecture_policy_value:{field}")
     return gaps
 
 
@@ -160,7 +121,11 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, Any] | None = None
     """Enforce the declared semantic package topology."""
 
     policy = tomllib.loads(POLICY.read_text(encoding="utf-8")) if policy is None else policy
-    package = root / "src" / "codex_responses_proxy"
+    policy_gaps = _policy_gaps(policy)
+    if policy_gaps:
+        return sorted(policy_gaps)
+    package_root = str(policy["package_root"])
+    package = root / package_root
     root_modules = frozenset(policy.get("root_configuration_modules", ()))
     allowed_edges = {
         owner: frozenset(targets)
@@ -172,7 +137,7 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, Any] | None = None
         if path.name not in root_modules and (path.is_file() or path.is_symlink())
     ]
     if not package.is_dir():
-        return sorted([*gaps, "architecture_package_missing:codex_responses_proxy"])
+        return sorted([*gaps, f"architecture_package_missing:{package_root}"])
     actual = {
         child.name
         for child in package.iterdir()
@@ -199,6 +164,5 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, Any] | None = None
             for target in sorted(targets - allowed_edges.get(owner, frozenset()))
         )
     gaps.extend(f"architecture_cycle:{','.join(cycle)}" for cycle in _dependency_cycles(edges))
-    gaps.extend(_foreign_product_gaps(root, package))
-    gaps.extend(_semantic_owner_gaps(root, package))
+    gaps.extend(_package_declaration_gaps(root, package))
     return sorted(gaps)

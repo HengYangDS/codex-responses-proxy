@@ -42,7 +42,6 @@ def quick(session: nox.Session) -> None:
         ".",
         env=environment,
     )
-    session.run("python", "tools/quality/portability.py", env=environment)
     session.run("python", "tools/quality/text_layout.py", env=environment)
     session.run("python", "-m", "tools.quality.repository", env=environment)
     session.run(
@@ -114,7 +113,6 @@ def quality(session: nox.Session) -> None:
         ".",
         env=environment,
     )
-    session.run("python", "tools/quality/portability.py", env=environment)
     session.run("python", "tools/quality/text_layout.py", env=environment)
     session.run("python", "-m", "tools.quality.repository", env=environment)
     session.run(

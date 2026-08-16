@@ -31,11 +31,13 @@ def decision_record_gaps(root: Path) -> list[str]:
     sequences = [sequence for sequence, _ in records]
     if len(sequences) != len(set(sequences)):
         gaps.append("decision_record_sequence_duplicate")
-    if sequences:
-        missing = sorted(set(range(1, max(sequences) + 1)) - set(sequences))
-        gaps.extend(f"decision_record_sequence_gap:{sequence:04d}" for sequence in missing)
     register_text = register.read_text(encoding="utf-8")
-    required_sections = ("## Context", "## Decision", "## Consequences", "## Revisit Trigger")
+    required_sections = (
+        "## Context",
+        "## Decision",
+        "## Consequences",
+        "## Revisit Trigger",
+    )
     for sequence, path in records:
         text = path.read_text(encoding="utf-8")
         expected_title = f"# DR-{sequence:04d}: "

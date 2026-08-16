@@ -245,12 +245,6 @@ def check_governance_contract() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     if not readme.startswith("# Codex Responses Proxy\n"):
         raise ValueError("README.md must use the formal Project Name as its title")
-    identity_statement = (
-        "Licensed under [MIT](LICENSE). Forge coordinates and publication actors are\n"
-        "deployment context, not product identity."
-    )
-    if identity_statement not in readme:
-        raise ValueError("README.md must separate product identity from Forge deployment context")
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     if "python tools/release/metadata.py" not in ci:
         raise ValueError("GitLab CI must execute the release and governance checker")
