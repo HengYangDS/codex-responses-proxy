@@ -55,6 +55,8 @@ the exact installed executable.
 - **THEN** the transaction restores the prior projection and command ownership
 - **AND** the current verified listener remains available.
 
+## ADDED Requirements
+
 ### Requirement: Native release artifacts are reproducible
 
 The same accepted source tree, locked supply chain, platform, architecture, and
