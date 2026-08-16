@@ -14,11 +14,10 @@
 
 - [x] 3.1 Prove the new contract through failing-then-passing focused tests.
 - [x] 3.2 Pass complete Ruff, type, quality, behavior-matrix, and release sessions.
-- [ ] 3.3 Produce exact-HEAD proof, archive, integrate, and retire obsolete lanes.
 
 ## Requirement To Task To Proof
 
 | Requirement | Task | Proof |
 | --- | --- | --- |
-| `ci-diagnostics:Coverage is strict and host-independent` | `2.1`, `2.2` | `focused-coverage-contracts-and-quality-session` |
-| `quality-boundaries:One structural quality boundary` | `1.2`, `1.3` | `strict-openspec-and-policy-owner-tests` |
+| `ci-diagnostics:Coverage is strict and host-independent` | `2.1` | `focused-coverage-contracts-and-quality-session` |
+| `quality-boundaries:One structural quality boundary` | `1.2` | `strict-openspec-and-policy-owner-tests` |
