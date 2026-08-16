@@ -10,7 +10,7 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterator
+from typing import Iterator
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -69,17 +69,14 @@ def quality_inventory(root: Path):
     return checker()._repository_inventory(root, ("src",), ("tests",))
 
 
-def audit_source(source_text: str, **overrides: Any):
-    """Audit one isolated Python owner with explicit policy overrides."""
+def audit_source(source_text: str, *, require_public_docstrings: bool = False):
+    """Audit one isolated Python owner and return its observed structure."""
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         source = root / "source.py"
         source.write_text(source_text, encoding="utf-8")
-        options = {
-            "logic_limit": 10,
-            "test_limit": 10,
-            "ratchets": {},
-            "module_public_definition_docstrings_required": False,
-            **overrides,
-        }
-        return checker().audit_paths(root, [source], **options)
+        return checker().audit_paths(
+            root,
+            [source],
+            module_public_definition_docstrings_required=require_public_docstrings,
+        )

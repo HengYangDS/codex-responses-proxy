@@ -81,7 +81,7 @@ class TestStructuralQualityContracts:
 
         assert "architecture_root_implementation:control.py" in gaps
         assert "architecture_init_behavior:src/codex_responses_proxy/__init__.py" in gaps
-        assert "architecture_forbidden_package:common" in gaps
+        assert "architecture_undeclared_package:common" in gaps
         assert (
             "architecture_package_declaration_missing:src/codex_responses_proxy/service/__init__.py"
             in gaps
@@ -114,98 +114,43 @@ class TestStructuralQualityContracts:
             "src/codex_responses_proxy/lifecycle/install.py:2:client-control-plane" in gaps
         )
 
-    def test_unratcheted_file_exceeding_hard_limit_fails(self) -> None:
-        gaps, inventory = audit_source(
-            "\n".join(f"value_{index} = {index}" for index in range(4)), logic_limit=3
-        )
-        assert inventory[0]["logical_statements"] == 4
-        assert "code_size_exceeded:source.py:4>3" in gaps
-
-    def test_ratchet_is_an_exact_ceiling_not_a_free_allowance(self) -> None:
-        gaps, _ = audit_source("a = 1\nb = 2\nc = 3\n", logic_limit=1, ratchets={"source.py": 2})
-        assert "code_size_ratchet_increased:source.py:3>2" in gaps
-        assert gaps
-
     @pytest.mark.parametrize(
         "source",
         ("value = call(first, second)\n", "value = call(\n first,\n second,\n)\n"),
     )
     def test_logical_statement_metric_is_invariant_to_formatter_wrapping(self, source: str) -> None:
-        gaps, inventory = audit_source(source, logic_limit=1, test_limit=1)
+        gaps, inventory = audit_source(source)
         assert gaps == []
         assert inventory[0]["logical_statements"] == 1
 
     def test_module_public_definition_docstring_switch_is_actually_enforced(self) -> None:
         gaps, _ = audit_source(
             "def public_api():\n    return 1\n",
-            module_public_definition_docstrings_required=True,
+            require_public_docstrings=True,
         )
         assert "public_docstring_missing:source.py:1:public_api" in gaps
 
-    @pytest.mark.parametrize(
-        ("source", "options", "expected"),
-        (
-            (
-                '"""Docs do not buy structural headroom."""\ndef compact():\n    return (\n        1\n        + 2\n        + 3\n    )\n',
-                {"module_eloc_limit": 4},
-                "module_eloc_exceeded:source.py:6>4",
-            ),
-            (
-                "def long_owner():\n    value = 1\n    value += 1\n    return value\n",
-                {"function_eloc_limit": 3},
-                "function_eloc_exceeded:source.py:4>3",
-            ),
-            (
-                "def nested(value):\n    if value:\n        for item in value:\n            if item:\n                return item\n",
-                {"nesting_depth_limit": 2},
-                "nesting_depth_exceeded:source.py:3>2",
-            ),
-        ),
-    )
-    def test_structural_limits_reject_large_or_deep_production_owners(
-        self, source: str, options: dict[str, int], expected: str
-    ) -> None:
-        gaps, _ = audit_source(source, **options)
-        assert expected in gaps
-
     def test_structural_inventory_exposes_eloc_function_size_and_nesting(self) -> None:
         gaps, inventory = audit_source(
-            "def owner(value):\n    if value:\n        return value\n    return None\n",
-            module_eloc_limit=10,
-            function_eloc_limit=10,
-            nesting_depth_limit=2,
+            "def owner(value):\n    if value:\n        return value\n    return None\n"
         )
         assert gaps == []
         assert inventory[0]["effective_lines"] == 4
         assert inventory[0]["max_function_lines"] == 4
         assert inventory[0]["max_nesting_depth"] == 1
 
-    def test_structural_limits_apply_to_tests_without_a_parallel_exception(
-        self, tmp_path: Path
-    ) -> None:
-        source = tmp_path / "tests" / "test_large.py"
-        source.parent.mkdir()
-        source.write_text(
-            "def test_large():\n"
-            "    if True:\n"
-            "        if True:\n"
-            "            return 1\n"
-            "    return 0\n",
-            encoding="utf-8",
+    def test_structural_metrics_are_observations_not_merge_thresholds(self) -> None:
+        source = "\n".join(
+            [
+                "def owner(value):",
+                *[f"    value += {index}" for index in range(120)],
+                "    return value",
+            ]
         )
-        gaps, _ = checker().audit_paths(
-            tmp_path,
-            [source],
-            logic_limit=100,
-            test_limit=100,
-            ratchets={},
-            module_eloc_limit=3,
-            function_eloc_limit=3,
-            nesting_depth_limit=1,
-        )
-        assert "module_eloc_exceeded:tests/test_large.py:5>3" in gaps
-        assert "function_eloc_exceeded:tests/test_large.py:5>3" in gaps
-        assert "nesting_depth_exceeded:tests/test_large.py:2>1" in gaps
+        gaps, inventory = audit_source(source)
+        assert gaps == []
+        assert inventory[0]["logical_statements"] == 122
+        assert inventory[0]["effective_lines"] == 122
 
     def test_coverage_floor_is_branch_aware_and_at_least_ninety_five_percent(self) -> None:
         coverage = (ROOT / ".config/checks/coverage/coverage.ini").read_text(encoding="utf-8")
@@ -219,15 +164,28 @@ class TestStructuralQualityContracts:
         assert policy["comparison"] == "strictly-greater-than"
         assert policy["scopes"] == ["aggregate", "package", "module"]
 
-    def test_repository_owned_structural_limits_are_ratified(self) -> None:
+    def test_repository_policy_declares_positive_owners_without_numeric_vetoes(self) -> None:
         policy = tomllib.loads(
             (ROOT / ".config/checks/architecture/policy.toml").read_text(encoding="utf-8")
         )
-        assert policy["logic_max_statements"] == 600
-        assert policy["module_max_eloc"] == 600
-        assert policy["function_max_eloc"] == 110
-        assert policy["max_nesting_depth"] == 8
-        assert "ratchet" not in policy
+        assert policy["source_roots"] == ["src/codex_responses_proxy", "tools"]
+        assert policy["test_roots"] == ["tests"]
+        assert set(policy["allowed_package_edges"]) == {
+            "cli",
+            "lifecycle",
+            "protocol",
+            "providers",
+            "relay",
+            "runtime",
+            "service",
+        }
+        assert set(policy) == {
+            "owner",
+            "source_roots",
+            "test_roots",
+            "root_configuration_modules",
+            "allowed_package_edges",
+        }
 
     def test_repository_has_standard_package_metadata_and_one_version_owner(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))

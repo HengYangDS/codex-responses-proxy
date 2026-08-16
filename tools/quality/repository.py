@@ -311,30 +311,19 @@ def audit_paths(
     root: Path,
     paths: Iterable[Path],
     *,
-    logic_limit: int,
-    test_limit: int,
-    ratchets: Mapping[str, int],
     module_public_definition_docstrings_required: bool = True,
-    module_eloc_limit: int | None = None,
-    function_eloc_limit: int | None = None,
-    nesting_depth_limit: int | None = None,
 ) -> tuple[list[str], list[dict[str, object]]]:
-    """Audit an explicit source inventory against hard limits and exact ratchets."""
+    """Audit semantic contracts and report descriptive source metrics."""
 
     gaps: list[str] = []
     inventory: list[dict[str, object]] = []
     selected = sorted(set(paths))
-    selected_relatives = {path.relative_to(root).as_posix() for path in selected}
-    unknown_ratchets = sorted(set(ratchets) - selected_relatives)
-    gaps.extend(f"unused_code_size_ratchet:{path}" for path in unknown_ratchets)
     for path in selected:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         relative = path.relative_to(root).as_posix()
-        limit = test_limit if relative.startswith("tests/") else logic_limit
         logical = _logical_statements(path, tree)
         effective_lines = _effective_lines(path, tree)
         function_eloc, nesting_depth = _function_structure(tree)
-        ratchet = ratchets.get(relative)
         inventory.append(
             {
                 "path": relative,
@@ -342,23 +331,8 @@ def audit_paths(
                 "effective_lines": effective_lines,
                 "max_function_lines": function_eloc,
                 "max_nesting_depth": nesting_depth,
-                "hard_limit": limit,
-                "ratchet": ratchet,
             }
         )
-        if ratchet is not None:
-            if ratchet <= limit:
-                gaps.append(f"unnecessary_code_size_ratchet:{relative}:{ratchet}<={limit}")
-            if logical > ratchet:
-                gaps.append(f"code_size_ratchet_increased:{relative}:{logical}>{ratchet}")
-        elif logical > limit:
-            gaps.append(f"code_size_exceeded:{relative}:{logical}>{limit}")
-        if module_eloc_limit is not None and effective_lines > module_eloc_limit:
-            gaps.append(f"module_eloc_exceeded:{relative}:{effective_lines}>{module_eloc_limit}")
-        if function_eloc_limit is not None and function_eloc > function_eloc_limit:
-            gaps.append(f"function_eloc_exceeded:{relative}:{function_eloc}>{function_eloc_limit}")
-        if nesting_depth_limit is not None and nesting_depth > nesting_depth_limit:
-            gaps.append(f"nesting_depth_exceeded:{relative}:{nesting_depth}>{nesting_depth_limit}")
         if module_public_definition_docstrings_required and not relative.startswith("tests/"):
             gaps.extend(_public_docstring_gaps(root, path, tree))
     return sorted(gaps), inventory
@@ -393,44 +367,11 @@ def audit() -> dict[str, object]:
         policy = {}
     source_roots = _string_list(policy, "source_roots", policy_errors)
     test_roots = _string_list(policy, "test_roots", policy_errors)
-    logic_limit = policy.get("logic_max_statements")
-    test_limit = policy.get("test_max_statements")
-    if not isinstance(logic_limit, int) or isinstance(logic_limit, bool) or logic_limit <= 0:
-        policy_errors.append("logic_max_statements_must_be_positive_integer")
-        logic_limit = 0
-    if not isinstance(test_limit, int) or isinstance(test_limit, bool) or test_limit <= 0:
-        policy_errors.append("test_max_statements_must_be_positive_integer")
-        test_limit = 0
-    structural_limits: dict[str, int] = {}
-    for key in ("module_max_eloc", "function_max_eloc", "max_nesting_depth"):
-        value = policy.get(key)
-        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-            policy_errors.append(f"quality_policy_{key}_must_be_positive_integer")
-        else:
-            structural_limits[key] = value
-    raw_ratchets = policy.get("ratchet", {})
-    if not isinstance(raw_ratchets, dict) or any(
-        not isinstance(path, str)
-        or not isinstance(limit, int)
-        or isinstance(limit, bool)
-        or limit <= 0
-        for path, limit in (raw_ratchets.items() if isinstance(raw_ratchets, dict) else ())
-    ):
-        policy_errors.append("quality_ratchets_must_map_paths_to_positive_integers")
-        ratchets: dict[str, int] = {}
-    else:
-        ratchets = dict(raw_ratchets)
     repository_inventory = _repository_inventory(ROOT, source_roots, test_roots)
     gaps, inventory = audit_paths(
         ROOT,
         repository_inventory.paths,
-        logic_limit=logic_limit,
-        test_limit=test_limit,
-        ratchets=ratchets,
         module_public_definition_docstrings_required=True,
-        module_eloc_limit=structural_limits.get("module_max_eloc"),
-        function_eloc_limit=structural_limits.get("function_max_eloc"),
-        nesting_depth_limit=structural_limits.get("max_nesting_depth"),
     )
     configured_paths = {"source_roots": source_roots, "test_roots": test_roots}
     for key, values in configured_paths.items():
