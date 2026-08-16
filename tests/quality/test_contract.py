@@ -231,6 +231,7 @@ class TestQualityPolicyContracts:
             ".config/checks/architecture/policy.toml",
             ".config/checks/commits/policy.toml",
             ".config/checks/coverage/policy.toml",
+            ".config/checks/evidence/policy.toml",
             ".config/checks/text-layout/policy.toml",
         ):
             policy = tomllib.loads((ROOT / relative).read_text(encoding="utf-8"))
@@ -260,25 +261,23 @@ class TestQualityPolicyContracts:
         policy = tomllib.loads(
             (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
         )
-        human, *generated = _commit_checker().commit_subject_patterns(policy)
+        (subject,) = _commit_checker().commit_subject_patterns(policy)
 
-        assert human.fullmatch("refactor(quality): centralize repository policy owners")
-        assert human.fullmatch("fix(install): restore exact payload on rollback")
-        assert human.fullmatch("fix(supervision): classify zombie tombstones")
-        assert not human.fullmatch("refactor: centralize repository policy owners")
-        assert not human.fullmatch("fix(arbitrary): restore exact payload on rollback")
-        assert any(
-            pattern.fullmatch("materialize quality-policy-ssot carrier") for pattern in generated
-        )
+        assert subject.fullmatch("refactor(quality): centralize repository policy owners")
+        assert subject.fullmatch("fix(install): restore exact payload on rollback")
+        assert subject.fullmatch("fix(supervision): classify zombie tombstones")
+        assert not subject.fullmatch("refactor: centralize repository policy owners")
+        assert not subject.fullmatch("fix(arbitrary): restore exact payload on rollback")
+        assert not subject.fullmatch("materialize quality-policy-ssot carrier")
 
     def test_commit_subject_grammar_allows_internal_semver_periods(self) -> None:
         policy = tomllib.loads(
             (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
         )
-        human, *_ = _commit_checker().commit_subject_patterns(policy)
+        (subject,) = _commit_checker().commit_subject_patterns(policy)
 
-        assert human.fullmatch("chore(release): prepare v2.0.22")
-        assert not human.fullmatch("chore(release): prepare v2.0.22.")
+        assert subject.fullmatch("chore(release): prepare v2.0.22")
+        assert not subject.fullmatch("chore(release): prepare v2.0.22.")
 
     def test_commit_subjects_use_remote_main_when_candidate_is_local_only(self) -> None:
         checker = _checker()
@@ -527,18 +526,14 @@ class TestQualityPolicyContracts:
         checker = _checker()
         with _test_repository(
             (
+                ".config/checks/evidence/policy.toml",
                 "evidence/claims/release.toml",
                 "evidence/chronicle/release/2026-08-10.md",
                 "evidence/unclassified/README.md",
-                "openspec/specs/evidence-layout/spec.md",
             )
         ) as root:
-            (root / "openspec/specs/evidence-layout/spec.md").write_text(
-                "# Evidence layout Specification\n\n"
-                "```toml evidence-taxonomy\n"
-                '[claims]\nroot = "evidence/claims"\nmeaning = "bounded assertions"\n\n'
-                '[chronicle]\nroot = "evidence/chronicle"\nmeaning = "historical context"\n'
-                "```\n",
+            (root / ".config/checks/evidence/policy.toml").write_text(
+                '[families]\nclaims = "bounded assertions"\nchronicle = "historical context"\n',
                 encoding="utf-8",
             )
             gaps = checker.evidence_layout_gaps(root)
@@ -550,7 +545,7 @@ class TestQualityPolicyContracts:
         with _test_repository(("evidence/claims/release.toml",)) as root:
             gaps = checker.evidence_layout_gaps(root)
 
-        assert gaps == ["evidence_taxonomy_unavailable:openspec/specs/evidence-layout/spec.md"]
+        assert gaps == ["evidence_taxonomy_unavailable:.config/checks/evidence/policy.toml"]
 
     def test_semantic_name_gate_rejects_numeric_and_cross_language_grammar(self) -> None:
         checker = _checker()

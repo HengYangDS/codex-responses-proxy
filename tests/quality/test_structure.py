@@ -93,15 +93,6 @@ class TestStructuralQualityContracts:
         assert gaps == []
         assert inventory[0]["logical_statements"] == 1
 
-    def test_module_public_definition_docstring_switch_is_actually_enforced(
-        self,
-    ) -> None:
-        gaps, _ = audit_source(
-            "def public_api():\n    return 1\n",
-            require_public_docstrings=True,
-        )
-        assert "public_docstring_missing:source.py:1:public_api" in gaps
-
     def test_structural_inventory_exposes_eloc_function_size_and_nesting(self) -> None:
         gaps, inventory = audit_source(
             "def owner(value):\n    if value:\n        return value\n    return None\n"
@@ -180,6 +171,7 @@ class TestStructuralQualityContracts:
             "test_roots",
             "package_root",
             "root_configuration_modules",
+            "package_initializers",
             "allowed_package_edges",
         }
         assert all(
@@ -193,6 +185,45 @@ class TestStructuralQualityContracts:
                 "review_condition",
             )
         )
+
+    def test_evidence_taxonomy_is_structured_policy_not_markdown_parsing(self) -> None:
+        policy = tomllib.loads(
+            (ROOT / ".config/checks/evidence/policy.toml").read_text(encoding="utf-8")
+        )
+        assert policy["families"] == {
+            "claims": "bounded machine-verifiable assertions",
+            "chronicle": "human-readable historical execution context",
+        }
+
+    def test_package_initializer_contract_is_explicit_and_configurable(self) -> None:
+        quality_checker = checker()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "src" / "codex_responses_proxy"
+            (package / "service").mkdir(parents=True)
+            (package / "service" / "__init__.py").write_text(
+                '"""Service package."""\nVALUE = 1\n', encoding="utf-8"
+            )
+            policy = {
+                "owner": "quality",
+                "risk_model": "package initializers can hide runtime coupling",
+                "measurement": "parse declared package initializers",
+                "false_positive_cost": "a deliberate initializer requires policy review",
+                "remediation": "move runtime behavior to a semantic module",
+                "review_condition": "reassess when initializer behavior is required",
+                "source_roots": ["src/codex_responses_proxy"],
+                "test_roots": ["tests"],
+                "package_root": "src/codex_responses_proxy",
+                "root_configuration_modules": [],
+                "package_initializers": "declarations-only",
+                "allowed_package_edges": {"service": []},
+            }
+            gaps = quality_checker.architecture_gaps(root, policy)
+            policy["package_initializers"] = "ordinary-modules"
+            relaxed = quality_checker.architecture_gaps(root, policy)
+        expected = "architecture_init_behavior:src/codex_responses_proxy/service/__init__.py"
+        assert expected in gaps
+        assert expected not in relaxed
 
     def test_repository_has_standard_package_metadata_and_one_version_owner(
         self,

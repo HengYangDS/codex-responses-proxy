@@ -8,6 +8,7 @@ source_roots = ["src/codex_responses_proxy", "tools"]
 test_roots = ["tests"]
 package_root = "src/codex_responses_proxy"
 root_configuration_modules = ["noxfile.py"]
+package_initializers = "declarations-only"
 
 [allowed_package_edges]
 cli = ["lifecycle", "service"]

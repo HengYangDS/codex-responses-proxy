@@ -22,7 +22,10 @@ foreign products and implementation syntax are not.
 The checker no longer infers architecture from a named foreign product, a
 private symbol, or an assignment that forwards another module's value. Those
 constructs may be valid or invalid depending on the positive owner and dependency
-contract; syntax alone is not a merge decision.
+contract; syntax alone is not a merge decision. It likewise does not require a
+docstring on every public implementation symbol: package declarations,
+user-facing documentation, typing, behavior tests, and the dependency graph
+carry the durable semantic contract.
 
 The release path also stops matching a particular README sentence. Product
 identity is already owned by package metadata and the README title; Forge
@@ -32,12 +35,22 @@ contract. Exact explanatory prose is documentation, not executable policy.
 ## Single Sources
 
 - `.config/checks/architecture/policy.toml` owns the product package, dependency
-  graph, root modules, inventory roots, and rationale.
+  graph, root modules, package-initializer contract, inventory roots, and
+  rationale.
+- `.config/checks/evidence/policy.toml` owns durable evidence families and
+  their meanings.
 - `.config/checks/commits/policy.toml` owns commit grammar and its rationale.
 - `.config/checks/text-layout/policy.toml` owns deterministic text bytes and its rationale.
 - `tools/quality/architecture.py` strictly interprets that schema.
 - OpenSpec describes observable behavior and does not duplicate executable
   topology values.
+
+Lifecycle automation uses the same Conventional Commit grammar as human work.
+Tool-specific historical phrases are not a second admission path.
+
+OpenSpec explains evidence-family semantics but is not parsed as runtime
+configuration. The evidence policy owns the machine-readable family
+collection, avoiding a Markdown-fence parser and a second taxonomy grammar.
 
 ## Quantitative Boundary
 

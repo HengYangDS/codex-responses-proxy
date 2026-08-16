@@ -69,14 +69,10 @@ def quality_inventory(root: Path):
     return checker()._repository_inventory(root, ("src",), ("tests",))
 
 
-def audit_source(source_text: str, *, require_public_docstrings: bool = False):
+def audit_source(source_text: str):
     """Audit one isolated Python owner and return its observed structure."""
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         source = root / "source.py"
         source.write_text(source_text, encoding="utf-8")
-        return checker().audit_paths(
-            root,
-            [source],
-            module_public_definition_docstrings_required=require_public_docstrings,
-        )
+        return checker().audit_paths(root, [source])

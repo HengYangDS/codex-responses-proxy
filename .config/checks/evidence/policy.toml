@@ -1,0 +1,10 @@
+owner = "repository-evidence"
+risk_model = "unclassified durable evidence creates ambiguous authority and stale parallel claims"
+measurement = "compare physical top-level evidence directories with the declared durable families"
+false_positive_cost = "a legitimate new evidence family requires one reviewed policy and specification change"
+remediation = "place the record in an existing family or declare a new family with one precise meaning"
+review_condition = "reassess when two legitimate records in one release train do not fit an existing family"
+
+[families]
+claims = "bounded machine-verifiable assertions"
+chronicle = "human-readable historical execution context"
