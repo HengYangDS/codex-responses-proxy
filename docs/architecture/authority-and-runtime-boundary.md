@@ -84,21 +84,27 @@ The released manifest is the sole provider registry.
 
 Provider integration follows one ordered test:
 
-```text
-direct endpoint
--> manifest route
--> portable contract tests
--> exact failing payload
--> smallest pure policy, only when proved necessary
+```mermaid
+flowchart TD
+    D["Try direct endpoint"] --> W{"Wire compatible?"}
+    W -->|Yes| N["No proxy change"]
+    W -->|No| M["Add manifest route"]
+    M --> T["Run portable contract tests"]
+    T --> G{"Exact gap remains?"}
+    G -->|No| R["Manifest-only admission"]
+    G -->|Yes| E["Capture minimal failing payload"]
+    E --> P["Add the smallest pure policy"]
 ```
 
-| Observation | Admission result |
-| --- | --- |
-| Native Responses works directly | No proxy change |
-| Standard Bearer endpoint needs the existing portable projection | Manifest entry only |
-| Provider has a reproducible wire dialect difference | Narrow pure provider policy plus regression evidence |
-| Authentication needs request signing or another stateful exchange | Separate authentication boundary; not a manifest secret or name heuristic |
-| Provider requires a different invocation protocol | Separate protocol adapter or product decision; not an implicit Responses route |
+- Native Responses that works directly needs no proxy change.
+- A standard Bearer endpoint that needs only portable projection adds one
+  manifest entry.
+- A reproducible wire difference adds one narrow pure policy and its regression
+  evidence.
+- Request signing or another stateful authentication exchange requires a
+  separate authentication boundary.
+- A different invocation protocol requires an explicit protocol Adapter or
+  product decision.
 
 A provider name never creates behavior. The released manifest selects a route
 and, when necessary, an explicitly declared policy. This keeps ordinary
@@ -170,11 +176,11 @@ stateDiagram-v2
 Artifact admission verifies the release asset, complete bundle inventory, and
 external trust anchor. The installer commits the verified projection, then
 prewarms that exact executable before handoff while rollback remains available.
-The same transaction projects one native user-command link and records its exact path in installed state;
-rollback and uninstall therefore do not re-derive ownership from a later shell
-environment. Installation finalizes only after one listener proves the expected
-release, payload digest, manifest digest, receipt digest, PID, and accepting
-state.
+The same transaction projects one native user-command link and records its
+exact path in installed state. Rollback and uninstall therefore do not re-derive
+ownership from a later shell environment. Installation finalizes only after one
+listener proves the expected release, payload digest, manifest digest, receipt
+digest, PID, and accepting state.
 
 Reload is same-payload handoff. Upgrade is install. Uninstall removes native
 supervision first, proves owned listener exit, removes only the recorded command

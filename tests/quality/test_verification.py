@@ -22,6 +22,14 @@ from pytest_mock import MockerFixture
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _required_uv_version() -> str:
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    requirement = metadata["tool"]["uv"]["required-version"]
+    if not re.fullmatch(r"==\d+\.\d+\.\d+", requirement):
+        raise AssertionError("uv must use an exact semantic version")
+    return requirement.removeprefix("==")
+
+
 def _load(name: str, relative: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, ROOT / relative)
     if spec is None or spec.loader is None:
@@ -161,14 +169,7 @@ class TestVerificationContracts:
     @pytest.mark.parametrize(
         ("reported_version", "expected_returncode"),
         [
-            (
-                "uv "
-                + tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
-                    "uv"
-                ]["required-version"].removeprefix("==")
-                + " (x86_64-unknown-linux-musl)",
-                0,
-            ),
+            (f"uv {_required_uv_version()} (x86_64-unknown-linux-musl)", 0),
             ("uv 9.9.9 (x86_64-unknown-linux-musl)", 1),
         ],
     )
