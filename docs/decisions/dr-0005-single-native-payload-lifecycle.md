@@ -15,11 +15,12 @@ states that the current product no longer needs.
 The installed product has one manifest-owned native bundle, one native
 user-command link, and one native supervision lifecycle. The bundle exposes one
 executable and carries its frozen runtime dependencies as adjacent
-manifest-owned files. Installation prewarms the staged executable, then accepts
-an empty target or one verified current listener. It projects the executable
-through a platform-native link and records that exact path in the existing
-installed-state record. An incompatible installation or foreign command target
-fails before mutation and must be removed explicitly.
+manifest-owned files. Installation accepts an empty target or one verified
+current listener. The transaction commits the verified projection, prewarms
+that exact executable before handoff, projects it through a platform-native
+link, and records that exact path in the existing installed-state record. An
+incompatible installation or foreign command target fails before mutation and
+must be removed explicitly.
 
 Rollback and recovery use exact current manifests, receipts, preimages, command
 link ownership, and runtime identities. Source-level compatibility shims,

@@ -347,6 +347,8 @@ def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
         str(work / "build"),
         "--specpath",
         str(work),
+        "--additional-hooks-dir",
+        str(ROOT / "tools/release/hooks"),
         "--add-data",
         f"{ROOT / 'VERSION'}{os.pathsep}.",
         "--add-data",

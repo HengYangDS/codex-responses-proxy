@@ -117,36 +117,23 @@ def remove_projection(ctx: runtime_context.RuntimeContext, paths: Set[str]) -> N
         owned_files.path(install, relative).unlink(missing_ok=True)
 
 
-def prewarm(blobs: tuple[artifact.ArtifactFile, ...]) -> None:
-    """Run the staged native executable before it can replace installed bytes."""
+def prewarm(executable: Path) -> None:
+    """Start the exact installed native executable before listener handoff."""
 
     import subprocess
-    import tempfile
 
-    executable = next(
-        blob for blob in blobs if blob.path in {inventory.EXECUTABLE, inventory.WINDOWS_EXECUTABLE}
-    )
-    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-prewarm-") as temporary:
-        root = Path(temporary)
-        for blob in blobs:
-            owned_files.write_bytes(
-                owned_files.path(root, blob.path),
-                blob.content,
-                mode=0o755 if blob.mode == "100755" else 0o644,
-                root=root,
-            )
-        try:
-            completed = subprocess.run(
-                [str(owned_files.path(root, executable.path)), "version"],
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                check=False,
-                timeout=120,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise errors.InstallError("native bundle prewarm failed") from exc
-        if completed.returncode:
-            raise errors.InstallError("native bundle prewarm failed")
+    try:
+        completed = subprocess.run(
+            [str(executable), "version"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise errors.InstallError("native bundle prewarm failed") from exc
+    if completed.returncode:
+        raise errors.InstallError("native bundle prewarm failed")
 
 
 def _json_value(value: Any) -> Any:

@@ -53,6 +53,7 @@ def dispatch(command: str, **arguments: Any) -> Any:
             arguments["asset"],
             trust_anchor=arguments["trust_anchor"],
             port=arguments["port"],
+            timeout_seconds=arguments.get("timeout_seconds", 30.0),
         )
     if command == "uninstall":
         return uninstall.uninstall_product(port=arguments["port"], purge=arguments["purge"])
@@ -173,10 +174,17 @@ def _app() -> App:
         asset: Path,
         trust_anchor: Annotated[Path, Parameter(name="--trust-anchor")],
         port: int = runtime_context.DEFAULT_PORT,
+        timeout_seconds: Annotated[float, Parameter(name="--timeout-seconds")] = 30.0,
     ) -> int:
         """Install or upgrade the native user service."""
 
-        return _execute("install", asset=asset, trust_anchor=trust_anchor, port=port)
+        return _execute(
+            "install",
+            asset=asset,
+            trust_anchor=trust_anchor,
+            port=port,
+            timeout_seconds=timeout_seconds,
+        )
 
     @app.command(name="status")
     def status_command(

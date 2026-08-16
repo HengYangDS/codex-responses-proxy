@@ -29,17 +29,17 @@ from tests.lifecycle.fixtures import (
 )
 
 
-def test_begin_transaction_prewarms_staged_bundle_before_install_mutation(
-    tmp_path: Path, *, mocker
-) -> None:
+def test_commit_prewarms_the_exact_installed_executable(tmp_path: Path, *, mocker) -> None:
     ctx = install_context(tmp_path)
     candidate = released_artifact()
     prewarm = mocker.patch.object(payload_transaction.payload_candidate, "prewarm")
 
     transaction = payload_transaction.begin_transaction(ctx, candidate)
+    prewarm.assert_not_called()
 
-    prewarm.assert_called_once()
-    assert not Path(ctx.install_dir).exists()
+    transaction.commit_projection()
+
+    prewarm.assert_called_once_with(Path(ctx.executable))
     transaction.rollback()
 
 
