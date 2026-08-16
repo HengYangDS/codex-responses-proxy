@@ -15,8 +15,13 @@
 - [x] 3.1 Pass focused lifecycle, verification, and rollback tests.
 - [x] 3.2 Prove two locked Linux builds have identical executable and archive hashes.
 - [x] 3.3 Pass quick, quality, Python 3.12-3.14, and native release sessions.
-- [ ] 3.4 Complete exact-HEAD proof and release 2.0.39 independently on both Forges.
-- [ ] 3.5 Verify Forge tree and asset parity, then hot-install the verified macOS asset.
+
+## Post-archive delivery order
+
+Archive and candidate/accepted integration follow the proved source change.
+GitLab and GitHub then publish 2.0.39 independently. Dual-Forge tree and asset
+parity, verified macOS installation, runtime health, and lane retirement require
+fresh external receipts and are not asserted by this source Change.
 
 ## Requirement To Task To Proof
 
