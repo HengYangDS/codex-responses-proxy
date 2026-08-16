@@ -107,15 +107,18 @@ executable with Python absent from the product `PATH`.
 
 ### Requirement: Coverage is strict and host-independent
 
-The complete behavior suite SHALL keep aggregate, statement, branch, and every
-semantic package coverage strictly greater than 95 percent. Required platform
-branches SHALL be exercised through explicit semantic inputs rather than host
-spoofing, exclusions, or CI-only production conditionals.
+The complete behavior suite SHALL keep aggregate and every semantic package's
+statement and branch coverage above the floor declared by the canonical
+coverage policy. That policy SHALL state its risk model, measurement semantics,
+false-positive cost, remediation path, and review condition. File-level ratios
+SHALL remain diagnostic rather than merge authority. Required platform branches
+SHALL be exercised through explicit semantic inputs rather than host spoofing,
+exclusions, or CI-only production conditionals.
 
 #### Scenario: A quality gate succeeds
 
 - **WHEN** coverage is reported for the exact candidate tree
-- **THEN** every required ratio is greater than 95 percent
+- **THEN** every aggregate and semantic-package ratio satisfies the canonical policy
 - **AND** no required test is skipped merely because the quality host differs
   from the modeled platform.
 

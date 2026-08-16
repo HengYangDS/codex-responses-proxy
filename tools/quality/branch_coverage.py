@@ -1,12 +1,11 @@
-#!/usr/bin/env python3
 """Enforce independent statement and branch coverage floors."""
 
 from __future__ import annotations
 
 import json
 import sys
-import tomllib
 import tempfile
+import tomllib
 from collections import defaultdict
 from collections.abc import Mapping
 from decimal import Decimal
@@ -17,18 +16,8 @@ from typing import Annotated, Any, Protocol
 from cyclopts import App, Parameter
 
 
-class CoverageConfig(Protocol):
-    """Coverage settings consumed by this independent branch gate."""
-
-    @property
-    def fail_under(self) -> int | float: ...
-
-
 class CoverageData(Protocol):
     """Minimal coverage.py surface needed to load and report current data."""
-
-    @property
-    def config(self) -> CoverageConfig: ...
 
     def load(self) -> None: ...
 
@@ -37,7 +26,7 @@ class CoverageData(Protocol):
 
 def _ratio_gaps(
     totals: Mapping[str, Any],
-    floor: int | float,
+    floor: float,
     *,
     total_key: str,
     covered_key: str,
@@ -64,7 +53,7 @@ def _ratio_gaps(
     return []
 
 
-def branch_gaps(totals: Mapping[str, Any], floor: int | float) -> list[str]:
+def branch_gaps(totals: Mapping[str, Any], floor: float) -> list[str]:
     """Return a gap when exact branch coverage is absent or below ``floor``."""
 
     return _ratio_gaps(
@@ -77,7 +66,7 @@ def branch_gaps(totals: Mapping[str, Any], floor: int | float) -> list[str]:
     )
 
 
-def statement_gaps(totals: Mapping[str, Any], floor: int | float) -> list[str]:
+def statement_gaps(totals: Mapping[str, Any], floor: float) -> list[str]:
     """Return a gap when exact statement coverage is absent or below ``floor``."""
 
     return _ratio_gaps(
@@ -115,41 +104,7 @@ def _package_gap(package: str, gap: str) -> str:
     return f"package_{reason}:{package}{separator}{detail}"
 
 
-def _module_name(path: str) -> str | None:
-    """Return one stable product-relative module name from coverage output."""
-
-    marker = "codex_responses_proxy/"
-    normalized = path.replace("\\", "/")
-    return normalized.split(marker, 1)[1] if marker in normalized else None
-
-
-def _module_gap(module: str, gap: str) -> str:
-    """Qualify one stable coverage gap with its product module."""
-
-    reason, separator, detail = gap.partition(":")
-    return f"module_{reason}:{module}{separator}{detail}"
-
-
-def module_gaps(files: Mapping[str, Any], floor: int | float) -> list[str]:
-    """Require every executable product module to clear both coverage floors."""
-
-    gaps: list[str] = []
-    for path, detail in sorted(files.items()):
-        module = _module_name(path)
-        summary = detail.get("summary") if isinstance(detail, dict) else None
-        if module is None or not isinstance(summary, dict):
-            continue
-        statements = summary.get("num_statements")
-        if not isinstance(statements, int) or isinstance(statements, bool) or statements == 0:
-            continue
-        gaps.extend(_module_gap(module, gap) for gap in statement_gaps(summary, floor))
-        branches = summary.get("num_branches")
-        if isinstance(branches, int) and not isinstance(branches, bool) and branches > 0:
-            gaps.extend(_module_gap(module, gap) for gap in branch_gaps(summary, floor))
-    return gaps
-
-
-def package_gaps(files: Mapping[str, Any], floor: int | float) -> list[str]:
+def package_gaps(files: Mapping[str, Any], floor: float) -> list[str]:
     """Require statement and branch coverage above the floor per semantic package."""
 
     totals: defaultdict[str, dict[str, int]] = defaultdict(
@@ -197,7 +152,6 @@ def _command(
         *statement_gaps(totals, floor),
         *branch_gaps(totals, floor),
         *package_gaps(report.get("files", {}), floor),
-        *module_gaps(report.get("files", {}), floor),
     ]
     print(json.dumps({"ok": not gaps, "gaps": gaps, **totals}, sort_keys=True))
     return 0 if not gaps else 1

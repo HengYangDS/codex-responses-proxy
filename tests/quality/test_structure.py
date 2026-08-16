@@ -5,8 +5,8 @@ from __future__ import annotations
 import ast
 import io
 import tempfile
-import tomllib
 import tokenize
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -152,7 +152,7 @@ class TestStructuralQualityContracts:
         assert inventory[0]["logical_statements"] == 122
         assert inventory[0]["effective_lines"] == 122
 
-    def test_coverage_floor_is_branch_aware_and_at_least_ninety_five_percent(self) -> None:
+    def test_coverage_floor_has_one_owner_and_semantic_risk_scopes(self) -> None:
         coverage = (ROOT / ".config/checks/coverage/coverage.ini").read_text(encoding="utf-8")
         policy = tomllib.loads(
             (ROOT / ".config/checks/coverage/policy.toml").read_text(encoding="utf-8")
@@ -160,9 +160,22 @@ class TestStructuralQualityContracts:
         assert "branch = True" in coverage
         assert "source_pkgs = codex_responses_proxy" in coverage
         assert "omit" not in coverage
-        assert policy["minimum_percent"] > 95
+        assert set(policy) == {
+            "minimum_percent",
+            "comparison",
+            "scopes",
+            "metrics",
+            "owner",
+            "source",
+            "risk_model",
+            "measurement",
+            "false_positive_cost",
+            "remediation",
+            "review_condition",
+        }
+        assert policy["minimum_percent"] == 95.0
         assert policy["comparison"] == "strictly-greater-than"
-        assert policy["scopes"] == ["aggregate", "package", "module"]
+        assert policy["scopes"] == ["aggregate", "package"]
 
     def test_repository_policy_declares_positive_owners_without_numeric_vetoes(self) -> None:
         policy = tomllib.loads(
@@ -353,26 +366,24 @@ class TestStructuralQualityContracts:
         }
         assert checker.package_gaps(files, 95) == []
 
-    def test_each_product_module_must_clear_both_coverage_floors(self) -> None:
+    def test_files_combine_into_their_semantic_package_before_admission(self) -> None:
         checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
         files = {
-            "/site-packages/codex_responses_proxy/relay/exchange.py": {
+            "/site-packages/codex_responses_proxy/relay/first.py": {
                 "summary": {
-                    "num_statements": 100,
-                    "covered_lines": 99,
-                    "num_branches": 20,
-                    "covered_branches": 19,
-                }
-            },
-            "/site-packages/codex_responses_proxy/relay/__init__.py": {
-                "summary": {
-                    "num_statements": 0,
+                    "num_statements": 1,
                     "covered_lines": 0,
                     "num_branches": 0,
                     "covered_branches": 0,
                 }
             },
+            "/site-packages/codex_responses_proxy/relay/second.py": {
+                "summary": {
+                    "num_statements": 99,
+                    "covered_lines": 96,
+                    "num_branches": 20,
+                    "covered_branches": 20,
+                }
+            },
         }
-        assert checker.module_gaps(files, 95) == [
-            "module_branch_coverage_not_strictly_above_floor:relay/exchange.py:95.00<=95.00"
-        ]
+        assert checker.package_gaps(files, 95) == []

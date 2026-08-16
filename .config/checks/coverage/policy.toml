@@ -1,6 +1,11 @@
-minimum_percent = 95.01
+minimum_percent = 95.0
 comparison = "strictly-greater-than"
-scopes = ["aggregate", "package", "module"]
+scopes = ["aggregate", "package"]
 metrics = ["statement", "branch"]
 owner = "repository-quality"
-source = ".config/checks/coverage/coverage.ini"
+source = "coverage.py exact statement and branch counts"
+risk_model = "uncovered protocol and lifecycle control-flow can corrupt a replay, service transition, or release without an observable regression"
+measurement = "exact covered and total statement and branch counts for the product aggregate and each semantic package"
+false_positive_cost = "file-level ratios vary sharply with module size and encourage test allocation by denominator rather than product risk"
+remediation = "add a behavior test, remove unreachable code, or simplify the responsible semantic package; file exclusions are not accepted"
+review_condition = "reassess when three legitimate changes within one release train are blocked solely by package denominator granularity or when the product risk boundary changes"
