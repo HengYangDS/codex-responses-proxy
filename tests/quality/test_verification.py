@@ -461,6 +461,16 @@ class TestVerificationContracts:
         assert isinstance(exist_ok, ast.Constant)
         assert exist_ok.value is True
 
+    def test_release_collects_ctypes_as_source_outside_the_pyz_archive(self) -> None:
+        """Avoid marshal identity drift in the Python 3.14 ``ctypes`` code object."""
+
+        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+        hook = ROOT / "tools" / "release" / "hooks" / "hook-ctypes.py"
+
+        assert '"--additional-hooks-dir"' in source
+        assert 'ROOT / "tools/release/hooks"' in source
+        assert hook.read_text(encoding="utf-8") == 'module_collection_mode = "py"\n'
+
     def test_linux_release_runtime_uses_the_session_interpreter(
         self, mocker: MockerFixture
     ) -> None:

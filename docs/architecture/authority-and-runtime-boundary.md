@@ -121,9 +121,9 @@ stateDiagram-v2
 ```
 
 Artifact admission verifies the release asset, complete bundle inventory, and
-external trust anchor. The installer prewarms the staged executable before the
-payload transaction can replace installed bytes. The same transaction projects
-one native user-command link and records its exact path in installed state;
+external trust anchor. The installer commits the verified projection, then
+prewarms that exact executable before handoff while rollback remains available.
+The same transaction projects one native user-command link and records its exact path in installed state;
 rollback and uninstall therefore do not re-derive ownership from a later shell
 environment. Installation finalizes only after one listener proves the expected
 release, payload digest, manifest digest, receipt digest, PID, and accepting

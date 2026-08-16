@@ -194,6 +194,7 @@ class PayloadTransaction:
             ok, detail = projection.verify_payload_manifest(self._ctx)
             if not ok:
                 raise errors.InstallError(f"committed payload integrity check failed: {detail}")
+            payload_candidate.prewarm(Path(self._ctx.executable))
             self._state = "committed"
             state.write_journal(
                 self._ctx,
@@ -277,8 +278,6 @@ class PayloadTransaction:
 def begin_transaction(
     ctx: runtime_context.RuntimeContext,
     candidate: artifact.VerifiedArtifact,
-    *,
-    prewarm: bool = True,
 ) -> PayloadTransaction:
     """Claim one admitted release and create its private transaction journal."""
 
@@ -290,8 +289,6 @@ def begin_transaction(
     except artifact.ArtifactError as exc:
         raise errors.InstallError(str(exc)) from exc
     payload_candidate.validate(blobs, version, receipt_sha256, receipt)
-    if prewarm:
-        payload_candidate.prewarm(blobs)
     previous = state.read_installed(ctx)
     if previous is not None:
         comparison = state.compare_versions(version, state.require_version(previous))

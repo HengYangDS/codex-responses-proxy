@@ -28,6 +28,7 @@ from codex_responses_proxy.runtime import config as runtime_config
 
 HANDOFF_PROTOCOL_VERSION = 2
 _MAX_BODY_BYTES = 64 * 1024
+_TRANSPORT_MARGIN_SECONDS = 1.0
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _RUNTIME_DIGEST_FIELDS = (
     "serving_payload_sha256 release_receipt_sha256 payload_manifest_sha256".split()
@@ -144,7 +145,7 @@ def post_ready(
     )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with opener.open(request, timeout=timeout_seconds) as response:
+        with opener.open(request, timeout=timeout_seconds + _TRANSPORT_MARGIN_SECONDS) as response:
             if response.status != 202:
                 raise errors.InstallError(f"handoff control returned HTTP {response.status}")
             raw = response.read(_MAX_BODY_BYTES + 1)
@@ -200,7 +201,7 @@ def request(
         ctx,
         expected,
         lease_seconds=lease_seconds,
-        timeout_seconds=min(timeout_seconds, 10.0),
+        timeout_seconds=timeout_seconds,
     )
     child_pid = ready["child_pid"]
     convergence_seconds = timeout_seconds * 3 + max(1.0, lease_seconds) + 5.0

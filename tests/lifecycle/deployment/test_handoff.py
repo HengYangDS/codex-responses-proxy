@@ -92,6 +92,21 @@ class TestControllerHandoffWiring:
                 assert (result["old_pid"], result["child_pid"]) == (999, 1000)
                 terminate.assert_not_called()
 
+    def test_request_handoff_allows_ready_until_the_configured_deadline(self, *, mocker):
+        ctx = install_context(Path(self.tempdir.name))
+        expected = expected_metadata()
+        mocker.patch.object(process, "verified_proxy_listener_pids", side_effect=[[999], [1000]])
+        ready = mocker.patch.object(handoff, "post_ready", return_value=ready_ack(expected))
+
+        handoff.request(
+            ctx,
+            expected,
+            runtime_reader=lambda _ctx: matching_health(1000, expected),
+            timeout_seconds=30,
+        )
+
+        assert ready.call_args.kwargs["timeout_seconds"] == 30
+
     def test_request_handoff_rejects_invalid_listener_ownership_or_control_conflict(
         self, subtests, *, mocker
     ):

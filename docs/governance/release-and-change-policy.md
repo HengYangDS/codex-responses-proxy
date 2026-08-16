@@ -128,9 +128,9 @@ It has no GitLab, GitHub, CI, or source-checkout dependency.
 The installer must:
 
 1. verify asset identity and signature;
-2. verify and prewarm the complete staged native bundle;
-3. prepare an owned transaction;
-4. commit exact payload files;
+2. verify the complete candidate native bundle;
+3. prepare an owned transaction and commit exact payload files;
+4. prewarm the exact committed executable within the rollback domain;
 5. prove one accepting native listener;
 6. finalize or retain an explicit recovery-required state.
 

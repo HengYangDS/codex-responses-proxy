@@ -66,8 +66,10 @@ codex-responses-proxy install \
   --port 8801
 ```
 
-Installation verifies and prewarms the selected native bundle before changing
-the native user service. It also projects `codex-responses-proxy` into the
+Installation verifies the selected native bundle, commits it inside a rollback
+transaction, and prewarms the exact installed executable before handoff. Use
+`--timeout-seconds` only when a cold native executable needs more than the
+default 30 seconds. Installation also projects `codex-responses-proxy` into the
 current user's platform command directory as a native link. It does not create
 a wrapper or edit a shell profile. The installed-state record retains that
 exact path so status, rollback, and uninstall do not depend on a later shell's

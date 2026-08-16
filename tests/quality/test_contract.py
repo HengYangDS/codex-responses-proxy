@@ -564,6 +564,13 @@ class TestQualityPolicyContracts:
 
         assert gaps == ["semantic_name_invalid:markdown:docs/2026-plan.md"]
 
+    def test_semantic_name_gate_accepts_official_pyinstaller_hook_modules(self) -> None:
+        checker = _checker()
+        with _test_repository(("tools/release/hooks/hook-ctypes.py",)) as root:
+            gaps = checker.semantic_name_gaps(root)
+
+        assert gaps == []
+
     def test_cli_is_the_only_production_command_composition_root(self) -> None:
         package = ROOT / "src/codex_responses_proxy"
         argparse_owners = []

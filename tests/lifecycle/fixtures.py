@@ -131,12 +131,13 @@ def begin_transaction(
     """Begin a transaction through the artifact claim authority boundary."""
 
     if not isinstance(candidate, artifact.VerifiedArtifact):
-        return payload_transaction.begin_transaction(ctx, candidate, prewarm=False)
+        return payload_transaction.begin_transaction(ctx, candidate)
     blobs = candidate.peek_blobs()
     receipt = candidate.receipt
     claimed = (blobs, candidate.version, candidate.receipt_sha256, receipt, {})
     mocker.patch.object(artifact, "claim", return_value=claimed)
-    return payload_transaction.begin_transaction(ctx, candidate, prewarm=False)
+    mocker.patch.object(payload_transaction.payload_candidate, "prewarm")
+    return payload_transaction.begin_transaction(ctx, candidate)
 
 
 def install_payload(

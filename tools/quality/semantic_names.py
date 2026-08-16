@@ -8,6 +8,8 @@ from pathlib import Path, PurePosixPath
 
 _NATIVE_NAMES = frozenset({"AGENTS.md", "CHANGELOG.md", "CONTRIBUTING.md", "README.md"})
 _OPEN_SPEC_CARRIERS = frozenset({"design.md", "proposal.md", "spec.md", "tasks.md"})
+_PYINSTALLER_HOOK_ROOT = PurePosixPath("tools/release/hooks")
+_PYINSTALLER_HOOK = re.compile(r"hook-[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*\.py")
 _HISTORICAL_ROOTS = (
     PurePosixPath("evidence/claims"),
     PurePosixPath("evidence/chronicle"),
@@ -39,6 +41,8 @@ def semantic_name_gaps(root: Path) -> list[str]:
         if (
             grammar is None
             or name in _NATIVE_NAMES
+            or path.parent == _PYINSTALLER_HOOK_ROOT
+            and _PYINSTALLER_HOOK.fullmatch(name) is not None
             or name in _OPEN_SPEC_CARRIERS
             and PurePosixPath(relative).parts[0] == "openspec"
         ):

@@ -48,6 +48,7 @@ class CliLifecycleContracts:
             Path("/release/proxy.tar.gz"),
             trust_anchor=Path("/release/trust.json"),
             port=8801,
+            timeout_seconds=30.0,
         )
 
     def test_source_version_requires_the_real_src_checkout_shape(self, tmp_path, *, mocker) -> None:
@@ -316,6 +317,23 @@ class CliLifecycleContracts:
         assert stderr == ""
         reload.assert_called_once_with("context", timeout_seconds=12.5)
 
+    def test_install_delegates_with_an_explicit_timeout(self, tmp_path: Path, *, mocker) -> None:
+        asset = tmp_path / "release.tar.gz"
+        trust = tmp_path / "release.pub"
+        install = mocker.patch.object(application.install, "install_asset", return_value={})
+
+        self.invoke(
+            "install",
+            "--asset",
+            str(asset),
+            "--trust-anchor",
+            str(trust),
+            "--timeout-seconds",
+            "45",
+        )
+
+        install.assert_called_once_with(asset, trust_anchor=trust, port=8792, timeout_seconds=45.0)
+
     def test_recover_restores_only_the_runtime_bound_retained_transaction(self, *, mocker) -> None:
         runtime = {"pid": 321, "release": "2.0.10", "accepting": True}
         context = mocker.patch.object(application.control, "_context", return_value="context")
@@ -381,7 +399,7 @@ class CliLifecycleContracts:
             "ok": True
         }
         assert application.dispatch("version") == "2.0.8"
-        install.assert_called_once_with(asset, trust_anchor=anchor, port=8801)
+        install.assert_called_once_with(asset, trust_anchor=anchor, port=8801, timeout_seconds=30.0)
         version.assert_called_once_with()
 
     def test_subcommand_help_and_parse_errors_are_bounded(self) -> None:

@@ -7,6 +7,15 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.39] - 2026-08-16
+
+### Fixed
+
+- Make independent Linux native builds byte-identical by collecting `ctypes`
+  through PyInstaller's supported source-module mode.
+- Prewarm the exact committed successor executable and honor the configured
+  installation deadline during transactional handoff.
+
 ## [2.0.38] - 2026-08-15
 
 ### Fixed

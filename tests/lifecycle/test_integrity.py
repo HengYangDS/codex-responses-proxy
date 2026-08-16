@@ -146,14 +146,16 @@ class TestPayloadValidation:
     def test_bundle_prewarm_materializes_runs_and_rejects_failures(
         self, tmp_path: Path, subtests, *, mocker
     ) -> None:
-        blobs = released_artifact().peek_blobs()
         completed = mocker.patch.object(
             subprocess,
             "run",
             return_value=subprocess.CompletedProcess(("proxy", "version"), 0),
         )
-        payload_candidate.prewarm(blobs)
+        executable = tmp_path / "proxy"
+        executable.write_bytes(b"native")
+        payload_candidate.prewarm(executable)
         arguments = completed.call_args.args[0]
+        assert arguments[0] == str(executable)
         assert arguments[1:] == ["version"]
         assert completed.call_args.kwargs["timeout"] == 120
 
@@ -170,7 +172,7 @@ class TestPayloadValidation:
                     return_value=effect if not isinstance(effect, BaseException) else None,
                 )
                 with pytest.raises(errors.InstallError, match="prewarm failed"):
-                    payload_candidate.prewarm(blobs)
+                    payload_candidate.prewarm(executable)
 
     def test_transaction_filesystem_failures_remain_fail_closed(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
