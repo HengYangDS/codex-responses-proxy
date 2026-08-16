@@ -147,6 +147,22 @@ The installer must:
 
 No lifecycle command edits a client or conversation.
 
+## Provider changes
+
+Provider work is admitted through the smallest semantic owner:
+
+1. Prefer direct client-to-provider use when the protocol is already sound.
+2. Add a manifest route when the existing portable Responses contract is
+   sufficient.
+3. Add provider policy only for a captured, reproducible wire incompatibility.
+4. Treat new authentication or invocation protocols as explicit architecture
+   changes rather than provider-name conditionals.
+
+Every provider policy requires portable baseline tests, the minimal failing
+fixture, a bounded behavior contract, and current runtime evidence. It must not
+add client configuration, secret storage, implicit fallback, or conversation
+state.
+
 ## Closeout
 
 A delivery lane may be removed only after exact owner-bound closeout proves:

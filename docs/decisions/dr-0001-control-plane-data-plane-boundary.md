@@ -2,6 +2,7 @@
 
 - Status: amended
 - Date: 2026-07-14
+- Last amended: 2026-08-16
 
 ## Context
 
@@ -23,6 +24,18 @@ writes client configuration or invokes a particular control-plane product.
 The products evolve independently and each mutation has one owner. Runtime
 repair rebuilds the proxy projection; route repair remains a client control-plane
 operation. Neither path permits session-history mutation.
+
+## Alternatives Considered
+
+| Alternative | Reason not selected |
+| --- | --- |
+| General multi-provider gateway | Adds routing, fallback, billing, and organization policy that belong outside this narrow compatibility edge. |
+| Proxy-owned client configuration | Creates two writers for endpoint and credential state. |
+| Control-plane-managed proxy lifecycle | Makes two independently useful products share one failure and release domain. |
+
+The proxy is intentionally complementary to, rather than a smaller clone of,
+general gateways. Its durable advantage is a closed portable grammar, bounded
+recovery, and a native lifecycle with no client-state authority.
 
 ## Revisit Trigger
 

@@ -8,7 +8,7 @@ without copying a larger governance system into a small transport adapter.
 
 | Surface | Owns |
 | --- | --- |
-| [architecture/](architecture/authority-and-runtime-boundary.md) | Component boundaries and runtime projection model. |
+| [architecture/](architecture/authority-and-runtime-boundary.md) | Product position, component boundaries, Provider admission, and runtime projection. |
 | [governance/](governance/release-and-change-policy.md) | Change, release, and contributor rules. |
 | [decisions/](decisions/README.md) | Decision grammar, coverage rule, and durable rulings. |
 | [evidence/](evidence/README.md) | Proof requirements and evidence limits. |

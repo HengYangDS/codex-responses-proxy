@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-07
+- Last amended: 2026-08-16
 
 ## Context
 
@@ -28,6 +29,12 @@ A conversation can switch among admitted providers without server-side state.
 Continuity depends on client-replayed portable dialogue rather than a provider
 store. The proxy may reject an input that lacks a proved portable meaning
 instead of guessing or silently dropping a required tool relationship.
+
+This also preserves route mobility: switching Provider Accounts does not depend
+on another provider's stored response, opaque item identifier, or encrypted
+continuation state. Provider-specific recovery must therefore consume the same
+portable owner or a strictly smaller derivation; it cannot become a parallel
+replay implementation.
 
 ## Revisit Trigger
 
