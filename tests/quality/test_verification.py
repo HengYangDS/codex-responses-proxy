@@ -87,9 +87,6 @@ def _audit_source(source_text: str, **overrides: Any):
         source = root / "source.py"
         source.write_text(source_text, encoding="utf-8")
         options = {
-            "logic_limit": 10,
-            "test_limit": 10,
-            "ratchets": {},
             "module_public_definition_docstrings_required": False,
             **overrides,
         }

@@ -84,9 +84,6 @@ def _audit_source(source_text: str, **overrides: Any):
         source = root / "source.py"
         source.write_text(source_text, encoding="utf-8")
         options = {
-            "logic_limit": 10,
-            "test_limit": 10,
-            "ratchets": {},
             "module_public_definition_docstrings_required": False,
             **overrides,
         }
@@ -94,7 +91,7 @@ def _audit_source(source_text: str, **overrides: Any):
 
 
 class TestQualityPolicyContracts:
-    """Keep quality scope and ratchets executable rather than documentary."""
+    """Keep the repository quality scope executable rather than documentary."""
 
     def test_current_repository_policy_is_internally_consistent(self) -> None:
         report = _checker().audit()

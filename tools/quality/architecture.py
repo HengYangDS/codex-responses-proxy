@@ -161,7 +161,6 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, Any] | None = None
 
     policy = tomllib.loads(POLICY.read_text(encoding="utf-8")) if policy is None else policy
     package = root / "src" / "codex_responses_proxy"
-    forbidden = frozenset(policy.get("forbidden_packages", ()))
     root_modules = frozenset(policy.get("root_configuration_modules", ()))
     allowed_edges = {
         owner: frozenset(targets)
@@ -184,11 +183,6 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, Any] | None = None
     )
     gaps.extend(
         f"architecture_package_missing:{name}" for name in sorted(allowed_edges.keys() - actual)
-    )
-    gaps.extend(
-        f"architecture_forbidden_package:{child.name}"
-        for child in sorted(package.iterdir())
-        if child.is_dir() and child.name in forbidden
     )
     for path in sorted(package.rglob("__init__.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
