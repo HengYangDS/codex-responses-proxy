@@ -8,17 +8,18 @@ arbitrary merge vetoes.
 ## Requirements
 ### Requirement: One structural quality boundary
 
-Source, tests, tools, documentation, configuration, and release assets SHALL
-follow one explicit semantic owner and dependency direction. The repository
-quality command SHALL report source size and nesting as descriptive review
-evidence. Those observations SHALL NOT become merge vetoes without an
-independently justified risk model, exact measurement semantics,
-false-positive cost, remediation path, and review trigger. The positive package
-topology SHALL be the only package-admission authority.
+Every enforced rule SHALL have one semantic owner and a proportionate evidence
+model. A quantitative merge veto SHALL state its risk model, exact measurement,
+false-positive cost, remediation path, and review condition. Aggregate and
+semantic-package coverage own the current product-risk boundary; file-sized
+coverage remains diagnostic evidence. A tool-native collection configuration
+SHALL NOT duplicate the canonical policy floor.
 
-Quantitative gates SHALL be owned by one machine-readable policy. A file-sized
-ratio SHALL NOT block promotion when aggregate and semantic-package evidence
-already owns the product-risk boundary.
+#### Scenario: a small module has a volatile ratio
+
+- **WHEN** its semantic package and the product aggregate satisfy the canonical coverage policy
+- **THEN** the file ratio remains diagnostic
+- **AND** promotion is decided by the declared product-risk scopes.
 
 #### Scenario: A contributor reviews a large owner
 
@@ -43,3 +44,9 @@ already owns the product-risk boundary.
 - **WHEN** one small module has a volatile ratio but its semantic package and the product aggregate satisfy the canonical coverage policy
 - **THEN** the file ratio remains diagnostic evidence
 - **AND** no duplicate threshold in a tool-native formatting file can change the verdict.
+
+#### Scenario: a policy changes
+
+- **WHEN** maintainers revise a quantitative boundary
+- **THEN** they update its single machine owner and recorded rationale
+- **AND** repository tests reject any competing threshold source.
