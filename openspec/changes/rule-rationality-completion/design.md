@@ -15,6 +15,7 @@ foreign products and implementation syntax are not.
 | Acyclic dependency graph | Mutually dependent owners | Strongly connected components in the observed package graph |
 | Commit grammar | Unsearchable and automation-hostile history | Parsed subjects against the tracked positive grammar |
 | Deterministic text layout | Cross-host byte and diff drift | UTF-8, LF, final-newline, and trailing-whitespace checks |
+| Aggregate coverage and package observation | Broad unobserved behavior or a wholly unexecuted owner | Exact aggregate counts plus non-zero execution evidence and ratios for every semantic package |
 
 ## Removed Negative Surfaces
 
@@ -37,3 +38,11 @@ contract. Exact explanatory prose is documentation, not executable policy.
 - `tools/quality/architecture.py` strictly interprets that schema.
 - OpenSpec describes observable behavior and does not duplicate executable
   topology values.
+
+## Quantitative Boundary
+
+Aggregate statement and branch coverage constrain total unobserved product
+behavior. Every semantic package must still appear in current evidence and
+execute statements plus any branches it owns. Exact package ratios remain
+visible for review, but volatile small denominators are not independent merge
+vetoes.

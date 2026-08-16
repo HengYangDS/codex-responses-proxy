@@ -13,11 +13,12 @@
 - [x] 2.6 Delete obsolete implementation and tests without compatibility parsing.
 - [x] 2.7 Add explicit rationale to commit and text-layout policies.
 - [x] 2.8 Delete exact README prose matching from quality and release validation.
+- [x] 2.9 Make aggregate coverage the quantitative veto while retaining mandatory semantic-package observation and exact diagnostics.
 
 ## 3. Verification
 
-- [ ] 3.1 Pass focused architecture tests and strict OpenSpec validation.
-- [ ] 3.2 Pass the locked repository quality graph and Python matrix.
+- [x] 3.1 Pass focused architecture tests and strict OpenSpec validation.
+- [x] 3.2 Pass the locked repository quality graph and Python matrix.
 - [ ] 3.3 Produce exact-HEAD proof for the signed atomic result.
 
 ## Requirement To Task To Proof

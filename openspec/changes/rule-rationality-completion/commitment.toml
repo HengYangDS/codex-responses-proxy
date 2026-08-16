@@ -22,12 +22,14 @@ invariants = [
   "package topology has one declarative owner rather than checker literals",
   "maintainability heuristics and historical blacklists do not act as unconditional merge vetoes",
   "every mandatory architecture rule has a measurable risk model remediation and review condition",
+  "coverage blocks on aggregate product risk while every semantic package remains present observed and reported",
 ]
 acceptance = [
   "generic architecture code contains no foreign product name or compatibility keyword blacklist",
   "positive package topology dependency direction and cycle checks remain exact and tested",
   "source metrics remain review evidence and not arbitrary merge vetoes",
   "the locked quality matrix and exact-head proof pass",
+  "coverage evidence cannot turn a small semantic-package denominator into an independent merge veto",
 ]
 risks = [
   "removing a broad blacklist can expose a missing positive contract that must be restated at its semantic owner",
