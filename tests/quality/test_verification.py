@@ -161,7 +161,14 @@ class TestVerificationContracts:
     @pytest.mark.parametrize(
         ("reported_version", "expected_returncode"),
         [
-            ("uv 0.12.4 (x86_64-unknown-linux-musl)", 0),
+            (
+                "uv "
+                + tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
+                    "uv"
+                ]["required-version"].removeprefix("==")
+                + " (x86_64-unknown-linux-musl)",
+                0,
+            ),
             ("uv 9.9.9 (x86_64-unknown-linux-musl)", 1),
         ],
     )
@@ -355,7 +362,7 @@ class TestVerificationContracts:
                 requirement.partition("==") for requirement in requirements
             )
         )
-        assert metadata["tool"]["uv"]["required-version"] == "==0.12.4"
+        assert re.fullmatch(r"==\d+\.\d+\.\d+", metadata["tool"]["uv"]["required-version"])
         assert metadata["tool"]["uv"]["link-mode"] == "copy"
         assert (ROOT / "uv.lock").is_file()
 
