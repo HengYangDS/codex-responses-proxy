@@ -15,7 +15,7 @@
 
 - [x] 3.1 Pass focused structure and quality-contract tests.
 - [x] 3.2 Pass the complete quality session without lowering coverage or behavior gates.
-- [ ] 3.3 Produce exact-HEAD ETHOS proof and integrate the atomic change.
+- [x] 3.3 Produce exact-HEAD ETHOS proof and integrate the atomic change.
 
 ## Requirement To Task To Proof
 
