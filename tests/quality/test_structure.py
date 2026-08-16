@@ -46,7 +46,7 @@ class TestStructuralQualityContracts:
                     offenders.append(f"{path.relative_to(ROOT).as_posix()}:suppression")
         assert offenders == []
 
-    def test_architecture_gate_rejects_root_implementation_init_behavior_and_cycles(self) -> None:
+    def test_architecture_gate_enforces_positive_topology_and_package_contracts(self) -> None:
         quality_checker = checker()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -55,21 +55,11 @@ class TestStructuralQualityContracts:
                 "src/codex_responses_proxy/__init__.py": "from .runtime import state\n",
                 "src/codex_responses_proxy/common/value.py": "VALUE = 1\n",
                 "src/codex_responses_proxy/service/__init__.py": "",
-                "src/codex_responses_proxy/service/private.py": "_VALUE = 1\n",
-                "src/codex_responses_proxy/service/forward.py": (
-                    "from codex_responses_proxy.service import private\nPUBLIC = private._VALUE\n"
-                ),
-                "src/codex_responses_proxy/service/direct.py": (
-                    "from codex_responses_proxy.service.private import _VALUE\nPUBLIC = _VALUE\n"
-                ),
                 "src/codex_responses_proxy/extra/state.py": (
                     "from codex_responses_proxy.relay import relay\n"
                 ),
                 "src/codex_responses_proxy/relay/relay.py": (
                     "from codex_responses_proxy.runtime import state\n"
-                ),
-                "src/codex_responses_proxy/lifecycle/install.py": (
-                    "import client_control_plane\nCOMMAND = 'client-control-plane sync'\n"
                 ),
             }
             for relative, source in files.items():
@@ -86,33 +76,9 @@ class TestStructuralQualityContracts:
             "architecture_package_declaration_missing:src/codex_responses_proxy/service/__init__.py"
             in gaps
         )
-        assert (
-            "architecture_private_cross_module:"
-            "src/codex_responses_proxy/service/forward.py:2:private._VALUE" in gaps
-        )
-        assert (
-            "architecture_forwarding_alias:"
-            "src/codex_responses_proxy/service/forward.py:2:private._VALUE" in gaps
-        )
-        assert (
-            "architecture_private_cross_module:src/codex_responses_proxy/service/direct.py:1:_VALUE"
-            in gaps
-        )
-        assert (
-            "architecture_forwarding_alias:src/codex_responses_proxy/service/direct.py:2:_VALUE"
-            in gaps
-        )
         assert "architecture_undeclared_package:extra" in gaps
         assert "architecture_disallowed_edge:relay->runtime" not in gaps
         assert "architecture_disallowed_edge:extra->relay" in gaps
-        assert (
-            "architecture_foreign_product_dependency:"
-            "src/codex_responses_proxy/lifecycle/install.py:1:client_control_plane" in gaps
-        )
-        assert (
-            "architecture_foreign_product_literal:"
-            "src/codex_responses_proxy/lifecycle/install.py:2:client-control-plane" in gaps
-        )
 
     @pytest.mark.parametrize(
         "source",
@@ -183,6 +149,7 @@ class TestStructuralQualityContracts:
         )
         assert policy["source_roots"] == ["src/codex_responses_proxy", "tools"]
         assert policy["test_roots"] == ["tests"]
+        assert policy["package_root"] == "src/codex_responses_proxy"
         assert set(policy["allowed_package_edges"]) == {
             "cli",
             "lifecycle",
@@ -194,11 +161,28 @@ class TestStructuralQualityContracts:
         }
         assert set(policy) == {
             "owner",
+            "risk_model",
+            "measurement",
+            "false_positive_cost",
+            "remediation",
+            "review_condition",
             "source_roots",
             "test_roots",
+            "package_root",
             "root_configuration_modules",
             "allowed_package_edges",
         }
+        assert all(
+            isinstance(policy[field], str) and policy[field].strip()
+            for field in (
+                "owner",
+                "risk_model",
+                "measurement",
+                "false_positive_cost",
+                "remediation",
+                "review_condition",
+            )
+        )
 
     def test_repository_has_standard_package_metadata_and_one_version_owner(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))

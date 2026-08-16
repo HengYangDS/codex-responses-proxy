@@ -1,4 +1,9 @@
 owner = "repository-quality"
+risk_model = "host-dependent encodings and line endings create noisy diffs, parser disagreement, and non-reproducible source and documentation bytes"
+measurement = "inspect tracked text carriers for UTF-8 decoding, LF line endings, one final newline, and absence of trailing whitespace"
+false_positive_cost = "generated or binary-like content with a tracked suffix must be reclassified or kept outside the governed text carrier set"
+remediation = "format the carrier with its language-native tool or correct the tracked carrier classification when the file is not repository text"
+review_condition = "reassess when a supported platform or admitted carrier cannot preserve these byte invariants with its native toolchain"
 encoding = "utf-8"
 line_ending = "lf"
 insert_final_newline = true

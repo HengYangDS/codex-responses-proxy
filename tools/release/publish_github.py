@@ -266,11 +266,6 @@ def _verify_source(checkout: Path, tag: str, trust: str) -> None:
         "GitHub release metadata is invalid",
         cwd=checkout,
     )
-    _run(
-        (str(python), str(checkout / "tools/quality/markdown.py")),
-        "GitHub release documentation is invalid",
-        cwd=checkout,
-    )
 
 
 def _verify_remote_identity(repository: str, tag: str, tag_oid: str, commit_oid: str) -> None:

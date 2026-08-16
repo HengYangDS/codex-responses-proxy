@@ -4,12 +4,18 @@ intent = "Complete the Proxy rule audit by replacing product-name and Python-sty
 subjects = ["repository:codex-responses-proxy"]
 scope = [
   "AGENTS.md",
-  ".config/checks/architecture/**",
+  ".config/checks/**",
+  ".gitlab-ci.yml",
   "docs/governance/**",
   "openspec/changes/rule-rationality-completion/**",
   "openspec/specs/quality-boundaries/spec.md",
   "tools/quality/**",
+  "tools/release/metadata.py",
+  "tools/release/publish_github.py",
   "tests/quality/**",
+  "tests/release/test_publish_github.py",
+  "tests/governance/test_portability.py",
+  "noxfile.py",
 ]
 invariants = [
   "protocol ownership dependency direction portability and evidence integrity remain enforced",

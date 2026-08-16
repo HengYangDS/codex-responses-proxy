@@ -167,5 +167,5 @@ def test_release_validation_preserves_the_active_environment(tmp_path: Path, moc
 
     publish_github._verify_source(checkout, "v1.2.3", "trust")
 
-    assert run.call_count == 2
+    assert run.call_count == 1
     assert all(call.args[0][0] == str(environment_python) for call in run.call_args_list)

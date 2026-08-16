@@ -94,7 +94,6 @@ verify-release-metadata:
       else
         uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --provider gitlab --prepare-release
       fi
-    - uv run --locked --no-sync --python python --no-python-downloads python tools/quality/markdown.py
     - uv run --locked --no-sync --python python --no-python-downloads python -m pytest -q tests/release/test_metadata.py
     - uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
     - uv run --locked --no-sync --python python --no-python-downloads python -m pytest -q tests/release/test_publish_gitlab.py

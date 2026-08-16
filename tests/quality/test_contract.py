@@ -220,6 +220,24 @@ class TestQualityPolicyContracts:
         repository = tool.get("codex-responses-proxy", {})
         assert "quality" not in repository
 
+        rationale = {
+            "risk_model",
+            "measurement",
+            "false_positive_cost",
+            "remediation",
+            "review_condition",
+        }
+        for relative in (
+            ".config/checks/architecture/policy.toml",
+            ".config/checks/commits/policy.toml",
+            ".config/checks/coverage/policy.toml",
+            ".config/checks/text-layout/policy.toml",
+        ):
+            policy = tomllib.loads((ROOT / relative).read_text(encoding="utf-8"))
+            assert all(
+                isinstance(policy.get(field), str) and policy[field].strip() for field in rationale
+            ), relative
+
     def test_editor_defaults_and_text_layout_policy_are_aligned(self) -> None:
         editor = (ROOT / ".editorconfig").read_text(encoding="utf-8")
         policy = tomllib.loads(
@@ -466,7 +484,9 @@ class TestQualityPolicyContracts:
         assert "decision_record_name_invalid:docs/decisions/0001-vague.md" in gaps
         assert "decision_record_unregistered:docs/decisions/dr-0002-release-trust.md" in gaps
 
-    def test_decision_record_gate_requires_contiguous_unique_registration(self) -> None:
+    def test_decision_record_gate_requires_unique_registration_without_history_ratchets(
+        self,
+    ) -> None:
         checker = _checker()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -494,7 +514,7 @@ class TestQualityPolicyContracts:
 
             gaps = checker.decision_record_gaps(root)
 
-        assert "decision_record_sequence_gap:0002" in gaps
+        assert "decision_record_sequence_gap:0002" not in gaps
         assert "decision_record_registration_duplicate:docs/decisions/dr-0001-boundary.md" in gaps
 
     def test_tracked_project_files_follow_semantic_type_grammars(self) -> None:

@@ -1,11 +1,5 @@
-# quality-boundaries Specification
+## MODIFIED Requirements
 
-## Purpose
-
-Define the repository's positive semantic ownership, dependency direction, and
-portable verification boundary without turning descriptive source metrics into
-arbitrary merge vetoes.
-## Requirements
 ### Requirement: One structural quality boundary
 
 Every enforced rule SHALL have one semantic owner and a proportionate evidence
