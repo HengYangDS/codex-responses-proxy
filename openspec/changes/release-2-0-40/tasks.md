@@ -8,7 +8,7 @@
 
 - [x] 2.1 Pass release metadata validation.
 - [x] 2.2 Pass the complete exact-HEAD repository proof.
-- [ ] 2.3 Archive the completed Change.
+- [x] 2.3 Prepare the completed Change for governed archival.
 
 ## Post-archive lifecycle
 
