@@ -1,0 +1,36 @@
+schema_version = 1
+id = "change:rule-rationality-completion"
+intent = "Complete the Proxy rule audit by replacing product-name and Python-style blacklists with one positive, configurable architecture contract."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "AGENTS.md",
+  ".config/checks/architecture/**",
+  "docs/governance/**",
+  "openspec/changes/rule-rationality-completion/**",
+  "openspec/specs/quality-boundaries/spec.md",
+  "tools/quality/**",
+  "tests/quality/**",
+]
+invariants = [
+  "protocol ownership dependency direction portability and evidence integrity remain enforced",
+  "package topology has one declarative owner rather than checker literals",
+  "maintainability heuristics and historical blacklists do not act as unconditional merge vetoes",
+  "every mandatory architecture rule has a measurable risk model remediation and review condition",
+]
+acceptance = [
+  "generic architecture code contains no foreign product name or compatibility keyword blacklist",
+  "positive package topology dependency direction and cycle checks remain exact and tested",
+  "source metrics remain review evidence and not arbitrary merge vetoes",
+  "the locked quality matrix and exact-head proof pass",
+]
+risks = [
+  "removing a broad blacklist can expose a missing positive contract that must be restated at its semantic owner",
+]
+authority_refs = [
+  "user_instruction",
+  "AGENTS.md",
+  ".config/checks/architecture/policy.toml",
+  "openspec/specs/quality-boundaries/spec.md",
+]
+hypotheses = []
+dependencies = []
