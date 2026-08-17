@@ -7,6 +7,16 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.42] - 2026-08-17
+
+### Changed
+
+- Remove the obsolete Claims, Chronicle, and repository `evidence/` authority;
+  current product source, specifications, tests, and Forge-native records now
+  retain their own evidence without a parallel taxonomy.
+- Align documentation and decision-record names with their semantic owners,
+  removing ambiguous directory indexes and redundant repository checks.
+
 ## [2.0.41] - 2026-08-17
 
 ### Fixed
