@@ -1,11 +1,4 @@
-# Evidence authority Specification
-
-## Purpose
-
-Define one current proof authority without a tracked evidence taxonomy and
-preserve one semantic owner for independent Forge comparison.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Current evidence has one authority chain
 

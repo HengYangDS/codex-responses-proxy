@@ -231,7 +231,6 @@ class TestQualityPolicyContracts:
             ".config/checks/architecture/policy.toml",
             ".config/checks/commits/policy.toml",
             ".config/checks/coverage/policy.toml",
-            ".config/checks/evidence/policy.toml",
             ".config/checks/text-layout/policy.toml",
         ):
             policy = tomllib.loads((ROOT / relative).read_text(encoding="utf-8"))
@@ -521,34 +520,6 @@ class TestQualityPolicyContracts:
     def test_tracked_project_files_follow_semantic_type_grammars(self) -> None:
         assert _checker().semantic_name_gaps(ROOT) == []
 
-    def test_evidence_uses_only_project_owned_semantic_roots(self) -> None:
-        assert _checker().evidence_layout_gaps(ROOT) == []
-
-    def test_evidence_layout_gate_rejects_unknown_top_level_surfaces(self) -> None:
-        checker = _checker()
-        with _test_repository(
-            (
-                ".config/checks/evidence/policy.toml",
-                "evidence/claims/release.toml",
-                "evidence/chronicle/release/2026-08-10.md",
-                "evidence/unclassified/README.md",
-            )
-        ) as root:
-            (root / ".config/checks/evidence/policy.toml").write_text(
-                '[families]\nclaims = "bounded assertions"\nchronicle = "historical context"\n',
-                encoding="utf-8",
-            )
-            gaps = checker.evidence_layout_gaps(root)
-
-        assert gaps == ["evidence_root_unowned:evidence/unclassified"]
-
-    def test_evidence_layout_gate_requires_the_canonical_taxonomy(self) -> None:
-        checker = _checker()
-        with _test_repository(("evidence/claims/release.toml",)) as root:
-            gaps = checker.evidence_layout_gaps(root)
-
-        assert gaps == ["evidence_taxonomy_unavailable:.config/checks/evidence/policy.toml"]
-
     def test_semantic_name_gate_rejects_numeric_and_cross_language_grammar(self) -> None:
         checker = _checker()
         with _test_repository(
@@ -565,12 +536,11 @@ class TestQualityPolicyContracts:
         assert "semantic_name_invalid:shell:scripts/release/check_release.sh" in gaps
         assert "semantic_name_invalid:markdown:docs/2026-plan.md" in gaps
 
-    def test_semantic_name_gate_does_not_reclassify_historical_carriers(self) -> None:
+    def test_semantic_name_gate_exempts_only_openspec_history(self) -> None:
         checker = _checker()
         with _test_repository(
             (
                 "docs/2026-plan.md",
-                "evidence/chronicle/release/2026-08-07.md",
                 "openspec/changes/archive/2026-08-07-release/specs/product/spec.md",
             )
         ) as root:
