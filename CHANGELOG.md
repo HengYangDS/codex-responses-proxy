@@ -7,6 +7,16 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.41] - 2026-08-17
+
+### Fixed
+
+- Bind each Forge audit to the projection receipt for its exact provider tip,
+  so provenance continuity is explicit and stale or drifting coordinates fail
+  closed.
+- Derive audited branch roles from repository policy and fetch release tags in
+  one bounded operation, removing false residue reports and avoidable latency.
+
 ## [2.0.40] - 2026-08-16
 
 ### Changed
