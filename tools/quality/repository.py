@@ -24,7 +24,6 @@ from tools.quality.semantic_names import semantic_name_gaps
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / ".config/checks/architecture/policy.toml"
-EVIDENCE_POLICY = ROOT / ".config/checks/evidence/policy.toml"
 PROJECT = ROOT / "pyproject.toml"
 _DEFINITION_TYPES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 
@@ -256,37 +255,6 @@ def _logical_statements(path: Path, tree: ast.Module) -> int:
     )
 
 
-def evidence_layout_gaps(root: Path = ROOT) -> list[str]:
-    """Validate physical evidence roots against the canonical positive taxonomy."""
-
-    evidence = root / "evidence"
-    if not evidence.is_dir():
-        return []
-    policy_path = root / EVIDENCE_POLICY.relative_to(ROOT)
-    try:
-        policy = tomllib.loads(policy_path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
-        policy = {}
-    configured = policy.get("families")
-    owned_roots = (
-        set(configured)
-        if isinstance(configured, dict)
-        and configured
-        and all(
-            isinstance(name, str) and isinstance(meaning, str) and meaning.strip()
-            for name, meaning in configured.items()
-        )
-        else set()
-    )
-    if not owned_roots:
-        return ["evidence_taxonomy_unavailable:.config/checks/evidence/policy.toml"]
-    return [
-        f"evidence_root_unowned:evidence/{path.name}"
-        for path in sorted(evidence.iterdir())
-        if path.is_dir() and not path.name.startswith(".") and path.name not in owned_roots
-    ]
-
-
 def audit_paths(
     root: Path,
     paths: Iterable[Path],
@@ -358,7 +326,6 @@ def audit() -> dict[str, object]:
             *gaps,
             *architecture_gaps(ROOT, policy),
             *commit_subject_gaps(ROOT),
-            *evidence_layout_gaps(ROOT),
             *decision_record_gaps(ROOT),
             *semantic_name_gaps(ROOT),
         ]

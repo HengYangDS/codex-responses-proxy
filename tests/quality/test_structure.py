@@ -186,15 +186,6 @@ class TestStructuralQualityContracts:
             )
         )
 
-    def test_evidence_taxonomy_is_structured_policy_not_markdown_parsing(self) -> None:
-        policy = tomllib.loads(
-            (ROOT / ".config/checks/evidence/policy.toml").read_text(encoding="utf-8")
-        )
-        assert policy["families"] == {
-            "claims": "bounded machine-verifiable assertions",
-            "chronicle": "human-readable historical execution context",
-        }
-
     def test_package_initializer_contract_is_explicit_and_configurable(self) -> None:
         quality_checker = checker()
         with tempfile.TemporaryDirectory() as directory:

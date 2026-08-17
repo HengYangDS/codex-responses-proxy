@@ -10,11 +10,7 @@ _NATIVE_NAMES = frozenset({"AGENTS.md", "CHANGELOG.md", "CONTRIBUTING.md", "READ
 _OPEN_SPEC_CARRIERS = frozenset({"design.md", "proposal.md", "spec.md", "tasks.md"})
 _PYINSTALLER_HOOK_ROOT = PurePosixPath("tools/release/hooks")
 _PYINSTALLER_HOOK = re.compile(r"hook-[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*\.py")
-_HISTORICAL_ROOTS = (
-    PurePosixPath("evidence/claims"),
-    PurePosixPath("evidence/chronicle"),
-    PurePosixPath("openspec/changes/archive"),
-)
+_HISTORICAL_ROOTS = (PurePosixPath("openspec/changes/archive"),)
 _GRAMMARS = {
     ".md": ("markdown", re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\.md")),
     ".py": ("python", re.compile(r"(?:__[a-z0-9_]+__|[a-z][a-z0-9_]*)\.py")),
