@@ -1,0 +1,40 @@
+schema_version = 1
+id = "change:release-2-0-43"
+intent = "Advance the proxy to the current stable locked dependency graph, remove the redundant GitLab remote authority alias, and publish verified release 2.0.43."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  ".ethos/release.toml",
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/archive/*-release-2-0-43/**",
+  "openspec/changes/release-2-0-43/**",
+  "uv.lock",
+]
+invariants = [
+  "gitlab_and_github_remain_independent_release_planes",
+  "no_client_configuration_or_conversation_state_is_modified",
+  "origin_is_the_single_gitlab_remote_authority",
+  "provider_portable_responses_behavior_is_unchanged",
+  "version_identity_has_one_owner",
+]
+acceptance = [
+  "complete_local_quality_matrix_and_release_gates_pass",
+  "exact_head_repository_proof_passes",
+  "gitlab_and_github_publish_complete_2_0_43_releases_from_the_same_source_tree",
+  "the_installed_runtime_reports_2_0_43_and_doctor_passes",
+  "the_locked_python_dependency_graph_uses_current_stable_versions",
+  "the_redundant_gitlab_release_remote_alias_is_absent",
+]
+risks = [
+  "a_transitive_dependency_update_can_change_release_output",
+  "one_forge_can_publish_before_the_other",
+  "remote_authority_cleanup_can_break_release_projection_if_not_covered",
+]
+authority_refs = [
+  ".config/checks/coverage/policy.toml",
+  "AGENTS.md",
+  "docs/governance/release-and-change-policy.md",
+  "docs/operations/forge-operations.md",
+]
+hypotheses = []
+dependencies = []
