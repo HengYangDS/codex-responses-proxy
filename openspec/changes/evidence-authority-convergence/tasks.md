@@ -12,7 +12,7 @@
 ## 3. Verification and closeout
 
 - [x] 3.1 Pass focused tests and complete repository quality gates.
-- [ ] 3.2 Commit, run exact-HEAD proof, and archive the Change.
+- [x] 3.2 Commit and run exact-HEAD proof before archiving the Change.
 - [ ] 3.3 Pass post-archive exact-HEAD proof, integrate, and retire the lane.
 
 ## Requirement To Task To Proof
