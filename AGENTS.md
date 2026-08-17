@@ -13,9 +13,9 @@ of Codex conversation history or client configuration.
 - Active specification changes: [OpenSpec](openspec/)
 - Authority and runtime boundary: [architecture](docs/architecture/authority-and-runtime-boundary.md)
 - Change and release policy: [governance](docs/governance/release-and-change-policy.md)
-- Decision records: [Decision register](docs/decisions/README.md)
+- Decision records: [Decision register](docs/decisions/decision-register.md)
 - Durable boundary decision: [DR-0001](docs/decisions/dr-0001-control-plane-data-plane-boundary.md)
-- Evidence policy: [evidence](docs/evidence/README.md)
+- Evidence policy: [evidence](docs/evidence/evidence-policy.md)
 - Independent forge operations: [operations](docs/operations/forge-operations.md)
 - Release history: [CHANGELOG](CHANGELOG.md)
 

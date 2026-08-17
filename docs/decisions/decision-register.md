@@ -14,8 +14,7 @@ dr-<four-digit-sequence>-<concise-kebab-case-description>.md
 
 The sequence is stable and never reused. A record is amended or superseded; it
 is not silently rewritten into a different decision. Tool-mandated names such
-as `README.md`, `pyproject.toml`, `spec.md`, and `__init__.py` keep their native
-grammar.
+as `pyproject.toml`, `spec.md`, and `__init__.py` keep their native grammar.
 
 ## Required sections
 
