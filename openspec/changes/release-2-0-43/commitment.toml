@@ -8,6 +8,7 @@ scope = [
   "VERSION",
   "openspec/changes/archive/*-release-2-0-43/**",
   "openspec/changes/release-2-0-43/**",
+  "tests/quality/test_contract.py",
   "uv.lock",
 ]
 invariants = [

@@ -7,6 +7,15 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.43] - 2026-08-17
+
+### Changed
+
+- Refresh the complete locked Python dependency graph to current stable
+  releases.
+- Use `origin` as the sole GitLab remote authority and remove the redundant
+  release-only alias.
+
 ## [2.0.42] - 2026-08-17
 
 ### Changed

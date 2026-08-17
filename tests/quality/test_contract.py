@@ -160,7 +160,7 @@ class TestQualityPolicyContracts:
                 "id": "gitlab",
                 "provider": "gitlab",
                 "role": "organization_collaboration",
-                "git_remote": "gitlab-release",
+                "git_remote": "origin",
                 "capabilities": ["repository", "ci_cd", "publication"],
                 "ci_surface": ".gitlab-ci.yml",
             },
