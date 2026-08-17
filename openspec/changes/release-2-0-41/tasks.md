@@ -7,7 +7,7 @@
 ## 2. Verification
 
 - [x] 2.1 Pass release metadata validation.
-- [ ] 2.2 Pass the complete exact-HEAD repository proof.
+- [x] 2.2 Pass the complete exact-HEAD repository proof.
 - [ ] 2.3 Prepare the completed Change for governed archival.
 
 ## Post-archive lifecycle
