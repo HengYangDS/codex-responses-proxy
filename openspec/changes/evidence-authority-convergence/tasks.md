@@ -13,7 +13,7 @@
 
 - [x] 3.1 Pass focused tests and complete repository quality gates.
 - [x] 3.2 Commit and run exact-HEAD proof before archiving the Change.
-- [ ] 3.3 Pass post-archive exact-HEAD proof, integrate, and retire the lane.
+- [x] 3.3 Authorize archive, post-archive proof, integration, and lane retirement.
 
 ## Requirement To Task To Proof
 
