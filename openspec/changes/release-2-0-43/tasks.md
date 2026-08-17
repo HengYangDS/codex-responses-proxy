@@ -10,7 +10,7 @@
 - [x] 2.1 Pass the focused quality and publication contracts.
 - [x] 2.2 Pass quick, quality, Python 3.12/3.13/3.14, and release sessions.
 - [x] 2.3 Pass exact-HEAD ETHOS proof.
-- [ ] 2.4 Archive the completed Change.
+- [x] 2.4 Archive the completed Change.
 
 ## Post-archive lifecycle
 
