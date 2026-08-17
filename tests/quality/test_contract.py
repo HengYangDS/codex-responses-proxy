@@ -464,7 +464,9 @@ class TestQualityPolicyContracts:
             root = Path(directory)
             decisions = root / "docs/decisions"
             decisions.mkdir(parents=True)
-            (decisions / "README.md").write_text("# Decision Records\n", encoding="utf-8")
+            (decisions / "decision-register.md").write_text(
+                "# Decision Records\n", encoding="utf-8"
+            )
             (decisions / "0001-vague.md").write_text("# ADR-0001: Vague\n", encoding="utf-8")
             valid = decisions / "dr-0002-release-trust.md"
             valid.write_text(
@@ -503,7 +505,7 @@ class TestQualityPolicyContracts:
             )
             first.write_text("# DR-0001: Boundary\n\n" + body, encoding="utf-8")
             third.write_text("# DR-0003: Release\n\n" + body, encoding="utf-8")
-            (decisions / "README.md").write_text(
+            (decisions / "decision-register.md").write_text(
                 "# Decision Records\n\n"
                 "[DR-0001](dr-0001-boundary.md)\n"
                 "[duplicate](dr-0001-boundary.md)\n"

@@ -9,19 +9,20 @@ _DECISION_RECORD = re.compile(
     r"dr-(?P<sequence>[0-9]{4})-(?P<description>[a-z0-9]+(?:-[a-z0-9]+)*)\.md"
 )
 _DECISION_STATUSES = frozenset({"accepted", "amended", "deprecated", "proposed", "superseded"})
+_DECISION_REGISTER = "decision-register.md"
 
 
 def decision_record_gaps(root: Path) -> list[str]:
     """Validate the one Decision Record register and its semantic file grammar."""
 
     directory = root / "docs/decisions"
-    register = directory / "README.md"
+    register = directory / _DECISION_REGISTER
     if not directory.is_dir() or not register.is_file():
         return ["decision_record_register_missing"]
     gaps: list[str] = []
     records: list[tuple[int, Path]] = []
     for path in sorted(directory.glob("*.md")):
-        if path.name == "README.md":
+        if path.name == _DECISION_REGISTER:
             continue
         match = _DECISION_RECORD.fullmatch(path.name)
         if match is None:
