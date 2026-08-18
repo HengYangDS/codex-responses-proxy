@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.44] - 2026-08-18
+
+### Changed
+
+- Refresh the locked runtime and release toolchain to current stable versions.
+- Keep provider-native GitLab and GitHub publication independent.
+
+
 ## [2.0.43] - 2026-08-17
 
 ### Changed
