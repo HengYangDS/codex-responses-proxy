@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import platform
 import re
+import tempfile
 import tomllib
 from pathlib import Path
 from typing import cast
@@ -250,9 +251,18 @@ def _build_wheel(session: nox.Session, work: Path) -> Path:
 
     wheelhouse = work / "wheelhouse"
     wheelhouse.mkdir()
-    session.run_install(
-        "uv", "build", "--wheel", "--out-dir", str(wheelhouse), str(ROOT), external=True
-    )
+    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-uv-") as cache:
+        session.run_install(
+            "uv",
+            "build",
+            "--wheel",
+            "--cache-dir",
+            cache,
+            "--out-dir",
+            str(wheelhouse),
+            str(ROOT),
+            external=True,
+        )
     wheels = tuple(wheelhouse.glob("*.whl"))
     if len(wheels) != 1:
         session.error(f"expected one wheel, found {len(wheels)}")

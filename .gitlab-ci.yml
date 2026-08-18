@@ -67,7 +67,7 @@ verify-python-matrix:
   script:
     - python --version
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
-    - uv python install $(tr '\n' ' ' < .python-versions)
+    - uv python install --no-bin $(tr '\n' ' ' < .python-versions)
     - uv run --locked --no-sync --python python --no-python-downloads nox -s full
 
 verify-release-metadata:

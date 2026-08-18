@@ -110,6 +110,7 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     assert gitlab.count("*assert-uv-version") == 4
     assert gitlab.count("*install-uv") == 2
     assert "uv sync --locked --group quality --no-install-project" in gitlab
+    assert "uv python install --no-bin $(tr '\\n' ' ' < .python-versions)" in gitlab
 
 
 def test_gitlab_publish_uses_the_synchronized_python_identity() -> None:
@@ -171,8 +172,10 @@ def _assert_github_required_tokens(text: str) -> None:
         "name: Release assets",
         "needs: [python-matrix, native-assets, native-linux]",
         "python-version: ${{ needs.python-matrix.outputs.latest }}",
-        "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
-        "# v8.0.1",
+        "name: Download native release assets",
+        "GH_TOKEN: ${{ github.token }}",
+        """gh run download "$GITHUB_RUN_ID" --pattern 'native-*' """
+        """--dir "$RUNNER_TEMP/native" """.rstrip(),
         "uv run --locked --no-sync python -m tools.release.assemble_assets",
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY",
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
@@ -247,6 +250,11 @@ def _assert_github_platform_contract(text: str, release_text: str) -> None:
         )
     if windows_block.count("actions/setup-python@") != 1:
         raise AssertionError("Windows verification must use exactly one pinned setup-python action")
+    if (
+        windows_block.count(setup_uv) != 1
+        or "cache-suffix: ${{ matrix.python-version }}" not in windows_block
+    ):
+        raise AssertionError("Windows Python matrix must isolate setup-uv caches by interpreter")
     quality_start = text.index("\n  python-quality:")
     quality_end = text.index("\n  native-assets:", quality_start)
     quality_block = text[quality_start:quality_end]

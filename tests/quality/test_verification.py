@@ -255,6 +255,11 @@ class TestVerificationContracts:
             and call.func.attr in {"run", "run_install"}
         ]
         assert any(command[:3] == ("uv", "build", "--wheel") for command in commands)
+        assert any(
+            "--cache-dir" in command
+            for command in commands
+            if command[:3] == ("uv", "build", "--wheel")
+        )
         assert any(command[:3] == ("uv", "pip", "install") for command in commands)
         install_source = ast.get_source_segment(source, functions["_install_wheel"]) or ""
         assert '"--no-deps"' not in install_source
