@@ -79,6 +79,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          cache-suffix: ${{ matrix.python-version }}
       - name: Compile and test
         run: uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"
 
@@ -199,10 +201,10 @@ jobs:
         with:
           python-version: ${{ needs.python-matrix.outputs.latest }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: native-*
-          path: ${{ runner.temp }}/native
+      - name: Download native release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --pattern 'native-*' --dir "$RUNNER_TEMP/native"
       - name: Install the complete locked tool environment
         run: uv sync --locked --all-groups
       - name: Materialize the protected release signing key

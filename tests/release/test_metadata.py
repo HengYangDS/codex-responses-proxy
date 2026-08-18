@@ -482,7 +482,7 @@ def test_gitlab_ci_runs_full_regression_matrix() -> None:
             'GIT_DEPTH: "0"',
             "git fetch --unshallow --tags --force origin",
             "git fetch --tags --force origin",
-            "uv python install $(tr '\\n' ' ' < .python-versions)",
+            "uv python install --no-bin $(tr '\\n' ' ' < .python-versions)",
             f"{GITLAB_LOCKED_PYTHON} nox -s full",
             f"{APT_INSTALL} binutils git openssh-client",
         ),
