@@ -1,4 +1,4 @@
-"""Create one immutable provider-native release tag."""
+"""Create one local release tag and publish its exact object to one Forge peer."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from tools.release.publication.git import _TAG
 
 
 class TagError(RuntimeError):
-    """A provider-native tag cannot be created safely."""
+    """A local product tag cannot be created or published safely."""
 
 
 def _run(repository: Path, *args: str, environment: dict[str, str] | None = None) -> str:
@@ -25,7 +25,7 @@ def _run(repository: Path, *args: str, environment: dict[str, str] | None = None
             check=True,
             capture_output=True,
             text=True,
-            env=environment,
+            env=environment or _environment(),
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError) as error:
         detail = error.stderr.strip() if isinstance(error, subprocess.CalledProcessError) else ""
@@ -38,16 +38,14 @@ def _environment() -> dict[str, str]:
     return value
 
 
-def _metadata(repository: Path, provider: str, *args: str) -> None:
-    """Run metadata validation from the exact provider checkout."""
+def _metadata(repository: Path, *args: str) -> None:
+    """Run provider-neutral product metadata validation."""
 
     try:
         subprocess.run(
             (
                 sys.executable,
                 str(repository / "tools/release/metadata.py"),
-                "--provider",
-                provider,
                 *args,
             ),
             cwd=repository,
@@ -56,7 +54,7 @@ def _metadata(repository: Path, provider: str, *args: str) -> None:
             env=_environment(),
         )
     except (OSError, subprocess.CalledProcessError) as error:
-        raise TagError(f"{provider} release metadata validation failed") from error
+        raise TagError("product release metadata validation failed") from error
 
 
 def create(
@@ -68,65 +66,56 @@ def create(
     publication_context: Path,
     anchor: Path,
 ) -> str:
-    """Create, verify, and publish one exact provider-native tag."""
+    """Create the local tag once, then publish that exact object to one peer."""
 
     if provider not in {"gitlab", "github"} or _TAG.fullmatch(tag) is None:
         raise TagError("provider and tag must identify gitlab|github and vMAJOR.MINOR.PATCH")
     if _run(root, "status", "--porcelain"):
         raise TagError(f"refusing {provider} tag with a dirty checkout")
-    identity = context.load(publication_context, provider)
-    remote_url = _run(root, "config", "--local", "--get", f"remote.{remote}.url")
-    with tempfile.TemporaryDirectory(prefix=f"codex-responses-proxy-{provider}-tag-") as name:
-        workspace = Path(name)
-        repository = workspace / "repository"
-        subprocess.run(
-            ("git", "clone", "--quiet", "--no-tags", remote_url, str(repository)),
-            check=True,
-            env=_environment(),
-        )
-        _run(repository, "fetch", "--quiet", "--force", "--prune", "--prune-tags", "origin")
-        _run(
-            repository,
-            "fetch",
-            "--quiet",
-            "--force",
-            "--prune",
-            "--prune-tags",
-            "origin",
-            "+refs/tags/*:refs/tags/*",
-        )
-        if _run(repository, "tag", "--list", tag):
-            raise TagError(f"{provider} tag already exists: {tag}")
-        target = _run(repository, "rev-parse", "refs/remotes/origin/main^{commit}")
-        _run(repository, "checkout", "--quiet", "--detach", target)
-        _metadata(repository, provider, "--prepare-release")
-        signing = context.select_signing_key(identity, workspace / "signing-key.pub")
-        _run(
-            repository,
-            "-c",
-            f"user.name={identity.name}",
-            "-c",
-            f"user.email={identity.email}",
-            "-c",
-            "user.useConfigOnly=true",
-            "-c",
-            "gpg.format=ssh",
-            "-c",
-            f"gpg.ssh.program={signing.program}",
-            "-c",
-            f"user.signingkey={signing.public_key}",
-            "tag",
-            "-s",
-            "-a",
-            tag,
-            target,
-            "-m",
-            f"Codex Responses Proxy {tag}",
-        )
-        _metadata(repository, provider, "--tag", tag)
-        tag_signature.verify(repository, tag, provider, anchor)
-        _run(repository, "push", "--quiet", "origin", f"refs/tags/{tag}:refs/tags/{tag}")
-        return _run(repository, "rev-parse", f"refs/tags/{tag}")
+    identity = context.load(publication_context)
+    reference = f"refs/tags/{tag}"
+    if not _run(root, "tag", "--list", tag):
+        target = _run(root, "rev-parse", "refs/heads/main^{commit}")
+        _metadata(root, "--prepare-release")
+        with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-tag-") as name:
+            signing = context.select_signing_key(identity, Path(name) / "signing-key.pub")
+            _run(
+                root,
+                "-c",
+                f"user.name={identity.name}",
+                "-c",
+                f"user.email={identity.email}",
+                "-c",
+                "user.useConfigOnly=true",
+                "-c",
+                "gpg.format=ssh",
+                "-c",
+                f"gpg.ssh.program={signing.program}",
+                "-c",
+                f"user.signingkey={signing.public_key}",
+                "tag",
+                "-s",
+                "-a",
+                tag,
+                target,
+                "-m",
+                f"Codex Responses Proxy {tag}",
+            )
+    _metadata(root, "--tag", tag)
+    tag_signature.verify(root, tag, anchor)
+    tag_oid = _run(root, "rev-parse", reference)
+    observed = _run(root, "ls-remote", "--tags", remote, reference).split()
+    if observed:
+        if len(observed) != 2 or observed[1] != reference:
+            raise TagError(f"{provider} release tag observation is malformed: {tag}")
+        if observed[0] != tag_oid:
+            raise TagError(f"{provider} release tag differs from local: {tag}")
+        return tag_oid
+    _run(root, "push", "--quiet", remote, f"{reference}:{reference}")
+    published = _run(root, "ls-remote", "--tags", remote, reference).split()
+    if published != [tag_oid, reference]:
+        raise TagError(f"{provider} release tag does not equal local after publication: {tag}")
+    return tag_oid
 
 
 def _command(
@@ -135,25 +124,30 @@ def _command(
     tag: str,
     publication_context: Path,
     anchor: Path,
-    root: Path = Path.cwd(),
+    root: Path | None = None,
     remote: str | None = None,
 ) -> None:
     """Create one signed tag on exactly one selected Forge."""
 
+    root = (root or Path.cwd()).resolve()
     selected_remote = remote or ("origin" if provider == "gitlab" else "github")
     try:
         tag_oid = create(
-            root=root.resolve(),
+            root=root,
             provider=provider,
             tag=tag,
             remote=selected_remote,
             publication_context=publication_context,
             anchor=anchor,
         )
-    except (TagError, context.PublicationContextError, tag_signature.TagSignatureError) as error:
+    except (
+        TagError,
+        context.PublicationContextError,
+        tag_signature.TagSignatureError,
+    ) as error:
         print(str(error), file=sys.stderr)
         raise SystemExit(1) from error
-    print(f"{provider} provider-native release tag created: {tag} ({tag_oid})")
+    print(f"{provider} release tag synchronized: {tag} ({tag_oid})")
 
 
 def main(argv: tuple[str, ...] | None = None) -> None:

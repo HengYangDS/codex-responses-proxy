@@ -25,8 +25,8 @@ A current document must not carry a delivery-lane status or incident narrative.
 | `candidate/*` | Yes | No |
 | `work/*` | Yes | No |
 
-Pre-push rejects every remote branch outside the whitelist. Tags follow the
-release policy and remain provider-native.
+Pre-push rejects every remote branch outside the whitelist. Release tags are
+local product objects published unchanged to either optional Forge.
 
 ## Change admission
 
@@ -93,8 +93,8 @@ not imply hosted publication.
 
 ```mermaid
 flowchart TD
-    S["Same accepted source tree"] --> GL["GitLab native pipeline"]
-    S --> GH["GitHub native pipeline"]
+    S["Same signed local Git objects"] --> GL["GitLab pipeline"]
+    S --> GH["GitHub pipeline"]
     GL --> E["GitLab Release and assets"]
     GH --> H["GitHub Release and assets"]
     E --> A["Read-only parity audit"]
@@ -104,12 +104,14 @@ flowchart TD
 GitLab and GitHub:
 
 - build their own assets;
-- use their own credentials, actors, tags, trust anchors, CI, and Release API;
+- use their own transport credentials, account verification, CI, and Release API;
+- receive the same signed commit and annotated tag objects;
 - never wait for, download from, authenticate to, or publish through the other;
 - remain independently usable when the peer is unavailable.
 
-Parity is a post-publication read-only claim. It compares version, source tree,
-and common-platform payload digests; provider-native signatures remain distinct.
+Parity is a post-publication read-only claim. It requires exact commit and tag
+object OIDs, then compares common-platform payload digests and provider-local CI,
+Release, and asset evidence.
 
 ## Release identity
 
@@ -117,8 +119,9 @@ and common-platform payload digests; provider-native signatures remain distinct.
 Failed tags and runs are retained; a repair uses a later version and never
 rewrites published provenance.
 
-Commit and tag actors are protected execution inputs. Product source does not
-bind an individual author, email, key, or fingerprint.
+Commit and tag identity is one protected product execution input. Each selected
+Forge must accept its public key and verified email. Transport credentials and
+Release API credentials remain provider-local and never alter Git objects.
 
 ## Installation
 

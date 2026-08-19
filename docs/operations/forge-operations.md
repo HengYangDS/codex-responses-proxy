@@ -1,179 +1,129 @@
 # Forge Operations
 
-GitLab and GitHub are independent publication planes for one product source
-tree. Neither is a mirror service for the other.
+Local Git is the product-object authority. GitLab and GitHub are independent,
+optional publication peers; neither is a mirror source for the other.
 
-## Model
+## Authority model
 
 ```mermaid
 flowchart LR
-    L["Accepted local source"] --> G["GitLab"]
-    L --> H["GitHub"]
-    G --> A["Read-only audit"]
-    H --> A
+    L["Signed local Git objects"] --> GL["GitLab"]
+    L --> GH["GitHub"]
+    GL --> A["Read-only exact-object audit"]
+    GH --> A
 ```
 
 | Plane | Owns |
 | --- | --- |
-| Local | Accepted source, build, test, installation, runtime proof |
-| GitLab | Provider-specific commit identities, CI, signed tag, Release, assets |
-| GitHub | Provider-specific commit identities, CI, signed tag, Release, assets |
-| Audit | Read-only comparison after both publications exist |
+| Local | Commit and tag objects, build, test, package, install, runtime proof |
+| GitLab | Transport authentication, account verification, CI, Release, assets |
+| GitHub | Transport authentication, account verification, CI, Release, assets |
+| Audit | Read-only comparison after publication |
 
-## Execution inputs
+The commit and annotated tag are signed once locally. The public signing key and
+product email must be accepted by each selected Forge. SSH keys or tokens used to
+push may differ per Forge; transport authentication never changes a Git object.
 
-Publication context is external and protected. It may admit multiple authorized
-actors and signers for team operation.
+## Product publication context
+
+The publication context is an explicit protected input, not repository source:
 
 ```toml
-schema_version = 1
-provider = "gitlab-or-github"
-repository = "group-or-owner/repository"
-commit_allowed_signers = "/protected/path"
-tag_allowed_signers = "/protected/path"
+schema-version = 1
+
+[product]
+actor-name = "Product Publisher"
+actor-email = "publisher@example.com"
+active-signing-fingerprint = "SHA256:..."
 ```
 
-The command plane consumes, among other protected values:
+Each Forge supplies its own allowed-signers trust input. Product source contains
+no personal key, private credential, local checkout path, or Forge token.
 
-- `CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS`;
-- `CODEX_RESPONSES_PROXY_GITHUB_COMMIT_ALLOWED_SIGNERS`;
-- `CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY`, a protected Forge secret;
-- `CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST`, the matching allowed-signers
-  entry.
+## Branches
 
-The GitLab file variable supplies its protected file path directly. The fixed
-Ubuntu GitHub release job materializes its text secret once with mode `0600`.
-Both adapters then supply the same file-path contract to release tooling.
-Product code never accepts private-key text, recreates permissions, or writes a
-second copy.
-
-Product source contains no actor email, personal key, fingerprint, token, or
-local checkout path.
-
-## Branch publication
+Publishing local `main` atomically advances the selected peer's protected `main`
+and `dev` to the same commit. A `proposal/*` publication advances only that exact
+proposal. `dev`, `candidate/*`, `work/*`, and arbitrary feature refs are not
+publication sources.
 
 ```bash
 uv run --locked --no-sync python -m tools.forge.project \
-  --provider gitlab --publication-context "$PUBLICATION_CONTEXT" \
-  --anchor "$GITLAB_COMMIT_ANCHOR" --repository "$GITLAB_REPOSITORY" \
+  --provider gitlab \
+  --email "$PRODUCT_EMAIL" \
+  --allowed-signers "$GITLAB_COMMIT_ALLOWED_SIGNERS" \
+  --repository "$GITLAB_REPOSITORY" \
   --runner-tag "$GITLAB_RUNNER_TAG"
+
 uv run --locked --no-sync python -m tools.forge.project \
-  --provider github --publication-context "$PUBLICATION_CONTEXT" \
-  --anchor "$GITHUB_COMMIT_ANCHOR" --repository "$GITHUB_REPOSITORY"
+  --provider github \
+  --email "$PRODUCT_EMAIL" \
+  --allowed-signers "$GITHUB_COMMIT_ALLOWED_SIGNERS" \
+  --repository "$GITHUB_REPOSITORY"
 ```
 
-If a previously published provider tip was created as an exact forward-only
-checkpoint after a verified canonical ancestor, resume with all three observed
-coordinates:
+Normal publication is fast-forward or idempotent. A one-time migration from an
+old provider-specific history requires exact observed tips for every divergent
+remote ref:
 
 ```bash
 uv run --locked --no-sync python -m tools.forge.project \
   --provider <gitlab-or-github> \
-  --continuity-base <canonical-ancestor> \
-  --projected-anchor <provider-match-for-that-ancestor> \
-  --expect-remote-tip <observed-provider-tip> \
-  --publication-context "$PUBLICATION_CONTEXT" \
-  --anchor <provider-commit-anchor> --repository <provider-repository>
+  --email "$PRODUCT_EMAIL" \
+  --allowed-signers <peer-commit-anchor> \
+  --expect-remote-tip main=<observed-main-oid> \
+  --expect-remote-tip dev=<observed-dev-oid>
 ```
 
-This is an exact continuity input, not a bypass: the projector verifies the
-active provider trust epoch, requires one unique identity-neutral match for the
-canonical base, cuts both ordered histories at that exact base and anchor,
-compares the current provider tip, and then appends successors by ordinary
-atomic fast-forward. Repeated fingerprints in retired prefixes do not
-participate; ambiguity among successors after the cut still fails closed.
-
-Each projection:
-
-1. reads the selected provider context;
-2. verifies source and provider-native history;
-3. creates only the required provider-specific commit identities;
-4. proves the update is forward-only and fast-forward;
-5. atomically advances that Forge's protected `main` and `dev` to the same
-   provider-native commit;
-6. pushes no other branch.
-
-`main` is the default release branch. `dev` is the shared integration branch.
-They intentionally point to the same provider-native commit immediately after
-publication; later proposal integration may advance `dev` first. Local
-`candidate/dev` and `work/*` refs are never published.
-
-No history rewrite, force push, tag copy, or cross-Forge credential use is
-admitted.
+The projector uses an atomic push and per-ref `--force-with-lease`. Any remote
+drift rejects the whole operation. It never creates a commit, maps histories,
+or reads the other peer.
 
 ## Tags and releases
 
+The first invocation creates and signs the local annotated tag. Each invocation
+then verifies and publishes that exact local tag object to one selected peer:
+
 ```bash
-uv run --locked --no-sync python -m tools.release.tag --provider gitlab --tag v<VERSION> \
-  --publication-context "$PUBLICATION_CONTEXT" --anchor "$GITLAB_TAG_ANCHOR"
-uv run --locked --no-sync python -m tools.release.tag --provider github --tag v<VERSION> \
-  --publication-context "$PUBLICATION_CONTEXT" --anchor "$GITHUB_TAG_ANCHOR"
+uv run --locked --no-sync python -m tools.release.tag \
+  --provider gitlab --tag v<VERSION> \
+  --publication-context "$PUBLICATION_CONTEXT" \
+  --anchor "$GITLAB_TAG_ALLOWED_SIGNERS"
+
+uv run --locked --no-sync python -m tools.release.tag \
+  --provider github --tag v<VERSION> \
+  --publication-context "$PUBLICATION_CONTEXT" \
+  --anchor "$GITHUB_TAG_ALLOWED_SIGNERS"
 ```
 
-Each Forge builds and publishes its own assets. A GitLab job does not query or
-download a GitHub release; a GitHub job does not query or download a GitLab
-release.
-
-A failed release remains immutable evidence. Repair by advancing `VERSION`,
-Changelog, source, tag, and Release.
+An existing remote tag with the same OID is idempotent. A different OID fails
+closed. Each Forge independently runs CI and publishes its own Release record
+and assets; neither consumes the other.
 
 ## Read-only parity audit
 
-Refresh the required tracking refs, then run:
-
 ```bash
-python3 tools/forge/audit.py \
-  --gitlab-remote "$GITLAB_REMOTE" \
-  --github-remote "$GITHUB_REMOTE" \
-  --gitlab-commit-anchor "$GITLAB_COMMIT_ANCHOR" \
-  --github-commit-anchor "$GITHUB_COMMIT_ANCHOR" \
-  --gitlab-author-email "$GITLAB_AUTHOR_EMAIL" \
-  --github-author-email "$GITHUB_AUTHOR_EMAIL" \
-  --gitlab-tag-anchor "$GITLAB_TAG_ANCHOR" \
-  --github-tag-anchor "$GITHUB_TAG_ANCHOR" \
-  --gitlab-projection-receipt "$GITLAB_PROJECTION_RECEIPT" \
-  --github-projection-receipt "$GITHUB_PROJECTION_RECEIPT" \
+uv run --locked --no-sync python -m tools.forge.audit \
+  --commit-anchor "$PRODUCT_COMMIT_ALLOWED_SIGNERS" \
+  --author-email "$PRODUCT_EMAIL" \
+  --tag-anchor "$PRODUCT_TAG_ALLOWED_SIGNERS" \
   --json
 ```
 
-The audit proves only the facts it observes. It does not authorize installation
-or repair an incomplete release. Each projection receipt must bind the current
-provider `main` tip and supply the exact projected continuity anchor created by
-the publication transaction. The audit verifies provenance from that anchor
-through the current tip; it rejects a missing, stale, or unreachable receipt
-instead of silently applying today's trust policy to unrelated retired history.
-
-Persistent branches are read from `.ethos/workspace.toml`. Local `main`, `dev`,
-and `candidate/dev`, plus remote `main` and `dev`, are therefore expected
-topology. Any other local or remote branch remains housekeeping residue.
-
-| Compared | Rule |
+| Compared | Required result |
 | --- | --- |
-| Version and tag target | Same accepted product version and equal source tree |
-| Branch lineage | Non-empty equal ordered tree suffix ending at the current tip |
-| Required CI | Each provider's own required jobs succeed |
-| Release record | Each provider has its own formal Release |
-| Common platform assets | Archive and manifest payload digests match |
-| Signatures | Verified independently from each exact continuity anchor |
-| Platform-only assets | Valid on the publishing Forge; no false full-set equality |
+| Local/GitLab/GitHub `main` and `dev` | One exact commit OID |
+| Product commit | Expected email and trusted signature |
+| Local/GitLab/GitHub tags | Same annotated tag names and object OIDs |
+| Tag targets | Same peeled commit and tree OIDs |
+| Tag signatures | Trusted against the supplied product anchor |
+| Remote branches | Only `main`, `dev`, and transient `proposal/*` while active |
+
+Equal trees, equal messages, or a shared history suffix do not establish parity.
 
 ## Runners
 
 A runner belongs to one `Forge × repository × platform × executor × purpose`
-boundary.
-
-- Description identifies project, host platform, executor, and purpose.
-- Tags express target capability, not a fictitious host identity.
-- Every job proves actual OS and architecture before building.
-- Verification and release privileges remain separate.
-- A runner for one repository or Forge never serves the other implicitly.
-
-Missing or mismatched runner capability blocks the job; it is not an allowed
-failure and must not be disguised by platform monkeypatching.
-
-GitLab verification starts from digest-pinned official UV/Python images. The
-image owns only the executor; `uv.lock` owns project dependencies and Nox owns
-the verification graph. A project-scoped runner cache may shorten downloads,
-but an empty cache must remain correct. Ordinary verification must not reinstall
-UV, redownload its primary interpreter, or build an editable source package
-before Nox builds and tests the wheel.
+boundary. Tags describe capability, jobs prove the actual platform, and release
+privileges remain separate from ordinary verification. Missing runner capacity
+is an infrastructure fact, never permission to weaken product gates.

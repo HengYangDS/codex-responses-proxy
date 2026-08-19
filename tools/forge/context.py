@@ -1,4 +1,4 @@
-"""External Forge publication identity and OpenSSH-agent selection."""
+"""External product publication identity and OpenSSH-agent selection."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ class PublicationContextError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class PublicationContext:
-    """Caller-owned identity for one independent Forge plane."""
+    """Caller-owned identity for immutable local Git objects."""
 
     name: str
     email: str
@@ -34,25 +34,25 @@ class SigningContext:
     public_key: Path
 
 
-def load(path: Path, provider: str) -> PublicationContext:
-    """Load one provider record from an explicit publication context."""
+def load(path: Path) -> PublicationContext:
+    """Load the one product identity from an explicit publication context."""
 
     try:
         value = tomllib.loads(path.read_text(encoding="utf-8"))
-        record = value[provider]
+        record = value["product"]
         fields = (
             record["actor-name"],
             record["actor-email"],
             record["active-signing-fingerprint"],
         )
     except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
-        raise PublicationContextError(f"invalid publication context for {provider}") from error
+        raise PublicationContextError("invalid product publication context") from error
     if value.get("schema-version") != 1:
         raise PublicationContextError("unsupported publication context schema")
     if not all(isinstance(item, str) and item and "\t" not in item for item in fields):
-        raise PublicationContextError("Forge publication identity is incomplete")
+        raise PublicationContextError("product publication identity is incomplete")
     if _FINGERPRINT.fullmatch(fields[2]) is None:
-        raise PublicationContextError("provider signing fingerprint is invalid")
+        raise PublicationContextError("product signing fingerprint is invalid")
     return PublicationContext(*fields)
 
 
@@ -88,4 +88,4 @@ def select_signing_key(context: PublicationContext, destination: Path) -> Signin
             return SigningContext(Path(ssh_keygen).resolve(), destination)
     except (OSError, subprocess.CalledProcessError, IndexError, UnicodeError) as error:
         raise PublicationContextError("OpenSSH agent signing capability is invalid") from error
-    raise PublicationContextError("required provider signing fingerprint is not loaded")
+    raise PublicationContextError("required product signing fingerprint is not loaded")

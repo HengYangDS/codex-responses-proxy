@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 GITLAB_LOCKED_PYTHON = "uv run --locked --no-sync --python python --no-python-downloads"
 
@@ -39,7 +38,11 @@ def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> 
     ("release_value", "image_version", "message"),
     [
         ("3.14", "3.14.7", "native release Python is unavailable or invalid"),
-        ("not.a.version", "not.a.version", "native release Python is unavailable or invalid"),
+        (
+            "not.a.version",
+            "not.a.version",
+            "native release Python is unavailable or invalid",
+        ),
         ("3.14.7", "3.14.6", "Linux release runtime is unavailable or mutable"),
     ],
 )
@@ -207,8 +210,8 @@ def _assert_github_required_tokens(text: str) -> None:
         "fetch-tags: true",
         "if: github.ref_type == 'tag'",
         "python -m tools.release.publish_github prepare-checkout",
-        'uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"',
-        "uv run --locked --no-sync python tools/release/metadata.py --provider github",
+        'uv run --locked --no-sync python tools/release/metadata.py --tag "$GITHUB_REF_NAME"',
+        "uv run --locked --no-sync python tools/release/metadata.py",
         "python-quality:",
         "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
         "uv run --locked --group quality nox -s quality",
@@ -332,8 +335,10 @@ def _assert_github_governance_contract(text: str) -> None:
     for token in ("fetch-depth: 0", "fetch-tags: true"):
         if token not in checkout_block:
             raise AssertionError(f"governance checkout must contain {token!r}")
-    tag_check = 'uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"'
-    branch_check = "uv run --locked --no-sync python tools/release/metadata.py --provider github"
+    tag_check = (
+        'uv run --locked --no-sync python tools/release/metadata.py --tag "$GITHUB_REF_NAME"'
+    )
+    branch_check = "uv run --locked --no-sync python tools/release/metadata.py"
     for token in (
         "if: github.ref_type == 'tag'",
         "if: github.ref_type != 'tag'",
@@ -344,7 +349,7 @@ def _assert_github_governance_contract(text: str) -> None:
             raise AssertionError(f"governance ref dispatch must contain {token!r}")
     if governance_block.count(branch_check) != 2:
         raise AssertionError("governance must use one exact-tag and one ordinary GitHub check")
-    if "--provider github --prepare-release" in governance_block:
+    if "--prepare-release" in governance_block:
         raise AssertionError(
             "ordinary GitHub main verification must not require same-day release preparation"
         )

@@ -248,7 +248,7 @@ def _verify_source(checkout: Path, tag: str, trust: str) -> None:
         anchor = Path(name) / "allowed-signers"
         anchor.write_text(trust.rstrip("\n") + "\n", encoding="utf-8")
         try:
-            tag_signature.verify(checkout, tag, "github", anchor)
+            tag_signature.verify(checkout, tag, anchor)
         except tag_signature.TagSignatureError as error:
             raise GitHubPublishError("GitHub release tag signature is invalid") from error
     # Keep the active repository environment; resolving a venv executable
@@ -258,8 +258,6 @@ def _verify_source(checkout: Path, tag: str, trust: str) -> None:
         (
             str(python),
             str(checkout / "tools/release/metadata.py"),
-            "--provider",
-            "github",
             "--tag",
             tag,
         ),

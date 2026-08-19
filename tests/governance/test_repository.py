@@ -8,11 +8,12 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import install
 from codex_responses_proxy.runtime import config as runtime_config
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -43,9 +44,15 @@ class TestInstallationInputValidation:
                 ),
             ),
             (
-                {"XDG_DATA_HOME": "/portable/data", "XDG_STATE_HOME": "/portable/state"},
+                {
+                    "XDG_DATA_HOME": "/portable/data",
+                    "XDG_STATE_HOME": "/portable/state",
+                },
                 {"os.name": "posix", "sys.platform": "linux"},
-                ("/portable/data/codex-responses-proxy", "/portable/state/codex-responses-proxy"),
+                (
+                    "/portable/data/codex-responses-proxy",
+                    "/portable/state/codex-responses-proxy",
+                ),
             ),
         )
         for environment, platform, expected in cases:
@@ -147,7 +154,10 @@ class TestInstallationInputValidation:
             "response_failed_max_stages",
         }
         settings = runtime_config.load({})
-        assert settings.listener == (runtime_config.listener_host(), runtime_config.DEFAULT_PORT)
+        assert settings.listener == (
+            runtime_config.listener_host(),
+            runtime_config.DEFAULT_PORT,
+        )
 
     def test_runtime_settings_have_one_owner_and_strict_validation(self, subtests):
         environment = {
@@ -296,16 +306,16 @@ class TestGovernanceMetadata:
             '"""Forge-native publication observation adapters."""\n'
         )
 
-    def test_collaboration_has_one_append_only_projection_surface(self, subtests):
+    def test_collaboration_has_one_exact_object_projection_surface(self, subtests):
         projector = ROOT / "tools" / "forge" / "project.py"
         assert projector.is_file()
         source = projector.read_text(encoding="utf-8")
-        for destructive in ("filter-branch", "filter-repo", "push --force", "push -f"):
+        for destructive in ("filter-branch", "filter-repo", "commit-tree", '"-S"'):
             with subtests.test(destructive=destructive):
                 assert destructive not in source
-        assert '"commit-tree",' in source
-        assert '"-S",' in source
-        assert '"push",' in source
+        assert '("main", source), ("dev", source)' in source
+        assert '"push", "--atomic"' in source
+        assert "--force-with-lease=refs/heads/" in source
 
     def test_governance_hooks_are_installed_runtime_state_not_product_source(self):
         assert not (ROOT / ".githooks").exists()

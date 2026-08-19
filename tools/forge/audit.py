@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
-"""Read-only parity evidence for independently configured Forge planes."""
+"""Read-only exact-object parity evidence for optional Forge peers."""
 
 from __future__ import annotations
 
 import json
-import shutil
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,12 +15,28 @@ from cyclopts import App, Parameter
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKSPACE_POLICY = ROOT / ".ethos/workspace.toml"
+PERSISTENT_BRANCHES = ("main", "dev")
+
+
+def _environment() -> dict[str, str]:
+    """Return a Git environment independent from personal configuration."""
+
+    environment = os.environ.copy()
+    environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
+    return environment
 
 
 def command(*args: str, cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess[str]:
     """Run a captured subprocess and raise a concise error when requested."""
 
-    result = subprocess.run(args, cwd=cwd, text=True, capture_output=True, check=False)
+    result = subprocess.run(
+        args,
+        cwd=cwd,
+        env=_environment(),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
     if check and result.returncode:
         raise RuntimeError((result.stderr or result.stdout).strip() or "command failed")
     return result
@@ -33,13 +48,9 @@ def output(*args: str, cwd: Path = ROOT) -> str:
     return command(*args, cwd=cwd).stdout.strip()
 
 
-def remote_url(remote: str) -> str:
-    """Return the repository-local URL configured for a Git remote."""
-
-    return output("git", "config", "--local", "--get", f"remote.{remote}.url")
-
-
-def branches_for_audit(path: Path = WORKSPACE_POLICY) -> tuple[frozenset[str], frozenset[str]]:
+def branches_for_audit(
+    path: Path = WORKSPACE_POLICY,
+) -> tuple[frozenset[str], frozenset[str]]:
     """Return persistent local and remote branches from repository policy."""
 
     try:
@@ -54,10 +65,10 @@ def branches_for_audit(path: Path = WORKSPACE_POLICY) -> tuple[frozenset[str], f
     return frozenset((release, accepted, candidate)), frozenset((release, accepted))
 
 
-def remote_branches(remote: str, expected: frozenset[str]) -> list[str]:
+def remote_branches(root: Path, remote: str, expected: frozenset[str]) -> list[str]:
     """Return provider branches outside the declared persistent roles."""
 
-    refs = output("git", "ls-remote", "--heads", remote).splitlines()
+    refs = output("git", "ls-remote", "--heads", remote, cwd=root).splitlines()
     return sorted(
         ref.removeprefix("refs/heads/")
         for line in refs
@@ -67,361 +78,248 @@ def remote_branches(remote: str, expected: frozenset[str]) -> list[str]:
     )
 
 
-def local_branches(expected: frozenset[str]) -> list[str]:
+def local_branches(root: Path, expected: frozenset[str]) -> list[str]:
     """Return local branches outside the declared persistent roles."""
 
     return sorted(
         branch
         for branch in output(
-            "git", "for-each-ref", "refs/heads", "--format=%(refname:short)"
+            "git", "for-each-ref", "refs/heads", "--format=%(refname:short)", cwd=root
         ).splitlines()
         if branch not in expected
     )
 
 
-def commits_from_continuity_base(commits: list[str], base: str) -> list[str]:
-    """Return the current trust epoch, including its exact oldest commit."""
+def local_branch_oids(root: Path) -> dict[str, str]:
+    """Return exact local persistent branch commits."""
 
-    try:
-        return commits[: commits.index(base) + 1]
-    except ValueError as error:
-        raise RuntimeError("continuity base is not an ancestor of the current tip") from error
-
-
-def continuity_base(receipt: Path, provider: str, current_tip: str) -> str:
-    """Return the exact provider trust-epoch base from one projection receipt."""
-
-    try:
-        payload = json.loads(receipt.read_text(encoding="utf-8"))
-        receipt_provider = payload["provider"]
-        receipt_tip = payload["projected_commit"]
-        base = payload["continuity_projected_anchor"]
-    except (KeyError, OSError, TypeError, UnicodeError, json.JSONDecodeError) as error:
-        raise RuntimeError("projection receipt is unavailable or invalid") from error
-    if receipt_provider != provider or receipt_tip != current_tip:
-        raise RuntimeError("projection receipt does not bind the current provider tip")
-    if not isinstance(base, str) or not base:
-        raise RuntimeError("projection receipt has no explicit continuity base")
-    return base
+    return {
+        branch: output("git", "rev-parse", "--verify", f"refs/heads/{branch}^{{commit}}", cwd=root)
+        for branch in PERSISTENT_BRANCHES
+    }
 
 
-def branch_provenance(
-    ref: str,
-    allowed_signers: Path,
-    expected_email: str,
-    *,
-    continuity_base: str,
-    cwd: Path = ROOT,
-) -> dict[str, object]:
-    """Verify the explicit current trust epoch against one Forge policy."""
+def remote_branch_oids(root: Path, remote: str) -> dict[str, str]:
+    """Return exact remote persistent branch commits."""
 
-    commits = commits_from_continuity_base(
-        output("git", "rev-list", ref, cwd=cwd).splitlines(), continuity_base
+    refs = output(
+        "git",
+        "ls-remote",
+        "--heads",
+        remote,
+        *(f"refs/heads/{branch}" for branch in PERSISTENT_BRANCHES),
+        cwd=root,
+    ).splitlines()
+    observed = {
+        ref.removeprefix("refs/heads/"): oid
+        for line in refs
+        if len(parts := line.split("\t", 1)) == 2
+        for oid, ref in [parts]
+    }
+    if set(observed) != set(PERSISTENT_BRANCHES):
+        raise RuntimeError(f"{remote} does not expose exact main and dev refs")
+    return observed
+
+
+def exact_branch_parity(
+    local: dict[str, str], gitlab: dict[str, str], github: dict[str, str]
+) -> bool:
+    """Return whether every persistent ref names one product commit."""
+
+    values = [
+        mapping[branch] for mapping in (local, gitlab, github) for branch in PERSISTENT_BRANCHES
+    ]
+    return len(set(values)) == 1
+
+
+def _tag_names(repository: Path) -> list[str]:
+    """Return local SemVer tag names."""
+
+    return output("git", "tag", "--list", "v[0-9]*", cwd=repository).splitlines()
+
+
+def _tag_evidence(repository: Path, tags: list[str], anchor: Path) -> dict[str, dict[str, object]]:
+    """Describe and verify exact annotated tag objects in one repository."""
+
+    evidence: dict[str, dict[str, object]] = {}
+    for tag in tags:
+        reference = f"refs/tags/{tag}"
+        annotated = output("git", "cat-file", "-t", reference, cwd=repository) == "tag"
+        signature = (
+            annotated
+            and command(
+                "git",
+                "-c",
+                "gpg.format=ssh",
+                "-c",
+                "gpg.ssh.program=ssh-keygen",
+                "-c",
+                f"gpg.ssh.allowedSignersFile={anchor.resolve()}",
+                "verify-tag",
+                tag,
+                cwd=repository,
+                check=False,
+            ).returncode
+            == 0
+        )
+        evidence[tag] = {
+            "tag_object_oid": output("git", "rev-parse", reference, cwd=repository),
+            "commit_oid": output("git", "rev-parse", f"{reference}^{{commit}}", cwd=repository),
+            "tree_oid": output("git", "rev-parse", f"{reference}^{{tree}}", cwd=repository),
+            "annotated": annotated,
+            "signature_verified": signature,
+        }
+    return evidence
+
+
+def local_release_evidence(root: Path, anchor: Path) -> dict[str, dict[str, object]]:
+    """Return local release-tag object evidence."""
+
+    return _tag_evidence(root, _tag_names(root), anchor)
+
+
+def provider_release_evidence(
+    root: Path, remote: str, anchor: Path
+) -> dict[str, dict[str, object]]:
+    """Fetch and verify one peer's release-tag objects in isolation."""
+
+    remote_url = output("git", "config", "--local", "--get", f"remote.{remote}.url", cwd=root)
+    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-parity-") as name:
+        repository = Path(name) / "repository.git"
+        command("git", "init", "--quiet", "--bare", str(repository), cwd=root)
+        command(
+            "git",
+            "-C",
+            str(repository),
+            "fetch",
+            "--quiet",
+            "--force",
+            "--no-tags",
+            remote_url,
+            "+refs/tags/*:refs/tags/*",
+            cwd=root,
+        )
+        return _tag_evidence(repository, _tag_names(repository), anchor)
+
+
+def exact_tag_parity(
+    local: dict[str, dict[str, object]],
+    gitlab: dict[str, dict[str, object]],
+    github: dict[str, dict[str, object]],
+) -> bool:
+    """Return whether all peers expose the same verified annotated tag objects."""
+
+    if not local or set(local) != set(gitlab) or set(local) != set(github):
+        return False
+    return all(
+        local[tag] == gitlab[tag] == github[tag]
+        and local[tag]["annotated"] is True
+        and local[tag]["signature_verified"] is True
+        for tag in local
     )
-    untrusted: list[str] = []
-    identity_mismatches: list[str] = []
-    for commit in commits:
-        identities = command(
-            "git", "show", "-s", "--format=%ae%n%ce", commit, cwd=cwd
-        ).stdout.splitlines()
-        if identities != [expected_email, expected_email]:
-            identity_mismatches.append(commit)
-        if command(
+
+
+def _verify_product_commit(root: Path, commit: str, anchor: Path, email: str) -> bool:
+    """Verify the shared commit identity once at the local authority."""
+
+    identities = output("git", "show", "-s", "--format=%ae%n%ce", commit, cwd=root).splitlines()
+    return (
+        identities == [email, email]
+        and command(
             "git",
             "-c",
             "gpg.format=ssh",
             "-c",
             "gpg.ssh.program=ssh-keygen",
             "-c",
-            f"gpg.ssh.allowedSignersFile={allowed_signers}",
+            f"gpg.ssh.allowedSignersFile={anchor.resolve()}",
             "verify-commit",
             commit,
-            cwd=cwd,
+            cwd=root,
             check=False,
-        ).returncode:
-            untrusted.append(commit)
-    return {
-        "commit_count": len(commits),
-        "all_commits_trusted": not untrusted,
-        "untrusted_commits": untrusted,
-        "all_commits_use_provider_email": not identity_mismatches,
-        "identity_mismatches": identity_mismatches,
-    }
-
-
-def provider_release_evidence(
-    remote: str, provider: str, allowed_signers: Path
-) -> dict[str, dict[str, object]]:
-    """Inspect provider-native tags through an isolated temporary clone."""
-
-    workspace = Path(tempfile.mkdtemp(prefix="codex-responses-proxy-parity-"))
-    clone = workspace / "repository"
-    try:
-        command(
-            "git",
-            "clone",
-            "--quiet",
-            "--no-local",
-            "--no-tags",
-            f"file://{ROOT}",
-            str(clone),
-        )
-        command("git", "-C", str(clone), "remote", "remove", "origin")
-        command("git", "-C", str(clone), "remote", "add", "provider", remote_url(remote))
-        command(
-            "git",
-            "-C",
-            str(clone),
-            "fetch",
-            "--quiet",
-            "--no-tags",
-            "provider",
-            "refs/heads/main:refs/remotes/provider/main",
-        )
-        remote_tags = command(
-            "git", "-C", str(clone), "ls-remote", "--tags", "provider", "v[0-9]*"
-        ).stdout.splitlines()
-        command("git", "-C", str(clone), "fetch", "--quiet", "--tags", "provider")
-        evidence: dict[str, dict[str, object]] = {}
-        for line in remote_tags:
-            _, ref = line.split("\t", 1)
-            if ref.endswith("^{}"):
-                continue
-            tag = ref.removeprefix("refs/tags/")
-            reachable = (
-                command(
-                    "git",
-                    "-C",
-                    str(clone),
-                    "merge-base",
-                    "--is-ancestor",
-                    f"{tag}^{{}}",
-                    "refs/remotes/provider/main",
-                    check=False,
-                ).returncode
-                == 0
-            )
-            signature = (
-                command(
-                    "git",
-                    "-C",
-                    str(clone),
-                    "-c",
-                    "gpg.format=ssh",
-                    "-c",
-                    f"gpg.ssh.allowedSignersFile={allowed_signers.resolve()}",
-                    "verify-tag",
-                    tag,
-                    check=False,
-                ).returncode
-                == 0
-            )
-            evidence[tag] = {
-                "tree": output("git", "-C", str(clone), "rev-parse", f"{tag}^{{}}^{{tree}}"),
-                "signature": signature,
-                "reachable_from_main": reachable,
-            }
-        return evidence
-    finally:
-        shutil.rmtree(workspace, ignore_errors=True)
-
-
-def live_main(
-    remote: str,
-    anchor: Path,
-    expected_email: str,
-    projection_receipt: Path,
-    provider: str,
-) -> tuple[str, str, list[str], dict[str, object], str]:
-    """Fetch and verify the provider's current main and exact trust epoch."""
-
-    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-main-") as directory:
-        clone = Path(directory) / "repository"
-        command(
-            "git",
-            "clone",
-            "--quiet",
-            "--no-local",
-            "--no-tags",
-            f"file://{ROOT}",
-            str(clone),
-        )
-        command("git", "-C", str(clone), "remote", "remove", "origin")
-        command("git", "-C", str(clone), "remote", "add", "provider", remote_url(remote))
-        command(
-            "git",
-            "-C",
-            str(clone),
-            "fetch",
-            "--quiet",
-            "--no-tags",
-            "provider",
-            "refs/heads/main:refs/remotes/provider/main",
-        )
-        ref = "refs/remotes/provider/main"
-        main = output("git", "rev-parse", ref, cwd=clone)
-        base = continuity_base(projection_receipt, provider, main)
-        return (
-            main,
-            output("git", "rev-parse", f"{ref}^{{tree}}", cwd=clone),
-            output(
-                "git", "log", "--reverse", "--topo-order", "--format=%T", ref, cwd=clone
-            ).splitlines(),
-            branch_provenance(
-                ref,
-                anchor.resolve(),
-                expected_email,
-                continuity_base=base,
-                cwd=clone,
-            ),
-            base,
-        )
-
-
-def shared_history_suffix(left: list[str], right: list[str]) -> list[str]:
-    """Return the ordered provider tree suffix shared by both histories."""
-
-    size = 0
-    for left_tree, right_tree in zip(reversed(left), reversed(right), strict=False):
-        if left_tree != right_tree:
-            break
-        size += 1
-    return left[-size:] if size else []
+        ).returncode
+        == 0
+    )
 
 
 def audit(
     *,
-    gitlab_commit_anchor: Path,
-    github_commit_anchor: Path,
-    gitlab_author_email: str,
-    github_author_email: str,
-    gitlab_tag_anchor: Path,
-    github_tag_anchor: Path,
+    root: Path,
+    commit_anchor: Path,
+    author_email: str,
+    tag_anchor: Path,
     gitlab_remote: str,
     github_remote: str,
-    gitlab_projection_receipt: Path,
-    github_projection_receipt: Path,
 ) -> dict[str, Any]:
-    """Collect read-only cross-Forge parity and housekeeping evidence."""
+    """Collect exact local/GitLab/GitHub parity and housekeeping evidence."""
 
-    gitlab_main, gitlab_tree, gitlab_trees, gitlab_provenance, gitlab_base = live_main(
-        gitlab_remote,
-        gitlab_commit_anchor,
-        gitlab_author_email,
-        gitlab_projection_receipt,
-        "gitlab",
-    )
-    github_main, github_tree, github_trees, github_provenance, github_base = live_main(
-        github_remote,
-        github_commit_anchor,
-        github_author_email,
-        github_projection_receipt,
-        "github",
-    )
-    gitlab_tags = provider_release_evidence(gitlab_remote, "gitlab", gitlab_tag_anchor)
-    github_tags = provider_release_evidence(github_remote, "github", github_tag_anchor)
-    overlapping = [
-        {
-            "tag": tag,
-            "same_tree": gitlab_tags[tag]["tree"] == github_tags[tag]["tree"],
-            "gitlab_signature": gitlab_tags[tag]["signature"],
-            "github_signature": github_tags[tag]["signature"],
-        }
-        for tag in sorted(set(gitlab_tags) & set(github_tags))
-    ]
-    shared_suffix = shared_history_suffix(gitlab_trees, github_trees)
-    local_roles, remote_roles = branches_for_audit()
+    local_refs = local_branch_oids(root)
+    gitlab_refs = remote_branch_oids(root, gitlab_remote)
+    github_refs = remote_branch_oids(root, github_remote)
+    branches_equal = exact_branch_parity(local_refs, gitlab_refs, github_refs)
+    local_tags = local_release_evidence(root, tag_anchor)
+    gitlab_tags = provider_release_evidence(root, gitlab_remote, tag_anchor)
+    github_tags = provider_release_evidence(root, github_remote, tag_anchor)
+    tags_equal = exact_tag_parity(local_tags, gitlab_tags, github_tags)
+    local_roles, remote_roles = branches_for_audit(root / ".ethos/workspace.toml")
+    housekeeping = {
+        "local_unexpected_branches": local_branches(root, local_roles),
+        "gitlab_unexpected_branches": remote_branches(root, gitlab_remote, remote_roles),
+        "github_unexpected_branches": remote_branches(root, github_remote, remote_roles),
+        "worktrees": output("git", "worktree", "list", "--porcelain", cwd=root).splitlines(),
+    }
+    commit_verified = _verify_product_commit(root, local_refs["main"], commit_anchor, author_email)
     result: dict[str, Any] = {
-        "gitlab_main": gitlab_main,
-        "github_main": github_main,
-        "main_commit_ids": {"gitlab": gitlab_main, "github": github_main},
-        "main_tree_equal": gitlab_tree == github_tree,
-        "main_tree_history_equal": gitlab_trees == github_trees,
-        "main_tree_history_shared_suffix": shared_suffix,
-        "main_tree_history_shared_suffix_count": len(shared_suffix),
-        "gitlab_provenance": gitlab_provenance,
-        "github_provenance": github_provenance,
-        "continuity_bases": {
-            "gitlab": gitlab_base,
-            "github": github_base,
-        },
-        "overlapping_tags": overlapping,
-        "housekeeping": {
-            "local_unexpected_branches": local_branches(local_roles),
-            "gitlab_unexpected_branches": remote_branches(gitlab_remote, remote_roles),
-            "github_unexpected_branches": remote_branches(github_remote, remote_roles),
-            "worktrees": output("git", "worktree", "list", "--porcelain").splitlines(),
-        },
+        "branches": {"local": local_refs, "gitlab": gitlab_refs, "github": github_refs},
+        "branch_object_parity": branches_equal,
+        "product_commit_verified": commit_verified,
+        "tags": {"local": local_tags, "gitlab": gitlab_tags, "github": github_tags},
+        "tag_object_parity": tags_equal,
+        "housekeeping": housekeeping,
     }
     result["ok"] = (
-        result["main_tree_equal"]
-        and bool(shared_suffix)
-        and gitlab_provenance["all_commits_trusted"] is True
-        and github_provenance["all_commits_trusted"] is True
-        and gitlab_provenance["all_commits_use_provider_email"] is True
-        and github_provenance["all_commits_use_provider_email"] is True
-        and not result["housekeeping"]["local_unexpected_branches"]
-        and not result["housekeeping"]["gitlab_unexpected_branches"]
-        and not result["housekeeping"]["github_unexpected_branches"]
-        and bool(overlapping)
-        and all(
-            item["same_tree"] and item["gitlab_signature"] and item["github_signature"]
-            for item in overlapping
-        )
+        branches_equal
+        and commit_verified
+        and tags_equal
+        and not housekeeping["local_unexpected_branches"]
+        and not housekeeping["gitlab_unexpected_branches"]
+        and not housekeeping["github_unexpected_branches"]
     )
     return result
 
 
 def _command(
     *,
-    gitlab_commit_anchor: Path,
-    github_commit_anchor: Path,
-    gitlab_author_email: str,
-    github_author_email: str,
-    gitlab_tag_anchor: Path,
-    github_tag_anchor: Path,
-    gitlab_projection_receipt: Path,
-    github_projection_receipt: Path,
+    commit_anchor: Path,
+    author_email: str,
+    tag_anchor: Path,
     gitlab_remote: str = "origin",
     github_remote: str = "github",
+    root: Path | None = None,
     as_json: Annotated[bool, Parameter(name="--json", negative=False)] = False,
 ) -> None:
-    """Collect live parity evidence from explicit provider contexts."""
+    """Collect live exact-object parity from explicit product trust inputs."""
 
-    for path in (
-        gitlab_commit_anchor,
-        github_commit_anchor,
-        gitlab_tag_anchor,
-        github_tag_anchor,
-        gitlab_projection_receipt,
-        github_projection_receipt,
-    ):
-        if not path.is_file():
-            raise SystemExit(f"required publication input is unavailable: {path}")
+    root = (root or Path.cwd()).resolve()
+    for path in (commit_anchor, tag_anchor):
+        if not path.is_file() or path.is_symlink():
+            raise SystemExit(f"required publication trust input is unavailable: {path}")
     try:
         evidence = audit(
-            gitlab_commit_anchor=gitlab_commit_anchor,
-            github_commit_anchor=github_commit_anchor,
-            gitlab_author_email=gitlab_author_email,
-            github_author_email=github_author_email,
-            gitlab_tag_anchor=gitlab_tag_anchor,
-            github_tag_anchor=github_tag_anchor,
+            root=root,
+            commit_anchor=commit_anchor,
+            author_email=author_email,
+            tag_anchor=tag_anchor,
             gitlab_remote=gitlab_remote,
             github_remote=github_remote,
-            gitlab_projection_receipt=gitlab_projection_receipt,
-            github_projection_receipt=github_projection_receipt,
         )
-    except RuntimeError as exc:
-        raise SystemExit(f"ERROR: {exc}") from exc
+    except RuntimeError as error:
+        raise SystemExit(f"ERROR: {error}") from error
     if as_json:
         print(json.dumps(evidence, sort_keys=True))
     else:
-        print("main provider identities: independently verified")
-        print(f"main tree parity: {'OK' if evidence['main_tree_equal'] else 'FAILED'}")
-        print(
-            "main tree-history continuity: "
-            f"{'OK' if evidence['main_tree_history_shared_suffix_count'] else 'FAILED'}"
-        )
+        print(f"commit objects: {'identical' if evidence['branch_object_parity'] else 'different'}")
+        print(f"tag objects: {'identical' if evidence['tag_object_parity'] else 'different'}")
         print(f"housekeeping: {'OK' if evidence['ok'] else 'FAILED'}")
     if not evidence["ok"]:
         raise SystemExit(1)

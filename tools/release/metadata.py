@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Verify release identity, changelog provenance, and governance contracts."""
 
 from __future__ import annotations
@@ -7,19 +6,17 @@ import re
 import subprocess
 import sys
 import tomllib
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Annotated
 
 from cyclopts import App, Parameter
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 CHANGELOG_HEADING = re.compile(
     r"^## \[(?P<version>Unreleased|(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))\](?: - (?P<date>\d{4}-\d{2}-\d{2}))?$"
 )
-PROVIDERS = frozenset({"gitlab", "github"})
 
 
 def read_version() -> str:
@@ -55,7 +52,7 @@ def _version_key(version: str) -> tuple[int, int, int]:
 
 
 def known_release_versions() -> list[str]:
-    """Return this checkout's provider-native tags in descending SemVer order."""
+    """Return this checkout's product tags in descending SemVer order."""
 
     tags = _git("tag", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
     return [
@@ -93,22 +90,13 @@ def _git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
 
 
-def check_provider(provider: str) -> None:
-    """Reject programmatic callers that bypass the command grammar."""
-
-    if provider not in PROVIDERS:
-        raise ValueError(f"unsupported release provider: {provider!r}")
-
-
 def check_changelog_provenance(
     releases: list[tuple[str, str]],
     *,
-    provider: str = "gitlab",
     pending_version: str | None = None,
 ) -> None:
-    """Validate one provider's native tags against the shared Changelog."""
+    """Validate local product tags against the shared Changelog."""
 
-    check_provider(provider)
     actual_versions = [version for version, _ in releases]
     expected_versions = known_release_versions()
     if len(actual_versions) != len(set(actual_versions)):
@@ -127,7 +115,6 @@ def check_active_release_train(
     version: str,
     releases: list[tuple[str, str]],
     *,
-    provider: str = "gitlab",
     pending_release: bool = False,
 ) -> None:
     """Accept an untagged next version without treating it as published.
@@ -136,7 +123,6 @@ def check_active_release_train(
     The active ``VERSION`` names that next release train, while the dated
     Changelog headings remain an immutable record of tags that already exist.
     """
-    check_provider(provider)
     known = known_release_versions()
     published = {released for released, _ in releases}
     if version in known:
@@ -186,7 +172,8 @@ def check_release_tag(tag: str, version: str) -> None:
     if target_type != "commit":
         raise ValueError(f"release tag {tag!r} must directly name a commit")
     tag_commit = next(
-        (line.removeprefix("object ") for line in headers if line.startswith("object ")), ""
+        (line.removeprefix("object ") for line in headers if line.startswith("object ")),
+        "",
     )
     head_commit = _git("rev-parse", "HEAD^{commit}")
     if tag_commit != head_commit:
@@ -203,7 +190,7 @@ def check_pending_release_date(
 ) -> None:
     """Reject a prepared release heading dated after the current UTC day."""
 
-    current_date = today or datetime.now(timezone.utc).date()
+    current_date = today or datetime.now(UTC).date()
     value = next((item_date for item, item_date in releases if item == version), None)
     try:
         release_date = date.fromisoformat(value or "")
@@ -249,18 +236,17 @@ def check_governance_contract() -> None:
     if "python tools/release/metadata.py" not in ci:
         raise ValueError("GitLab CI must execute the release and governance checker")
     if "publish-gitlab-release:" not in ci or "tools.release.publish_gitlab" not in ci:
-        raise ValueError("GitLab CI must publish a formal provider-native release record")
+        raise ValueError("GitLab CI must publish a formal peer-local release record")
     if "CI_COMMIT_BRANCH =~ /^release\\/" not in ci:
         raise ValueError("GitLab CI must suppress untagged release-preparation branches")
     operations = (ROOT / "docs" / "operations" / "forge-operations.md").read_text(encoding="utf-8")
-    if "tools/forge/audit.py" not in operations or "--json" not in operations:
+    if "tools.forge.audit" not in operations or "--json" not in operations:
         raise ValueError("forge operations must document the read-only parity audit")
     for token in (
-        "CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS",
-        "CODEX_RESPONSES_PROXY_GITHUB_COMMIT_ALLOWED_SIGNERS",
-        "may admit multiple authorized",
-        "provider-specific commit identities",
-        "forward-only",
+        "GITLAB_COMMIT_ALLOWED_SIGNERS",
+        "GITHUB_COMMIT_ALLOWED_SIGNERS",
+        "signed once locally",
+        "fast-forward or idempotent",
         "fast-forward",
     ):
         if token not in operations:
@@ -273,13 +259,9 @@ def check_governance_contract() -> None:
 def _command(
     *,
     tag: Annotated[str | None, Parameter(help="Require an exact v<version> tag.")] = None,
-    provider: Annotated[
-        str,
-        Parameter(help="Select the provider-native tag plane used for validation."),
-    ] = "gitlab",
     prepare_release: Annotated[
         bool,
-        Parameter(help="Validate a release commit before its provider-native tag exists."),
+        Parameter(help="Validate a release commit before its product tag exists."),
     ] = False,
     changelog: Annotated[Path | None, Parameter(show=False)] = None,
 ) -> None:
@@ -292,7 +274,6 @@ def _command(
     releases = changelog_releases(changelog)
     check_changelog_provenance(
         releases,
-        provider=provider,
         pending_version=version if prepare_release else None,
     )
     if prepare_release:
@@ -317,7 +298,6 @@ def _command(
         check_active_release_train(
             version,
             releases,
-            provider=provider,
             pending_release=prepare_release,
         )
     except ValueError as exc:

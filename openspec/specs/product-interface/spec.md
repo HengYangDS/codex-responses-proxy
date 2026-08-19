@@ -140,34 +140,31 @@ the final installed inode has paid its first-start cost.
 
 ### Requirement: Local product closure is Forge-free
 
-The repository SHALL declare one local verification command and one local
-installation command that operate from its isolated locked environment. It SHALL
-also declare distinct GitLab and GitHub remote aliases and tracked CI surfaces.
-GitLab and GitHub SHALL remain independent publication peers: neither Forge may
-consume the other Forge's CI status or release assets as publication authority.
-Each Forge SHALL independently project accepted source into one signed
-provider-native commit and atomically advance its protected `main` and `dev`
-refs to that commit. Only `main`, `dev`, and `proposal/*` are remote-eligible;
-`candidate/dev` and `work/*` remain local-only. Forge publication SHALL be an
-optional distribution projection, not a prerequisite for local product closure.
+The repository SHALL keep local Git as the sole product source and SHALL make
+GitLab and GitHub optional, independent publication peers. A selected Forge
+SHALL receive the exact signed local commit object without changing author,
+committer, parents, tree, message, or signature. `main` publication SHALL
+atomically advance remote `main` and `dev`; `proposal/*` SHALL publish only the
+selected proposal. `candidate/dev` and `work/*` SHALL remain local-only.
 
 #### Scenario: Both Forges are unavailable
 
 - **WHEN** a clean accepted checkout has no reachable remote
-- **THEN** the declared repository-owned command can verify the current source
-- **AND** an operator can install a verified current-platform artifact through
-  the declared isolated product executable
-- **AND** no hosted publication fact is falsely claimed.
+- **THEN** local verification, packaging, installation, runtime acceptance,
+  update, rollback, and uninstall remain executable
+- **AND** no hosted publication fact is claimed.
 
 #### Scenario: Either Forge is independently available
 
-- **WHEN** GitLab or GitHub alone can receive an admitted remote-eligible branch
-- **THEN** that Forge receives one signed provider-native commit built from the
-  accepted source
-- **AND** its `main` and `dev` refs advance atomically to that exact commit
-- **AND** the projected tree equals the accepted source tree
-- **AND** no candidate or work ref is pushed
-- **AND** the unavailable peer creates no dependency or substitute authority.
+- **WHEN** GitLab or GitHub alone is selected for publication
+- **THEN** it receives the exact local signed commit OID and tree
+- **AND** the unavailable peer is neither read nor required.
+
+#### Scenario: Both Forges are independently available
+
+- **WHEN** each peer is selected in a separate publication operation
+- **THEN** local, GitLab, and GitHub branch tips are the same commit OID
+- **AND** each Forge retains independent authentication, CI, Release, and asset state.
 
 #### Scenario: Source proof is complete
 

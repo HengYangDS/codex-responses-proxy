@@ -1,36 +1,60 @@
-"""Contracts for independent Forge lineage comparison."""
+"""Contracts for exact product-object parity across optional Forge peers."""
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
-from pytest_mock import MockerFixture
 
-from tools.forge import audit
-from tools.forge.audit import branches_for_audit
-from tools.forge.audit import commits_from_continuity_base
-from tools.forge.audit import continuity_base
-from tools.forge.audit import shared_history_suffix
+from tools.forge.audit import (
+    branches_for_audit,
+    exact_branch_parity,
+    exact_tag_parity,
+    remote_branch_oids,
+)
 
 
-class ForgeAuditContracts:
-    """Compare the current semantic lineage, not unrelated old prefixes."""
+def _run(*args: str, cwd: Path) -> str:
+    environment = os.environ.copy()
+    environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
+    return subprocess.run(
+        args,
+        cwd=cwd,
+        env=environment,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
 
-    def test_shared_suffix_accepts_different_provider_cutover_prefixes(self) -> None:
-        assert shared_history_suffix(
-            ["gitlab-only", "shared-one", "shared-two"],
-            ["github-old", "github-only", "shared-one", "shared-two"],
-        ) == ["shared-one", "shared-two"]
 
-    def test_shared_suffix_rejects_different_current_tips(self) -> None:
-        assert (
-            shared_history_suffix(
-                ["shared", "gitlab-tip"],
-                ["shared", "github-tip"],
-            )
-            == []
-        )
+def _tags(oid: str) -> dict[str, dict[str, object]]:
+    return {
+        "v1.0.0": {
+            "tag_object_oid": oid,
+            "commit_oid": "commit",
+            "tree_oid": "tree",
+            "annotated": True,
+            "signature_verified": True,
+        }
+    }
+
+
+class TestForgeAuditContracts:
+    """Require exact Git object equality rather than historical approximation."""
+
+    def test_branch_parity_requires_one_oid_for_local_and_both_peers(self) -> None:
+        common = {"main": "product", "dev": "product"}
+        assert exact_branch_parity(common, common, common)
+        assert not exact_branch_parity(common, common, {"main": "other", "dev": "other"})
+
+    def test_tag_parity_requires_the_same_verified_annotated_object(self) -> None:
+        assert exact_tag_parity(_tags("tag"), _tags("tag"), _tags("tag"))
+        assert not exact_tag_parity(_tags("tag"), _tags("other"), _tags("tag"))
+        unsigned = _tags("tag")
+        unsigned["v1.0.0"]["signature_verified"] = False
+        assert not exact_tag_parity(unsigned, unsigned, unsigned)
 
     def test_branch_inventory_follows_declared_repository_roles(self, tmp_path: Path) -> None:
         policy = tmp_path / "workspace.toml"
@@ -51,63 +75,22 @@ proposal_branch_prefix = "proposal/"
             frozenset({"stable", "integration"}),
         )
 
-    def test_provenance_starts_at_the_exact_continuity_base(self) -> None:
-        assert commits_from_continuity_base(
-            ["tip", "successor", "continuity", "retired"], "continuity"
-        ) == ["tip", "successor", "continuity"]
+    def test_remote_branch_reader_requires_main_and_dev(self, tmp_path: Path) -> None:
+        remote = tmp_path / "remote.git"
+        source = tmp_path / "source"
+        _run("git", "init", "--bare", str(remote), cwd=tmp_path)
+        _run("git", "init", "-b", "main", str(source), cwd=tmp_path)
+        _run("git", "config", "user.name", "Test", cwd=source)
+        _run("git", "config", "user.email", "test@example.test", cwd=source)
+        (source / "README.md").write_text("test\n", encoding="utf-8")
+        _run("git", "add", "README.md", cwd=source)
+        _run("git", "commit", "-m", "test", cwd=source)
+        _run("git", "remote", "add", "peer", str(remote), cwd=source)
+        _run("git", "push", "peer", "main", cwd=source)
 
-    def test_provenance_rejects_a_missing_continuity_base(self) -> None:
-        with pytest.raises(RuntimeError, match="continuity base is not an ancestor"):
-            commits_from_continuity_base(["tip", "parent"], "drifted")
+        with pytest.raises(RuntimeError, match="exact main and dev"):
+            remote_branch_oids(source, "peer")
 
-    def test_audit_consumes_the_exact_provider_projection_receipt(self, tmp_path: Path) -> None:
-        receipt = tmp_path / "gitlab.json"
-        receipt.write_text(
-            '{"provider":"gitlab","source_commit":"source",'
-            '"projected_commit":"tip","continuity_source_base":"source",'
-            '"continuity_projected_anchor":"anchor"}\n',
-            encoding="utf-8",
-        )
-
-        assert continuity_base(receipt, "gitlab", "tip") == "anchor"
-
-    def test_audit_rejects_a_projection_receipt_for_another_tip(self, tmp_path: Path) -> None:
-        receipt = tmp_path / "gitlab.json"
-        receipt.write_text(
-            '{"provider":"gitlab","source_commit":"source",'
-            '"projected_commit":"old-tip","continuity_source_base":"source",'
-            '"continuity_projected_anchor":"anchor"}\n',
-            encoding="utf-8",
-        )
-
-        with pytest.raises(RuntimeError, match="projection receipt does not bind"):
-            continuity_base(receipt, "gitlab", "current-tip")
-
-    def test_release_evidence_fetches_all_provider_tags_once(
-        self, tmp_path: Path, mocker: MockerFixture
-    ) -> None:
-        clone = tmp_path / "repository"
-        clone.mkdir()
-        mocker.patch.object(audit.tempfile, "mkdtemp", return_value=str(tmp_path))
-
-        def completed(*args: str, **_: object) -> audit.subprocess.CompletedProcess[str]:
-            stdout = "a\trefs/tags/v2.0.39\nb\trefs/tags/v2.0.40\n" if "ls-remote" in args else ""
-            return audit.subprocess.CompletedProcess(args, 0, stdout, "")
-
-        run = mocker.patch.object(audit, "command", side_effect=completed)
-        mocker.patch.object(audit, "remote_url", return_value="provider-url")
-        mocker.patch.object(audit, "output", return_value="tree")
-        mocker.patch.object(audit.shutil, "rmtree")
-
-        evidence = audit.provider_release_evidence("origin", "gitlab", tmp_path / "anchor")
-
-        assert set(evidence) == {"v2.0.39", "v2.0.40"}
-        assert any(
-            invocation.args == ("git", "-C", str(clone), "fetch", "--quiet", "--tags", "provider")
-            for invocation in run.call_args_list
-        )
-        assert not any(
-            "refs/tags/" in " ".join(invocation.args)
-            for invocation in run.call_args_list
-            if "fetch" in invocation.args
-        )
+        _run("git", "push", "peer", "main:dev", cwd=source)
+        oid = _run("git", "rev-parse", "HEAD", cwd=source)
+        assert remote_branch_oids(source, "peer") == {"main": oid, "dev": oid}

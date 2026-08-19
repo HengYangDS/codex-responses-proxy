@@ -5,7 +5,9 @@
 Define one repository-owned verification graph whose successful output is
 quiet, reproducible, cross-platform, and sufficient to reject incomplete
 product or release candidates.
+
 ## Requirements
+
 ### Requirement: Verification has one repository-owned owner
 
 Nox SHALL own the complete formatting, lint, typing, security, dependency,
@@ -32,13 +34,13 @@ release.
 - **THEN** release preparation fails closed
 - **AND** the heading is advanced before proof, tagging, or publication.
 
-#### Scenario: Provider-native tags are checked
+#### Scenario: Product tags are checked
 
-- **WHEN** GitLab or GitHub validates release history
-- **THEN** the provider checks its own reachable SemVer tags and corresponding
-  Changelog headings
+- **WHEN** local or hosted verification validates release history
+- **THEN** it checks the reachable product SemVer tags and corresponding
+  Changelog headings from the exact source checkout
 - **AND** tag creation time is not required to equal the Changelog date
-- **AND** the two publication planes remain independently verifiable.
+- **AND** no Forge name or provider-specific tag namespace enters product metadata.
 
 #### Scenario: GitLab runs a repository Python tool
 
@@ -407,22 +409,23 @@ through explicit semantic patterns.
 
 ### Requirement: A patch release has one source identity and independent Forge projections
 
-The exact patch identity MUST come from tracked `VERSION`. Its package,
-Changelog, documentation, signed tag, and assets MUST derive from one accepted
-source commit. GitLab and GitHub MUST each complete their own signed publication
-without querying, mutating, or depending on the other Forge. Each Forge release job MUST use the repository-declared immutable runtime rather than installing operating-system packages during publication.
+`VERSION`, package metadata, Changelog, documentation, signed tag, and assets
+SHALL derive from one accepted local commit. The release tag SHALL be signed
+once as one local Git tag object and pushed unchanged to either optional Forge.
+Each Forge SHALL run and publish independently without consuming the other.
 
 #### Scenario: Both Forge planes publish the current patch
 
-- **WHEN** local exact-HEAD proof passes for the value in `VERSION`
-- **THEN** GitLab and GitHub each publish the corresponding signed tag and complete native asset set from that same source commit
-- **AND** a read-only audit proves source and asset consistency after both publications complete.
+- **WHEN** local exact-HEAD proof passes and the signed local tag exists
+- **THEN** GitLab and GitHub receive the same commit OID and tag object OID
+- **AND** each publishes its own CI result, Release record, and complete assets
+- **AND** a later read-only audit compares exact identities and payload digests.
 
 #### Scenario: One Forge publication fails
 
-- **WHEN** either Forge cannot publish the current patch
-- **THEN** the other Forge remains independently publishable and usable
-- **AND** no existing tag, run, Release, or asset is rewritten to hide failure.
+- **WHEN** either Forge cannot publish
+- **THEN** the other remains independently publishable and usable
+- **AND** no local or peer Git object is rewritten to conceal the failure.
 
 #### Scenario: A release asset is installed
 
@@ -437,11 +440,12 @@ without querying, mutating, or depending on the other Forge. Each Forge release 
 - **THEN** `VERSION` advances to one newer SemVer patch before publication
 - **AND** the Changelog records the repair under that same version
 - **AND** existing tags, runs, Releases, and assets remain unchanged.
+
 #### Scenario: GitLab publishes from the immutable runtime
 
 - **WHEN** GitLab publishes the current patch
-- **THEN** its release job uses the repository-declared immutable runtime
-- **AND** it performs no mutable operating-system package installation.
+- **THEN** the job uses the repository-declared immutable release runtime
+- **AND** it does not install operating-system packages during publication.
 
 ### Requirement: Commit grammar follows the checkout's available integration boundary
 
@@ -650,58 +654,17 @@ authority for project and quality dependencies.
 - **AND** their patch versions and installation paths do not become a second
   repository authority.
 
-### Requirement: Forge continuity recovery is exact and forward-only
+### Requirement: Dual-Forge lineage compares exact current identity
 
-When a trusted provider tip lacks a direct canonical fingerprint match, the
-projector SHALL resume only from an explicit canonical base, its exact projected
-anchor, and the exact observed provider tip. It SHALL verify provider identity
-and signatures, require one unique identity-neutral base match, and append
-canonical successors without rewriting any existing ref.
+The parity audit SHALL require local, GitLab, and GitHub current branch OIDs and
+release tag object OIDs to be equal. Equal trees or an equal ordered tree suffix
+SHALL NOT substitute for exact object identity.
 
-#### Scenario: Exact continuity coordinates are current
+#### Scenario: Provider tips have equal trees but different commits
 
-- **WHEN** the canonical base has one provider match and the provider tip is unchanged
-- **THEN** the provider tip becomes the append-only parent of the canonical base
-- **AND** only canonical successors are recreated
-- **AND** `main` and `dev` advance atomically without force.
-
-#### Scenario: The provider changed after observation
-
-- **WHEN** the live provider tip differs from the expected provider tip
-- **THEN** projection fails before commit creation or ref mutation
-- **AND** the caller must re-observe every continuity coordinate.
-
-### Requirement: Dual-Forge lineage compares current semantic continuity
-
-The parity audit SHALL require equal current tip trees and a non-empty equal
-ordered tree suffix ending at both provider tips. It SHALL NOT require unrelated
-historical prefixes from different provider cutovers to contain the same number
-of commits.
-
-#### Scenario: Provider cutovers have different historical prefixes
-
-- **WHEN** GitLab and GitHub have independently trusted prefixes but share the current ordered tree suffix
-- **THEN** lineage continuity passes
-- **AND** provider provenance, tags, Releases, assets, and housekeeping remain independently checked.
-
-### Requirement: Explicit continuity maps only successors after its exact base
-
-After uniquely matching the supplied canonical base to the supplied provider
-anchor, the projector SHALL map only the ordered successor suffix. Duplicate
-identity-neutral fingerprints before either exact cut SHALL NOT participate in
-successor ambiguity. Duplicate provider matches after the cut SHALL fail before
-commit creation or ref mutation.
-
-#### Scenario: Retired prefixes contain repeated fingerprints
-
-- **WHEN** the explicit base and anchor uniquely identify their sequence positions
-- **THEN** earlier repeated fingerprints do not block continuity
-- **AND** only successor mappings after both positions are considered.
-
-#### Scenario: A successor fingerprint is ambiguous
-
-- **WHEN** one canonical successor matches multiple provider successors after the cut
-- **THEN** projection fails before commit creation or ref mutation.
+- **WHEN** GitLab and GitHub point to different commit OIDs with equal trees
+- **THEN** parity fails
+- **AND** publication remains incomplete until both refs equal the local source OID.
 
 ### Requirement: Release publication uses the immutable repository runtime
 
@@ -717,3 +680,15 @@ packages while publishing a release.
 - **AND** no Debian package index or package download is required
 - **AND** the publisher still executes through the locked synchronized Python
   environment.
+
+### Requirement: Product release metadata is Forge-neutral
+
+The release metadata validator SHALL derive product version, Changelog, and tag
+state only from the exact local checkout. Forge selection, transport identity,
+and peer-local Release records SHALL remain outside that product semantic.
+
+#### Scenario: Either Forge validates the same source object
+
+- **WHEN** GitLab or GitHub runs release metadata validation for the same commit
+- **THEN** both invoke the same provider-free command and observe the same result
+- **AND** no provider flag, provider tag namespace, or compatibility alias exists.

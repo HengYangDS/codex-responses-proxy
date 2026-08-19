@@ -1,53 +1,34 @@
-"""Offline contracts for provider-specific, forward-only Forge projection."""
+"""Exact local-object publication contracts for optional Forge peers."""
 
 from __future__ import annotations
 
-import json
 import os
-import re
 import shutil
 import subprocess
-import sys
 import tempfile
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import TypedDict
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]
+from tools.forge.project import ProjectionError, project
 
 
 class ForgeFixture(TypedDict):
-    """Typed paths and identities for one isolated projection fixture."""
+    """One signed local source and two independent bare peers."""
 
     source: Path
-    gitlab_remote: Path
-    github_remote: Path
-    gitlab_key: Path
-    github_key: Path
-    gitlab_anchor: Path
-    github_anchor: Path
-    context: Path
-    forge_bin: Path
-    gitlab_email: str
-    github_email: str
+    gitlab: Path
+    github: Path
+    anchor: Path
+    email: str
 
 
-def run(*args: str, cwd: Path, env: dict[str, str] | None = None, check: bool = True):
-    """Run one fixture command with isolated Git configuration."""
+def run(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
+    """Run Git with isolated user configuration."""
 
     environment = os.environ.copy()
-    environment.update(
-        {
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "PYTHONDONTWRITEBYTECODE": "1",
-        }
-    )
-    if env:
-        environment.update(env)
+    environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
     result = subprocess.run(
         args, cwd=cwd, env=environment, text=True, capture_output=True, check=False
     )
@@ -56,511 +37,234 @@ def run(*args: str, cwd: Path, env: dict[str, str] | None = None, check: bool = 
     return result
 
 
-def fingerprint(public_key: Path, *, cwd: Path) -> str:
-    """Return the OpenSSH SHA-256 fingerprint for one public key."""
+def signed_commit(repository: Path, name: str, content: str) -> str:
+    """Create one signed fixture commit and return its object ID."""
 
-    return run("ssh-keygen", "-lf", str(public_key), "-E", "sha256", cwd=cwd).stdout.split()[1]
-
-
-@contextmanager
-def ssh_agent(root: Path, *keys: Path) -> Iterator[dict[str, str]]:
-    """Yield an isolated agent containing exactly the requested fixture keys."""
-
-    start = run("ssh-agent", "-s", cwd=root).stdout
-    environment: dict[str, str] = {}
-    for name in ("SSH_AUTH_SOCK", "SSH_AGENT_PID"):
-        match = re.search(rf"{name}=([^;]+)", start)
-        if match is None:
-            raise RuntimeError(f"ssh-agent omitted {name}")
-        environment[name] = match.group(1)
-    try:
-        run("ssh-add", *(str(key) for key in keys), cwd=root, env=environment)
-        yield environment
-    finally:
-        run("ssh-agent", "-k", cwd=root, env=environment, check=False)
+    (repository / name).write_text(content, encoding="utf-8")
+    run("git", "add", name, cwd=repository)
+    run("git", "commit", "-qS", "-m", f"test: {name}", cwd=repository)
+    return run("git", "rev-parse", "HEAD", cwd=repository).stdout.strip()
 
 
-class ProviderProjectionTests:
-    """Prove separate Forge identities over one ordered source-tree history."""
+@pytest.fixture
+def forge_fixture(tmp_path: Path) -> ForgeFixture:
+    """Create a portable signed source and two empty peer repositories."""
 
-    def setup_method(self) -> None:
-        if os.name == "nt":
-            pytest.skip("POSIX Forge integration is not Windows product behavior")
-        for executable in ("ssh-agent", "ssh-add", "ssh-keygen"):
-            if shutil.which(executable) is None:
-                pytest.skip(f"{executable} is required")
+    if shutil.which("ssh-keygen") is None:
+        pytest.skip("OpenSSH signing is unavailable")
+    source = tmp_path / "source"
+    gitlab = tmp_path / "gitlab.git"
+    github = tmp_path / "github.git"
+    key = tmp_path / "signing"
+    anchor = tmp_path / "allowed-signers"
+    email = "product@example.test"
+    run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key), cwd=tmp_path)
+    public = " ".join(key.with_suffix(".pub").read_text(encoding="ascii").split()[:2])
+    anchor.write_text(f'{email} namespaces="git" {public}\n', encoding="ascii")
+    for remote in (gitlab, github):
+        run("git", "init", "-q", "--bare", str(remote), cwd=tmp_path)
+    run("git", "init", "-q", "-b", "main", str(source), cwd=tmp_path)
+    for key_name, value in (
+        ("core.hooksPath", os.devnull),
+        ("user.name", "Product Publisher"),
+        ("user.email", email),
+        ("user.useConfigOnly", "true"),
+        ("gpg.format", "ssh"),
+        ("gpg.ssh.program", "ssh-keygen"),
+        ("user.signingkey", str(key)),
+    ):
+        run("git", "config", key_name, value, cwd=source)
+    signed_commit(source, "README.md", "one\n")
+    run("git", "branch", "dev", cwd=source)
+    run("git", "remote", "add", "origin", str(gitlab), cwd=source)
+    run("git", "remote", "add", "github", str(github), cwd=source)
+    return {
+        "source": source,
+        "gitlab": gitlab,
+        "github": github,
+        "anchor": anchor,
+        "email": email,
+    }
 
-    def fixture(self, root: Path) -> ForgeFixture:
-        """Create a GitLab-authored source, two remotes, identities, and trust."""
 
-        source = root / "source"
-        gitlab_remote = root / "gitlab.git"
-        github_remote = root / "github.git"
-        gitlab_key = root / "gitlab-signing"
-        github_key = root / "github-signing"
-        gitlab_anchor = root / "gitlab-allowed-signers"
-        github_anchor = root / "github-allowed-signers"
-        context = root / "publication-context.toml"
-        gitlab_email = "gitlab-publisher@example.test"
-        github_email = "github-publisher@example.test"
+def publish(fixture: ForgeFixture, provider: str, remote: str, source_ref: str = "main") -> str:
+    """Publish through the public projector contract."""
 
-        for key in (gitlab_key, github_key):
-            run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key), cwd=root)
-        gitlab_public = " ".join(gitlab_key.with_suffix(".pub").read_text().split()[:2])
-        github_public = " ".join(github_key.with_suffix(".pub").read_text().split()[:2])
-        gitlab_anchor.write_text(
-            f'{gitlab_email} namespaces="git" {gitlab_public}\n', encoding="utf-8"
+    return project(
+        root=fixture["source"],
+        provider=provider,
+        source_ref=source_ref,
+        remote=remote,
+        email=fixture["email"],
+        allowed_signers=fixture["anchor"],
+    )
+
+
+def tip(repository: Path, branch: str) -> str:
+    """Read one bare peer branch tip."""
+
+    return run("git", "rev-parse", f"refs/heads/{branch}", cwd=repository).stdout.strip()
+
+
+def test_each_optional_peer_receives_the_exact_local_commit(
+    forge_fixture: ForgeFixture,
+) -> None:
+    """Local, GitLab, and GitHub share one immutable commit object."""
+
+    local = run("git", "rev-parse", "main", cwd=forge_fixture["source"]).stdout.strip()
+    gitlab = publish(forge_fixture, "gitlab", "origin")
+    github = publish(forge_fixture, "github", "github")
+
+    assert gitlab == github == local
+    for peer in (forge_fixture["gitlab"], forge_fixture["github"]):
+        assert tip(peer, "main") == tip(peer, "dev") == local
+
+
+def test_new_remote_refs_use_zero_oid_leases(forge_fixture: ForgeFixture, monkeypatch) -> None:
+    """A branch absent at observation cannot appear before the atomic push."""
+
+    from tools.forge import project as projector
+
+    calls: list[tuple[str, ...]] = []
+    original = projector._git
+
+    def observe(root: Path, *args: str, check: bool = True):
+        if args[:2] == ("push", "--atomic"):
+            calls.append(args)
+        return original(root, *args, check=check)
+
+    monkeypatch.setattr(projector, "_git", observe)
+    publish(forge_fixture, "gitlab", "origin")
+
+    assert calls
+    zero = "0" * 40
+    assert f"--force-with-lease=refs/heads/main:{zero}" in calls[0]
+    assert f"--force-with-lease=refs/heads/dev:{zero}" in calls[0]
+
+
+def test_one_peer_does_not_read_or_require_the_other(
+    forge_fixture: ForgeFixture,
+) -> None:
+    """A missing GitHub remote cannot block GitLab publication."""
+
+    run("git", "remote", "remove", "github", cwd=forge_fixture["source"])
+    published = publish(forge_fixture, "gitlab", "origin")
+
+    assert published == tip(forge_fixture["gitlab"], "main")
+    assert run("git", "show-ref", cwd=forge_fixture["github"], check=False).stdout == ""
+
+
+def test_main_and_dev_advance_atomically_without_rewriting(
+    forge_fixture: ForgeFixture,
+) -> None:
+    """Normal publication is idempotent and forward-only."""
+
+    first = publish(forge_fixture, "gitlab", "origin")
+    assert publish(forge_fixture, "gitlab", "origin") == first
+    second = signed_commit(forge_fixture["source"], "next.txt", "two\n")
+    run("git", "branch", "-f", "dev", second, cwd=forge_fixture["source"])
+
+    assert publish(forge_fixture, "gitlab", "origin") == second
+    assert tip(forge_fixture["gitlab"], "main") == tip(forge_fixture["gitlab"], "dev") == second
+    run("git", "merge-base", "--is-ancestor", first, second, cwd=forge_fixture["source"])
+
+
+def test_divergent_peer_fails_without_partial_ref_updates(
+    forge_fixture: ForgeFixture,
+) -> None:
+    """Git fast-forward and atomic semantics guard normal publication."""
+
+    publish(forge_fixture, "gitlab", "origin")
+    with tempfile.TemporaryDirectory() as directory:
+        checkout = Path(directory) / "checkout"
+        run(
+            "git",
+            "clone",
+            "-q",
+            str(forge_fixture["gitlab"]),
+            str(checkout),
+            cwd=Path(directory),
         )
-        github_anchor.write_text(
-            f'{github_email} namespaces="git" {github_public}\n', encoding="utf-8"
+        run("git", "checkout", "-qB", "main", "origin/main", cwd=checkout)
+        run("git", "config", "user.name", "Rogue", cwd=checkout)
+        run("git", "config", "user.email", "rogue@example.test", cwd=checkout)
+        (checkout / "rogue.txt").write_text("rogue\n", encoding="utf-8")
+        run("git", "add", "rogue.txt", cwd=checkout)
+        run("git", "commit", "-qm", "rogue", cwd=checkout)
+        run("git", "push", "-q", "--force", "origin", "HEAD:main", cwd=checkout)
+    observed_main = tip(forge_fixture["gitlab"], "main")
+    observed_dev = tip(forge_fixture["gitlab"], "dev")
+    local = signed_commit(forge_fixture["source"], "local.txt", "local\n")
+    run("git", "branch", "-f", "dev", local, cwd=forge_fixture["source"])
+
+    with pytest.raises(ProjectionError, match="exact expected tip is required"):
+        publish(forge_fixture, "gitlab", "origin")
+
+    assert tip(forge_fixture["gitlab"], "main") == observed_main
+    assert tip(forge_fixture["gitlab"], "dev") == observed_dev
+
+
+def test_proposal_publication_does_not_touch_persistent_branches(
+    forge_fixture: ForgeFixture,
+) -> None:
+    """A proposal is the only independently publishable non-persistent branch."""
+
+    run("git", "branch", "proposal/review", "main", cwd=forge_fixture["source"])
+    published = publish(forge_fixture, "github", "github", "proposal/review")
+
+    assert tip(forge_fixture["github"], "proposal/review") == published
+    assert (
+        run(
+            "git",
+            "show-ref",
+            "--verify",
+            "refs/heads/main",
+            cwd=forge_fixture["github"],
+            check=False,
+        ).returncode
+        != 0
+    )
+
+
+def test_projection_requires_clean_trusted_local_identity(
+    forge_fixture: ForgeFixture,
+) -> None:
+    """The projector verifies, but never recreates, the local object."""
+
+    (forge_fixture["source"] / "dirty.txt").write_text("dirty\n", encoding="utf-8")
+    with pytest.raises(ProjectionError, match="dirty checkout"):
+        publish(forge_fixture, "gitlab", "origin")
+    (forge_fixture["source"] / "dirty.txt").unlink()
+
+    with pytest.raises(ProjectionError, match="author and committer email"):
+        project(
+            root=forge_fixture["source"],
+            provider="gitlab",
+            source_ref="main",
+            remote="origin",
+            email="other@example.test",
+            allowed_signers=forge_fixture["anchor"],
         )
-        context.write_text(
-            "schema-version = 1\n\n"
-            '[gitlab]\nactor-name = "GitLab Publisher"\n'
-            f'actor-email = "{gitlab_email}"\n'
-            f'active-signing-fingerprint = "{fingerprint(gitlab_key.with_suffix(".pub"), cwd=root)}"\n\n'
-            '[github]\nactor-name = "GitHub Publisher"\n'
-            f'actor-email = "{github_email}"\n'
-            f'active-signing-fingerprint = "{fingerprint(github_key.with_suffix(".pub"), cwd=root)}"\n',
-            encoding="utf-8",
+    other = forge_fixture["source"].parent / "other-signers"
+    other.write_text("other ssh-ed25519 AAAA\n", encoding="ascii")
+    with pytest.raises(ProjectionError, match="trusted signature"):
+        project(
+            root=forge_fixture["source"],
+            provider="gitlab",
+            source_ref="main",
+            remote="origin",
+            email=forge_fixture["email"],
+            allowed_signers=other,
         )
 
-        run("git", "init", "-q", "--bare", str(gitlab_remote), cwd=root)
-        run("git", "init", "-q", "--bare", str(github_remote), cwd=root)
-        run("git", "init", "-q", "-b", "dev", str(source), cwd=root)
-        run("git", "config", "core.hooksPath", os.devnull, cwd=source)
-        run("git", "config", "user.name", "GitLab Publisher", cwd=source)
-        run("git", "config", "user.email", gitlab_email, cwd=source)
-        run("git", "config", "user.useConfigOnly", "true", cwd=source)
-        run("git", "config", "gpg.format", "ssh", cwd=source)
-        run("git", "config", "gpg.ssh.program", "ssh-keygen", cwd=source)
-        run("git", "config", "user.signingkey", str(gitlab_key), cwd=source)
-        (source / "README.md").write_text("one\n", encoding="utf-8")
-        (source / "tools" / "forge").mkdir(parents=True)
-        for name in ("context.py", "history.py", "project.py", "runner_admission.py"):
-            source_file = ROOT / "tools" / "forge" / name
-            if source_file.exists():
-                shutil.copy2(source_file, source / "tools" / "forge")
-        forge_bin = root / "forge-bin"
-        forge_bin.mkdir()
-        (forge_bin / "glab").write_text(
-            "#!/bin/sh\n"
-            'case "$*" in\n'
-            "  *'/runners?per_page=100') printf '%s\\n' '[{\"id\":35}]' ;;\n"
-            "  *'runners/35') printf '%s\\n' "
-            '\'{"active":true,"runner_type":"project_type","online":true,'
-            '"paused":false,"run_untagged":true,"tag_list":["linux"],'
-            '"access_level":"not_protected"}\' ;;\n'
-            "  *) exit 1 ;;\n"
-            "esac\n",
-            encoding="utf-8",
-        )
-        (forge_bin / "gh").write_text(
-            "#!/bin/sh\n"
-            'case "$*" in\n'
-            "  *'/actions/workflows') printf '%s\\n' "
-            '\'{"workflows":[{"path":".github/workflows/verify.yml",'
-            '"state":"active"},{"path":".github/workflows/release.yml",'
-            '"state":"active"}]}\' ;;\n'
-            "  *'/actions/permissions') printf '%s\\n' '{\"enabled\":true}' ;;\n"
-            "  *) exit 1 ;;\n"
-            "esac\n",
-            encoding="utf-8",
-        )
-        for command in (forge_bin / "glab", forge_bin / "gh"):
-            command.chmod(0o755)
-        run("git", "add", ".", cwd=source)
-        run("git", "commit", "-qS", "-m", "publication contract", cwd=source)
-        (source / "CONTRIBUTING.md").write_text("two\n", encoding="utf-8")
-        run("git", "add", ".", cwd=source)
-        run("git", "commit", "-qS", "-m", "team contribution", cwd=source)
-        run("git", "remote", "add", "origin", str(gitlab_remote), cwd=source)
-        run("git", "remote", "add", "github", str(github_remote), cwd=source)
-        return {
-            "source": source,
-            "gitlab_remote": gitlab_remote,
-            "github_remote": github_remote,
-            "gitlab_key": gitlab_key,
-            "github_key": github_key,
-            "gitlab_anchor": gitlab_anchor,
-            "github_anchor": github_anchor,
-            "context": context,
-            "gitlab_email": gitlab_email,
-            "github_email": github_email,
-            "forge_bin": forge_bin,
-        }
 
-    @staticmethod
-    def environment(fixture: ForgeFixture, agent: dict[str, str]) -> dict[str, str]:
-        """Return the complete external publication context for one fixture."""
+@pytest.mark.parametrize("source_ref", ["dev", "candidate/dev", "work/change", "feature/free"])
+def test_projection_rejects_non_publication_branches(
+    forge_fixture: ForgeFixture, source_ref: str
+) -> None:
+    """Only main and proposal refs belong to a Forge peer."""
 
-        return {
-            **agent,
-            "PATH": f"{fixture['forge_bin']}{os.pathsep}{os.environ['PATH']}",
-            "PYTHON": sys.executable,
-            "CODEX_RESPONSES_PROXY_PUBLICATION_CONTEXT": str(fixture["context"]),
-            "CODEX_RESPONSES_PROXY_GITLAB_COMMIT_ALLOWED_SIGNERS": str(fixture["gitlab_anchor"]),
-            "CODEX_RESPONSES_PROXY_GITHUB_COMMIT_ALLOWED_SIGNERS": str(fixture["github_anchor"]),
-            "CODEX_RESPONSES_PROXY_GITLAB_PROJECT": "group%2Fproject",
-            "CODEX_RESPONSES_PROXY_GITLAB_RUNNER_TAG": "linux",
-            "CODEX_RESPONSES_PROXY_GITHUB_REPOSITORY": "owner/project",
-        }
-
-    def test_each_forge_uses_its_identity_and_preserves_the_source_tree(self) -> None:
-        """Project one local source independently into each signed Forge history."""
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            fixture = self.fixture(root)
-            source = fixture["source"]
-            source_head = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
-            source_tree = run("git", "rev-parse", "HEAD^{tree}", cwd=source).stdout.strip()
-            with ssh_agent(root, fixture["gitlab_key"], fixture["github_key"]) as agent:
-                environment = self.environment(fixture, agent)
-                for provider in ("gitlab", "github"):
-                    mapping = root / f"{provider}-mapping.json"
-                    anchor = (
-                        fixture["gitlab_anchor"]
-                        if provider == "gitlab"
-                        else fixture["github_anchor"]
-                    )
-                    result = run(
-                        sys.executable,
-                        "-m",
-                        "tools.forge.project",
-                        "--provider",
-                        provider,
-                        "--source-ref",
-                        "HEAD",
-                        "--map-output",
-                        str(mapping),
-                        "--publication-context",
-                        str(fixture["context"]),
-                        "--anchor",
-                        str(anchor),
-                        "--repository",
-                        "group/project" if provider == "gitlab" else "owner/project",
-                        *(["--runner-tag", "linux"] if provider == "gitlab" else []),
-                        cwd=source,
-                        env=environment,
-                    )
-                    assert "Traceback" not in result.stderr
-                    projection = json.loads(mapping.read_text(encoding="utf-8"))
-                    remote = (
-                        fixture["gitlab_remote"]
-                        if provider == "gitlab"
-                        else fixture["github_remote"]
-                    )
-                    remote_heads = {
-                        branch: run(
-                            "git", "rev-parse", f"refs/heads/{branch}", cwd=remote
-                        ).stdout.strip()
-                        for branch in ("main", "dev")
-                    }
-                    remote_tree = run(
-                        "git", "rev-parse", "refs/heads/main^{tree}", cwd=remote
-                    ).stdout.strip()
-                    assert source_tree == remote_tree
-                    assert set(remote_heads.values()) == {projection["projected_commit"]}
-                    assert source_head == projection["source_commit"]
-                    assert source_tree == projection["tree"]
-                    emails = run(
-                        "git", "log", "--format=%ae%n%ce", "main", cwd=remote
-                    ).stdout.splitlines()
-                    expected_email = (
-                        fixture["gitlab_email"] if provider == "gitlab" else fixture["github_email"]
-                    )
-                    commit_anchor = (
-                        fixture["gitlab_anchor"]
-                        if provider == "gitlab"
-                        else fixture["github_anchor"]
-                    )
-                    assert {expected_email} == set(emails)
-                    for commit in run("git", "rev-list", "main", cwd=remote).stdout.splitlines():
-                        run(
-                            "git",
-                            "-c",
-                            "gpg.format=ssh",
-                            "-c",
-                            "gpg.ssh.program=ssh-keygen",
-                            "-c",
-                            f"gpg.ssh.allowedSignersFile={commit_anchor}",
-                            "verify-commit",
-                            commit,
-                            cwd=remote,
-                        )
-
-    def test_github_projection_appends_without_rewriting_existing_projection(
-        self,
-    ) -> None:
-        """Append a new canonical tree while retaining the old GitHub tip."""
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            fixture = self.fixture(root)
-            source = fixture["source"]
-            github_remote = fixture["github_remote"]
-            with ssh_agent(root, fixture["gitlab_key"], fixture["github_key"]) as agent:
-                environment = self.environment(fixture, agent)
-                run(
-                    sys.executable,
-                    "-m",
-                    "tools.forge.project",
-                    "--provider",
-                    "github",
-                    "--publication-context",
-                    str(fixture["context"]),
-                    "--anchor",
-                    str(fixture["github_anchor"]),
-                    "--repository",
-                    "owner/project",
-                    cwd=source,
-                    env=environment,
-                )
-                old_tip = run(
-                    "git", "rev-parse", "refs/heads/main", cwd=github_remote
-                ).stdout.strip()
-                (source / "CHANGELOG.md").write_text("three\n", encoding="utf-8")
-                run("git", "add", ".", cwd=source)
-                run("git", "commit", "-qS", "-m", "next source tree", cwd=source)
-                mapping = root / "incremental-map.json"
-                run(
-                    sys.executable,
-                    "-m",
-                    "tools.forge.project",
-                    "--provider",
-                    "github",
-                    "--map-output",
-                    str(mapping),
-                    "--publication-context",
-                    str(fixture["context"]),
-                    "--anchor",
-                    str(fixture["github_anchor"]),
-                    "--repository",
-                    "owner/project",
-                    cwd=source,
-                    env=environment,
-                )
-                new_tip = run(
-                    "git", "rev-parse", "refs/heads/main", cwd=github_remote
-                ).stdout.strip()
-                run(
-                    "git",
-                    "merge-base",
-                    "--is-ancestor",
-                    old_tip,
-                    new_tip,
-                    cwd=github_remote,
-                )
-                assert (
-                    run("git", "rev-parse", "HEAD^{tree}", cwd=source).stdout.strip()
-                    == run("git", "rev-parse", "main^{tree}", cwd=github_remote).stdout.strip()
-                )
-                projection = json.loads(mapping.read_text(encoding="utf-8"))
-                assert old_tip == projection["base_projected_commit"]
-                assert 1 == len(projection["created"])
-
-    def test_incremental_projection_fingerprints_each_history_commit_once(self) -> None:
-        """Keep incremental history matching linear in both commit histories."""
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            fixture = self.fixture(root)
-            source = fixture["source"]
-            github_remote = fixture["github_remote"]
-            for index in range(6):
-                (source / f"history-{index}.txt").write_text(f"{index}\n", encoding="utf-8")
-                run("git", "add", ".", cwd=source)
-                run("git", "commit", "-qS", "-m", f"history {index}", cwd=source)
-            with ssh_agent(root, fixture["gitlab_key"], fixture["github_key"]) as agent:
-                environment = self.environment(fixture, agent)
-                run(
-                    sys.executable,
-                    "-m",
-                    "tools.forge.project",
-                    "--provider",
-                    "github",
-                    "--publication-context",
-                    str(fixture["context"]),
-                    "--anchor",
-                    str(fixture["github_anchor"]),
-                    "--repository",
-                    "owner/project",
-                    cwd=source,
-                    env=environment,
-                )
-                old_tip = run(
-                    "git", "rev-parse", "refs/heads/main", cwd=github_remote
-                ).stdout.strip()
-                (source / "successor.txt").write_text("successor\n", encoding="utf-8")
-                run("git", "add", ".", cwd=source)
-                run("git", "commit", "-qS", "-m", "one successor", cwd=source)
-
-                trace_log = root / "git-trace2.jsonl"
-                mapping = root / "linear-map.json"
-                result = run(
-                    sys.executable,
-                    "-m",
-                    "tools.forge.project",
-                    "--provider",
-                    "github",
-                    "--map-output",
-                    str(mapping),
-                    "--publication-context",
-                    str(fixture["context"]),
-                    "--anchor",
-                    str(fixture["github_anchor"]),
-                    "--repository",
-                    "owner/project",
-                    cwd=source,
-                    env={
-                        **environment,
-                        "GIT_TRACE2_EVENT": str(trace_log),
-                    },
-                )
-
-            assert "Traceback" not in result.stderr
-            starts = [
-                json.loads(line)["argv"]
-                for line in trace_log.read_text(encoding="utf-8").splitlines()
-                if json.loads(line).get("event") == "start"
-            ]
-            batch_reads = sum("cat-file" in command and "--batch" in command for command in starts)
-            assert 2 == batch_reads
-            projection = json.loads(mapping.read_text(encoding="utf-8"))
-            assert 1 == len(projection["created"])
-            new_tip = run("git", "rev-parse", "refs/heads/main", cwd=github_remote).stdout.strip()
-            run(
-                "git",
-                "merge-base",
-                "--is-ancestor",
-                old_tip,
-                new_tip,
-                cwd=github_remote,
-            )
-
-    def test_source_history_is_not_required_to_use_a_forge_identity(self) -> None:
-        """Keep accepted local history independent from both publication identities."""
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            fixture = self.fixture(root)
-            source = fixture["source"]
-            outsider = root / "outsider-signing"
-            run(
-                "ssh-keygen",
-                "-q",
-                "-t",
-                "ed25519",
-                "-N",
-                "",
-                "-f",
-                str(outsider),
-                cwd=root,
-            )
-            run("git", "config", "user.email", "untrusted@example.test", cwd=source)
-            run("git", "config", "user.signingkey", str(outsider), cwd=source)
-            (source / "UNTRUSTED.md").write_text("three\n", encoding="utf-8")
-            run("git", "add", ".", cwd=source)
-            run("git", "commit", "-qS", "-m", "untrusted contribution", cwd=source)
-            with ssh_agent(root, fixture["gitlab_key"], fixture["github_key"]) as agent:
-                result = run(
-                    sys.executable,
-                    "-m",
-                    "tools.forge.project",
-                    "--provider",
-                    "gitlab",
-                    "--publication-context",
-                    str(fixture["context"]),
-                    "--anchor",
-                    str(fixture["gitlab_anchor"]),
-                    "--repository",
-                    "group/project",
-                    "--runner-tag",
-                    "linux",
-                    cwd=source,
-                    env=self.environment(fixture, agent),
-                )
-            assert result.returncode == 0
-            remote = fixture["gitlab_remote"]
-            assert (
-                run("git", "rev-parse", "HEAD^{tree}", cwd=source).stdout.strip()
-                == run("git", "rev-parse", "main^{tree}", cwd=remote).stdout.strip()
-            )
-            assert {fixture["gitlab_email"]} == set(
-                run("git", "log", "--format=%ae%n%ce", "main", cwd=remote).stdout.splitlines()
-            )
-
-    def test_divergent_github_tree_is_rejected_without_ref_change(self) -> None:
-        """Refuse a remote tree absent from canonical source history."""
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            fixture = self.fixture(root)
-            source = fixture["source"]
-            github_remote = fixture["github_remote"]
-            with ssh_agent(root, fixture["gitlab_key"], fixture["github_key"]) as agent:
-                environment = self.environment(fixture, agent)
-                run(
-                    sys.executable,
-                    "-m",
-                    "tools.forge.project",
-                    "--provider",
-                    "github",
-                    "--publication-context",
-                    str(fixture["context"]),
-                    "--anchor",
-                    str(fixture["github_anchor"]),
-                    "--repository",
-                    "owner/project",
-                    cwd=source,
-                    env=environment,
-                )
-                divergent = root / "divergent"
-                run("git", "clone", "-q", str(github_remote), str(divergent), cwd=root)
-                run("git", "checkout", "-qB", "main", "origin/main", cwd=divergent)
-                run("git", "config", "user.name", "GitHub Publisher", cwd=divergent)
-                run(
-                    "git",
-                    "config",
-                    "user.email",
-                    str(fixture["github_email"]),
-                    cwd=divergent,
-                )
-                run("git", "config", "gpg.format", "ssh", cwd=divergent)
-                run(
-                    "git",
-                    "config",
-                    "user.signingkey",
-                    str(fixture["github_key"]),
-                    cwd=divergent,
-                )
-                (divergent / "REMOTE_ONLY.md").write_text("divergent\n", encoding="utf-8")
-                run("git", "add", ".", cwd=divergent)
-                run("git", "commit", "-qS", "-m", "remote-only tree", cwd=divergent)
-                run("git", "push", "-q", "origin", "HEAD:main", cwd=divergent)
-                before = run(
-                    "git", "rev-parse", "refs/heads/main", cwd=github_remote
-                ).stdout.strip()
-                result = run(
-                    sys.executable,
-                    "-m",
-                    "tools.forge.project",
-                    "--provider",
-                    "github",
-                    "--publication-context",
-                    str(fixture["context"]),
-                    "--anchor",
-                    str(fixture["github_anchor"]),
-                    "--repository",
-                    "owner/project",
-                    cwd=source,
-                    check=False,
-                    env=environment,
-                )
-            assert 0 != result.returncode
-            assert "tree diverges from canonical history" in result.stderr
-            assert (
-                before
-                == run("git", "rev-parse", "refs/heads/main", cwd=github_remote).stdout.strip()
-            )
+    if source_ref != "dev":
+        run("git", "branch", source_ref, "main", cwd=forge_fixture["source"])
+    with pytest.raises(ProjectionError, match="main or proposal"):
+        publish(forge_fixture, "gitlab", "origin", source_ref)

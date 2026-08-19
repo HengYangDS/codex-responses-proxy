@@ -53,7 +53,8 @@ def test_github_requires_actions_and_both_active_workflows() -> None:
     assert not admission.github_ready(workflows, {"enabled": False})
     assert not admission.github_ready(workflows[:1], {"enabled": True})
     assert not admission.github_ready(
-        [{**workflows[0], "state": "disabled_manually"}, workflows[1]], {"enabled": True}
+        [{**workflows[0], "state": "disabled_manually"}, workflows[1]],
+        {"enabled": True},
     )
 
 

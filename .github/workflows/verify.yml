@@ -106,10 +106,10 @@ jobs:
         run: uv run --locked --no-sync python -m tools.release.publish_github prepare-checkout --tag "$GITHUB_REF_NAME" --commit-oid "$GITHUB_SHA"
       - name: Verify exact release metadata
         if: github.ref_type == 'tag'
-        run: uv run --locked --no-sync python tools/release/metadata.py --provider github --tag "$GITHUB_REF_NAME"
+        run: uv run --locked --no-sync python tools/release/metadata.py --tag "$GITHUB_REF_NAME"
       - name: Verify mainline metadata
         if: github.ref_type != 'tag'
-        run: uv run --locked --no-sync python tools/release/metadata.py --provider github
+        run: uv run --locked --no-sync python tools/release/metadata.py
       - name: Verify repository governance
         run: uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/test_publish_gitlab.py
 

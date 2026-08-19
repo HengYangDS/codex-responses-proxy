@@ -1,4 +1,4 @@
-"""Verify one provider-native annotated release tag."""
+"""Verify one local product tag against an explicit peer trust anchor."""
 
 from __future__ import annotations
 
@@ -12,18 +12,16 @@ from tools.release.publication.git import _TAG
 
 
 class TagSignatureError(RuntimeError):
-    """A release tag or its trust input is invalid."""
+    """A product tag or its trust input is invalid."""
 
 
-def verify(repository: Path, tag: str, provider: str, anchor: Path) -> None:
-    """Verify one exact provider tag with one explicit external anchor."""
+def verify(repository: Path, tag: str, anchor: Path) -> None:
+    """Verify one exact product tag with one explicit external anchor."""
 
-    if provider not in {"gitlab", "github"}:
-        raise TagSignatureError("release provider must be gitlab or github")
-    if _TAG.fullmatch(tag.removeprefix("github/")) is None:
+    if _TAG.fullmatch(tag) is None:
         raise TagSignatureError(f"release tag must be v<semver>: {tag}")
     if not anchor.is_file() or anchor.is_symlink():
-        raise TagSignatureError(f"{provider} release trust anchor is unavailable")
+        raise TagSignatureError("product release trust anchor is unavailable")
     try:
         subprocess.run(
             ("git", "-C", str(repository), "rev-parse", "--verify", f"refs/tags/{tag}"),
@@ -48,18 +46,18 @@ def verify(repository: Path, tag: str, provider: str, anchor: Path) -> None:
             capture_output=True,
         )
     except (OSError, subprocess.CalledProcessError) as error:
-        raise TagSignatureError(f"{provider} release tag signature is invalid") from error
+        raise TagSignatureError("product release tag signature is invalid") from error
 
 
-def _command(repository: Path, tag: str, provider: str, anchor: Path) -> None:
-    """Verify one provider-native tag without implicit trust sources."""
+def _command(repository: Path, tag: str, anchor: Path) -> None:
+    """Verify one product tag without implicit trust sources."""
 
     try:
-        verify(repository.resolve(), tag, provider, anchor)
+        verify(repository.resolve(), tag, anchor)
     except TagSignatureError as error:
         print(str(error), file=sys.stderr)
         raise SystemExit(1) from error
-    print(f"{provider} release tag signature: OK ({tag})")
+    print(f"product release tag signature: OK ({tag})")
 
 
 def main(argv: tuple[str, ...] | None = None) -> None:

@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 import re
 import subprocess
 import sys
 import tempfile
 import tomllib
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 from types import ModuleType
-from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER = ROOT / "tools" / "release" / "metadata.py"
@@ -67,7 +66,10 @@ def expect_rejection(text: str, description: str, *args: str) -> None:
         handle.write(text)
     try:
         completed = _run(sys.executable, str(CHECKER), *args, "--changelog", str(path))
-        require(completed.returncode != 0, f"release metadata checker accepted {description}")
+        require(
+            completed.returncode != 0,
+            f"release metadata checker accepted {description}",
+        )
     finally:
         path.unlink(missing_ok=True)
 
@@ -94,8 +96,8 @@ def expect_value_error(action: Callable[[], object], message: str, description: 
         raise SystemExit(f"release metadata checker accepted {description}")
 
 
-def test_each_provider_validates_its_native_tags_against_shared_history() -> None:
-    """Treat GitLab and GitHub as independent projections of one release history."""
+def test_product_release_history_is_provider_neutral() -> None:
+    """Validate the one local release history without a Forge semantic input."""
 
     checker = load_checker()
     releases = [
@@ -105,22 +107,15 @@ def test_each_provider_validates_its_native_tags_against_shared_history() -> Non
     ]
     original_known = getattr(checker, "known_release_versions")
     try:
-        for provider in ("gitlab", "github"):
-            setattr(checker, "known_release_versions", lambda: ["1.0.2", "1.0.1"])
-            checker.check_changelog_provenance(releases, provider=provider, pending_version="1.0.3")
-            setattr(checker, "known_release_versions", lambda: ["1.0.2"])
-            expect_value_error(
-                lambda provider=provider: checker.check_changelog_provenance(
-                    [("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")],
-                    provider=provider,
-                ),
-                "must appear once",
-                f"a {provider}-native tag without a shared heading",
-            )
+        setattr(checker, "known_release_versions", lambda: ["1.0.2", "1.0.1"])
+        checker.check_changelog_provenance(releases, pending_version="1.0.3")
+        setattr(checker, "known_release_versions", lambda: ["1.0.2"])
         expect_value_error(
-            lambda: checker.check_changelog_provenance(releases, provider="gitbucket"),
-            "unsupported release provider",
-            "an invalid provider",
+            lambda: checker.check_changelog_provenance(
+                [("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")]
+            ),
+            "must appear once",
+            "a local tag without a shared heading",
         )
     finally:
         setattr(checker, "known_release_versions", original_known)
@@ -209,65 +204,54 @@ def test_exact_release_tag_contract() -> None:
         setattr(checker, "_git", original_git)
 
 
-def test_each_provider_can_independently_prepare_the_release() -> None:
-    """Validate either Forge from an equivalent pre-tag source checkout."""
+def test_release_metadata_command_has_no_forge_semantics() -> None:
+    """Keep product metadata validation independent from publication peers."""
 
-    with tempfile.TemporaryDirectory(prefix="provider-release-preparation-") as temp:
-        repository = Path(temp) / "repository"
-        require_success(
-            _run("git", "clone", "--quiet", "--no-checkout", str(ROOT), str(repository))
-        )
-        require_success(_run("git", "checkout", "--quiet", "--detach", "HEAD", cwd=repository))
-        version = (repository / "VERSION").read_text(encoding="utf-8").strip()
-        _run("git", "tag", "--delete", f"v{version}", cwd=repository)
-        checker = repository / "tools" / "release" / "metadata.py"
-        for provider in ("gitlab", "github"):
-            completed = _run(
-                sys.executable,
-                str(checker),
-                "--provider",
-                provider,
-                "--prepare-release",
-                cwd=repository,
-            )
-            require(
-                completed.returncode == 0,
-                f"{provider} could not independently prepare the same release: {completed.stderr}",
-            )
+    completed = _run(sys.executable, str(CHECKER), "--prepare-release")
+    require_success(completed)
+    legacy = _run(sys.executable, str(CHECKER), "--provider", "gitlab")
+    require(legacy.returncode != 0, "metadata retained a Forge-specific compatibility flag")
 
 
-def test_provider_tag_owner_validates_before_and_after_signing() -> None:
-    """Require one provider-parametric tag transaction with exact validation."""
+def test_local_tag_owner_signs_once_then_publishes_the_exact_object() -> None:
+    """Require one local tag object with provider-parametric validation and push."""
 
     source = (ROOT / "tools" / "release" / "tag.py").read_text(encoding="utf-8")
-    prepare = '_metadata(repository, provider, "--prepare-release")'
-    exact = '_metadata(repository, provider, "--tag", tag)'
-    signing = '"tag",\n            "-s",'
-    push = '"push", "--quiet", "origin"'
-    require_tokens(source, (prepare, exact, signing, push), "provider tag owner")
+    prepare = '_metadata(root, "--prepare-release")'
+    exact = '_metadata(root, "--tag", tag)'
+    signing = '"tag",\n                "-s",'
+    push = '"push", "--quiet", remote'
+    require_tokens(
+        source,
+        (prepare, exact, signing, push, '"ls-remote", "--tags", remote'),
+        "local tag owner",
+    )
     require(
         source.index(prepare) < source.index(signing) < source.index(exact) < source.index(push),
-        "provider tag validation order is unsafe",
+        "local tag validation order is unsafe",
+    )
+    require(
+        "clone" not in source,
+        "tag publication must not clone a peer or recreate a provider-native tag",
     )
 
 
-def test_forward_only_forge_publication_contract() -> None:
-    """Require one provider-parametric, append-only identity projector."""
+def test_exact_local_object_forge_publication_contract() -> None:
+    """Require one provider-parametric projector that never recreates Git objects."""
 
     source = (ROOT / "tools" / "forge" / "project.py").read_text(encoding="utf-8")
     require_tokens(
         source,
         (
             "provider: str",
-            "refs/heads/main",
+            '("main", source), ("dev", source)',
             '"GIT_CONFIG_GLOBAL": os.devnull',
             "verify-commit",
-            '"commit-tree",',
-            '"-S",',
             "runner_admission",
-            "map_output",
+            '"push", "--atomic"',
+            "--force-with-lease=refs/heads/",
         ),
-        "provider identity projector",
+        "exact local-object projector",
     )
     require(
         "canonical GitLab" not in source and "GitLab receives" not in source,
@@ -279,8 +263,8 @@ def test_forward_only_forge_publication_contract() -> None:
         "provider identity context is not externally supplied",
     )
     require(
-        all(token not in source for token in ("filter-branch", "--force", "--force-with-lease")),
-        "forge projector can rewrite or force-update history",
+        all(token not in source for token in ("filter-branch", "commit-tree", '"-S"')),
+        "forge projector can recreate Git objects",
     )
     context = (ROOT / "tools" / "forge" / "context.py").read_text(encoding="utf-8")
     require_tokens(
@@ -297,7 +281,14 @@ def test_forward_only_forge_publication_contract() -> None:
     require(
         all(
             token not in context
-            for token in ("/Users/", "$HOME/.ssh", "security", "SSH_ASKPASS", "pty", "ssh-agent")
+            for token in (
+                "/Users/",
+                "$HOME/.ssh",
+                "security",
+                "SSH_ASKPASS",
+                "pty",
+                "ssh-agent",
+            )
         ),
         "provider publication must not hard-code a workstation or manage credentials",
     )
@@ -321,7 +312,10 @@ def test_prune_tags_removes_deleted_remote_tag() -> None:
         publisher = temp_root / "publisher"
         reused_runner = temp_root / "reused-runner"
 
-        for args in (("git", "init", "--bare", str(remote)), ("git", "init", str(publisher))):
+        for args in (
+            ("git", "init", "--bare", str(remote)),
+            ("git", "init", str(publisher)),
+        ):
             require_success(_run(*args, cwd=temp_root))
         for args in (
             ("git", "config", "user.name", "Release Test"),
@@ -377,7 +371,10 @@ def test_gitlab_ci_refreshes_tags_before_every_release_gate() -> None:
     )
     require(ci.count(TAG_REFRESH) == len(release_jobs), "GitLab tag refresh count drifted")
     for job in release_jobs:
-        require(TAG_REFRESH in ci_block(ci, job), f"{job} does not refresh and prune origin tags")
+        require(
+            TAG_REFRESH in ci_block(ci, job),
+            f"{job} does not refresh and prune origin tags",
+        )
 
 
 def test_github_governance_fetches_complete_provider_tags() -> None:
@@ -409,16 +406,19 @@ def test_gitlab_release_metadata_gate_selects_validation_by_ref() -> None:
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     block = ci_block(ci, "verify-release-metadata:", "\n\nverify-release-tag:")
-    require('GIT_DEPTH: "0"' in block, "verify-release-metadata must fetch complete Git history")
+    require(
+        'GIT_DEPTH: "0"' in block,
+        "verify-release-metadata must fetch complete Git history",
+    )
     require_tokens(
         block,
         (
             'if [ -n "${CI_COMMIT_TAG:-}" ]; then',
-            f'{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py --provider gitlab --tag "$CI_COMMIT_TAG"',
+            f'{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py --tag "$CI_COMMIT_TAG"',
             'elif git show-ref --verify --quiet "refs/tags/v$(cat VERSION)"; then',
-            f"{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py --provider gitlab",
+            f"{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py",
             "else",
-            f"{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py --provider gitlab --prepare-release",
+            f"{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py --prepare-release",
         ),
         "GitLab release metadata ref dispatch",
     )
@@ -434,17 +434,14 @@ def test_gitlab_tag_gates_require_exact_tag_validation() -> None:
     """Keep tag verification strict after admitting main release candidates."""
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    strict = (
-        f"{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py "
-        '--provider gitlab --tag "$CI_COMMIT_TAG"'
-    )
+    strict = f'{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py --tag "$CI_COMMIT_TAG"'
     for job, next_job in (
         ("verify-release-tag:", "\n\nverify-python-quality:"),
         ("publish-gitlab-release:", None),
     ):
         block = ci_block(ci, job, next_job)
         require('GIT_DEPTH: "0"' in block, f"{job} must fetch complete Git history")
-        require(strict in block, f"{job} must validate the exact provider tag")
+        require(strict in block, f"{job} must validate the exact product tag")
         require("--prepare-release" not in block, f"{job} must not accept a pending release")
     tag_gate = ci_block(ci, "verify-release-tag:", "\n\nverify-python-quality:")
     require_tokens(
@@ -541,8 +538,14 @@ def test_python_quality_gate_is_cross_forge() -> None:
         ("uv run --locked --group quality nox -s quality",),
         "GitHub quality projection",
     )
-    require("tools/quality/run.sh" not in gitlab, "GitLab retains a duplicate quality runner")
-    require("tools/quality/run.sh" not in github, "GitHub retains a duplicate quality runner")
+    require(
+        "tools/quality/run.sh" not in gitlab,
+        "GitLab retains a duplicate quality runner",
+    )
+    require(
+        "tools/quality/run.sh" not in github,
+        "GitHub retains a duplicate quality runner",
+    )
     require_tokens(gitlab, ("DEBIAN_FRONTEND: noninteractive",), "GitLab pipeline")
     require_tokens(
         ci_block(gitlab, "verify-python-quality:", "\n\npublish-gitlab-release:"),
@@ -559,18 +562,18 @@ def test_current_release_metadata_chronology() -> None:
     heading = f"## [{version}]"
     tag_exists = _run("git", "rev-parse", "--verify", f"refs/tags/v{version}").returncode == 0
     if heading in source and not tag_exists:
-        for provider in ("gitlab", "github"):
-            subprocess.run(
-                [sys.executable, str(CHECKER), "--provider", provider, "--prepare-release"],
-                cwd=ROOT,
-                check=True,
-            )
+        subprocess.run(
+            [sys.executable, str(CHECKER), "--prepare-release"],
+            cwd=ROOT,
+            check=True,
+        )
     else:
-        args = ["--provider", "github"] if os.environ.get("GITHUB_ACTIONS") == "true" else []
-        subprocess.run([sys.executable, str(CHECKER), *args], cwd=ROOT, check=True)
+        subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT, check=True)
         if tag_exists:
             expect_rejection(
-                source, "a tagged release checked as a pending release", "--prepare-release"
+                source,
+                "a tagged release checked as a pending release",
+                "--prepare-release",
             )
         else:
             expect_rejection(source, "an absent pending release heading", "--prepare-release")
@@ -584,11 +587,6 @@ def test_current_release_metadata_chronology() -> None:
     )
     missing_tag_source = tagged_heading.sub("", source, count=1)
     expect_rejection(missing_tag_source, "a missing reachable tag")
-    # A shared Changelog may contain a release published independently on the
-    # other Forge. Each provider validates its own native tags; parity is a
-    # separate post-publication audit, not a release prerequisite.
-    subprocess.run(
-        [sys.executable, str(CHECKER), "--provider", "github"],
-        cwd=ROOT,
-        check=True,
-    )
+    # Forge publication state is audited separately; product chronology has one
+    # provider-neutral result for the exact local checkout.
+    subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT, check=True)
