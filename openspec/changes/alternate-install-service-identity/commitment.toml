@@ -1,0 +1,11 @@
+schema_version = 1
+id = "change:alternate-install-service-identity"
+intent = "Isolate alternate-root native supervision so validation cannot unload or replace the canonical service."
+subjects = ["repository:codex-responses-proxy"]
+scope = ["CHANGELOG.md", "openspec/specs/runtime-upgrade/spec.md", "openspec/changes/alternate-install-service-identity/**"]
+invariants = ["canonical_installation_retains_public_service_identity", "alternate_roots_use_deterministic_isolated_identity", "production_service_and_listener_remain_untouched"]
+acceptance = ["focused_identity_tests_pass", "quick_quality_matrix_and_release_pass", "isolated_install_health_uninstall_preserves_production"]
+risks = ["interrupted_validation_can_leave_an_alternate_service"]
+authority_refs = ["AGENTS.md", ".ethos/profile.toml", "openspec/specs/runtime-upgrade/spec.md"]
+hypotheses = []
+dependencies = []
