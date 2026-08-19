@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.49] - 2026-08-19
+
+### Fixed
+
+- Preserve the Windows system root in the otherwise isolated native command
+  test environment, so the packaged executable can load side-by-side system
+  assemblies while still proving that it does not require Python on `PATH`.
+
 ## [2.0.48] - 2026-08-19
 
 ### Fixed

@@ -10,6 +10,7 @@ import os
 import runpy
 import socket
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -360,6 +361,8 @@ class ProductInterfaceContracts:
                 "HOME": home,
                 "PATH": home,
             }
+            if sys.platform == "win32":
+                environment["SystemRoot"] = os.environ["SystemRoot"]
             with socket.socket() as reservation:
                 reservation.bind(("127.0.0.1", 0))
                 port = str(reservation.getsockname()[1])
