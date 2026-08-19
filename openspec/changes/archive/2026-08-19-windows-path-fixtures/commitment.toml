@@ -1,0 +1,11 @@
+schema_version = 1
+id = "change:windows-path-fixtures"
+intent = "Make native Windows verification exercise default and alternate lifecycle roots within one host path model."
+subjects = ["repository:codex-responses-proxy"]
+scope = ["tests/lifecycle/test_context.py", "openspec/changes/windows-path-fixtures/**"]
+invariants = ["canonical_service_identity_remains_unchanged", "alternate_roots_remain_deterministically_isolated", "production_runtime_is_unchanged"]
+acceptance = ["focused_context_tests_pass", "quick_and_quality_gates_pass", "github_windows_python_matrix_passes"]
+risks = []
+authority_refs = ["AGENTS.md", "CONTRIBUTING.md"]
+hypotheses = []
+dependencies = []
