@@ -11,21 +11,6 @@ publication authority.
 
 ### Fixed
 
-- Keep human CLI output encodable by the default Windows console code page
-  while retaining the same aligned, scannable result model.
-
-## [2.0.49] - 2026-08-19
-
-### Fixed
-
-- Preserve the Windows system root in the otherwise isolated native command
-  test environment, so the packaged executable can load side-by-side system
-  assemblies while still proving that it does not require Python on `PATH`.
-
-## [2.0.48] - 2026-08-19
-
-### Fixed
-
 - Recover canonical empty prepared installation transactions while preserving
   ambiguous or mutated residue for explicit diagnosis.
 - Reconcile an install-owned alternate launcher into the canonical native
@@ -39,6 +24,11 @@ publication authority.
 - Make every public command's help, parameter validation, human output, JSON
   output, next action, and exit status explicit and consistent in the native
   product interface.
+- Preserve the Windows system root in the otherwise isolated native command
+  test environment, so the packaged executable can load side-by-side system
+  assemblies while still proving that it does not require Python on `PATH`.
+- Keep human CLI output encodable by the default Windows console code page
+  while retaining the same aligned, scannable result model.
 
 ## [2.0.47] - 2026-08-19
 
