@@ -418,3 +418,22 @@ class ProductInterfaceContracts:
                     assert not output.lstrip().startswith("{")
                     assert "Traceback" not in result.stderr
                     assert "Warning" not in result.stderr
+
+    def test_human_output_is_safe_for_the_default_windows_console_codec(self, *, mocker) -> None:
+        mocker.patch.object(
+            application,
+            "dispatch",
+            return_value={
+                "command": {"available": False, "owned": False},
+                "listener_pids": [],
+                "payload_integrity": {"ok": False},
+                "release": None,
+                "service": "absent",
+            },
+        )
+
+        code, stdout, stderr = self.invoke("status")
+
+        assert code == 0
+        assert stderr == ""
+        stdout.encode("cp1252")

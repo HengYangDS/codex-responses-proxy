@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from typing import Any
 
 _LABEL_WIDTH = 12
+_RULE = "-" * 40
 
 
 def _width(value: str) -> int:
@@ -23,7 +24,7 @@ def _row(label: str, value: object) -> str:
 def _page(
     title: str, rows: Iterable[tuple[str, object]], *, next_command: str | None = None
 ) -> str:
-    lines = [f"Codex Responses Proxy  {title}", "─" * 40, ""]
+    lines = [f"Codex Responses Proxy  {title}", _RULE, ""]
     lines.extend(_row(label, value) for label, value in rows)
     if next_command:
         lines.extend(("", "Next", f"  {next_command}"))

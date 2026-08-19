@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.50] - 2026-08-19
+
+### Fixed
+
+- Keep human CLI output encodable by the default Windows console code page
+  while retaining the same aligned, scannable result model.
+
 ## [2.0.49] - 2026-08-19
 
 ### Fixed
