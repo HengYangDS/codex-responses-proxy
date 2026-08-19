@@ -7,7 +7,7 @@ publication authority.
 
 ## [Unreleased]
 
-## [2.0.45] - 2026-08-18
+## [2.0.45] - 2026-08-19
 
 ### Fixed
 
@@ -17,6 +17,8 @@ publication authority.
   of relying on host-dependent certificate discovery.
 - Preserve secret-safe transport diagnostics for exception class, errno, and
   TLS verification code without recording upstream messages or request data.
+- Derive native supervision identity from alternate installation roots so
+  isolated validation cannot unload or replace the canonical service.
 
 ## [2.0.44] - 2026-08-18
 

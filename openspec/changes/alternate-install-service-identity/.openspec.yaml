@@ -1,2 +1,4 @@
 schema: spec-driven
 created: 2026-08-19
+goal: Make alternate-root lifecycle validation physically independent from the
+  canonical installation.
