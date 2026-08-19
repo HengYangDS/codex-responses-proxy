@@ -15,6 +15,7 @@ import nox
 ROOT = Path(__file__).parent.resolve()
 PYTHONS = tuple((ROOT / ".python-versions").read_text(encoding="utf-8").splitlines())
 MIN_PYTHON, *_, MAX_PYTHON = PYTHONS
+RELEASE_PYTHON = (ROOT / ".python-release").read_text(encoding="utf-8").strip()
 ROOTS = ("src/codex_responses_proxy", "tools", "tests")
 RUFF_CONFIG = ROOT / ".config/checks/ruff/ruff.toml"
 PYTEST_CONFIG = ROOT / ".config/checks/pytest/pytest.ini"
@@ -164,7 +165,7 @@ def full(session: nox.Session) -> None:
         session.notify(f"tests-{python}")
 
 
-@nox.session(python=MAX_PYTHON)
+@nox.session(python=RELEASE_PYTHON)
 def release(session: nox.Session) -> None:
     """Build and black-box test this platform's self-contained executable."""
 
@@ -376,10 +377,8 @@ def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
 
 
 def _assert_release_runtime(session: nox.Session) -> None:
-    """Reject Linux native builds outside the repository-declared runtime."""
+    """Reject native builds outside the repository-declared runtime."""
 
-    if platform.system() != "Linux":
-        return
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     image = metadata["tool"]["codex-responses-proxy"]["linux-release-image"]
     match = re.search(r"python:(\d+\.\d+\.\d+)-", image)
@@ -390,8 +389,13 @@ def _assert_release_runtime(session: nox.Session) -> None:
         env=_environment(),
         silent=True,
     )
-    if match is None or not isinstance(version, str) or version.strip() != match.group(1):
-        session.error("Linux release interpreter differs from the immutable release runtime")
+    if (
+        match is None
+        or RELEASE_PYTHON != match.group(1)
+        or not isinstance(version, str)
+        or version.strip() != RELEASE_PYTHON
+    ):
+        session.error("release interpreter differs from the immutable release runtime")
 
 
 def _package_release_asset(session: nox.Session, bundle: Path, work: Path) -> None:

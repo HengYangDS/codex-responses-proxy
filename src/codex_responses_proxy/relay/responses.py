@@ -155,7 +155,7 @@ def _relay_catalog(
         )
         operational_log.log(
             f"req={request_id} event=catalog_transport_error provider={profile.name} "
-            f"exception={operational_log.safe_exception_label(error)} "
+            f"{operational_log.safe_exception_context(error)} "
             f"path={operational_log.safe_request_path(handler.path)}"
         )
         return

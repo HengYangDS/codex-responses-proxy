@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,29 @@ class RuntimeLoggingTests:
             operational_log.safe_exception_label(ValueError("private")),
             operational_log.safe_exception_label(None),
         ) == ("ValueError", "UnknownError")
+
+    def test_exception_context_exposes_only_safe_transport_diagnostics(self) -> None:
+        class TlsError(Exception):
+            errno = 1
+            verify_code = 20
+
+        class UnsafeMetadataError(Exception):
+            errno = True
+            verify_code = "private-verify-message"
+
+        error = urllib.error.URLError(OSError(8, "private-host.example"))
+
+        context = operational_log.safe_exception_context(error)
+
+        assert context == "exception=URLError reason_exception=OSError reason_errno=8"
+        assert "private-host.example" not in context
+        assert operational_log.safe_exception_context(TlsError("private")) == (
+            "exception=TlsError errno=1 verify_code=20"
+        )
+        assert operational_log.safe_exception_context(UnsafeMetadataError("private")) == (
+            "exception=UnsafeMetadataError"
+        )
+        assert operational_log.safe_exception_context(None) == "exception=UnknownError"
 
     def test_logging_redacts_and_bounds_retention_without_becoming_fatal(self, *, mocker) -> None:
         with tempfile.TemporaryDirectory() as tmp:

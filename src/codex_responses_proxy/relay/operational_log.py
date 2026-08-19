@@ -43,6 +43,23 @@ def safe_exception_label(exc: BaseException | None) -> str:
     return exc.__class__.__name__ if exc is not None else "UnknownError"
 
 
+def safe_exception_context(exc: BaseException | None) -> str:
+    """Expose bounded transport metadata without caller-controlled messages."""
+    fields = [f"exception={safe_exception_label(exc)}"]
+    reason = getattr(exc, "reason", None)
+    target = exc
+    prefix = ""
+    if isinstance(reason, BaseException):
+        fields.append(f"reason_exception={safe_exception_label(reason)}")
+        target = reason
+        prefix = "reason_"
+    for attribute in ("errno", "verify_code"):
+        value = getattr(target, attribute, None)
+        if isinstance(value, int) and not isinstance(value, bool):
+            fields.append(f"{prefix}{attribute}={value}")
+    return " ".join(fields)
+
+
 def _redact_log_message(message: str) -> str:
     value = str(message).replace("\r", " ").replace("\n", " ")
     for pattern in _LOG_SECRET_PATTERNS:

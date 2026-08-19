@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
+    "certifi==2026.7.22",
     "cyclopts==4.23.0",
     "psutil==7.2.2",
     "rich==15.0.0",

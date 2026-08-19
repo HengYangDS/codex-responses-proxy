@@ -392,10 +392,12 @@ class TestVerificationContracts:
 
     def test_repository_declares_the_supported_python_matrix_once(self) -> None:
         assert (ROOT / ".python-versions").read_text(encoding="utf-8") == "3.12\n3.13\n3.14\n"
+        assert (ROOT / ".python-release").read_text(encoding="utf-8") == "3.14.7\n"
         assert not (ROOT / ".python-version").exists()
         noxfile = (ROOT / "noxfile.py").read_text(encoding="utf-8")
         assert 'PYTHONS = tuple((ROOT / ".python-versions").read_text' in noxfile
         assert "MIN_PYTHON, *_, MAX_PYTHON = PYTHONS" in noxfile
+        assert 'RELEASE_PYTHON = (ROOT / ".python-release").read_text' in noxfile
         assert '("3.12", "3.13", "3.14")' not in noxfile
         assert '@nox.session(python="3.12")' not in noxfile
         assert '@nox.session(python="3.14")' not in noxfile
@@ -438,6 +440,7 @@ class TestVerificationContracts:
         assert 'print(f"latest={versions[-1]}"' not in github
         assert "needs.python-matrix.outputs.floor" in github
         assert "needs.python-matrix.outputs.latest" in github
+        assert "needs.python-matrix.outputs.release" in github
         assert "python-version-file: .python-versions" in release
         default = gitlab.split("\ndefault:", 1)[1].split("\nverify-python-matrix:", 1)[0]
         assert "name: $UV_PYTHON_LATEST_IMAGE" in default
@@ -481,15 +484,12 @@ class TestVerificationContracts:
         assert 'ROOT / "tools/release/hooks"' in source
         assert hook.read_text(encoding="utf-8") == 'module_collection_mode = "py"\n'
 
-    def test_linux_release_runtime_uses_the_session_interpreter(
-        self, mocker: MockerFixture
-    ) -> None:
+    def test_release_runtime_uses_the_session_interpreter(self, mocker: MockerFixture) -> None:
         """Compare the release session interpreter, not the Nox launcher."""
 
         module = _load("codex_responses_proxy_noxfile", "noxfile.py")
         session = mocker.Mock()
         session.run.return_value = "3.14.7\n"
-        mocker.patch.object(module.platform, "system", return_value="Linux")
 
         module._assert_release_runtime(session)
 

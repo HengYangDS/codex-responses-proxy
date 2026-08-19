@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import ssl
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler
 from typing import Any
+
+import certifi
 
 from codex_responses_proxy.protocol import input_variant
 from codex_responses_proxy.protocol import response_failed
@@ -25,7 +28,22 @@ RESPONSE_FAILED_DIALOGUE_SLOTS = 1
 INPUT_VARIANT_DIALOGUE_SLOTS = 1
 _MAX_ATTEMPTS = 4
 _BACKOFFS = (0.4, 1.0, 2.0)
-_DIRECT_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def _upstream_tls_context() -> ssl.SSLContext:
+    """Build one verifying TLS context anchored to the packaged trust store.
+
+    The native bundle ships no OpenSSL default trust directory, so host
+    defaults cannot be relied on; certifi is the portable trust anchor.
+    """
+
+    return ssl.create_default_context(cafile=certifi.where())
+
+
+_DIRECT_OPENER = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}),
+    urllib.request.HTTPSHandler(context=_upstream_tls_context()),
+)
 
 
 def urlopen_direct(request: urllib.request.Request, timeout: float):
@@ -359,9 +377,7 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
 
 def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
     if exchange.used_input_variant_dialogue:
-        exchange.input_variant_exhausted(
-            f"exception={operational_log.safe_exception_label(error)} "
-        )
+        exchange.input_variant_exhausted(f"{operational_log.safe_exception_context(error)} ")
         downstream.send_payload(
             exchange.handler,
             502,
@@ -375,7 +391,7 @@ def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
     if attempt < _MAX_ATTEMPTS - 1:
         exchange.log(
             "upstream_transport_retry",
-            f"attempt={attempt + 1} exception={operational_log.safe_exception_label(error)} ",
+            f"attempt={attempt + 1} {operational_log.safe_exception_context(error)} ",
         )
         time.sleep(_BACKOFFS[min(attempt, len(_BACKOFFS) - 1)])
         return "retry"
@@ -391,7 +407,7 @@ def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
     )
     exchange.log(
         "upstream_transport_exhausted",
-        f"exception={operational_log.safe_exception_label(error)} ",
+        f"{operational_log.safe_exception_context(error)} ",
     )
     return "terminal"
 

@@ -1,8 +1,11 @@
 """Portable contracts for GitHub verification and release workflows."""
 
 import importlib
+import re
 import tomllib
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,6 +18,8 @@ def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> 
     metadata = tmp_path / "pyproject.toml"
     output = tmp_path / "github-output"
     versions.write_text("3.12\n3.13\n3.14\n", encoding="ascii")
+    release = tmp_path / ".python-release"
+    release.write_text("3.14.7\n", encoding="ascii")
     metadata.write_text(
         '[tool.codex-responses-proxy]\nlinux-release-image = "python:3.14.7-bookworm@sha256:'
         + "a" * 64
@@ -22,12 +27,63 @@ def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> 
         encoding="ascii",
     )
 
-    module.write(versions=versions, metadata=metadata, output=output)
+    module.write(versions=versions, release=release, metadata=metadata, output=output)
 
     assert output.read_text(encoding="utf-8") == (
-        'value=["3.12", "3.13", "3.14"]\nfloor=3.12\nlatest=3.14\n'
+        'value=["3.12", "3.13", "3.14"]\nfloor=3.12\nlatest=3.14\nrelease=3.14.7\n'
         f"linux-release-image=python:3.14.7-bookworm@sha256:{'a' * 64}\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("release_value", "image_version", "message"),
+    [
+        ("3.14", "3.14.7", "native release Python is unavailable or invalid"),
+        ("not.a.version", "not.a.version", "native release Python is unavailable or invalid"),
+        ("3.14.7", "3.14.6", "Linux release runtime is unavailable or mutable"),
+    ],
+)
+def test_python_matrix_rejects_invalid_or_mismatched_release_runtime(
+    tmp_path: Path, release_value: str, image_version: str, message: str
+) -> None:
+    module = importlib.import_module("tools.quality.python_matrix")
+    versions = tmp_path / ".python-versions"
+    release = tmp_path / ".python-release"
+    metadata = tmp_path / "pyproject.toml"
+    versions.write_text("3.12\n3.13\n3.14\n", encoding="ascii")
+    release.write_text(f"{release_value}\n", encoding="ascii")
+    metadata.write_text(
+        '[tool.codex-responses-proxy]\nlinux-release-image = "python:'
+        f"{image_version}-bookworm@sha256:{'a' * 64}"
+        '"\n',
+        encoding="ascii",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        module.write(
+            versions=versions,
+            release=release,
+            metadata=metadata,
+            output=tmp_path / "github-output",
+        )
+
+
+def test_native_release_runtime_is_exact_and_platform_independent() -> None:
+    native_runtime = (ROOT / ".python-release").read_text(encoding="ascii").strip()
+    image = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
+        "codex-responses-proxy"
+    ]["linux-release-image"]
+    image_version = re.search(r"python:(\d+\.\d+\.\d+)-", image)
+    nox_source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
+    native_job = workflow.split("\n  native-assets:", 1)[1].split("\n  native-linux:", 1)[0]
+
+    assert re.fullmatch(r"\d+\.\d+\.\d+", native_runtime)
+    assert image_version is not None
+    assert native_runtime == image_version.group(1)
+    assert 'if platform.system() != "Linux":' not in nox_source
+    assert "@nox.session(python=RELEASE_PYTHON)" in nox_source
+    assert "python-version: ${{ needs.python-matrix.outputs.release }}" in native_job
 
 
 def test_linux_native_workflows_use_the_same_container_runtime() -> None:

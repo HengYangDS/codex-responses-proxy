@@ -65,6 +65,10 @@ class TestRealSubprocessHandoffIntegration:
                 port=free_port(),
                 upstream_url="http://127.0.0.1:43123",
             )
+            mocker.patch.dict(
+                handoff_fixtures.os.environ,
+                {"CODEX_RESPONSES_PROXY_EXECUTABLE": "/tmp/native-build-source"},
+            )
             child = mocker.Mock()
             child.poll.return_value = None
             popen = mocker.patch.object(handoff_fixtures.subprocess, "Popen", return_value=child)
@@ -81,6 +85,7 @@ class TestRealSubprocessHandoffIntegration:
         assert popen.call_args.kwargs["env"]["CODEX_RESPONSES_PROXY_STATE_HOME"] == str(
             root / "state"
         )
+        assert popen.call_args.kwargs["env"]["CODEX_RESPONSES_PROXY_EXECUTABLE"] == ctx.executable
 
     def _installed_fixture(
         self, *, release: str, port: int, upstream_url: str

@@ -433,6 +433,7 @@ def start_real_proxy(
     # from the operator's installed runtime instead of serving the fixture.
     env["CODEX_RESPONSES_PROXY_HOME"] = ctx.install_dir
     env["CODEX_RESPONSES_PROXY_STATE_HOME"] = str(log_path.parent / "state")
+    env["CODEX_RESPONSES_PROXY_EXECUTABLE"] = ctx.executable
     env.pop("PYTHONPATH", None)
     if extra_env:
         env.update(extra_env)

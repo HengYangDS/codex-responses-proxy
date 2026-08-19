@@ -7,6 +7,17 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.45] - 2026-08-18
+
+### Fixed
+
+- Pin every native release asset to Python 3.14.7 and reject platform-specific
+  interpreter drift before packaging.
+- Build outbound TLS contexts from the packaged Mozilla CA trust store instead
+  of relying on host-dependent certificate discovery.
+- Preserve secret-safe transport diagnostics for exception class, errno, and
+  TLS verification code without recording upstream messages or request data.
+
 ## [2.0.44] - 2026-08-18
 
 ### Changed

@@ -389,6 +389,7 @@ class TestQualityPolicyContracts:
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         dependencies = pyproject["project"]["dependencies"]
         assert {requirement.partition("==")[0] for requirement in dependencies} == {
+            "certifi",
             "cyclopts",
             "psutil",
             "rich",

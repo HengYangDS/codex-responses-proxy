@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import urllib.request
 from pathlib import Path
 from typing import cast
 
@@ -24,6 +25,29 @@ PROVIDERS = provider_registry.load()
 
 
 class TestTransportFailures(InputTransportFixture):
+    def test_upstream_tls_context_uses_the_packaged_trust_store(self, *, mocker) -> None:
+        context = object()
+        mocker.patch.object(upstream_exchange.certifi, "where", return_value="/safe/cacert.pem")
+        create = mocker.patch.object(
+            upstream_exchange.ssl, "create_default_context", return_value=context
+        )
+
+        assert upstream_exchange._upstream_tls_context() is context
+        create.assert_called_once_with(cafile="/safe/cacert.pem")
+
+    def test_direct_opener_carries_one_verifying_context_with_loaded_authorities(self) -> None:
+        contexts = [
+            handler._context
+            for handler in getattr(upstream_exchange._DIRECT_OPENER, "handlers")
+            if isinstance(handler, urllib.request.HTTPSHandler)
+        ]
+
+        assert len(contexts) == 1
+        context = contexts[0]
+        assert context.verify_mode is upstream_exchange.ssl.CERT_REQUIRED
+        assert context.check_hostname is True
+        assert context.cert_store_stats()["x509_ca"] > 0
+
     def test_direct_relay_covers_transport_exhaustion_without_a_local_queue(
         self, *, mocker
     ) -> None:
