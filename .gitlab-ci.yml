@@ -113,7 +113,7 @@ verify-release-tag:
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
   script:
     - uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --tag "$CI_COMMIT_TAG"
-    - uv run --locked --no-sync --python python --no-python-downloads python -m tools.forge.tag_signature . "$CI_COMMIT_TAG" gitlab "$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST"
+    - uv run --locked --no-sync --python python --no-python-downloads python -m tools.forge.tag_signature . "$CI_COMMIT_TAG" "$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST"
 
 verify-python-quality:
   stage: verify

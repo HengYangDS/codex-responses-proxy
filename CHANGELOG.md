@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.47] - 2026-08-19
+
+### Fixed
+
+- Align GitLab tag verification with the provider-neutral three-argument CLI
+  contract, removing the retired Forge positional token that blocked the
+  `v2.0.46` tag pipeline.
+
 ## [2.0.46] - 2026-08-19
 
 ### Fixed

@@ -1,9 +1,4 @@
-# release-governance Specification
-
-## Purpose
-TBD - created by archiving change release-state-aware-metadata. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Validation follows the release state
 

@@ -452,6 +452,11 @@ def test_gitlab_tag_gates_require_exact_tag_validation() -> None:
         ),
         "GitLab external tag trust",
     )
+    invocation = (
+        f"{GITLAB_LOCKED_PYTHON} python -m tools.forge.tag_signature "
+        '. "$CI_COMMIT_TAG" "$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST"'
+    )
+    require(invocation in tag_gate, "GitLab tag verification CLI grammar drifted")
 
 
 def test_gitlab_ci_selects_a_deployment_supplied_runner_tag() -> None:
