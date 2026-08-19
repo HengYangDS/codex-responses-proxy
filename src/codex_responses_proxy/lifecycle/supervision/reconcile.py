@@ -123,16 +123,16 @@ class _Bridge:
     def prepare(self) -> None:
         """Atomically make the retired launcher resolve to the native payload."""
 
-        if os.name == "nt":
-            raise errors.InstallError(
-                "alternate launcher reconciliation is unavailable on Windows; uninstall it first"
-            )
         if self.alternate.is_symlink() and _same_path(self.alternate, self.canonical):
             if self.backup.is_file():
                 return
             raise errors.InstallError("alternate launcher bridge has no retained original")
         if self.backup.exists() or self.backup.is_symlink():
             raise errors.InstallError("alternate launcher backup already exists")
+        if os.name == "nt":
+            raise errors.InstallError(
+                "alternate launcher reconciliation is unavailable on Windows; uninstall it first"
+            )
         if not self.alternate.is_file() or self.alternate.is_symlink():
             raise errors.InstallError("alternate launcher is not one replaceable file")
         os.replace(self.alternate, self.backup)

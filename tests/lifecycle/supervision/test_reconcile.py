@@ -13,6 +13,11 @@ from codex_responses_proxy.lifecycle.supervision import process, reconcile
 from codex_responses_proxy.service import identity
 from tests.lifecycle.fixtures import install_context, install_payload
 
+POSIX_BRIDGE = pytest.mark.skipif(
+    os.name == "nt",
+    reason="alternate-launcher recovery uses POSIX symbolic-link replacement",
+)
+
 
 class Adapter:
     def __init__(self, configured: str | None) -> None:
@@ -44,6 +49,7 @@ def runtime_for(payload: identity.LoadedPayloadIdentity, *, pid: int = 41) -> di
 
 
 class TestBridge:
+    @POSIX_BRIDGE
     def test_prepare_restore_and_finalize_are_exact(self, tmp_path: Path) -> None:
         canonical = tmp_path / "bin" / "codex-responses-proxy"
         alternate = tmp_path / "runtime" / "launcher"
@@ -149,6 +155,7 @@ class TestDetection:
                 runtime_reader=lambda _ctx: {**runtime, "pid": 42},
             )
 
+    @POSIX_BRIDGE
     def test_current_finishes_a_proved_bridge_after_supervisor_retry(
         self, tmp_path: Path, *, mocker
     ) -> None:

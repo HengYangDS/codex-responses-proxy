@@ -27,11 +27,13 @@ the running process by force would create avoidable connection loss.
    alternate launcher is admitted only when the current native payload identity,
    sole listener PID, process generation, and install-root ownership all agree.
    An external or ambiguous launcher remains incompatible.
-2. **Use one temporary bridge with an exact retained original.** The alternate
-   file is atomically moved to a private backup and replaced by a symlink to the
-   canonical executable. Existing protocol-v2 handoff then starts the native
-   child without adding a second migration protocol. On failure before native
-   commitment, the exact launcher is restored.
+2. **Use one POSIX-only temporary bridge with an exact retained original.** The
+   alternate file is atomically moved to a private backup and replaced by a
+   symlink to the canonical executable. Existing protocol-v2 handoff then starts
+   the native child without adding a second migration protocol. On failure
+   before native commitment, the exact launcher is restored. Windows has no
+   admitted historical wrapper shape and rejects this migration path while
+   retaining its canonical native lifecycle.
 3. **Make the interrupted post-handoff state retryable.** If the native listener
    is already serving while the supervisor still names the bridge, the next
    install proves the same native identity, rebinds supervision, then removes

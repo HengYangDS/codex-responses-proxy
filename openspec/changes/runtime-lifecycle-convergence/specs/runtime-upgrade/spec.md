@@ -70,11 +70,14 @@ accepting runtime identity.
 
 Installation SHALL converge a verified native listener and its native
 supervisor onto the canonical installed executable before committing candidate
-payload bytes. Reconciliation SHALL use the existing transactional handoff
-protocol, retain the exact alternate launcher until native supervision is
-proved, and remain retryable after controller interruption.
+payload bytes. On POSIX hosts, reconciliation MAY admit the known
+install-owned alternate launcher and SHALL use the existing transactional
+handoff protocol, retain the exact alternate launcher until native supervision
+is proved, and remain retryable after controller interruption. Windows SHALL
+retain its canonical native lifecycle and reject the POSIX-only alternate
+launcher shape before mutation.
 
-#### Scenario: An install-owned alternate launcher is active
+#### Scenario: An install-owned alternate launcher is active on a POSIX host
 
 - **WHEN** the current payload identity, sole listener PID, process generation,
   supervisor declaration, and alternate launcher path all agree
@@ -83,6 +86,13 @@ proved, and remain retryable after controller interruption.
 - **AND** protocol-v2 handoff starts and proves the canonical native listener
 - **AND** the supervisor is rebound before the bridge and retained original are
   removed.
+
+#### Scenario: An alternate launcher is presented on Windows
+
+- **WHEN** installation observes a noncanonical launcher on Windows
+- **THEN** it rejects that launcher before service or payload mutation
+- **AND** the canonical Windows native install, reload, status, doctor, and
+  uninstall lifecycle remains unchanged.
 
 #### Scenario: Reconciliation fails before native handoff
 
