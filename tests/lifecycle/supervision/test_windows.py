@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import windows
 from codex_responses_proxy.service import runtime as service_runtime
 from tests.lifecycle.fixtures import platform_context
@@ -37,7 +36,7 @@ class TestWindowsLifecycle:
                 "schtasks",
                 "/run",
                 "/tn",
-                runtime_context.SERVICE_ID,
+                ctx.service_id,
             ]
             assert Path(windows._xml_path(ctx)).read_text(
                 encoding="utf-16"

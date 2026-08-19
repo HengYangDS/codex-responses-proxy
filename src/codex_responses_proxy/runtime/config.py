@@ -107,6 +107,13 @@ def data_dir(environment: Mapping[str, str] | None = None) -> str:
     source = os.environ if environment is None else environment
     if override := _absolute_override(source, HOME_ENV):
         return override
+    return default_data_dir(source)
+
+
+def default_data_dir(environment: Mapping[str, str] | None = None) -> str:
+    """Return the platform data root without consulting the product override."""
+
+    source = os.environ if environment is None else environment
     home = home_dir()
     if os.name == "nt":
         base = source.get("LOCALAPPDATA", path_join(home, "AppData", "Local"))

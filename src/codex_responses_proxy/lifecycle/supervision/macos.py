@@ -48,13 +48,13 @@ def _environment_xml(ctx: runtime_context.RuntimeContext) -> str:
 
 
 def _plist_path(ctx: runtime_context.RuntimeContext) -> str:
-    return os.path.join(ctx.home, "Library", "LaunchAgents", f"{runtime_context.SERVICE_ID}.plist")
+    return os.path.join(ctx.home, "Library", "LaunchAgents", f"{ctx.service_id}.plist")
 
 
 def render_plist(ctx: runtime_context.RuntimeContext) -> str:
     """Render a watchdog service whose pre-logging failures remain visible."""
     return PLIST_TEMPLATE.format(
-        label=runtime_context.SERVICE_ID,
+        label=ctx.service_id,
         executable=ctx.executable,
         watchdog_mode=service_runtime.WATCHDOG_MODE,
         stderr_log=config.path_join(ctx.log_dir, "watchdog.stderr.log"),
@@ -93,7 +93,7 @@ def uninstall(ctx: runtime_context.RuntimeContext) -> None:
             detail = unloaded.stderr.strip() or unloaded.stdout.strip()
             raise errors.InstallError(f"launchctl unload failed: {detail}")
         listed = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
-        if listed.returncode or runtime_context.SERVICE_ID in listed.stdout:
+        if listed.returncode or ctx.service_id in listed.stdout:
             raise errors.InstallError("launchd watchdog remains registered after unload")
         os.remove(plist)
 
@@ -104,6 +104,6 @@ def status(ctx: runtime_context.RuntimeContext) -> str:
     if not os.path.exists(plist):
         return "absent"
     r = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
-    if runtime_context.SERVICE_ID in r.stdout:
+    if ctx.service_id in r.stdout:
         return "running"
     return "installed"

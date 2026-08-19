@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import macos
 from codex_responses_proxy.runtime import config as runtime_config
 from tests.lifecycle.supervision.fixtures import completed as _completed
@@ -64,7 +63,7 @@ class TestMacosLifecycle:
             for exists, listing, expected in (
                 (False, "", "absent"),
                 (True, "other", "installed"),
-                (True, runtime_context.SERVICE_ID, "running"),
+                (True, ctx.service_id, "running"),
             ):
                 _set_file(plist, "plist" if exists else None)
                 mocker.patch.object(
@@ -100,7 +99,7 @@ class TestMacosLifecycle:
             mocker.patch.object(
                 macos.subprocess,
                 "run",
-                side_effect=[_completed(), _completed(stdout=runtime_context.SERVICE_ID)],
+                side_effect=[_completed(), _completed(stdout=ctx.service_id)],
             )
             with pytest.raises(errors.InstallError, match="remains registered"):
                 macos.uninstall(ctx)

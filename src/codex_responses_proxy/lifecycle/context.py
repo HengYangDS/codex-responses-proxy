@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
 from dataclasses import dataclass
 
 from codex_responses_proxy import errors
@@ -12,6 +14,22 @@ from codex_responses_proxy.service import inventory
 
 SERVICE_ID = "codex-responses-proxy.watchdog"
 DEFAULT_PORT = config.DEFAULT_PORT
+
+
+def service_id(install_dir: str) -> str:
+    """Return one stable service identity bound to the installed payload root.
+
+    The default user installation keeps the public service name.  Any explicit
+    alternate root receives a deterministic suffix so isolated validation and
+    parallel installations cannot unload or replace the user's live service.
+    """
+
+    installed = os.path.normcase(os.path.abspath(install_dir))
+    canonical = os.path.normcase(os.path.abspath(config.default_data_dir()))
+    if installed == canonical:
+        return SERVICE_ID
+    suffix = hashlib.sha256(installed.encode("utf-8")).hexdigest()[:12]
+    return f"{SERVICE_ID}.{suffix}"
 
 
 @dataclass(slots=True)
@@ -34,6 +52,12 @@ class RuntimeContext:
     watchdog_max_backoff: float = config.DEFAULT_WATCHDOG_MAX_BACKOFF
     response_failed_compaction_budget: int = config.DEFAULT_RESPONSE_FAILED_COMPACTION_BUDGET
     response_failed_max_stages: int = config.DEFAULT_RESPONSE_FAILED_MAX_STAGES
+
+    @property
+    def service_id(self) -> str:
+        """Return the supervision identity for this installed root."""
+
+        return service_id(self.install_dir)
 
     def service_environment(self) -> dict[str, str]:
         """Project the exact installer-selected settings into native supervision."""

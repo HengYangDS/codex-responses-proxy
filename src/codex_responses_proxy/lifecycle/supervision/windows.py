@@ -72,7 +72,7 @@ def _current_user() -> str:
 
 
 def _xml_path(ctx: runtime_context.RuntimeContext) -> str:
-    return os.path.join(ctx.install_dir, f"{runtime_context.SERVICE_ID}.xml")
+    return os.path.join(ctx.install_dir, f"{ctx.service_id}.xml")
 
 
 def render_task_xml(ctx: runtime_context.RuntimeContext) -> str:
@@ -94,12 +94,12 @@ def install(ctx: runtime_context.RuntimeContext) -> None:
         fh.write(render_task_xml(ctx))
 
     subprocess.run(
-        ["schtasks", "/delete", "/tn", runtime_context.SERVICE_ID, "/f"],
+        ["schtasks", "/delete", "/tn", ctx.service_id, "/f"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
     r = subprocess.run(
-        ["schtasks", "/create", "/tn", runtime_context.SERVICE_ID, "/xml", xml_path],
+        ["schtasks", "/create", "/tn", ctx.service_id, "/xml", xml_path],
         capture_output=True,
         text=True,
     )
@@ -107,7 +107,7 @@ def install(ctx: runtime_context.RuntimeContext) -> None:
         raise errors.InstallError(f"schtasks create failed: {r.stderr.strip() or r.stdout.strip()}")
     # Start it now (the trigger otherwise only fires at next logon).
     subprocess.run(
-        ["schtasks", "/run", "/tn", runtime_context.SERVICE_ID],
+        ["schtasks", "/run", "/tn", ctx.service_id],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -122,7 +122,7 @@ def _running_watchdog_pids(ctx: runtime_context.RuntimeContext) -> list[int]:
 def uninstall(ctx: runtime_context.RuntimeContext) -> None:
     """Stop and remove only this installation's scheduled watchdog task."""
     deleted = subprocess.run(
-        ["schtasks", "/delete", "/tn", runtime_context.SERVICE_ID, "/f"],
+        ["schtasks", "/delete", "/tn", ctx.service_id, "/f"],
         capture_output=True,
         text=True,
     )
@@ -147,7 +147,7 @@ def uninstall(ctx: runtime_context.RuntimeContext) -> None:
 def status(ctx: runtime_context.RuntimeContext) -> str:
     """Return the Windows scheduled task's read-only status classification."""
     r = subprocess.run(
-        ["schtasks", "/query", "/tn", runtime_context.SERVICE_ID, "/fo", "list"],
+        ["schtasks", "/query", "/tn", ctx.service_id, "/fo", "list"],
         capture_output=True,
         text=True,
     )

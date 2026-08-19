@@ -43,9 +43,7 @@ def _has_user_systemd() -> bool:
 
 
 def _unit_path(ctx: runtime_context.RuntimeContext) -> str:
-    return os.path.join(
-        ctx.home, ".config", "systemd", "user", f"{runtime_context.SERVICE_ID}.service"
-    )
+    return os.path.join(ctx.home, ".config", "systemd", "user", f"{ctx.service_id}.service")
 
 
 def render_unit(ctx: runtime_context.RuntimeContext) -> str:
@@ -64,7 +62,7 @@ def _install_systemd(ctx: runtime_context.RuntimeContext) -> None:
         fh.write(render_unit(ctx))
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
     r = subprocess.run(
-        ["systemctl", "--user", "enable", "--now", f"{runtime_context.SERVICE_ID}.service"],
+        ["systemctl", "--user", "enable", "--now", f"{ctx.service_id}.service"],
         capture_output=True,
         text=True,
     )
@@ -97,7 +95,7 @@ def uninstall(ctx: runtime_context.RuntimeContext) -> None:
         if not shutil.which("systemctl"):
             raise errors.InstallError("systemctl is unavailable; service removal is unproven")
         disabled = subprocess.run(
-            ["systemctl", "--user", "disable", "--now", f"{runtime_context.SERVICE_ID}.service"],
+            ["systemctl", "--user", "disable", "--now", f"{ctx.service_id}.service"],
             capture_output=True,
             text=True,
         )
@@ -133,7 +131,7 @@ def status(ctx: runtime_context.RuntimeContext) -> str:
     unit = _unit_path(ctx)
     if os.path.exists(unit):
         r = subprocess.run(
-            ["systemctl", "--user", "is-active", f"{runtime_context.SERVICE_ID}.service"],
+            ["systemctl", "--user", "is-active", f"{ctx.service_id}.service"],
             capture_output=True,
             text=True,
         )
