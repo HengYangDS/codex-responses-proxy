@@ -78,6 +78,8 @@ class TestRuntimeContext:
 
         environment = projected.service_environment()
 
+        assert environment[config.HOME_ENV] == "/opt/proxy"
+        assert environment[config.STATE_HOME_ENV] == "/var/state/proxy"
         assert environment[config.PROXY_PORT_ENV] == "8808"
         assert "CODEX_RESPONSES_PROXY_EXECUTABLE" not in environment
         assert environment[config.PROXY_LOG_ENV] == "/var/state/proxy/proxy.log"

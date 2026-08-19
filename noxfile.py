@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import platform
 import re
+import socket
 import tempfile
 import tomllib
 from pathlib import Path
@@ -198,12 +199,20 @@ def release(session: nox.Session) -> None:
         str(PYTEST_CONFIG),
         "-q",
         "tests/cli/test_interface.py",
+        "tests/release/test_native_lifecycle.py",
         "tests/service/handoff/test_subprocess.py",
         env=environment,
     )
     _run_without_python(session, executable, "--help")
     _run_without_python(session, executable, "version")
-    _run_without_python(session, executable, "status", "--json", success_codes=(0, 2))
+    _run_without_python(
+        session,
+        executable,
+        "status",
+        "--json",
+        isolated_listener=True,
+        success_codes=(0, 2),
+    )
     _package_release_asset(session, bundle, work)
     session.log(f"native executable accepted: {executable.name}")
 
@@ -429,20 +438,39 @@ def _run_without_python(
     session: nox.Session,
     executable: Path,
     *arguments: str,
+    isolated_listener: bool = False,
     success_codes: tuple[int, ...] = (0,),
 ) -> None:
     """Run a black-box command with no Python executable or package path."""
 
-    empty_path = Path(session.create_tmp()) / "empty-path"
-    empty_path.mkdir(exist_ok=True)
+    sandbox = Path(session.create_tmp()) / "black-box"
+    empty_path = sandbox / "empty-path"
+    empty_path.mkdir(parents=True, exist_ok=True)
     environment = {
-        "HOME": str(Path.home()),
+        "CODEX_RESPONSES_PROXY_HOME": str(sandbox / "payload"),
+        "CODEX_RESPONSES_PROXY_STATE_HOME": str(sandbox / "state"),
+        "HOME": str(sandbox / "home"),
         "PATH": str(empty_path),
         "PYTHONHOME": "",
         "PYTHONPATH": "",
         "PYTHONNOUSERSITE": "1",
         "SYSTEMROOT": os.environ.get("SYSTEMROOT", "") if platform.system() == "Windows" else "",
+        "USERPROFILE": str(sandbox / "home"),
     }
+    if isolated_listener:
+        with socket.socket() as reservation:
+            reservation.bind(("127.0.0.1", 0))
+            port = str(reservation.getsockname()[1])
+            session.run(
+                str(executable),
+                *arguments,
+                "--port",
+                port,
+                env=environment,
+                external=True,
+                success_codes=success_codes,
+            )
+        return
     session.run(
         str(executable),
         *arguments,

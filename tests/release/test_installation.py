@@ -12,6 +12,7 @@ import pytest
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import install, transaction
 from codex_responses_proxy.lifecycle.deployment import apply
+from codex_responses_proxy.lifecycle.supervision import reconcile
 from codex_responses_proxy.lifecycle.supervision import process
 from tests.lifecycle.fixtures import install_context
 
@@ -47,11 +48,21 @@ def as_transaction(value: FakeTransaction) -> transaction.PayloadTransaction:
 
 
 class FakeServiceAdapter:
-    def __init__(self, *, failure: BaseException | None = None, mocker) -> None:
+    def __init__(
+        self,
+        *,
+        failure: BaseException | None = None,
+        configured: str | None = "canonical",
+        mocker,
+    ) -> None:
         self.install_mock = mocker.Mock(side_effect=failure)
+        self.configured = configured
 
     def install(self, ctx) -> None:
         self.install_mock(ctx)
+
+    def configured_executable(self, ctx) -> str | None:
+        return ctx.executable if self.configured == "canonical" else self.configured
 
 
 class TestReleasedDeployment:
@@ -133,6 +144,73 @@ class TestReleasedDeployment:
         assert payload.events == ["commit", ("finalize", runtime)]
         request.assert_called_once()
         service.install_mock.assert_not_called()
+
+    def test_alternate_launcher_is_reconciled_before_native_upgrade(self, *, mocker) -> None:
+        payload = FakeTransaction()
+        alternate = self.current_runtime(pid=111)
+        current = self.current_runtime(pid=112)
+        runtime = self.successor()
+        service = FakeServiceAdapter(mocker=mocker)
+        migration = mocker.Mock(spec=reconcile.AlternateLauncher)
+        migration.migrate.return_value = current
+        mocker.patch.object(
+            process,
+            "verified_proxy_listener_pids",
+            side_effect=[[], [112]],
+        )
+        mocker.patch.object(apply.reconcile, "detect", return_value=migration)
+        request = mocker.patch.object(apply, "request_handoff", return_value=runtime)
+
+        result = self.deploy(payload, alternate, adapter=service, mocker=mocker)
+
+        assert result == {"mode": "upgrade", "runtime": runtime}
+        assert payload.events == ["commit", ("finalize", runtime)]
+        migration.migrate.assert_called_once_with(
+            adapter=service,
+            runtime_reader=mocker.ANY,
+            timeout_seconds=30,
+        )
+        request.assert_called_once()
+        assert request.call_args.kwargs["current"] == current
+        service.install_mock.assert_not_called()
+
+    def test_alternate_launcher_reconciliation_failure_precedes_payload_mutation(
+        self, *, mocker
+    ) -> None:
+        payload = FakeTransaction()
+        current = self.current_runtime()
+        service = FakeServiceAdapter(mocker=mocker)
+        migration = mocker.Mock(spec=reconcile.AlternateLauncher)
+        migration.migrate.side_effect = errors.InstallError("supervisor reconciliation failed")
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[])
+        mocker.patch.object(apply.reconcile, "detect", return_value=migration)
+
+        with pytest.raises(errors.InstallError, match="reconciliation failed"):
+            self.deploy(payload, current, adapter=service, mocker=mocker)
+
+        assert payload.events == []
+        service.install_mock.assert_not_called()
+
+    def test_native_listener_rebinds_a_stale_supervisor_before_payload_mutation(
+        self, *, mocker
+    ) -> None:
+        payload = FakeTransaction()
+        current = self.current_runtime()
+        service = FakeServiceAdapter(configured="/retired/launcher", mocker=mocker)
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
+        reconciled = mocker.patch.object(apply.reconcile, "current", return_value=current)
+        request = mocker.patch.object(apply, "request_handoff", return_value=self.successor())
+
+        self.deploy(payload, current, adapter=service, mocker=mocker)
+
+        reconciled.assert_called_once_with(
+            self.ctx,
+            current,
+            adapter=service,
+            runtime_reader=mocker.ANY,
+        )
+        request.assert_called_once()
+        assert payload.events[0] == "commit"
 
     def test_incompatible_or_unverified_runtime_refuses_before_write(
         self, subtests, *, mocker
@@ -286,3 +364,27 @@ class TestReleasedDeployment:
 
 def test_install_has_no_json_publication_proof_loader() -> None:
     assert not hasattr(install, "publication_proof_from_file")
+
+
+def test_install_admission_failure_closes_the_prepared_transaction(
+    tmp_path: Path, *, mocker
+) -> None:
+    ctx = install_context(tmp_path)
+    payload = mocker.Mock()
+    payload.rollback_if_prepared.return_value = True
+    mocker.patch.object(install, "build_context", return_value=ctx)
+    mocker.patch.object(install.artifact, "admit", return_value="released")
+    mocker.patch.object(install.transaction, "begin_transaction", return_value=payload)
+    mocker.patch.object(
+        install.apply,
+        "install",
+        side_effect=errors.InstallError("installed runtime identity is not verified"),
+    )
+
+    with pytest.raises(errors.InstallError, match="identity is not verified"):
+        install.install_asset(
+            tmp_path / "release.tar.gz",
+            trust_anchor=tmp_path / "allowed-signers",
+        )
+
+    payload.rollback_if_prepared.assert_called_once_with()

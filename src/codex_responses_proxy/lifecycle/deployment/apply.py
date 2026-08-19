@@ -14,6 +14,7 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
+from codex_responses_proxy.lifecycle.supervision import reconcile
 from codex_responses_proxy.runtime import config as runtime_config
 
 RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | None]
@@ -23,6 +24,8 @@ class ServiceAdapter(Protocol):
     """Native supervision operation required by a fresh install."""
 
     def install(self, ctx: runtime_context.RuntimeContext) -> None: ...
+
+    def configured_executable(self, ctx: runtime_context.RuntimeContext) -> str | None: ...
 
 
 class UnknownDeploymentOutcome(errors.InstallError):
@@ -56,8 +59,25 @@ def install(
         )
     assert current is not None
     pid = current["pid"]
-    if process.verified_proxy_listener_pids(ctx) != [pid]:
-        raise errors.InstallError("installed runtime identity is not verified")
+    if process.verified_proxy_listener_pids(ctx) == [pid]:
+        current = reconcile.current(
+            ctx,
+            current,
+            adapter=adapter,
+            runtime_reader=runtime_reader,
+        )
+    else:
+        alternate = reconcile.detect(ctx, current, adapter=adapter)
+        if alternate is None:
+            raise errors.InstallError("installed runtime identity is not verified")
+        current = alternate.migrate(
+            adapter=adapter,
+            runtime_reader=runtime_reader,
+            timeout_seconds=timeout_seconds,
+        )
+    pid = current.get("pid")
+    if type(pid) is not int or process.verified_proxy_listener_pids(ctx) != [pid]:
+        raise errors.InstallError("reconciled runtime identity is not verified")
     return _upgrade(
         ctx,
         payload,

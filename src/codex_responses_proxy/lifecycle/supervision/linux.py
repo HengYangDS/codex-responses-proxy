@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
+from pathlib import Path
 
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy import errors
@@ -53,6 +55,25 @@ def render_unit(ctx: runtime_context.RuntimeContext) -> str:
         watchdog_mode=service_runtime.WATCHDOG_MODE,
         environment=_systemd_environment(ctx),
     )
+
+
+def configured_executable(ctx: runtime_context.RuntimeContext) -> str | None:
+    """Return the executable from one unambiguous product systemd unit."""
+
+    try:
+        lines = Path(_unit_path(ctx)).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return None
+    commands = [line.removeprefix("ExecStart=") for line in lines if line.startswith("ExecStart=")]
+    if len(commands) != 1:
+        return None
+    try:
+        arguments = shlex.split(commands[0], posix=True)
+    except ValueError:
+        return None
+    if len(arguments) != 2 or arguments[1] != service_runtime.WATCHDOG_MODE:
+        return None
+    return arguments[0]
 
 
 def _install_systemd(ctx: runtime_context.RuntimeContext) -> None:

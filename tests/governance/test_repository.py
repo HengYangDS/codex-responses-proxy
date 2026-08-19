@@ -123,6 +123,8 @@ class TestInstallationInputValidation:
         )
         environment = context.service_environment()
         assert set(environment) == {
+            runtime_config.HOME_ENV,
+            runtime_config.STATE_HOME_ENV,
             runtime_config.PROXY_PORT_ENV,
             runtime_config.PROXY_LOG_ENV,
             runtime_config.WATCHDOG_LOG_ENV,
@@ -137,6 +139,8 @@ class TestInstallationInputValidation:
             runtime_config.RESPONSE_FAILED_COMPACTION_BUDGET_ENV,
             runtime_config.RESPONSE_FAILED_MAX_STAGES_ENV,
         }
+        assert environment[runtime_config.HOME_ENV] == "/opt/proxy"
+        assert environment[runtime_config.STATE_HOME_ENV] == "/var/state/proxy"
         assert runtime_config.load(environment).listener == ("127.0.0.1", 8808)
         assert environment[runtime_config.UPSTREAM_TIMEOUT_ENV] == "45.0"
 

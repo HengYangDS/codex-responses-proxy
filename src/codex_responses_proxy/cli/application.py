@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from cyclopts import App, Parameter
+from cyclopts.exceptions import CycloptsError
+from cyclopts.validators import Number
 from rich.console import Console
 
 from codex_responses_proxy.cli import presentation
@@ -22,7 +24,39 @@ PUBLIC_COMMANDS = frozenset(
 )
 _FAILURE_STATUS = "failed"
 _RECOVERY_NEXT = "run `codex-responses-proxy reload`, then inspect the service log"
-_JSON = Annotated[bool, Parameter(name="--json", negative=False)]
+_JSON = Annotated[
+    bool,
+    Parameter(
+        name="--json",
+        negative=False,
+        help="Emit stable JSON for automation.",
+        show_default=False,
+    ),
+]
+_PORT = Annotated[
+    int,
+    Parameter(
+        help="Loopback listener port.",
+        validator=Number(gte=1, lte=65535),
+    ),
+]
+_TIMEOUT = Annotated[
+    float,
+    Parameter(
+        name="--timeout-seconds",
+        help="Installation deadline in seconds.",
+        validator=Number(gt=0),
+    ),
+]
+_PURGE = Annotated[
+    bool,
+    Parameter(
+        name="--purge",
+        negative=False,
+        help="Remove verified product-owned data.",
+        show_default=False,
+    ),
+]
 
 
 def _release_version() -> str:
@@ -63,7 +97,7 @@ def dispatch(command: str, **arguments: Any) -> Any:
     if command == "doctor":
         return _doctor(control.status(context))
     if command == "recover":
-        return transaction.rollback_recovery(context, runtime=control._runtime_metrics(context))
+        return transaction.recover(context, runtime=control._runtime_metrics(context))
     if command == "reload":
         return control.reload(context, timeout_seconds=arguments["timeout_seconds"])
     raise ValueError(f"{command} is not implemented")
@@ -119,12 +153,16 @@ def _doctor(evidence: dict[str, Any]) -> dict[str, Any]:
             "next": None if command_ok else "reinstall the verified release",
         },
     }
-    return {"ok": all(check["status"] == "passed" for check in checks.values()), "checks": checks}
+    return {
+        "ok": all(check["status"] == "passed" for check in checks.values()),
+        "checks": checks,
+    }
 
 
 def _render(command: str, result: Any, *, as_json: bool) -> None:
     if as_json:
-        print(json.dumps(result, sort_keys=True))
+        payload = {"version": result} if command == "version" else result
+        print(json.dumps(payload, sort_keys=True))
         return
     rendered = presentation.render(command, result)
     if rendered:
@@ -137,12 +175,20 @@ def _result_code(command: str, result: Any) -> int:
     return 1 if command == "doctor" and isinstance(result, dict) and not result.get("ok") else 0
 
 
-def _error(message: str, *, as_json: bool) -> None:
+def _error(
+    message: str,
+    *,
+    as_json: bool,
+    next_command: str = "codex-responses-proxy doctor",
+) -> None:
     if as_json:
-        print(json.dumps({"error": {"message": message}}, sort_keys=True), file=sys.stderr)
+        print(
+            json.dumps({"error": {"message": message, "next": next_command}}, sort_keys=True),
+            file=sys.stderr,
+        )
     else:
         print(
-            presentation.error(message, next_command="codex-responses-proxy doctor"),
+            presentation.error(message, next_command=next_command),
             file=sys.stderr,
         )
 
@@ -171,16 +217,21 @@ def _app() -> App:
     @app.command(name="install")
     def install_command(
         *,
-        asset: Path,
-        trust_anchor: Annotated[Path, Parameter(name="--trust-anchor")],
-        port: int = runtime_context.DEFAULT_PORT,
-        timeout_seconds: Annotated[float, Parameter(name="--timeout-seconds")] = 30.0,
+        asset: Annotated[Path, Parameter(help="Signed release asset.")],
+        trust_anchor: Annotated[
+            Path,
+            Parameter(name="--trust-anchor", help="Trusted release signer list."),
+        ],
+        json_output: _JSON = False,
+        port: _PORT = runtime_context.DEFAULT_PORT,
+        timeout_seconds: _TIMEOUT = 30.0,
     ) -> int:
         """Install or upgrade the native user service."""
 
         return _execute(
             "install",
             asset=asset,
+            as_json=json_output,
             trust_anchor=trust_anchor,
             port=port,
             timeout_seconds=timeout_seconds,
@@ -188,20 +239,20 @@ def _app() -> App:
 
     @app.command(name="status")
     def status_command(
-        *, json_output: _JSON = False, port: int = runtime_context.DEFAULT_PORT
+        *, json_output: _JSON = False, port: _PORT = runtime_context.DEFAULT_PORT
     ) -> int:
         """Show installed state and listener health."""
 
         return _execute("status", as_json=json_output, port=port)
 
     @app.command(name="doctor")
-    def doctor(*, json_output: _JSON = False, port: int = runtime_context.DEFAULT_PORT) -> int:
+    def doctor(*, json_output: _JSON = False, port: _PORT = runtime_context.DEFAULT_PORT) -> int:
         """Diagnose the installed product without mutation."""
 
         return _execute("doctor", as_json=json_output, port=port)
 
     @app.command(name="recover")
-    def recover(*, json_output: _JSON = False, port: int = runtime_context.DEFAULT_PORT) -> int:
+    def recover(*, json_output: _JSON = False, port: _PORT = runtime_context.DEFAULT_PORT) -> int:
         """Restore a retained failed installation transaction."""
 
         return _execute("recover", as_json=json_output, port=port)
@@ -210,24 +261,29 @@ def _app() -> App:
     def reload_command(
         *,
         json_output: _JSON = False,
-        port: int = runtime_context.DEFAULT_PORT,
-        timeout_seconds: Annotated[float, Parameter(name="--timeout-seconds")] = 30.0,
+        port: _PORT = runtime_context.DEFAULT_PORT,
+        timeout_seconds: _TIMEOUT = 30.0,
     ) -> int:
         """Transactionally reload the installed service."""
 
         return _execute("reload", as_json=json_output, port=port, timeout_seconds=timeout_seconds)
 
     @app.command(name="uninstall")
-    def uninstall_command(*, port: int = runtime_context.DEFAULT_PORT, purge: bool = False) -> int:
+    def uninstall_command(
+        *,
+        json_output: _JSON = False,
+        port: _PORT = runtime_context.DEFAULT_PORT,
+        purge: _PURGE = False,
+    ) -> int:
         """Remove the native service and optionally its owned state."""
 
-        return _execute("uninstall", port=port, purge=purge)
+        return _execute("uninstall", as_json=json_output, port=port, purge=purge)
 
     @app.command
-    def version() -> int:
+    def version(*, json_output: _JSON = False) -> int:
         """Print the product version."""
 
-        return _execute("version")
+        return _execute("version", as_json=json_output)
 
     return app
 
@@ -239,12 +295,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments and arguments[0].startswith("--internal-"):
         return _run_internal(arguments)
     if arguments and not arguments[0].startswith("-") and arguments[0] not in PUBLIC_COMMANDS:
-        _error(f"unknown command: {arguments[0]}", as_json="--json" in arguments)
+        _error(
+            f"unknown command: {arguments[0]}",
+            as_json="--json" in arguments,
+            next_command="codex-responses-proxy --help",
+        )
         return 2
     try:
         result = _app()(arguments, console=Console(), error_console=Console(stderr=True))
-    except Exception as error:
-        _error(str(error), as_json="--json" in arguments)
+    except CycloptsError as error:
+        command = arguments[0] if arguments and arguments[0] in PUBLIC_COMMANDS else None
+        _error(
+            str(error),
+            as_json="--json" in arguments,
+            next_command=f"codex-responses-proxy {command} --help"
+            if command
+            else "codex-responses-proxy --help",
+        )
         return 2
     return result if isinstance(result, int) else 0
 

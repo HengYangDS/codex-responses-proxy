@@ -47,7 +47,12 @@ def capture_executable(
     try:
         candidate = psutil.Process(pid)
         argv = candidate.cmdline()
-        if not argv_names_executable(argv, expected_path, roles=roles):
+        if not _argv_or_kernel_names_executable(
+            candidate,
+            argv,
+            expected_path,
+            roles=roles,
+        ):
             return None
         return OwnedProcess(
             pid,
@@ -197,7 +202,44 @@ def pid_names_executable(
 ) -> bool:
     """Re-read one PID and prove its exact native executable and private role."""
 
-    return argv_names_executable(process_argv(pid), expected_path, roles=roles)
+    argv = process_argv(pid)
+    if argv_names_executable(argv, expected_path, roles=roles):
+        return True
+    if not argv or roles is not None and not roles.intersection(argv[1:]):
+        return False
+    try:
+        candidate = psutil.Process(pid)
+        return _kernel_executable_matches(candidate, expected_path)
+    except (OSError, psutil.Error):
+        return False
+
+
+def _argv_or_kernel_names_executable(
+    candidate: psutil.Process,
+    argv: list[str],
+    expected_path: str,
+    *,
+    roles: set[str] | frozenset[str] | None,
+) -> bool:
+    """Bind argv or the kernel executable to one native product identity."""
+
+    if argv_names_executable(argv, expected_path, roles=roles):
+        return True
+    if not argv or roles is not None and not roles.intersection(argv[1:]):
+        return False
+    return _kernel_executable_matches(candidate, expected_path)
+
+
+def _kernel_executable_matches(candidate: psutil.Process, expected_path: str) -> bool:
+    """Compare the kernel-reported executable after the role is proven by argv."""
+
+    try:
+        actual_path = os.fspath(candidate.exe())
+    except TypeError:
+        return False
+    expected = os.path.normcase(os.path.realpath(os.path.abspath(expected_path)))
+    actual = os.path.normcase(os.path.realpath(os.path.abspath(actual_path)))
+    return actual == expected
 
 
 def pids_naming_executable(

@@ -474,6 +474,29 @@ class TestVerificationContracts:
         assert isinstance(exist_ok, ast.Constant)
         assert exist_ok.value is True
 
+    def test_release_black_box_commands_are_isolated_from_the_live_installation(self) -> None:
+        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        function = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_run_without_python"
+        )
+        owner_source = ast.get_source_segment(source, function) or ""
+
+        assert '"CODEX_RESPONSES_PROXY_HOME": str(sandbox / "payload")' in owner_source
+        assert '"CODEX_RESPONSES_PROXY_STATE_HOME": str(sandbox / "state")' in owner_source
+        assert '"HOME": str(sandbox / "home")' in owner_source
+        assert '"USERPROFILE": str(sandbox / "home")' in owner_source
+        assert '"HOME": str(Path.home())' not in owner_source
+        release = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "release"
+        )
+        release_source = ast.get_source_segment(source, release) or ""
+        assert "isolated_listener=True" in release_source
+
     def test_release_collects_ctypes_as_source_outside_the_pyz_archive(self) -> None:
         """Avoid marshal identity drift in the Python 3.14 ``ctypes`` code object."""
 

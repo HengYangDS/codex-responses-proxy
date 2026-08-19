@@ -24,6 +24,15 @@ class TestWindowsLifecycle:
         assert "python" not in rendered.lower()
         assert ".py" not in rendered
 
+    def test_configured_executable_reads_only_valid_task_xml(self):
+        with _temporary_context("install_dir", windows=True) as ctx:
+            xml = Path(windows._xml_path(ctx))
+            assert windows.configured_executable(ctx) is None
+            xml.write_text(windows.render_task_xml(ctx), encoding="utf-16")
+            assert windows.configured_executable(ctx) == ctx.executable
+            xml.write_text("not xml", encoding="utf-16")
+            assert windows.configured_executable(ctx) is None
+
     def test_install_success_and_failure_messages(self, *, mocker):
         with _temporary_context("install_dir", windows=True) as ctx:
             invoked = mocker.patch.object(

@@ -106,6 +106,34 @@ class TestPayloadTransaction:
         ctx = install_context(Path(tempfile.mkdtemp()))
         assert payload_state.status(ctx) is None
 
+    def test_recovery_closes_an_unmutated_prepared_transaction(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        before = Path(ctx.executable).read_bytes()
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+
+        result = payload_transaction.recover(ctx, runtime=None)
+
+        assert result == {
+            "state": "closed",
+            "transaction_id": candidate.expected["transaction_id"],
+            "version": "1.2.3",
+        }
+        assert Path(ctx.executable).read_bytes() == before
+        assert not Path(payload_state.transaction_root(ctx)).exists()
+
+    def test_recovery_refuses_a_prepared_transaction_with_unowned_content(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        residue = Path(payload_state.transaction_root(ctx), "unexpected")
+        residue.write_text("unknown\n", encoding="utf-8")
+
+        with pytest.raises(errors.InstallError, match="prepared transaction is not empty"):
+            payload_transaction.recover(ctx, runtime=None)
+
+        assert residue.is_file()
+
     def test_fresh_commit_writes_manifest_receipt_and_pending_journal_then_finalize_state(
         self, *, mocker
     ) -> None:
@@ -280,7 +308,7 @@ class TestPayloadTransaction:
         }
         runtime.pop("manifest_sha256")
 
-        result = payload_transaction.rollback_recovery(ctx, runtime=runtime)
+        result = payload_transaction.recover(ctx, runtime=runtime)
 
         assert result["state"] == "rolled_back"
         assert Path(ctx.executable).read_bytes() == previous
@@ -321,7 +349,7 @@ class TestPayloadTransaction:
                     payload_digest.canonical_json(journal)
                 )
                 with pytest.raises(errors.InstallError, match="unavailable or invalid"):
-                    payload_transaction.rollback_recovery(ctx, runtime=runtime)
+                    payload_transaction.recover(ctx, runtime=runtime)
                 for path in sorted(root.rglob("*"), reverse=True):
                     path.unlink() if path.is_file() else path.rmdir()
                 root.rmdir()
@@ -343,7 +371,7 @@ class TestPayloadTransaction:
         }
         runtime.pop("manifest_sha256")
         with pytest.raises(errors.InstallError, match="does not match"):
-            payload_transaction.rollback_recovery(
+            payload_transaction.recover(
                 ctx,
                 runtime={**runtime, "release": "wrong"},
             )
@@ -352,18 +380,18 @@ class TestPayloadTransaction:
         journal["receipt_sha256"] = "0" * 64
         journal_path.write_bytes(payload_digest.canonical_json(journal))
         with pytest.raises(errors.InstallError, match="candidate does not match"):
-            payload_transaction.rollback_recovery(ctx, runtime=runtime)
+            payload_transaction.recover(ctx, runtime=runtime)
         journal["receipt_sha256"] = candidate.receipt_sha256
         journal_path.write_bytes(payload_digest.canonical_json(journal))
         candidate_executable = Path(ctx.executable)
         candidate_bytes = candidate_executable.read_bytes()
         candidate_executable.write_bytes(b"tampered\n")
         with pytest.raises(errors.InstallError, match="candidate projection identity"):
-            payload_transaction.rollback_recovery(ctx, runtime=runtime)
+            payload_transaction.recover(ctx, runtime=runtime)
         candidate_executable.write_bytes(candidate_bytes)
         (root / "rollback" / executable_relative()).write_bytes(b"tampered\n")
         with pytest.raises(errors.InstallError, match="runtime identity is invalid"):
-            payload_transaction.rollback_recovery(ctx, runtime=runtime)
+            payload_transaction.recover(ctx, runtime=runtime)
         assert root.exists()
 
     def test_transaction_status_projects_only_the_read_only_recovery_contract(

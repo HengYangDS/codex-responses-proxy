@@ -115,6 +115,22 @@ class TestProcessIdentity:
         )
         assert process.verified_listener_pids(ctx.port, foreign) == [7]
 
+    def test_native_identity_survives_a_retired_launcher_argv(self, *, mocker):
+        expected = os.path.abspath("/installed/codex-responses-proxy")
+        candidate = mocker.Mock()
+        candidate.exe.return_value = expected
+        candidate.cmdline.return_value = [
+            "/installed/.retired-launcher",
+            "--internal-handoff-child",
+        ]
+        mocker.patch.object(process.psutil, "Process", return_value=candidate)
+
+        assert process.pid_names_executable(
+            17,
+            expected,
+            roles={"--internal-handoff-child"},
+        )
+
     def test_identity_helpers_cover_empty_roles_and_python_suffixes(self, subtests, *, mocker):
         executable = os.path.abspath("/installed/codex-responses-proxy")
         for argv, roles, expected in (

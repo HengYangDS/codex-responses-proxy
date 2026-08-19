@@ -159,26 +159,28 @@ class TestControllerHandoffWiring:
         root = Path(self.tempdir.name)
         manifest_path = root / inventory.MANIFEST_FILENAME
 
-        with pytest.raises(errors.InstallError, match="VERSION"):
-            handoff.expected_metadata(str(root))
-        (root / "VERSION").write_text("\n", encoding="utf-8")
-        with pytest.raises(errors.InstallError, match="no release version"):
-            handoff.expected_metadata(str(root))
-
-        (root / "VERSION").write_text("1.0.25\n", encoding="utf-8")
         for payload in (
             b"not-json",
             b"{}",
             json.dumps(
                 {
+                    "release": "1.0.25",
                     "serving_payload_sha256": "bad",
                     "release_receipt_sha256": "f" * 64,
                 }
             ).encode(),
             json.dumps(
                 {
+                    "release": "1.0.25",
                     "serving_payload_sha256": "a" * 64,
                     "release_receipt_sha256": "BAD",
+                }
+            ).encode(),
+            json.dumps(
+                {
+                    "release": "",
+                    "serving_payload_sha256": "a" * 64,
+                    "release_receipt_sha256": "f" * 64,
                 }
             ).encode(),
         ):
@@ -189,12 +191,14 @@ class TestControllerHandoffWiring:
         manifest_path.write_text(
             json.dumps(
                 {
+                    "release": "1.0.25",
                     "serving_payload_sha256": "a" * 64,
                     "release_receipt_sha256": "f" * 64,
                 }
             ),
             encoding="utf-8",
         )
+        (root / "VERSION").write_text("0.0.1\n", encoding="utf-8")
         mocker.patch.object(handoff.uuid, "uuid4", return_value=mocker.Mock(hex="txn-fixed"))
         metadata = handoff.expected_metadata(str(root))
         assert metadata["transaction_id"] == "txn-fixed"

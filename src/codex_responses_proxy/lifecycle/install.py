@@ -44,10 +44,14 @@ def install_asset(
     ctx = build_context(port)
     released = artifact.admit(asset, trust_anchor=trust_anchor)
     payload_transaction = transaction.begin_transaction(ctx, released)
-    return apply.install(
-        ctx,
-        payload_transaction,
-        adapter=native_service.adapter(),
-        runtime_reader=apply.read_runtime,
-        timeout_seconds=timeout_seconds,
-    )
+    try:
+        return apply.install(
+            ctx,
+            payload_transaction,
+            adapter=native_service.adapter(),
+            runtime_reader=apply.read_runtime,
+            timeout_seconds=timeout_seconds,
+        )
+    except BaseException:
+        payload_transaction.rollback_if_prepared()
+        raise

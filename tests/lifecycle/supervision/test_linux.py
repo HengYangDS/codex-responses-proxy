@@ -49,6 +49,15 @@ class TestLinuxLifecycle:
         assert "python" not in unit.lower()
         assert ".py" not in unit
 
+    def test_configured_executable_reads_only_one_valid_exec_start(self):
+        with _temporary_context("home") as ctx:
+            unit = Path(linux._unit_path(ctx))
+            assert linux.configured_executable(ctx) is None
+            _set_file(unit, linux.render_unit(ctx))
+            assert linux.configured_executable(ctx) == ctx.executable
+            _set_file(unit, "[Service]\nExecStart=/one\nExecStart=/two\n")
+            assert linux.configured_executable(ctx) is None
+
     def test_systemd_install_success_and_failure(self, *, mocker):
         with _temporary_context("home") as ctx:
             unit = Path(linux._unit_path(ctx))

@@ -301,6 +301,7 @@ class TestControllerLifecycle:
             transaction.commit_projection()
             transaction.finalize({"pid": 1})
             runtime = {
+                "pid": 1,
                 "uptime_seconds": 12,
                 "active_responses": 0,
                 "counters": {},
@@ -308,9 +309,31 @@ class TestControllerLifecycle:
                 "last_failure": None,
             }
             mocker.patch.object(control, "_runtime_metrics", return_value=runtime)
+            mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[1])
             evidence = control.status(ctx)
             assert evidence["runtime"] == runtime
             assert "authorization" not in json.dumps(evidence).lower()
+
+    def test_status_rejects_runtime_from_an_unowned_listener(self, tmp_path: Path, *, mocker):
+        ctx = install_context(tmp_path)
+        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+        transaction.commit_projection()
+        transaction.finalize({"pid": 1})
+        foreign = {
+            "pid": 76541,
+            "release": "foreign",
+            "serving_payload_sha256": "1" * 64,
+            "release_receipt_sha256": "2" * 64,
+            "payload_manifest_sha256": "3" * 64,
+            "accepting": True,
+        }
+        mocker.patch.object(control, "_runtime_metrics", return_value=foreign)
+        mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
+
+        evidence = control.status(ctx)
+
+        assert evidence["listener_pids"] == []
+        assert evidence["runtime"] is None
 
     def test_control_status_json_reports_recovery_without_private_transaction_data(self, *, mocker):
         with tempfile.TemporaryDirectory() as tmp:

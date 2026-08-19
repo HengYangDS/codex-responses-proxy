@@ -69,13 +69,17 @@ def status(ctx: runtime_context.RuntimeContext) -> dict:
     except (OSError, errors.InstallError, errors.UnsupportedPlatform):
         service = "unknown"
     listeners = process.verified_proxy_listener_pids(ctx)
+    runtime = _runtime_metrics(ctx)
+    pid = runtime.get("pid") if isinstance(runtime, dict) else None
+    if type(pid) is not int or listeners != [pid]:
+        runtime = None
     return {
         "release": _installed_release(ctx),
         "command": command.status(_installed_command(ctx), Path(ctx.executable)),
         "payload_integrity": {"ok": integrity_ok, "detail": integrity_detail},
         "service": service,
         "listener_pids": listeners,
-        "runtime": _runtime_metrics(ctx),
+        "runtime": runtime,
         "payload_transaction": payload_state.status(ctx),
     }
 

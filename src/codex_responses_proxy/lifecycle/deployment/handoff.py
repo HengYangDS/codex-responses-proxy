@@ -85,16 +85,10 @@ def expected_metadata(root: str) -> dict:
     """Read release, aggregate payload, receipt, and manifest identity."""
 
     try:
-        with open(os.path.join(root, "VERSION"), encoding="utf-8") as handle:
-            release = handle.read().strip()
-    except OSError as exc:
-        raise errors.InstallError(f"payload VERSION is unavailable: {exc}") from exc
-    if not release:
-        raise errors.InstallError("payload has no release version")
-    try:
         manifest_path = os.path.join(root, inventory.MANIFEST_FILENAME)
         with open(manifest_path, encoding="utf-8") as handle:
             manifest = json.load(handle)
+        release = manifest["release"]
         serving_payload_sha256 = manifest["serving_payload_sha256"]
         release_receipt_sha256 = manifest["release_receipt_sha256"]
         manifest_sha256 = _sha256_file(manifest_path)
@@ -102,6 +96,8 @@ def expected_metadata(root: str) -> dict:
         raise errors.InstallError(
             f"payload files are unavailable for a handoff transaction: {exc}"
         ) from exc
+    if not isinstance(release, str) or not release:
+        raise errors.InstallError("payload manifest has no release version")
     if not _valid_sha256(serving_payload_sha256):
         raise errors.InstallError("payload manifest has no valid serving identity")
     if not _valid_sha256(release_receipt_sha256):
@@ -184,6 +180,7 @@ def request(
     runtime_reader: RuntimeReader,
     timeout_seconds: float = 30.0,
     lease_seconds: float = 30.0,
+    source_listener: process.OwnedProcess | None = None,
 ) -> dict:
     """Ask one verified listener to hand off and prove the exact successor.
 
@@ -191,7 +188,7 @@ def request(
     serving-payload digest, release-receipt digest, and manifest digest.
     """
 
-    listeners = process.verified_proxy_listener_pids(ctx)
+    listeners = _listener_pids(ctx, source_listener)
     if len(listeners) != 1:
         raise errors.InstallError(
             f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
@@ -258,6 +255,7 @@ def resolve_after_controller_failure(
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
     lease_seconds: float,
+    source_listener: process.OwnedProcess | None = None,
 ) -> tuple[str, dict | None]:
     """Resolve caller failure without racing listener-owned finalization."""
 
@@ -265,6 +263,9 @@ def resolve_after_controller_failure(
     deadline = time.monotonic() + timeout_seconds + max(1.0, lease_seconds) + 5.0
     while time.monotonic() < deadline:
         listeners = process.verified_proxy_listener_pids(ctx)
+        source_listeners = (
+            listeners if source_listener is None else _listener_pids(ctx, source_listener)
+        )
         runtime = runtime_reader(ctx)
         if isinstance(runtime, dict):
             pid = runtime.get("pid")
@@ -275,10 +276,23 @@ def resolve_after_controller_failure(
                 and _runtime_matches(runtime, expected, pid)
             ):
                 return "finalized", runtime
-            if listeners == [old_pid] and _old_runtime_resumed(runtime, old_runtime):
+            if source_listeners == [old_pid] and _old_runtime_resumed(runtime, old_runtime):
                 return "rolled_back", runtime
         time.sleep(0.1)
     return "unknown", None
+
+
+def _listener_pids(
+    ctx: runtime_context.RuntimeContext,
+    source_listener: process.OwnedProcess | None,
+) -> list[int]:
+    if source_listener is None:
+        return process.verified_proxy_listener_pids(ctx)
+    if process.owned_process_alive(source_listener) and process.listener_pids(ctx.port) == [
+        source_listener.pid
+    ]:
+        return [source_listener.pid]
+    return []
 
 
 def _runtime_matches(runtime: dict | None, expected: dict, child_pid: int) -> bool:

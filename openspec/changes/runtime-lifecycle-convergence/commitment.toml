@@ -1,0 +1,52 @@
+schema_version = 2
+id = "change:runtime-lifecycle-convergence"
+intent = "Make every public command explicit and testable while upgrading legacy installed runtimes through one interruption-safe native lifecycle transaction."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "CHANGELOG.md",
+  "VERSION",
+  "docs/**",
+  "noxfile.py",
+  "openspec/changes/archive/*-runtime-lifecycle-convergence/**",
+  "openspec/changes/runtime-lifecycle-convergence/**",
+  "openspec/specs/runtime-upgrade/**",
+  "src/codex_responses_proxy/cli/**",
+  "src/codex_responses_proxy/lifecycle/**",
+  "tests/cli/**",
+  "tests/lifecycle/**",
+  "tests/quality/**",
+  "tests/release/**",
+]
+invariants = [
+  "active_streams_survive_upgrade_handoff",
+  "every_public_command_has_one_human_and_machine_contract_with_stable_exit_status",
+  "legacy_runtime_admission_is_a_single_strict_migration_not_a_compatibility_surface",
+  "payload_command_and_native_supervisor_change_or_roll_back_as_one_transaction",
+  "pre_mutation_failure_leaves_no_transaction_residue",
+  "the_live_canonical_listener_is_never_used_as_a_test_fixture",
+]
+acceptance = [
+  "full_repository_quality_matrix_and_native_release_gates_pass",
+  "legacy_runtime_identity_is_strictly_proved_before_migration",
+  "macos_linux_and_windows_lifecycle_tests_pass",
+  "prepared_transactions_are_safely_closed_only_before_any_mutation",
+  "supervisor_rebind_failure_restores_the_previous_payload_command_and_service",
+  "the_complete_public_command_contract_matrix_passes",
+  "the_released_runtime_upgrades_the_canonical_install_without_connection_loss",
+]
+risks = [
+  "a_partial_supervisor_update_can_restart_the_previous_payload",
+  "an_incorrect_runtime_identity_migration_can_interrupt_active_sessions",
+]
+authority_refs = [
+  "AGENTS.md",
+  "CONTRIBUTING.md",
+  "docs/governance/release-and-change-policy.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+]
+predecessors = []
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []

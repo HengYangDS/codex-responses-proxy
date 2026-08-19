@@ -63,6 +63,8 @@ class RuntimeContext:
         """Project the exact installer-selected settings into native supervision."""
 
         return {
+            config.HOME_ENV: self.install_dir,
+            config.STATE_HOME_ENV: self.log_dir,
             config.PROXY_PORT_ENV: str(self.port),
             config.PROXY_LOG_ENV: config.path_join(self.log_dir, "proxy.log"),
             config.WATCHDOG_LOG_ENV: config.path_join(self.log_dir, "watchdog.log"),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import getpass
+import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape as xml_escape
 
 from codex_responses_proxy.lifecycle import context as runtime_context
@@ -84,6 +85,26 @@ def render_task_xml(ctx: runtime_context.RuntimeContext) -> str:
         workdir=xml_escape(ctx.install_dir),
         start_boundary=_SELF_HEAL_START_BOUNDARY,
     )
+
+
+def configured_executable(ctx: runtime_context.RuntimeContext) -> str | None:
+    """Return the executable declared by one valid product scheduled task."""
+
+    try:
+        root = ET.parse(_xml_path(ctx)).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    namespace = {"task": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+    commands = root.findall(".//task:Actions/task:Exec/task:Command", namespace)
+    arguments = root.findall(".//task:Actions/task:Exec/task:Arguments", namespace)
+    if (
+        len(commands) != 1
+        or len(arguments) != 1
+        or commands[0].text is None
+        or arguments[0].text != service_runtime.WATCHDOG_MODE
+    ):
+        return None
+    return commands[0].text
 
 
 def install(ctx: runtime_context.RuntimeContext) -> None:

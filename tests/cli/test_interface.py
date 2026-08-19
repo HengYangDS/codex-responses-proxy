@@ -5,9 +5,10 @@ from __future__ import annotations
 import contextlib
 import importlib.metadata
 import io
-import runpy
 import json
 import os
+import runpy
+import socket
 import subprocess
 import tempfile
 from pathlib import Path
@@ -36,10 +37,74 @@ class ProductInterfaceContracts:
         assert all(command in stdout for command in application.PUBLIC_COMMANDS)
 
     def test_empty_and_subcommand_help_are_successful(self) -> None:
-        for arguments in ((), ("status", "--help")):
+        for arguments in (
+            (),
+            *((command, "--help") for command in application.PUBLIC_COMMANDS),
+        ):
             code, stdout, stderr = self.invoke(*arguments)
             assert code == 0
             assert "Usage: codex-responses-proxy" in stdout
+            assert stderr == ""
+
+    def test_every_public_command_offers_the_same_machine_output_switch(self) -> None:
+        for command in application.PUBLIC_COMMANDS:
+            code, stdout, stderr = self.invoke(command, "--help")
+            assert code == 0
+            assert "--json" in stdout
+            assert "stable JSON" in stdout
+            json_line = next(line for line in stdout.splitlines() if "--json" in line)
+            assert "[default: False]" not in json_line
+            assert stderr == ""
+
+    def test_every_public_command_has_bounded_invalid_input(self) -> None:
+        cases = (
+            ("install",),
+            ("status", "--port", "invalid"),
+            ("doctor", "--unknown"),
+            ("recover", "--port", "invalid"),
+            ("reload", "--timeout-seconds", "invalid"),
+            ("uninstall", "--port", "invalid"),
+            ("version", "unexpected"),
+        )
+        for arguments in cases:
+            code, stdout, stderr = self.invoke(*arguments)
+            assert code == 2
+            assert stdout == ""
+            assert stderr
+            assert "Traceback" not in stderr
+            assert "Warning" not in stderr
+
+    def test_every_public_command_can_emit_stable_json(self, *, mocker) -> None:
+        results = {
+            "install": {"release": "2.0.48"},
+            "status": {"release": "2.0.48"},
+            "doctor": {"ok": True, "checks": {}},
+            "recover": {"state": "closed", "version": "2.0.48"},
+            "reload": {"old_pid": 41, "new_pid": 42},
+            "uninstall": {"stopped": 1, "purged": False},
+            "version": "2.0.48",
+        }
+        arguments = {
+            "install": (
+                "--asset",
+                "release.tar.gz",
+                "--trust-anchor",
+                "allowed-signers",
+            ),
+            "status": (),
+            "doctor": (),
+            "recover": (),
+            "reload": (),
+            "uninstall": (),
+            "version": (),
+        }
+        dispatch = mocker.patch.object(application, "dispatch")
+        for command in application.PUBLIC_COMMANDS:
+            dispatch.return_value = results[command]
+            code, stdout, stderr = self.invoke(command, *arguments[command], "--json")
+            assert code == 0
+            expected = {"version": results[command]} if command == "version" else results[command]
+            assert json.loads(stdout) == expected
             assert stderr == ""
 
     def test_parse_failures_are_bounded_in_text_and_json(self) -> None:
@@ -52,11 +117,60 @@ class ProductInterfaceContracts:
             assert code == 2
             assert stdout == ""
             if as_json:
-                assert json.loads(stderr)["error"]["message"]
+                error = json.loads(stderr)["error"]
+                assert error["message"]
+                assert error["next"] == "codex-responses-proxy --help"
             else:
                 assert "Action required" in stderr
                 assert "Problem" in stderr
                 assert "Next" in stderr
+            assert "Traceback" not in stderr
+            assert "Warning" not in stderr
+
+    def test_parse_failures_point_to_the_exact_command_help(self) -> None:
+        code, stdout, stderr = self.invoke("install")
+
+        assert code == 2
+        assert stdout == ""
+        assert "codex-responses-proxy install --help" in stderr
+        assert "codex-responses-proxy doctor" not in stderr
+
+        code, stdout, stderr = self.invoke("unknown")
+
+        assert code == 2
+        assert stdout == ""
+        assert "codex-responses-proxy --help" in stderr
+        assert "codex-responses-proxy doctor" not in stderr
+
+    def test_help_explains_lifecycle_inputs_without_boolean_noise(self) -> None:
+        code, install_help, stderr = self.invoke("install", "--help")
+        assert code == 0
+        assert stderr == ""
+        assert "Signed release asset" in install_help
+        assert "Trusted release signer" in install_help
+        assert "Loopback listener port" in install_help
+        assert "Installation deadline" in install_help
+
+        code, uninstall_help, stderr = self.invoke("uninstall", "--help")
+        assert code == 0
+        assert stderr == ""
+        assert "Remove verified product-owned data" in uninstall_help
+        assert "--no-purge" not in uninstall_help
+        assert "[default: False]" not in uninstall_help
+
+    def test_ports_and_deadlines_are_rejected_at_the_command_boundary(self) -> None:
+        cases = (
+            ("status", "--port", "0"),
+            ("status", "--port", "65536"),
+            ("reload", "--timeout-seconds", "0"),
+            ("reload", "--timeout-seconds", "-1"),
+        )
+        for arguments in cases:
+            code, stdout, stderr = self.invoke(*arguments)
+            assert code == 2
+            assert stdout == ""
+            assert f"codex-responses-proxy {arguments[0]} --help" in stderr
+            assert "codex-responses-proxy doctor" not in stderr
             assert "Traceback" not in stderr
             assert "Warning" not in stderr
 
@@ -89,6 +203,7 @@ class ProductInterfaceContracts:
         assert stdout == ""
         payload = json.loads(stderr)
         assert payload["error"]["message"] == "invalid value"
+        assert payload["error"]["next"] == "codex-responses-proxy doctor"
         assert "Traceback" not in stderr
         assert "Warning" not in stderr
 
@@ -150,8 +265,7 @@ class ProductInterfaceContracts:
                 cwd=home,
                 env={"PATH": home, "HOME": home},
                 text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 check=False,
             )
         assert result.returncode in {0, 2}, result.stderr
@@ -171,10 +285,76 @@ class ProductInterfaceContracts:
                 cwd=empty_path,
                 env={"PATH": empty_path, "HOME": os.environ.get("HOME", "")},
                 text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 check=False,
             )
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == application._release_version()
         assert result.stderr == ""
+
+    def test_built_executable_exercises_every_public_command_contract(self) -> None:
+        executable = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
+        if executable is None:
+            pytest.skip("native executable supplied by release session")
+        with tempfile.TemporaryDirectory() as home:
+            environment = {
+                "CODEX_RESPONSES_PROXY_HOME": str(Path(home) / "payload"),
+                "CODEX_RESPONSES_PROXY_STATE_HOME": str(Path(home) / "state"),
+                "HOME": home,
+                "PATH": home,
+            }
+            with socket.socket() as reservation:
+                reservation.bind(("127.0.0.1", 0))
+                port = str(reservation.getsockname()[1])
+                for command in application.PUBLIC_COMMANDS:
+                    help_result = subprocess.run(
+                        [executable, command, "--help"],
+                        cwd=home,
+                        env=environment,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    assert help_result.returncode == 0, help_result.stderr
+                    assert "--json" in help_result.stdout
+                    assert help_result.stderr == ""
+
+                cases = {
+                    "install": (2, ()),
+                    "status": (0, ("--port", port)),
+                    "doctor": (1, ("--port", port)),
+                    "recover": (2, ("--port", port)),
+                    "reload": (2, ("--port", port)),
+                    "uninstall": (0, ("--port", port)),
+                    "version": (0, ()),
+                }
+                for command, (expected_code, arguments) in cases.items():
+                    result = subprocess.run(
+                        [executable, command, *arguments, "--json"],
+                        cwd=home,
+                        env=environment,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    assert result.returncode == expected_code, result.stderr
+                    payload = result.stdout if result.stdout else result.stderr
+                    assert json.loads(payload)
+                    assert "Traceback" not in result.stderr
+                    assert "Warning" not in result.stderr
+
+                for command, (expected_code, arguments) in cases.items():
+                    result = subprocess.run(
+                        [executable, command, *arguments],
+                        cwd=home,
+                        env=environment,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    assert result.returncode == expected_code, result.stderr
+                    output = result.stdout if result.stdout else result.stderr
+                    assert output.strip()
+                    assert not output.lstrip().startswith("{")
+                    assert "Traceback" not in result.stderr
+                    assert "Warning" not in result.stderr

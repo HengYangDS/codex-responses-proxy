@@ -29,16 +29,54 @@ from codex_responses_proxy.lifecycle import (
 )
 
 
-def rollback_recovery(
+def recover(
     ctx: runtime_context.RuntimeContext,
     *,
     runtime: Mapping[str, object] | None,
 ) -> dict[str, object]:
-    """Restore one exact retained transaction bound to its prior live runtime."""
+    """Close an unmutated transaction or restore one exact retained rollback."""
 
     journal = owned_files.read_canonical_json(
         state.journal_path(ctx), "payload transaction journal"
     )
+    if journal.get("state") == "prepared":
+        return _close_prepared(ctx, journal)
+    return _rollback_recovery(ctx, journal=journal, runtime=runtime)
+
+
+def _close_prepared(
+    ctx: runtime_context.RuntimeContext, journal: Mapping[str, object]
+) -> dict[str, object]:
+    """Remove only a valid journal that proves no payload mutation began."""
+
+    root = state.transaction_root(ctx)
+    if tuple(root.iterdir()) != (state.journal_path(ctx),):
+        raise errors.InstallError("prepared transaction is not empty")
+    if (
+        journal.get("schema_version") != state.TRANSACTION_JOURNAL_SCHEMA
+        or not isinstance(journal.get("transaction_id"), str)
+        or not isinstance(journal.get("version"), str)
+        or not isinstance(journal.get("receipt_sha256"), str)
+        or not isinstance(journal.get("fresh"), bool)
+    ):
+        raise errors.InstallError("payload recovery transaction is unavailable or invalid")
+    result = {
+        "transaction_id": journal["transaction_id"],
+        "version": journal["version"],
+        "state": "closed",
+    }
+    _remove_transaction_root(ctx)
+    return result
+
+
+def _rollback_recovery(
+    ctx: runtime_context.RuntimeContext,
+    *,
+    journal: Mapping[str, object],
+    runtime: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """Restore one exact retained transaction bound to its prior live runtime."""
+
     if (
         journal.get("schema_version") != state.TRANSACTION_JOURNAL_SCHEMA
         or journal.get("state") != "recovery_required"
@@ -257,6 +295,14 @@ class PayloadTransaction:
             payload_candidate.remove_projection(self._ctx, {blob.path for blob in self._blobs})
         self._state = "rolled_back"
         _remove_transaction_root(self._ctx)
+
+    def rollback_if_prepared(self) -> bool:
+        """Close the transaction only before any projection mutation begins."""
+
+        if self._state != "prepared":
+            return False
+        self.rollback()
+        return True
 
     def preserve_for_recovery(self, reason: str) -> None:
         """Keep committed bytes and rollback while marking an unknown outcome."""

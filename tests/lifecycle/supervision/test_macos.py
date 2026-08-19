@@ -49,6 +49,15 @@ class TestMacosLifecycle:
         assert "python" not in rendered.lower()
         assert ".py" not in rendered
 
+    def test_configured_executable_reads_only_a_valid_watchdog_plist(self):
+        with _temporary_context("home") as ctx:
+            plist = Path(macos._plist_path(ctx))
+            assert macos.configured_executable(ctx) is None
+            _set_file(plist, macos.render_plist(ctx))
+            assert macos.configured_executable(ctx) == ctx.executable
+            _set_file(plist, "not a plist")
+            assert macos.configured_executable(ctx) is None
+
     def test_rendered_plist_captures_watchdog_stderr(self):
         with _temporary_context("home") as ctx:
             ctx.log_dir = str(Path(ctx.home) / "state")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import plistlib
 import subprocess
 
 from codex_responses_proxy.runtime import config
@@ -60,6 +61,25 @@ def render_plist(ctx: runtime_context.RuntimeContext) -> str:
         stderr_log=config.path_join(ctx.log_dir, "watchdog.stderr.log"),
         environment=_environment_xml(ctx),
     )
+
+
+def configured_executable(ctx: runtime_context.RuntimeContext) -> str | None:
+    """Return the executable declared by one valid product launch agent."""
+
+    try:
+        with open(_plist_path(ctx), "rb") as handle:
+            payload = plistlib.load(handle)
+    except (OSError, plistlib.InvalidFileException):
+        return None
+    arguments = payload.get("ProgramArguments") if isinstance(payload, dict) else None
+    if (
+        not isinstance(arguments, list)
+        or len(arguments) != 2
+        or not all(isinstance(value, str) for value in arguments)
+        or arguments[1] != service_runtime.WATCHDOG_MODE
+    ):
+        return None
+    return arguments[0]
 
 
 def install(ctx: runtime_context.RuntimeContext) -> None:

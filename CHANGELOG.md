@@ -7,6 +7,24 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.48] - 2026-08-19
+
+### Fixed
+
+- Recover canonical empty prepared installation transactions while preserving
+  ambiguous or mutated residue for explicit diagnosis.
+- Reconcile an install-owned alternate launcher into the canonical native
+  executable through a retry-safe protocol-v2 handoff without interrupting an
+  active response.
+- Bind alternate native services to their selected payload and state roots,
+  and verify a handoff child by its canonical kernel executable when the
+  process argument still names the retiring bridge.
+- Read handoff release identity from the verified payload manifest instead of
+  a stale installation-root version file.
+- Make every public command's help, parameter validation, human output, JSON
+  output, next action, and exit status explicit and consistent in the native
+  product interface.
+
 ## [2.0.47] - 2026-08-19
 
 ### Fixed

@@ -126,7 +126,9 @@ class CliLifecycleContracts:
         }
         assert len(value_columns) == 1
 
-    def test_human_projection_covers_degraded_and_complete_command_results(self) -> None:
+    def test_human_projection_covers_degraded_and_complete_command_results(
+        self,
+    ) -> None:
         degraded = application.presentation.render(
             "status",
             {
@@ -270,11 +272,18 @@ class CliLifecycleContracts:
         cases = (
             (healthy, True, ("passed", "passed", "passed", "passed")),
             (
-                {**healthy, "payload_integrity": {"ok": False, "detail": "hash mismatch"}},
+                {
+                    **healthy,
+                    "payload_integrity": {"ok": False, "detail": "hash mismatch"},
+                },
                 False,
                 ("failed", "passed", "passed", "passed"),
             ),
-            ({**healthy, "service": "unknown"}, False, ("passed", "failed", "passed", "passed")),
+            (
+                {**healthy, "service": "unknown"},
+                False,
+                ("passed", "failed", "passed", "passed"),
+            ),
             (
                 {**healthy, "listener_pids": [654]},
                 False,
@@ -340,7 +349,7 @@ class CliLifecycleContracts:
         mocker.patch.object(application.control, "_runtime_metrics", return_value=runtime)
         recover = mocker.patch.object(
             application.transaction,
-            "rollback_recovery",
+            "recover",
             return_value={"version": "2.0.13", "state": "rolled_back"},
         )
 
@@ -385,7 +394,12 @@ class CliLifecycleContracts:
         code, stdout, stderr = self.invoke("status", "--json")
         assert code == 2
         assert stdout == ""
-        assert json.loads(stderr) == {"error": {"message": "bad port"}}
+        assert json.loads(stderr) == {
+            "error": {
+                "message": "bad port",
+                "next": "codex-responses-proxy doctor",
+            }
+        }
 
     def test_install_and_version_dispatch_to_their_single_owners(self, *, mocker) -> None:
         asset = Path("release.tar.gz")
@@ -441,7 +455,8 @@ class CliLifecycleContracts:
         mocker.stop(handoff)
 
         watchdog = mocker.patch(
-            "codex_responses_proxy.lifecycle.supervision.watchdog.run", return_value=None
+            "codex_responses_proxy.lifecycle.supervision.watchdog.run",
+            return_value=None,
         )
         assert application.main([application.service_runtime.WATCHDOG_MODE]) == 0
         watchdog.assert_called_once_with()
