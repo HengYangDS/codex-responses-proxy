@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.46] - 2026-08-19
+
+### Fixed
+
+- Validate ordinary and published source checkouts with release-state-aware
+  metadata tests instead of invoking the pre-tag preparation contract after a
+  release tag already exists.
+
 ## [2.0.45] - 2026-08-19
 
 ### Fixed

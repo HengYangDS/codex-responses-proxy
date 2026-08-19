@@ -205,9 +205,9 @@ def test_exact_release_tag_contract() -> None:
 
 
 def test_release_metadata_command_has_no_forge_semantics() -> None:
-    """Keep product metadata validation independent from publication peers."""
+    """Keep ordinary product validation independent from publication peers."""
 
-    completed = _run(sys.executable, str(CHECKER), "--prepare-release")
+    completed = _run(sys.executable, str(CHECKER))
     require_success(completed)
     legacy = _run(sys.executable, str(CHECKER), "--provider", "gitlab")
     require(legacy.returncode != 0, "metadata retained a Forge-specific compatibility flag")
