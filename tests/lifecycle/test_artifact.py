@@ -334,7 +334,7 @@ def test_admission_requires_every_companion_asset(
 def test_admission_rejects_nonfile_oversized_and_invalid_name(
     tmp_path: Path, mocker: MockerFixture
 ) -> None:
-    with pytest.raises(errors.InstallError, match="unavailable or too large"):
+    with pytest.raises(errors.InstallError, match="archive is unavailable"):
         artifact.admit(tmp_path, trust_anchor=tmp_path)
 
     invalid = tmp_path / "native.tar.gz"

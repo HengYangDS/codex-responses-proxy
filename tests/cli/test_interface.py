@@ -146,10 +146,18 @@ class ProductInterfaceContracts:
         code, install_help, stderr = self.invoke("install", "--help")
         assert code == 0
         assert stderr == ""
-        assert "Signed release asset" in install_help
-        assert "Trusted release signer" in install_help
+        assert "Native release archive" in install_help
+        assert "sibling manifest, checksums," in install_help
+        assert "and signature required" in install_help
+        assert "Trusted SSH allowed-signers file" in install_help
         assert "Loopback listener port" in install_help
-        assert "Installation deadline" in install_help
+        assert "Native lifecycle deadline" in install_help
+
+        code, reload_help, stderr = self.invoke("reload", "--help")
+        assert code == 0
+        assert stderr == ""
+        assert "Native lifecycle deadline" in reload_help
+        assert "Installation deadline" not in reload_help
 
         code, uninstall_help, stderr = self.invoke("uninstall", "--help")
         assert code == 0
@@ -157,6 +165,55 @@ class ProductInterfaceContracts:
         assert "Remove verified product-owned data" in uninstall_help
         assert "--no-purge" not in uninstall_help
         assert "[default: False]" not in uninstall_help
+
+    def test_missing_install_inputs_are_clean_usage_errors(self, tmp_path: Path) -> None:
+        asset = tmp_path / "missing-release.tar.gz"
+        trust_anchor = tmp_path / "missing-allowed-signers"
+
+        for arguments in (
+            (
+                "install",
+                "--asset",
+                str(asset),
+                "--trust-anchor",
+                str(trust_anchor),
+            ),
+            (
+                "install",
+                "--asset",
+                str(asset),
+                "--trust-anchor",
+                str(trust_anchor),
+                "--json",
+            ),
+        ):
+            code, stdout, stderr = self.invoke(*arguments)
+
+            assert code == 2
+            assert stdout == ""
+            assert "native release archive is unavailable" in stderr
+            assert "[Errno" not in stderr
+            assert "codex-responses-proxy install --help" in stderr
+            assert "codex-responses-proxy doctor" not in stderr
+            assert "Traceback" not in stderr
+            assert "Warning" not in stderr
+
+        asset = tmp_path / "codex-responses-proxy-2.0.48-macos-arm64.tar.gz"
+        asset.write_bytes(b"not-admitted")
+        code, stdout, stderr = self.invoke(
+            "install",
+            "--asset",
+            str(asset),
+            "--trust-anchor",
+            str(trust_anchor),
+            "--json",
+        )
+
+        assert code == 2
+        assert stdout == ""
+        assert "release trust anchor is unavailable" in stderr
+        assert "[Errno" not in stderr
+        assert "codex-responses-proxy install --help" in stderr
 
     def test_ports_and_deadlines_are_rejected_at_the_command_boundary(self) -> None:
         cases = (
@@ -203,7 +260,7 @@ class ProductInterfaceContracts:
         assert stdout == ""
         payload = json.loads(stderr)
         assert payload["error"]["message"] == "invalid value"
-        assert payload["error"]["next"] == "codex-responses-proxy doctor"
+        assert payload["error"]["next"] == "codex-responses-proxy status"
         assert "Traceback" not in stderr
         assert "Warning" not in stderr
 

@@ -24,6 +24,15 @@ PUBLIC_COMMANDS = frozenset(
 )
 _FAILURE_STATUS = "failed"
 _RECOVERY_NEXT = "run `codex-responses-proxy reload`, then inspect the service log"
+_ERROR_NEXT = {
+    "install": "codex-responses-proxy install --help",
+    "status": "codex-responses-proxy doctor",
+    "doctor": "codex-responses-proxy status",
+    "recover": "codex-responses-proxy status",
+    "reload": "codex-responses-proxy status",
+    "uninstall": "codex-responses-proxy status",
+    "version": "codex-responses-proxy --help",
+}
 _JSON = Annotated[
     bool,
     Parameter(
@@ -44,7 +53,7 @@ _TIMEOUT = Annotated[
     float,
     Parameter(
         name="--timeout-seconds",
-        help="Installation deadline in seconds.",
+        help="Native lifecycle deadline in seconds.",
         validator=Number(gt=0),
     ),
 ]
@@ -197,7 +206,7 @@ def _execute(command: str, *, as_json: bool = False, **arguments: Any) -> int:
     try:
         result = dispatch(command, **arguments)
     except (OSError, RuntimeError, ValueError) as error:
-        _error(str(error), as_json=as_json)
+        _error(str(error), as_json=as_json, next_command=_ERROR_NEXT[command])
         return 2
     _render(command, result, as_json=as_json)
     return _result_code(command, result)
@@ -217,10 +226,18 @@ def _app() -> App:
     @app.command(name="install")
     def install_command(
         *,
-        asset: Annotated[Path, Parameter(help="Signed release asset.")],
+        asset: Annotated[
+            Path,
+            Parameter(
+                help="Native release archive; sibling manifest, checksums, and signature required.",
+            ),
+        ],
         trust_anchor: Annotated[
             Path,
-            Parameter(name="--trust-anchor", help="Trusted release signer list."),
+            Parameter(
+                name="--trust-anchor",
+                help="Trusted SSH allowed-signers file.",
+            ),
         ],
         json_output: _JSON = False,
         port: _PORT = runtime_context.DEFAULT_PORT,

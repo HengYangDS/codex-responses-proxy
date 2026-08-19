@@ -223,6 +223,8 @@ def plain_value(value: Any) -> Any:
 def admit(asset: Path, *, trust_anchor: Path) -> VerifiedArtifact:
     """Admit one archive whose checksum manifest has an authorized SSH signature."""
 
+    if not asset.is_file():
+        raise errors.InstallError("native release archive is unavailable")
     archive = asset.resolve(strict=True)
     if not archive.is_file() or archive.stat().st_size > _MAX_ASSET_BYTES:
         raise errors.InstallError("native release archive is unavailable or too large")
@@ -232,6 +234,8 @@ def admit(asset: Path, *, trust_anchor: Path) -> VerifiedArtifact:
     manifest_path = archive.with_name(f"codex-responses-proxy-{match['platform']}.manifest.json")
     checksums_path = archive.with_name("SHA256SUMS")
     signature_path = archive.with_name("SHA256SUMS.sig")
+    if not trust_anchor.is_file():
+        raise errors.InstallError("release trust anchor is unavailable")
     anchor = trust_anchor.resolve(strict=True)
     for path, label in (
         (manifest_path, "platform manifest"),
