@@ -15,9 +15,10 @@ flowchart LR
 
 | Plane | Owns |
 | --- | --- |
-| Local | Commit and tag objects, build, test, package, install, runtime proof |
-| GitLab | Transport authentication, account verification, CI, Release, assets |
-| GitHub | Transport authentication, account verification, CI, Release, assets |
+| Local | Commit and tag objects, source proof, install, runtime proof |
+| Bundle builder | Complete platform assets, one checksum inventory, one product signature |
+| GitLab | Transport authentication, tag proof, Release projection |
+| GitHub | Transport authentication, review proof, bundle build, Release projection |
 | Audit | Read-only comparison after publication |
 
 The commit and annotated tag are signed once locally. The public signing key and
@@ -97,8 +98,10 @@ uv run --locked --no-sync python -m tools.release.tag \
 ```
 
 An existing remote tag with the same OID is idempotent. A different OID fails
-closed. Each Forge independently runs CI and publishes its own Release record
-and assets; neither consumes the other.
+closed. The tag workflow builds all supported platform assets, assembles and
+signs one complete bundle, then each selected Forge publishes those exact bytes.
+A publisher accepts only a verified pre-signed bundle and cannot regenerate its
+checksum inventory or signature.
 
 ## Read-only parity audit
 
@@ -118,6 +121,8 @@ uv run --locked --no-sync python -m tools.forge.audit \
 | Tag targets | Same peeled commit and tree OIDs |
 | Tag signatures | Trusted against the supplied product anchor |
 | Remote branches | Only `main`, `dev`, and transient `proposal/*` while active |
+| Release inventory | Every platform from the product SSOT plus one checksum and signature |
+| Release bytes | Exact equality for every asset and one trust-anchor digest |
 
 Equal trees, equal messages, or a shared history suffix do not establish parity.
 

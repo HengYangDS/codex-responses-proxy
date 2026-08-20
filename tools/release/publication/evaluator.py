@@ -6,6 +6,8 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Final, TypedDict, cast
 
+from tools.release import product_assets
+
 _TAG: Final = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _OID: Final = re.compile(r"^[0-9a-f]{40,64}$")
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
@@ -64,58 +66,66 @@ def evaluate(
         if forge is not None:
             normalized[provider] = forge
 
+    tag_object_equal = (
+        "gitlab" in normalized
+        and "github" in normalized
+        and normalized["gitlab"]["tag_object_oid"] == normalized["github"]["tag_object_oid"]
+    )
+    commit_equal = (
+        "gitlab" in normalized
+        and "github" in normalized
+        and normalized["gitlab"]["commit_oid"] == normalized["github"]["commit_oid"]
+    )
     tree_equal = (
         "gitlab" in normalized
         and "github" in normalized
         and normalized["gitlab"]["tree_oid"] == normalized["github"]["tree_oid"]
     )
+    if "gitlab" in normalized and "github" in normalized and not tag_object_equal:
+        reasons.append("tag_object_mismatch")
+    if "gitlab" in normalized and "github" in normalized and not commit_equal:
+        reasons.append("commit_mismatch")
     if "gitlab" in normalized and "github" in normalized and not tree_equal:
         reasons.append("tree_mismatch")
     assets_equal = _common_payloads_equal(normalized, tag)
     if "gitlab" in normalized and "github" in normalized and not assets_equal:
         reasons.append("asset_mismatch")
-    verified = not reasons and tree_equal and assets_equal
+    trust_anchor_equal = (
+        "gitlab" in normalized
+        and "github" in normalized
+        and normalized["gitlab"]["anchor_sha256"] == normalized["github"]["anchor_sha256"]
+    )
+    if "gitlab" in normalized and "github" in normalized and not trust_anchor_equal:
+        reasons.append("trust_anchor_mismatch")
+    verified = (
+        not reasons
+        and tag_object_equal
+        and commit_equal
+        and tree_equal
+        and assets_equal
+        and trust_anchor_equal
+    )
     return {
         "schema_version": 1,
         "tag": tag,
         "verified": verified,
+        "tag_object_equal": tag_object_equal,
+        "commit_equal": commit_equal,
         "tree_equal": tree_equal,
         "assets_equal": assets_equal,
+        "trust_anchor_equal": trust_anchor_equal,
         "reasons": reasons,
         "forges": normalized,
     }
 
 
 def _common_payloads_equal(normalized: Mapping[str, Mapping[str, object]], tag: str) -> bool:
-    """Compare archive and manifest digests for platforms published by both Forges."""
+    """Require one complete, byte-identical release inventory on both Forges."""
 
+    del tag
     if not {"gitlab", "github"} <= set(normalized):
         return False
-    inventories = {
-        provider: cast(Mapping[str, str], normalized[provider]["assets"])
-        for provider in ("gitlab", "github")
-    }
-    version = tag.removeprefix("v")
-    prefix = f"codex-responses-proxy-{version}-"
-    platforms = [
-        {
-            name.removeprefix(prefix).removesuffix(".tar.gz")
-            for name in inventory
-            if name.startswith(prefix) and name.endswith(".tar.gz")
-        }
-        for inventory in inventories.values()
-    ]
-    common = set.intersection(*platforms)
-    if not common:
-        return False
-    return all(
-        inventories["gitlab"][name] == inventories["github"][name]
-        for platform in common
-        for name in (
-            f"{prefix}{platform}.tar.gz",
-            f"codex-responses-proxy-{platform}.manifest.json",
-        )
-    )
+    return normalized["gitlab"]["assets"] == normalized["github"]["assets"]
 
 
 def _evaluate_forge(
@@ -213,25 +223,17 @@ def _evaluate_forge(
 
 
 def _validated_assets(provider: str, tag: str, assets: object) -> Mapping[str, object] | None:
-    """Return one exact, digest-addressed release inventory."""
+    """Return the exact complete release inventory declared by the product SSOT."""
+
     del provider
     if not isinstance(assets, Mapping):
         return None
     typed_assets = cast(Mapping[str, object], assets)
-    names = set(typed_assets)
-    archive_prefix = f"codex-responses-proxy-{tag.removeprefix('v')}-"
-    platforms = {
-        name.removeprefix(archive_prefix).removesuffix(".tar.gz")
-        for name in names
-        if name.startswith(archive_prefix) and name.endswith(".tar.gz")
-    }
-    expected_assets = {
-        *(f"{archive_prefix}{platform}.tar.gz" for platform in platforms),
-        *(f"codex-responses-proxy-{platform}.manifest.json" for platform in platforms),
-        "SHA256SUMS",
-        "SHA256SUMS.sig",
-    }
-    if not platforms or names != expected_assets:
+    expected_assets = product_assets.release_asset_names(
+        tag.removeprefix("v"),
+        product_assets.RELEASE_PLATFORMS,
+    )
+    if set(typed_assets) != expected_assets:
         return None
     if any(
         not isinstance(typed_assets.get(name), str)

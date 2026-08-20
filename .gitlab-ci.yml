@@ -1,13 +1,10 @@
 workflow:
   rules:
-    # A release candidate is validated by its signed tag. Suppress the
-    # necessarily untagged preparation branch so an incomplete publication is
-    # never represented as a passing mainline release.
-    - if: '$CI_COMMIT_BRANCH =~ /^release\// && !$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
       when: never
-    - if: '$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /^release\//'
-      when: never
-    - when: always
 
 stages:
   - verify
@@ -21,7 +18,6 @@ variables:
   UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
   UV_PYTHON_INSTALL_DIR: $CI_PROJECT_DIR/.cache/uv/python
   CODEX_RESPONSES_PROXY_CI_TARGET: linux-amd64
-  LINUX_RELEASE_IMAGE: python:3.14.7-bookworm@sha256:8771427e2ac3e39208c1632f17e8b09e464333d262844a03705cc5e0023c16e2
 
 default:
   image:
@@ -45,14 +41,10 @@ default:
         exit 1
       fi
 
-.release-uv-bootstrap:
-  before_script:
-    - &install-uv |
-      UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
-      python -m pip install --disable-pip-version-check --no-cache-dir --root-user-action=ignore "uv${UV_REQUIREMENT}"
-
 verify-python-matrix:
   stage: verify
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   variables:
     # The canonical test inventory includes release chronology contracts.
     # Every matrix interpreter therefore needs the same complete Git history.
@@ -70,8 +62,10 @@ verify-python-matrix:
     - uv python install --no-bin $(tr '\n' ' ' < .python-versions)
     - uv run --locked --no-sync --python python --no-python-downloads nox -s full
 
-verify-release-metadata:
+verify-accepted-source:
   stage: verify
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"'
   variables:
     # Release chronology compares the whole provider tag namespace. A shallow
     # checkout cannot establish that history, so this job must receive it.
@@ -86,18 +80,8 @@ verify-release-metadata:
     - git fetch --tags --force --prune --prune-tags origin
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
   script:
-    - |
-      if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --tag "$CI_COMMIT_TAG"
-      elif git show-ref --verify --quiet "refs/tags/v$(cat VERSION)"; then
-        uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py
-      else
-        uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --prepare-release
-      fi
-    - uv run --locked --no-sync --python python --no-python-downloads python -m pytest -q tests/release/test_metadata.py
+    - uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py
     - uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
-    - uv run --locked --no-sync --python python --no-python-downloads python -m pytest -q tests/release/test_publish_gitlab.py
-    - uv run --locked --no-sync --python python --no-python-downloads python -m pytest -q tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py
 
 verify-release-tag:
   stage: release
@@ -117,6 +101,8 @@ verify-release-tag:
 
 verify-python-quality:
   stage: verify
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   image:
     name: $UV_PYTHON_FLOOR_IMAGE
     docker: { platform: linux/amd64 }
@@ -132,51 +118,3 @@ verify-python-quality:
   script:
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
     - uv run --locked --no-sync --python python --no-python-downloads nox -s quality
-
-build-gitlab-native-asset:
-  stage: release
-  image:
-    name: $LINUX_RELEASE_IMAGE
-    docker: { platform: linux/amd64 }
-  variables: { GIT_DEPTH: "0" }
-  rules:
-    - if: '$CI_COMMIT_TAG'
-  before_script:
-    - git fetch --tags --force --prune --prune-tags origin
-    - test "$(uname -m)" = x86_64
-    - *install-uv
-    - install -d /workspace
-    - git archive --format=tar HEAD | tar -xf - -C /workspace
-    - cd /workspace
-    - uv sync --locked --only-group quality --python python --no-python-downloads
-  script:
-    - cd /workspace
-    - uv run --locked --no-sync --python python --no-python-downloads nox -s release -- "$CI_PROJECT_DIR/.release-assets"
-  artifacts:
-    name: "gitlab-native-$CI_COMMIT_TAG-linux-x86_64"
-    paths: [.release-assets/]
-    expire_in: 7 days
-
-publish-gitlab-release:
-  stage: release
-  image:
-    name: $LINUX_RELEASE_IMAGE
-    docker: { platform: linux/amd64 }
-  variables: { GIT_DEPTH: "0" }
-  needs:
-    - build-gitlab-native-asset
-    - verify-python-matrix
-    - verify-release-metadata
-    - verify-release-tag
-    - verify-python-quality
-  rules:
-    - if: '$CI_COMMIT_TAG'
-  before_script:
-    - git fetch --tags --force --prune --prune-tags origin
-    - *install-uv
-    - uv sync --locked --group quality --python python --no-python-downloads
-  script:
-    - uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --tag "$CI_COMMIT_TAG"
-    - test -f "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY:-}"
-    - test -n "${CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST:-}"
-    - uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.publish_gitlab --api-base "$CI_API_V4_URL" --project-id "$CI_PROJECT_ID" --tag "$CI_COMMIT_TAG" --token "$CI_JOB_TOKEN" --assets "$CI_PROJECT_DIR/.release-assets" --signing-key "$CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY" --trust "$CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST"

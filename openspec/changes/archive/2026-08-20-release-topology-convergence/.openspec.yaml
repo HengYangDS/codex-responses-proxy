@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-20
+goal: One signed product SHA, one complete cross-platform release bundle,
+  non-duplicative CI, exact dual-Forge parity.

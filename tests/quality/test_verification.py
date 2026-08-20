@@ -101,8 +101,9 @@ class TestVerificationContracts:
         quality = metadata["dependency-groups"]["quality"]
         assert any(requirement.startswith("pytest==") for requirement in quality)
         assert any(requirement.startswith("pytest-mock==") for requirement in quality)
-        pytest_config = (ROOT / ".config/checks/pytest/pytest.ini").read_text(encoding="utf-8")
+        pytest_config = (ROOT / "pytest.ini").read_text(encoding="utf-8")
         assert "addopts = --import-mode=importlib --strict-config --strict-markers" in pytest_config
+        assert "cache_dir = .cache/pytest" in pytest_config
         assert "filterwarnings = error" in pytest_config
         assert (
             "native_distribution: requires the self-contained released executable" in pytest_config
@@ -121,7 +122,7 @@ class TestVerificationContracts:
                     direct_test_commands.append(f"{relative}:{lineno}:{line.strip()}")
         assert direct_test_commands == []
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-        metadata_job = gitlab.split("verify-release-metadata:", 1)[1].split(
+        metadata_job = gitlab.split("verify-accepted-source:", 1)[1].split(
             "verify-release-tag:", 1
         )[0]
         assert "*install-uv" not in metadata_job
@@ -129,9 +130,9 @@ class TestVerificationContracts:
         assert "uv sync --locked --all-groups" not in metadata_job
         locked_python = "uv run --locked --no-sync --python python --no-python-downloads"
         assert "python tools/" not in metadata_job.replace(f"{locked_python} python tools/", "")
-        assert (
-            f"{locked_python} python -m pytest -q tests/release/test_metadata.py"
-        ) in metadata_job
+        assert f"{locked_python} python tools/release/metadata.py" in metadata_job
+        assert f"{locked_python} python -m tools.quality.repository" in metadata_job
+        assert "python -m pytest" not in metadata_job
 
     def test_forge_bootstrap_derives_uv_requirement_from_project_metadata(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -152,16 +153,16 @@ class TestVerificationContracts:
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         uv_version = requirement.removeprefix("==")
         assert gitlab.count(f"ghcr.io/astral-sh/uv:{uv_version}-python") == 2
-        assert gitlab.count('["tool"]["uv"]["required-version"]') == 2
+        assert gitlab.count('["tool"]["uv"]["required-version"]') == 1
         assert gitlab.count("&assert-uv-version") == 1
         assert gitlab.count("*assert-uv-version") == 4
         assert 'UV_VERSION="${UV_VERSION#uv }"' in gitlab
         assert 'ACTUAL_UV_VERSION="${UV_VERSION%% *}"' in gitlab
         assert 'EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"' in gitlab
         assert "uv version mismatch: expected %s, actual %s" in gitlab
-        assert gitlab.count("&install-uv") == 1
-        assert gitlab.count("*install-uv") == 2
-        assert gitlab.count("python -m pip install") == 1
+        assert "&install-uv" not in gitlab
+        assert "*install-uv" not in gitlab
+        assert "python -m pip install" not in gitlab
 
     @pytest.mark.parametrize(
         ("reported_version", "expected_returncode"),
@@ -176,7 +177,7 @@ class TestVerificationContracts:
     ) -> None:
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         script = textwrap.dedent(
-            gitlab.split("- &assert-uv-version |\n", 1)[1].split("\n\n.release-uv-bootstrap:", 1)[0]
+            gitlab.split("- &assert-uv-version |\n", 1)[1].split("\n\nverify-python-matrix:", 1)[0]
         )
         executable = tmp_path / "uv"
         executable.write_text(f"#!/bin/sh\nprintf '%s\\n' '{reported_version}'\n")
@@ -352,7 +353,7 @@ class TestVerificationContracts:
         assert "_previous_patch" not in lifecycle
 
     def test_native_distribution_tests_are_explicit_and_release_owned(self) -> None:
-        pytest_config = (ROOT / ".config/checks/pytest/pytest.ini").read_text(encoding="utf-8")
+        pytest_config = (ROOT / "pytest.ini").read_text(encoding="utf-8")
         assert (
             "native_distribution: requires the self-contained released executable" in pytest_config
         )
@@ -370,6 +371,7 @@ class TestVerificationContracts:
             "pytest",
             "pytest-mock",
             "pytest-subtests",
+            "pyyaml",
             "ruff",
             "ty",
         }
@@ -456,17 +458,15 @@ class TestVerificationContracts:
         assert "needs.python-matrix.outputs.floor" in github
         assert "needs.python-matrix.outputs.latest" in github
         assert "needs.python-matrix.outputs.release" in github
-        assert "python-version-file: .python-versions" in release
+        assert "python-version-file: .python-release" in release
         default = gitlab.split("\ndefault:", 1)[1].split("\nverify-python-matrix:", 1)[0]
         assert "name: $UV_PYTHON_LATEST_IMAGE" in default
         assert "docker: { platform: linux/amd64 }" in default
         assert gitlab.count("name: $UV_PYTHON_LATEST_IMAGE") == 1
-        quality = gitlab.split("\nverify-python-quality:", 1)[1].split(
-            "\nbuild-gitlab-native-asset:", 1
-        )[0]
+        quality = gitlab.split("\nverify-python-quality:", 1)[1]
         assert "name: $UV_PYTHON_FLOOR_IMAGE" in quality
         assert "docker: { platform: linux/amd64 }" in quality
-        assert "name: $LINUX_RELEASE_IMAGE" in gitlab
+        assert "LINUX_RELEASE_IMAGE" not in gitlab
 
     def test_release_black_box_path_is_repeatable(self) -> None:
         """Release verification must tolerate repeated commands in one Nox session."""
@@ -549,14 +549,14 @@ class TestVerificationContracts:
         quality_job = github.split("  python-quality:", 1)[1].split("  native-assets:", 1)[0]
         assert "uv run --locked --group quality nox -s quality" in quality_job
         assert "uv sync --locked --only-group quality" not in quality_job
-        assert "uv sync --locked --only-group quality" in gitlab
+        assert "uv sync --locked --group quality --no-install-project" in gitlab
         assert (
             "uv run --locked --no-sync --python python --no-python-downloads nox -s quality"
             in gitlab
         )
         assert "fetch-depth: 0" in quality_job
         assert "fetch-tags: true" in quality_job
-        assert "python -m tools.quality.repository" not in github
+        assert "python -m tools.quality.repository" not in quality_job
         assert "uv run --locked --group quality nox -s quality" in github
         assert "python -m tools.quality.repository" in gitlab
 
@@ -564,6 +564,6 @@ class TestVerificationContracts:
         github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-        assert "uv sync --locked --only-group quality" in gitlab
+        assert "uv sync --locked --group quality --no-install-project" in gitlab
         for source in (github, release):
             assert "uv sync --locked --all-groups" in source

@@ -1,8 +1,9 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_run:
+    workflows: [Verify]
+    types: [completed]
 
 permissions:
   contents: write
@@ -15,39 +16,16 @@ env:
   GIT_CONFIG_VALUE_0: main
 
 concurrency:
-  group: release-${{ github.repository }}-${{ github.ref_name }}
+  group: release-${{ github.repository }}-${{ github.event.workflow_run.id }}
   cancel-in-progress: false
 
 jobs:
-  require-verify:
-    name: Require exact tag verification
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    permissions:
-      actions: read
-      contents: read
-    outputs:
-      run-id: ${{ steps.verify.outputs.run-id }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version-file: .python-versions
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-      - name: Install the locked publication tool environment
-        run: uv sync --locked --all-groups
-      - name: Require exact successful Verify run
-        id: verify
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: uv run --locked --no-sync python -m tools.release.publish_github wait-verify --repository "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" --commit-oid "$GITHUB_SHA" --output "$GITHUB_OUTPUT"
-
   verify-and-publish:
     name: Verify tag and publish record
-    needs: require-verify
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -58,13 +36,17 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version-file: .python-versions
+          python-version-file: .python-release
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Install the complete locked tool environment
         run: uv sync --locked --all-groups
+      - name: Download the exact pre-signed release bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "${{ github.event.workflow_run.id }}" --name release-assets --dir "$RUNNER_TEMP/github-release/source"
       - name: Publish or verify exact GitHub release record
         env:
           GH_TOKEN: ${{ github.token }}
           CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST }}
           RELEASE_ASSET_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}
-        run: uv run --locked --no-sync python -m tools.release.publish_github publish --repository "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" --commit-oid "$GITHUB_SHA" --run-id "${{ needs.require-verify.outputs.run-id }}" --workspace "$RUNNER_TEMP/github-release"
+        run: uv run --locked --no-sync python -m tools.release.publish_github publish --repository "$GITHUB_REPOSITORY" --tag "${{ github.event.workflow_run.head_branch }}" --commit-oid "${{ github.event.workflow_run.head_sha }}" --assets "$RUNNER_TEMP/github-release/source" --workspace "$RUNNER_TEMP/github-release/work"

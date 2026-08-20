@@ -1,9 +1,4 @@
-# release-governance Specification
-
-## Purpose
-TBD - created by archiving change release-state-aware-metadata. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Validation follows the release state
 
@@ -51,6 +46,8 @@ commit and proof context.
 - **THEN** it SHALL supply only the repository, exact tag, and external trust
   anchor
 - **AND** it SHALL NOT add a Forge identity to the verifier grammar
+
+## ADDED Requirements
 
 ### Requirement: Dual-Forge releases project one complete signed bundle
 

@@ -12,8 +12,7 @@ from pathlib import Path
 
 from cyclopts import App
 
-from tools.release import product_assets
-from tools.release import signing
+from tools.release import assemble_assets, signing
 from tools.release.publication.git import _TAG
 
 
@@ -37,23 +36,19 @@ def _request(url: str, token: str, *, data: bytes | None = None, method: str = "
         raise GitLabPublishError("GitLab publication transport failed") from error
 
 
-def _sign(assets: Path, key: Path, trust: str) -> None:
-    """Sign and verify the canonical checksum inventory."""
+def _verify(assets: Path, trust: str) -> list[str]:
+    """Verify one complete pre-signed bundle without changing its bytes."""
+
     try:
-        signing.sign_and_verify(assets=assets, key=key, trust=trust)
-    except signing.SignatureError as error:
+        signing.verify(assets=assets, trust=trust)
+        assemble_assets.verify(assets)
+    except (OSError, ValueError, signing.SignatureError) as error:
         raise GitLabPublishError("release asset signature verification failed") from error
-
-
-def _verify(assets: Path, version: str) -> list[str]:
-    files = {path.name: path.read_bytes() for path in assets.iterdir() if path.is_file()}
-    platforms = product_assets.release_platforms(set(files), version)
-    product_assets.release_digests(files, version, platforms)
-    return sorted(files)
+    return sorted(path.name for path in assets.iterdir() if path.is_file())
 
 
 def publish(
-    *, api_base: str, project_id: int, tag: str, token: str, source: Path, key: Path, trust: str
+    *, api_base: str, project_id: int, tag: str, token: str, source: Path, trust: str
 ) -> str:
     """Upload, re-download, verify, then create or validate one GitLab Release."""
 
@@ -61,13 +56,11 @@ def publish(
         raise GitLabPublishError("GitLab API base or release tag is invalid")
     if project_id < 1 or not source.is_dir() or source.is_symlink():
         raise GitLabPublishError("GitLab project or release asset directory is invalid")
-    version = tag.removeprefix("v")
     with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-gitlab-release-") as name:
         root, downloaded = Path(name) / "assets", Path(name) / "downloaded"
         shutil.copytree(source, root)
         downloaded.mkdir()
-        _sign(root, key, trust)
-        names = _verify(root, version)
+        names = _verify(root, trust)
         asset_base = f"{api_base.rstrip('/')}/projects/{project_id}/packages/generic/codex-responses-proxy/{tag}"
         for asset_name in names:
             payload = (root / asset_name).read_bytes()
@@ -79,7 +72,8 @@ def publish(
             (downloaded / asset_name).write_bytes(received)
             if received != payload:
                 raise GitLabPublishError(f"GitLab release asset differs after upload: {asset_name}")
-        _verify(downloaded, version)
+        if _verify(downloaded, trust) != names:
+            raise GitLabPublishError("GitLab release asset inventory differs after upload")
         release = {
             "tag_name": tag,
             "name": f"Codex Responses Proxy {tag}",
@@ -115,7 +109,6 @@ def _command(
     tag: str,
     token: str,
     assets: Path,
-    signing_key: Path,
     trust: str,
 ) -> None:
     """Publish from explicit CI inputs without contacting another Forge."""
@@ -127,7 +120,6 @@ def _command(
             tag=tag,
             token=token,
             source=assets,
-            key=signing_key,
             trust=trust,
         )
     except (GitLabPublishError, ValueError, json.JSONDecodeError) as error:

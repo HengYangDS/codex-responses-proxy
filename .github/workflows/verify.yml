@@ -1,10 +1,11 @@
 name: Verify
 
 on:
+  pull_request:
+    branches: [dev]
   push:
-    branches: [main]
+    branches: [dev, main]
     tags: ["v*"]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,6 +23,7 @@ concurrency:
 jobs:
   python-matrix:
     name: Resolve supported Python versions
+    if: github.event_name == 'pull_request' || github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -41,6 +43,7 @@ jobs:
 
   python:
     name: Python ${{ matrix.python-version }}
+    if: github.event_name == 'pull_request'
     needs: python-matrix
     runs-on: macos-26
     timeout-minutes: 15
@@ -64,6 +67,7 @@ jobs:
 
   python-windows:
     name: Python ${{ matrix.python-version }} (Windows)
+    if: github.event_name == 'pull_request'
     needs: python-matrix
     runs-on: windows-2025
     timeout-minutes: 15
@@ -85,8 +89,29 @@ jobs:
       - name: Compile and test
         run: uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"
 
-  governance:
-    name: Governance and presentation
+  accepted-source:
+    name: Accepted source
+    if: github.event_name == 'push' && github.ref_type == 'branch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-release
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Confirm accepted source and metadata
+        run: |
+          uv sync --locked --all-groups
+          uv run --locked --no-sync python tools/release/metadata.py
+          uv run --locked --no-sync python -m tools.quality.repository
+
+  tag-metadata:
+    name: Tag metadata and governance
+    if: github.ref_type == 'tag'
     needs: python-matrix
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -102,19 +127,15 @@ jobs:
       - name: Install the complete locked tool environment
         run: uv sync --locked --all-groups
       - name: Fetch the exact annotated tag object
-        if: github.ref_type == 'tag'
         run: uv run --locked --no-sync python -m tools.release.publish_github prepare-checkout --tag "$GITHUB_REF_NAME" --commit-oid "$GITHUB_SHA"
       - name: Verify exact release metadata
-        if: github.ref_type == 'tag'
         run: uv run --locked --no-sync python tools/release/metadata.py --tag "$GITHUB_REF_NAME"
-      - name: Verify mainline metadata
-        if: github.ref_type != 'tag'
-        run: uv run --locked --no-sync python tools/release/metadata.py
       - name: Verify repository governance
         run: uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/test_publish_gitlab.py
 
   python-quality:
     name: Python quality
+    if: github.event_name == 'pull_request'
     needs: python-matrix
     runs-on: ubuntu-24.04
     timeout-minutes: 15

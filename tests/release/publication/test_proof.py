@@ -63,7 +63,7 @@ def _forge(
 
 
 def _gitlab_forge(*, tree: str = "c" * 40) -> dict[str, object]:
-    forge = _forge(
+    return _forge(
         "gitlab",
         repository="example/gitlab",
         tag_object_oid="a" * 40,
@@ -74,19 +74,14 @@ def _gitlab_forge(*, tree: str = "c" * 40) -> dict[str, object]:
         ),
         tree=tree,
     )
-    assets = cast(dict[str, str], forge["assets"])
-    for platform in ("macos-arm64", "windows-x86_64"):
-        assets.pop(f"codex-responses-proxy-1.2.3-{platform}.tar.gz")
-        assets.pop(f"codex-responses-proxy-{platform}.manifest.json")
-    return forge
 
 
 def _github_forge(*, tree: str = "c" * 40) -> dict[str, object]:
     return _forge(
         "github",
         repository="example/github",
-        tag_object_oid="b" * 40,
-        commit_oid="e" * 40,
+        tag_object_oid="a" * 40,
+        commit_oid="d" * 40,
         jobs=tuple(
             (
                 "Python 3.12|Python 3.13|Python 3.14|Python 3.12 (Windows)|"
@@ -142,6 +137,20 @@ class PublicationProofContracts:
         assert "tree_mismatch" in reasons
         assert "github.signature_unverified" in reasons
 
+    def test_rejects_cross_forge_git_identity_mismatch(self) -> None:
+        github = _github_forge()
+        github["tag_object_oid"] = "b" * 40
+        github["commit_oid"] = "e" * 40
+        cast(dict[str, object], github["ci"])["revision_oid"] = "e" * 40
+        cast(dict[str, object], github["release"])["commit_oid"] = "e" * 40
+
+        result = evaluator.evaluate("v1.2.3", _gitlab_forge(), github, _policy())
+
+        assert not result["verified"]
+        reasons = cast(list[str], result["reasons"])
+        assert "tag_object_mismatch" in reasons
+        assert "commit_mismatch" in reasons
+
     def test_rejects_cross_forge_asset_mismatch(self) -> None:
         github = _github_forge()
         cast(dict[str, str], github["assets"])[
@@ -151,6 +160,32 @@ class PublicationProofContracts:
         assert not result["verified"]
         assert not result["assets_equal"]
         assert "asset_mismatch" in cast(list[str], result["reasons"])
+
+    def test_rejects_incomplete_forge_asset_inventory(self) -> None:
+        gitlab = _gitlab_forge()
+        assets = cast(dict[str, str], gitlab["assets"])
+        for platform in ("macos-arm64", "windows-x86_64"):
+            assets.pop(f"codex-responses-proxy-1.2.3-{platform}.tar.gz")
+            assets.pop(f"codex-responses-proxy-{platform}.manifest.json")
+
+        result = evaluator.evaluate("v1.2.3", gitlab, _github_forge(), _policy())
+
+        assert not result["verified"]
+        assert "gitlab.invalid_evidence" in cast(list[str], result["reasons"])
+
+    def test_rejects_checksum_signature_and_trust_identity_mismatch(self) -> None:
+        github = _github_forge()
+        assets = cast(dict[str, str], github["assets"])
+        assets["SHA256SUMS"] = "8" * 64
+        assets["SHA256SUMS.sig"] = "9" * 64
+        github["anchor_sha256"] = "7" * 64
+
+        result = evaluator.evaluate("v1.2.3", _gitlab_forge(), github, _policy())
+
+        assert not result["verified"]
+        reasons = cast(list[str], result["reasons"])
+        assert "asset_mismatch" in reasons
+        assert "trust_anchor_mismatch" in reasons
 
     def test_rejects_wrong_ci_revision_missing_job_and_release_identity(self) -> None:
         gitlab = _gitlab_forge()

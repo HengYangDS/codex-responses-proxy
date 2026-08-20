@@ -9,7 +9,7 @@ from typing import TypedDict
 
 import pytest
 
-from tools.release import product_assets, publish_gitlab
+from tools.release import product_assets, publish_gitlab, signing
 
 
 class _PublicationArguments(TypedDict):
@@ -18,7 +18,6 @@ class _PublicationArguments(TypedDict):
     tag: str
     token: str
     source: Path
-    key: Path
     trust: str
 
 
@@ -55,6 +54,8 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
     subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
     public = key.with_suffix(".pub").read_text().strip()
     trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+    signing.sign_and_verify(assets=assets, key=key, trust=trust)
+    expected = {path.name: path.read_bytes() for path in assets.iterdir()}
     store: dict[str, bytes] = {}
     release: dict[str, object] = {}
 
@@ -81,10 +82,10 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
         "tag": "v1.2.3",
         "token": "redacted",
         "source": assets,
-        "key": key,
         "trust": trust,
     }
     assert publish_gitlab.publish(**arguments) == "created"
+    assert store == expected
     assert publish_gitlab.publish(**arguments) == "matched"
     release["name"] = "wrong"
     with pytest.raises(publish_gitlab.GitLabPublishError, match="immutable identity"):
@@ -99,6 +100,21 @@ def test_publication_rejects_invalid_boundary_inputs(tmp_path: Path) -> None:
             tag="latest",
             token="redacted",
             source=tmp_path,
-            key=tmp_path / "missing",
             trust="",
+        )
+
+
+def test_publication_rejects_unsigned_or_incomplete_bundle(tmp_path: Path) -> None:
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    _assets(assets, "1.2.3")
+
+    with pytest.raises(publish_gitlab.GitLabPublishError, match="signature verification failed"):
+        publish_gitlab.publish(
+            api_base="https://gitlab.example/api/v4",
+            project_id=453,
+            tag="v1.2.3",
+            token="redacted",
+            source=assets,
+            trust="missing trust",
         )

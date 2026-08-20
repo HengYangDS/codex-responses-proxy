@@ -1,4 +1,4 @@
-# DR-0004: Publish Locally Complete Releases through Independent Forges
+# DR-0004: Project One Signed Product Bundle through Independent Forges
 
 - Status: accepted
 - Date: 2026-08-07
@@ -14,18 +14,27 @@ publish through the other creates a common failure path and prevents local closu
 
 A clean accepted source tree can build, verify, install, exercise, and uninstall
 without a Forge. The product commit and annotated release tag are created and
-signed once in local Git, then published unchanged to either optional Forge.
-GitLab and GitHub independently authenticate transport, verify the same public
-identity, run CI, and publish complete Release assets. Neither consumes the other.
+signed once in local Git. Native builders produce one exact asset pair per
+supported platform; the assembler verifies the complete platform inventory,
+creates one checksum manifest, and signs that manifest once.
+
+GitLab and GitHub remain optional publication peers. Each authenticates its own
+transport and verifies the same Git objects, but neither may rebuild, subset,
+repackage, or re-sign the product bundle. A publication adapter only transfers
+and re-downloads the immutable bundle. One peer may obtain the bundle from the
+successful authoritative build without making that peer a source of product
+identity.
 
 Cross-Forge comparison is read-only and occurs only after both publications
-exist. It requires exact branch commit OIDs and tag object OIDs, then compares
-common asset bytes and each Forge's provider-local delivery evidence.
+exist. It requires exact branch and tag object OIDs, the complete asset inventory,
+byte-identical checksums and signature, and the same product trust-anchor digest.
 
 ## Consequences
 
 One Forge can remain usable during an outage of the other. One-sided success is
-reported as one-sided publication, never as a dual release. Push credentials may
+reported as one-sided publication, never as a dual release. The bundle is built
+once; Forge independence concerns publication and availability, not duplicate
+product construction or signing. Push credentials may
 differ, but they never change Git objects. Product source contains no personal
 private key, credential, or checkout path.
 

@@ -97,25 +97,28 @@ not imply hosted publication.
 
 ```mermaid
 flowchart TD
-    S["Same signed local Git objects"] --> GL["GitLab pipeline"]
-    S --> GH["GitHub pipeline"]
-    GL --> E["GitLab Release and assets"]
-    GH --> H["GitHub Release and assets"]
-    E --> A["Read-only parity audit"]
-    H --> A
+    S["Same signed Git objects"] --> P["Review proof"]
+    S --> B["Complete native bundle"]
+    B --> G["One checksum and signature"]
+    G --> GL["GitLab projection"]
+    G --> GH["GitHub projection"]
+    GL --> A["Read-only parity audit"]
+    GH --> A
 ```
 
-GitLab and GitHub:
+GitLab and GitHub are optional, peer-local publication planes. They use separate
+transport credentials, account verification, CI, and Release APIs while
+observing the same commit and annotated tag objects.
 
-- build their own assets;
-- use their own transport credentials, account verification, CI, and Release API;
-- receive the same signed commit and annotated tag objects;
-- never wait for, download from, authenticate to, or publish through the other;
-- remain independently usable when the peer is unavailable.
+Product construction is not duplicated per Forge. Native builders create one
+asset pair for every platform in the product SSOT; one assembler verifies the
+complete inventory, creates `SHA256SUMS`, and signs it once. Publishers consume,
+verify, upload, and re-download those exact bytes. They cannot rebuild, subset,
+repackage, or re-sign the bundle.
 
-Parity is a post-publication read-only claim. It requires exact commit and tag
-object OIDs, then compares common-platform payload digests and provider-local CI,
-Release, and asset evidence.
+One peer may publish while the other is unavailable. That is one-sided
+publication, not dual-Forge parity. Parity requires exact commit and tag objects,
+equal complete inventories and bytes, and the same product trust-anchor digest.
 
 ## Release identity
 
