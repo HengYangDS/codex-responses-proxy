@@ -12,10 +12,13 @@ scope = [
   "openspec/specs/runtime-upgrade/**",
   "src/codex_responses_proxy/cli/**",
   "src/codex_responses_proxy/lifecycle/**",
+  "src/codex_responses_proxy/service/handoff/**",
   "tests/cli/**",
   "tests/lifecycle/**",
   "tests/quality/**",
   "tests/release/**",
+  "tests/service/handoff/**",
+  "tools/release/**",
 ]
 invariants = [
   "active_streams_survive_upgrade_handoff",

@@ -334,7 +334,22 @@ class TestVerificationContracts:
                 for node in ast.walk(function)
             )
         }
-        assert native_build_owners == {"release"}
+        assert native_build_owners == {"release", "release_compatibility"}
+
+    def test_release_compatibility_uses_one_verified_published_predecessor(self) -> None:
+        """A release candidate must upgrade a real signed predecessor, never a relabeled build."""
+
+        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        compatibility = functions["release_compatibility"]
+        compatibility_source = ast.get_source_segment(source, compatibility) or ""
+        lifecycle = (ROOT / "tests/release/test_native_lifecycle.py").read_text(encoding="utf-8")
+
+        assert "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET" in compatibility_source
+        assert "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR" in compatibility_source
+        assert '"tests/release/test_native_compatibility.py"' in compatibility_source
+        assert "_previous_patch" not in lifecycle
 
     def test_native_distribution_tests_are_explicit_and_release_owned(self) -> None:
         pytest_config = (ROOT / ".config/checks/pytest/pytest.ini").read_text(encoding="utf-8")

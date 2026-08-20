@@ -217,6 +217,62 @@ def release(session: nox.Session) -> None:
     session.log(f"native executable accepted: {executable.name}")
 
 
+@nox.session(python=RELEASE_PYTHON)
+def release_compatibility(session: nox.Session) -> None:
+    """Upgrade one verified published predecessor to this native candidate."""
+
+    _install_tools(session, "quality", "release")
+    _assert_release_runtime(session)
+    previous_asset = _required_file(
+        "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET",
+        "published predecessor asset",
+    )
+    previous_trust = _required_file(
+        "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR",
+        "published predecessor trust anchor",
+    )
+    work = Path(session.create_tmp()).resolve()
+    wheel = _build_wheel(session, work)
+    _install_wheel(session, wheel)
+    session.run(
+        "python",
+        "-m",
+        "tools.release.assets",
+        "normalize",
+        "--packages",
+        str(_session_packages(session)),
+        env=_environment(),
+    )
+    _assert_installed_product(session, work)
+    bundle, executable = _build_executable(session, work)
+    session.run(
+        "python",
+        "-m",
+        "pytest",
+        "--config-file",
+        str(PYTEST_CONFIG),
+        "-q",
+        "tests/release/test_native_compatibility.py",
+        env={
+            **_environment(),
+            "CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE": str(executable),
+            "CODEX_RESPONSES_PROXY_NATIVE_BUNDLE": str(bundle),
+            "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET": str(previous_asset),
+            "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR": str(previous_trust),
+        },
+    )
+
+
+def _required_file(variable: str, label: str) -> Path:
+    """Return one explicit regular file input without guessing a host path."""
+
+    value = os.environ.get(variable, "")
+    path = Path(value).expanduser() if value else Path()
+    if not value or not path.is_file() or path.is_symlink():
+        raise RuntimeError(f"{label} is unavailable; set {variable}")
+    return path.resolve(strict=True)
+
+
 def _install_tools(session: nox.Session, *groups: str) -> None:
     """Install the repository-locked verification tool set into this session."""
 

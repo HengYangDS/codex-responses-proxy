@@ -91,6 +91,68 @@ def test_upgrade_rollback_removes_candidate_only_runtime_members(tmp_path: Path,
     assert not introduced.exists()
 
 
+def test_upgrade_retires_previous_only_owned_files_and_rollback_restores_them(
+    tmp_path: Path, *, mocker
+) -> None:
+    ctx = install_context(tmp_path)
+    install_payload(ctx, "1.2.2", mocker=mocker)
+    previous_only = Path(ctx.install_dir, "bin/_internal/legacy.dist-info/METADATA")
+    previous_only.parent.mkdir(parents=True)
+    previous_only.write_bytes(b"legacy release metadata\n")
+    manifest_path = Path(ctx.install_dir, inventory.MANIFEST_FILENAME)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    previous_digest = hashlib.sha256(previous_only.read_bytes()).hexdigest()
+    manifest["files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
+    manifest["serving_files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
+    manifest["serving_payload_sha256"] = payload_projection.serving_payload_sha256(
+        manifest["serving_files"]
+    )
+    manifest_path.write_bytes(payload_projection.manifest_bytes(manifest))
+    unknown = Path(ctx.install_dir, "operator-notes.txt")
+    unknown.write_bytes(b"preserve me\n")
+
+    transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+    transaction.commit_projection()
+
+    assert not previous_only.exists()
+    assert not previous_only.parent.exists()
+    assert unknown.read_bytes() == b"preserve me\n"
+
+    transaction.rollback()
+
+    assert previous_only.read_bytes() == b"legacy release metadata\n"
+    assert unknown.read_bytes() == b"preserve me\n"
+
+
+def test_finalized_upgrade_purge_leaves_only_unknown_content(tmp_path: Path, *, mocker) -> None:
+    ctx = install_context(tmp_path)
+    install_payload(ctx, "1.2.2", mocker=mocker)
+    previous_only = Path(ctx.install_dir, "bin/_internal/legacy.dist-info/METADATA")
+    previous_only.parent.mkdir(parents=True)
+    previous_only.write_bytes(b"legacy release metadata\n")
+    manifest_path = Path(ctx.install_dir, inventory.MANIFEST_FILENAME)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    previous_digest = hashlib.sha256(previous_only.read_bytes()).hexdigest()
+    manifest["files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
+    manifest["serving_files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
+    manifest["serving_payload_sha256"] = payload_projection.serving_payload_sha256(
+        manifest["serving_files"]
+    )
+    manifest_path.write_bytes(payload_projection.manifest_bytes(manifest))
+    unknown = Path(ctx.install_dir, "operator-notes.txt")
+    unknown.write_bytes(b"preserve me\n")
+
+    transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+    transaction.commit_projection()
+    transaction.finalize({"pid": 2})
+
+    remaining = payload_projection.purge_installed_projection(ctx)
+
+    assert remaining == ("operator-notes.txt",)
+    assert unknown.read_bytes() == b"preserve me\n"
+    assert not previous_only.exists()
+
+
 ROOT = Path(__file__).resolve().parents[2]
 
 

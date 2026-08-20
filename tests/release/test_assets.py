@@ -63,7 +63,7 @@ class ReleaseAssetContracts:
             '{"timestamp":{"secs_since_epoch":1}}', encoding="utf-8"
         )
 
-        files = dict(asset_command._bundle_files(bundle))
+        files = dict(asset_command.bundle_files(bundle))
 
         assert not any(path.name in {"direct_url.json", "uv_cache.json"} for path in files)
 
@@ -85,7 +85,7 @@ class ReleaseAssetContracts:
             )
             files = {
                 path.as_posix(): source.read_bytes()
-                for path, source in asset_command._bundle_files(bundle)
+                for path, source in asset_command.bundle_files(bundle)
             }
             archives.append(assets.archive_bytes(files, "2.0.26", "linux-x86_64"))
 

@@ -7,6 +7,18 @@ publication authority.
 
 ## [Unreleased]
 
+### Fixed
+
+- Retire files owned only by the verified predecessor payload while preserving
+  unknown installation content and restoring the complete prior projection on
+  rollback.
+- Finalize an upgrade only after the shared listener reports the exact
+  successor process and payload identity; record a concise, secret-safe failure
+  phase when convergence fails.
+- Isolate frozen-executable prewarm from inherited Python runtime variables.
+- Exercise a real signed predecessor release through fresh installation,
+  concurrent request and SSE handoff, reload, purge, and transaction cleanup.
+
 ## [2.0.50] - 2026-08-19
 
 ### Fixed

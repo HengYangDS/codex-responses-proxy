@@ -9,7 +9,10 @@ listener, or one current native payload whose sole listener and native
 supervisor are strictly proved to use an install-owned alternate launcher. The
 alternate launcher SHALL be reconciled to the canonical native executable
 before candidate payload mutation and SHALL NOT remain as a compatibility
-surface.
+surface. After candidate projection, installation SHALL remove only regular
+files declared by the verified predecessor manifest and absent from the
+successor manifest. Unknown installation content SHALL remain untouched, and
+rollback SHALL restore the complete predecessor projection.
 
 #### Scenario: An incompatible installation is present
 
@@ -29,6 +32,15 @@ surface.
 - **AND** any admitted alternate launcher has already converged onto native
   supervision
 - **AND** only then may the payload transaction replace installed bytes.
+
+#### Scenario: The successor omits a predecessor-owned file
+
+- **WHEN** the verified predecessor manifest owns a regular file that the
+  verified successor manifest does not declare
+- **THEN** installation removes that file after writing the successor
+  projection
+- **AND** preserves every unowned file
+- **AND** rollback restores the removed predecessor-owned file exactly.
 
 ### Requirement: Recovery binds candidate, rollback, and live runtime
 
@@ -76,6 +88,38 @@ handoff protocol, retain the exact alternate launcher until native supervision
 is proved, and remain retryable after controller interruption. Windows SHALL
 retain its canonical native lifecycle and reject the POSIX-only alternate
 launcher shape before mutation.
+
+#### Scenario: A verified alternate launcher is reconciled before upgrade
+
+- **WHEN** the current native listener and install-owned alternate launcher
+  satisfy the admitted identity contract on a POSIX host
+- **THEN** the supervisor is rebound to the canonical executable before the
+  candidate payload is committed
+- **AND** the retained launcher is removed only after successor health is
+  proved.
+
+### Requirement: Handoff finalization observes the exact successor
+
+After commit, the controller SHALL read bounded health snapshots through the
+shared listener until the complete expected successor identity is served. A
+snapshot from the retiring process SHALL be treated as transient observation,
+not success or immediate failure. Timeout or another failure SHALL identify the
+failed lifecycle phase without including exception messages, request content,
+headers, credentials, or upstream payloads.
+
+#### Scenario: The retiring listener answers during ownership transfer
+
+- **WHEN** the first post-commit health snapshot still identifies the retiring
+  process
+- **THEN** the controller continues bounded observation
+- **AND** finalizes only after the exact successor PID and payload identity are
+  accepting and not draining.
+
+#### Scenario: Successor observation does not converge
+
+- **WHEN** the deadline expires or health observation fails
+- **THEN** the transaction follows its rollback or recovery-required contract
+- **AND** operational output records only the failed phase and exception class.
 
 #### Scenario: An install-owned alternate launcher is active on a POSIX host
 

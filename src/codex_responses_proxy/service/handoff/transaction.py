@@ -303,14 +303,17 @@ def commit(server: ThreadingHTTPServer, prepared: PreparedHandoff, context: Cont
     child_expected = {**expected, "pid": child.runtime_pid}
     timeout_seconds = prepared["timeout_seconds"]
     accept_stopped = False
+    phase = "drain"
     try:
         _transition("committing")
         drain = context.set_draining(True, lease_seconds=prepared["lease_seconds"])
         with _HANDOFF_LOCK:
             _HANDOFF_SESSION["drain_deadline"] = time.monotonic() + prepared["lease_seconds"]
             _HANDOFF_SESSION["drain_generation"] = drain["drain_generation"]
+        phase = "shutdown"
         server.shutdown()
         accept_stopped = True
+        phase = "serving"
         child.send_message({"type": "commit"})
         _expect_child_phase(child, child_expected, "serving", timeout_seconds)
         _transition("serving")
@@ -320,7 +323,7 @@ def commit(server: ThreadingHTTPServer, prepared: PreparedHandoff, context: Cont
         health_port = address[1]
         if not isinstance(health_port, int) or not 1 <= health_port <= 65535:
             raise HandoffError("handoff server has no valid listener port")
-        health = probe_health(health_port, timeout_seconds=timeout_seconds)
+        phase = "health"
         expected_health = {
             "pid": child_expected["pid"],
             "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
@@ -333,15 +336,20 @@ def commit(server: ThreadingHTTPServer, prepared: PreparedHandoff, context: Cont
             "accepting": True,
             "draining": False,
         }
-        if any(health.get(key) != value for key, value in expected_health.items()):
-            raise HandoffError("handoff child health identity mismatch")
+        probe_health(
+            health_port,
+            timeout_seconds=timeout_seconds,
+            expected=expected_health,
+        )
+        phase = "finalize"
         _transition("finalizing")
         child.send_message({"type": "finalize"})
         _expect_child_phase(child, child_expected, "finalized", timeout_seconds)
         _transition("finalized")
         _set_outcome("finalized")
         return "finalized"
-    except Exception:
+    except Exception as exc:
+        context.log(f"event=handoff_commit_failed phase={phase} exception={exc.__class__.__name__}")
         try:
             abort(child)
             outcome = "rolled_back"

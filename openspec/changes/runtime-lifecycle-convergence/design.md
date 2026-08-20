@@ -50,6 +50,20 @@ the running process by force would create avoidable connection loss.
    tests override payload, state, HOME, user profile, native service identity,
    and listener port. Status discards loopback health unless its PID is the sole
    listener owned by the selected installed executable.
+7. **Treat payload ownership as a forward-only set transition.** After the
+   successor projection is written, remove only paths declared by the verified
+   predecessor manifest and absent from the successor. Keep the rollback
+   snapshot until finalization and never infer ownership from directory
+   contents.
+8. **Observe the exact successor through the shared listener.** Handoff polls
+   bounded health snapshots until PID, release, transaction, manifest, receipt,
+   serving digest, and accepting state all match. A stale predecessor response
+   is not a failed upgrade and is never accepted as successor proof.
+9. **Use an authentic predecessor for compatibility evidence.** The ordinary
+   release session owns current native-product acceptance. A separate explicit
+   compatibility session consumes one published signed predecessor asset and
+   trust anchor, then proves forward upgrade with held ordinary requests and an
+   SSE stream. It never relabels the current bundle as historical evidence.
 
 ## Risks / Trade-offs
 

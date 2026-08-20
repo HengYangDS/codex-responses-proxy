@@ -157,6 +157,10 @@ class TestPayloadValidation:
         arguments = completed.call_args.args[0]
         assert arguments[0] == str(executable)
         assert arguments[1:] == ["version"]
+        environment = completed.call_args.kwargs["env"]
+        assert environment["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+        assert "PYTHONHOME" not in environment
+        assert "PYTHONPATH" not in environment
         assert completed.call_args.kwargs["timeout"] == 120
 
         for effect in (
@@ -264,11 +268,13 @@ class TestPayloadValidation:
         ctx = install_context(Path(tempfile.mkdtemp()))
         ok, detail = payload_projection.verify_payload_manifest(ctx)
         assert not ok
-        assert "manifest unavailable" in detail
+        assert detail == "installed payload manifest is unavailable"
 
         ctx, path, _ = installed()
         path.write_text("not-json")
-        assert "manifest unavailable" in payload_projection.verify_payload_manifest(ctx)[1]
+        assert payload_projection.verify_payload_manifest(ctx)[1] == (
+            "installed payload manifest is unavailable"
+        )
 
         mutations = [
             (lambda value: value.update(schema_version=99), "manifest schema is unsupported"),
@@ -313,7 +319,7 @@ class TestPayloadValidation:
         Path(ctx.executable).unlink()
         ok, detail = payload_projection.verify_payload_manifest(ctx)
         assert not ok
-        assert "payload unavailable" in detail
+        assert detail == "installed payload file is unavailable: bin/codex-responses-proxy"
 
         ctx, _, _ = installed()
         invalid_aggregate = mocker.patch.object(
@@ -334,7 +340,7 @@ class TestPayloadValidation:
         )
         ok, detail = payload_projection.verify_payload_manifest(ctx)
         assert not ok
-        assert "payload unavailable" in detail
+        assert detail == "installed payload file is unavailable: bin/codex-responses-proxy"
         mocker.stop(unavailable_digest)
 
         ctx, _, _ = installed()
@@ -342,7 +348,7 @@ class TestPayloadValidation:
         receipt.unlink()
         ok, detail = payload_projection.verify_payload_manifest(ctx)
         assert not ok
-        assert "release receipt unavailable" in detail
+        assert detail == "installed release receipt is unavailable"
 
     def test_canonical_state_and_rollback_validation_fail_closed(self, subtests) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))

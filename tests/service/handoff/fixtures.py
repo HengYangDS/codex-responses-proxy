@@ -362,7 +362,11 @@ def write_installed_payload(
     install_dir = Path(ctx.install_dir)
     source = Path(os.environ["CODEX_RESPONSES_PROXY_EXECUTABLE"])
     target = Path(ctx.executable)
-    shutil.copytree(source.parent, target.parent, copy_function=shutil.copy2)
+    # Preserve executable modes, not host-local extended metadata. On macOS,
+    # copy2 propagates provenance attributes to every frozen-runtime file and
+    # turns each isolated test copy into a fresh Gatekeeper scan. Published
+    # archives do not carry those checkout-local attributes.
+    shutil.copytree(source.parent, target.parent, copy_function=shutil.copy)
     provider_manifest = install_dir / inventory.PROVIDER_MANIFEST
     provider_manifest.write_text(
         f'version = 1\n\n[providers.dmxapi]\nbase_url = "{upstream_url}"\npolicy = "dmxapi"\n',

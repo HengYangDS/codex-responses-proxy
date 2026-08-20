@@ -14,6 +14,7 @@ import queue
 import socket
 import subprocess
 import threading
+import time
 import urllib.request
 from pathlib import Path
 from typing import IO
@@ -289,8 +290,8 @@ def listener_from_prepare(message: ReadOnlyJsonObject) -> socket.socket:
     return socket.socket(fileno=listener_fd)
 
 
-def probe_health(port: int, *, timeout_seconds: float) -> JsonObject:
-    """Read one loopback-only child health proof through the shared listener."""
+def _read_health(port: int, *, timeout_seconds: float) -> JsonObject:
+    """Read one loopback-only health snapshot through the shared listener."""
     url = runtime_config.loopback_url(int(port), "/healthz")
     request = urllib.request.Request(url, method="GET")
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -305,6 +306,32 @@ def probe_health(port: int, *, timeout_seconds: float) -> JsonObject:
     if not isinstance(decoded, dict):
         raise HandoffError("handoff health response must be an object")
     return decoded
+
+
+def probe_health(
+    port: int,
+    *,
+    timeout_seconds: float,
+    expected: ReadOnlyJsonObject | None = None,
+) -> JsonObject:
+    """Wait until the inherited listener serves the expected child identity."""
+
+    if expected is None:
+        return _read_health(port, timeout_seconds=timeout_seconds)
+    deadline = time.monotonic() + max(0.1, float(timeout_seconds))
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise HandoffError("handoff child health identity did not converge")
+        try:
+            health = _read_health(port, timeout_seconds=min(remaining, 1.0))
+        except (OSError, HandoffError):
+            health = None
+        if health is not None and all(
+            health.get(field) == value for field, value in expected.items()
+        ):
+            return health
+        time.sleep(min(0.05, remaining))
 
 
 def read_control_message(stream: IO[bytes]) -> JsonObject:

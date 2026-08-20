@@ -69,6 +69,15 @@ installed service SHALL NOT be treated as proof of the release candidate.
   the canonical installation
 - **AND** both surfaces retain their complete owned behavior tests.
 
+#### Scenario: Compatibility evidence uses a published predecessor
+
+- **WHEN** release compatibility verification is explicitly supplied one
+  published signed predecessor asset and its external trust anchor
+- **THEN** it installs and verifies that exact predecessor before deriving an
+  isolated route-controlled fixture from the admitted executable bytes
+- **AND** proves ordinary and streaming requests survive the forward upgrade
+- **AND** never fabricates a predecessor by changing current release metadata.
+
 #### Scenario: An operator upgrades a running installation
 
 - **WHEN** a verified release is committed as the successor projection

@@ -108,12 +108,15 @@ class TestParentHandoffStateMachine(HandoffFixture):
         observing_context = entrypoint_module._handoff_context()
         object.__setattr__(observing_context, "set_draining", observing_set_draining)
         mocker.patch.object(self.p, "spawn_child", return_value=child)
-        mocker.patch.object(self.p, "probe_health", return_value=matching_health(child, expected))
+        probe = mocker.patch.object(
+            self.p, "probe_health", return_value=matching_health(child, expected)
+        )
         prepared = self.p.prepare(server, expected, observing_context, timeout_seconds=5)
         self.p.commit(server, prepared, observing_context)
         assert "draining:True" in order
         assert order.index("draining:True") < order.index("shutdown")
         assert order.index("shutdown") < order.index("send:commit")
+        assert probe.call_args.kwargs["expected"]["pid"] == child.runtime_pid
 
     def test_simultaneous_handoff_is_rejected(self, *, mocker):
         server = fake_server(mocker=mocker)
@@ -222,6 +225,35 @@ class TestParentHandoffStateMachine(HandoffFixture):
         response.read.return_value = b'{"ok":true}'
         assert self.p.probe_health(8791, timeout_seconds=1) == {"ok": True}
 
+    def test_probe_health_retries_until_the_successor_serves_the_expected_identity(self, *, mocker):
+        expected = expected_metadata()
+        child = fake_child(mocker=mocker)
+        old = {**matching_health(child, expected), "pid": child.runtime_pid - 1}
+        current = matching_health(child, expected)
+        mocker.patch.object(
+            handoff_protocol_module,
+            "_read_health",
+            side_effect=(old, current),
+        )
+        mocker.patch.object(
+            handoff_protocol_module.time,
+            "monotonic",
+            side_effect=(0.0, 0.1, 0.2),
+        )
+        mocker.patch.object(handoff_protocol_module.time, "sleep")
+
+        assert (
+            self.p.probe_health(
+                8791,
+                timeout_seconds=1,
+                expected={
+                    "pid": child.runtime_pid,
+                    "release": expected["release"],
+                },
+            )
+            == current
+        )
+
     def test_prepare_failures_never_cross_admission_and_reset_when_child_exit_is_confirmed(
         self, subtests, *, mocker
     ):
@@ -270,6 +302,30 @@ class TestParentHandoffStateMachine(HandoffFixture):
                 child.terminate_bounded.assert_called_once()
                 assert self.p._HANDOFF_SESSION.get("outcome") == "rolled_back"
                 assert handoff_outcome_ready().is_set()
+
+    def test_commit_failure_logs_only_the_failed_phase_and_exception_class(self, *, mocker):
+        child = fake_child(mocker=mocker)
+        expected = expected_metadata()
+        child.recv_message.side_effect = [
+            child_message("ready", child, expected),
+            child_message("serving", child, expected),
+        ]
+        mocker.patch.object(self.p, "spawn_child", return_value=child)
+        server = fake_server(mocker=mocker)
+        prepared = self.p.prepare(server, expected, self.context, timeout_seconds=1)
+        mocker.patch.object(
+            self.p,
+            "probe_health",
+            side_effect=OSError("Authorization=Bearer do-not-log"),
+        )
+        log = mocker.Mock()
+        context = entrypoint_module._handoff_context()
+        object.__setattr__(context, "log", log)
+
+        assert self.p.commit(server, prepared, context) == "rolled_back"
+
+        log.assert_called_once_with("event=handoff_commit_failed phase=health exception=OSError")
+        assert "do-not-log" not in log.call_args.args[0]
 
     def test_identity_matrices_reject_ready_serving_health_and_finalized_mismatches(
         self, subtests, *, mocker

@@ -44,7 +44,7 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
             owned_files.path(install, relative).unlink()
         except OSError as exc:
             raise errors.InstallError(f"installed payload purge failed: {relative}") from exc
-    _remove_empty_owned_directories(install, owned)
+    remove_empty_owned_directories(install, owned)
     if residual := [
         relative
         for relative in owned
@@ -93,7 +93,9 @@ def manifest_bytes(manifest: Mapping[str, Any]) -> bytes:
     return (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
 
 
-def _remove_empty_owned_directories(install: Path, owned: set[str]) -> None:
+def remove_empty_owned_directories(install: Path, owned: set[str]) -> None:
+    """Remove empty directories implied by one owned file inventory."""
+
     directories = {
         parent
         for relative in owned
@@ -163,8 +165,8 @@ def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, 
 
     try:
         manifest = json.loads(payload_manifest_path(ctx).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return False, f"manifest unavailable: {exc}"
+    except (OSError, json.JSONDecodeError):
+        return False, "installed payload manifest is unavailable"
     if (
         not isinstance(manifest, dict)
         or manifest.get("schema_version") != PAYLOAD_MANIFEST_SCHEMA_VERSION
@@ -208,8 +210,8 @@ def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, 
             return False, f"invalid digest: {relative}"
         try:
             actual = digest.sha256_file(Path(ctx.install_dir, *relative.split("/")))
-        except OSError as exc:
-            return False, f"payload unavailable: {relative}: {exc}"
+        except OSError:
+            return False, f"installed payload file is unavailable: {relative}"
         if actual != expected:
             return False, f"hash mismatch: {relative}"
     for relative, expected in serving_files.items():
@@ -228,8 +230,8 @@ def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, 
             actual_receipt = digest.sha256_file(
                 Path(ctx.install_dir, inventory.RELEASE_RECEIPT_FILENAME)
             )
-        except OSError as exc:
-            return False, f"release receipt unavailable: {exc}"
+        except OSError:
+            return False, "installed release receipt is unavailable"
         if actual_receipt != receipt_digest:
             return False, "release receipt digest mismatch"
     return True, f"release {release}; {len(files)} files verified"

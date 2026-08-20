@@ -51,7 +51,7 @@ def _is_within(bundle: Path, member: Path) -> bool:
     return shared == canonical_bundle
 
 
-def _bundle_files(bundle: Path) -> tuple[tuple[Path, Path], ...]:
+def bundle_files(bundle: Path) -> tuple[tuple[Path, Path], ...]:
     """Return logical bundle files after safely materializing internal links."""
 
     files: list[tuple[Path, Path]] = []
@@ -101,7 +101,7 @@ def _command(*, bundle: Path, platform: str, output: Path) -> None:
         "providers.toml": (ROOT / "src/codex_responses_proxy/providers/manifest.toml").read_bytes(),
         "LICENSE": (ROOT / "LICENSE").read_bytes(),
     }
-    for relative, source in _bundle_files(bundle):
+    for relative, source in bundle_files(bundle):
         if relative == Path(executable_name):
             continue
         files[f"bin/{relative.as_posix()}"] = source.read_bytes()

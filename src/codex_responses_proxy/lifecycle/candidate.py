@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from collections.abc import Mapping, Set
 from pathlib import Path, PurePosixPath
@@ -109,6 +110,24 @@ def write_projection(
     )
 
 
+def retire_previous_projection(
+    ctx: runtime_context.RuntimeContext,
+    previous_owned: Set[str],
+    candidate_paths: Set[str],
+) -> None:
+    """Delete files owned only by the verified previous projection."""
+
+    install = Path(ctx.install_dir)
+    retired = set(previous_owned) - set(candidate_paths) - set(owned_files.OWNED_PAYLOAD_METADATA)
+    for relative in retired:
+        target = owned_files.regular_file(install, relative, "previous owned payload")
+        try:
+            target.unlink()
+        except OSError as exc:
+            raise errors.InstallError(f"previous owned payload removal failed: {relative}") from exc
+    projection.remove_empty_owned_directories(install, retired)
+
+
 def remove_projection(ctx: runtime_context.RuntimeContext, paths: Set[str]) -> None:
     """Remove only files owned by an uncommitted fresh candidate."""
 
@@ -122,12 +141,17 @@ def prewarm(executable: Path) -> None:
 
     import subprocess
 
+    environment = os.environ.copy()
+    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    environment.pop("PYTHONHOME", None)
+    environment.pop("PYTHONPATH", None)
     try:
         completed = subprocess.run(
             [str(executable), "version"],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             check=False,
+            env=environment,
             timeout=120,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:

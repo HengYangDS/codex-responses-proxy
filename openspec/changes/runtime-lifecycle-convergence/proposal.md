@@ -15,6 +15,12 @@ output and can accidentally observe the canonical listener.
   installation.
 - Give every public command the same human and JSON output contract.
 - Exercise every released command against isolated roots and an isolated port.
+- Retire predecessor-owned payload files that are absent from the successor,
+  while preserving unknown files and exact rollback.
+- Require the shared listener to expose the exact successor identity before
+  handoff finalization.
+- Prove the forward-only lifecycle against one authentic signed predecessor
+  release with concurrent ordinary and streaming requests.
 
 ## Capabilities
 
@@ -33,6 +39,7 @@ None.
 ## Impact
 
 The change affects only the Proxy CLI, installed lifecycle orchestration,
-platform supervisor readers, release verification, and their contracts. It
+platform supervisor readers, handoff convergence, release verification, and
+their contracts. It
 does not change provider routing, request transformation, client configuration,
 the handoff wire protocol, or the canonical listener during validation.

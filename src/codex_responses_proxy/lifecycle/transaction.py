@@ -224,6 +224,11 @@ class PayloadTransaction:
                 self._receipt,
                 self._receipt_sha256,
             )
+            payload_candidate.retire_previous_projection(
+                self._ctx,
+                snapshot.owned,
+                candidate_paths,
+            )
             command.project(
                 Path(self._ctx.command),
                 Path(self._ctx.executable),
