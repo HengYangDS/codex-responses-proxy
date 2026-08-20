@@ -19,7 +19,7 @@ MIN_PYTHON, *_, MAX_PYTHON = PYTHONS
 RELEASE_PYTHON = (ROOT / ".python-release").read_text(encoding="utf-8").strip()
 ROOTS = ("src/codex_responses_proxy", "tools", "tests")
 RUFF_CONFIG = ROOT / ".config/checks/ruff/ruff.toml"
-PYTEST_CONFIG = ROOT / "pytest.ini"
+PYTEST_CONFIG = ROOT / "pyproject.toml"
 TY_CONFIG = ROOT / ".config/checks/ty/ty.toml"
 COVERAGE_CONFIG = ROOT / ".config/checks/coverage/coverage.ini"
 

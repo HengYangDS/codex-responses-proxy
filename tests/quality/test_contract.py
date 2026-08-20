@@ -204,7 +204,6 @@ class TestQualityPolicyContracts:
 
         for path in (
             ".config/checks/ruff/ruff.toml",
-            "pytest.ini",
             ".config/checks/ty/ty.toml",
             ".config/checks/coverage/coverage.ini",
             ".config/checks/coverage/policy.toml",
@@ -215,8 +214,16 @@ class TestQualityPolicyContracts:
         ):
             assert (ROOT / path).is_file(), path
 
-        for duplicate in ("ruff", "pytest", "ty", "coverage"):
+        for duplicate in ("ruff", "ty", "coverage"):
             assert duplicate not in tool
+        assert set(tool["pytest"]) == {
+            "addopts",
+            "cache_dir",
+            "filterwarnings",
+            "markers",
+            "testpaths",
+            "python_classes",
+        }
         repository = tool.get("codex-responses-proxy", {})
         assert "quality" not in repository
 
