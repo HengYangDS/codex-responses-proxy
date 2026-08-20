@@ -33,9 +33,9 @@ acceptance = [
   "legacy_runtime_identity_is_strictly_proved_before_migration",
   "macos_linux_and_windows_lifecycle_tests_pass",
   "prepared_transactions_are_safely_closed_only_before_any_mutation",
+  "release_candidate_upgrades_an_isolated_signed_predecessor_without_connection_loss",
   "supervisor_rebind_failure_restores_the_previous_payload_command_and_service",
   "the_complete_public_command_contract_matrix_passes",
-  "the_released_runtime_upgrades_the_canonical_install_without_connection_loss",
 ]
 risks = [
   "a_partial_supervisor_update_can_restart_the_previous_payload",

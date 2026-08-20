@@ -87,14 +87,19 @@ the running process by force would create avoidable connection loss.
 
 ## Migration Plan
 
-1. Build the native executable and signed release asset from the accepted tree.
+1. Build the native executable and release asset from the candidate tree.
 2. Install it into an alternate root and service identity on a temporary port.
 3. Prove prepared recovery, alternate-launcher handoff, supervisor rebind,
    uninterrupted long responses, status, doctor, reload, and uninstall.
-4. Re-read the canonical runtime and apply the same signed installer without a
-   manual signal or service removal.
-5. Prove native listener identity, canonical supervisor configuration, absence
-   of transaction and alternate-launcher residue, and continuous service.
+4. Prove forward upgrade from an authentic signed predecessor, absorb the
+   surviving specification semantics, and archive this Change.
+5. Mint one signed release commit and tag from the archived source, publish the
+   same objects to each selected Forge independently, then apply the verified
+   asset to the canonical installation.
+6. Prove native listener identity, canonical supervisor configuration, absence
+   of transaction and alternate-launcher residue, and continuous service as
+   release acceptance. A defect found there starts a successor Change; it does
+   not reopen or rewrite this archived authority.
 
 Rollback remains the existing payload rollback before handoff commitment. An
 unknown handoff outcome remains transaction-bound and is never reported as

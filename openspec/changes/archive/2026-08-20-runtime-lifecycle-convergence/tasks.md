@@ -20,6 +20,5 @@
 - [x] 3.1 Pass affected lifecycle, release-installation, CLI, Ruff, and ty checks.
 - [x] 3.2 Pass repository quick and native release sessions.
 - [x] 3.3 Pass quality and Python 3.12, 3.13, and 3.14 sessions.
-- [ ] 3.4 Publish one signed repair release from the exact accepted commit to each available Forge independently.
-- [ ] 3.5 Recover and upgrade the canonical installation without interrupting active responses.
-- [ ] 3.6 Prove canonical native supervision, no transaction or launcher residue, archive the Change, and retire the lane.
+- [x] 3.4 Pass forward compatibility from an authentic signed predecessor release without connection loss.
+- [x] 3.5 Absorb the surviving canonical specification deltas and prepare the completed Change for archive.

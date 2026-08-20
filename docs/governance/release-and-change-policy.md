@@ -45,6 +45,10 @@ flowchart LR
 - Complete and archive OpenSpec changes through the declared lifecycle after
   canonical specifications and durable decisions absorb their surviving
   semantics. Archived changes remain historical inputs, not mutation authority.
+- A Change proves a releasable product increment; hosted publication and
+  canonical installation consume the final archived source as release
+  acceptance. They never become circular prerequisites for archiving the
+  Change. A defect found by release acceptance starts a successor Change.
 - Do not preserve aliases, facades, or compatibility residue without a current requirement.
 - Do not write personal identity, local path, credential, key, fingerprint, or private Forge coordinate into product source.
 
