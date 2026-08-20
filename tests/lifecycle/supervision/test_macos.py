@@ -25,6 +25,14 @@ class TestMacosLifecycle:
     @pytest.fixture(autouse=True)
     def _isolate_launch_agents(self, tmp_path, *, mocker):
         mocker.patch.object(macos.config, "home_dir", return_value=str(tmp_path))
+        mocker.patch.object(
+            macos.shutil,
+            "which",
+            side_effect=lambda name, *, path: (
+                f"/native/{name}" if path == macos.os.defpath else None
+            ),
+        )
+        mocker.patch.object(macos.os, "getuid", return_value=501, create=True)
 
     def test_native_tools_resolve_from_the_host_default_path(self, *, mocker) -> None:
         resolved = mocker.patch.object(
