@@ -83,12 +83,20 @@ def _install_systemd(ctx: runtime_context.RuntimeContext) -> None:
         fh.write(render_unit(ctx))
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
     r = subprocess.run(
-        ["systemctl", "--user", "enable", "--now", f"{ctx.service_id}.service"],
+        ["systemctl", "--user", "enable", f"{ctx.service_id}.service"],
         capture_output=True,
         text=True,
     )
     if r.returncode != 0:
         raise errors.InstallError(f"systemctl enable failed: {r.stderr.strip()}")
+    restarted = subprocess.run(
+        ["systemctl", "--user", "restart", f"{ctx.service_id}.service"],
+        capture_output=True,
+        text=True,
+    )
+    if restarted.returncode != 0:
+        detail = restarted.stderr.strip() or restarted.stdout.strip()
+        raise errors.InstallError(f"systemctl restart failed: {detail}")
     # Survive logout / start at boot. Best-effort: on hardened hosts this may need
     # an admin once; we don't fail the install if it can't self-authorize.
     subprocess.run(

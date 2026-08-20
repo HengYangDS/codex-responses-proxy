@@ -64,6 +64,13 @@ the running process by force would create avoidable connection loss.
    compatibility session consumes one published signed predecessor asset and
    trust anchor, then proves forward upgrade with held ordinary requests and an
    SSE stream. It never relabels the current bundle as historical evidence.
+10. **Upgrade the supervisor generation as part of the payload transaction.**
+    After candidate bytes commit and before listener handoff, reinstall the
+    platform-native service so its resident watchdog executes those exact
+    bytes. The watchdog retains handles for listeners it starts and polls them
+    in its normal loop, allowing the operating system to reap exited children.
+    If handoff rolls back, native supervision is installed once more from the
+    restored predecessor payload.
 
 ## Risks / Trade-offs
 
@@ -75,6 +82,8 @@ the running process by force would create avoidable connection loss.
   executable and require exact native-listener proof before reinstalling it.
 - [Validation accidentally reaches the canonical port] -> reserve a temporary
   loopback port for the complete native command matrix.
+- [Supervisor restart fails after candidate commit] -> restore the predecessor
+  payload and reinstall its native service before returning failure.
 
 ## Migration Plan
 

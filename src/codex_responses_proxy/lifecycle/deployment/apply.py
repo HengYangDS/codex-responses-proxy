@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -81,6 +82,7 @@ def install(
     return _upgrade(
         ctx,
         payload,
+        adapter=adapter,
         current=current,
         runtime_reader=runtime_reader,
         timeout_seconds=timeout_seconds,
@@ -115,12 +117,19 @@ def _upgrade(
     ctx: runtime_context.RuntimeContext,
     payload: transaction.PayloadTransaction,
     *,
+    adapter: ServiceAdapter,
     current: dict[str, object],
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
 ) -> dict[str, object]:
     payload.commit_projection()
     try:
+        adapter.install(ctx)
+        configured = adapter.configured_executable(ctx)
+        if configured is None or os.path.normcase(os.path.realpath(configured)) != os.path.normcase(
+            os.path.realpath(ctx.executable)
+        ):
+            raise errors.InstallError("native supervisor did not bind the canonical executable")
         runtime = request_handoff(
             ctx,
             payload.expected,
@@ -133,6 +142,7 @@ def _upgrade(
         raise
     except BaseException:
         payload.rollback()
+        adapter.install(ctx)
         raise
     payload.finalize(runtime)
     return {"mode": "upgrade", "runtime": runtime}

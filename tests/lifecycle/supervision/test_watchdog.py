@@ -98,6 +98,20 @@ class TestWatchdogLogging:
             assert watchdog.spawn_proxy() is None
             assert "OSError" in logged.call_args.args[0]
 
+    def test_watchdog_reaps_exited_listener_children(self, *, mocker):
+        watchdog = load_watchdog()
+        running = mocker.Mock()
+        running.poll.return_value = None
+        exited = mocker.Mock()
+        exited.poll.return_value = 0
+        children = [running, exited]
+
+        watchdog._reap_children(children)
+
+        assert children == [running]
+        running.poll.assert_called_once_with()
+        exited.poll.assert_called_once_with()
+
     def test_watchdog_rotation_boundaries(self, *, mocker):
         watchdog = load_watchdog()
         with tempfile.TemporaryDirectory() as directory:

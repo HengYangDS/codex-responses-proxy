@@ -13,6 +13,7 @@
 - [x] 2.4 Make native-listener supervisor rebind and bridge finalization retry-safe.
 - [x] 2.5 Reject loopback runtime evidence that is not owned by the selected installation.
 - [x] 2.6 Pass signed alternate-root install, long-response handoff, reload, status, doctor, and uninstall acceptance.
+- [x] 2.7 Restart the native supervisor from committed upgrade bytes and reap watchdog-owned exited children.
 
 ## 3. Verification and delivery
 

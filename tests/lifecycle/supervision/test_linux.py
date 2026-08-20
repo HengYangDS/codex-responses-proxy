@@ -65,10 +65,22 @@ class TestLinuxLifecycle:
             invoked = mocker.patch.object(
                 linux.subprocess,
                 "run",
-                side_effect=[_completed(), _completed(), _completed()],
+                side_effect=[_completed(), _completed(), _completed(), _completed()],
             )
             linux._install_systemd(ctx)
             assert unit.read_text(encoding="utf-8") == linux.render_unit(ctx)
+            assert invoked.call_args_list[1].args[0] == [
+                "systemctl",
+                "--user",
+                "enable",
+                f"{ctx.service_id}.service",
+            ]
+            assert invoked.call_args_list[2].args[0] == [
+                "systemctl",
+                "--user",
+                "restart",
+                f"{ctx.service_id}.service",
+            ]
             assert invoked.call_args_list[-1].args[0][0] == "loginctl"
             mocker.patch.object(
                 linux.subprocess,

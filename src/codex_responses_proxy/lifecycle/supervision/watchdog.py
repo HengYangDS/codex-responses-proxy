@@ -42,6 +42,12 @@ _LOG_SECRET_PATTERNS = (
 )
 
 
+def _reap_children(children: list[subprocess.Popen[bytes]]) -> None:
+    """Reap exited listener children so the watchdog never leaves zombies."""
+
+    children[:] = [child for child in children if child.poll() is None]
+
+
 def _redact_log_message(msg: str) -> str:
     """Bound watchdog diagnostics without retaining secret-shaped values."""
     value = str(msg).replace("\r", " ").replace("\n", " ")
@@ -156,12 +162,15 @@ def run(max_iterations: "int | None" = None) -> None:
     )
     consecutive_failures = 0
     iterations = 0
+    children: list[subprocess.Popen[bytes]] = []
     while True:
+        _reap_children(children)
         up = is_proxy_up()
         sleep_for = CHECK_INTERVAL
         if not up:
             _log(f"proxy down on {HOST}:{PORT} — starting it")
-            spawn_proxy()
+            if child := spawn_proxy():
+                children.append(child)
             consecutive_failures += 1
             settle = min(MAX_BACKOFF, CHECK_INTERVAL * consecutive_failures)
             time.sleep(min(3.0, settle))

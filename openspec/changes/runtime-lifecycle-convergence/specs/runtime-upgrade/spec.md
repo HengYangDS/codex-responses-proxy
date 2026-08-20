@@ -98,6 +98,36 @@ launcher shape before mutation.
 - **AND** the retained launcher is removed only after successor health is
   proved.
 
+### Requirement: Upgrade converges the native supervisor generation
+
+After candidate payload commitment and before listener handoff, installation
+SHALL restart the platform-native supervisor from the canonical committed
+executable. A watchdog that starts a listener SHALL retain and poll its process
+handle so an exited child is reaped. If the subsequent handoff rolls back,
+installation SHALL restart native supervision from the restored predecessor
+payload before returning failure.
+
+#### Scenario: A current native runtime is upgraded
+
+- **WHEN** candidate bytes have committed and the current listener remains
+  accepting
+- **THEN** the native supervisor is restarted from the candidate executable
+- **AND** listener handoff begins only after the supervisor declaration is
+  rebound to that executable.
+
+#### Scenario: A watchdog-owned listener exits
+
+- **WHEN** a listener spawned by the resident watchdog reaches a terminal
+  process state
+- **THEN** the watchdog polls its retained process handle
+- **AND** no zombie process remains owned by that watchdog.
+
+#### Scenario: Handoff rolls back after supervisor replacement
+
+- **WHEN** successor handoff fails with a proved rollback outcome
+- **THEN** the predecessor payload is restored
+- **AND** native supervision is restarted from that restored payload.
+
 ### Requirement: Handoff finalization observes the exact successor
 
 After commit, the controller SHALL read bounded health snapshots through the

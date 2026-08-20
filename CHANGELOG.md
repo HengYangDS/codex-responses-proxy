@@ -7,6 +7,15 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.52] - 2026-08-20
+
+### Fixed
+
+- Restart native supervision from the committed release before listener
+  handoff, restore predecessor supervision after rollback, and reap
+  watchdog-owned listener children so upgrades leave no stale supervisor
+  generation or zombie process.
+
 ## [2.0.51] - 2026-08-20
 
 ### Fixed

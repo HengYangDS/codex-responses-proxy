@@ -21,6 +21,8 @@ output and can accidentally observe the canonical listener.
   handoff finalization.
 - Prove the forward-only lifecycle against one authentic signed predecessor
   release with concurrent ordinary and streaming requests.
+- Restart native supervision from the committed payload before listener handoff
+  and reap watchdog-owned listener children after they exit.
 
 ## Capabilities
 
