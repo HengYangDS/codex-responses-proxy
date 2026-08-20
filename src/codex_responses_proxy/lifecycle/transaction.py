@@ -16,17 +16,22 @@ from pathlib import Path
 from typing import Any
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.service import digest, identity, inventory
 from codex_responses_proxy.lifecycle import (
-    candidate as payload_candidate,
-    owned_files,
-    projection,
-    rollback as payload_rollback,
     artifact,
     command,
+    owned_files,
+    projection,
+    runtime_spec,
     state,
 )
+from codex_responses_proxy.lifecycle import (
+    candidate as payload_candidate,
+)
+from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import (
+    rollback as payload_rollback,
+)
+from codex_responses_proxy.service import digest, identity, inventory
 
 
 def recover(
@@ -224,6 +229,7 @@ class PayloadTransaction:
                 self._receipt,
                 self._receipt_sha256,
             )
+            runtime_spec.write(self._ctx)
             payload_candidate.retire_previous_projection(
                 self._ctx,
                 snapshot.owned,

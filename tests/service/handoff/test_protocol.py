@@ -13,17 +13,16 @@ import threading
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.service.handoff import protocol as handoff_protocol_module
-from tests.service.handoff.fixtures import (
-    entrypoint_module,
-    expected_metadata,
-    handoff_module,
-    http_json,
-    runtime_state_module,
-)
-import pytest
+from tests.service.handoff.fixtures import entrypoint_module
+from tests.service.handoff.fixtures import expected_metadata
+from tests.service.handoff.fixtures import handoff_module
+from tests.service.handoff.fixtures import http_json
+from tests.service.handoff.fixtures import runtime_state_module
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -120,10 +119,10 @@ class TestHandoffTransitionValidation:
                 ("finalized", "idle"),
                 ("aborting", "rolled_back"),
                 ("rolled_back", "idle"),
-            )
-            + tuple(
-                (state, "aborting")
-                for state in ("preparing", "ready", "committing", "serving", "finalizing")
+                *tuple(
+                    (state, "aborting")
+                    for state in ("preparing", "ready", "committing", "serving", "finalizing")
+                ),
             )
         )
         states = {state for transition in allowed for state in transition}
@@ -405,7 +404,8 @@ class TestHandoffPlatformHelpers:
     def test_child_protocol_accepts_finalize_and_rejects_invalid_commands(
         self, subtests, *, mocker
     ):
-        context = entrypoint_module._handoff_context()
+        finalized_supervision = mocker.Mock()
+        context = entrypoint_module._handoff_context(finalize_successor=finalized_supervision)
         prepare = {
             "type": "prepare",
             "protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
@@ -449,7 +449,10 @@ class TestHandoffPlatformHelpers:
             "serving",
             "finalized",
         ]
+        finalized_supervision.assert_called_once_with()
         server.server_close.assert_not_called()
+
+        finalized_supervision.reset_mock()
 
         for commands, valid_prepare in (
             ((), False),
@@ -461,6 +464,7 @@ class TestHandoffPlatformHelpers:
                 result, server, _ = run(*commands, valid_prepare=valid_prepare)
                 assert result == 1
                 assert server.server_close.call_count == int(valid_prepare)
+                finalized_supervision.assert_not_called()
 
         failed = mocker.Mock()
         failed.shutdown.side_effect = OSError
@@ -469,3 +473,41 @@ class TestHandoffPlatformHelpers:
         assert result == 1
         failed.shutdown.assert_called_once()
         failed.server_close.assert_called_once()
+
+    def test_child_refuses_finalization_when_successor_supervision_is_unproved(
+        self, *, mocker
+    ) -> None:
+        handoff_module.reset_session_to_idle()
+        finalizer = mocker.Mock(side_effect=OSError("launchd unavailable"))
+        context = entrypoint_module._handoff_context(finalize_successor=finalizer)
+        prepare = {
+            "type": "prepare",
+            "protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
+            "transaction_id": "txn-child",
+            "release": entrypoint_module.release_version(),
+            "serving_payload_sha256": entrypoint_module.serving_payload_sha256(),
+            "release_receipt_sha256": entrypoint_module.release_receipt_sha256(),
+            "manifest_sha256": context.payload_manifest_sha256(),
+            "listener_fd": 37,
+        }
+        commands = (prepare, {"type": "commit"}, {"type": "finalize"})
+        raw = b"".join(
+            json.dumps(message, separators=(",", ":")).encode() + b"\n" for message in commands
+        )
+        stdout = io.BytesIO()
+        fake_server = mocker.Mock()
+        object.__setattr__(context, "server_factory", lambda _listener: fake_server)
+        mocker.patch.object(sys, "stdin", mocker.Mock(buffer=io.BytesIO(raw)))
+        mocker.patch.object(sys, "stdout", mocker.Mock(buffer=stdout))
+        mocker.patch.object(handoff_module, "listener_from_prepare", return_value=mocker.Mock())
+        mocker.patch.object(handoff_module, "serve_with_resume")
+        mocker.patch("threading.Thread")
+
+        assert handoff_module.run_child(context) == 1
+
+        finalizer.assert_called_once_with()
+        assert [json.loads(line)["type"] for line in stdout.getvalue().splitlines()] == [
+            "started",
+            "ready",
+            "serving",
+        ]

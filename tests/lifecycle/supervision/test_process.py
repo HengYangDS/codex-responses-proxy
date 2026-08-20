@@ -16,6 +16,26 @@ from tests.lifecycle.fixtures import platform_context
 
 
 class TestProcessIdentity:
+    def test_bounded_capture_waits_for_the_exact_native_role(self, *, mocker) -> None:
+        expected = process.OwnedProcess(73, "/installed/codex-responses-proxy", 42.0)
+        capture = mocker.patch.object(
+            process,
+            "capture_executable",
+            side_effect=[None, None, expected],
+        )
+        mocker.patch.object(process.time, "sleep")
+
+        assert (
+            process.wait_for_executable(
+                73,
+                "/installed/codex-responses-proxy",
+                roles={"--internal-watchdog"},
+                timeout_seconds=1.0,
+            )
+            == expected
+        )
+        assert capture.call_count == 3
+
     def test_psutil_process_inventory_and_listener_discovery_are_host_command_free(self, *, mocker):
         first = mocker.Mock(pid=7)
         first.cmdline.return_value = ["python", "/installed/proxy.py"]

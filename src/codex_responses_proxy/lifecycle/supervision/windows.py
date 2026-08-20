@@ -2,68 +2,30 @@
 
 from __future__ import annotations
 
+import getpass
 import os
 import subprocess
-import getpass
+import tempfile
 import xml.etree.ElementTree as ET
-from xml.sax.saxutils import escape as xml_escape
 
-from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy import errors
+from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import runtime as service_runtime
-
 
 # A fixed past boundary so the repeating time trigger is always active; the
 # repetition, not this date, drives every self-heal relaunch.
 _SELF_HEAL_START_BOUNDARY = "2020-01-01T00:00:00"
+_TASK_NAMESPACE = "http://schemas.microsoft.com/windows/2004/02/mit/task"
+ET.register_namespace("", _TASK_NAMESPACE)
 
-TASK_XML_TEMPLATE = """<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>Codex Responses Proxy watchdog</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <LogonTrigger>
-      <Enabled>true</Enabled>
-      <UserId>{user}</UserId>
-    </LogonTrigger>
-    <TimeTrigger>
-      <Enabled>true</Enabled>
-      <StartBoundary>{start_boundary}</StartBoundary>
-      <Repetition>
-        <Interval>PT1M</Interval>
-        <StopAtDurationEnd>false</StopAtDurationEnd>
-      </Repetition>
-    </TimeTrigger>
-  </Triggers>
-  <Principals>
-    <Principal id="Author">
-      <LogonType>InteractiveToken</LogonType>
-      <RunLevel>LeastPrivilege</RunLevel>
-    </Principal>
-  </Principals>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-    <Enabled>true</Enabled>
-    <RestartOnFailure>
-      <Interval>PT1M</Interval>
-      <Count>999</Count>
-    </RestartOnFailure>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>{executable}</Command>
-      <Arguments>{watchdog_mode}</Arguments>
-      <WorkingDirectory>{workdir}</WorkingDirectory>
-    </Exec>
-  </Actions>
-</Task>
-"""
+
+def _element(
+    parent: ET.Element, name: str, text: str | None = None, **attributes: str
+) -> ET.Element:
+    child = ET.SubElement(parent, f"{{{_TASK_NAMESPACE}}}{name}", attributes)
+    child.text = text
+    return child
 
 
 def _current_user() -> str:
@@ -72,27 +34,62 @@ def _current_user() -> str:
     return f"{domain}\\{user}" if domain else user
 
 
-def _xml_path(ctx: runtime_context.RuntimeContext) -> str:
-    return os.path.join(ctx.install_dir, f"{ctx.service_id}.xml")
+def render_task_xml(ctx: runtime_spec.NativeServiceContext) -> str:
+    """Serialize the minimal Task Scheduler projection for one runtime."""
+
+    root = ET.Element(f"{{{_TASK_NAMESPACE}}}Task", {"version": "1.2"})
+    registration = _element(root, "RegistrationInfo")
+    _element(registration, "Description", "Codex Responses Proxy watchdog")
+    triggers = _element(root, "Triggers")
+    logon = _element(triggers, "LogonTrigger")
+    _element(logon, "Enabled", "true")
+    _element(logon, "UserId", _current_user())
+    timed = _element(triggers, "TimeTrigger")
+    _element(timed, "Enabled", "true")
+    _element(timed, "StartBoundary", _SELF_HEAL_START_BOUNDARY)
+    repetition = _element(timed, "Repetition")
+    _element(repetition, "Interval", "PT1M")
+    _element(repetition, "StopAtDurationEnd", "false")
+    principals = _element(root, "Principals")
+    principal = _element(principals, "Principal", id="Author")
+    _element(principal, "LogonType", "InteractiveToken")
+    _element(principal, "RunLevel", "LeastPrivilege")
+    settings = _element(root, "Settings")
+    for name, value in (
+        ("MultipleInstancesPolicy", "IgnoreNew"),
+        ("DisallowStartIfOnBatteries", "false"),
+        ("StopIfGoingOnBatteries", "false"),
+        ("StartWhenAvailable", "true"),
+        ("ExecutionTimeLimit", "PT0S"),
+        ("Enabled", "true"),
+    ):
+        _element(settings, name, value)
+    restart = _element(settings, "RestartOnFailure")
+    _element(restart, "Interval", "PT1M")
+    _element(restart, "Count", "999")
+    actions = _element(root, "Actions", Context="Author")
+    execute = _element(actions, "Exec")
+    _element(execute, "Command", ctx.executable)
+    _element(execute, "Arguments", service_runtime.WATCHDOG_MODE)
+    _element(execute, "WorkingDirectory", ctx.install_dir)
+    ET.indent(root, space="  ")
+    return ET.tostring(root, encoding="unicode", xml_declaration=True) + "\n"
 
 
-def render_task_xml(ctx: runtime_context.RuntimeContext) -> str:
-    """Render the scheduled-task XML for the native watchdog role."""
-    return TASK_XML_TEMPLATE.format(
-        user=xml_escape(_current_user()),
-        executable=xml_escape(ctx.executable),
-        watchdog_mode=service_runtime.WATCHDOG_MODE,
-        workdir=xml_escape(ctx.install_dir),
-        start_boundary=_SELF_HEAL_START_BOUNDARY,
+def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
+    """Return the executable declared by the registered scheduled task."""
+
+    completed = subprocess.run(
+        ["schtasks", "/query", "/tn", ctx.service_id, "/xml"],
+        capture_output=True,
+        check=False,
+        text=True,
     )
-
-
-def configured_executable(ctx: runtime_context.RuntimeContext) -> str | None:
-    """Return the executable declared by one valid product scheduled task."""
-
+    if completed.returncode:
+        return None
     try:
-        root = ET.parse(_xml_path(ctx)).getroot()
-    except (OSError, ET.ParseError):
+        root = ET.fromstring(completed.stdout)
+    except ET.ParseError:
         return None
     namespace = {"task": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
     commands = root.findall(".//task:Actions/task:Exec/task:Command", namespace)
@@ -107,44 +104,50 @@ def configured_executable(ctx: runtime_context.RuntimeContext) -> str | None:
     return commands[0].text
 
 
-def install(ctx: runtime_context.RuntimeContext) -> None:
+def install(ctx: runtime_spec.NativeServiceContext) -> None:
     """Install and start the Windows scheduled watchdog task."""
-    xml_path = _xml_path(ctx)
-    # Task Scheduler is happiest importing UTF-16 XML.
-    with open(xml_path, "w", encoding="utf-16") as fh:
-        fh.write(render_task_xml(ctx))
-
-    subprocess.run(
-        ["schtasks", "/delete", "/tn", ctx.service_id, "/f"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    r = subprocess.run(
-        ["schtasks", "/create", "/tn", ctx.service_id, "/xml", xml_path],
-        capture_output=True,
-        text=True,
-    )
-    if r.returncode != 0:
-        raise errors.InstallError(f"schtasks create failed: {r.stderr.strip() or r.stdout.strip()}")
+    with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as stream:
+        xml_path = stream.name
+        stream.write(render_task_xml(ctx).encode("utf-16"))
+    try:
+        subprocess.run(
+            ["schtasks", "/delete", "/tn", ctx.service_id, "/f"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        created = subprocess.run(
+            ["schtasks", "/create", "/tn", ctx.service_id, "/xml", xml_path],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        if created.returncode:
+            detail = created.stderr.strip() or created.stdout.strip()
+            raise errors.InstallError(f"schtasks create failed: {detail}")
+    finally:
+        os.unlink(xml_path)
     # Start it now (the trigger otherwise only fires at next logon).
     subprocess.run(
         ["schtasks", "/run", "/tn", ctx.service_id],
+        check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
 
 
-def _running_watchdog_pids(ctx: runtime_context.RuntimeContext) -> list[int]:
+def _running_watchdog_pids(ctx: runtime_spec.NativeServiceContext) -> list[int]:
     """Return PIDs exactly naming this installation's native watchdog role."""
 
     return process.pids_naming_executable(ctx.executable, roles={service_runtime.WATCHDOG_MODE})
 
 
-def uninstall(ctx: runtime_context.RuntimeContext) -> None:
+def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
     """Stop and remove only this installation's scheduled watchdog task."""
     deleted = subprocess.run(
         ["schtasks", "/delete", "/tn", ctx.service_id, "/f"],
         capture_output=True,
+        check=False,
         text=True,
     )
     if deleted.returncode:
@@ -165,11 +168,12 @@ def uninstall(ctx: runtime_context.RuntimeContext) -> None:
         raise errors.InstallError(f"verified watchdogs remain: {remaining}")
 
 
-def status(ctx: runtime_context.RuntimeContext) -> str:
+def status(ctx: runtime_spec.NativeServiceContext) -> str:
     """Return the Windows scheduled task's read-only status classification."""
     r = subprocess.run(
         ["schtasks", "/query", "/tn", ctx.service_id, "/fo", "list"],
         capture_output=True,
+        check=False,
         text=True,
     )
     if r.returncode != 0:

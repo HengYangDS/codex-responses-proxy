@@ -18,6 +18,7 @@ from tests.release.fixtures import (
     cleanup_runtime,
     native_environment,
     post_response,
+    preserve_native_host_projection as preserve_native_host_projection,
     run_command,
     runtime_context_for,
     signed_asset,

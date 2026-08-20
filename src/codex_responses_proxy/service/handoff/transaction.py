@@ -81,6 +81,7 @@ class Context:
     log: Callable[[str], None]
     server_factory: Callable[[socket.socket], ThreadingHTTPServer]
     set_server_instance: Callable[[ThreadingHTTPServer], None]
+    finalize_successor: Callable[[], None]
 
 
 _HANDOFF_TRANSITIONS = {
@@ -488,6 +489,7 @@ def run_child(context: Context) -> int:
         if command != {"type": "finalize"}:
             raise HandoffError("handoff child did not receive FINALIZE")
         _transition("finalizing")
+        context.finalize_successor()
         _transition("finalized")
         _write_control_message(output_stream, _control_message("finalized", child_expected))
         serve_with_resume(server, context, initial_serving_thread=serving_thread)

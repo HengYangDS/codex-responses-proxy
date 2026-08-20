@@ -1,3 +1,0 @@
-schema: spec-driven
-created: 2026-08-19
-goal: Align GitLab tag verification with the single provider-neutral product-tag verifier contract.

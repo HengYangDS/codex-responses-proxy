@@ -7,6 +7,23 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.53] - 2026-08-20
+
+### Fixed
+
+- Replace the macOS watchdog by exact launchd service generation, proving the
+  predecessor process exited and the successor executes the committed payload
+  without interrupting the independent listener.
+- Make `runtime-config.json` the sole secret-free runtime carrier used by the
+  product, watchdog, and native-service projections; remove duplicated
+  platform configuration state.
+- Bind native service inspection and teardown to the exact executable, service
+  label, and platform registration target so isolated lifecycle tests cannot
+  leak persistent host services or touch the canonical installation.
+- Project the same supervision contract through launchd, systemd user services,
+  and Windows Task Scheduler while retaining native platform registration and
+  diagnostics.
+
 ## [2.0.52] - 2026-08-20
 
 ### Fixed

@@ -82,6 +82,11 @@ class TestPublishedPredecessorCompatibility:
         previous_version = published_predecessor.version
         current_version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
         assert _version(previous_version) < _version(current_version)
+        previous_bundle = _materialize_native_bundle(
+            published_predecessor,
+            tmp_path / "published-predecessor-bundle",
+        )
+        previous_executable = previous_bundle / "codex-responses-proxy"
 
         published_home = tmp_path / "published-home"
         published_install = tmp_path / "published-payload"
@@ -102,7 +107,7 @@ class TestPublishedPredecessorCompatibility:
         with ExitStack() as published_cleanups:
             published_cleanups.callback(cleanup_runtime, published_context)
             installed_published = run_command(
-                current_executable,
+                previous_executable,
                 published_environment,
                 "install",
                 "--asset",
@@ -115,7 +120,7 @@ class TestPublishedPredecessorCompatibility:
             )
             assert installed_published["mode"] == "fresh-install"
             published_status = run_command(
-                current_executable,
+                previous_executable,
                 published_environment,
                 "status",
                 "--port",
@@ -125,7 +130,7 @@ class TestPublishedPredecessorCompatibility:
             assert published_status["release"] == previous_version
             assert (
                 run_command(
-                    current_executable,
+                    previous_executable,
                     published_environment,
                     "doctor",
                     "--port",
@@ -135,7 +140,7 @@ class TestPublishedPredecessorCompatibility:
                 is True
             )
             run_command(
-                current_executable,
+                previous_executable,
                 published_environment,
                 "uninstall",
                 "--port",
@@ -146,10 +151,6 @@ class TestPublishedPredecessorCompatibility:
             assert not published_install.exists()
             assert not payload_state.transaction_root(published_context).exists()
 
-        previous_bundle = _materialize_native_bundle(
-            published_predecessor,
-            tmp_path / "published-predecessor-bundle",
-        )
         home, install, state = (
             tmp_path / "home",
             tmp_path / "payload",
@@ -200,7 +201,7 @@ class TestPublishedPredecessorCompatibility:
             cleanups.callback(cleanup_runtime, ctx)
 
             installed = run_command(
-                current_executable,
+                previous_executable,
                 environment,
                 "install",
                 "--asset",

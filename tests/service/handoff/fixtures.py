@@ -22,6 +22,7 @@ from typing import Any, cast
 
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.relay import admission as runtime_state_module
 from codex_responses_proxy.service import entrypoint as entrypoint_module
@@ -149,7 +150,13 @@ def idle_runtime(**overrides) -> dict[str, object]:
     return runtime
 
 
-def child_pid_matching_health(port: int, expected: dict, *, exclude_pid: int | None):
+def child_pid_matching_health(
+    port: int,
+    expected: dict,
+    *,
+    exclude_pid: int | None,
+    states: frozenset[str] = frozenset(("serving", "finalized")),
+):
     """Return the exact serving or finalized successor observed through health."""
     try:
         _, health = http_json(port, "/healthz", timeout=1)
@@ -163,7 +170,7 @@ def child_pid_matching_health(port: int, expected: dict, *, exclude_pid: int | N
         if type(pid) is int
         and pid > 0
         and pid != exclude_pid
-        and health.get("handoff_state") in {"serving", "finalized"}
+        and health.get("handoff_state") in states
         and all(health.get(key) == value for key, value in required.items())
         else None
     )
@@ -174,14 +181,20 @@ def child_pid_observer(
     expected: dict,
     *,
     exclude_pid: int | None,
+    states: frozenset[str] = frozenset(("serving", "finalized")),
     owned_processes: dict[int, process.OwnedProcess] | None = None,
     executable: str | None = None,
 ) -> tuple[dict[str, int | None], Callable[[], bool]]:
-    """Return a successor-PID cell and record the exact observed test process."""
+    """Return a successor-PID cell for the accepted handoff states."""
     observed: dict[str, int | None] = {"value": None}
 
     def matches() -> bool:
-        observed["value"] = child_pid_matching_health(port, expected, exclude_pid=exclude_pid)
+        observed["value"] = child_pid_matching_health(
+            port,
+            expected,
+            exclude_pid=exclude_pid,
+            states=states,
+        )
         if owned_processes is not None and observed["value"] is not None:
             if executable is None:
                 raise ValueError("executable is required when capturing an owned process")
@@ -380,6 +393,7 @@ def write_installed_payload(
         ctx,
         release_receipt_sha256=hashlib.sha256(receipt.read_bytes()).hexdigest(),
     )
+    runtime_spec.write(ctx)
     return ctx
 
 

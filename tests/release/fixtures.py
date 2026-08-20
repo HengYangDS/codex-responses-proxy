@@ -5,17 +5,55 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import urllib.request
+import hashlib
 from pathlib import Path
 
+import pytest
+
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle.supervision import macos, process
+from codex_responses_proxy.lifecycle.supervision import native_service, process
 from codex_responses_proxy.service import inventory
 from tools.release import assets as release_assembly
 from tools.release import product_assets, signing
 
 ROOT = Path(__file__).resolve().parents[2]
 COMMAND_TIMEOUT_SECONDS = 180
+
+
+def _macos_service_projection() -> tuple[frozenset[str], tuple[tuple[str, str], ...]]:
+    """Return exact launchd registration and plist content for this product."""
+
+    completed = subprocess.run(
+        ["/bin/launchctl", "list"],
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    labels = frozenset(
+        fields[2]
+        for line in completed.stdout.splitlines()[1:]
+        if len(fields := line.split("\t")) >= 3 and fields[2].startswith(runtime_context.SERVICE_ID)
+    )
+    launch_agents = Path.home() / "Library" / "LaunchAgents"
+    plists = tuple(
+        (path.name, hashlib.sha256(path.read_bytes()).hexdigest())
+        for path in sorted(launch_agents.glob(f"{runtime_context.SERVICE_ID}*.plist"))
+    )
+    return labels, plists
+
+
+@pytest.fixture(scope="module", autouse=True)
+def preserve_native_host_projection():
+    """Prove one native test module leaves the host projection unchanged."""
+
+    if sys.platform != "darwin" or "CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE" not in os.environ:
+        yield
+        return
+    before = _macos_service_projection()
+    yield
+    assert _macos_service_projection() == before
 
 
 def run_command(
@@ -109,7 +147,6 @@ def runtime_context_for(
     """Return one isolated native lifecycle context."""
 
     return runtime_context.RuntimeContext(
-        home=str(home),
         install_dir=str(install),
         executable=inventory.installed_executable(str(install)),
         command=str(home / ".local/bin/codex-responses-proxy"),
@@ -134,24 +171,14 @@ def native_environment(home: Path, install: Path, state: Path) -> dict[str, str]
 def cleanup_runtime(ctx: runtime_context.RuntimeContext, wrapper: Path | None = None) -> None:
     """Stop only processes and launch configuration owned by an isolated test."""
 
-    plist = Path(ctx.home, "Library/LaunchAgents", f"{ctx.service_id}.plist")
-    if plist.exists():
-        subprocess.run(
-            ["launchctl", "unload", str(plist)],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        plist.unlink(missing_ok=True)
-    if wrapper is not None:
-        for pid in process.pids_naming_path(str(wrapper)):
-            process.terminate_pid(pid, expected_path=str(wrapper))
-    roles = {"--internal-listener", "--internal-handoff-child", "--internal-watchdog"}
-    for pid in process.pids_naming_executable(ctx.executable, roles=roles):
-        process.terminate_executable(pid, ctx.executable, roles=roles)
-
-
-def configured_executable(ctx: runtime_context.RuntimeContext) -> str | None:
-    """Return the macOS service executable for one isolated lifecycle context."""
-
-    return macos.configured_executable(ctx)
+    service = native_service.adapter()
+    try:
+        service.uninstall(ctx)
+        assert service.status(ctx) == "absent"
+    finally:
+        if wrapper is not None:
+            for pid in process.pids_naming_path(str(wrapper)):
+                process.terminate_pid(pid, expected_path=str(wrapper))
+        roles = {"--internal-listener", "--internal-handoff-child", "--internal-watchdog"}
+        for pid in process.pids_naming_executable(ctx.executable, roles=roles):
+            process.terminate_executable(pid, ctx.executable, roles=roles)

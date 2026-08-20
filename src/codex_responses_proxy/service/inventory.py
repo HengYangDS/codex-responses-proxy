@@ -10,6 +10,7 @@ from codex_responses_proxy.service import digest
 MANIFEST_FILENAME = "payload-manifest.json"
 RELEASE_RECEIPT_FILENAME = "release-asset-receipt.json"
 INSTALLED_RELEASE_STATE_FILENAME = "release-install-state.json"
+RUNTIME_CONFIG_FILENAME = "runtime-config.json"
 PROVIDER_MANIFEST = "providers.toml"
 EXECUTABLE = "bin/codex-responses-proxy"
 WINDOWS_EXECUTABLE = "bin/codex-responses-proxy.exe"

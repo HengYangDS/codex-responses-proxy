@@ -1,0 +1,61 @@
+schema_version = 2
+id = "change:native-supervisor-generation"
+intent = "Converge native supervision on one secret-free runtime carrier, thin platform projections, exact process-generation proof, and leak-free lifecycle ownership."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/archive/2026-08-06-release-portability-closeout/**",
+  "openspec/changes/archive/2026-08-18-release-2-0-44/**",
+  "openspec/changes/archive/2026-08-19-gitlab-tag-verification/**",
+  "openspec/changes/archive/2026-08-19-runtime-supply-chain-refresh/**",
+  "openspec/changes/archive/*-native-supervisor-generation/**",
+  "openspec/specs/runtime-upgrade/**",
+  "pyproject.toml",
+  "src/codex_responses_proxy/cli/application.py",
+  "src/codex_responses_proxy/lifecycle/**",
+  "src/codex_responses_proxy/runtime/config.py",
+  "src/codex_responses_proxy/service/**",
+  "tests/cli/test_lifecycle.py",
+  "tests/governance/test_repository.py",
+  "tests/lifecycle/**",
+  "tests/quality/test_contract.py",
+  "tests/release/**",
+  "tests/service/handoff/**",
+  "uv.lock",
+]
+invariants = [
+  "runtime_config_is_the_only_persisted_product_configuration_carrier",
+  "platform_service_definitions_remain_derived_secret_free_projections",
+  "listener_traffic_remains_independent_from_watchdog_generation_replacement",
+  "launchd_registration_never_substitutes_for_resident_process_identity",
+  "the_previous_watchdog_pid_is_absent_before_replacement_is_accepted",
+  "isolated_lifecycle_tests_leave_no_native_service_or_process_residue",
+  "canonical_service_identity_is_never_selected_by_prefix_or_temporary_home",
+]
+acceptance = [
+  "runtime_carrier_drives_product_watchdog_and_native_service_identity",
+  "macos_linux_and_windows_adapters_share_one_narrow_service_contract",
+  "macos_install_fails_when_prior_service_removal_is_unproven",
+  "macos_install_returns_only_after_launchd_reports_a_distinct_running_watchdog_pid",
+  "python_3_12_3_13_3_14_quality_native_release_and_predecessor_compatibility_gates_pass",
+  "native_lifecycle_tests_have_zero_net_host_projection_growth",
+  "all_retained_archived_changes_validate_with_complete_tasks",
+]
+risks = [
+  "duplicated_platform_configuration_diverges_from_the_committed_payload",
+  "launchd_reports_a_loaded_label_while_the_previous_process_keeps_old_frozen_bytes",
+  "service_replacement_interrupts_the_independent_listener",
+  "test_teardown_leaks_native_services_or_processes_into_the_host",
+]
+authority_refs = [
+  "AGENTS.md",
+  "docs/governance/release-and-change-policy.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+]
+predecessors = ["change:runtime-lifecycle-convergence"]
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []

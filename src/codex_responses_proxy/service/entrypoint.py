@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from typing import Callable
 
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.relay import admission, operational_log, telemetry
@@ -105,7 +106,11 @@ def _set_server_instance(server: ThreadingHTTPServer) -> None:
     _SERVER_INSTANCE = server
 
 
-def _handoff_context() -> handoff.Context:
+def _no_op() -> None:
+    """Represent an intentionally absent process-finalization action."""
+
+
+def _handoff_context(*, finalize_successor: Callable[[], None] = _no_op) -> handoff.Context:
     """Bind the rolling-handoff state machine to process-owned primitives."""
     executable = Path(runtime.current_executable()) if _BOOTSTRAP is None else _BOOTSTRAP.executable
     return handoff.Context(
@@ -124,6 +129,7 @@ def _handoff_context() -> handoff.Context:
         log=operational_log.log,
         server_factory=lambda listener: server.server_from_listener(listener, _server_bindings()),
         set_server_instance=_set_server_instance,
+        finalize_successor=finalize_successor,
     )
 
 
@@ -151,7 +157,7 @@ def create_server(
     )
 
 
-def run(*, handoff_child: bool = False) -> int:
+def run(*, handoff_child: bool = False, finalize_successor: Callable[[], None] = _no_op) -> int:
     """Run the normal listener or a protocol-v2 handoff child."""
     global _BOOTSTRAP, _SERVER_INSTANCE
     try:
@@ -168,7 +174,7 @@ def run(*, handoff_child: bool = False) -> int:
         operational_log.log(f"configuration_error exception={exc.__class__.__name__}")
         return 2
     if handoff_child or os.environ.get("CODEX_RESPONSES_PROXY_HANDOFF_CHILD") == "1":
-        return handoff.run_child(_handoff_context())
+        return handoff.run_child(_handoff_context(finalize_successor=finalize_successor))
     operational_log.log(
         f"starting codex-responses-proxy listener={host}:{port} "
         f"upstream_timeout={exchange.UPSTREAM_TIMEOUT} "

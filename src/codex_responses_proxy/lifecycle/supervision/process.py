@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import time
 from dataclasses import dataclass
 
 import psutil
@@ -63,6 +64,25 @@ def capture_executable(
         return None
 
 
+def wait_for_executable(
+    pid: int,
+    expected_path: str,
+    *,
+    roles: set[str] | frozenset[str] | None = None,
+    timeout_seconds: float = 5.0,
+) -> OwnedProcess | None:
+    """Boundedly capture one exact process after native service activation."""
+
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if owned := capture_executable(pid, expected_path, roles=roles):
+            return owned
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        time.sleep(min(0.05, remaining))
+
+
 def owned_process_alive(owned: OwnedProcess) -> bool:
     """Return whether the same captured PID generation is still alive."""
 
@@ -75,6 +95,18 @@ def owned_process_alive(owned: OwnedProcess) -> bool:
         )
     except (OSError, psutil.Error):
         return False
+
+
+def wait_for_exit(owned: OwnedProcess, *, timeout_seconds: float = 5.0) -> bool:
+    """Boundedly prove that one captured process generation has exited."""
+
+    deadline = time.monotonic() + timeout_seconds
+    while owned_process_alive(owned):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.05, remaining))
+    return True
 
 
 def terminate_owned_process(owned: OwnedProcess, *, timeout_seconds: float = 5.0) -> bool:
@@ -179,8 +211,7 @@ def pid_names_path(pid: int, expected_path: str) -> bool:
 
     argv = process_argv(pid)
     executable = os.path.basename(argv[0]).lower() if argv else ""
-    if executable.endswith(".exe"):
-        executable = executable[:-4]
+    executable = executable.removesuffix(".exe")
     if len(argv) < 2 or re.fullmatch(r"python(?:w|3(?:\.\d+)?)?", executable) is None:
         return False
     expected = os.path.normcase(os.path.realpath(os.path.abspath(expected_path)))

@@ -444,14 +444,26 @@ class CliLifecycleContracts:
         assert stderr.getvalue() == ""
 
     def test_internal_roles_are_exact_and_never_public_commands(self, *, mocker) -> None:
+        activate = mocker.patch.object(application.runtime_spec, "activate")
+        executable = mocker.patch.object(
+            application.service_runtime,
+            "current_executable",
+            return_value="/opt/proxy/bin/codex-responses-proxy",
+        )
         entrypoint = mocker.patch("codex_responses_proxy.service.entrypoint.run", return_value=7)
         assert application.main([application.service_runtime.LISTENER_MODE]) == 7
         entrypoint.assert_called_once_with()
         mocker.stop(entrypoint)
 
         handoff = mocker.patch("codex_responses_proxy.service.entrypoint.run", return_value=8)
+        install_supervision = mocker.patch(
+            "codex_responses_proxy.lifecycle.supervision.native_service.install_current"
+        )
         assert application.main([application.service_runtime.HANDOFF_CHILD_MODE]) == 8
-        handoff.assert_called_once_with(handoff_child=True)
+        handoff.assert_called_once_with(
+            handoff_child=True,
+            finalize_successor=install_supervision,
+        )
         mocker.stop(handoff)
 
         watchdog = mocker.patch(
@@ -461,6 +473,10 @@ class CliLifecycleContracts:
         assert application.main([application.service_runtime.WATCHDOG_MODE]) == 0
         watchdog.assert_called_once_with()
         mocker.stop(watchdog)
+
+        assert activate.call_count == 3
+        activate.assert_called_with("/opt/proxy/bin/codex-responses-proxy")
+        assert executable.call_count == 3
 
         for arguments in (
             [application.service_runtime.LISTENER_MODE, "extra"],

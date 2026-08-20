@@ -151,6 +151,7 @@ def test_finalized_upgrade_purge_leaves_only_unknown_content(tmp_path: Path, *, 
     assert remaining == ("operator-notes.txt",)
     assert unknown.read_bytes() == b"preserve me\n"
     assert not previous_only.exists()
+    assert not Path(ctx.install_dir, inventory.RUNTIME_CONFIG_FILENAME).exists()
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -227,12 +228,15 @@ class TestPayloadTransaction:
         transaction.commit_projection()
 
         command_path = Path(ctx.command)
+        runtime_config = Path(ctx.install_dir, inventory.RUNTIME_CONFIG_FILENAME)
         assert os.path.samefile(command_path, ctx.executable)
         assert command_path.is_symlink() is (os.name != "nt")
+        assert runtime_config.is_file()
 
         transaction.rollback()
 
         assert not command_path.exists()
+        assert not runtime_config.exists()
 
     def test_upgrade_rollback_restores_the_prior_user_command_target(
         self, tmp_path: Path, *, mocker

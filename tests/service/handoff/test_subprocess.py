@@ -15,7 +15,10 @@ from pathlib import Path
 import pytest
 
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle.supervision import process
+from codex_responses_proxy.lifecycle.supervision import native_service, process
+from tests.release.fixtures import (
+    preserve_native_host_projection as preserve_native_host_projection,
+)
 from tests.service.handoff import fixtures as handoff_fixtures
 from tests.service.handoff.fixtures import (
     ScriptedUpstream,
@@ -94,30 +97,34 @@ class TestRealSubprocessHandoffIntegration:
         root = Path(temporary.name)
         ctx = write_installed_payload(root, release=release, port=port, upstream_url=upstream_url)
         owned_processes: dict[int, process.OwnedProcess] = {}
-        self._cleanups.callback(
-            self._cleanup_installed_fixture, temporary, ctx.executable, owned_processes
-        )
+        self._cleanups.callback(self._cleanup_installed_fixture, temporary, ctx, owned_processes)
         return root, ctx, owned_processes
 
     def _cleanup_installed_fixture(
         self,
         temporary: tempfile.TemporaryDirectory,
-        proxy_script: str,
+        ctx: runtime_context.RuntimeContext,
         owned_processes: dict[int, process.OwnedProcess],
     ) -> None:
+        proxy_script = ctx.executable
         try:
-            for pid in process.pids_naming_executable(proxy_script):
-                owned = process.capture_executable(pid, proxy_script)
-                if owned is not None:
-                    owned_processes[pid] = owned
-            for owned in owned_processes.values():
-                process.terminate_owned_process(owned)
-            remaining = {
-                owned.pid
-                for owned in owned_processes.values()
-                if process.owned_process_alive(owned)
-            }
-            assert not remaining, f"orphaned proxy children for {proxy_script}: {remaining}"
+            try:
+                service = native_service.adapter()
+                service.uninstall(ctx)
+                assert service.status(ctx) == "absent"
+            finally:
+                for pid in process.pids_naming_executable(proxy_script):
+                    owned = process.capture_executable(pid, proxy_script)
+                    if owned is not None:
+                        owned_processes[pid] = owned
+                for owned in owned_processes.values():
+                    process.terminate_owned_process(owned)
+                remaining = {
+                    owned.pid
+                    for owned in owned_processes.values()
+                    if process.owned_process_alive(owned)
+                }
+                assert not remaining, f"orphaned proxy children for {proxy_script}: {remaining}"
         finally:
             deadline = time.monotonic() + PAYLOAD_UNLOCK_TIMEOUT_SECONDS
             while True:
@@ -133,6 +140,17 @@ class TestRealSubprocessHandoffIntegration:
         events = []
         temporary = tempfile.TemporaryDirectory()
         cleanup = temporary.cleanup
+        ctx = runtime_context.RuntimeContext(
+            install_dir="/tmp/owned",
+            executable="/tmp/owned/proxy.py",
+            command="/tmp/owned/proxy",
+            log_dir="/tmp/owned/state",
+        )
+
+        service = mocker.Mock()
+        service.uninstall.side_effect = lambda _ctx: events.append("service-uninstall")
+        service.status.side_effect = lambda _ctx: events.append("service-status") or "absent"
+        mocker.patch.object(native_service, "adapter", return_value=service)
 
         def inventory(_proxy_script):
             events.append("inventory")
@@ -153,17 +171,34 @@ class TestRealSubprocessHandoffIntegration:
             )
             mocker.patch.object(process, "owned_process_alive", return_value=False)
             mocker.patch.object(temporary, "cleanup", side_effect=lambda: events.append("cleanup"))
-            self._cleanup_installed_fixture(temporary, "/tmp/owned/proxy.py", {})
+            self._cleanup_installed_fixture(temporary, ctx, {})
         finally:
             cleanup()
 
-        assert events == ["inventory", "capture", "terminate", "cleanup"]
+        assert events == [
+            "service-uninstall",
+            "service-status",
+            "inventory",
+            "capture",
+            "terminate",
+            "cleanup",
+        ]
 
     def test_fixture_cleanup_retries_a_transient_native_payload_lock(self, *, mocker) -> None:
         temporary = mocker.Mock()
         temporary.cleanup.side_effect = [PermissionError("mapped module"), None]
+        ctx = runtime_context.RuntimeContext(
+            install_dir="/tmp/owned",
+            executable="/tmp/owned/proxy.py",
+            command="/tmp/owned/proxy",
+            log_dir="/tmp/owned/state",
+        )
+        service = mocker.Mock()
+        service.status.return_value = "absent"
+        mocker.patch.object(native_service, "adapter", return_value=service)
+        mocker.patch.object(process, "pids_naming_executable", return_value=[])
 
-        self._cleanup_installed_fixture(temporary, "/tmp/owned/proxy.py", {})
+        self._cleanup_installed_fixture(temporary, ctx, {})
 
         assert temporary.cleanup.call_count == 2
 
@@ -172,11 +207,20 @@ class TestRealSubprocessHandoffIntegration:
     ) -> None:
         temporary = mocker.Mock()
         owned = process.OwnedProcess(123, "/tmp/owned/proxy.py", 42.0)
+        ctx = runtime_context.RuntimeContext(
+            install_dir="/tmp/owned",
+            executable="/tmp/owned/proxy.py",
+            command="/tmp/owned/proxy",
+            log_dir="/tmp/owned/state",
+        )
+        service = mocker.Mock()
+        service.status.return_value = "absent"
+        mocker.patch.object(native_service, "adapter", return_value=service)
         mocker.patch.object(process, "pids_naming_executable", return_value=[])
         terminate = mocker.patch.object(process, "terminate_owned_process", return_value=True)
         alive = mocker.patch.object(process, "owned_process_alive", return_value=False)
 
-        self._cleanup_installed_fixture(temporary, "/tmp/owned/proxy.py", {123: owned})
+        self._cleanup_installed_fixture(temporary, ctx, {123: owned})
 
         terminate.assert_called_once_with(owned)
         alive.assert_called_once_with(owned)
@@ -477,6 +521,7 @@ class TestRealSubprocessHandoffIntegration:
             port,
             expected,
             exclude_pid=old.pid,
+            states=frozenset(("finalized",)),
             owned_processes=owned_processes,
             executable=ctx.executable,
         )

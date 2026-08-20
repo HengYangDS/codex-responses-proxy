@@ -23,7 +23,6 @@ def install_context(root: Path, *, windows: bool = False) -> runtime_context.Run
     install_dir = root / "data" / "codex-responses-proxy"
     executable = inventory.installed_executable(str(install_dir), windows=windows)
     return runtime_context.RuntimeContext(
-        home=str(root),
         install_dir=str(install_dir),
         executable=executable,
         command=str(
@@ -48,7 +47,6 @@ def platform_context(port: int = 8791, *, windows: bool = False) -> runtime_cont
         install_dir = home / ".local" / "share" / "codex-responses-proxy"
         log_dir = home / ".local" / "state" / "codex-responses-proxy"
     return runtime_context.RuntimeContext(
-        home=str(home),
         install_dir=str(install_dir),
         executable=inventory.installed_executable(str(install_dir), windows=windows),
         command=str(

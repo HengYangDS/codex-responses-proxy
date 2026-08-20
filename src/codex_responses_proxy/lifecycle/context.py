@@ -11,7 +11,6 @@ from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.runtime import config
 from codex_responses_proxy.service import inventory
 
-
 SERVICE_ID = "codex-responses-proxy.watchdog"
 DEFAULT_PORT = config.DEFAULT_PORT
 
@@ -36,7 +35,6 @@ def service_id(install_dir: str) -> str:
 class RuntimeContext:
     """Absolute paths and validated settings for one installed projection."""
 
-    home: str
     install_dir: str
     executable: str
     command: str
@@ -58,29 +56,6 @@ class RuntimeContext:
         """Return the supervision identity for this installed root."""
 
         return service_id(self.install_dir)
-
-    def service_environment(self) -> dict[str, str]:
-        """Project the exact installer-selected settings into native supervision."""
-
-        return {
-            config.HOME_ENV: self.install_dir,
-            config.STATE_HOME_ENV: self.log_dir,
-            config.PROXY_PORT_ENV: str(self.port),
-            config.PROXY_LOG_ENV: config.path_join(self.log_dir, "proxy.log"),
-            config.WATCHDOG_LOG_ENV: config.path_join(self.log_dir, "watchdog.log"),
-            config.PROXY_LOG_MAX_BYTES_ENV: str(self.proxy_log_max_bytes),
-            config.PROXY_LOG_BACKUP_COUNT_ENV: str(self.proxy_log_backup_count),
-            config.WATCHDOG_LOG_MAX_BYTES_ENV: str(self.watchdog_log_max_bytes),
-            config.WATCHDOG_LOG_BACKUP_COUNT_ENV: str(self.watchdog_log_backup_count),
-            config.UPSTREAM_TIMEOUT_ENV: str(self.upstream_timeout),
-            config.UPSTREAM_READ_TIMEOUT_ENV: str(self.upstream_read_timeout),
-            config.WATCHDOG_INTERVAL_ENV: str(self.watchdog_interval),
-            config.WATCHDOG_MAX_BACKOFF_ENV: str(self.watchdog_max_backoff),
-            config.RESPONSE_FAILED_COMPACTION_BUDGET_ENV: str(
-                self.response_failed_compaction_budget
-            ),
-            config.RESPONSE_FAILED_MAX_STAGES_ENV: str(self.response_failed_max_stages),
-        }
 
 
 def validate_port(port: int) -> int:
@@ -111,13 +86,13 @@ def create(
     """Validate command inputs and project all product-owned paths once."""
 
     install_dir = config.data_dir()
-    home = config.home_dir()
     return RuntimeContext(
-        home=home,
         install_dir=install_dir,
         executable=executable
         or inventory.installed_executable(install_dir, windows=config.os.name == "nt"),
-        command=str(command.path(home, config.os.environ, windows=config.os.name == "nt")),
+        command=str(
+            command.path(config.home_dir(), config.os.environ, windows=config.os.name == "nt")
+        ),
         log_dir=config.state_dir(),
         port=validate_port(port),
         proxy_log_max_bytes=validate_log_retention(

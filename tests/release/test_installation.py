@@ -131,18 +131,18 @@ class TestReleasedDeployment:
         assert payload.events == ["commit", ("finalize", runtime)]
         service.install_mock.assert_called_once_with(self.ctx)
 
-    def test_current_upgrade_restarts_supervision_before_handoff(self, *, mocker) -> None:
+    def test_current_upgrade_delegates_supervision_to_the_successor_handoff(
+        self, *, mocker
+    ) -> None:
         payload = FakeTransaction()
         current = self.current_runtime()
         runtime = self.successor()
         service = FakeServiceAdapter(mocker=mocker)
-        events: list[str] = []
-        service.install_mock.side_effect = lambda _ctx: events.append("supervisor")
         mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
         request = mocker.patch.object(
             apply,
             "request_handoff",
-            side_effect=lambda *_args, **_kwargs: events.append("handoff") or runtime,
+            return_value=runtime,
         )
 
         result = self.deploy(payload, current, adapter=service, mocker=mocker)
@@ -150,8 +150,7 @@ class TestReleasedDeployment:
         assert result == {"mode": "upgrade", "runtime": runtime}
         assert payload.events == ["commit", ("finalize", runtime)]
         request.assert_called_once()
-        service.install_mock.assert_called_once_with(self.ctx)
-        assert events == ["supervisor", "handoff"]
+        service.install_mock.assert_not_called()
 
     def test_alternate_launcher_is_reconciled_before_native_upgrade(self, *, mocker) -> None:
         payload = FakeTransaction()
@@ -180,7 +179,7 @@ class TestReleasedDeployment:
         )
         request.assert_called_once()
         assert request.call_args.kwargs["current"] == current
-        service.install_mock.assert_called_once_with(self.ctx)
+        service.install_mock.assert_not_called()
 
     def test_alternate_launcher_reconciliation_failure_precedes_payload_mutation(
         self, *, mocker
@@ -255,7 +254,7 @@ class TestReleasedDeployment:
         with pytest.raises(errors.InstallError, match="handoff failed"):
             self.deploy(rolled_back, current, adapter=rollback_service, mocker=mocker)
         assert rolled_back.events == ["commit", "rollback"]
-        assert rollback_service.install_mock.call_count == 2
+        rollback_service.install_mock.assert_called_once_with(self.ctx)
 
         unknown = FakeTransaction()
         preserved_service = FakeServiceAdapter(mocker=mocker)
@@ -267,7 +266,7 @@ class TestReleasedDeployment:
         with pytest.raises(apply.UnknownDeploymentOutcome, match="outcome unknown"):
             self.deploy(unknown, current, adapter=preserved_service, mocker=mocker)
         assert unknown.events == ["commit", ("preserve", "outcome unknown")]
-        preserved_service.install_mock.assert_called_once_with(self.ctx)
+        preserved_service.install_mock.assert_not_called()
 
     def test_request_handoff_resolves_finalized_rolled_back_and_unknown(
         self, subtests, *, mocker

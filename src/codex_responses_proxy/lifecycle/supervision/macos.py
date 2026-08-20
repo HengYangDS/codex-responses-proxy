@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import os
 import plistlib
+import re
+import shutil
 import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
 
-from codex_responses_proxy.runtime import config
-from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy import errors
+from codex_responses_proxy.lifecycle.supervision import process
+from codex_responses_proxy.runtime import config
 from codex_responses_proxy.service import runtime as service_runtime
+
+if TYPE_CHECKING:
+    from codex_responses_proxy.lifecycle import runtime_spec
 
 PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -34,40 +42,92 @@ PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
   <string>{stderr_log}</string>
   <key>EnvironmentVariables</key>
   <dict>
-{environment}
+    <key>HOME</key>
+    <string>{home}</string>
   </dict>
 </dict>
 </plist>
 """
+_SERVICE_ABSENT = 113
+_PID = re.compile(r"(?m)^\s*pid = (?P<pid>[1-9][0-9]*)\s*$")
 
 
-def _environment_xml(ctx: runtime_context.RuntimeContext) -> str:
-    return "\n".join(
-        f"    <key>{key}</key>\n    <string>{value}</string>"
-        for key, value in ctx.service_environment().items()
+@dataclass(frozen=True, slots=True)
+class _Service:
+    registered: bool
+    pid: int | None
+
+
+def _native_tool(name: str) -> str:
+    """Resolve one macOS system tool independently of the caller's PATH."""
+
+    executable = shutil.which(name, path=os.defpath)
+    if executable is None:
+        raise errors.InstallError(f"native macOS tool is unavailable: {name}")
+    return executable
+
+
+def _plist_path(ctx: runtime_spec.NativeServiceContext) -> str:
+    """Return the launch-agent carrier owned by this service identity."""
+
+    return str(Path(config.home_dir(), "Library", "LaunchAgents", f"{ctx.service_id}.plist"))
+
+
+def _domain_target() -> str:
+    return f"gui/{os.getuid()}"
+
+
+def _service_target(ctx: runtime_spec.NativeServiceContext) -> str:
+    return f"{_domain_target()}/{ctx.service_id}"
+
+
+def _detail(completed: subprocess.CompletedProcess[str]) -> str:
+    return completed.stderr.strip() or completed.stdout.strip() or f"exit {completed.returncode}"
+
+
+def _service(ctx: runtime_spec.NativeServiceContext) -> _Service:
+    completed = subprocess.run(
+        [_native_tool("launchctl"), "print", _service_target(ctx)],
+        capture_output=True,
+        check=False,
+        text=True,
     )
+    if completed.returncode == _SERVICE_ABSENT:
+        return _Service(False, None)
+    if completed.returncode:
+        msg = f"launchctl print failed: {_detail(completed)}"
+        raise errors.InstallError(msg)
+    match = _PID.search(completed.stdout)
+    return _Service(True, int(match.group("pid")) if match else None)
 
 
-def _plist_path(ctx: runtime_context.RuntimeContext) -> str:
-    return os.path.join(ctx.home, "Library", "LaunchAgents", f"{ctx.service_id}.plist")
+def _require_success(completed: subprocess.CompletedProcess[str], operation: str) -> None:
+    if completed.returncode:
+        msg = f"launchctl {operation} failed: {_detail(completed)}"
+        raise errors.InstallError(msg)
 
 
-def render_plist(ctx: runtime_context.RuntimeContext) -> str:
-    """Render a watchdog service whose pre-logging failures remain visible."""
-    return PLIST_TEMPLATE.format(
-        label=ctx.service_id,
-        executable=ctx.executable,
-        watchdog_mode=service_runtime.WATCHDOG_MODE,
-        stderr_log=config.path_join(ctx.log_dir, "watchdog.stderr.log"),
-        environment=_environment_xml(ctx),
-    )
+def render_plist(ctx: runtime_spec.NativeServiceContext) -> str:
+    """Serialize the minimal launchd projection for one installed runtime."""
+
+    payload = {
+        "Label": ctx.service_id,
+        "ProgramArguments": [ctx.executable, service_runtime.WATCHDOG_MODE],
+        "RunAtLoad": True,
+        "KeepAlive": True,
+        "ThrottleInterval": 5,
+        "StandardOutPath": "/dev/null",
+        "StandardErrorPath": config.path_join(ctx.log_dir, "watchdog.stderr.log"),
+        "EnvironmentVariables": {"HOME": config.home_dir()},
+    }
+    return plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=False).decode()
 
 
-def configured_executable(ctx: runtime_context.RuntimeContext) -> str | None:
+def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
     """Return the executable declared by one valid product launch agent."""
 
     try:
-        with open(_plist_path(ctx), "rb") as handle:
+        with Path(_plist_path(ctx)).open("rb") as handle:
             payload = plistlib.load(handle)
     except (OSError, plistlib.InvalidFileException):
         return None
@@ -82,48 +142,114 @@ def configured_executable(ctx: runtime_context.RuntimeContext) -> str | None:
     return arguments[0]
 
 
-def install(ctx: runtime_context.RuntimeContext) -> None:
-    """Install and bootstrap the macOS launchd watchdog service."""
+def install(ctx: runtime_spec.NativeServiceContext) -> None:
+    """Replace and prove one exact launchd watchdog process generation."""
+
     plist = _plist_path(ctx)
-    os.makedirs(ctx.log_dir, mode=0o700, exist_ok=True)
-    os.makedirs(os.path.dirname(plist), exist_ok=True)
-    with open(plist, "w", encoding="utf-8") as fh:
-        fh.write(render_plist(ctx))
-
-    # Validate the plist we just wrote (fail-loud).
-    subprocess.run(["plutil", "-lint", plist], check=True, stdout=subprocess.DEVNULL)
-
-    # Clean any prior instance, then load -w (the -w clears a 'disabled' label,
-    # which a plain bootstrap cannot — that was the real cause of the observed
-    # 'bootstrap failed 5: Input/output error').
+    Path(ctx.log_dir).mkdir(mode=0o700, parents=True, exist_ok=True)
+    Path(plist).parent.mkdir(parents=True, exist_ok=True)
+    Path(plist).write_text(render_plist(ctx), encoding="utf-8")
     subprocess.run(
-        ["launchctl", "unload", plist], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        [_native_tool("plutil"), "-lint", plist],
+        check=True,
+        stdout=subprocess.DEVNULL,
     )
-    r = subprocess.run(["launchctl", "load", "-w", plist], capture_output=True, text=True)
-    if r.returncode != 0:
-        raise errors.InstallError(f"launchctl load failed: {r.stderr.strip()}")
+
+    previous = _service(ctx)
+    generation = None
+    if previous.pid is not None:
+        generation = process.capture_executable(
+            previous.pid,
+            ctx.executable,
+            roles={service_runtime.WATCHDOG_MODE},
+        )
+        if generation is None:
+            msg = "registered launchd watchdog process identity is unproved"
+            raise errors.InstallError(msg)
+    if previous.registered:
+        bootout = subprocess.run(
+            [_native_tool("launchctl"), "bootout", _service_target(ctx)],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        _require_success(bootout, "bootout")
+    if generation is not None and not process.wait_for_exit(generation):
+        msg = f"launchd watchdog generation {generation.pid} remains after bootout"
+        raise errors.InstallError(msg)
+
+    bootstrap = subprocess.run(
+        [_native_tool("launchctl"), "bootstrap", _domain_target(), plist],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    _require_success(bootstrap, "bootstrap")
+    kickstart = subprocess.run(
+        [_native_tool("launchctl"), "kickstart", "-p", _service_target(ctx)],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    _require_success(kickstart, "kickstart")
+    try:
+        successor_pid = int(kickstart.stdout.strip())
+    except ValueError as error:
+        msg = "launchctl kickstart returned no watchdog pid"
+        raise errors.InstallError(msg) from error
+    observed = _service(ctx)
+    if observed.pid != successor_pid:
+        msg = "launchd watchdog pid was not re-observed for the exact service"
+        raise errors.InstallError(msg)
+    if previous.pid is not None and successor_pid == previous.pid:
+        msg = "launchd watchdog generation did not change"
+        raise errors.InstallError(msg)
+    successor = process.wait_for_executable(
+        successor_pid,
+        ctx.executable,
+        roles={service_runtime.WATCHDOG_MODE},
+    )
+    if successor is None or not process.owned_process_alive(successor):
+        msg = "launchd successor watchdog process identity is unproved"
+        raise errors.InstallError(msg)
 
 
-def uninstall(ctx: runtime_context.RuntimeContext) -> None:
+def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
     """Boot out and remove only this installation's launchd service."""
+
     plist = _plist_path(ctx)
-    if os.path.exists(plist):
-        unloaded = subprocess.run(["launchctl", "unload", plist], capture_output=True, text=True)
-        if unloaded.returncode:
-            detail = unloaded.stderr.strip() or unloaded.stdout.strip()
-            raise errors.InstallError(f"launchctl unload failed: {detail}")
-        listed = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
-        if listed.returncode or ctx.service_id in listed.stdout:
-            raise errors.InstallError("launchd watchdog remains registered after unload")
-        os.remove(plist)
+    current = _service(ctx)
+    generation = None
+    if current.pid is not None:
+        generation = process.capture_executable(
+            current.pid,
+            ctx.executable,
+            roles={service_runtime.WATCHDOG_MODE},
+        )
+        if generation is None:
+            msg = "registered launchd watchdog process identity is unproved"
+            raise errors.InstallError(msg)
+    if current.registered:
+        bootout = subprocess.run(
+            [_native_tool("launchctl"), "bootout", _service_target(ctx)],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        _require_success(bootout, "bootout")
+    if generation is not None and not process.wait_for_exit(generation):
+        msg = f"launchd watchdog generation {generation.pid} remains after bootout"
+        raise errors.InstallError(msg)
+    if _service(ctx).registered:
+        msg = "launchd watchdog remains registered after bootout"
+        raise errors.InstallError(msg)
+    Path(plist).unlink(missing_ok=True)
 
 
-def status(ctx: runtime_context.RuntimeContext) -> str:
+def status(ctx: runtime_spec.NativeServiceContext) -> str:
     """Return the macOS launchd service's read-only status classification."""
+
     plist = _plist_path(ctx)
-    if not os.path.exists(plist):
+    if not Path(plist).exists():
         return "absent"
-    r = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
-    if ctx.service_id in r.stdout:
-        return "running"
-    return "installed"
+    return "running" if _service(ctx).pid is not None else "installed"

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle.supervision import windows
 from codex_responses_proxy.service import runtime as service_runtime
 from tests.lifecycle.fixtures import platform_context
 from tests.lifecycle.supervision.fixtures import completed as _completed
 from tests.lifecycle.supervision.fixtures import temporary_context as _temporary_context
-import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -24,14 +25,22 @@ class TestWindowsLifecycle:
         assert "python" not in rendered.lower()
         assert ".py" not in rendered
 
-    def test_configured_executable_reads_only_valid_task_xml(self):
-        with _temporary_context("install_dir", windows=True) as ctx:
-            xml = Path(windows._xml_path(ctx))
-            assert windows.configured_executable(ctx) is None
-            xml.write_text(windows.render_task_xml(ctx), encoding="utf-16")
-            assert windows.configured_executable(ctx) == ctx.executable
-            xml.write_text("not xml", encoding="utf-16")
-            assert windows.configured_executable(ctx) is None
+    def test_configured_executable_reads_only_the_registered_task(self, *, mocker):
+        ctx = platform_context(windows=True)
+        for completed, expected in (
+            (_completed(returncode=1), None),
+            (_completed(stdout=windows.render_task_xml(ctx)), ctx.executable),
+            (_completed(stdout="not xml"), None),
+        ):
+            invoked = mocker.patch.object(windows.subprocess, "run", return_value=completed)
+            assert windows.configured_executable(ctx) == expected
+            assert invoked.call_args.args[0] == [
+                "schtasks",
+                "/query",
+                "/tn",
+                ctx.service_id,
+                "/xml",
+            ]
 
     def test_install_success_and_failure_messages(self, *, mocker):
         with _temporary_context("install_dir", windows=True) as ctx:
@@ -47,11 +56,13 @@ class TestWindowsLifecycle:
                 "/tn",
                 ctx.service_id,
             ]
-            assert Path(windows._xml_path(ctx)).read_text(
-                encoding="utf-16"
-            ) == windows.render_task_xml(ctx)
+            imported = Path(invoked.call_args_list[1].args[0][-1])
+            assert not imported.exists()
             for completed, error in (
-                (_completed(returncode=1, stderr=" denied ", stdout="fallback"), "denied"),
+                (
+                    _completed(returncode=1, stderr=" denied ", stdout="fallback"),
+                    "denied",
+                ),
                 (_completed(returncode=1, stdout=" fallback "), "fallback"),
             ):
                 mocker.patch.object(
@@ -61,6 +72,17 @@ class TestWindowsLifecycle:
                 )
                 with pytest.raises(errors.InstallError, match=error):
                     windows.install(ctx)
+
+    def test_task_xml_serialization_preserves_special_characters(self, *, mocker):
+        ctx = platform_context(windows=True)
+        ctx.executable = f"{ctx.executable} & native"
+        mocker.patch.object(windows, "_current_user", return_value="ACME\\A&B")
+
+        root = windows.ET.fromstring(windows.render_task_xml(ctx))
+        namespace = {"task": windows._TASK_NAMESPACE}
+
+        assert root.findtext(".//task:Command", namespaces=namespace) == ctx.executable
+        assert root.findtext(".//task:UserId", namespaces=namespace) == "ACME\\A&B"
 
     def test_current_user_and_status(self, *, mocker):
         for env, expected in (
@@ -123,7 +145,10 @@ class TestWindowsLifecycle:
     def test_uninstall_requires_task_deletion_and_absence_proof(self, *, mocker):
         ctx = platform_context(windows=True)
         for results, message in (
-            ([_completed(returncode=1, stderr="denied"), _completed()], "delete failed"),
+            (
+                [_completed(returncode=1, stderr="denied"), _completed()],
+                "delete failed",
+            ),
             ([_completed(), _completed(stdout="Ready")], "remains registered"),
         ):
             mocker.patch.object(windows.subprocess, "run", side_effect=results)

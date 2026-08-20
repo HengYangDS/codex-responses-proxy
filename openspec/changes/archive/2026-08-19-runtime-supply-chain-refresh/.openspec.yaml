@@ -1,4 +1,0 @@
-schema: spec-driven
-created: 2026-08-18
-goal: Keep the product and quality toolchain current, reproducible, and portable.
-skip_specs: true

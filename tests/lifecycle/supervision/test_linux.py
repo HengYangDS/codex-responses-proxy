@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle.supervision import linux
 from codex_responses_proxy.service import runtime as service_runtime
@@ -11,7 +13,6 @@ from tests.lifecycle.fixtures import platform_context
 from tests.lifecycle.supervision.fixtures import completed as _completed
 from tests.lifecycle.supervision.fixtures import set_file as _set_file
 from tests.lifecycle.supervision.fixtures import temporary_context as _temporary_context
-import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -50,7 +51,7 @@ class TestLinuxLifecycle:
         assert ".py" not in unit
 
     def test_configured_executable_reads_only_one_valid_exec_start(self):
-        with _temporary_context("home") as ctx:
+        with _temporary_context("log_dir") as ctx:
             unit = Path(linux._unit_path(ctx))
             assert linux.configured_executable(ctx) is None
             _set_file(unit, linux.render_unit(ctx))
@@ -59,7 +60,7 @@ class TestLinuxLifecycle:
             assert linux.configured_executable(ctx) is None
 
     def test_systemd_install_success_and_failure(self, *, mocker):
-        with _temporary_context("home") as ctx:
+        with _temporary_context("log_dir") as ctx:
             unit = Path(linux._unit_path(ctx))
             mocker.patch.dict(linux.os.environ, {"USER": "tester"})
             invoked = mocker.patch.object(
@@ -92,7 +93,7 @@ class TestLinuxLifecycle:
                 linux._install_systemd(ctx)
 
     def test_uninstall_and_status(self, *, mocker):
-        with _temporary_context("home") as ctx:
+        with _temporary_context("log_dir") as ctx:
             unit = Path(linux._unit_path(ctx))
             _set_file(unit, "unit")
             mocker.patch.object(linux.shutil, "which", return_value="systemctl")
@@ -128,7 +129,7 @@ class TestLinuxLifecycle:
                 assert linux.status(ctx) == expected
 
     def test_uninstall_fails_closed_until_systemd_and_cron_are_proven_absent(self, *, mocker):
-        with _temporary_context("home") as ctx:
+        with _temporary_context("log_dir") as ctx:
             unit = _set_file(linux._unit_path(ctx), "unit")
             mocker.patch.object(linux.shutil, "which", return_value=None)
             with pytest.raises(errors.InstallError, match="systemctl is unavailable"):

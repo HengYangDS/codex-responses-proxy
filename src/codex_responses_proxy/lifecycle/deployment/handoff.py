@@ -182,7 +182,7 @@ def request(
     lease_seconds: float = 30.0,
     source_listener: process.OwnedProcess | None = None,
 ) -> dict:
-    """Ask one verified listener to hand off and prove the exact successor.
+    """Ask one verified listener to hand off and prove the finalized successor.
 
     ``expected`` must bind the transaction identifier, release, aggregate
     serving-payload digest, release-receipt digest, and manifest digest.
@@ -215,12 +215,10 @@ def request(
                     "release": expected["release"],
                     "runtime": runtime,
                 }
-            raise errors.InstallError(
-                f"handoff child {child_pid} health snapshot did not match the expected transaction"
-            )
         time.sleep(0.1)
     raise errors.InstallError(
-        f"handoff did not converge on verified listener {child_pid} within {convergence_seconds:g}s"
+        f"handoff did not converge on finalized listener {child_pid} "
+        f"within {convergence_seconds:g}s"
     )
 
 
@@ -296,26 +294,24 @@ def _listener_pids(
 
 
 def _runtime_matches(runtime: dict | None, expected: dict, child_pid: int) -> bool:
+    """Require the transaction-complete successor identity."""
+
     if not isinstance(runtime, dict):
         return False
-    return all(
-        (
-            runtime.get("handoff_state") in {"serving", "finalized"},
-            _fields_match(
-                runtime,
-                {
-                    "pid": child_pid,
-                    "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
-                    "handoff_transaction_id": expected["transaction_id"],
-                    "release": expected["release"],
-                    "serving_payload_sha256": expected["serving_payload_sha256"],
-                    "release_receipt_sha256": expected["release_receipt_sha256"],
-                    "payload_manifest_sha256": expected["manifest_sha256"],
-                    "accepting": True,
-                    "draining": False,
-                },
-            ),
-        )
+    return _fields_match(
+        runtime,
+        {
+            "pid": child_pid,
+            "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
+            "handoff_transaction_id": expected["transaction_id"],
+            "release": expected["release"],
+            "serving_payload_sha256": expected["serving_payload_sha256"],
+            "release_receipt_sha256": expected["release_receipt_sha256"],
+            "payload_manifest_sha256": expected["manifest_sha256"],
+            "handoff_state": "finalized",
+            "accepting": True,
+            "draining": False,
+        },
     )
 
 

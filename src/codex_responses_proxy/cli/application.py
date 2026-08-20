@@ -16,7 +16,13 @@ from rich.console import Console
 
 from codex_responses_proxy.cli import presentation
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import control, install, transaction, uninstall
+from codex_responses_proxy.lifecycle import (
+    control,
+    install,
+    runtime_spec,
+    transaction,
+    uninstall,
+)
 from codex_responses_proxy.service import runtime as service_runtime
 
 PUBLIC_COMMANDS = frozenset(
@@ -340,14 +346,19 @@ def _run_internal(arguments: list[str]) -> int:
         _error("internal service mode accepts no additional arguments", as_json=False)
         return 2
     mode = arguments[0]
+    runtime_spec.activate(service_runtime.current_executable())
     if mode == service_runtime.LISTENER_MODE:
         from codex_responses_proxy.service import entrypoint
 
         return entrypoint.run()
     if mode == service_runtime.HANDOFF_CHILD_MODE:
+        from codex_responses_proxy.lifecycle.supervision import native_service
         from codex_responses_proxy.service import entrypoint
 
-        return entrypoint.run(handoff_child=True)
+        return entrypoint.run(
+            handoff_child=True,
+            finalize_successor=native_service.install_current,
+        )
     if mode == service_runtime.WATCHDOG_MODE:
         from codex_responses_proxy.lifecycle.supervision import watchdog
 

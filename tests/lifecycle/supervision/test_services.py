@@ -5,7 +5,6 @@ from __future__ import annotations
 import xml.dom.minidom as minidom
 
 from codex_responses_proxy.lifecycle.supervision import linux, macos, windows
-from codex_responses_proxy.runtime import config as runtime_config
 from tests.lifecycle.fixtures import platform_context
 from tests.lifecycle.supervision.fixtures import assert_fragments as _assert_fragments
 
@@ -18,23 +17,11 @@ MACOS_CONTAINS = f"""<key>KeepAlive</key>
 {EXECUTABLE}
 --internal-watchdog
 codex-responses-proxy.watchdog
-CODEX_RESPONSES_PROXY_PROXY_PORT
-8791
-CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES
-4194304
-CODEX_RESPONSES_PROXY_WATCHDOG_LOG_BACKUP_COUNT
-CODEX_RESPONSES_PROXY_PROXY_LOG
-CODEX_RESPONSES_PROXY_WATCHDOG_LOG
 <string>/dev/null</string>""".splitlines()
 LINUX_CONTAINS = f"""Restart=always
 RestartSec=3
 WantedBy=default.target
-ExecStart={EXECUTABLE} --internal-watchdog
-Environment=CODEX_RESPONSES_PROXY_PROXY_PORT=8791
-Environment=CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES={runtime_config.DEFAULT_PROXY_LOG_MAX_BYTES}
-Environment=CODEX_RESPONSES_PROXY_WATCHDOG_LOG_BACKUP_COUNT={runtime_config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT}
-Environment=CODEX_RESPONSES_PROXY_PROXY_LOG={POSIX_CONTEXT.log_dir}/proxy.log
-Environment=CODEX_RESPONSES_PROXY_WATCHDOG_LOG={POSIX_CONTEXT.log_dir}/watchdog.log""".splitlines()
+ExecStart={EXECUTABLE} --internal-watchdog""".splitlines()
 WINDOWS_TASK_CONTAINS = f"""<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
 <LogonTrigger>
 <RestartOnFailure>
@@ -82,3 +69,13 @@ class TestServiceDefinitions:
             with subtests.test(definition=definition[:40]):
                 assert "python" not in definition.lower()
                 assert ".py" not in definition
+
+    def test_service_definitions_contain_no_product_configuration(self, subtests):
+        definitions = (
+            macos.render_plist(POSIX_CONTEXT),
+            linux.render_unit(POSIX_CONTEXT),
+            windows.render_task_xml(WINDOWS_CONTEXT),
+        )
+        for definition in definitions:
+            with subtests.test(definition=definition[:40]):
+                assert "CODEX_RESPONSES_PROXY_" not in definition

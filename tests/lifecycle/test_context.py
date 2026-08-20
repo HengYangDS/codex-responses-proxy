@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import ntpath
 import os
 from pathlib import Path
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import context
-from codex_responses_proxy.runtime import config
-from codex_responses_proxy.service import runtime
 import pytest
+
+from codex_responses_proxy import errors
+from codex_responses_proxy.lifecycle import context, runtime_spec
+from codex_responses_proxy.runtime import config
+from codex_responses_proxy.service import digest, runtime
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -24,19 +26,18 @@ class TestRuntimeContext:
         assert isolated == context.service_id(str(Path(canonical).with_name("proxy-validation")))
         assert isolated != context.service_id(str(Path(canonical).with_name("another-validation")))
 
-    def test_current_executable_prefers_frozen_then_installed_then_invocation(
-        self, *, mocker
+    def test_current_executable_uses_the_actual_process_invocation(
+        self, tmp_path, *, mocker
     ) -> None:
+        invoked = tmp_path / "copied-proxy"
+        invoked.write_text("fixture", encoding="utf-8")
         frozen = mocker.patch.object(runtime.sys, "frozen", True, create=True)
-        mocker.patch.object(runtime.sys, "executable", "/bundle/proxy")
-        assert runtime.current_executable() == os.path.abspath("/bundle/proxy")
+        mocker.patch.object(runtime.sys, "executable", str(invoked))
+        assert runtime.current_executable() == str(invoked.resolve())
         mocker.stop(frozen)
 
-        mocker.patch.object(runtime.shutil, "which", return_value="/installed/proxy")
-        assert runtime.current_executable() == os.path.abspath("/installed/proxy")
-        mocker.patch.object(runtime.shutil, "which", return_value=None)
-        mocker.patch.object(runtime.sys, "argv", ["relative-proxy"])
-        assert runtime.current_executable() == os.path.abspath("relative-proxy")
+        mocker.patch.object(runtime.sys, "argv", [str(invoked)])
+        assert runtime.current_executable() == str(invoked.resolve())
 
     def test_default_port_is_8792_and_explicit_override_remains_configurable(self):
         assert config.DEFAULT_PORT == 8792
@@ -44,14 +45,13 @@ class TestRuntimeContext:
         assert config.listener_port({config.PROXY_PORT_ENV: "8808"}) == 8808
 
         projected = context.RuntimeContext(
-            home="/fixture/user-root",
             install_dir="/opt/proxy",
             executable="/opt/proxy/bin/codex-responses-proxy",
             command="/fixture/user-root/.local/bin/codex-responses-proxy",
             log_dir="/var/state/proxy",
             port=8808,
         )
-        assert projected.service_environment()[config.PROXY_PORT_ENV] == "8808"
+        assert projected.port == 8808
 
     def test_context_is_the_single_deployed_runtime_projection(self, *, mocker):
         mocker.patch.object(config, "home_dir", return_value="/portable/home")
@@ -59,47 +59,46 @@ class TestRuntimeContext:
         mocker.patch.object(config, "state_dir", return_value="/portable/state")
         projected = context.create(executable="/portable/bin/codex-responses-proxy", port=8808)
 
-        assert projected.home == "/portable/home"
         assert projected.install_dir == "/portable/payload"
         assert projected.executable == "/portable/bin/codex-responses-proxy"
         assert projected.log_dir == "/portable/state"
         assert projected.port == 8808
 
-    def test_service_environment_derives_from_the_runtime_contract(self):
+    def test_runtime_spec_derives_process_settings_from_one_contract(self, tmp_path):
+        install_dir = tmp_path / "payload"
         projected = context.RuntimeContext(
-            home="/fixture/user-root",
-            install_dir="/opt/proxy",
-            executable="/opt/proxy/bin/codex-responses-proxy",
-            command="/fixture/user-root/.local/bin/codex-responses-proxy",
-            log_dir="/var/state/proxy",
+            install_dir=str(install_dir),
+            executable=str(install_dir / "bin" / "codex-responses-proxy"),
+            command=str(tmp_path / "bin" / "codex-responses-proxy"),
+            log_dir=str(tmp_path / "state"),
             port=8808,
             upstream_timeout=45.0,
         )
 
-        environment = projected.service_environment()
+        environment = runtime_spec.environment(runtime_spec.write(projected))
 
-        assert environment[config.HOME_ENV] == "/opt/proxy"
-        assert environment[config.STATE_HOME_ENV] == "/var/state/proxy"
+        assert environment[config.HOME_ENV] == str(install_dir)
+        assert environment[config.STATE_HOME_ENV] == str(tmp_path / "state")
         assert environment[config.PROXY_PORT_ENV] == "8808"
         assert "CODEX_RESPONSES_PROXY_EXECUTABLE" not in environment
-        assert environment[config.PROXY_LOG_ENV] == "/var/state/proxy/proxy.log"
+        assert environment[config.PROXY_LOG_ENV] == str(tmp_path / "state" / "proxy.log")
         assert environment[config.UPSTREAM_TIMEOUT_ENV] == "45.0"
 
-    def test_posix_projection_is_not_reinterpreted_by_a_windows_host(self, *, mocker):
+    def test_posix_projection_is_not_reinterpreted_by_a_windows_host(self, tmp_path, *, mocker):
+        install_dir = tmp_path / "posix-payload"
         projected = context.RuntimeContext(
-            home="/fixture/user-root",
-            install_dir="/opt/proxy",
-            executable="/opt/proxy/bin/codex-responses-proxy",
-            command="/fixture/user-root/.local/bin/codex-responses-proxy",
-            log_dir="/var/state/proxy",
+            install_dir=str(install_dir),
+            executable=str(install_dir / "bin" / "codex-responses-proxy"),
+            command=str(tmp_path / "bin" / "codex-responses-proxy"),
+            log_dir=str(tmp_path / "posix-state"),
         )
         mocker.patch.object(config.os, "path", ntpath)
         mocker.patch.object(config, "home_dir", return_value="/portable/home")
         mocker.patch.object(config, "data_dir", return_value="/portable/payload")
         mocker.patch.object(config, "state_dir", return_value="/portable/state")
-        environment = projected.service_environment()
+        environment = runtime_spec.environment(runtime_spec.write(projected))
         created = context.create(executable="/portable/bin/codex-responses-proxy")
-        assert environment[config.PROXY_LOG_ENV] == "/var/state/proxy/proxy.log"
+        assert environment[config.PROXY_LOG_ENV] == str(tmp_path / "posix-state" / "proxy.log")
         assert created.executable == "/portable/bin/codex-responses-proxy"
 
     def test_path_projection_preserves_windows_roots_and_absolutizes_relative_overrides(
@@ -109,19 +108,87 @@ class TestRuntimeContext:
         relative = config._absolute_override({config.HOME_ENV: "payload"}, config.HOME_ENV)
         assert relative == str((Path.cwd() / "payload").resolve())
 
-    def test_native_runtime_projects_only_the_installed_executable(self, *, mocker):
+    def test_native_runtime_projects_only_the_installed_executable(self, tmp_path, *, mocker):
+        payload = tmp_path / "payload"
         mocker.patch.object(config, "home_dir", return_value="/portable/home")
-        mocker.patch.object(config, "data_dir", return_value="/portable/payload")
-        mocker.patch.object(config, "state_dir", return_value="/portable/state")
-        projected = context.create(executable="/portable/bin/codex-responses-proxy", port=8808)
+        mocker.patch.object(config, "data_dir", return_value=str(payload))
+        mocker.patch.object(config, "state_dir", return_value=str(tmp_path / "state"))
+        executable = payload / "bin" / "codex-responses-proxy"
+        projected = context.create(executable=str(executable), port=8808)
 
-        assert projected.executable == "/portable/bin/codex-responses-proxy"
+        assert projected.executable == str(executable)
         assert "python" not in projected.__dataclass_fields__
         assert "proxy_script" not in projected.__dataclass_fields__
         assert "watchdog_script" not in projected.__dataclass_fields__
-        environment = projected.service_environment()
+        environment = runtime_spec.environment(runtime_spec.write(projected))
         assert "CODEX_RESPONSES_PROXY_PROXY_PYTHON" not in environment
         assert "CODEX_RESPONSES_PROXY_PROXY_SCRIPT" not in environment
+
+    def test_service_context_contains_no_platform_definition_path(self, tmp_path):
+        install_dir = tmp_path / "payload"
+        executable = install_dir / "bin" / "codex-responses-proxy"
+        executable.parent.mkdir(parents=True)
+        executable.write_bytes(b"native")
+        projected = context.RuntimeContext(
+            install_dir=str(install_dir),
+            executable=str(executable),
+            command=str(tmp_path / "bin" / "codex-responses-proxy"),
+            log_dir=str(tmp_path / "state"),
+        )
+
+        runtime_spec.write(projected)
+        service = runtime_spec.service_context(str(executable))
+
+        assert service.install_dir == str(install_dir)
+        assert service.executable == str(executable)
+        assert service.log_dir == str(tmp_path / "state")
+        assert "service_definition" not in service.__dataclass_fields__
+
+    def test_runtime_spec_rejects_schema_location_and_setting_drift(self, tmp_path, subtests):
+        install_dir = tmp_path / "payload"
+        projected = context.RuntimeContext(
+            install_dir=str(install_dir),
+            executable=str(install_dir / "bin" / "codex-responses-proxy"),
+            command=str(tmp_path / "bin" / "codex-responses-proxy"),
+            log_dir=str(tmp_path / "state"),
+        )
+        target = runtime_spec.write(projected)
+        valid = json.loads(target.read_text(encoding="utf-8"))
+        invalid = (
+            ({**valid, "parallel_setting": True}, "schema is unsupported"),
+            ({**valid, "install_dir": str(tmp_path / "other")}, "outside its payload"),
+            ({**valid, "port": 0}, "must be an integer in 1..65535"),
+        )
+
+        for payload, message in invalid:
+            with (
+                subtests.test(message=message),
+                pytest.raises(errors.InstallError, match=message),
+            ):
+                target.write_bytes(digest.canonical_json(payload))
+                runtime_spec.environment(target)
+
+    def test_runtime_activation_replaces_only_product_settings(self, tmp_path, *, mocker):
+        install_dir = tmp_path / "payload"
+        executable = install_dir / "bin" / "codex-responses-proxy"
+        executable.parent.mkdir(parents=True)
+        executable.write_bytes(b"native")
+        projected = context.RuntimeContext(
+            install_dir=str(install_dir),
+            executable=str(executable),
+            command=str(tmp_path / "bin" / "codex-responses-proxy"),
+            log_dir=str(tmp_path / "state"),
+            port=8808,
+        )
+        expected = runtime_spec.environment(runtime_spec.write(projected))
+        inherited = dict.fromkeys(config.RUNTIME_ENVIRONMENT, "stale")
+        inherited["UNRELATED_SETTING"] = "preserved"
+        mocker.patch.dict(os.environ, inherited, clear=True)
+
+        runtime_spec.activate(executable)
+
+        assert {name: os.environ[name] for name in config.RUNTIME_ENVIRONMENT} == expected
+        assert os.environ["UNRELATED_SETTING"] == "preserved"
 
     def test_context_rejects_invalid_cli_overrides(self, subtests, *, mocker):
         invalid = (

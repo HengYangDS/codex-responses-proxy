@@ -12,7 +12,7 @@ import pytest
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import install
+from codex_responses_proxy.lifecycle import install, runtime_spec
 from codex_responses_proxy.runtime import config as runtime_config
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -111,17 +111,18 @@ class TestInstallationInputValidation:
         assert runtime_config.data_dir(environment) == "/portable/home/payload"
         assert runtime_config.state_dir(environment) == "/portable/state"
 
-    def test_service_projection_is_derived_from_one_runtime_contract(self):
+    def test_service_projection_is_derived_from_one_runtime_contract(self, tmp_path):
+        install_dir = tmp_path / "proxy"
+        executable = install_dir / "bin" / "codex-responses-proxy"
         context = runtime_context.RuntimeContext(
-            home="/fixture/user-root",
-            install_dir="/opt/proxy",
-            executable="/opt/proxy/bin/codex-responses-proxy",
+            install_dir=str(install_dir),
+            executable=str(executable),
             command="/fixture/user-root/.local/bin/codex-responses-proxy",
             log_dir="/var/state/proxy",
             port=8808,
             upstream_timeout=45.0,
         )
-        environment = context.service_environment()
+        environment = runtime_spec.environment(runtime_spec.write(context))
         assert set(environment) == {
             runtime_config.HOME_ENV,
             runtime_config.STATE_HOME_ENV,
@@ -139,7 +140,7 @@ class TestInstallationInputValidation:
             runtime_config.RESPONSE_FAILED_COMPACTION_BUDGET_ENV,
             runtime_config.RESPONSE_FAILED_MAX_STAGES_ENV,
         }
-        assert environment[runtime_config.HOME_ENV] == "/opt/proxy"
+        assert environment[runtime_config.HOME_ENV] == str(install_dir)
         assert environment[runtime_config.STATE_HOME_ENV] == "/var/state/proxy"
         assert runtime_config.load(environment).listener == ("127.0.0.1", 8808)
         assert environment[runtime_config.UPSTREAM_TIMEOUT_ENV] == "45.0"

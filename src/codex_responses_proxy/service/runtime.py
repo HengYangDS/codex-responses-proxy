@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-import os
-import shutil
 import sys
+from pathlib import Path
 
-EXECUTABLE_NAME = "codex-responses-proxy.exe" if os.name == "nt" else "codex-responses-proxy"
 LISTENER_MODE = "--internal-listener"
 WATCHDOG_MODE = "--internal-watchdog"
 HANDOFF_CHILD_MODE = "--internal-handoff-child"
 
 
 def current_executable() -> str:
-    """Return the running product executable without consulting a source checkout."""
+    """Return the exact product executable used to start this process."""
 
-    if getattr(sys, "frozen", False):
-        return os.path.abspath(sys.executable)
-    if command := shutil.which(EXECUTABLE_NAME):
-        return os.path.abspath(command)
-    return os.path.abspath(sys.argv[0])
+    selected = sys.executable if getattr(sys, "frozen", False) else sys.argv[0]
+    try:
+        return str(Path(selected).resolve(strict=True))
+    except OSError as error:
+        raise RuntimeError("running product executable is unavailable") from error

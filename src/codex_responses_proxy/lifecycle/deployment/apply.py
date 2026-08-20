@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 import urllib.error
 import urllib.request
@@ -14,8 +13,7 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import handoff
-from codex_responses_proxy.lifecycle.supervision import process
-from codex_responses_proxy.lifecycle.supervision import reconcile
+from codex_responses_proxy.lifecycle.supervision import process, reconcile
 from codex_responses_proxy.runtime import config as runtime_config
 
 RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | None]
@@ -124,12 +122,6 @@ def _upgrade(
 ) -> dict[str, object]:
     payload.commit_projection()
     try:
-        adapter.install(ctx)
-        configured = adapter.configured_executable(ctx)
-        if configured is None or os.path.normcase(os.path.realpath(configured)) != os.path.normcase(
-            os.path.realpath(ctx.executable)
-        ):
-            raise errors.InstallError("native supervisor did not bind the canonical executable")
         runtime = request_handoff(
             ctx,
             payload.expected,
