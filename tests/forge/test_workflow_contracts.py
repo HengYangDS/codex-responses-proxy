@@ -58,6 +58,12 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     for job_id in ("native-assets", "native-linux", "release-assets"):
         assert _mapping(github_jobs[job_id])["if"] == "github.ref_type == 'tag'"
 
+    head = "${{ github.event.pull_request.head.sha }}"
+    for job_id in ("python", "python-windows", "python-quality"):
+        steps = _mapping(github_jobs[job_id])["steps"]
+        checkout = next(step for step in steps if "uses" in step)
+        assert _mapping(checkout["with"])["ref"] == head
+
     gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     assert '$CI_PIPELINE_SOURCE == "merge_request_event"' in gitlab
     assert '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"' in gitlab
@@ -370,7 +376,7 @@ def _assert_github_native_and_forbidden_contract(text: str, release_text: str) -
     native_block = text[native_start:native_end]
     if "shell: bash" in native_block or "set -euo pipefail" in native_block:
         raise AssertionError("native asset builds must use each runner's native command shell")
-    if "shell:" in windows_block or ".sh" in windows_block:
+    if "shell:" in windows_block or re.search(r"(?:^|\s)\S+\.sh(?:\s|$)", windows_block):
         raise AssertionError("Windows verification must not depend on Bash or POSIX shell scripts")
     if "secrets:" in windows_block or "permissions:" in windows_block:
         raise AssertionError(
