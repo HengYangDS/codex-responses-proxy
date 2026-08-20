@@ -7,6 +7,8 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.51] - 2026-08-20
+
 ### Fixed
 
 - Retire files owned only by the verified predecessor payload while preserving
