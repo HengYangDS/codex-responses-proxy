@@ -42,14 +42,6 @@ release = ["pyinstaller==6.22.2"]
 required-version = "==0.12.5"
 link-mode = "copy"
 
-[tool.pytest]
-addopts = ["--import-mode=importlib", "--strict-config", "--strict-markers"]
-cache_dir = ".cache/pytest"
-filterwarnings = ["error"]
-markers = ["native_distribution: requires the self-contained released executable"]
-testpaths = ["tests"]
-python_classes = ["Test*", "*Tests", "*Contracts"]
-
 [tool.hatch.version]
 path = "VERSION"
 pattern = "(?P<version>[^\\s]+)"

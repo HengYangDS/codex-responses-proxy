@@ -19,7 +19,7 @@ MIN_PYTHON, *_, MAX_PYTHON = PYTHONS
 RELEASE_PYTHON = (ROOT / ".python-release").read_text(encoding="utf-8").strip()
 ROOTS = ("src/codex_responses_proxy", "tools", "tests")
 RUFF_CONFIG = ROOT / ".config/checks/ruff/ruff.toml"
-PYTEST_CONFIG = ROOT / "pyproject.toml"
+PYTEST_CONFIG = ROOT / ".config/checks/pytest/pytest.ini"
 TY_CONFIG = ROOT / ".config/checks/ty/ty.toml"
 COVERAGE_CONFIG = ROOT / ".config/checks/coverage/coverage.ini"
 
@@ -53,6 +53,7 @@ def quick(session: nox.Session) -> None:
         "pytest",
         "--config-file",
         str(PYTEST_CONFIG),
+        f"--rootdir={ROOT}",
         "-q",
         "tests/quality/test_contract.py",
         env=environment,
@@ -86,6 +87,7 @@ def tests(session: nox.Session) -> None:
         "pytest",
         "--config-file",
         str(PYTEST_CONFIG),
+        f"--rootdir={ROOT}",
         "-m",
         "not native_distribution",
         env=environment,
@@ -142,6 +144,7 @@ def quality(session: nox.Session) -> None:
         "pytest",
         "--config-file",
         str(PYTEST_CONFIG),
+        f"--rootdir={ROOT}",
         "-m",
         "not native_distribution",
         env=environment,
@@ -197,6 +200,7 @@ def release(session: nox.Session) -> None:
         "pytest",
         "--config-file",
         str(PYTEST_CONFIG),
+        f"--rootdir={ROOT}",
         "-q",
         "tests/cli/test_interface.py",
         "tests/release/test_native_lifecycle.py",
@@ -251,6 +255,7 @@ def release_compatibility(session: nox.Session) -> None:
         "pytest",
         "--config-file",
         str(PYTEST_CONFIG),
+        f"--rootdir={ROOT}",
         "-q",
         "tests/release/test_native_compatibility.py",
         env={
