@@ -54,7 +54,7 @@ class TestWatchdogLogging:
         assert "gAAAA_replay_secret" not in text
         assert "log_retention_discarded_oversized_bytes=8192" in text
         assert size <= 4096
-        assert_private_log_mode(self, mode)
+        assert_private_log_mode(mode)
 
     def test_watchdog_probe_and_spawn(self, *, mocker):
         watchdog = load_watchdog()

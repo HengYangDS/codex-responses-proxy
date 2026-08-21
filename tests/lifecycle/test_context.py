@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestRuntimeContext:
-    def test_service_identity_preserves_default_and_isolates_alternate_roots(self, *, mocker):
+    def test_service_identity_preserves_default_and_isolates_alternate_roots(self):
         canonical = config.default_data_dir({})
         assert context.service_id(canonical) == context.SERVICE_ID
         isolated = context.service_id(str(Path(canonical).with_name("proxy-validation")))

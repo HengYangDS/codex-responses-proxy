@@ -71,7 +71,7 @@ def executable_relative(*, windows: bool = False) -> str:
     return inventory.executable_name(windows=windows)
 
 
-def assert_private_log_mode(testcase, mode: int) -> None:
+def assert_private_log_mode(mode: int) -> None:
     """Assert the strongest portable privacy bits exposed by the host."""
 
     if os.name == "nt":

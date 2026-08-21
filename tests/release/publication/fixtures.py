@@ -87,7 +87,7 @@ def verified_evidence(evidence: Mapping[str, Any], *, mocker) -> Mapping[str, An
     mocker.patch.object(
         publication.evaluator,
         "evaluate",
-        side_effect=lambda tag, gitlab, github: {
+        side_effect=lambda _tag, gitlab, github: {
             "verified": True,
             "tree_equal": True,
             "assets_equal": True,

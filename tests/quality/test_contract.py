@@ -180,6 +180,7 @@ class TestQualityPolicyContracts:
             "F",
             "I",
             "N",
+            "ARG",
             "UP",
             "B",
             "C4",

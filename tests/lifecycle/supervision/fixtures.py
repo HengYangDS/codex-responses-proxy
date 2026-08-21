@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import tempfile
 from contextlib import contextmanager
@@ -47,12 +46,3 @@ def assert_fragments(text, include=(), exclude=()):
         assert fragment in text
     for fragment in exclude:
         assert fragment not in text
-
-
-def assert_executable_mode(testcase, mode):
-    """Assert POSIX execution or the strongest Windows mode projection."""
-
-    if os.name == "nt":
-        assert mode & 384 == 384
-    else:
-        assert mode == 493

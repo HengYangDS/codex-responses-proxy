@@ -423,7 +423,7 @@ class TestPayloadValidation:
                     payload_rollback.restore_snapshot(ctx, rollback)
 
     def test_owned_file_boundaries_reject_invalid_types_and_path_races(
-        self, tmp_path: Path, subtests, *, mocker
+        self, tmp_path: Path, *, mocker
     ) -> None:
         """Exercise each fail-closed filesystem type boundary without private host paths."""
 

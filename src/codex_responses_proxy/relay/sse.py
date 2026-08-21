@@ -136,8 +136,6 @@ def _pop_event(buffer: bytes) -> tuple[bytes, bytes] | None:
 def _read_one_stream(
     handler: BaseHTTPRequestHandler,
     response: ResponseLike,
-    path: str,
-    request_id: int,
     on_first_write: Callable[[], None],
     deadline: float | None = None,
 ) -> StreamResult:
@@ -256,7 +254,7 @@ def relay(
     result: StreamResult | None = None
     attempt = 0
     for attempt in range(max_attempts):
-        result = _read_one_stream(handler, current, path, request_id, on_first_write, deadline)
+        result = _read_one_stream(handler, current, on_first_write, deadline)
         _release_upstream(current)
         terminal = result["terminal"]
         if (

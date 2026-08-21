@@ -135,7 +135,7 @@ class TestSseTransport(InputTransportFixture):
             telemetry.reset_for_test()
             cooldown.reset_for_test()
             handler = MemoryHandler()
-            result = sse._read_one_stream(handler, upstream, "/v1/responses", 1, lambda: None)
+            result = sse._read_one_stream(handler, upstream, lambda: None)
             results.append(
                 (
                     result["terminal"],
@@ -312,7 +312,7 @@ class TestSseTransport(InputTransportFixture):
     def test_sse_deadline_and_reconnect_deadline_are_bounded(self, *, mocker) -> None:
         handler = MemoryHandler()
         read_budget = mocker.patch.object(sse, "_arm_read_budget", return_value=None)
-        result = sse._read_one_stream(handler, DirectResponse(), "/v1/responses", 1, lambda: None)
+        result = sse._read_one_stream(handler, DirectResponse(), lambda: None)
         assert result["detail"] == "deadline"
         mocker.stop(read_budget)
 
@@ -344,8 +344,6 @@ class TestSseTransport(InputTransportFixture):
         result = sse._read_one_stream(
             handler,
             DirectResponse(TimeoutError("late")),
-            "/v1/responses",
-            3,
             lambda: None,
             deadline=1.0,
         )

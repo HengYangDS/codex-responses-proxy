@@ -253,8 +253,8 @@ class ProviderRegistryTests:
                     FAILURE_CACHE_CAPACITY=1,
                     FAILURE_COOLDOWN_SECONDS=1,
                     POLICY_VERSION="escape",
-                    is_retryable_failure=lambda status, payload: False,
-                    request_fingerprint=lambda raw: "escape",
+                    is_retryable_failure=lambda _status, _payload: False,
+                    request_fingerprint=lambda _raw: "escape",
                 )
                 mocker.patch.dict(sys.modules, {fake.__name__: fake})
                 with pytest.raises(ValueError):
@@ -279,8 +279,8 @@ class ProviderRegistryTests:
             FAILURE_CACHE_CAPACITY=1,
             FAILURE_COOLDOWN_SECONDS=1,
             POLICY_VERSION="frozen",
-            is_retryable_failure=lambda status, payload: False,
-            request_fingerprint=lambda raw: "frozen",
+            is_retryable_failure=lambda _status, _payload: False,
+            request_fingerprint=lambda _raw: "frozen",
         )
         manifest = (
             "version = 1\n[providers.gateway]\n"
