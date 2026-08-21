@@ -110,3 +110,58 @@ def test_provider_adapters_do_not_expose_parallel_command_roots() -> None:
     assert not hasattr(publish.publish_github, "_app")
     assert not hasattr(publish.publish_gitlab, "main")
     assert not hasattr(publish.publish_gitlab, "_command")
+
+
+def test_dual_command_projects_the_same_bundle_to_both_peers(tmp_path: Path, mocker) -> None:
+    github = mocker.patch.object(publish, "_github")
+    gitlab = mocker.patch.object(publish, "_gitlab")
+    assets = tmp_path / "assets"
+    workspace = tmp_path / "workspace"
+
+    publish._both(
+        github_repository="team/proxy",
+        gitlab_api_base="https://gitlab.example/api/v4",
+        gitlab_project_id=453,
+        tag="v1.2.3",
+        commit_oid="a" * 40,
+        assets=assets,
+        workspace=workspace,
+        checkout=tmp_path,
+    )
+
+    github.assert_called_once_with(
+        repository="team/proxy",
+        tag="v1.2.3",
+        commit_oid="a" * 40,
+        assets=assets,
+        workspace=workspace,
+        checkout=tmp_path,
+    )
+    gitlab.assert_called_once_with(
+        api_base="https://gitlab.example/api/v4",
+        project_id=453,
+        tag="v1.2.3",
+        assets=assets,
+    )
+
+
+def test_dual_command_attempts_both_peers_before_reporting_failure(tmp_path: Path, mocker) -> None:
+    mocker.patch.object(
+        publish,
+        "_github",
+        side_effect=publish.publish_github.GitHubPublishError("github unavailable"),
+    )
+    gitlab = mocker.patch.object(publish, "_gitlab")
+
+    with pytest.raises(publish.PublicationError, match="github unavailable"):
+        publish._both(
+            github_repository="team/proxy",
+            gitlab_api_base="https://gitlab.example/api/v4",
+            gitlab_project_id=453,
+            tag="v1.2.3",
+            commit_oid="a" * 40,
+            assets=tmp_path / "assets",
+            workspace=tmp_path / "workspace",
+        )
+
+    gitlab.assert_called_once()
