@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -11,6 +12,12 @@ from typing import cast
 from codex_responses_proxy.service import digest, inventory
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_RUNTIME_PAYLOAD_FIELDS = {
+    "release": "release",
+    "serving_payload_sha256": "serving_payload_sha256",
+    "release_receipt_sha256": "release_receipt_sha256",
+    "payload_manifest_sha256": "manifest_sha256",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +39,15 @@ class LoadedPayloadIdentity:
             "release_receipt_sha256": self.release_receipt_sha256,
             "manifest_sha256": self.manifest_sha256,
         }
+
+
+def runtime_payload_matches(runtime: Mapping[str, object], expected: Mapping[str, object]) -> bool:
+    """Match one runtime snapshot to the canonical payload identity fields."""
+
+    return all(
+        runtime.get(runtime_field) == expected.get(expected_field)
+        for runtime_field, expected_field in _RUNTIME_PAYLOAD_FIELDS.items()
+    )
 
 
 def freeze_loaded_payload(executable: Path) -> LoadedPayloadIdentity | None:

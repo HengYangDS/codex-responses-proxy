@@ -16,6 +16,7 @@ from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
+from codex_responses_proxy.service import identity
 
 RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | None]
 
@@ -202,10 +203,7 @@ def wait_for_serving_runtime(
 
 def _runtime_matches(runtime: Mapping[str, object], expected: Mapping[str, object]) -> bool:
     return (
-        runtime.get("release") == expected.get("release")
-        and runtime.get("serving_payload_sha256") == expected.get("serving_payload_sha256")
-        and runtime.get("payload_manifest_sha256") == expected.get("manifest_sha256")
-        and runtime.get("release_receipt_sha256") == expected.get("release_receipt_sha256")
+        identity.runtime_payload_matches(runtime, expected)
         and runtime.get("accepting") is True
         and runtime.get("draining") is not True
     )

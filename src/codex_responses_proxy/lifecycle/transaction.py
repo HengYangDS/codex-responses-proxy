@@ -111,17 +111,12 @@ def _rollback_recovery(
         "receipt_sha256"
     ):
         raise errors.InstallError("payload recovery candidate does not match the transaction")
-    expected_runtime = {
-        "release": previous.release,
-        "serving_payload_sha256": previous.serving_payload_sha256,
-        "release_receipt_sha256": previous.release_receipt_sha256,
-        "payload_manifest_sha256": previous.manifest_sha256,
-        "accepting": True,
-        "draining": False,
-    }
+    expected_runtime = previous.handoff()
     if (
         runtime is None
-        or any(runtime.get(key) != value for key, value in expected_runtime.items())
+        or not identity.runtime_payload_matches(runtime, expected_runtime)
+        or runtime.get("accepting") is not True
+        or runtime.get("draining") is not False
         or runtime.get("handoff_state") not in {"idle", "serving", "finalized"}
     ):
         raise errors.InstallError("payload recovery runtime does not match the rollback projection")

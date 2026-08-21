@@ -24,7 +24,7 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
-from codex_responses_proxy.service import inventory
+from codex_responses_proxy.service import identity, inventory
 
 HANDOFF_PROTOCOL_VERSION = 2
 _MAX_BODY_BYTES = 64 * 1024
@@ -300,16 +300,12 @@ def _runtime_matches(runtime: dict | None, expected: dict, child_pid: int) -> bo
 
     if not isinstance(runtime, dict):
         return False
-    return _fields_match(
+    return identity.runtime_payload_matches(runtime, expected) and _fields_match(
         runtime,
         {
             "pid": child_pid,
             "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
             "handoff_transaction_id": expected["transaction_id"],
-            "release": expected["release"],
-            "serving_payload_sha256": expected["serving_payload_sha256"],
-            "release_receipt_sha256": expected["release_receipt_sha256"],
-            "payload_manifest_sha256": expected["manifest_sha256"],
             "handoff_state": "finalized",
             "accepting": True,
             "draining": False,

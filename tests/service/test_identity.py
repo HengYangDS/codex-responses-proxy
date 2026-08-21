@@ -19,6 +19,27 @@ from tests.lifecycle.fixtures import (
 class TestServiceIdentity:
     """Bind live service identity to one verified installed projection."""
 
+    def test_runtime_payload_match_uses_one_canonical_field_mapping(self, subtests) -> None:
+        expected = {
+            "release": "1.2.3",
+            "serving_payload_sha256": "a" * 64,
+            "release_receipt_sha256": "b" * 64,
+            "manifest_sha256": "c" * 64,
+        }
+        runtime = {
+            "release": "1.2.3",
+            "serving_payload_sha256": "a" * 64,
+            "release_receipt_sha256": "b" * 64,
+            "payload_manifest_sha256": "c" * 64,
+        }
+
+        assert identity.runtime_payload_matches(runtime, expected)
+        for field in runtime:
+            with subtests.test(field=field):
+                assert not identity.runtime_payload_matches(
+                    {**runtime, field: "different"}, expected
+                )
+
     def test_committed_identity_rejects_runtime_and_manifest_drift(
         self, subtests, *, mocker
     ) -> None:
