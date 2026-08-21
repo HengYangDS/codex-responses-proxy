@@ -111,7 +111,9 @@ class TestInputDiagnostic:
         ] == ["2-4", "5-16"]
         for item in projected:
             assert item["input_items_bucket"] == "5-16"
-            assert item["matched_pairs"] and item["unmatched_calls"] and item["missing_call_ids"]
+            assert item["matched_pairs"]
+            assert item["unmatched_calls"]
+            assert item["missing_call_ids"]
             assert "first_incompatible_index" not in item
         rendered = input_variant.format_diagnostic(diagnostic_for(2))
         assert "input_items=" not in rendered

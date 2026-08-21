@@ -267,7 +267,8 @@ class TestVerificationContracts:
         )
         install_source = ast.get_source_segment(source, install_tools) or ""
         groups = install_tools.args.vararg
-        assert groups is not None and groups.arg == "groups"
+        assert groups is not None
+        assert groups.arg == "groups"
         assert 'groups or ("quality",)' in install_source
         assert 'command.extend(("--group", group))' in install_source
         assert '"--only-group"' not in install_source
@@ -523,8 +524,8 @@ class TestVerificationContracts:
             silent=True,
         )
         session.run.return_value = "3.14.6\n"
+        session.error.side_effect = RuntimeError
         with pytest.raises(RuntimeError):
-            session.error.side_effect = RuntimeError
             module._assert_release_runtime(session)
 
     def test_forge_quality_jobs_use_the_locked_runner(self) -> None:

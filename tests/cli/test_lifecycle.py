@@ -109,11 +109,16 @@ class CliLifecycleContracts:
         assert code == 0
         assert stderr == ""
         assert "Codex Responses Proxy  Status" in stdout
-        assert "Release" in stdout and "2.0.8" in stdout
-        assert "Payload" in stdout and "Verified" in stdout
-        assert "Service" in stdout and "Running" in stdout
-        assert "Listener" in stdout and "PID 321" in stdout
-        assert "Command" in stdout and "Available" in stdout
+        assert "Release" in stdout
+        assert "2.0.8" in stdout
+        assert "Payload" in stdout
+        assert "Verified" in stdout
+        assert "Service" in stdout
+        assert "Running" in stdout
+        assert "Listener" in stdout
+        assert "PID 321" in stdout
+        assert "Command" in stdout
+        assert "Available" in stdout
         assert not stdout.lstrip().startswith("{")
         lines = stdout.splitlines()
         value_columns = {
@@ -155,12 +160,15 @@ class CliLifecycleContracts:
                 }
             },
         )
-        assert "Payload" in doctor and "Passed" in doctor
-        assert "Listener" in doctor and "Action required" in doctor
+        assert "Payload" in doctor
+        assert "Passed" in doctor
+        assert "Listener" in doctor
+        assert "Action required" in doctor
         assert "codex-responses-proxy reload" in doctor
 
         installed = application.presentation.render("install", {"runtime": {"release": "2.0.11"}})
-        assert "Installed" in installed and "2.0.11" in installed
+        assert "Installed" in installed
+        assert "2.0.11" in installed
         assert "Reloaded" in application.presentation.render("reload", {"old_pid": 1, "new_pid": 2})
         assert "Recovered" in application.presentation.render(
             "recover", {"version": "2.0.11", "state": "rolled_back"}
@@ -371,7 +379,8 @@ class CliLifecycleContracts:
         )
         code, stdout, stderr = self.invoke("uninstall", "--port", "8801")
         assert code == 0
-        assert "Uninstalled" in stdout and "1" in stdout
+        assert "Uninstalled" in stdout
+        assert "1" in stdout
         assert not stdout.lstrip().startswith("{")
         assert stderr == ""
         uninstall.assert_called_once_with(port=8801, purge=False)

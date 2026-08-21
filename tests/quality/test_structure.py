@@ -86,7 +86,7 @@ class TestStructuralQualityContracts:
 
     @pytest.mark.parametrize(
         "source",
-        ("value = call(first, second)\n", "value = call(\n first,\n second,\n)\n"),
+        ["value = call(first, second)\n", "value = call(\n first,\n second,\n)\n"],
     )
     def test_logical_statement_metric_is_invariant_to_formatter_wrapping(self, source: str) -> None:
         gaps, inventory = audit_source(source)
@@ -302,7 +302,7 @@ class TestStructuralQualityContracts:
 
     @pytest.mark.parametrize(
         ("totals", "floor", "expected"),
-        (
+        [
             (
                 {"num_branches": 20, "covered_branches": 19},
                 95,
@@ -319,7 +319,7 @@ class TestStructuralQualityContracts:
                 95,
                 ["branch_coverage_requires_measured_branches"],
             ),
-        ),
+        ],
     )
     def test_branch_coverage_floor_is_enforced_independently(
         self, totals: dict[str, int], floor: int, expected: list[str]
@@ -329,7 +329,7 @@ class TestStructuralQualityContracts:
 
     @pytest.mark.parametrize(
         ("totals", "floor", "expected"),
-        (
+        [
             (
                 {"num_statements": 20, "covered_lines": 19},
                 95,
@@ -346,7 +346,7 @@ class TestStructuralQualityContracts:
                 95,
                 ["statement_coverage_requires_measured_statements"],
             ),
-        ),
+        ],
     )
     def test_statement_coverage_floor_is_enforced_independently(
         self, totals: dict[str, int], floor: int, expected: list[str]

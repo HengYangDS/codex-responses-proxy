@@ -16,7 +16,8 @@ def _observer():
         "dmx_reliability_observer_for_focused_test",
         ROOT / "tools" / "reliability" / "observe.py",
     )
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)

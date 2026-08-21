@@ -43,7 +43,8 @@ def _required_path(variable: str) -> Path:
 
 def _version(value: str) -> tuple[int, int, int]:
     parts = value.split(".")
-    assert len(parts) == 3 and all(part.isascii() and part.isdigit() for part in parts)
+    assert len(parts) == 3
+    assert all(part.isascii() and part.isdigit() for part in parts)
     major, minor, patch = parts
     return int(major), int(minor), int(patch)
 

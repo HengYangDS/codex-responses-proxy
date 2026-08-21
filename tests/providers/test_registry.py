@@ -92,18 +92,34 @@ class ProviderRegistryTests:
 
     def test_manifest_loader_rejects_each_closed_schema_boundary(self, subtests) -> None:
         documents = (
-            "not toml = [",
-            "version = 2\n[providers.dmxapi]\nbase_url = 'https://x.test'\n",
-            "version = 1\n",
-            "version = 1\ndefault = 'dmxapi'\n[providers.dmxapi]\nbase_url = 'https://x.test'\n",
-            "version = 1\n[providers.Bad]\nbase_url = 'https://x.test'\n",
-            "version = 1\n[providers.x]\nbase_url = 'https://x.test'\nextra = true\n",
-            "version = 1\n[providers.x]\nbase_url = 'https://x.test'\npolicy = 'unknown'\n",
+            ("not toml = [", "cannot load provider manifest"),
+            (
+                "version = 2\n[providers.dmxapi]\nbase_url = 'https://x.test'\n",
+                "provider manifest version must be 1",
+            ),
+            ("version = 1\n", "provider manifest must define at least one provider"),
+            (
+                "version = 1\ndefault = 'dmxapi'\n"
+                "[providers.dmxapi]\nbase_url = 'https://x.test'\n",
+                "provider manifest has no implicit default route",
+            ),
+            (
+                "version = 1\n[providers.Bad]\nbase_url = 'https://x.test'\n",
+                "provider names must be lowercase kebab-case slugs",
+            ),
+            (
+                "version = 1\n[providers.x]\nbase_url = 'https://x.test'\nextra = true\n",
+                "provider 'x' has unknown or invalid fields",
+            ),
+            (
+                "version = 1\n[providers.x]\nbase_url = 'https://x.test'\npolicy = 'unknown'\n",
+                "provider policy 'unknown' is unavailable",
+            ),
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for document in documents:
-                with subtests.test(document=document), pytest.raises(ValueError):
+            for document, message in documents:
+                with subtests.test(document=document), pytest.raises(ValueError, match=message):
                     registry.load(_manifest(root, document))
             loaded = registry.load(
                 _manifest(
@@ -113,7 +129,7 @@ class ProviderRegistryTests:
                 )
             )
         assert loaded.profiles["dmxapi"].wire_policy is not None
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="cannot load provider manifest"):
             registry.load(Path("does-not-exist.toml"))
 
     def test_ordinary_provider_requires_only_one_manifest_table(self) -> None:
@@ -161,14 +177,17 @@ class ProviderRegistryTests:
                 mocker=mocker,
             ):
                 documents = (
-                    "policy = '../escape'\n",
-                    "policy = 'missing'\n",
-                    "policy = 'incomplete'\n",
+                    ("policy = '../escape'\n", "references an unknown policy"),
+                    ("policy = 'missing'\n", "provider policy 'missing' is unavailable"),
+                    (
+                        "policy = 'incomplete'\n",
+                        "provider policy 'incomplete' does not implement the wire-policy contract",
+                    ),
                 )
-                for declaration in documents:
+                for declaration, message in documents:
                     with (
                         subtests.test(declaration=declaration),
-                        pytest.raises(ValueError),
+                        pytest.raises(ValueError, match=message),
                     ):
                         registry.load(
                             _manifest(
@@ -203,7 +222,8 @@ class ProviderRegistryTests:
                 second = registry.load(root / "codex_responses_proxy/providers/manifest.toml")
         first_policy = first.profiles["gateway"].wire_policy
         second_policy = second.profiles["gateway"].wire_policy
-        assert first_policy is not None and second_policy is not None
+        assert first_policy is not None
+        assert second_policy is not None
         assert (first_policy.POLICY_VERSION, second_policy.POLICY_VERSION) == (
             "first",
             "second",
@@ -218,11 +238,13 @@ class ProviderRegistryTests:
                 "version = 1\n"
                 "[providers.first]\nbase_url = 'https://first.example/v1'\npolicy = 'first'\n"
                 "[providers.second]\nbase_url = 'https://second.example/v1'\npolicy = 'missing'\n",
+                "provider policy 'missing' is unavailable",
             ),
             (
                 "explicit default",
                 "version = 1\ndefault = 'first'\n"
                 "[providers.first]\nbase_url = 'https://first.example/v1'\npolicy = 'first'\n",
+                "provider manifest has no implicit default route",
             ),
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -234,8 +256,8 @@ class ProviderRegistryTests:
                 mocker=mocker,
             ) as prefix:
                 module_name = f"{prefix}.first"
-                for label, document in cases:
-                    with subtests.test(label=label), pytest.raises(ValueError):
+                for label, document, message in cases:
+                    with subtests.test(label=label), pytest.raises(ValueError, match=message):
                         registry.load(_manifest(root, document))
                     assert module_name not in sys.modules
 
@@ -257,7 +279,7 @@ class ProviderRegistryTests:
                     request_fingerprint=lambda _raw: "escape",
                 )
                 mocker.patch.dict(sys.modules, {fake.__name__: fake})
-                with pytest.raises(ValueError):
+                with pytest.raises(ValueError, match="outside its policy package"):
                     registry.load(
                         _manifest(
                             root,

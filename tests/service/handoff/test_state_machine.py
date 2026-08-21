@@ -224,12 +224,10 @@ class TestParentHandoffStateMachine(HandoffFixture):
             (b"{", "response is invalid"),
             (b"[]", "must be an object"),
         ):
-            with (
-                subtests.test(error=error),
-                pytest.raises(self.p.HandoffError, match=error),
-            ):
+            with subtests.test(error=error):
                 response.read.return_value = payload
-                self.p.probe_health(8791, timeout_seconds=1)
+                with pytest.raises(self.p.HandoffError, match=error):
+                    self.p.probe_health(8791, timeout_seconds=1)
         response.read.return_value = b'{"ok":true}'
         assert self.p.probe_health(8791, timeout_seconds=1) == {"ok": True}
 

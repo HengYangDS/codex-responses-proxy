@@ -163,12 +163,10 @@ class TestRuntimeContext:
         )
 
         for payload, message in invalid:
-            with (
-                subtests.test(message=message),
-                pytest.raises(errors.InstallError, match=message),
-            ):
+            with subtests.test(message=message):
                 target.write_bytes(digest.canonical_json(payload))
-                runtime_spec.environment(target)
+                with pytest.raises(errors.InstallError, match=message):
+                    runtime_spec.environment(target)
 
     def test_runtime_activation_replaces_only_product_settings(self, tmp_path, *, mocker):
         install_dir = tmp_path / "payload"

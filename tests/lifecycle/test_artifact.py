@@ -272,7 +272,7 @@ def test_verified_artifact_is_opaque_immutable_and_single_use() -> None:
 
 @pytest.mark.parametrize(
     "mutate",
-    (
+    [
         _receipt_drift,
         _sidecar_drift,
         _payload_type_drift,
@@ -286,7 +286,7 @@ def test_verified_artifact_is_opaque_immutable_and_single_use() -> None:
         _serving_type_drift,
         _serving_inventory_drift,
         _serving_digest_drift,
-    ),
+    ],
 )
 def test_claim_revalidates_every_receipt_sidecar_and_blob_binding(
     mutate: Callable[[artifact.VerifiedArtifact], None],
@@ -324,7 +324,7 @@ def test_real_signature_admission_mints_exact_native_artifact(tmp_path: Path) ->
     assert candidate.sidecar["receipt_sha256"] == candidate.receipt_sha256
 
 
-@pytest.mark.parametrize("missing", ("manifest", "checksums", "signature"))
+@pytest.mark.parametrize("missing", ["manifest", "checksums", "signature"])
 def test_admission_requires_every_companion_asset(
     tmp_path: Path, mocker: MockerFixture, missing: str
 ) -> None:
@@ -426,12 +426,12 @@ def test_signature_verification_fails_closed_at_each_external_boundary(
 
 @pytest.mark.parametrize(
     "content",
-    (
+    [
         b"\xff",
         b"invalid\n",
         b"0" * 64 + b"  ../escape\n",
         b"0" * 64 + b"  asset\n" + b"1" * 64 + b"  asset\n",
-    ),
+    ],
 )
 def test_checksum_parser_rejects_noncanonical_content(content: bytes) -> None:
     with pytest.raises(errors.InstallError, match="malformed"):
@@ -452,12 +452,12 @@ def test_platform_manifest_binds_exact_archive_identity(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "manifest",
-    (
+    [
         b"\xff",
         b"not-json",
         b"[]",
         b"{}",
-    ),
+    ],
 )
 def test_platform_manifest_rejects_malformed_or_incomplete_json(
     tmp_path: Path, manifest: bytes
@@ -473,14 +473,14 @@ def test_platform_manifest_rejects_malformed_or_incomplete_json(
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    (
+    [
         ("schema_version", 2),
         ("product", "other"),
         ("version", "9.9.9"),
         ("platform", "other-platform"),
         ("archive_sha256", "0" * 64),
         ("files", []),
-    ),
+    ],
 )
 def test_platform_manifest_rejects_inconsistent_fields(
     tmp_path: Path, field: str, value: object

@@ -208,6 +208,7 @@ class TestQualityPolicyContracts:
             "S611",
             "S612",
             "S701",
+            "PT",
             "UP",
             "B",
             "C4",
