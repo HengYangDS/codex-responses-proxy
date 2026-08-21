@@ -56,7 +56,7 @@ def _payload() -> identity.LoadedPayloadIdentity | None:
     return None if _BOOTSTRAP is None else _BOOTSTRAP.payload
 
 
-def serving_payload_sha256() -> str | None:
+def loaded_serving_payload_sha256() -> str | None:
     """Return the aggregate serving identity frozen before listener startup."""
     payload = _payload()
     return None if payload is None else payload.serving_payload_sha256
@@ -116,7 +116,7 @@ def _handoff_context() -> handoff.Context:
     return handoff.Context(
         executable=executable,
         release_version=release_version,
-        serving_payload_sha256=serving_payload_sha256,
+        serving_payload_sha256=loaded_serving_payload_sha256,
         release_receipt_sha256=release_receipt_sha256,
         payload_manifest_sha256=payload_manifest_sha256,
         committed_payload=lambda: identity.committed_payload(executable),
@@ -136,7 +136,7 @@ def runtime_status() -> dict[str, object]:
     """Compose process-local state with rolling-handoff runtime identity."""
     return telemetry.status(
         release=release_version(),
-        serving_payload_sha256=serving_payload_sha256(),
+        serving_payload_sha256=loaded_serving_payload_sha256(),
         release_receipt_sha256=release_receipt_sha256(),
         admission=admission.snapshot(),
         runtime_identity=handoff.runtime_identity(_handoff_context()),

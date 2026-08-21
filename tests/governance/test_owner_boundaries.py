@@ -262,7 +262,7 @@ class ProxyOwnerBoundaryContracts:
                 "release": "1.2.3",
                 "release_receipt_sha256": "a" * 64,
                 "serving_files": files,
-                "serving_payload_sha256": inventory.serving_payload_sha256(files),
+                "serving_payload_sha256": inventory.validated_serving_payload_sha256(files),
             }
             _write_manifest(root, manifest)
             frozen = identity.freeze_loaded_payload(executable)

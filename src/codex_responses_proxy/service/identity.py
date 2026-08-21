@@ -120,7 +120,7 @@ def _verify_runtime_files(root: Path, expected: Mapping[str, str], *, windows: b
         not inventory.is_runtime_file(path, windows=windows) for path in paths
     ):
         raise ValueError("installed inventory does not match the executable platform")
-    aggregate = inventory.serving_payload_sha256(expected)
+    aggregate = inventory.validated_serving_payload_sha256(expected)
     if any(digest.sha256_file(root / path) != value for path, value in expected.items()):
         raise ValueError("installed payload digest mismatch")
     return aggregate

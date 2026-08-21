@@ -118,11 +118,11 @@ class TestPayloadValidation:
             relative: hashlib.sha256(relative.encode()).hexdigest() for relative in runtime_files()
         }
         with pytest.raises(errors.InstallError, match="declared inventory"):
-            payload_projection.serving_payload_sha256({})
+            payload_projection.manifest_serving_payload_sha256({})
         invalid = dict(valid)
         invalid[inventory.PROVIDER_MANIFEST] = "invalid"
         with pytest.raises(errors.InstallError, match="invalid serving payload"):
-            payload_projection.serving_payload_sha256(invalid)
+            payload_projection.manifest_serving_payload_sha256(invalid)
 
         ctx = install_context(Path(tempfile.mkdtemp()))
         collision = Path(ctx.install_dir, inventory.PROVIDER_MANIFEST)
@@ -146,7 +146,7 @@ class TestPayloadValidation:
         expanded = (*blobs, nested)
         receipt = dict(candidate.receipt)
         receipt["serving_files"] = [item.path for item in expanded]
-        receipt["serving_payload_sha256"] = payload_projection.serving_payload_sha256(
+        receipt["serving_payload_sha256"] = payload_projection.manifest_serving_payload_sha256(
             {item.path: item.sha256 for item in expanded}
         )
 
@@ -341,7 +341,7 @@ class TestPayloadValidation:
         ctx, _, _ = installed()
         invalid_aggregate = mocker.patch.object(
             payload_projection,
-            "serving_payload_sha256",
+            "manifest_serving_payload_sha256",
             side_effect=errors.InstallError("invalid serving payload digest"),
         )
         ok, detail = payload_projection.verify_payload_manifest(ctx)

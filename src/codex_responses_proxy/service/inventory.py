@@ -41,7 +41,7 @@ def installed_executable(root: str, *, windows: bool = False) -> str:
     return config.path_join(root, *executable_name(windows=windows).split("/"))
 
 
-def serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
+def validated_serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
     """Return the aggregate only for the exact serving file set."""
 
     paths = set(file_digests)
@@ -50,4 +50,4 @@ def serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
         not is_runtime_file(relative, windows=windows) for relative in paths
     ):
         raise digest.PayloadDigestError("serving payload files do not match the declared inventory")
-    return digest.serving_payload_sha256(file_digests)
+    return digest.aggregate_file_digests_sha256(file_digests)

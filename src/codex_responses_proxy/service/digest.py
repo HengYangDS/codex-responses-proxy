@@ -38,7 +38,7 @@ def freeze_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType({str(key): freeze(item) for key, item in value.items()})
 
 
-def serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
+def aggregate_file_digests_sha256(file_digests: Mapping[str, str]) -> str:
     """Hash sorted length-delimited UTF-8 paths and raw SHA-256 digest bytes."""
 
     aggregate = hashlib.sha256()

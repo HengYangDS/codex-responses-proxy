@@ -55,11 +55,11 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
     return _remaining_paths(install)
 
 
-def serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
+def manifest_serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
     """Return the canonical identity of every manifest-owned serving file."""
 
     try:
-        return inventory.serving_payload_sha256(file_digests)
+        return inventory.validated_serving_payload_sha256(file_digests)
     except digest.PayloadDigestError as exc:
         raise errors.InstallError(str(exc)) from exc
 
@@ -75,7 +75,7 @@ def manifest_for_digests(
         "release": version,
         "files": dict(file_digests),
         "serving_files": serving_files,
-        "serving_payload_sha256": serving_payload_sha256(serving_files),
+        "serving_payload_sha256": manifest_serving_payload_sha256(serving_files),
         "release_receipt_sha256": receipt_sha256,
     }
 
@@ -144,7 +144,7 @@ def _write_payload_manifest_for_fixture(
         "release": "0.0.0",
         "files": digests,
         "serving_files": dict(digests),
-        "serving_payload_sha256": serving_payload_sha256(digests),
+        "serving_payload_sha256": manifest_serving_payload_sha256(digests),
     }
     if release_receipt_sha256 is not None:
         manifest["release_receipt_sha256"] = release_receipt_sha256
@@ -211,7 +211,7 @@ def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, 
         if files.get(relative) != expected:
             return False, f"serving digest mismatch: {relative}"
     try:
-        actual_aggregate = serving_payload_sha256(serving_files)
+        actual_aggregate = manifest_serving_payload_sha256(serving_files)
     except errors.InstallError as exc:
         return False, str(exc)
     if aggregate != actual_aggregate:

@@ -60,7 +60,7 @@ def test_upgrade_rollback_removes_candidate_only_runtime_members(tmp_path: Path,
     receipt = {
         "schema_version": 1,
         "version": "1.2.3",
-        "serving_payload_sha256": payload_projection.serving_payload_sha256(serving),
+        "serving_payload_sha256": payload_projection.manifest_serving_payload_sha256(serving),
         "serving_files": [item.path for item in blobs],
         "payload": [
             {
@@ -104,7 +104,7 @@ def test_upgrade_retires_previous_only_owned_files_and_rollback_restores_them(
     previous_digest = hashlib.sha256(previous_only.read_bytes()).hexdigest()
     manifest["files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
     manifest["serving_files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
-    manifest["serving_payload_sha256"] = payload_projection.serving_payload_sha256(
+    manifest["serving_payload_sha256"] = payload_projection.manifest_serving_payload_sha256(
         manifest["serving_files"]
     )
     manifest_path.write_bytes(payload_projection.manifest_bytes(manifest))
@@ -135,7 +135,7 @@ def test_finalized_upgrade_purge_leaves_only_unknown_content(tmp_path: Path, *, 
     previous_digest = hashlib.sha256(previous_only.read_bytes()).hexdigest()
     manifest["files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
     manifest["serving_files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
-    manifest["serving_payload_sha256"] = payload_projection.serving_payload_sha256(
+    manifest["serving_payload_sha256"] = payload_projection.manifest_serving_payload_sha256(
         manifest["serving_files"]
     )
     manifest_path.write_bytes(payload_projection.manifest_bytes(manifest))

@@ -194,7 +194,7 @@ class VerifiedArtifact:
         if not isinstance(serving_paths, tuple):
             raise ArtifactError("verified artifact integrity check failed")
         try:
-            actual = inventory.serving_payload_sha256(
+            actual = inventory.validated_serving_payload_sha256(
                 {blob.path: blob.sha256 for blob in self._blobs if blob.path in serving_paths}
             )
         except digest.PayloadDigestError as error:
@@ -277,7 +277,7 @@ def admit(asset: Path, *, trust_anchor: Path) -> VerifiedArtifact:
         "checksum_manifest_sha256": hashlib.sha256(checksums).hexdigest(),
         "trust_anchor_sha256": hashlib.sha256(anchor.read_bytes()).hexdigest(),
         "serving_files": [blob.path for blob in blobs],
-        "serving_payload_sha256": inventory.serving_payload_sha256(
+        "serving_payload_sha256": inventory.validated_serving_payload_sha256(
             {blob.path: blob.sha256 for blob in blobs}
         ),
         "payload": [

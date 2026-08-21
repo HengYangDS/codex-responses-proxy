@@ -103,7 +103,7 @@ def released_artifact(version: str = "1.2.3") -> artifact.VerifiedArtifact:
     receipt = {
         "schema_version": 1,
         "version": version,
-        "serving_payload_sha256": projection.serving_payload_sha256(serving),
+        "serving_payload_sha256": projection.manifest_serving_payload_sha256(serving),
         "serving_files": list(files),
         "payload": [
             {

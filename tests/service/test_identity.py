@@ -113,7 +113,7 @@ class TestServiceIdentity:
             inventory.PROVIDER_MANIFEST: manifest["serving_files"][inventory.PROVIDER_MANIFEST],
         }
         manifest["serving_files"] = files
-        manifest["serving_payload_sha256"] = inventory.serving_payload_sha256(files)
+        manifest["serving_payload_sha256"] = inventory.validated_serving_payload_sha256(files)
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
         assert identity.freeze_loaded_payload(Path(ctx.executable)) is None

@@ -185,7 +185,7 @@ class TestParentHandoffStateMachine(HandoffFixture):
 
         expected = {
             "release": entrypoint_module.release_version(),
-            "serving_payload_sha256": entrypoint_module.serving_payload_sha256(),
+            "serving_payload_sha256": entrypoint_module.loaded_serving_payload_sha256(),
             "release_receipt_sha256": entrypoint_module.release_receipt_sha256(),
             "manifest_sha256": self.context.payload_manifest_sha256(),
         }

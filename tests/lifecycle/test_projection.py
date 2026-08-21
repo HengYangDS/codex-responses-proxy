@@ -34,9 +34,9 @@ class TestPayloadProjection:
         )
         assert sorted(manifest["files"]) == sorted(runtime_files())
         assert sorted(manifest["serving_files"]) == sorted(runtime_files())
-        assert manifest["serving_payload_sha256"] == payload_projection.serving_payload_sha256(
-            manifest["serving_files"]
-        )
+        assert manifest[
+            "serving_payload_sha256"
+        ] == payload_projection.manifest_serving_payload_sha256(manifest["serving_files"])
         assert Path(ctx.executable).is_file()
         assert (Path(ctx.install_dir) / inventory.PROVIDER_MANIFEST).is_file()
 
@@ -141,14 +141,14 @@ class TestPayloadProjection:
             for relative in runtime_files()
         }
         reverse_order = dict(reversed(tuple(digests.items())))
-        assert payload_projection.serving_payload_sha256(
+        assert payload_projection.manifest_serving_payload_sha256(
             digests
-        ) == payload_projection.serving_payload_sha256(reverse_order)
+        ) == payload_projection.manifest_serving_payload_sha256(reverse_order)
         changed = dict(digests)
         changed[runtime_files()[-1]] = "0" * 64
-        assert payload_projection.serving_payload_sha256(
+        assert payload_projection.manifest_serving_payload_sha256(
             digests
-        ) != payload_projection.serving_payload_sha256(changed)
+        ) != payload_projection.manifest_serving_payload_sha256(changed)
 
     def test_owned_directory_and_empty_root_edges_fail_closed(self, *, mocker) -> None:
         install = Path(tempfile.mkdtemp())
