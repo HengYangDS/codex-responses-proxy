@@ -66,21 +66,17 @@ the exact installed executable.
 
 The installed payload SHALL contain one prewarmed native bundle under `bin/`,
 `providers.toml`, their complete manifest, signed-release receipt, and finalized
-state. Installation SHALL accept an empty target, one verified current native
-listener, or one current native payload whose sole listener and native
-supervisor are strictly proved to use an install-owned alternate launcher. The
-alternate launcher SHALL be reconciled to the canonical native executable
-before candidate payload mutation and SHALL NOT remain as a compatibility
-surface. After candidate projection, installation SHALL remove only regular
+state. Installation SHALL accept only an empty target or one verified current
+native listener whose native supervisor declares the canonical installed
+executable. After candidate projection, installation SHALL remove only regular
 files declared by the verified predecessor manifest and absent from the
 successor manifest. Unknown installation content SHALL remain untouched, and
 rollback SHALL restore the complete predecessor projection.
 
 #### Scenario: An incompatible installation is present
 
-- **WHEN** its manifest, bundle inventory, executable, listener identity,
-  supervisor declaration, or alternate launcher ownership does not match an
-  admitted shape
+- **WHEN** its manifest, bundle inventory, executable, listener identity, or
+  canonical supervisor declaration does not match the admitted shape
 - **THEN** installation fails before mutation with one bounded removal action
 - **AND** no legacy inventory reader, one-file entrypoint, interpreter
   entrypoint, external launcher, or bypass switch admits it.
@@ -91,8 +87,8 @@ rollback SHALL restore the complete predecessor projection.
   inventory
 - **THEN** every regular file and mode is verified in staging
 - **AND** the staged executable completes a bounded prewarm probe
-- **AND** any admitted alternate launcher has already converged onto native
-  supervision
+- **AND** native supervision already declares the canonical installed
+  executable
 - **AND** only then may the payload transaction replace installed bytes.
 
 #### Scenario: The successor omits a predecessor-owned file
@@ -263,25 +259,21 @@ PyInstaller collection modes rather than a custom archive rewriter.
 - **WHEN** GitLab and GitHub build the same accepted tree with the locked Linux toolchain
 - **THEN** their native archives and executables have identical SHA-256 digests.
 
-### Requirement: Supervisor reconciliation precedes payload mutation
+### Requirement: Canonical supervision precedes payload mutation
 
-Installation SHALL converge a verified native listener and its native
-supervisor onto the canonical installed executable before committing candidate
-payload bytes. On POSIX hosts, reconciliation MAY admit the known
-install-owned alternate launcher and SHALL use the existing transactional
-handoff protocol, retain the exact alternate launcher until native supervision
-is proved, and remain retryable after controller interruption. Windows SHALL
-retain its canonical native lifecycle and reject the POSIX-only alternate
-launcher shape before mutation.
+Installation SHALL require the current native listener and its native
+supervisor to identify the canonical installed executable before committing
+candidate payload bytes. No alternate launcher, migration bridge, wrapper, or
+platform-specific compatibility path SHALL participate in current upgrade
+admission.
 
-#### Scenario: A verified alternate launcher is reconciled before upgrade
+#### Scenario: A current runtime is upgraded
 
-- **WHEN** the current native listener and install-owned alternate launcher
-  satisfy the admitted identity contract on a POSIX host
-- **THEN** the supervisor is rebound to the canonical executable before the
-  candidate payload is committed
-- **AND** the retained launcher is removed only after successor health is
-  proved.
+- **WHEN** the sole listener has current release identity
+- **THEN** its native supervisor already declares the canonical installed
+  executable before candidate payload mutation
+- **AND** any other supervisor target fails closed without changing the
+  installed payload.
 
 ### Requirement: Upgrade converges the native supervisor generation
 
@@ -392,36 +384,12 @@ or upstream payloads.
 - **THEN** the transaction follows its rollback or recovery-required contract
 - **AND** operational output records only the failed phase and exception class.
 
-#### Scenario: An install-owned alternate launcher is active on a POSIX host
+#### Scenario: The supervisor target is noncanonical
 
-- **WHEN** the current payload identity, sole listener PID, process generation,
-  supervisor declaration, and alternate launcher path all agree
-- **THEN** installation atomically bridges that launcher to the canonical native
-  executable
-- **AND** protocol-v2 handoff starts and proves the canonical native listener
-- **AND** the supervisor is rebound before the bridge and retained original are
-  removed.
-
-#### Scenario: An alternate launcher is presented on Windows
-
-- **WHEN** installation observes a noncanonical launcher on Windows
-- **THEN** it rejects that launcher before service or payload mutation
-- **AND** the canonical Windows native install, reload, status, doctor, and
-  uninstall lifecycle remains unchanged.
-
-#### Scenario: Reconciliation fails before native handoff
-
-- **WHEN** handoff cannot prove the canonical native successor
-- **THEN** the exact alternate launcher is restored
-- **AND** no candidate payload mutation begins.
-
-#### Scenario: The native listener committed before controller interruption
-
-- **WHEN** a retry observes the canonical native listener and the supervisor
-  still declares the exact retained bridge
-- **THEN** installation proves the same listener identity, rebinds the
-  supervisor, and removes the bridge residue
-- **AND** candidate payload mutation begins only after that convergence.
+- **WHEN** installation observes any supervisor target other than the canonical
+  installed executable
+- **THEN** it rejects the upgrade before service or payload mutation
+- **AND** the same invariant applies on macOS, Linux, and Windows.
 
 ### Requirement: Carrier-bound native handoff is the only upgrade protocol
 

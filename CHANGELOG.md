@@ -7,6 +7,12 @@ publication authority.
 
 ## [Unreleased]
 
+### Changed
+
+- Require current upgrades to begin from the canonical installed executable;
+  remove the consumed alternate-launcher migration bridge and its parallel
+  handoff authority.
+
 ## [2.0.56] - 2026-08-21
 
 ### Changed

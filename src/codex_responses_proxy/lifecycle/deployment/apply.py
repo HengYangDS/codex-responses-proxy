@@ -14,7 +14,7 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import handoff
-from codex_responses_proxy.lifecycle.supervision import process, reconcile
+from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
 
 RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | None]
@@ -57,27 +57,11 @@ def install(
         raise errors.InstallError(
             "installed runtime is incompatible; remove it before installing this release"
         )
-    assert current is not None
     pid = current["pid"]
-    if process.verified_proxy_listener_pids(ctx) == [pid]:
-        current = reconcile.current(
-            ctx,
-            current,
-            adapter=adapter,
-            runtime_reader=runtime_reader,
-        )
-    else:
-        alternate = reconcile.detect(ctx, current, adapter=adapter)
-        if alternate is None:
-            raise errors.InstallError("installed runtime identity is not verified")
-        current = alternate.migrate(
-            adapter=adapter,
-            runtime_reader=runtime_reader,
-            timeout_seconds=timeout_seconds,
-        )
-    pid = current.get("pid")
-    if type(pid) is not int or process.verified_proxy_listener_pids(ctx) != [pid]:
-        raise errors.InstallError("reconciled runtime identity is not verified")
+    if process.verified_proxy_listener_pids(ctx) != [pid]:
+        raise errors.InstallError("installed runtime identity is not verified")
+    if not _same_executable(adapter.configured_executable(ctx), ctx.executable):
+        raise errors.InstallError("native supervisor is not bound to the canonical executable")
     return _upgrade(
         ctx,
         payload,
