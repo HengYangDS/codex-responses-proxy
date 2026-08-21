@@ -79,13 +79,13 @@ class CliLifecycleContracts:
                 "owned": True,
             },
         }
-        context = mocker.patch.object(application.control, "_context", return_value="context")
+        context = mocker.patch.object(application.runtime_context, "create", return_value="context")
         status = mocker.patch.object(application.control, "status", return_value=evidence)
         code, stdout, stderr = self.invoke("status", "--json", "--port", "8801")
         assert code == 0
         assert json.loads(stdout) == evidence
         assert stderr == ""
-        context.assert_called_once_with(8801)
+        context.assert_called_once_with(port=8801)
         status.assert_called_once_with("context")
 
     def test_status_human_output_is_aligned_and_not_serialized_json(self, *, mocker) -> None:
@@ -240,7 +240,7 @@ class CliLifecycleContracts:
             "runtime": None,
             "payload_transaction": None,
         }
-        mocker.patch.object(application.control, "_context", return_value="context")
+        mocker.patch.object(application.runtime_context, "create", return_value="context")
         mocker.patch.object(application.control, "status", return_value=evidence)
         code, stdout, stderr = self.invoke("doctor", "--json")
         report = json.loads(stdout)
@@ -316,7 +316,7 @@ class CliLifecycleContracts:
 
     def test_reload_delegates_transactionally_with_an_explicit_timeout(self, *, mocker) -> None:
         result = {"old_pid": 321, "new_pid": 654}
-        mocker.patch.object(application.control, "_context", return_value="context")
+        mocker.patch.object(application.runtime_context, "create", return_value="context")
         reload = mocker.patch.object(application.control, "reload", return_value=result)
         code, stdout, stderr = self.invoke(
             "reload", "--json", "--port", "8801", "--timeout-seconds", "12.5"
@@ -345,7 +345,7 @@ class CliLifecycleContracts:
 
     def test_recover_restores_only_the_runtime_bound_retained_transaction(self, *, mocker) -> None:
         runtime = {"pid": 321, "release": "2.0.10", "accepting": True}
-        context = mocker.patch.object(application.control, "_context", return_value="context")
+        context = mocker.patch.object(application.runtime_context, "create", return_value="context")
         mocker.patch.object(application.control, "read_runtime", return_value=runtime)
         recover = mocker.patch.object(
             application.transaction,
@@ -358,7 +358,7 @@ class CliLifecycleContracts:
         assert code == 0
         assert stderr == ""
         assert json.loads(stdout) == {"state": "rolled_back", "version": "2.0.13"}
-        context.assert_called_once_with(8801)
+        context.assert_called_once_with(port=8801)
         recover.assert_called_once_with("context", runtime=runtime)
 
     def test_uninstall_removes_only_the_owned_service_unless_purge_is_requested(
@@ -389,7 +389,7 @@ class CliLifecycleContracts:
 
     def test_expected_lifecycle_failures_are_rendered_once(self, *, mocker) -> None:
         mocker.patch.object(
-            application.control, "_context", side_effect=errors.InstallError("bad port")
+            application.runtime_context, "create", side_effect=errors.InstallError("bad port")
         )
         code, stdout, stderr = self.invoke("status", "--json")
         assert code == 2

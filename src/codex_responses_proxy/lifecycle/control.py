@@ -17,12 +17,6 @@ from codex_responses_proxy.lifecycle.supervision.native_service import adapter
 from codex_responses_proxy.runtime import config as runtime_config
 
 
-def _context(port: int = runtime_config.DEFAULT_PORT) -> runtime_context.RuntimeContext:
-    """Project the installed product without consulting client configuration."""
-
-    return runtime_context.create(port=port)
-
-
 def _installed_release(ctx: runtime_context.RuntimeContext) -> str | None:
     installed = payload_state.read_installed(ctx)
     return payload_state.require_version(installed) if installed is not None else None

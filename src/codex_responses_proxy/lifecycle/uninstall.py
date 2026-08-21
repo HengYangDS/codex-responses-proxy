@@ -22,12 +22,6 @@ class ServiceAdapter(Protocol):
     def status(self, ctx: runtime_context.RuntimeContext) -> str: ...
 
 
-def _context(port: int = runtime_config.DEFAULT_PORT) -> runtime_context.RuntimeContext:
-    """Project the installed product without consulting client configuration."""
-
-    return runtime_context.create(port=port)
-
-
 def _stop_proxy(ctx: runtime_context.RuntimeContext) -> int:
     """Terminate and prove exit of each listener owned by this installation."""
 
@@ -58,7 +52,7 @@ def uninstall_product(
     """Remove owned supervision and optionally purge the verified payload."""
 
     try:
-        ctx = _context(port)
+        ctx = runtime_context.create(port=port)
         service = cast(ServiceAdapter, adapter())
     except (errors.InstallError, errors.UnsupportedPlatform) as exc:
         raise errors.InstallError(str(exc)) from exc

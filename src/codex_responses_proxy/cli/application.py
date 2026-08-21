@@ -106,7 +106,7 @@ def dispatch(command: str, **arguments: Any) -> Any:
         )
     if command == "uninstall":
         return uninstall.uninstall_product(port=arguments["port"], purge=arguments["purge"])
-    context = control._context(arguments["port"])
+    context = runtime_context.create(port=arguments["port"])
     if command == "status":
         return control.status(context)
     if command == "doctor":
