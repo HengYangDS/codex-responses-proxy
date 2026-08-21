@@ -3,24 +3,19 @@
 from __future__ import annotations
 
 import ast
-import importlib.util
 import os
 import re
 import subprocess
-import sys
-import tempfile
 import tomllib
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
 import pytest
 import yaml
 from pytest_mock import MockerFixture
 
-ROOT = Path(__file__).resolve().parents[2]
+from tests.quality.fixtures import ROOT
+from tests.quality.fixtures import load as _load
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -37,71 +32,6 @@ def _required_uv_version() -> str:
     if not re.fullmatch(r"==\d+\.\d+\.\d+", requirement):
         raise AssertionError("uv must use an exact semantic version")
     return requirement.removeprefix("==")
-
-
-def _load(name: str, relative: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, ROOT / relative)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load {relative}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def _checker() -> ModuleType:
-    _load("tools", "tools/__init__.py")
-    _load("tools.quality", "tools/quality/__init__.py")
-    return _load("codex_responses_proxy_quality_checker", "tools/quality/repository.py")
-
-
-def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
-    environment = os.environ | {
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": os.devnull,
-    }
-    result = subprocess.run(
-        ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args],
-        capture_output=True,
-        check=False,
-        env=environment,
-    )
-    if result.returncode:
-        raise AssertionError(result.stderr.decode(errors="replace"))
-    return result
-
-
-@contextmanager
-def _test_repository(
-    files: tuple[str, ...], *, tracked: tuple[str, ...] | None = None
-) -> Iterator[Path]:
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        _git(root, "init", "-q", "--initial-branch=fixture-root")
-        for relative in files:
-            path = root / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("pass\n", encoding="utf-8")
-        selected = files if tracked is None else tracked
-        if selected:
-            _git(root, "add", "--", *selected)
-        yield root
-
-
-def _quality_inventory(root: Path):
-    return _checker()._repository_inventory(root, ("src",), ("tests",))
-
-
-def _audit_source(source_text: str, **overrides: Any):
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        source = root / "source.py"
-        source.write_text(source_text, encoding="utf-8")
-        options = {
-            "module_public_definition_docstrings_required": False,
-            **overrides,
-        }
-        return _checker().audit_paths(root, [source], **options)
 
 
 class TestVerificationContracts:
