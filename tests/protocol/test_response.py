@@ -61,6 +61,23 @@ class LiveStreamContracts:
             response.validate_sse_event(b'data: {"type":\n\n')
 
 
+class LocalErrorContracts:
+    def test_error_envelope_has_one_canonical_wire_encoding(self) -> None:
+        assert response.error_payload("retry", "upstream_unavailable", "failed") == (
+            b'{"error":{"message":"retry","type":"upstream_unavailable","code":"failed"}}'
+        )
+        assert response.error_payload(
+            "retry",
+            "upstream_unavailable",
+            "failed",
+            reason="unsafe_shape",
+            attempts=2,
+        ) == (
+            b'{"error":{"message":"retry","type":"upstream_unavailable",'
+            b'"code":"failed","reason":"unsafe_shape","attempts":2}}'
+        )
+
+
 class LiveJsonContracts:
     def test_preserves_terminal_ciphertext_for_current_turn_decryption(self) -> None:
         payload = _json(

@@ -6,6 +6,7 @@ import urllib.error
 from http.server import BaseHTTPRequestHandler
 
 from codex_responses_proxy.protocol import request as replay_request
+from codex_responses_proxy.protocol import response as replay_response
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.relay import admission, cooldown, operational_log, telemetry
 from codex_responses_proxy.relay import exchange as upstream_exchange
@@ -31,7 +32,7 @@ def _admit(exchange: upstream_exchange.Exchange) -> bool:
         downstream.send_payload(
             exchange.handler,
             503,
-            downstream.json_error(
+            replay_response.error_payload(
                 "Proxy is draining active Responses; retry the turn shortly",
                 "server_busy",
                 "proxy_draining",
@@ -67,7 +68,7 @@ def _cooldown_active(exchange: upstream_exchange.Exchange) -> bool:
     downstream.send_payload(
         exchange.handler,
         429,
-        downstream.json_error(
+        replay_response.error_payload(
             "provider rate limit cooldown is active; retry the turn shortly",
             "rate_limit_error",
             "provider_rate_limit_cooldown",
@@ -94,7 +95,7 @@ def _reject_route(
     downstream.send_payload(
         handler,
         404,
-        downstream.json_error(message, "invalid_request_error", code),
+        replay_response.error_payload(message, "invalid_request_error", code),
         close=True,
     )
     event = "provider_route_rejected" if method is None else "provider_route_method_rejected"
@@ -146,7 +147,7 @@ def _relay_catalog(
         downstream.send_payload(
             handler,
             502,
-            downstream.json_error(
+            replay_response.error_payload(
                 "Upstream model catalog transport failed; retry discovery shortly",
                 "upstream_unavailable",
                 "catalog_transport_error",
@@ -195,7 +196,7 @@ def relay(
         downstream.send_payload(
             handler,
             400,
-            downstream.json_error(
+            replay_response.error_payload(
                 "Responses replay contains an unproved provider-portable structure",
                 "invalid_request_error",
                 "provider_portable_projection_rejected",

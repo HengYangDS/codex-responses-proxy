@@ -12,6 +12,24 @@ import json
 _JSON_TERMINALS = frozenset(("completed", "incomplete"))
 
 
+def error_payload(
+    message: str,
+    error_type: str,
+    code: str,
+    *,
+    reason: str | None = None,
+    attempts: int | None = None,
+) -> bytes:
+    """Encode one stable local Responses error envelope."""
+
+    error: dict[str, object] = {"message": message, "type": error_type, "code": code}
+    if reason is not None:
+        error["reason"] = reason
+    if attempts is not None:
+        error["attempts"] = attempts
+    return json.dumps({"error": error}, separators=(",", ":")).encode()
+
+
 def validate_sse_event(raw_event: bytes) -> bytes:
     """Validate JSON-bearing SSE data lines and return the exact event bytes."""
     for line in raw_event.splitlines():

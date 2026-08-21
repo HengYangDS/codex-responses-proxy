@@ -21,23 +21,24 @@ class WirePolicy(Protocol):
     """Optional provider-specific wire outcome contract."""
 
     __name__: str
+    EXHAUSTED_CODE: str
+    EXHAUSTED_MESSAGE: str
     FAILURE_CACHE_CAPACITY: int
     FAILURE_COOLDOWN_SECONDS: int
     POLICY_VERSION: str
 
     def is_retryable_failure(self, status: int, payload: bytes) -> bool: ...
 
-    def exhausted_payload(self, attempts: int) -> bytes: ...
-
     def request_fingerprint(self, raw: bytes) -> str: ...
 
 
 _POLICY_MEMBERS = (
+    "EXHAUSTED_CODE",
+    "EXHAUSTED_MESSAGE",
     "FAILURE_CACHE_CAPACITY",
     "FAILURE_COOLDOWN_SECONDS",
     "POLICY_VERSION",
     "is_retryable_failure",
-    "exhausted_payload",
     "request_fingerprint",
 )
 
@@ -181,13 +182,26 @@ def _load_policy(name: str) -> WirePolicy:
     if not inside_package:
         sys.modules.pop(module_name, None)
         raise ValueError(f"provider policy {name!r} is outside its policy package")
-    values = tuple(getattr(module, member, None) for member in _POLICY_MEMBERS)
-    constants, functions = values[:3], values[3:]
+    (
+        exhausted_code,
+        exhausted_message,
+        cache_capacity,
+        cooldown_seconds,
+        policy_version,
+        classify_failure,
+        fingerprint_request,
+    ) = (getattr(module, member, None) for member in _POLICY_MEMBERS)
     if (
-        any(isinstance(value, bool) or not isinstance(value, int) for value in constants[:2])
-        or not isinstance(constants[2], str)
-        or not constants[2]
-        or any(not callable(value) for value in functions)
+        any(
+            not isinstance(value, str) or not value
+            for value in (exhausted_code, exhausted_message, policy_version)
+        )
+        or any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in (cache_capacity, cooldown_seconds)
+        )
+        or not callable(classify_failure)
+        or not callable(fingerprint_request)
     ):
         sys.modules.pop(module_name, None)
         raise ValueError(f"provider policy {name!r} does not implement the wire-policy contract")

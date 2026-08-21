@@ -20,11 +20,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def _policy_source(version: str) -> str:
     return (
+        "EXHAUSTED_CODE = 'retry_exhausted'\n"
+        "EXHAUSTED_MESSAGE = 'retry later'\n"
         "FAILURE_CACHE_CAPACITY = 1\n"
         "FAILURE_COOLDOWN_SECONDS = 1\n"
         f"POLICY_VERSION = {version!r}\n"
         "def is_retryable_failure(status, payload): return False\n"
-        "def exhausted_payload(attempts): return b'{}'\n"
         f"def request_fingerprint(raw): return {version!r}\n"
     )
 
@@ -247,11 +248,12 @@ class ProviderRegistryTests:
                 fake = ModuleType(f"{prefix}.escape")
                 fake.__file__ = str(outside)
                 fake.__dict__.update(
+                    EXHAUSTED_CODE="retry_exhausted",
+                    EXHAUSTED_MESSAGE="retry later",
                     FAILURE_CACHE_CAPACITY=1,
                     FAILURE_COOLDOWN_SECONDS=1,
                     POLICY_VERSION="escape",
                     is_retryable_failure=lambda status, payload: False,
-                    exhausted_payload=lambda attempts: b"{}",
                     request_fingerprint=lambda raw: "escape",
                 )
                 mocker.patch.dict(sys.modules, {fake.__name__: fake})
@@ -272,11 +274,12 @@ class ProviderRegistryTests:
         fake.__package__ = "codex_responses_proxy.providers.policies"
         fake.__spec__ = importlib.machinery.ModuleSpec(fake.__name__, loader=None)
         fake.__dict__.update(
+            EXHAUSTED_CODE="retry_exhausted",
+            EXHAUSTED_MESSAGE="retry later",
             FAILURE_CACHE_CAPACITY=1,
             FAILURE_COOLDOWN_SECONDS=1,
             POLICY_VERSION="frozen",
             is_retryable_failure=lambda status, payload: False,
-            exhausted_payload=lambda attempts: b"{}",
             request_fingerprint=lambda raw: "frozen",
         )
         manifest = (

@@ -9,7 +9,6 @@ orchestration remain in :mod:`codex_responses_proxy.relay.responses`.
 from __future__ import annotations
 
 import http.client
-import json
 import time
 from collections.abc import Callable
 from contextlib import suppress
@@ -64,19 +63,12 @@ class RelayResult(TypedDict):
 
 def exhausted_payload(attempts: int) -> bytes:
     """Return a retryable local failure after pre-content SSE exhaustion."""
-    return json.dumps(
-        {
-            "error": {
-                "message": (
-                    "Upstream stream ended before content after bounded reconnects; retry the turn"
-                ),
-                "type": "upstream_unavailable",
-                "code": "stream_pre_content_exhausted",
-                "attempts": attempts,
-            },
-        },
-        separators=(",", ":"),
-    ).encode()
+    return live_response.error_payload(
+        "Upstream stream ended before content after bounded reconnects; retry the turn",
+        "upstream_unavailable",
+        "stream_pre_content_exhausted",
+        attempts=attempts,
+    )
 
 
 def _set_read_timeout(response: ResponseLike, timeout: float) -> None:

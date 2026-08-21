@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import http.client
-import json
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Protocol
 
@@ -69,24 +68,19 @@ def send_payload(
     handler.wfile.write(payload)
 
 
-def json_error(message: str, error_type: str, code: str, *, reason: str | None = None) -> bytes:
-    """Encode one stable local error envelope."""
-    error = {"message": message, "type": error_type, "code": code}
-    if reason is not None:
-        error["reason"] = reason
-    return json.dumps(
-        {"error": error},
-        separators=(",", ":"),
-    ).encode()
-
-
 def send_wire_failure_exhausted(
     handler: BaseHTTPRequestHandler,
     policy: provider_registry.WirePolicy,
     attempts: int,
 ) -> None:
     """Emit one provider-policy empty-response exhaustion."""
-    send_payload(handler, 503, policy.exhausted_payload(attempts), retry_after="3")
+    payload = live_response.error_payload(
+        policy.EXHAUSTED_MESSAGE,
+        "upstream_unavailable",
+        policy.EXHAUSTED_CODE,
+        attempts=attempts,
+    )
+    send_payload(handler, 503, payload, retry_after="3")
 
 
 def relay_error(handler: BaseHTTPRequestHandler, status: int, headers, payload: bytes) -> None:
@@ -129,7 +123,7 @@ def relay_sse(exchange: Exchange, response) -> None:
             send_payload(
                 exchange.handler,
                 503,
-                json_error(
+                live_response.error_payload(
                     "Upstream stream could not be projected safely; retry the turn",
                     "upstream_unavailable",
                     "stream_projection_failed",
@@ -211,7 +205,7 @@ def _invalid_responses_success(exchange: Exchange, reason: str) -> None:
     send_payload(
         exchange.handler,
         503,
-        json_error(
+        live_response.error_payload(
             "Upstream returned an invalid successful Responses body; retry the turn",
             "upstream_unavailable",
             "invalid_responses_success_body",

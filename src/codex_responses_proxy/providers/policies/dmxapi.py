@@ -8,6 +8,8 @@ import json
 POLICY_VERSION = "empty-response-retry-v1"
 FAILURE_COOLDOWN_SECONDS = 30
 FAILURE_CACHE_CAPACITY = 1024
+EXHAUSTED_MESSAGE = "DMX upstream returned empty responses after bounded retries"
+EXHAUSTED_CODE = "dmx_empty_response_exhausted"
 
 
 def is_retryable_failure(status: int, payload: bytes) -> bool:
@@ -24,21 +26,6 @@ def is_retryable_failure(status: int, payload: bytes) -> bool:
         and error.get("type") == "dmx_api_error"
         and error.get("code") == "empty_response"
     )
-
-
-def exhausted_payload(attempts: int) -> bytes:
-    """Return the standard retryable response after the dedicated retry fails."""
-    return json.dumps(
-        {
-            "error": {
-                "message": "DMX upstream returned empty responses after bounded retries",
-                "type": "upstream_unavailable",
-                "code": "dmx_empty_response_exhausted",
-                "attempts": attempts,
-            }
-        },
-        separators=(",", ":"),
-    ).encode()
 
 
 def request_fingerprint(request: bytes) -> str:

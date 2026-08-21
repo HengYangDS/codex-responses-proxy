@@ -13,6 +13,7 @@ from typing import Any
 import certifi
 
 from codex_responses_proxy.protocol import input_variant, response_failed
+from codex_responses_proxy.protocol import response as live_response
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.relay import cooldown, operational_log, telemetry
 from codex_responses_proxy.relay import relay as downstream
@@ -387,7 +388,7 @@ def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
         downstream.send_payload(
             exchange.handler,
             502,
-            downstream.json_error(
+            live_response.error_payload(
                 "Upstream input-variant recovery transport failed; retry the turn",
                 "upstream_unavailable",
                 "input_variant_recovery_transport_error",
@@ -405,7 +406,7 @@ def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
     downstream.send_payload(
         exchange.handler,
         502,
-        downstream.json_error(
+        live_response.error_payload(
             "Upstream transport failed after bounded retries; retry the turn",
             "upstream_unavailable",
             "upstream_transport_error",
@@ -443,7 +444,7 @@ def open_upstream(exchange: Exchange):
     downstream.send_payload(
         exchange.handler,
         502,
-        downstream.json_error(
+        live_response.error_payload(
             "Upstream transport failed after bounded retries; retry the turn",
             "upstream_unavailable",
             "upstream_transport_error",

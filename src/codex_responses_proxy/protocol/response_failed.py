@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from typing import cast
 
+from codex_responses_proxy.protocol import response
+
 type JsonObject = dict[str, object]
 type Request = tuple[JsonObject, list[object], int]
 type RecoveryMetrics = dict[str, int | bool]
@@ -89,17 +91,12 @@ def retry_disposition(code: int, err_body: bytes) -> str:
 
 def exhausted_payload(attempts: int) -> bytes:
     """Return the retryable terminal payload after all bounded recovery fails."""
-    return json.dumps(
-        {
-            "error": {
-                "message": "Upstream rejected bounded Responses recovery; retry the turn",
-                "type": "upstream_unavailable",
-                "code": "response_failed_recovery_exhausted",
-                "attempts": attempts,
-            },
-        },
-        separators=(",", ":"),
-    ).encode()
+    return response.error_payload(
+        "Upstream rejected bounded Responses recovery; retry the turn",
+        "upstream_unavailable",
+        "response_failed_recovery_exhausted",
+        attempts=attempts,
+    )
 
 
 def tool_pair_boundary_is_safe(items: list[object], start: int) -> bool:
