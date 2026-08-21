@@ -6,8 +6,6 @@ import tempfile
 import urllib.error
 from pathlib import Path
 
-import pytest
-
 from codex_responses_proxy.relay import operational_log
 from tests.lifecycle.fixtures import assert_private_log_mode
 
@@ -81,32 +79,11 @@ class RuntimeLoggingTests:
             (path.parent / "proxy.log.1").write_text("y" * 12)
             path.write_text("x" * 12)
             operational_log.log("retained backup")
-            path.write_text("short")
-            assert operational_log._rotate_log_if_needed(path, 1) == 0
-            mocker.patch.object(Path, "lstat", side_effect=OSError)
-            assert operational_log._rotate_log_if_needed(path, 1) == 0
             path.unlink()
             path.mkdir()
             operational_log.log("ignored errors")
             mocker.patch.object(operational_log.sys.stderr, "write", side_effect=OSError)
             operational_log.log("stderr error")
-
-    def test_rotation_rejects_non_files_and_discards_oversized_backup_segments(
-        self, tmp_path, *, mocker
-    ) -> None:
-        path = tmp_path / "proxy.log"
-        path.mkdir()
-        with pytest.raises(OSError, match="not a regular file"):
-            operational_log._rotate_log_if_needed(path, 1)
-
-        path.rmdir()
-        path.write_text("current")
-        backup = tmp_path / "proxy.log.1"
-        backup.write_text("oversized")
-        mocker.patch.object(operational_log, "LOG_MAX_BYTES", 4)
-        mocker.patch.object(operational_log, "LOG_BACKUP_COUNT", 1)
-        assert operational_log._rotate_log_if_needed(path, 1) == len("current") + len("oversized")
-        assert not backup.exists()
 
 
 class OperationalLogPrivacyContracts:

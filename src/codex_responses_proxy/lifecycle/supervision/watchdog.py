@@ -9,16 +9,13 @@ secret-safe; request payloads never cross this boundary.
 from __future__ import annotations
 
 import os
-import re
 import socket
-import stat
 import subprocess
 import sys
-import threading
 import time
-from contextlib import suppress
 from pathlib import Path
 
+from codex_responses_proxy.runtime import bounded_log
 from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.service import runtime as service_runtime
 
@@ -34,12 +31,6 @@ _WINDOWS_DETACH_FLAGS = 0x00000008 | 0x00000200
 
 LOG_MAX_BYTES = SETTINGS.watchdog_log.max_bytes
 LOG_BACKUP_COUNT = SETTINGS.watchdog_log.backup_count
-_LOG_LINE_MAX_BYTES = 1024
-_LOG_LOCK = threading.Lock()
-_LOG_SECRET_PATTERNS = (
-    re.compile(r"(?i)\b(?:authorization|api[_-]?key|bearer)\s*[:=]?\s*(?:bearer\s+)?[^\s,;]+"),
-    re.compile(r"\bgAAAA[A-Za-z0-9_-]+"),
-)
 
 
 def _reap_children(children: list[subprocess.Popen[bytes]]) -> None:
@@ -48,64 +39,8 @@ def _reap_children(children: list[subprocess.Popen[bytes]]) -> None:
     children[:] = [child for child in children if child.poll() is None]
 
 
-def _redact_log_message(msg: str) -> str:
-    """Bound watchdog diagnostics without retaining secret-shaped values."""
-    value = str(msg).replace("\r", " ").replace("\n", " ")
-    value = _LOG_SECRET_PATTERNS[1].sub(
-        "[redacted]", _LOG_SECRET_PATTERNS[0].sub("[redacted]", value)
-    )
-    encoded = value.encode("utf-8", "replace")
-    if len(encoded) > _LOG_LINE_MAX_BYTES:
-        value = encoded[:_LOG_LINE_MAX_BYTES].decode("utf-8", "ignore") + " [truncated]"
-    return value
-
-
-def _rotate_log_if_needed(path: Path, incoming_bytes: int) -> int:
-    """Keep the watchdog log within its configured local retention window."""
-    try:
-        metadata = path.lstat()
-    except OSError:
-        return 0
-    if not stat.S_ISREG(metadata.st_mode):
-        raise OSError("watchdog log path is not a regular file")
-    current_size = metadata.st_size
-    if current_size + incoming_bytes <= LOG_MAX_BYTES:
-        return 0
-
-    if current_size > LOG_MAX_BYTES:
-        path.unlink(missing_ok=True)
-        return current_size
-    if LOG_BACKUP_COUNT <= 0:
-        path.unlink(missing_ok=True)
-    else:
-        path.with_name(f"{path.name}.{LOG_BACKUP_COUNT}").unlink(missing_ok=True)
-        for index in range(LOG_BACKUP_COUNT - 1, 0, -1):
-            source = path.with_name(f"{path.name}.{index}")
-            if source.exists():
-                source.replace(path.with_name(f"{path.name}.{index + 1}"))
-        path.replace(path.with_name(f"{path.name}.1"))
-    return 0
-
-
 def _log(msg: str) -> None:
-    message = _redact_log_message(msg)
-    line = f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {message}\n"
-    try:
-        path = Path(LOG_PATH)
-        with _LOG_LOCK:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            discarded = _rotate_log_if_needed(path, len(line.encode("utf-8", "replace")))
-            if discarded:
-                line = (
-                    f"{time.strftime('%Y-%m-%dT%H:%M:%S')} "
-                    f"log_retention_discarded_oversized_bytes={discarded} {message}\n"
-                )
-            with path.open("a", encoding="utf-8") as handle:
-                with suppress(OSError):
-                    os.chmod(path, 0o600)
-                handle.write(line)
-    except OSError:
-        pass
+    bounded_log.append(Path(LOG_PATH), msg, max_bytes=LOG_MAX_BYTES, backup_count=LOG_BACKUP_COUNT)
 
 
 def is_proxy_up(host: str = HOST, port: int = PORT, timeout: float = 2.0) -> bool:

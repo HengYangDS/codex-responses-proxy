@@ -8,8 +8,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from codex_responses_proxy.lifecycle.supervision import watchdog
 from tests.lifecycle.fixtures import assert_private_log_mode
 
@@ -66,8 +64,6 @@ class TestWatchdogLogging:
         connect.side_effect = OSError("offline")
         assert not watchdog.is_proxy_up()
 
-        assert "[truncated]" in watchdog._redact_log_message("x" * 2048)
-
         with tempfile.TemporaryDirectory() as directory:
             executable = Path(directory) / "codex-responses-proxy"
             executable.write_text("native fixture\n", encoding="utf-8")
@@ -112,45 +108,6 @@ class TestWatchdogLogging:
         assert children == [running]
         running.poll.assert_called_once_with()
         exited.poll.assert_called_once_with()
-
-    def test_watchdog_rotation_boundaries(self, *, mocker):
-        watchdog = load_watchdog()
-        with tempfile.TemporaryDirectory() as directory:
-            log = Path(directory) / "watchdog.log"
-            log.write_text("active", encoding="utf-8")
-            mocker.patch.object(watchdog, "LOG_MAX_BYTES", 6)
-            mocker.patch.object(watchdog, "LOG_BACKUP_COUNT", 2)
-            watchdog._rotate_log_if_needed(log, 1)
-            assert log.with_name("watchdog.log.1").is_file()
-            assert watchdog._rotate_log_if_needed(log.with_name("absent"), 1) == 0
-
-            directory_path = Path(directory) / "not-a-log"
-            directory_path.mkdir()
-            with pytest.raises(OSError, match="regular file"):
-                watchdog._rotate_log_if_needed(directory_path, 1)
-
-            small = Path(directory) / "small.log"
-            small.write_text("x", encoding="utf-8")
-            mocker.patch.object(watchdog, "LOG_MAX_BYTES", 100)
-            assert watchdog._rotate_log_if_needed(small, 1) == 0
-
-            no_backup = Path(directory) / "no-backup.log"
-            no_backup.write_text("xx", encoding="utf-8")
-            mocker.patch.object(watchdog, "LOG_MAX_BYTES", 2)
-            mocker.patch.object(watchdog, "LOG_BACKUP_COUNT", 0)
-            watchdog._rotate_log_if_needed(no_backup, 1)
-            assert not no_backup.exists()
-
-            rotating = Path(directory) / "rotating.log"
-            rotating.write_text("xx", encoding="utf-8")
-            rotating.with_name("rotating.log.1").write_text("old", encoding="utf-8")
-            mocker.patch.object(watchdog, "LOG_MAX_BYTES", 2)
-            mocker.patch.object(watchdog, "LOG_BACKUP_COUNT", 2)
-            watchdog._rotate_log_if_needed(rotating, 1)
-            assert rotating.with_name("rotating.log.2").read_text(encoding="utf-8") == "old"
-            mocker.patch.object(watchdog, "LOG_PATH", str(directory_path))
-            mocker.patch.object(watchdog, "LOG_MAX_BYTES", 1)
-            watchdog._log("ignored write failure")
 
     def test_watchdog_loop_is_bounded(self, *, mocker):
         watchdog = load_watchdog()
