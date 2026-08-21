@@ -11,13 +11,7 @@ from typing import Final, cast
 from tools.release import product_assets as release_assets
 from tools.release.publication import hosted
 
-DEFAULT_REQUIRED_JOBS: Final = (
-    "verify-python-matrix",
-    "verify-release-metadata",
-    "verify-release-tag",
-    "verify-python-quality",
-    "publish-gitlab-release",
-)
+DEFAULT_REQUIRED_JOBS: Final = ("verify-release-tag",)
 
 
 class GitLabProofError(RuntimeError):

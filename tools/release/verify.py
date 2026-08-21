@@ -26,7 +26,6 @@ class VerificationRequest:
     github_repo: str
     gitlab_anchor: Path
     github_anchor: Path
-    policy: Path
 
 
 def verify(request: VerificationRequest) -> dict[str, object]:
@@ -41,7 +40,6 @@ def verify(request: VerificationRequest) -> dict[str, object]:
         github_repo=request.github_repo,
         gitlab_anchor=request.gitlab_anchor,
         github_anchor=request.github_anchor,
-        policy_path=request.policy,
     )
     return _plain(evidence)
 
@@ -64,7 +62,6 @@ def _command(
     github_repo: str,
     gitlab_anchor: Path,
     github_anchor: Path,
-    policy: Path,
     as_json: Annotated[bool, Parameter(name="--json", negative=False)] = False,
 ) -> None:
     """Verify one published tag without mutating either Forge."""
@@ -78,7 +75,6 @@ def _command(
         github_repo,
         gitlab_anchor,
         github_anchor,
-        policy,
     )
     try:
         result = verify(request)

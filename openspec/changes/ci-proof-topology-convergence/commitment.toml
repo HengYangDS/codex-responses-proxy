@@ -10,9 +10,12 @@ scope = [
   "mise.lock",
   "openspec/changes/ci-proof-topology-convergence/**",
   "tests/forge/test_workflow_contracts.py",
+  "tests/release/publication/**",
   "tests/quality/test_verification.py",
   "tools/ci/**",
   "tools/quality/repository.py",
+  "tools/release/publication/**",
+  "tools/release/verify.py",
 ]
 invariants = [
   "one_semantic_graph_owns_both_forge_projections",

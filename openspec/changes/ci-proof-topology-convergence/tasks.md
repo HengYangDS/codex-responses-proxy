@@ -4,9 +4,9 @@
   generated Forge projections, separate source/quality/Python-version/native
   nodes, and complete tag publication obligations; verify the focused tests fail
   for the current handwritten topology.
-- [ ] 1.2 Define semantic publication capabilities in the existing publication
-  evaluator rather than provider display names; verify adapters reject missing
-  or duplicated capabilities without creating another proof owner.
+- [x] 1.2 Keep required hosted workflow and job identities in their provider
+  adapters; remove the second external job-name policy and evaluator replay,
+  while preserving adapter rejection of missing or duplicated required jobs.
 - [x] 1.3 Keep Developer and Maintainer authorization and guarded ref admission
   in the repository lifecycle owner; remove unconsumed authorization, proof
   reuse, graph-digest, and capability fields from the CI projection model.

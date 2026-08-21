@@ -147,12 +147,14 @@ publisher only accepts the exact complete signed bytes and verifies them again
 after download. This resolves the false choice between independent peers and a
 single Forge-owned builder: execution may differ; product identity cannot.
 
-### Keep policy declarative and positive
+### Keep proof ownership local to each layer
 
-The publication policy names required semantic capabilities rather than stale
-provider job display strings. Provider adapters map hosted job evidence to
-those capabilities. This prevents a harmless matrix display-name change from
-becoming a second release contract while preserving fail-closed completeness.
+Provider adapters own the exact hosted workflow and job identities they
+normalize. The evaluator consumes only their normalized Forge-level result,
+Git-object identity, complete bundle, release identity, and trust anchor. It
+does not reload provider job display strings through a second policy file or
+re-evaluate adapter internals. This preserves fail-closed hosted proof while
+preventing a parallel publication-policy owner.
 
 ### Admit quality by risk coverage, not by a green command name
 

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
-from typing import Final, TypedDict, cast
+from collections.abc import Mapping
+from typing import Final, cast
 
 from tools.release import product_assets
 
@@ -26,42 +26,24 @@ _FORGE_FIELDS: Final = frozenset(
         "release",
     }
 )
-_CI_FIELDS: Final = frozenset({"id", "revision_oid", "status", "jobs"})
+_CI_FIELDS: Final = frozenset({"id", "revision_oid", "status"})
 _RELEASE_FIELDS: Final = frozenset({"id", "tag", "commit_oid", "name", "draft", "prerelease"})
-
-
-class PublicationPolicy(TypedDict):
-    """Required hosted jobs for each independent Forge plane."""
-
-    gitlab_jobs: tuple[str, ...]
-    github_jobs: tuple[str, ...]
 
 
 def evaluate(
     tag: str,
     gitlab: Mapping[str, object],
     github: Mapping[str, object],
-    policy: PublicationPolicy,
 ) -> dict[str, object]:
     """Evaluate complete evidence without minting installation authority."""
 
-    if not policy["gitlab_jobs"] or not policy["github_jobs"]:
-        return {
-            "schema_version": 1,
-            "tag": tag,
-            "verified": False,
-            "tree_equal": False,
-            "reasons": ["publication_policy_empty"],
-            "forges": {},
-        }
-
     reasons: list[str] = []
     normalized: dict[str, dict[str, object]] = {}
-    for provider, evidence, required_jobs in (
-        ("gitlab", gitlab, policy["gitlab_jobs"]),
-        ("github", github, policy["github_jobs"]),
+    for provider, evidence in (
+        ("gitlab", gitlab),
+        ("github", github),
     ):
-        forge, forge_reasons = _evaluate_forge(provider, tag, evidence, required_jobs)
+        forge, forge_reasons = _evaluate_forge(provider, tag, evidence)
         reasons.extend(forge_reasons)
         if forge is not None:
             normalized[provider] = forge
@@ -132,7 +114,6 @@ def _evaluate_forge(
     provider: str,
     tag: str,
     evidence: Mapping[str, object],
-    required_jobs: Sequence[str],
 ) -> tuple[dict[str, object] | None, list[str]]:
     if set(evidence) != _FORGE_FIELDS:
         return None, [f"{provider}.invalid_evidence"]
@@ -175,15 +156,6 @@ def _evaluate_forge(
         reasons.append(f"{provider}.ci_revision_mismatch")
     if typed_ci.get("status") != "success":
         reasons.append(f"{provider}.ci_not_successful")
-    jobs = typed_ci.get("jobs")
-    if not isinstance(jobs, Mapping):
-        return None, [f"{provider}.invalid_evidence"]
-    typed_jobs = cast(Mapping[str, object], jobs)
-    for job in required_jobs:
-        if job not in typed_jobs:
-            reasons.append(f"{provider}.ci_required_job_missing:{job}")
-        elif typed_jobs[job] != "success":
-            reasons.append(f"{provider}.ci_required_job_not_successful:{job}")
     if typed_release.get("tag") != tag:
         reasons.append(f"{provider}.release_tag_mismatch")
     if typed_release.get("commit_oid") != commit:
@@ -208,7 +180,6 @@ def _evaluate_forge(
             "id": typed_ci.get("id"),
             "revision_oid": typed_ci.get("revision_oid"),
             "status": typed_ci.get("status"),
-            "jobs": {job: typed_jobs.get(job) for job in required_jobs},
         },
         "release": {
             "id": typed_release.get("id"),

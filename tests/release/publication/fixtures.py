@@ -20,7 +20,6 @@ class VerifyArguments(TypedDict):
     github_repo: str
     gitlab_anchor: Path
     github_anchor: Path
-    policy_path: Path
 
 
 VERIFY_ARGUMENTS: VerifyArguments = dict(
@@ -32,7 +31,6 @@ VERIFY_ARGUMENTS: VerifyArguments = dict(
     github_repo="github/repository",
     gitlab_anchor=Path("gitlab-anchor"),
     github_anchor=Path("github-anchor"),
-    policy_path=Path("publication-policy.toml"),
 )
 
 
@@ -89,17 +87,12 @@ def verified_evidence(evidence: Mapping[str, Any], *, mocker) -> Mapping[str, An
     mocker.patch.object(
         publication.evaluator,
         "evaluate",
-        side_effect=lambda tag, gitlab, github, policy: {
+        side_effect=lambda tag, gitlab, github: {
             "verified": True,
             "tree_equal": True,
             "assets_equal": True,
             "forges": {"gitlab": gitlab, "github": github},
         },
-    )
-    mocker.patch.object(
-        publication,
-        "load_policy",
-        return_value={"gitlab_jobs": ("required",), "github_jobs": ("required",)},
     )
     return publication.verify(
         tag=str(evidence["tag"]),
@@ -110,5 +103,4 @@ def verified_evidence(evidence: Mapping[str, Any], *, mocker) -> Mapping[str, An
         github_repo="github/repository",
         gitlab_anchor=Path("gitlab-anchor"),
         github_anchor=Path("github-anchor"),
-        policy_path=Path("publication-policy.toml"),
     )

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -35,48 +34,12 @@ class PublicationProofCliContracts:
         assert not hasattr(publication, "consume")
         assert verified_evidence(forge_evidence(), mocker=mocker)["verified"]
 
-    def test_publication_policy_and_verifier_fail_closed_on_invalid_inputs(
-        self, subtests, *, mocker
-    ) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            cases = {
-                "unsupported-schema.toml": """
-                    schema-version = 2
-                    [gitlab]
-                    required-jobs = ["job"]
-                    [github]
-                    required-jobs = ["job"]
-                """,
-                "duplicate-job.toml": """
-                    schema-version = 1
-                    [gitlab]
-                    required-jobs = ["job", "job"]
-                    [github]
-                    required-jobs = ["job"]
-                """,
-            }
-            for name, content in cases.items():
-                path = root / name
-                path.write_text(content, encoding="utf-8")
-                with (
-                    subtests.test(name=name),
-                    pytest.raises(publication.PublicationError),
-                ):
-                    publication.load_policy(path)
-            with pytest.raises(publication.PublicationError):
-                publication.load_policy(root / "missing.toml")
-
+    def test_publication_verifier_fails_closed_on_invalid_inputs(self, *, mocker) -> None:
         arguments = VERIFY_ARGUMENTS
         mocker.patch.object(
             publication.git,
             "collect",
             side_effect=publication.git.GitProofError("offline"),
-        )
-        mocker.patch.object(
-            publication,
-            "load_policy",
-            return_value={"gitlab_jobs": ("job",), "github_jobs": ("job",)},
         )
         with pytest.raises(publication.PublicationError, match="unavailable or invalid"):
             publication.verify(**arguments)
@@ -105,11 +68,6 @@ class PublicationProofCliContracts:
                 publication.evaluator,
                 "evaluate",
                 side_effect=lambda *_args, result=result: result,
-            )
-            mocker.patch.object(
-                publication,
-                "load_policy",
-                return_value={"gitlab_jobs": ("job",), "github_jobs": ("job",)},
             )
             with (
                 subtests.test(result=result),

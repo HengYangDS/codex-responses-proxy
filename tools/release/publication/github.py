@@ -9,14 +9,8 @@ from tools.release import product_assets as release_assets
 from tools.release.publication import hosted
 
 DEFAULT_REQUIRED_JOBS: Final = (
-    "Python 3.12",
-    "Python 3.13",
-    "Python 3.14",
-    "Python 3.12 (Windows)",
-    "Python 3.13 (Windows)",
-    "Python 3.14 (Windows)",
-    "Governance and presentation",
-    "Python quality",
+    "Resolve supported Python versions",
+    "Tag metadata and governance",
     "Native asset (linux-x86_64)",
     "Native asset (macos-arm64)",
     "Native asset (windows-x86_64)",
