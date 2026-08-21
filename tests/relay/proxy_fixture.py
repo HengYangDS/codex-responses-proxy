@@ -161,7 +161,7 @@ def request(
         request_headers.update(headers)
     outbound = urllib.request.Request(
         f"http://127.0.0.1:{proxy_port}{path}",
-        data=body if body else None,
+        data=body or None,
         method=method,
         headers=request_headers,
     )

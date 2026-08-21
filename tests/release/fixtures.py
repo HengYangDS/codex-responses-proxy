@@ -92,7 +92,7 @@ def run_command(
     assert result.returncode == expected, result.stderr or result.stdout
     assert "Traceback" not in result.stderr
     assert "Warning" not in result.stderr
-    output = result.stdout if result.stdout else result.stderr
+    output = result.stdout or result.stderr
     value = json.loads(output)
     assert isinstance(value, dict)
     return value

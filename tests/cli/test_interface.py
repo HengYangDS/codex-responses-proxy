@@ -398,7 +398,7 @@ class ProductInterfaceContracts:
                         check=False,
                     )
                     assert result.returncode == expected_code, result.stderr
-                    payload = result.stdout if result.stdout else result.stderr
+                    payload = result.stdout or result.stderr
                     assert json.loads(payload)
                     assert "Traceback" not in result.stderr
                     assert "Warning" not in result.stderr
@@ -413,7 +413,7 @@ class ProductInterfaceContracts:
                         check=False,
                     )
                     assert result.returncode == expected_code, result.stderr
-                    output = result.stdout if result.stdout else result.stderr
+                    output = result.stdout or result.stderr
                     assert output.strip()
                     assert not output.lstrip().startswith("{")
                     assert "Traceback" not in result.stderr
