@@ -5,4 +5,4 @@ false_positive_cost = "a legitimate new semantic scope requires an intentional p
 remediation = "choose the nearest existing semantic scope or add one reviewed scope with the behavior that needs it"
 review_condition = "reassess when the product gains a durable semantic owner or two legitimate commits in one release train need the same missing scope"
 types = ["build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "spec", "test"]
-scopes = ["architecture", "ci", "cli", "docs", "forge", "governance", "install", "lifecycle", "openspec", "protocol", "providers", "quality", "relay", "release", "runtime", "service", "supervision", "tests"]
+scopes = ["architecture", "ci", "cli", "docs", "forge", "governance", "install", "lifecycle", "openspec", "protocol", "providers", "quality", "relay", "release", "runtime", "service", "supervision", "tests", "toolchain"]
