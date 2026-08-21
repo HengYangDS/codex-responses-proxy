@@ -97,3 +97,23 @@ class TestServiceIdentity:
         assert loaded.release == "1.2.3"
         assert loaded.serving_payload_sha256 == manifest["serving_payload_sha256"]
         assert loaded.release_receipt_sha256 == manifest["release_receipt_sha256"]
+
+    def test_loaded_identity_rejects_a_manifest_for_the_other_platform(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        install_payload(ctx, mocker=mocker)
+        root = Path(ctx.install_dir)
+        manifest_path = root / inventory.MANIFEST_FILENAME
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        windows_executable = root / inventory.WINDOWS_EXECUTABLE
+        windows_executable.write_bytes(Path(ctx.executable).read_bytes())
+        files = {
+            inventory.WINDOWS_EXECUTABLE: hashlib.sha256(
+                windows_executable.read_bytes()
+            ).hexdigest(),
+            inventory.PROVIDER_MANIFEST: manifest["serving_files"][inventory.PROVIDER_MANIFEST],
+        }
+        manifest["serving_files"] = files
+        manifest["serving_payload_sha256"] = inventory.serving_payload_sha256(files)
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        assert identity.freeze_loaded_payload(Path(ctx.executable)) is None

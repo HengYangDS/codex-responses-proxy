@@ -52,47 +52,12 @@ def freeze_loaded_payload(executable: Path) -> LoadedPayloadIdentity | None:
     """Validate and freeze the manifest-owned files loaded by this process."""
 
     try:
-        executable = executable.resolve(strict=True)
-        root = executable.parents[1]
-        if executable not in {
-            root / inventory.EXECUTABLE,
-            root / inventory.WINDOWS_EXECUTABLE,
-        }:
-            return None
+        root, windows = _runtime_root(executable)
         manifest = _read_manifest(root / inventory.MANIFEST_FILENAME)
-        raw_files = manifest.get("serving_files")
-        if not isinstance(raw_files, dict) or any(
-            not isinstance(path, str) or not isinstance(value, str)
-            for path, value in raw_files.items()
-        ):
-            return None
-        serving_files = cast("dict[str, str]", raw_files)
-        executable_relative = executable.relative_to(root).as_posix()
-        expected_files = set(serving_files)
-        windows = executable_relative == inventory.WINDOWS_EXECUTABLE
-        if not inventory.required_runtime_files(windows=windows).issubset(expected_files) or any(
-            not inventory.is_runtime_file(path, windows=windows) for path in expected_files
-        ):
-            return None
-        digests = {path: digest.sha256_file(root / path) for path in serving_files}
-        if digests != serving_files:
-            return None
-        aggregate = inventory.serving_payload_sha256(digests)
-        if manifest.get("serving_payload_sha256") != aggregate:
-            return None
-        receipt = manifest.get("release_receipt_sha256")
-        if not digest.is_sha256(receipt):
-            return None
-        release = manifest.get("release")
-        if not isinstance(release, str) or not release:
-            return None
-        return LoadedPayloadIdentity(
-            release,
-            aggregate,
-            receipt,
-            digest.sha256_file(root / inventory.MANIFEST_FILENAME),
-            root,
+        aggregate = _verify_runtime_files(
+            root, _digest_mapping(manifest, "serving_files"), windows=windows
         )
+        return _identity(root, manifest, aggregate, require_receipt_file=False)
     except (
         IndexError,
         OSError,
@@ -108,59 +73,16 @@ def committed_payload(executable: Path) -> LoadedPayloadIdentity | None:
     """Return the complete successor identity currently committed on disk."""
 
     try:
-        executable = executable.resolve(strict=True)
-        root = executable.parents[1]
-        if executable not in {
-            root / inventory.EXECUTABLE,
-            root / inventory.WINDOWS_EXECUTABLE,
-        }:
-            return None
+        root, windows = _runtime_root(executable)
         manifest = _read_manifest(root / inventory.MANIFEST_FILENAME)
         if manifest.get("schema_version") != 2:
             raise ValueError("installed manifest schema mismatch")
-        raw_files = manifest.get("files")
-        raw_serving = manifest.get("serving_files")
-        if not isinstance(raw_files, dict) or not isinstance(raw_serving, dict):
-            raise ValueError("installed manifest digest mapping is invalid")
-        files = cast("dict[str, str]", raw_files)
-        serving = cast("dict[str, str]", raw_serving)
-        if any(
-            not isinstance(path, str) or not isinstance(expected, str)
-            for mapping in (files, serving)
-            for path, expected in mapping.items()
-        ):
-            raise ValueError("installed manifest digest mapping is invalid")
-        executable_relative = executable.relative_to(root).as_posix()
-        expected_files = set(files)
-        windows = executable_relative == inventory.WINDOWS_EXECUTABLE
-        if (
-            set(serving) != expected_files
-            or not inventory.required_runtime_files(windows=windows).issubset(expected_files)
-            or any(not inventory.is_runtime_file(path, windows=windows) for path in expected_files)
-        ):
-            raise ValueError("installed inventory mismatch")
-        if any(digest.sha256_file(root / path) != expected for path, expected in files.items()):
-            raise ValueError("installed payload digest mismatch")
-        if any(files[path] != expected for path, expected in serving.items()):
+        files = _digest_mapping(manifest, "files")
+        serving = _digest_mapping(manifest, "serving_files")
+        if serving != files:
             raise ValueError("serving digest mismatch")
-        aggregate = digest.serving_payload_sha256(serving)
-        receipt = cast("str", manifest["release_receipt_sha256"])
-        release = manifest.get("release")
-        if (
-            not isinstance(release, str)
-            or not release
-            or manifest.get("serving_payload_sha256") != aggregate
-            or not digest.is_sha256(receipt)
-            or digest.sha256_file(root / inventory.RELEASE_RECEIPT_FILENAME) != receipt
-        ):
-            raise ValueError("installed successor identity mismatch")
-        return LoadedPayloadIdentity(
-            release,
-            aggregate,
-            receipt,
-            digest.sha256_file(root / inventory.MANIFEST_FILENAME),
-            root,
-        )
+        aggregate = _verify_runtime_files(root, files, windows=windows)
+        return _identity(root, manifest, aggregate, require_receipt_file=True)
     except (
         IndexError,
         KeyError,
@@ -170,6 +92,67 @@ def committed_payload(executable: Path) -> LoadedPayloadIdentity | None:
         digest.PayloadDigestError,
     ):
         return None
+
+
+def _runtime_root(executable: Path) -> tuple[Path, bool]:
+    resolved = executable.resolve(strict=True)
+    root = resolved.parents[1]
+    if resolved == root / inventory.EXECUTABLE:
+        return root, False
+    if resolved == root / inventory.WINDOWS_EXECUTABLE:
+        return root, True
+    raise ValueError("executable is outside the installed runtime identity")
+
+
+def _digest_mapping(manifest: Mapping[str, object], field: str) -> dict[str, str]:
+    value = manifest.get(field)
+    if not isinstance(value, dict) or any(
+        not isinstance(path, str) or not isinstance(expected, str)
+        for path, expected in value.items()
+    ):
+        raise ValueError(f"installed manifest {field} mapping is invalid")
+    return cast("dict[str, str]", value)
+
+
+def _verify_runtime_files(root: Path, expected: Mapping[str, str], *, windows: bool) -> str:
+    paths = set(expected)
+    if not inventory.required_runtime_files(windows=windows).issubset(paths) or any(
+        not inventory.is_runtime_file(path, windows=windows) for path in paths
+    ):
+        raise ValueError("installed inventory does not match the executable platform")
+    aggregate = inventory.serving_payload_sha256(expected)
+    if any(digest.sha256_file(root / path) != value for path, value in expected.items()):
+        raise ValueError("installed payload digest mismatch")
+    return aggregate
+
+
+def _identity(
+    root: Path,
+    manifest: Mapping[str, object],
+    aggregate: str,
+    *,
+    require_receipt_file: bool,
+) -> LoadedPayloadIdentity:
+    receipt = manifest.get("release_receipt_sha256")
+    release = manifest.get("release")
+    if (
+        not isinstance(release, str)
+        or not release
+        or manifest.get("serving_payload_sha256") != aggregate
+        or not digest.is_sha256(receipt)
+        or (
+            require_receipt_file
+            and digest.sha256_file(root / inventory.RELEASE_RECEIPT_FILENAME) != receipt
+        )
+    ):
+        raise ValueError("installed successor identity mismatch")
+    return LoadedPayloadIdentity(
+        release,
+        aggregate,
+        receipt,
+        digest.sha256_file(root / inventory.MANIFEST_FILENAME),
+        root,
+    )
 
 
 def _read_manifest(path: Path) -> dict[str, object]:
