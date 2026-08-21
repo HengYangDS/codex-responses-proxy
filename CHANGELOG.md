@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.54] - 2026-08-21
+
+### Fixed
+
+- Keep exact-successor health observation bounded across failed reads during
+  native listener handoff, so a proven successor is not rolled back while
+  ownership is transferring.
+
 ## [2.0.53] - 2026-08-20
 
 ### Fixed

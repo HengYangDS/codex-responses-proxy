@@ -1,0 +1,40 @@
+schema_version = 2
+id = "change:predecessor-handoff-health-retry"
+intent = "Make exact-successor health observation tolerate failed read-only observations."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/predecessor-handoff-health-retry/**",
+  "openspec/changes/archive/*-predecessor-handoff-health-retry/**",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "src/codex_responses_proxy/service/handoff/protocol.py",
+  "tests/service/handoff/test_state_machine.py",
+]
+invariants = [
+  "exact_successor_identity_remains_the_only_success_condition",
+  "health_observation_remains_bounded",
+  "rollback_remains_fail_safe",
+  "formal_service_is_untouched_before_release_acceptance",
+]
+acceptance = [
+  "focused_handoff_regression_passes",
+  "published_predecessor_compatibility_passes",
+  "quick_quality_matrix_and_release_pass",
+  "strict_openspec_validation_passes",
+  "formal_upgrade_and_residue_free_teardown_pass",
+]
+risks = [
+  "persistent_health_read_failure_exhausts_the_health_deadline",
+  "release_without_real_predecessor_proof_reintroduces_the_incident",
+]
+authority_refs = [
+  "openspec/specs/runtime-upgrade/spec.md",
+  "docs/architecture/authority-and-runtime-boundary.md",
+]
+predecessors = ["change:native-quality-configuration"]
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []

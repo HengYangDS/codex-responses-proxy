@@ -407,10 +407,19 @@ successful platform command alone SHALL NOT establish convergence.
 
 After commit, the controller SHALL read bounded health snapshots through the
 shared listener until the complete expected successor identity is served. A
-snapshot from the retiring process SHALL be treated as transient observation,
-not success or immediate failure. Timeout or another failure SHALL identify the
-failed lifecycle phase without including exception messages, request content,
-headers, credentials, or upstream payloads.
+snapshot from the retiring process, a transient socket failure, or a transient
+health read failure SHALL be treated as an observation to retry, not success or
+immediate failure. Deadline expiry SHALL identify the failed lifecycle phase
+without including exception messages, request content, headers, credentials,
+or upstream payloads.
+
+#### Scenario: A health read fails during ownership transfer
+
+- **WHEN** a post-commit health read raises an ordinary exception
+- **THEN** the controller continues bounded observation
+- **AND** finalizes only after the exact successor PID and payload identity are
+  accepting and not draining
+- **AND** rolls back if the deadline expires without that proof.
 
 #### Scenario: The retiring listener answers during ownership transfer
 

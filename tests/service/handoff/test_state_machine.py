@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 import threading
 from pathlib import Path
 
@@ -234,6 +235,37 @@ class TestParentHandoffStateMachine(HandoffFixture):
             handoff_protocol_module,
             "_read_health",
             side_effect=(old, current),
+        )
+        mocker.patch.object(
+            handoff_protocol_module.time,
+            "monotonic",
+            side_effect=(0.0, 0.1, 0.2),
+        )
+        mocker.patch.object(handoff_protocol_module.time, "sleep")
+
+        assert (
+            self.p.probe_health(
+                8791,
+                timeout_seconds=1,
+                expected={
+                    "pid": child.runtime_pid,
+                    "release": expected["release"],
+                },
+            )
+            == current
+        )
+
+    def test_probe_health_retries_failed_observations_until_exact_identity(self, *, mocker):
+        expected = expected_metadata()
+        child = fake_child(mocker=mocker)
+        current = matching_health(child, expected)
+        mocker.patch.object(
+            handoff_protocol_module,
+            "_read_health",
+            side_effect=(
+                struct.error("transient observer failure"),
+                current,
+            ),
         )
         mocker.patch.object(
             handoff_protocol_module.time,
