@@ -16,9 +16,10 @@ if TYPE_CHECKING:
     from codex_responses_proxy.lifecycle.context import RuntimeContext
 
 FILENAME = inventory.RUNTIME_CONFIG_FILENAME
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _FIELDS = (
+    "user_home",
     "install_dir",
     "log_dir",
     "port",
@@ -37,6 +38,9 @@ _FIELDS = (
 
 class NativeServiceContext(Protocol):
     """Minimum context consumed by every native service adapter."""
+
+    @property
+    def user_home(self) -> str: ...
 
     @property
     def install_dir(self) -> str: ...
@@ -124,6 +128,7 @@ def activate(executable: str | os.PathLike[str]) -> Path:
 class ServiceContext:
     """Minimum native-service projection reconstructed inside the payload."""
 
+    user_home: str
     install_dir: str
     executable: str
     log_dir: str
@@ -147,6 +152,7 @@ def service_context(executable: str) -> ServiceContext:
     if _normalized(executable) != _normalized(expected):
         raise errors.InstallError("runtime configuration executable does not match its payload")
     return ServiceContext(
+        user_home=value["user_home"],
         install_dir=value["install_dir"],
         executable=executable,
         log_dir=value["log_dir"],
@@ -160,7 +166,7 @@ def _read(target: Path) -> dict[str, Any]:
         *_FIELDS,
     }:
         raise errors.InstallError("native runtime configuration schema is unsupported")
-    for name in ("install_dir", "log_dir"):
+    for name in ("user_home", "install_dir", "log_dir"):
         if not isinstance(value.get(name), str) or not _absolute(value[name]):
             raise errors.InstallError(f"native runtime configuration {name} is invalid")
     expected = Path(value["install_dir"], FILENAME)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.request
@@ -22,8 +23,10 @@ ROOT = Path(__file__).resolve().parents[2]
 COMMAND_TIMEOUT_SECONDS = 180
 
 
-def _macos_service_projection() -> tuple[frozenset[str], tuple[tuple[str, str], ...]]:
-    """Return exact launchd registration and plist content for this product."""
+def _macos_service_projection() -> tuple[
+    frozenset[str], frozenset[tuple[str, str]], tuple[tuple[str, str], ...]
+]:
+    """Return every persistent launchd surface owned by this product."""
 
     completed = subprocess.run(
         ["/bin/launchctl", "list"],
@@ -36,12 +39,26 @@ def _macos_service_projection() -> tuple[frozenset[str], tuple[tuple[str, str], 
         for line in completed.stdout.splitlines()[1:]
         if len(fields := line.split("\t")) >= 3 and fields[2].startswith(runtime_context.SERVICE_ID)
     )
+    disabled = subprocess.run(
+        ["/bin/launchctl", "print-disabled", f"gui/{os.getuid()}"],
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    overrides = frozenset(
+        (match.group("label"), match.group("state"))
+        for match in re.finditer(
+            rf'"(?P<label>{re.escape(runtime_context.SERVICE_ID)}(?:\.[0-9a-f]{{12}})?)"'
+            r"\s*=>\s*(?P<state>enabled|disabled)",
+            disabled.stdout,
+        )
+    )
     launch_agents = Path.home() / "Library" / "LaunchAgents"
     plists = tuple(
         (path.name, hashlib.sha256(path.read_bytes()).hexdigest())
         for path in sorted(launch_agents.glob(f"{runtime_context.SERVICE_ID}*.plist"))
     )
-    return labels, plists
+    return labels, overrides, plists
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -147,6 +164,7 @@ def runtime_context_for(
     """Return one isolated native lifecycle context."""
 
     return runtime_context.RuntimeContext(
+        user_home=str(home),
         install_dir=str(install),
         executable=inventory.installed_executable(str(install)),
         command=str(home / ".local/bin/codex-responses-proxy"),

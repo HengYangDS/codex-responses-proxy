@@ -393,6 +393,13 @@ def write_installed_payload(
         release_receipt_sha256=hashlib.sha256(receipt.read_bytes()).hexdigest(),
     )
     runtime_spec.write(ctx)
+    # Exercise the same installed-candidate admission as the product. A copied
+    # frozen macOS payload can incur its one-time trust-cache startup before
+    # any application log exists; paying that bounded cost here keeps the
+    # handoff tests focused on listener transfer rather than host assessment.
+    from codex_responses_proxy.lifecycle import candidate as payload_candidate
+
+    payload_candidate.prewarm(target)
     return ctx
 
 

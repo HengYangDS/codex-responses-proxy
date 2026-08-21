@@ -19,10 +19,11 @@ def completed(cmd=(), returncode=0, stdout="", stderr=""):
 
 @contextmanager
 def temporary_context(attribute, *, windows=False):
-    """Yield a platform context with one path rooted in a temporary directory."""
+    """Yield a service context whose host-owned paths share one temporary root."""
 
     with tempfile.TemporaryDirectory() as directory:
         context = platform_context(windows=windows)
+        context.user_home = directory
         setattr(context, attribute, directory)
         yield context
 

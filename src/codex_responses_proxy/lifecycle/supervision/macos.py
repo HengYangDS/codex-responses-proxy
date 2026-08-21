@@ -70,7 +70,7 @@ def _native_tool(name: str) -> str:
 def _plist_path(ctx: runtime_spec.NativeServiceContext) -> str:
     """Return the launch-agent carrier owned by this service identity."""
 
-    return str(Path(config.home_dir(), "Library", "LaunchAgents", f"{ctx.service_id}.plist"))
+    return str(Path(ctx.user_home, "Library", "LaunchAgents", f"{ctx.service_id}.plist"))
 
 
 def _domain_target() -> str:
@@ -118,7 +118,7 @@ def render_plist(ctx: runtime_spec.NativeServiceContext) -> str:
         "ThrottleInterval": 5,
         "StandardOutPath": "/dev/null",
         "StandardErrorPath": config.path_join(ctx.log_dir, "watchdog.stderr.log"),
-        "EnvironmentVariables": {"HOME": config.home_dir()},
+        "EnvironmentVariables": {"HOME": ctx.user_home},
     }
     return plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=False).decode()
 

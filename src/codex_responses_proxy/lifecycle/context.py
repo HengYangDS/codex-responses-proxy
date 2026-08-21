@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import command
@@ -39,6 +39,7 @@ class RuntimeContext:
     executable: str
     command: str
     log_dir: str
+    user_home: str = field(default_factory=config.home_dir)
     port: int = config.DEFAULT_PORT
     proxy_log_max_bytes: int = config.DEFAULT_PROXY_LOG_MAX_BYTES
     proxy_log_backup_count: int = config.DEFAULT_PROXY_LOG_BACKUP_COUNT
@@ -87,6 +88,7 @@ def create(
 
     install_dir = config.data_dir()
     return RuntimeContext(
+        user_home=config.home_dir(),
         install_dir=install_dir,
         executable=executable
         or inventory.installed_executable(install_dir, windows=config.os.name == "nt"),

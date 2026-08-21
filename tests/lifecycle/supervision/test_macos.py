@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import plistlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -53,6 +54,24 @@ class TestMacosLifecycle:
             errors.InstallError, match="native macOS tool is unavailable: launchctl"
         ):
             macos._native_tool("launchctl")
+
+    def test_service_carrier_uses_the_context_user_home(self, tmp_path, *, mocker) -> None:
+        owned_home = tmp_path / "owned-home"
+        ambient_home = tmp_path / "ambient-home"
+        context = SimpleNamespace(
+            executable="/payload/bin/codex-responses-proxy",
+            install_dir="/payload",
+            log_dir="/state",
+            service_id="codex-responses-proxy.watchdog.fixture",
+            user_home=str(owned_home),
+        )
+        mocker.patch.object(macos.config, "home_dir", return_value=str(ambient_home))
+
+        assert macos._plist_path(context) == str(
+            owned_home / "Library" / "LaunchAgents" / "codex-responses-proxy.watchdog.fixture.plist"
+        )
+        payload = plistlib.loads(macos.render_plist(context).encode())
+        assert payload["EnvironmentVariables"] == {"HOME": str(owned_home)}
 
     def test_install_rejects_unproved_predecessor_removal(self, *, mocker) -> None:
         with _temporary_context("log_dir") as ctx:

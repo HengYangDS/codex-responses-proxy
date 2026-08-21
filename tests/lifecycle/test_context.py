@@ -62,6 +62,7 @@ class TestRuntimeContext:
         assert projected.install_dir == "/portable/payload"
         assert projected.executable == "/portable/bin/codex-responses-proxy"
         assert projected.log_dir == "/portable/state"
+        assert projected.user_home == "/portable/home"
         assert projected.port == 8808
 
     def test_runtime_spec_derives_process_settings_from_one_contract(self, tmp_path):
@@ -142,6 +143,7 @@ class TestRuntimeContext:
         assert service.install_dir == str(install_dir)
         assert service.executable == str(executable)
         assert service.log_dir == str(tmp_path / "state")
+        assert service.user_home == config.home_dir()
         assert "service_definition" not in service.__dataclass_fields__
 
     def test_runtime_spec_rejects_schema_location_and_setting_drift(self, tmp_path, subtests):
