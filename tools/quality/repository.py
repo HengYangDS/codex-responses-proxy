@@ -17,6 +17,7 @@ from typing import Any
 
 from cyclopts import App
 
+from tools.ci.project import reconcile as reconcile_ci_projections
 from tools.quality.architecture import architecture_gaps
 from tools.quality.commits import commit_subject_gaps
 from tools.quality.decision_records import decision_record_gaps
@@ -320,6 +321,7 @@ def audit() -> dict[str, object]:
             matches = ROOT.glob(value) if any(char in value for char in "*?[") else (ROOT / value,)
             if not any(path.exists() for path in matches):
                 policy_errors.append(f"quality_policy_missing_path:{key}:{value}")
+    projection_drift = reconcile_ci_projections(write=False)
     all_gaps = sorted(
         [
             *policy_errors,
@@ -329,6 +331,7 @@ def audit() -> dict[str, object]:
             *commit_subject_gaps(ROOT),
             *decision_record_gaps(ROOT),
             *semantic_name_gaps(ROOT),
+            *(["projection drift: " + ", ".join(projection_drift)] if projection_drift else []),
         ]
     )
     return {

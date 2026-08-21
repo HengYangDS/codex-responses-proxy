@@ -1,29 +1,29 @@
 name: Verify
-
-on:
+"on":
   pull_request:
-    branches: [dev]
+    branches:
+      - dev
+      - main
   push:
-    branches: [dev, main]
-    tags: ["v*"]
-
+    branches:
+      - dev
+      - main
+    tags:
+      - v*
 permissions:
   contents: read
-
 env:
   CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
   GIT_CONFIG_COUNT: "1"
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
-
 concurrency:
   group: verify-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   python-matrix:
     name: Resolve supported Python versions
-    if: github.event_name == 'pull_request' || github.ref_type == 'tag'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -33,17 +33,45 @@ jobs:
       release: ${{ steps.versions.outputs.release }}
       linux-release-image: ${{ steps.versions.outputs.linux-release-image }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - name: Install the locked matrix tool environment
         run: uv sync --locked --all-groups
       - name: Read the repository Python matrix
         id: versions
         run: uv run --locked --no-sync python -m tools.quality.python_matrix
-
+  source-and-governance:
+    name: Source and governance
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version-file: .python-release
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
+        with:
+          install: true
+          cache: true
+          tool_config: mise.toml
+      - name: Confirm source identity and repository governance
+        run: |-
+          uv sync --locked --all-groups
+          mise exec --locked -- cue vet .config/ci/pipeline.cue
+          mise exec --locked -- openspec validate --all --strict --no-interactive
+          mise exec --locked -- actionlint .github/workflows/*.yml
+          mise exec --locked -- gitleaks git --redact --no-banner .
+          uv run --locked --no-sync python tools/release/metadata.py
+          uv run --locked --no-sync python -m tools.quality.repository
   python:
     name: Python ${{ matrix.python-version }}
-    if: github.event_name == 'pull_request'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
     needs: python-matrix
     runs-on: macos-26
     timeout-minutes: 15
@@ -52,23 +80,22 @@ jobs:
       matrix:
         python-version: ${{ fromJSON(needs.python-matrix.outputs.versions) }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ matrix.python-version }}
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
           cache-suffix: ${{ matrix.python-version }}
       - name: Compile and test
         run: uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"
-
   python-windows:
     name: Python ${{ matrix.python-version }} (Windows)
-    if: github.event_name == 'pull_request'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
     needs: python-matrix
     runs-on: windows-2025
     timeout-minutes: 15
@@ -77,40 +104,60 @@ jobs:
       matrix:
         python-version: ${{ fromJSON(needs.python-matrix.outputs.versions) }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ matrix.python-version }}
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
         with:
           cache-suffix: ${{ matrix.python-version }}
       - name: Compile and test
         run: uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"
-
   accepted-source:
     name: Accepted source
     if: github.event_name == 'push' && github.ref_type == 'branch'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           fetch-tags: true
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version-file: .python-release
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - name: Confirm accepted source and metadata
         run: |
           uv sync --locked --all-groups
           uv run --locked --no-sync python tools/release/metadata.py
           uv run --locked --no-sync python -m tools.quality.repository
-
+  promotion:
+    name: Promote dev to main
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version-file: .python-release
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - name: Prove exact dev-to-main promotion
+        run: |-
+          git fetch origin main dev --tags --force --prune --prune-tags
+          git merge-base --is-ancestor origin/main "${{ github.event.pull_request.head.sha }}"
+          uv sync --locked --all-groups
+          uv run --locked --no-sync python tools/release/metadata.py
+          uv run --locked --no-sync python -m tools.quality.repository
   tag-metadata:
     name: Tag metadata and governance
     if: github.ref_type == 'tag'
@@ -118,14 +165,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           fetch-tags: true
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ needs.python-matrix.outputs.latest }}
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - name: Install the complete locked tool environment
         run: uv sync --locked --all-groups
       - name: Fetch the exact annotated tag object
@@ -134,29 +181,27 @@ jobs:
         run: uv run --locked --no-sync python tools/release/metadata.py --tag "$GITHUB_REF_NAME"
       - name: Verify repository governance
         run: uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/test_publish_gitlab.py
-
   python-quality:
     name: Python quality
-    if: github.event_name == 'pull_request'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
     needs: python-matrix
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ needs.python-matrix.outputs.floor }}
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - name: Verify lint, format, types, structure, docstrings, and product branch coverage
         run: uv run --locked --group quality nox -s quality
-
   native-assets:
     name: Native asset (${{ matrix.platform }})
-    if: github.event_name == 'pull_request' || github.ref_type == 'tag'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.ref_type == 'tag'
     needs: python-matrix
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
@@ -169,63 +214,66 @@ jobs:
           - platform: windows-x86_64
             runner: windows-2025
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           fetch-tags: true
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ needs.python-matrix.outputs.release }}
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - name: Install the locked release tool environment
         run: uv sync --locked --only-group quality
       - name: Build and accept the native release asset
         run: uv run --locked --no-sync nox -s release -- "${{ runner.temp }}/native-assets"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: native-${{ matrix.platform }}
           path: ${{ runner.temp }}/native-assets
           if-no-files-found: error
           retention-days: 7
-
   native-linux:
     name: Native asset (linux-x86_64)
-    if: github.event_name == 'pull_request' || github.ref_type == 'tag'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.ref_type == 'tag'
     needs: python-matrix
     runs-on: ubuntu-24.04
     container: ${{ needs.python-matrix.outputs.linux-release-image }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           fetch-tags: true
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - name: Materialize the canonical release source root
         run: install -d /workspace && git -c safe.directory="$GITHUB_WORKSPACE" archive --format=tar HEAD | tar -xf - -C /workspace
       - name: Install the locked release tool environment
         run: cd /workspace && uv sync --locked --only-group quality --python python --no-python-downloads
       - name: Build and accept the native release asset
         run: cd /workspace && uv run --locked --no-sync --python python --no-python-downloads nox -s release -- "$GITHUB_WORKSPACE/.release-assets/linux-x86_64"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: native-linux-x86_64
           path: ${{ github.workspace }}/.release-assets/linux-x86_64
           if-no-files-found: error
           retention-days: 7
-
   release-assets:
     name: Release assets
     if: github.ref_type == 'tag'
-    needs: [python-matrix, native-assets, native-linux]
+    needs:
+      - python-matrix
+      - native-assets
+      - native-linux
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ needs.python-matrix.outputs.latest }}
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - name: Download native release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -243,7 +291,7 @@ jobs:
           RELEASE_ASSET_SIGNING_KEY_PATH: ${{ runner.temp }}/release-asset-signing-key
           RELEASE_ASSET_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}
         run: uv run --locked --no-sync python -m tools.release.assemble_assets --input "$RUNNER_TEMP/native/native-linux-x86_64" --input "$RUNNER_TEMP/native/native-macos-arm64" --input "$RUNNER_TEMP/native/native-windows-x86_64" --output "$RUNNER_TEMP/release-assets" --sign
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-assets
           path: ${{ runner.temp }}/release-assets

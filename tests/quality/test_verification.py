@@ -9,7 +9,6 @@ import re
 import subprocess
 import sys
 import tempfile
-import textwrap
 import tomllib
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -18,9 +17,18 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+import yaml
 from pytest_mock import MockerFixture
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    """Load a workflow as semantic data rather than presentation text."""
+
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+    return data
 
 
 def _required_uv_version() -> str:
@@ -54,8 +62,7 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     }
     result = subprocess.run(
         ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
         env=environment,
     )
@@ -157,9 +164,20 @@ class TestVerificationContracts:
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         uv_version = requirement.removeprefix("==")
         assert gitlab.count(f"ghcr.io/astral-sh/uv:{uv_version}-python") == 2
-        assert gitlab.count('["tool"]["uv"]["required-version"]') == 1
-        assert gitlab.count("&assert-uv-version") == 1
-        assert gitlab.count("*assert-uv-version") == 4
+        pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
+        job_scripts = {
+            job: tuple(value.get("before_script", ()))
+            for job, value in pipeline.items()
+            if isinstance(value, dict) and "before_script" in value
+        }
+        assert job_scripts
+        for job, scripts in job_scripts.items():
+            metadata_checks = sum('["tool"]["uv"]["required-version"]' in item for item in scripts)
+            if job == "source-and-governance":
+                assert metadata_checks == 0
+                assert scripts[0] == "mise install --locked"
+                continue
+            assert metadata_checks == 1
         assert 'UV_VERSION="${UV_VERSION#uv }"' in gitlab
         assert 'ACTUAL_UV_VERSION="${UV_VERSION%% *}"' in gitlab
         assert 'EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"' in gitlab
@@ -179,9 +197,11 @@ class TestVerificationContracts:
     def test_gitlab_uv_contract_uses_the_machine_version_token(
         self, tmp_path: Path, reported_version: str, expected_returncode: int
     ) -> None:
-        gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-        script = textwrap.dedent(
-            gitlab.split("- &assert-uv-version |\n", 1)[1].split("\n\nverify-python-matrix:", 1)[0]
+        pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
+        script = next(
+            item
+            for item in pipeline["verify-python"]["before_script"]
+            if '["tool"]["uv"]["required-version"]' in item
         )
         executable = tmp_path / "uv"
         executable.write_text(f"#!/bin/sh\nprintf '%s\\n' '{reported_version}'\n")
@@ -478,13 +498,15 @@ class TestVerificationContracts:
         assert "needs.python-matrix.outputs.latest" in github
         assert "needs.python-matrix.outputs.release" in github
         assert "python-version-file: .python-release" in release
-        default = gitlab.split("\ndefault:", 1)[1].split("\nverify-python-matrix:", 1)[0]
-        assert "name: $UV_PYTHON_LATEST_IMAGE" in default
-        assert "docker: { platform: linux/amd64 }" in default
-        assert gitlab.count("name: $UV_PYTHON_LATEST_IMAGE") == 1
-        quality = gitlab.split("\nverify-python-quality:", 1)[1]
-        assert "name: $UV_PYTHON_FLOOR_IMAGE" in quality
-        assert "docker: { platform: linux/amd64 }" in quality
+        pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
+        assert pipeline["default"]["image"] == {
+            "name": "$UV_PYTHON_LATEST_IMAGE",
+            "docker": {"platform": "linux/amd64"},
+        }
+        assert pipeline["verify-python-quality"]["image"] == {
+            "name": "$UV_PYTHON_FLOOR_IMAGE",
+            "docker": {"platform": "linux/amd64"},
+        }
         assert "LINUX_RELEASE_IMAGE" not in gitlab
 
     def test_release_black_box_path_is_repeatable(self) -> None:

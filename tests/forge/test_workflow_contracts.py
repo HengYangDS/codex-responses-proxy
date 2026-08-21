@@ -12,6 +12,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 GITLAB_LOCKED_PYTHON = "uv run --locked --no-sync --python python --no-python-downloads"
+CI_MODEL = ROOT / ".config" / "ci" / "pipeline.cue"
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -36,53 +37,125 @@ def _mapping(value: object) -> Mapping[str, Any]:
     return cast(Mapping[str, Any], value)
 
 
+def test_forge_workflows_are_generated_from_one_declarative_graph() -> None:
+    """Keep Forge syntax as projections, never independent topology owners."""
+
+    model = CI_MODEL.read_text(encoding="utf-8")
+    assert '"python": ["3.12", "3.13", "3.14"]' in model
+    assert "gitlab: windows: false" in model
+    assert "github: windows: true" in model
+    assert '"source-and-governance"' in model
+    assert '"python-quality"' in model
+    assert '"python-tests"' in model
+    assert '"native-release"' in model
+
+    repository = (ROOT / "tools" / "quality" / "repository.py").read_text(encoding="utf-8")
+    projector = (ROOT / "tools" / "ci" / "project.py").read_text(encoding="utf-8")
+    assert "reconcile_ci_projections" in repository
+    assert "projection drift" in repository
+    assert 'MODEL = ROOT / ".config/ci/pipeline.cue"' in projector
+
+
 def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
-    """Execute each expensive proof once in the lifecycle context that owns it."""
+    """Project the same lifecycle contexts without duplicate proposal pipelines."""
 
     github = _load_yaml(ROOT / ".github/workflows/verify.yml")
     github_triggers = github["on"]
     assert github_triggers == {
-        "pull_request": {"branches": ["dev"]},
+        "pull_request": {"branches": ["dev", "main"]},
         "push": {"branches": ["dev", "main"], "tags": ["v*"]},
     }
     github_jobs = _mapping(github["jobs"])
-    assert github_jobs["python-matrix"]["if"] == (
-        "github.event_name == 'pull_request' || github.ref_type == 'tag'"
+    product_proof = (
+        "(github.event_name == 'pull_request' && github.base_ref == 'dev') || "
+        "(github.event_name == 'push' && github.ref == 'refs/heads/dev')"
     )
-    for job_id in ("python", "python-windows", "python-quality"):
-        assert _mapping(github_jobs[job_id])["if"] == "github.event_name == 'pull_request'"
+    for job_id in (
+        "source-and-governance",
+        "python",
+        "python-windows",
+        "python-quality",
+    ):
+        assert _mapping(github_jobs[job_id])["if"] == product_proof
+    native_proof = product_proof + " || github.ref_type == 'tag'"
+    for job_id in ("native-assets", "native-linux"):
+        assert _mapping(github_jobs[job_id])["if"] == native_proof
+    product_sha = "${{ github.event.pull_request.head.sha || github.sha }}"
+    for job_id in (
+        "source-and-governance",
+        "python",
+        "python-windows",
+        "python-quality",
+        "native-assets",
+        "native-linux",
+    ):
+        checkout = next(
+            _mapping(step)
+            for step in _mapping(github_jobs[job_id])["steps"]
+            if str(_mapping(step).get("uses", "")).startswith("actions/checkout@")
+        )
+        assert _mapping(checkout["with"])["ref"] == product_sha
     assert _mapping(github_jobs["accepted-source"])["if"] == (
         "github.event_name == 'push' && github.ref_type == 'branch'"
     )
+    assert _mapping(github_jobs["promotion"])["if"] == (
+        "github.event_name == 'pull_request' && github.base_ref == 'main' && "
+        "github.head_ref == 'dev'"
+    )
     assert _mapping(github_jobs["tag-metadata"])["if"] == "github.ref_type == 'tag'"
-    for job_id in ("native-assets", "native-linux"):
-        assert _mapping(github_jobs[job_id])["if"] == (
-            "github.event_name == 'pull_request' || github.ref_type == 'tag'"
-        )
-    for job_id in ("release-assets",):
-        assert _mapping(github_jobs[job_id])["if"] == "github.ref_type == 'tag'"
 
-    head = "${{ github.event.pull_request.head.sha }}"
-    for job_id in ("python", "python-windows", "python-quality"):
-        steps = _mapping(github_jobs[job_id])["steps"]
-        checkout = next(step for step in steps if "uses" in step)
-        assert _mapping(checkout["with"])["ref"] == head
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    rules = _mapping(gitlab["workflow"])["rules"]
+    assert {"if": '$CI_PIPELINE_SOURCE == "merge_request_event"'} in rules
+    assert {"if": '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"'} in rules
+    assert {
+        "if": "$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS",
+        "when": "never",
+    } in rules
+    for job_id in ("verify-python", "verify-python-quality"):
+        job = _mapping(gitlab[job_id])
+        assert job["rules"] == [
+            {
+                "if": '$CI_PIPELINE_SOURCE == "merge_request_event" && '
+                '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
+            },
+            {"if": '$CI_COMMIT_BRANCH == "dev"'},
+        ]
+    python = _mapping(gitlab["verify-python"])
+    matrix = _mapping(_mapping(python["parallel"])["matrix"][0])
+    assert matrix["PYTHON_VERSION"] == ["3.12", "3.13", "3.14"]
+    assert "nox -s full" not in "\n".join(python["script"])
+    assert any('nox -s "tests-$PYTHON_VERSION"' in command for command in python["script"])
+    assert "verify-accepted-source" in gitlab
+    promotion = _mapping(gitlab["verify-promotion"])
+    assert promotion["rules"] == [
+        {
+            "if": '$CI_PIPELINE_SOURCE == "merge_request_event" && '
+            '$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == "dev" && '
+            '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
+        }
+    ]
+    assert "verify-release-tag" in gitlab
 
-    gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    assert '$CI_PIPELINE_SOURCE == "merge_request_event"' in gitlab
-    assert '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"' in gitlab
-    assert "$CI_COMMIT_TAG" in gitlab
-    assert "$CI_OPEN_MERGE_REQUESTS" in gitlab
-    assert "when: never" in gitlab
-    for job in ("verify-python-matrix", "verify-python-quality"):
-        block = gitlab.split(f"\n{job}:", 1)[1].split("\n\n", 1)[0]
-        assert '$CI_PIPELINE_SOURCE == "merge_request_event"' in block
-    accepted = gitlab.split("\nverify-accepted-source:", 1)[1].split("\n\n", 1)[0]
-    assert '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"' in accepted
-    tag_block = gitlab.split("\nverify-release-tag:", 1)[1].split("\n\n", 1)[0]
-    assert "$CI_COMMIT_TAG" in tag_block
-    assert "build-gitlab-native-asset:" not in gitlab
-    assert "publish-gitlab-release:" not in gitlab
+
+def test_proposal_updates_and_direct_maintainer_admission_keep_complete_proof() -> None:
+    """Require new review heads and proof-less direct dev pushes to be verified."""
+
+    model = CI_MODEL.read_text(encoding="utf-8")
+    for context in (
+        "proposal-review",
+        "dev-admission",
+        "main-promotion",
+        "main-admission",
+        "release-tag",
+    ):
+        assert f'"{context}"' in model
+    for coordinate in ("head_sha", "base_sha", "graph_digest", "capabilities"):
+        assert coordinate in model
+    assert "synchronize" in model
+    assert "missing_product_proof" in model
+    assert "expected_old_sha" in model
+    assert "exact_new_sha" in model
 
 
 def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> None:
@@ -187,24 +260,55 @@ def test_single_bundle_is_built_once_and_forges_only_project_it() -> None:
 def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     """Start verification from immutable UV/Python executors, not pip bootstrap."""
 
-    gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    default = gitlab.split("\ndefault:", 1)[1].split("\nverify-python-matrix:", 1)[0]
-    quality = gitlab.split("\nverify-python-quality:", 1)[1]
+    text = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    default = _mapping(gitlab["default"])
+    default_image = _mapping(default["image"])
+    quality = _mapping(gitlab["verify-python-quality"])
 
-    assert "name: $UV_PYTHON_LATEST_IMAGE" in default
-    assert "docker: { platform: linux/amd64 }" in default
-    assert "UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv" in gitlab
-    assert "UV_PYTHON_INSTALL_DIR: $CI_PROJECT_DIR/.cache/uv/python" in gitlab
-    assert "CODEX_RESPONSES_PROXY_CI_TARGET: linux-amd64" in gitlab
-    assert "key: uv-$CODEX_RESPONSES_PROXY_CI_TARGET" in default
-    assert "paths: [.cache/uv/]" in default
-    assert "name: $UV_PYTHON_FLOOR_IMAGE" in quality
-    assert "docker: { platform: linux/amd64 }" in quality
-    assert gitlab.count("&assert-uv-version") == 1
-    assert gitlab.count("*assert-uv-version") == 4
-    assert "python -m pip install" not in gitlab
-    assert "uv sync --locked --group quality --no-install-project" in gitlab
-    assert "uv python install --no-bin $(tr '\\n' ' ' < .python-versions)" in gitlab
+    assert default_image == {
+        "name": "$UV_PYTHON_LATEST_IMAGE",
+        "docker": {"platform": "linux/amd64"},
+    }
+    variables = _mapping(gitlab["variables"])
+    assert variables["UV_CACHE_DIR"] == "$CI_PROJECT_DIR/.cache/uv"
+    assert variables["UV_PYTHON_INSTALL_DIR"] == "$CI_PROJECT_DIR/.cache/uv/python"
+    assert variables["CODEX_RESPONSES_PROXY_CI_TARGET"] == "linux-amd64"
+    assert _mapping(default["cache"])["key"] == "uv-$CODEX_RESPONSES_PROXY_CI_TARGET"
+    assert _mapping(default["cache"])["paths"] == [".cache/uv/"]
+    assert _mapping(quality["image"]) == {
+        "name": "$UV_PYTHON_FLOOR_IMAGE",
+        "docker": {"platform": "linux/amd64"},
+    }
+    assert "python -m pip install" not in text
+    assert "uv sync --locked --group quality --no-install-project" in text
+    python = _mapping(gitlab["verify-python"])
+    assert "uv python install --no-bin $PYTHON_VERSION" in python["before_script"]
+
+
+def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
+    """Run source policy from the immutable mise image and repository lock."""
+
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    source = _mapping(gitlab["source-and-governance"])
+
+    assert _mapping(source["image"]) == {
+        "name": (
+            "ghcr.io/jdx/mise@sha256:"
+            "f2d637d5e5189f7ec177b73bce5cd5db7e7b17a4f466f887c1b88ac2dd431129"
+        ),
+        "entrypoint": [""],
+    }
+    assert source["before_script"] == [
+        "mise install --locked",
+        "git fetch --tags --force --prune --prune-tags origin",
+        (
+            "mise exec --locked -- uv sync --locked --group quality "
+            "--no-install-project --python python --no-python-downloads"
+        ),
+    ]
+    assert all(command.startswith("mise exec --locked -- ") for command in source["script"])
+    assert _mapping(source["variables"])["MISE_ENABLE_TOOLS"].startswith("python,uv,")
 
 
 def _assert_github_required_tokens(text: str) -> None:
@@ -212,9 +316,6 @@ def _assert_github_required_tokens(text: str) -> None:
         "name: Verify",
         "pull_request:",
         "push:",
-        "branches: [dev]",
-        "branches: [dev, main]",
-        'tags: ["v*"]',
         "permissions:\n  contents: read",
         'GIT_CONFIG_COUNT: "1"',
         "GIT_CONFIG_KEY_0: init.defaultBranch",
@@ -228,7 +329,6 @@ def _assert_github_required_tokens(text: str) -> None:
         "python-windows:",
         "windows-2025",
         "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
-        "# v7.0.0",
         "fetch-tags: true",
         "if: github.ref_type == 'tag'",
         "python -m tools.release.publish_github prepare-checkout",
@@ -248,10 +348,8 @@ def _assert_github_required_tokens(text: str) -> None:
         "container: ${{ needs.python-matrix.outputs.linux-release-image }}",
         'uv run --locked --no-sync nox -s release -- "${{ runner.temp }}/native-assets"',
         "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-        "# v7.0.1",
         "release-assets:",
         "name: Release assets",
-        "needs: [python-matrix, native-assets, native-linux]",
         "python-version: ${{ needs.python-matrix.outputs.latest }}",
         "name: Download native release assets",
         "GH_TOKEN: ${{ github.token }}",
@@ -325,10 +423,23 @@ def _assert_github_platform_contract(text: str, release_text: str) -> None:
     ):
         if token not in windows_block:
             raise AssertionError(f"Windows Python matrix must contain {token!r}")
-    if text.count("actions/setup-python@") != 7:
-        raise AssertionError(
-            "host-native Python jobs must use pinned setup-python; Linux release uses its container"
-        )
+    jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
+    host_native_jobs = (
+        "source-and-governance",
+        "python",
+        "python-windows",
+        "accepted-source",
+        "promotion",
+        "tag-metadata",
+        "python-quality",
+        "native-assets",
+        "release-assets",
+    )
+    for job_id in host_native_jobs:
+        steps = _mapping(jobs[job_id])["steps"]
+        assert any(
+            _mapping(step).get("uses", "").startswith("actions/setup-python@") for step in steps
+        ), f"{job_id} must use pinned setup-python"
     if windows_block.count("actions/setup-python@") != 1:
         raise AssertionError("Windows verification must use exactly one pinned setup-python action")
     if (
@@ -406,6 +517,11 @@ def _assert_github_native_and_forbidden_contract(text: str, release_text: str) -
 
 
 def test_github_verification_workflow_contract() -> None:
+    workflow = _load_yaml(ROOT / ".github/workflows/verify.yml")
+    assert workflow["on"] == {
+        "pull_request": {"branches": ["dev", "main"]},
+        "push": {"branches": ["dev", "main"], "tags": ["v*"]},
+    }
     text = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
     release_text = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     _assert_github_required_tokens(text)

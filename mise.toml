@@ -1,0 +1,14 @@
+min_version = "2026.8.10"
+
+[settings]
+idiomatic_version_file_enable_tools = []
+locked = true
+
+[tools]
+cue = "0.17.1"
+python = "3.14.7"
+uv = "0.12.5"
+"npm:@fission-ai/openspec" = "1.10.0"
+"github:gitleaks/gitleaks" = "8.30.1"
+"github:lycheeverse/lychee" = "lychee-v0.24.2"
+"github:rhysd/actionlint" = "1.7.12"

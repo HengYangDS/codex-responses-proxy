@@ -1,15 +1,13 @@
 workflow:
   rules:
-    - if: '$CI_COMMIT_TAG'
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"'
-    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
-
 stages:
   - verify
   - release
-
 variables:
   DEBIAN_FRONTEND: noninteractive
   CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
@@ -18,103 +16,178 @@ variables:
   UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
   UV_PYTHON_INSTALL_DIR: $CI_PROJECT_DIR/.cache/uv/python
   CODEX_RESPONSES_PROXY_CI_TARGET: linux-amd64
-
 default:
   image:
     name: $UV_PYTHON_LATEST_IMAGE
-    docker: { platform: linux/amd64 }
-  tags: [$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG]
+    docker:
+      platform: linux/amd64
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   cache:
     key: uv-$CODEX_RESPONSES_PROXY_CI_TARGET
-    paths: [.cache/uv/]
-
-.uv-runtime-contract:
+    paths:
+      - .cache/uv/
+source-and-governance:
+  stage: verify
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+    - if: $CI_COMMIT_BRANCH == "dev"
+  image:
+    name: ghcr.io/jdx/mise@sha256:f2d637d5e5189f7ec177b73bce5cd5db7e7b17a4f466f887c1b88ac2dd431129
+    entrypoint:
+      - ""
+  variables:
+    GIT_DEPTH: "0"
+    MISE_ENABLE_TOOLS: python,uv,cue,npm:@fission-ai/openspec,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee
   before_script:
-    - &assert-uv-version |
+    - mise install --locked
+    - git fetch --tags --force --prune --prune-tags origin
+    - mise exec --locked -- uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+  script:
+    - mise exec --locked -- cue vet .config/ci/pipeline.cue
+    - mise exec --locked -- openspec validate --all --strict --no-interactive
+    - mise exec --locked -- actionlint .github/workflows/*.yml
+    - mise exec --locked -- gitleaks git --redact --no-banner .
+    - mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py
+    - mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
+verify-python:
+  stage: verify
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+    - if: $CI_COMMIT_BRANCH == "dev"
+  parallel:
+    matrix:
+      - PYTHON_VERSION:
+          - "3.12"
+          - "3.13"
+          - "3.14"
+  variables:
+    GIT_DEPTH: "0"
+  before_script:
+    - |-
       UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
       UV_VERSION="$(uv --version)"
       UV_VERSION="${UV_VERSION#uv }"
       ACTUAL_UV_VERSION="${UV_VERSION%% *}"
       EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"
       if [ "$ACTUAL_UV_VERSION" != "$EXPECTED_UV_VERSION" ]; then
-        printf 'uv version mismatch: expected %s, actual %s\n' "$EXPECTED_UV_VERSION" "$ACTUAL_UV_VERSION" >&2
+        printf 'uv version mismatch: expected %s, actual %s
+      ' "$EXPECTED_UV_VERSION" "$ACTUAL_UV_VERSION" >&2
         exit 1
       fi
-
-verify-python-matrix:
-  stage: verify
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-  variables:
-    # The canonical test inventory includes release chronology contracts.
-    # Every matrix interpreter therefore needs the same complete Git history.
-    GIT_DEPTH: "0"
-  before_script:
-    - *assert-uv-version
     - apt-get update -qq
-    # PyInstaller inspects native objects with objdump on Linux.  Keep that
-    # platform dependency explicit instead of relying on a runner image layer.
-    - apt-get install -qq -y --no-install-recommends binutils git openssh-client
-    - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
+    - apt-get install -qq -y --no-install-recommends git openssh-client
+    - apt-get install -qq -y --no-install-recommends binutils
+    - git fetch --tags --force --prune --prune-tags origin
+    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+    - uv python install --no-bin $PYTHON_VERSION
   script:
     - python --version
+    - uv run --locked --no-sync --python python --no-python-downloads nox -s "tests-$PYTHON_VERSION"
+verify-python-quality:
+  stage: verify
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+    - if: $CI_COMMIT_BRANCH == "dev"
+  image:
+    name: $UV_PYTHON_FLOOR_IMAGE
+    docker:
+      platform: linux/amd64
+  variables:
+    GIT_DEPTH: "0"
+  before_script:
+    - |-
+      UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
+      UV_VERSION="$(uv --version)"
+      UV_VERSION="${UV_VERSION#uv }"
+      ACTUAL_UV_VERSION="${UV_VERSION%% *}"
+      EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"
+      if [ "$ACTUAL_UV_VERSION" != "$EXPECTED_UV_VERSION" ]; then
+        printf 'uv version mismatch: expected %s, actual %s
+      ' "$EXPECTED_UV_VERSION" "$ACTUAL_UV_VERSION" >&2
+        exit 1
+      fi
+    - apt-get update -qq
+    - apt-get install -qq -y --no-install-recommends git openssh-client
+    - apt-get install -qq -y --no-install-recommends binutils
+    - git fetch --tags --force --prune --prune-tags origin
+  script:
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
-    - uv python install --no-bin $(tr '\n' ' ' < .python-versions)
-    - uv run --locked --no-sync --python python --no-python-downloads nox -s full
-
+    - uv run --locked --no-sync --python python --no-python-downloads nox -s quality
 verify-accepted-source:
   stage: verify
   rules:
-    - if: '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"'
+    - if: $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"
   variables:
-    # Release chronology compares the whole provider tag namespace. A shallow
-    # checkout cannot establish that history, so this job must receive it.
     GIT_DEPTH: "0"
   before_script:
-    - *assert-uv-version
+    - |-
+      UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
+      UV_VERSION="$(uv --version)"
+      UV_VERSION="${UV_VERSION#uv }"
+      ACTUAL_UV_VERSION="${UV_VERSION%% *}"
+      EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"
+      if [ "$ACTUAL_UV_VERSION" != "$EXPECTED_UV_VERSION" ]; then
+        printf 'uv version mismatch: expected %s, actual %s
+      ' "$EXPECTED_UV_VERSION" "$ACTUAL_UV_VERSION" >&2
+        exit 1
+      fi
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends git openssh-client
-    # Shared runners can retain deleted tags in a reused checkout.  Fetching
-    # with tag pruning makes the checker reason about the provider's current
-    # release namespace, not runner-local history.
     - git fetch --tags --force --prune --prune-tags origin
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
   script:
     - uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py
     - uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
-
+verify-promotion:
+  stage: verify
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == "dev" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+  variables:
+    GIT_DEPTH: "0"
+  before_script:
+    - |-
+      UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
+      UV_VERSION="$(uv --version)"
+      UV_VERSION="${UV_VERSION#uv }"
+      ACTUAL_UV_VERSION="${UV_VERSION%% *}"
+      EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"
+      if [ "$ACTUAL_UV_VERSION" != "$EXPECTED_UV_VERSION" ]; then
+        printf 'uv version mismatch: expected %s, actual %s
+      ' "$EXPECTED_UV_VERSION" "$ACTUAL_UV_VERSION" >&2
+        exit 1
+      fi
+    - apt-get update -qq
+    - apt-get install -qq -y --no-install-recommends git openssh-client
+    - git fetch origin main dev --tags --force --prune --prune-tags
+    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+  script:
+    - git merge-base --is-ancestor origin/main "$CI_COMMIT_SHA"
+    - uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py
+    - uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
 verify-release-tag:
   stage: release
-  variables: { GIT_DEPTH: "0" }
   rules:
-    - if: '$CI_COMMIT_TAG'
+    - if: $CI_COMMIT_TAG
+  variables:
+    GIT_DEPTH: "0"
   before_script:
-    - *assert-uv-version
+    - |-
+      UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
+      UV_VERSION="$(uv --version)"
+      UV_VERSION="${UV_VERSION#uv }"
+      ACTUAL_UV_VERSION="${UV_VERSION%% *}"
+      EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"
+      if [ "$ACTUAL_UV_VERSION" != "$EXPECTED_UV_VERSION" ]; then
+        printf 'uv version mismatch: expected %s, actual %s
+      ' "$EXPECTED_UV_VERSION" "$ACTUAL_UV_VERSION" >&2
+        exit 1
+      fi
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends git openssh-client
     - git fetch --tags --force --prune --prune-tags origin
-    - test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+    - test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"
   script:
     - uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --tag "$CI_COMMIT_TAG"
     - uv run --locked --no-sync --python python --no-python-downloads python -m tools.forge.tag_signature . "$CI_COMMIT_TAG" "$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST"
-
-verify-python-quality:
-  stage: verify
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-  image:
-    name: $UV_PYTHON_FLOOR_IMAGE
-    docker: { platform: linux/amd64 }
-  variables:
-    # The canonical quality suite also executes release chronology tests.
-    # Keep this checkout equivalent to every other full-suite job.
-    GIT_DEPTH: "0"
-  before_script:
-    - *assert-uv-version
-    - apt-get update -qq
-    - apt-get install -qq -y --no-install-recommends binutils git openssh-client
-    - if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow --tags --force origin; else git fetch --tags --force origin; fi
-  script:
-    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
-    - uv run --locked --no-sync --python python --no-python-downloads nox -s quality

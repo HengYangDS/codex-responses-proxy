@@ -1,43 +1,37 @@
 name: Release
-
-on:
+"on":
   workflow_run:
-    workflows: [Verify]
-    types: [completed]
-
+    workflows:
+      - Verify
+    types:
+      - completed
 permissions:
   contents: write
   actions: read
-
 env:
   CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
   GIT_CONFIG_COUNT: "1"
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
-
 concurrency:
   group: release-${{ github.repository }}-${{ github.event.workflow_run.id }}
   cancel-in-progress: false
-
 jobs:
   verify-and-publish:
     name: Verify tag and publish record
-    if: >-
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      startsWith(github.event.workflow_run.head_branch, 'v')
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version-file: .python-release
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
       - name: Install the complete locked tool environment
         run: uv sync --locked --all-groups
       - name: Download the exact pre-signed release bundle

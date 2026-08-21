@@ -1,0 +1,39 @@
+schema_version = 1
+id = "change:ci-proof-topology-convergence"
+intent = "Project one provider-neutral proof topology into independent GitHub and GitLab workflows."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  ".config/ci/**",
+  ".github/workflows/**",
+  ".gitlab-ci.yml",
+  "mise.toml",
+  "mise.lock",
+  "openspec/changes/ci-proof-topology-convergence/**",
+  "tests/forge/test_workflow_contracts.py",
+  "tests/quality/test_verification.py",
+  "tools/ci/**",
+  "tools/quality/repository.py",
+]
+invariants = [
+  "one_semantic_graph_owns_both_forge_projections",
+  "github_and_gitlab_prove_the_same_product_commit_independently",
+  "repository_locked_tools_are_the_only_ci_toolchain_authority",
+]
+acceptance = [
+  "cue_exports_reproduce_all_tracked_forge_workflows",
+  "source_quality_python_and_native_proofs_remain_separate_capabilities",
+  "developer_and_maintainer_admission_paths_bind_exact_product_coordinates",
+]
+risks = [
+  "generated_workflows_diverge_from_the_semantic_graph",
+  "forge_specific_capability_limits_are_mistaken_for_product_limits",
+]
+authority_refs = [
+  "AGENTS.md",
+  "docs/governance/release-and-change-policy.md",
+  "docs/operations/forge-operations.md",
+]
+hypotheses = [
+  "one_small_declarative_owner_removes_forge_topology_drift",
+]
+dependencies = []
