@@ -15,6 +15,7 @@ from tools.ci.project import reconcile
 ROOT = Path(__file__).resolve().parents[2]
 GITLAB_LOCKED_PYTHON = "uv run --locked --no-sync --python python --no-python-downloads"
 CI_MODEL = ROOT / ".config" / "ci" / "pipeline.cue"
+pytestmark = pytest.mark.repository_toolchain
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:

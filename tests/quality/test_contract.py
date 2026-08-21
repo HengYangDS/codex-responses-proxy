@@ -102,6 +102,7 @@ def _audit_source(source_text: str, **overrides: Any):
 class TestQualityPolicyContracts:
     """Keep the repository quality scope executable rather than documentary."""
 
+    @pytest.mark.repository_toolchain
     def test_current_repository_policy_is_internally_consistent(self) -> None:
         report = _checker().audit()
         assert report["policy_errors"] == []

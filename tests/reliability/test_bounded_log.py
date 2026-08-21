@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from codex_responses_proxy.runtime import bounded_log
+from tests.lifecycle.fixtures import assert_private_log_mode
 
 
 class BoundedLogTests:
@@ -29,7 +30,7 @@ class BoundedLogTests:
         assert "log_retention_discarded_oversized_bytes=32" in text
         assert "[truncated]" in text
         assert mirrored == [text]
-        assert path.stat().st_mode & 0o777 == 0o600
+        assert_private_log_mode(self, path.stat().st_mode & 0o777)
 
     def test_rotate_rejects_non_files_and_removes_oversized_backups(self, tmp_path: Path) -> None:
         path = tmp_path / "runtime.log"

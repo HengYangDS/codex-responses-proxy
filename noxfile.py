@@ -90,7 +90,7 @@ def tests(session: nox.Session) -> None:
         "-m",
         "pytest",
         "-m",
-        "not native_distribution",
+        "not native_distribution and not repository_toolchain",
         env=environment,
     )
 
@@ -152,7 +152,7 @@ def quality(session: nox.Session) -> None:
         "-m",
         "pytest",
         "-m",
-        "not native_distribution",
+        "not native_distribution and not repository_toolchain",
         env=environment,
     )
     session.run("coverage", "report", "--rcfile", str(COVERAGE_CONFIG), env=environment)

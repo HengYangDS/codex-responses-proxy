@@ -314,7 +314,7 @@ class TestVerificationContracts:
         assert 'f"--rootdir={ROOT}"' not in source
         assert '"compileall",' in tests_source
         for owner_source in (tests_source, quality_source):
-            assert '"not native_distribution"' in owner_source
+            assert '"not native_distribution and not repository_toolchain"' in owner_source
         assert (
             '"CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session))'
             in tests_source
