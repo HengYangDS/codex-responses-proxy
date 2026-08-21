@@ -105,13 +105,16 @@ class Response:
     """Minimal context-managed JSON response fixture."""
 
     def __init__(self, payload, *, status: int = 202):
+        """Initialize a context-managed JSON response fixture."""
         self.status = status
         self.payload = json.dumps(payload).encode() if isinstance(payload, dict) else payload
 
     def __enter__(self):
+        """Return this response for a context-managed request."""
         return self
 
     def __exit__(self, *_args):
+        """Propagate exceptions raised by the managed caller."""
         return False
 
     def read(self, _limit):
@@ -312,6 +315,7 @@ class ScriptedUpstream:
     """Run a real loopback HTTP upstream with a deterministic response queue."""
 
     def __init__(self):
+        """Initialize an empty deterministic upstream response queue."""
         self.received: list[bytes] = []
         received = self.received
         outer = self

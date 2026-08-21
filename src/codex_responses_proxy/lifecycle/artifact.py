@@ -105,6 +105,7 @@ class VerifiedArtifact:
         sidecar: Mapping[str, Any],
         _token: object | None = None,
     ) -> None:
+        """Construct an admitted artifact through the private authority token."""
         if _token is not _AUTHORITY.token:
             raise TypeError("VerifiedArtifact is opaque; use signed asset admission")
         object.__setattr__(self, "_blobs", blobs)
@@ -118,6 +119,7 @@ class VerifiedArtifact:
         object.__setattr__(self, "_claimed", False)
 
     def __setattr__(self, name: str, value: object) -> None:
+        """Reject mutation of admitted artifact identity."""
         raise ArtifactError("verified artifact capability is immutable")
 
     @property

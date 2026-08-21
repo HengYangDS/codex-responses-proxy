@@ -20,6 +20,7 @@ class FakeTransaction:
     """Behavioral double for the payload transaction protocol."""
 
     def __init__(self) -> None:
+        """Initialize an observable payload-transaction double."""
         self.expected = {
             "transaction_id": "txn-release",
             "release": "1.2.3",
@@ -47,6 +48,8 @@ def as_transaction(value: FakeTransaction) -> transaction.PayloadTransaction:
 
 
 class FakeServiceAdapter:
+    """Record native-service calls and expose a configured executable."""
+
     def __init__(
         self,
         *,
@@ -54,6 +57,7 @@ class FakeServiceAdapter:
         configured: str | None = "canonical",
         mocker,
     ) -> None:
+        """Initialize the adapter with an optional installation failure."""
         self.install_mock = mocker.Mock(side_effect=failure)
         self.configured = configured
 

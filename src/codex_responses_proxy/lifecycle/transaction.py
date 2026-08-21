@@ -167,6 +167,7 @@ class PayloadTransaction:
         fresh: bool,
         _token: object | None = None,
     ) -> None:
+        """Construct a transaction through the private admission token."""
         if _token is not self._TOKEN:
             raise TypeError("PayloadTransaction is sealed; use begin_transaction()")
         self._ctx = ctx

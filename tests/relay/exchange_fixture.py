@@ -60,6 +60,7 @@ class MemoryHandler(BaseHTTPRequestHandler):
     """Small handler surface for direct transport branch contracts."""
 
     def __init__(self, body: bytes = b"", *, path: str = "/dmxapi/v1/responses") -> None:
+        """Initialize one in-memory downstream HTTP exchange."""
         self.path = path
         self.headers = Message()
         self.headers["Content-Length"] = str(len(body))
@@ -101,6 +102,7 @@ class DirectResponse:
         status: int = 200,
         fp: object | None = None,
     ) -> None:
+        """Initialize one deterministic upstream response sequence."""
         self._reads = list(reads)
         self.headers = {"Content-Type": content_type, "Content-Length": "opaque"}
         self.status = status

@@ -41,6 +41,7 @@ class ResilientProxyServer(ThreadingHTTPServer):
         bindings: Bindings,
         bind_and_activate: bool = True,
     ) -> None:
+        """Bind immutable product dependencies to one listener instance."""
         self.bindings = bindings
         super().__init__(server_address, request_handler_class, bind_and_activate)
 

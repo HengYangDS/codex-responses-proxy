@@ -44,7 +44,7 @@ def _log(msg: str) -> None:
 
 
 def is_proxy_up(host: str = HOST, port: int = PORT, timeout: float = 2.0) -> bool:
-    """True if something is listening on host:port (a cheap TCP connect probe)."""
+    """Return whether a TCP listener accepts a connection at ``host:port``."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True

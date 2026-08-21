@@ -505,7 +505,17 @@ class TestVerificationContracts:
 
         assert '"--additional-hooks-dir"' in source
         assert 'ROOT / "tools/release/hooks"' in source
-        assert hook.read_text(encoding="utf-8") == 'module_collection_mode = "py"\n'
+        hook_tree = ast.parse(hook.read_text(encoding="utf-8"))
+        executable_statements = hook_tree.body[1:]
+
+        assert ast.get_docstring(hook_tree)
+        assert len(executable_statements) == 1
+        assignment = executable_statements[0]
+        assert isinstance(assignment, ast.Assign)
+        assert [target.id for target in assignment.targets if isinstance(target, ast.Name)] == [
+            "module_collection_mode"
+        ]
+        assert ast.literal_eval(assignment.value) == "py"
 
     def test_release_runtime_uses_the_session_interpreter(self, mocker: MockerFixture) -> None:
         """Compare the release session interpreter, not the Nox launcher."""
