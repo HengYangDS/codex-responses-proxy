@@ -55,13 +55,6 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
     return _remaining_paths(install)
 
 
-def _payload_relative_paths(root: str) -> list[str]:
-    manifest = owned_files.read_json_object(
-        Path(root, inventory.MANIFEST_FILENAME), "installed payload manifest"
-    )
-    return sorted(owned_files.declared_files(manifest))
-
-
 def serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
     """Return the canonical identity of every manifest-owned serving file."""
 

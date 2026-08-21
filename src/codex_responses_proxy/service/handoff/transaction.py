@@ -128,15 +128,6 @@ def _transition(target_state: str) -> None:
         _HANDOFF_SESSION["state"] = target_state
 
 
-def _payload_identity(context: Context) -> JsonObject:
-    return {
-        "release": context.release_version(),
-        "serving_payload_sha256": context.serving_payload_sha256(),
-        "release_receipt_sha256": context.release_receipt_sha256(),
-        "manifest_sha256": context.payload_manifest_sha256(),
-    }
-
-
 def disk_payload_matches_expected(expected: ReadOnlyJsonObject, context: Context) -> bool:
     """Verify the payload that a replacement child would load from disk."""
     committed = context.committed_payload()
