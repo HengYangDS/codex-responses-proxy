@@ -9,27 +9,25 @@ transaction commits a different admitted transaction.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import re
 import time
 import urllib.error
 import urllib.request
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import TypeGuard
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
-from codex_responses_proxy.service import identity, inventory
+from codex_responses_proxy.service import digest, identity, inventory
 
 HANDOFF_PROTOCOL_VERSION = 2
 _MAX_BODY_BYTES = 64 * 1024
 _TRANSPORT_MARGIN_SECONDS = 1.0
-_SHA256 = re.compile(r"[0-9a-f]{64}")
 _RUNTIME_DIGEST_FIELDS = [
     "serving_payload_sha256",
     "release_receipt_sha256",
@@ -60,7 +58,7 @@ def runtime_supports_handoff(runtime: dict | None) -> bool:
 
     if not isinstance(runtime, dict):
         return False
-    digests_valid = all(_valid_sha256(runtime.get(field)) for field in _RUNTIME_DIGEST_FIELDS)
+    digests_valid = all(digest.is_sha256(runtime.get(field)) for field in _RUNTIME_DIGEST_FIELDS)
     pid = runtime.get("pid")
     release = runtime.get("release")
     return all(
@@ -93,16 +91,16 @@ def expected_metadata(root: str) -> dict:
         release = manifest["release"]
         serving_payload_sha256 = manifest["serving_payload_sha256"]
         release_receipt_sha256 = manifest["release_receipt_sha256"]
-        manifest_sha256 = _sha256_file(manifest_path)
+        manifest_sha256 = digest.sha256_file(Path(manifest_path))
     except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise errors.InstallError(
             f"payload files are unavailable for a handoff transaction: {exc}"
         ) from exc
     if not isinstance(release, str) or not release:
         raise errors.InstallError("payload manifest has no release version")
-    if not _valid_sha256(serving_payload_sha256):
+    if not digest.is_sha256(serving_payload_sha256):
         raise errors.InstallError("payload manifest has no valid serving identity")
-    if not _valid_sha256(release_receipt_sha256):
+    if not digest.is_sha256(release_receipt_sha256):
         raise errors.InstallError("payload manifest has no valid release receipt identity")
     return {
         "transaction_id": uuid.uuid4().hex,
@@ -330,15 +328,3 @@ def _old_runtime_resumed(runtime: dict | None, old_runtime: dict) -> bool:
             "draining": False,
         },
     )
-
-
-def _valid_sha256(value: object) -> bool:
-    return isinstance(value, str) and _SHA256.fullmatch(value) is not None
-
-
-def _sha256_file(path: str) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        while chunk := handle.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()

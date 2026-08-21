@@ -229,7 +229,7 @@ class TestControllerHandoffWiring:
         metadata = handoff.expected_metadata(str(root))
         assert metadata["transaction_id"] == "txn-fixed"
         assert metadata["release"] == "1.0.25"
-        assert metadata["manifest_sha256"] == handoff._sha256_file(str(manifest_path))
+        assert metadata["manifest_sha256"] == handoff.digest.sha256_file(manifest_path)
 
     def test_post_ready_bounds_timing_and_rejects_transport_or_response_failures(
         self, subtests, *, mocker
@@ -471,12 +471,12 @@ class TestControllerHandoffWiring:
     def test_digest_helpers_reject_noncanonical_values_and_hash_large_files(self, subtests):
         for value in (None, "a" * 63, "g" * 64, "A" * 64):
             with subtests.test(value=value):
-                assert not handoff._valid_sha256(value)
-        assert handoff._valid_sha256("a" * 64)
+                assert not handoff.digest.is_sha256(value)
+        assert handoff.digest.is_sha256("a" * 64)
 
         path = Path(self.tempdir.name) / "large.bin"
         path.write_bytes(b"a" * (1024 * 1024 + 1))
-        assert len(handoff._sha256_file(str(path))) == 64
+        assert len(handoff.digest.sha256_file(path)) == 64
 
     def test_reload_uses_handoff_without_terminating_the_old_pid_when_supported(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))

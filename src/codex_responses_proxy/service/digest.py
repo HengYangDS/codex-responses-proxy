@@ -8,7 +8,7 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, TypeGuard
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -63,3 +63,9 @@ def sha256_file(path: Path) -> str:
         while block := stream.read(1024 * 1024):
             value.update(block)
     return value.hexdigest()
+
+
+def is_sha256(value: object) -> TypeGuard[str]:
+    """Return whether a value is one lowercase SHA-256 digest."""
+
+    return isinstance(value, str) and _SHA256.fullmatch(value) is not None

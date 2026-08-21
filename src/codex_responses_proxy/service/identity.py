@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,7 +10,6 @@ from typing import cast
 
 from codex_responses_proxy.service import digest, inventory
 
-_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _RUNTIME_PAYLOAD_FIELDS = {
     "release": "release",
     "serving_payload_sha256": "serving_payload_sha256",
@@ -83,7 +81,7 @@ def freeze_loaded_payload(executable: Path) -> LoadedPayloadIdentity | None:
         if manifest.get("serving_payload_sha256") != aggregate:
             return None
         receipt = manifest.get("release_receipt_sha256")
-        if not isinstance(receipt, str) or _SHA256.fullmatch(receipt) is None:
+        if not digest.is_sha256(receipt):
             return None
         release = manifest.get("release")
         if not isinstance(release, str) or not release:
@@ -152,7 +150,7 @@ def committed_payload(executable: Path) -> LoadedPayloadIdentity | None:
             not isinstance(release, str)
             or not release
             or manifest.get("serving_payload_sha256") != aggregate
-            or _SHA256.fullmatch(receipt) is None
+            or not digest.is_sha256(receipt)
             or digest.sha256_file(root / inventory.RELEASE_RECEIPT_FILENAME) != receipt
         ):
             raise ValueError("installed successor identity mismatch")
