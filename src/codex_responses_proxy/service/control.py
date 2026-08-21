@@ -125,7 +125,7 @@ def prepare_handoff(handler: BaseHTTPRequestHandler, bindings: Bindings) -> None
             lease_seconds=lease_seconds,
         )
     except handoff.HandoffError as exc:
-        status = 409 if isinstance(exc, handoff.HandoffConflict) else 503
+        status = 409 if isinstance(exc, handoff.HandoffConflictError) else 503
         _write_json(
             handler,
             status,

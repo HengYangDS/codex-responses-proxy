@@ -60,7 +60,7 @@ _IDENTITY_FIELDS = (
 )
 
 
-class HandoffConflict(HandoffError):
+class HandoffConflictError(HandoffError):
     """Another process-local handoff already owns the single-flight session."""
 
 
@@ -252,7 +252,7 @@ def prepare(
         if _HANDOFF_SESSION.get("state") == "finalized":
             reset_session_to_idle()
         if _HANDOFF_SESSION.get("state") != "idle":
-            raise HandoffConflict("handoff is already in progress")
+            raise HandoffConflictError("handoff is already in progress")
         _transition("preparing")
         _HANDOFF_SESSION.update(
             transaction_id=expected["transaction_id"],

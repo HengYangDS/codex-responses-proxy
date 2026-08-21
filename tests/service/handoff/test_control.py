@@ -78,7 +78,7 @@ class TestHandoffControlHandler:
         mocker.patch.object(
             handoff_module,
             "prepare",
-            side_effect=handoff_module.HandoffConflict("a handoff is already in progress"),
+            side_effect=handoff_module.HandoffConflictError("a handoff is already in progress"),
         )
         control.prepare_handoff(fake_self, self.bindings)
         fake_self.send_response.assert_called_once_with(409)

@@ -179,6 +179,7 @@ class TestQualityPolicyContracts:
             "E9",
             "F",
             "I",
+            "N",
             "UP",
             "B",
             "C4",

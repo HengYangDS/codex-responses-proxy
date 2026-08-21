@@ -10,13 +10,13 @@ type JsonObject = dict[str, object]
 OPAQUE_CONTENT_MARKER = "[opaque provider content omitted: not portable across providers]"
 
 
-class ProjectionRejected(ValueError):
+class ProjectionRejectedError(ValueError):
     """A replay structure has no proved provider-portable representation."""
 
 
 def reject(reason: str) -> None:
     """Reject one structure using its bounded diagnostic code."""
-    raise ProjectionRejected(reason)
+    raise ProjectionRejectedError(reason)
 
 
 def _is_replayable_remote_image_url(value: object) -> bool:

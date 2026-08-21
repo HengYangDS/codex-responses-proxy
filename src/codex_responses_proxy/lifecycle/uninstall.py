@@ -54,7 +54,7 @@ def uninstall_product(
     try:
         ctx = runtime_context.create(port=port)
         service = cast(ServiceAdapter, adapter())
-    except (errors.InstallError, errors.UnsupportedPlatform) as exc:
+    except (errors.InstallError, errors.UnsupportedPlatformError) as exc:
         raise errors.InstallError(str(exc)) from exc
 
     _remove_service(service, ctx)

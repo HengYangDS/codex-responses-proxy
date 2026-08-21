@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-class UnsupportedPlatform(RuntimeError):
+class UnsupportedPlatformError(RuntimeError):
     """Report that no service adapter exists for the current operating system."""
 
 
@@ -15,5 +15,5 @@ class ProductAssemblyError(RuntimeError):
     """Report that a released executable is missing an internal product component."""
 
 
-class ManualStartRequired(RuntimeError):
+class ManualStartRequiredError(RuntimeError):
     """Report that durable service persistence could not be established."""

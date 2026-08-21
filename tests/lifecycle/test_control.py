@@ -296,7 +296,9 @@ class TestControllerLifecycle:
         )
 
         mocker.patch.object(
-            uninstall.runtime_context, "create", side_effect=errors.UnsupportedPlatform("no host")
+            uninstall.runtime_context,
+            "create",
+            side_effect=errors.UnsupportedPlatformError("no host"),
         )
         with pytest.raises(errors.InstallError, match="no host"):
             uninstall.uninstall_product()

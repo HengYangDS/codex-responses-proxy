@@ -50,4 +50,4 @@ def adapter() -> NativeServiceAdapter:
                 "product installation is incomplete; reinstall the verified release"
             ) from error
         return cast("NativeServiceAdapter", windows)
-    raise errors.UnsupportedPlatform(f"unsupported platform: {sys.platform}")
+    raise errors.UnsupportedPlatformError(f"unsupported platform: {sys.platform}")

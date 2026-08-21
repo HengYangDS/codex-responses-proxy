@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from codex_responses_proxy.protocol.content import (
-    ProjectionRejected,
+    ProjectionRejectedError,
     project_assistant_text,
     project_input_content,
 )
@@ -427,7 +427,7 @@ def sanitize_responses_body(raw: bytes) -> ProjectionResult:
             candidate["input"], metrics = _project_input(cast("list[object]", raw_input))
         else:
             _reject("invalid_input")
-    except (ProjectionRejected, RecursionError) as exc:
+    except (ProjectionRejectedError, RecursionError) as exc:
         reason = "projection_depth_exceeded" if isinstance(exc, RecursionError) else str(exc)
         return ProjectionResult(None, "rejected", reason=reason)
 

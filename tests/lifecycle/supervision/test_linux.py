@@ -38,7 +38,7 @@ class TestLinuxLifecycle:
                 linux.install(ctx)
                 called.assert_called_once_with(ctx)
             else:
-                with pytest.raises(errors.ManualStartRequired, match="systemd user manager"):
+                with pytest.raises(errors.ManualStartRequiredError, match="systemd user manager"):
                     linux.install(ctx)
                 called.assert_not_called()
             mocker.stopall()

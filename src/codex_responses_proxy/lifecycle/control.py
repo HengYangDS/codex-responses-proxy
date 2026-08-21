@@ -61,7 +61,7 @@ def status(ctx: runtime_context.RuntimeContext) -> dict:
         integrity_ok, integrity_detail = False, str(exc)
     try:
         service = adapter().status(ctx)
-    except (OSError, errors.InstallError, errors.UnsupportedPlatform):
+    except (OSError, errors.InstallError, errors.UnsupportedPlatformError):
         service = "unknown"
     listeners = process.verified_proxy_listener_pids(ctx)
     runtime = read_runtime(ctx)
