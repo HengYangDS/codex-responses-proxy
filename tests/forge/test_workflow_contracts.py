@@ -297,6 +297,22 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
     assert _mapping(source["variables"])["MISE_ENABLE_TOOLS"].startswith("python,uv,")
 
 
+def test_github_python_quality_installs_its_declared_projection_toolchain() -> None:
+    """Provision every repository-locked tool consumed by the quality owner."""
+
+    jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
+    quality = _mapping(jobs["python-quality"])
+    steps = tuple(_mapping(step) for step in quality["steps"])
+    mise = next(step for step in steps if str(step.get("uses", "")).startswith("jdx/mise-action@"))
+
+    assert mise["uses"] == "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
+    assert _mapping(mise["with"]) == {
+        "install": "true",
+        "cache": "true",
+        "tool_config": "mise.toml",
+    }
+
+
 def _assert_github_required_tokens(text: str) -> None:
     required = [
         "name: Verify",

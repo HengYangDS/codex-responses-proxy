@@ -411,6 +411,13 @@ githubVerify: {
 			}, {
 				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
 			}, {
+				uses: #Toolchains.githubMiseAction
+				with: {
+					install:     true
+					cache:       true
+					tool_config: "mise.toml"
+				}
+			}, {
 				name: "Verify lint, format, types, structure, docstrings, and product branch coverage"
 				run:  "uv run --locked --group quality nox -s quality"
 			}]
