@@ -43,4 +43,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST }}
           RELEASE_ASSET_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}
-        run: uv run --locked --no-sync python -m tools.release.publish_github publish --repository "$GITHUB_REPOSITORY" --tag "${{ github.event.workflow_run.head_branch }}" --commit-oid "${{ github.event.workflow_run.head_sha }}" --assets "$RUNNER_TEMP/github-release/source" --workspace "$RUNNER_TEMP/github-release/work"
+        run: uv run --locked --no-sync python -m tools.release.publish github --repository "$GITHUB_REPOSITORY" --tag "${{ github.event.workflow_run.head_branch }}" --commit-oid "${{ github.event.workflow_run.head_sha }}" --assets "$RUNNER_TEMP/github-release/source" --workspace "$RUNNER_TEMP/github-release/work"

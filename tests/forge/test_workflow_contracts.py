@@ -226,7 +226,7 @@ def test_single_bundle_is_built_once_and_forges_only_project_it() -> None:
     assert verify.count("uv run --locked --no-sync python -m tools.release.assemble_assets") == 1
     assert verify.count("--sign") == 1
     assert "container: ${{ needs.python-matrix.outputs.linux-release-image }}" in verify
-    assert "python -m tools.release.publish_github publish" in release
+    assert "python -m tools.release.publish github" in release
     assert '--assets "$RUNNER_TEMP/github-release/source"' in release
     assert "workflow_run:" in release
     for forbidden in (
@@ -312,7 +312,7 @@ def _assert_github_required_tokens(text: str) -> None:
         "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
         "fetch-tags: true",
         "if: github.ref_type == 'tag'",
-        "python -m tools.release.publish_github prepare-checkout",
+        "python -m tools.release.publish prepare-checkout",
         'uv run --locked --no-sync python tools/release/metadata.py --tag "$GITHUB_REF_NAME"',
         "uv run --locked --no-sync python tools/release/metadata.py",
         "python-quality:",
@@ -533,7 +533,7 @@ def test_github_release_workflow_contract() -> None:
     for token in (
         "gh run download",
         "${{ github.event.workflow_run.id }}",
-        "python -m tools.release.publish_github publish",
+        "python -m tools.release.publish github",
         "${{ github.event.workflow_run.head_branch }}",
         "${{ github.event.workflow_run.head_sha }}",
         '--assets "$RUNNER_TEMP/github-release/source"',

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-
-from cyclopts import App
 
 from tools.forge import tag_signature
 from tools.release import assemble_assets, signing
@@ -281,56 +278,3 @@ def _output(command: Sequence[str]) -> str:
         return subprocess.run(command, check=True, capture_output=True, text=True).stdout.strip()
     except (OSError, subprocess.CalledProcessError) as error:
         raise GitHubPublishError("GitHub release Git identity is unavailable") from error
-
-
-def _app() -> App:
-    app = App(help=__doc__, result_action="return_value")
-
-    @app.command(name="publish")
-    def publish_command(
-        *,
-        repository: str,
-        tag: str,
-        commit_oid: str,
-        assets: Path,
-        checkout: Path | None = None,
-        workspace: Path,
-    ) -> None:
-        """Publish or verify one exact GitHub release."""
-
-        state = publish(
-            repository=repository,
-            tag=tag,
-            commit_oid=commit_oid,
-            checkout=checkout or Path.cwd(),
-            tag_trust=os.environ.get("CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST", ""),
-            asset_trust=os.environ.get("RELEASE_ASSET_TRUST", ""),
-            source=assets,
-            workspace=workspace,
-        )
-        print(f"GitHub release {state}: {tag}")
-
-    @app.command(name="prepare-checkout")
-    def prepare_checkout_command(
-        *, tag: str, commit_oid: str, checkout: Path | None = None
-    ) -> None:
-        """Prepare one exact annotated release checkout."""
-
-        tag_oid, target = prepare_checkout(checkout or Path.cwd(), tag, commit_oid)
-        print(f"GitHub release checkout prepared: {tag_oid} -> {target}")
-
-    return app
-
-
-def main(argv: tuple[str, ...] | None = None) -> None:
-    """Run publication through the repository parser stack."""
-
-    try:
-        _app()(tuple(sys.argv[1:] if argv is None else argv))
-    except (GitHubPublishError, ValueError) as error:
-        print(str(error), file=sys.stderr)
-        raise SystemExit(1) from error
-
-
-if __name__ == "__main__":
-    main()

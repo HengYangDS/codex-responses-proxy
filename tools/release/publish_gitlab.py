@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import json
 import shutil
-import sys
 import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
-
-from cyclopts import App
 
 from tools.release import assemble_assets, signing
 from tools.release.publication.git import _TAG
@@ -105,42 +102,3 @@ def publish(
                     "existing GitLab release does not match immutable identity"
                 ) from None
             return "matched"
-
-
-def _command(
-    api_base: str,
-    project_id: int,
-    tag: str,
-    token: str,
-    assets: Path,
-    trust: str,
-) -> None:
-    """Publish from explicit CI inputs without contacting another Forge."""
-
-    try:
-        state = publish(
-            api_base=api_base,
-            project_id=project_id,
-            tag=tag,
-            token=token,
-            source=assets,
-            trust=trust,
-        )
-    except (GitLabPublishError, ValueError, json.JSONDecodeError) as error:
-        print(str(error), file=sys.stderr)
-        raise SystemExit(1) from error
-    print(
-        f"GitLab provider-native release {'created' if state == 'created' else 'already matches'}: {tag}"
-    )
-
-
-def main(argv: tuple[str, ...] | None = None) -> None:
-    """Run publication through the repository parser stack."""
-
-    App(default_command=_command, help=__doc__, result_action="return_value")(
-        tuple(sys.argv[1:] if argv is None else argv)
-    )
-
-
-if __name__ == "__main__":
-    main()

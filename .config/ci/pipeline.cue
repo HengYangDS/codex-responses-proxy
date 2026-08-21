@@ -393,13 +393,13 @@ githubVerify: {
 				run:  "uv sync --locked --all-groups"
 			}, {
 				name: "Fetch the exact annotated tag object"
-				run:  "uv run --locked --no-sync python -m tools.release.publish_github prepare-checkout --tag \"$GITHUB_REF_NAME\" --commit-oid \"$GITHUB_SHA\""
+				run:  "uv run --locked --no-sync python -m tools.release.publish prepare-checkout --tag \"$GITHUB_REF_NAME\" --commit-oid \"$GITHUB_SHA\""
 			}, {
 				name: "Verify exact release metadata"
 				run:  "uv run --locked --no-sync python tools/release/metadata.py --tag \"$GITHUB_REF_NAME\""
 			}, {
 				name: "Verify repository governance"
-				run:  "uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/test_publish_gitlab.py"
+				run:  "uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/test_publish.py tests/release/test_publish_gitlab.py"
 			}]
 		}
 		"python-quality": {
@@ -603,7 +603,7 @@ githubRelease: {
 				CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST }}"
 				RELEASE_ASSET_TRUST:                    "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
 			}
-			run: "uv run --locked --no-sync python -m tools.release.publish_github publish --repository \"$GITHUB_REPOSITORY\" --tag \"${{ github.event.workflow_run.head_branch }}\" --commit-oid \"${{ github.event.workflow_run.head_sha }}\" --assets \"$RUNNER_TEMP/github-release/source\" --workspace \"$RUNNER_TEMP/github-release/work\""
+			run: "uv run --locked --no-sync python -m tools.release.publish github --repository \"$GITHUB_REPOSITORY\" --tag \"${{ github.event.workflow_run.head_branch }}\" --commit-oid \"${{ github.event.workflow_run.head_sha }}\" --assets \"$RUNNER_TEMP/github-release/source\" --workspace \"$RUNNER_TEMP/github-release/work\""
 		}]
 	}
 }

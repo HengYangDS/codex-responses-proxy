@@ -370,7 +370,7 @@ def test_github_release_metadata_is_strict() -> None:
             "workflow_run:",
             "github.event.workflow_run.event == 'push'",
             "github.event.workflow_run.conclusion == 'success'",
-            "python -m tools.release.publish_github publish",
+            "python -m tools.release.publish github",
             "${{ github.event.workflow_run.head_branch }}",
             "${{ github.event.workflow_run.head_sha }}",
             '--assets "$RUNNER_TEMP/github-release/source"',
