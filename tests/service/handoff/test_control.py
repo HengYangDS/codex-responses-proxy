@@ -121,7 +121,10 @@ class TestHandoffControlHandler:
         )
         control.send_status(fake_self, bindings)
         fake_self.send_response.assert_called_once_with(200)
-        assert json.loads(fake_self.wfile.write.call_args.args[0]) == {"ok": True, "pid": 42}
+        assert json.loads(fake_self.wfile.write.call_args.args[0]) == {
+            "ok": True,
+            "pid": 42,
+        }
 
     def test_handler_rejects_invalid_control_envelopes_before_prepare(self, subtests, *, mocker):
         cases = (
@@ -166,7 +169,8 @@ class TestHandoffControlHandler:
         )
 
         failed = fake_handler(
-            {**expected_metadata(), "timeout_seconds": "999", "lease_seconds": "17"}, mocker=mocker
+            {**expected_metadata(), "timeout_seconds": "999", "lease_seconds": "17"},
+            mocker=mocker,
         )
         written = []
         failed.wfile.write.side_effect = written.append

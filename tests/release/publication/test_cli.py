@@ -7,16 +7,17 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
+from codex_responses_proxy.lifecycle import artifact
 from tests.release.publication.fixtures import (
     VERIFY_ARGUMENTS,
     VerifyArguments,
     forge_evidence,
     verified_evidence,
 )
-from codex_responses_proxy.lifecycle import artifact
 from tools.release.publication import evaluator, hosted
 from tools.release.publication import verification as publication
-import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -58,7 +59,10 @@ class PublicationProofCliContracts:
             for name, content in cases.items():
                 path = root / name
                 path.write_text(content, encoding="utf-8")
-                with subtests.test(name=name), pytest.raises(publication.PublicationError):
+                with (
+                    subtests.test(name=name),
+                    pytest.raises(publication.PublicationError),
+                ):
                     publication.load_policy(path)
             with pytest.raises(publication.PublicationError):
                 publication.load_policy(root / "missing.toml")

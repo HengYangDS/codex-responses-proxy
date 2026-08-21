@@ -49,7 +49,9 @@ class ProviderPortableRequestTests:
         assert projection.body is None
         assert projection.diagnostic() == "rejected unknown_compaction_trigger_field"
 
-    def test_preserves_clean_string_input_while_removing_top_level_bindings(self) -> None:
+    def test_preserves_clean_string_input_while_removing_top_level_bindings(
+        self,
+    ) -> None:
         raw = _body(
             {
                 "input": "hello",
@@ -251,7 +253,15 @@ class ProviderPortableRequestTests:
                 }
             ),
             "orphan output": _body(
-                {"input": [{"type": "function_call_output", "call_id": "missing", "output": "x"}]}
+                {
+                    "input": [
+                        {
+                            "type": "function_call_output",
+                            "call_id": "missing",
+                            "output": "x",
+                        }
+                    ]
+                }
             ),
             "mismatched output": _body(
                 {
@@ -262,7 +272,11 @@ class ProviderPortableRequestTests:
                             "name": "f",
                             "arguments": "{}",
                         },
-                        {"type": "custom_tool_call_output", "call_id": "c", "output": "x"},
+                        {
+                            "type": "custom_tool_call_output",
+                            "call_id": "c",
+                            "output": "x",
+                        },
                     ]
                 }
             ),
@@ -364,7 +378,14 @@ class RequestSanitizationContracts:
 
     def test_rejects_unknown_fields_that_resemble_encrypted_content(self):
         body = json.dumps(
-            {"input": [{"type": "custom_tool_call", "payload": {"type": "encrypted_content"}}]}
+            {
+                "input": [
+                    {
+                        "type": "custom_tool_call",
+                        "payload": {"type": "encrypted_content"},
+                    }
+                ]
+            }
         ).encode()
         _projection = rewrite.sanitize_responses_body(body)
         out = _projection.body

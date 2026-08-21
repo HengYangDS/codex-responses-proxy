@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from tools.release import product_assets as release_assets
 from tools.release.publication import github, gitlab
-import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -136,7 +137,10 @@ class ForgeAdapterContracts:
     def _normalize_gitlab(
         commit: str,
         fixture: tuple[
-            dict[str, object], list[dict[str, object]], dict[str, object], dict[str, bytes]
+            dict[str, object],
+            list[dict[str, object]],
+            dict[str, object],
+            dict[str, bytes],
         ],
     ):
         pipeline, jobs, release, assets = fixture
@@ -216,7 +220,11 @@ class ForgeAdapterContracts:
         runs, _, _, asset_bytes = self._github_fixture(commit)
         responses = [
             {"ref": "refs/tags/v1.2.3", "object": {"type": "tag", "sha": tag_object}},
-            {"tag": "v1.2.3", "sha": tag_object, "object": {"type": "commit", "sha": commit}},
+            {
+                "tag": "v1.2.3",
+                "sha": tag_object,
+                "object": {"type": "commit", "sha": commit},
+            },
             {"workflow_runs": runs},
             {
                 "jobs": [
@@ -356,7 +364,11 @@ class ForgeAdapterContracts:
 
         responses = [
             {"ref": "refs/tags/v1.2.3", "object": {"type": "tag", "sha": tag_object}},
-            {"tag": "wrong", "sha": tag_object, "object": {"type": "commit", "sha": commit}},
+            {
+                "tag": "wrong",
+                "sha": tag_object,
+                "object": {"type": "commit", "sha": commit},
+            },
         ]
         mocker.patch.object(github, "_api", side_effect=responses)
         with pytest.raises(github.GitHubProofError, match="tag identity"):
@@ -411,7 +423,12 @@ class ForgeAdapterContracts:
         with pytest.raises(gitlab.GitLabProofError):
             self._normalize_gitlab(
                 commit,
-                (pipeline, [{"name": "not-required"}, *jobs[:-1]], release, asset_bytes),
+                (
+                    pipeline,
+                    [{"name": "not-required"}, *jobs[:-1]],
+                    release,
+                    asset_bytes,
+                ),
             )
 
         wrong_commit = {**tag_record, "commit": {"id": "0" * 40}}

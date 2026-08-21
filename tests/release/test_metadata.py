@@ -96,7 +96,7 @@ def expect_value_error(action: Callable[[], object], message: str, description: 
         raise SystemExit(f"release metadata checker accepted {description}")
 
 
-def test_product_release_history_is_provider_neutral() -> None:
+def test_product_release_history_is_provider_neutral(*, mocker) -> None:
     """Validate the one local release history without a Forge semantic input."""
 
     checker = load_checker()
@@ -105,20 +105,16 @@ def test_product_release_history_is_provider_neutral() -> None:
         ("1.0.2", "2026-07-02"),
         ("1.0.1", "2026-07-01"),
     ]
-    original_known = getattr(checker, "known_release_versions")
-    try:
-        setattr(checker, "known_release_versions", lambda: ["1.0.2", "1.0.1"])
-        checker.check_changelog_provenance(releases, pending_version="1.0.3")
-        setattr(checker, "known_release_versions", lambda: ["1.0.2"])
-        expect_value_error(
-            lambda: checker.check_changelog_provenance(
-                [("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")]
-            ),
-            "must appear once",
-            "a local tag without a shared heading",
-        )
-    finally:
-        setattr(checker, "known_release_versions", original_known)
+    known = mocker.patch.object(checker, "known_release_versions", return_value=["1.0.2", "1.0.1"])
+    checker.check_changelog_provenance(releases, pending_version="1.0.3")
+    known.return_value = ["1.0.2"]
+    expect_value_error(
+        lambda: checker.check_changelog_provenance(
+            [("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")]
+        ),
+        "must appear once",
+        "a local tag without a shared heading",
+    )
 
 
 def test_prepare_release_rejects_only_future_dates() -> None:
@@ -137,11 +133,10 @@ def test_prepare_release_rejects_only_future_dates() -> None:
     )
 
 
-def test_exact_release_tag_contract() -> None:
+def test_exact_release_tag_contract(*, mocker) -> None:
     """Reject lightweight, misnamed, nested, and wrong-target release tags."""
 
     checker = load_checker()
-    original_git = getattr(checker, "_git")
     cases = (
         (
             lambda *args: "commit" if args[:2] == ("cat-file", "-t") else "v1.2.3",
@@ -180,28 +175,24 @@ def test_exact_release_tag_contract() -> None:
             "an annotated tag that directly names the wrong commit",
         ),
     )
-    try:
-        for git_observation, message, description in cases:
-            setattr(checker, "_git", git_observation)
-            expect_value_error(
-                lambda: checker.check_release_tag("v1.2.3", "1.2.3"),
-                message,
-                description,
-            )
-        setattr(
-            checker,
-            "_git",
-            lambda *args: {
-                ("cat-file", "-t", "refs/tags/v1.2.3"): "tag",
-                ("cat-file", "tag", "refs/tags/v1.2.3"): (
-                    "object same-commit\ntype commit\ntag v1.2.3\n\nmessage"
-                ),
-                ("rev-parse", "HEAD^{commit}"): "same-commit",
-            }[args],
+    git = mocker.patch.object(checker, "_git")
+    for git_observation, message, description in cases:
+        git.side_effect = git_observation
+        expect_value_error(
+            lambda: checker.check_release_tag("v1.2.3", "1.2.3"),
+            message,
+            description,
         )
-        checker.check_release_tag("v1.2.3", "1.2.3")
-    finally:
-        setattr(checker, "_git", original_git)
+    git.side_effect = lambda *args: {
+        ("cat-file", "-t", "refs/tags/v1.2.3"): "tag",
+        (
+            "cat-file",
+            "tag",
+            "refs/tags/v1.2.3",
+        ): "object same-commit\ntype commit\ntag v1.2.3\n\nmessage",
+        ("rev-parse", "HEAD^{commit}"): "same-commit",
+    }[args]
+    checker.check_release_tag("v1.2.3", "1.2.3")
 
 
 def test_release_metadata_command_has_no_forge_semantics() -> None:
@@ -394,7 +385,10 @@ def test_github_release_metadata_is_strict() -> None:
         ),
         "GitHub exact release projection",
     )
-    require("--allow-unpublished-history" not in workflow, "GitHub release bypasses chronology")
+    require(
+        "--allow-unpublished-history" not in workflow,
+        "GitHub release bypasses chronology",
+    )
     require("wait-verify" not in workflow, "GitHub release retains polling orchestration")
 
 
@@ -405,7 +399,10 @@ def test_gitlab_proof_contexts_are_partitioned() -> None:
     matrix = ci_block(ci, "verify-python-matrix:", "\n\nverify-accepted-source:")
     accepted = ci_block(ci, "verify-accepted-source:", "\n\nverify-release-tag:")
     tag = ci_block(ci, "verify-release-tag:", "\n\nverify-python-quality:")
-    require('$CI_PIPELINE_SOURCE == "merge_request_event"' in matrix, "matrix is not review-only")
+    require(
+        '$CI_PIPELINE_SOURCE == "merge_request_event"' in matrix,
+        "matrix is not review-only",
+    )
     require(
         '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"' in accepted,
         "accepted confirmation is not branch-scoped",
@@ -430,7 +427,10 @@ def test_gitlab_tag_gate_requires_exact_external_trust() -> None:
         "GitLab external tag trust",
     )
     for forbidden in ("publish-gitlab-release:", "nox -s release", "--signing-key"):
-        require(forbidden not in ci, f"GitLab retains duplicate bundle authority: {forbidden}")
+        require(
+            forbidden not in ci,
+            f"GitLab retains duplicate bundle authority: {forbidden}",
+        )
 
 
 def test_gitlab_ci_selects_a_deployment_supplied_runner_tag() -> None:
@@ -487,7 +487,10 @@ def test_native_bundle_has_one_runtime_and_one_signer() -> None:
         ),
         "single native bundle builder",
     )
-    require(github.count("python -m tools.release.assemble_assets") == 1, "bundle assembled twice")
+    require(
+        github.count("python -m tools.release.assemble_assets") == 1,
+        "bundle assembled twice",
+    )
     require(github.count("--sign") == 1, "bundle signed more than once")
     require("nox -s release" not in gitlab, "GitLab independently rebuilds product assets")
 
@@ -499,7 +502,10 @@ def test_python_quality_gate_is_cross_forge() -> None:
     github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
     require_tokens(gitlab, (f"{GITLAB_LOCKED_PYTHON} nox -s quality",), "GitLab quality")
     require_tokens(github, ("uv run --locked --group quality nox -s quality",), "GitHub quality")
-    require("tools/quality/run.sh" not in gitlab + github, "CI retains duplicate quality runner")
+    require(
+        "tools/quality/run.sh" not in gitlab + github,
+        "CI retains duplicate quality runner",
+    )
     require_tokens(
         ci_block(gitlab, "verify-python-quality:"),
         (f"{APT_INSTALL} binutils git openssh-client",),

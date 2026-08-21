@@ -51,7 +51,9 @@ class TestRealSubprocessHandoffIntegration:
     def teardown_method(self) -> None:
         self._cleanups.close()
 
-    def test_scripted_upstream_starts_only_after_the_proxy_child_is_spawned(self) -> None:
+    def test_scripted_upstream_starts_only_after_the_proxy_child_is_spawned(
+        self,
+    ) -> None:
         upstream = ScriptedUpstream()
         self._cleanups.callback(upstream.close)
 
@@ -424,7 +426,9 @@ class TestRealSubprocessHandoffIntegration:
             "old process did not exit after the held response completed"
         )
 
-    def test_bounded_lease_forces_old_to_exit_even_if_a_held_stream_never_finishes(self):
+    def test_bounded_lease_forces_old_to_exit_even_if_a_held_stream_never_finishes(
+        self,
+    ):
         upstream = ScriptedUpstream()
         self._cleanups.callback(upstream.close)
         started = threading.Event()

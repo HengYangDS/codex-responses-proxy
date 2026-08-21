@@ -7,7 +7,6 @@ from pathlib import Path
 
 from codex_responses_proxy.protocol import request as rewrite
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -268,7 +267,16 @@ REJECTION_CASES = {
         "rejected invalid_message_role",
     ),
     "invalid message phase": (
-        {"input": [{"type": "message", "role": "user", "phase": "commentary", "content": "x"}]},
+        {
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "phase": "commentary",
+                    "content": "x",
+                }
+            ]
+        },
         "rejected invalid_message_phase",
     ),
     "invalid agent identity": (
@@ -328,7 +336,12 @@ REJECTION_CASES = {
     "duplicate output": (
         {
             "input": [
-                {"type": "function_call", "call_id": "c", "name": "f", "arguments": "{}"},
+                {
+                    "type": "function_call",
+                    "call_id": "c",
+                    "name": "f",
+                    "arguments": "{}",
+                },
                 {"type": "function_call_output", "call_id": "c", "output": "first"},
                 {"type": "function_call_output", "call_id": "c", "output": "second"},
             ]
@@ -338,7 +351,12 @@ REJECTION_CASES = {
     "invalid output caller": (
         {
             "input": [
-                {"type": "function_call", "call_id": "c", "name": "f", "arguments": "{}"},
+                {
+                    "type": "function_call",
+                    "call_id": "c",
+                    "name": "f",
+                    "arguments": "{}",
+                },
                 {
                     "type": "function_call_output",
                     "call_id": "c",

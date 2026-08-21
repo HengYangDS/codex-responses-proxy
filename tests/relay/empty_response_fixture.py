@@ -41,7 +41,12 @@ def semantic_body() -> bytes:
                     "arguments": "{}",
                 },
                 {"type": "function_call_output", "call_id": "f", "output": "ok"},
-                {"type": "custom_tool_call", "call_id": "c", "name": "shell", "input": "pwd"},
+                {
+                    "type": "custom_tool_call",
+                    "call_id": "c",
+                    "name": "shell",
+                    "input": "pwd",
+                },
                 {"type": "custom_tool_call_output", "call_id": "c", "output": "here"},
                 {"type": "message", "role": "user", "content": "continue"},
             ],

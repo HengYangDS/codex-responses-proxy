@@ -11,12 +11,13 @@ import tempfile
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle.supervision import native_service
 from codex_responses_proxy.protocol import request as replay_request
 from codex_responses_proxy.relay import responses, sse
 from codex_responses_proxy.service import control, digest, identity, inventory, server
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "src" / "codex_responses_proxy"

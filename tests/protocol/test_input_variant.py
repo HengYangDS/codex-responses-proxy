@@ -83,7 +83,12 @@ class TestInputDiagnostic:
         def diagnostic_for(repetitions: int) -> input_variant.InputDiagnostic:
             items: list[dict[str, object]] = [
                 {"type": "message", "role": "user", "content": "current"},
-                {"type": "function_call", "call_id": "paired", "name": "f", "arguments": "{}"},
+                {
+                    "type": "function_call",
+                    "call_id": "paired",
+                    "name": "f",
+                    "arguments": "{}",
+                },
                 {"type": "function_call_output", "call_id": "paired", "output": "ok"},
             ]
             for index in range(repetitions):
@@ -116,8 +121,14 @@ class TestInputDiagnostic:
         user = {"type": "message", "role": "user", "content": "current"}
         reasoning = {"type": "reasoning", "summary": []}
         pairs = (
-            ({"input": [user, reasoning]}, {"input": [reasoning, user, user, reasoning]}),
-            ({"input": [], "private": ["value"] * 17}, {"input": [], "private": ["value"] * 33}),
+            (
+                {"input": [user, reasoning]},
+                {"input": [reasoning, user, user, reasoning]},
+            ),
+            (
+                {"input": [], "private": ["value"] * 17},
+                {"input": [], "private": ["value"] * 33},
+            ),
             (
                 {"input": [], "private": {"one": 1}},
                 {"input": [], "private": {"one": 1, "two": 2, "three": 3}},
@@ -164,11 +175,33 @@ class TestInputDiagnostic:
             _json(
                 {
                     "input": [
-                        {"type": "custom_tool_call_output", "call_id": "early", "output": "x"},
-                        {"type": "custom_tool_call", "call_id": "dup", "name": "f", "input": "{}"},
-                        {"type": "custom_tool_call", "call_id": "dup", "name": "f", "input": "{}"},
-                        {"type": "custom_tool_call_output", "call_id": "dup", "output": "x"},
-                        {"type": "custom_tool_call_output", "call_id": "dup", "output": "x"},
+                        {
+                            "type": "custom_tool_call_output",
+                            "call_id": "early",
+                            "output": "x",
+                        },
+                        {
+                            "type": "custom_tool_call",
+                            "call_id": "dup",
+                            "name": "f",
+                            "input": "{}",
+                        },
+                        {
+                            "type": "custom_tool_call",
+                            "call_id": "dup",
+                            "name": "f",
+                            "input": "{}",
+                        },
+                        {
+                            "type": "custom_tool_call_output",
+                            "call_id": "dup",
+                            "output": "x",
+                        },
+                        {
+                            "type": "custom_tool_call_output",
+                            "call_id": "dup",
+                            "output": "x",
+                        },
                         {"type": "custom_tool_call", "name": "f", "input": "{}"},
                     ]
                 }
@@ -198,7 +231,11 @@ class TestInputDiagnostic:
                                 "name": "f",
                                 "arguments": "{}",
                             },
-                            {"type": "custom_tool_call_output", "call_id": "c", "output": "x"},
+                            {
+                                "type": "custom_tool_call_output",
+                                "call_id": "c",
+                                "output": "x",
+                            },
                         ]
                     }
                 ),
@@ -213,11 +250,28 @@ class TestInputDiagnostic:
             ({"type": {"private": "value"}}, "missing_item_type", {"dict": "1"}),
             ({"type": ["private"]}, "missing_item_type", {"list": "1"}),
             ({"type": "future"}, "unknown_item_type", {"unknown": "1"}),
-            ({"type": "message", "role": "bogus", "content": "x"}, "invalid_message_role", None),
-            ({"type": "message", "role": "user", "content": None}, "invalid_message_content", None),
-            ({"type": "message", "role": "user", "content": []}, "empty_message_content", None),
             (
-                {"type": "function_call", "call_id": "c", "name": "", "arguments": "{}"},
+                {"type": "message", "role": "bogus", "content": "x"},
+                "invalid_message_role",
+                None,
+            ),
+            (
+                {"type": "message", "role": "user", "content": None},
+                "invalid_message_content",
+                None,
+            ),
+            (
+                {"type": "message", "role": "user", "content": []},
+                "empty_message_content",
+                None,
+            ),
+            (
+                {
+                    "type": "function_call",
+                    "call_id": "c",
+                    "name": "",
+                    "arguments": "{}",
+                },
                 "invalid_function_call",
                 None,
             ),
@@ -236,14 +290,22 @@ class TestInputDiagnostic:
                 "invalid_tool_output",
                 None,
             ),
-            ({"type": "message", "role": "user", "content": [1]}, "invalid_content_block", None),
+            (
+                {"type": "message", "role": "user", "content": [1]},
+                "invalid_content_block",
+                None,
+            ),
             (
                 {"type": "message", "role": "user", "content": [{"type": "future"}]},
                 "unknown_content_type",
                 None,
             ),
             (
-                {"type": "message", "role": "user", "content": [{"type": "input_text"}]},
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text"}],
+                },
                 "invalid_input_text_block",
                 None,
             ),
@@ -317,7 +379,12 @@ class TestDialogueRecovery:
             "input": [
                 {"type": "message", "role": "user", "content": "current"},
                 {"type": "message", "role": "developer", "content": "late policy"},
-                {"type": "custom_tool_call", "call_id": "call", "name": "exec", "input": "{}"},
+                {
+                    "type": "custom_tool_call",
+                    "call_id": "call",
+                    "name": "exec",
+                    "input": "{}",
+                },
             ],
         }
         raw, recovery, metrics = _recover(payload, 512 * 1024)
@@ -341,9 +408,17 @@ class TestDialogueRecovery:
                 [
                     {"type": "message", "role": "user", "content": "old user"},
                     {"type": "message", "role": "system", "content": "current system"},
-                    {"type": "message", "role": "developer", "content": "old developer"},
+                    {
+                        "type": "message",
+                        "role": "developer",
+                        "content": "old developer",
+                    },
                     {"type": "message", "role": "user", "content": "current user"},
-                    {"type": "message", "role": "developer", "content": "current developer"},
+                    {
+                        "type": "message",
+                        "role": "developer",
+                        "content": "current developer",
+                    },
                     {"type": "reasoning", "summary": []},
                 ],
                 (1, 3, 4),
@@ -351,11 +426,19 @@ class TestDialogueRecovery:
             (
                 [
                     {"type": "message", "role": "system", "content": "old system"},
-                    {"type": "message", "role": "developer", "content": "old developer"},
+                    {
+                        "type": "message",
+                        "role": "developer",
+                        "content": "old developer",
+                    },
                     {"type": "message", "role": "user", "content": "old user"},
                     {"type": "message", "role": "user", "content": "current user"},
                     {"type": "message", "role": "system", "content": "current system"},
-                    {"type": "message", "role": "developer", "content": "current developer"},
+                    {
+                        "type": "message",
+                        "role": "developer",
+                        "content": "current developer",
+                    },
                     {"type": "reasoning", "summary": []},
                 ],
                 (3, 4, 5),
@@ -375,7 +458,11 @@ class TestDialogueRecovery:
                     "type": "message",
                     "role": "user",
                     "content": [
-                        {"type": "input_image", "detail": "auto", "image_url": "https://x"},
+                        {
+                            "type": "input_image",
+                            "detail": "auto",
+                            "image_url": "https://x",
+                        },
                         {"type": "output_text", "text": "current"},
                         {"type": "input_text", "text": ""},
                         1,
@@ -408,7 +495,10 @@ class TestDialogueRecovery:
             (b"[]", 100),
             (b'{"input":[]}', 100),
             (b'{"input":[{"type":"message","role":"developer","content":"x"}]}', 100),
-            (_json({"input": [{"type": "message", "role": "user", "content": "current"}]}), 100),
+            (
+                _json({"input": [{"type": "message", "role": "user", "content": "current"}]}),
+                100,
+            ),
             (
                 _json(
                     {

@@ -16,15 +16,11 @@ import subprocess
 import threading
 import time
 import urllib.request
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import IO
-from typing import Callable
-from typing import Mapping
-from typing import Protocol
-from typing import TypedDict
+from typing import IO, Protocol, TypedDict
 
 from codex_responses_proxy.runtime import config as runtime_config
-
 
 type JsonObject = dict[str, object]
 type ReadOnlyJsonObject = Mapping[str, object]
@@ -259,7 +255,7 @@ def spawn_child(
         runtime_pid = child.await_runtime(startup_timeout_seconds)
         if windows:
             try:
-                shared = getattr(listener, "share")(runtime_pid)
+                shared = listener.share(runtime_pid)
             except Exception as exc:
                 raise HandoffError("Windows listener sharing failed") from exc
             message["listener_share_b64"] = base64.b64encode(shared).decode("ascii")
@@ -281,7 +277,7 @@ def listener_from_prepare(message: ReadOnlyJsonObject) -> socket.socket:
             raise HandoffError("invalid Windows listener share")
         try:
             shared = base64.b64decode(encoded.encode("ascii"), validate=True)
-            return getattr(socket, "fromshare")(shared)
+            return socket.fromshare(shared)
         except Exception as exc:
             raise HandoffError("Windows listener reconstruction failed") from exc
     listener_fd = message.get("listener_fd")

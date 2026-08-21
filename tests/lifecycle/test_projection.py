@@ -7,13 +7,18 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import projection as payload_projection
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import inventory
-from tests.lifecycle.fixtures import install_context
-from tests.lifecycle.fixtures import install_payload, released_artifact, runtime_files
-import pytest
+from tests.lifecycle.fixtures import (
+    install_context,
+    install_payload,
+    released_artifact,
+    runtime_files,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -81,7 +86,9 @@ class TestPayloadProjection:
         for relative in runtime_files():
             assert not (install / relative).exists()
 
-    def test_purge_rejects_noncurrent_manifest_without_touching_unknown_content(self) -> None:
+    def test_purge_rejects_noncurrent_manifest_without_touching_unknown_content(
+        self,
+    ) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install = Path(ctx.install_dir)
         claimed = {
@@ -126,7 +133,9 @@ class TestPayloadProjection:
                     payload_projection.purge_installed_projection(ctx)
                 assert marker.exists()
 
-    def test_serving_payload_identity_is_order_independent_and_length_delimited(self) -> None:
+    def test_serving_payload_identity_is_order_independent_and_length_delimited(
+        self,
+    ) -> None:
         digests = {
             relative: hashlib.sha256(relative.encode("utf-8")).hexdigest()
             for relative in runtime_files()

@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from cyclopts import App
+
 from tools.quality.architecture import architecture_gaps
 from tools.quality.commits import commit_subject_gaps
 from tools.quality.decision_records import decision_record_gaps

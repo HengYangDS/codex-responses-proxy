@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import http.client
 import json
+import ssl
 import urllib.request
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast
 
 from codex_responses_proxy.protocol import request as rewrite
 from codex_responses_proxy.providers import registry as provider_registry
@@ -24,6 +25,14 @@ ROOT = Path(__file__).resolve().parents[2]
 PROVIDERS = provider_registry.load()
 
 
+class _OpenerWithHandlers(Protocol):
+    handlers: list[urllib.request.BaseHandler]
+
+
+class _HTTPSHandlerWithContext(Protocol):
+    _context: ssl.SSLContext
+
+
 class TestTransportFailures(InputTransportFixture):
     def test_upstream_tls_context_uses_the_packaged_trust_store(self, *, mocker) -> None:
         context = object()
@@ -35,10 +44,12 @@ class TestTransportFailures(InputTransportFixture):
         assert upstream_exchange._upstream_tls_context() is context
         create.assert_called_once_with(cafile="/safe/cacert.pem")
 
-    def test_direct_opener_carries_one_verifying_context_with_loaded_authorities(self) -> None:
+    def test_direct_opener_carries_one_verifying_context_with_loaded_authorities(
+        self,
+    ) -> None:
         contexts = [
-            handler._context
-            for handler in getattr(upstream_exchange._DIRECT_OPENER, "handlers")
+            cast(_HTTPSHandlerWithContext, handler)._context
+            for handler in cast(_OpenerWithHandlers, upstream_exchange._DIRECT_OPENER).handlers
             if isinstance(handler, urllib.request.HTTPSHandler)
         ]
 
@@ -78,7 +89,9 @@ class TestTransportFailures(InputTransportFixture):
         handler = MemoryHandler(json.dumps({"input": []}).encode())
         upstream_error = http_error(477, "empty", empty)
         mocker.patch.object(
-            upstream_exchange, "urlopen_direct", side_effect=[upstream_error, fallback_error]
+            upstream_exchange,
+            "urlopen_direct",
+            side_effect=[upstream_error, fallback_error],
         )
         responses.relay(handler, "POST", PROVIDERS)
         assert handler.statuses == [503]
@@ -189,7 +202,9 @@ class TestTransportFailures(InputTransportFixture):
             handler.wfile = mocker.Mock()
             handler.wfile.write.side_effect = error
             mocker.patch.object(
-                upstream_exchange, "urlopen_direct", return_value=DirectResponse(b"body")
+                upstream_exchange,
+                "urlopen_direct",
+                return_value=DirectResponse(b"body"),
             )
             responses.relay(handler, "GET", PROVIDERS)
             statuses.append(handler.statuses)
@@ -207,7 +222,10 @@ class TestTransportFailures(InputTransportFixture):
                     {
                         "type": "agent_message",
                         "content": [
-                            {"type": "encrypted_content", "encrypted_content": "agent-secret"},
+                            {
+                                "type": "encrypted_content",
+                                "encrypted_content": "agent-secret",
+                            },
                             {"type": "output_text", "text": "visible"},
                         ],
                     },

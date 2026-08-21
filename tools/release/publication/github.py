@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Final
 
-from tools.release.publication import hosted
 from tools.release import product_assets as release_assets
+from tools.release.publication import hosted
 
 DEFAULT_REQUIRED_JOBS: Final = (
     "Python 3.12",

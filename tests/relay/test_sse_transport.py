@@ -10,10 +10,18 @@ import urllib.request
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from codex_responses_proxy.protocol import request as rewrite
 from codex_responses_proxy.protocol import response as response_projection
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.relay import admission, cooldown, operational_log, sse, telemetry
+from codex_responses_proxy.relay import (
+    admission,
+    cooldown,
+    operational_log,
+    sse,
+    telemetry,
+)
 from codex_responses_proxy.relay import relay as downstream
 from tests.relay.exchange_fixture import (
     EXACT_ERROR,
@@ -23,7 +31,6 @@ from tests.relay.exchange_fixture import (
     request_body,
 )
 from tests.relay.proxy_fixture import request, running_proxy
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 PROVIDERS = provider_registry.load()
@@ -37,7 +44,11 @@ class TestSseTransport(InputTransportFixture):
         with running_proxy(
             [
                 (400, EXACT_ERROR),
-                {"status": 200, "payload": incomplete, "content_type": "text/event-stream"},
+                {
+                    "status": 200,
+                    "payload": incomplete,
+                    "content_type": "text/event-stream",
+                },
                 {
                     "status": 200,
                     "payload": unexpected_reconnect,
@@ -110,7 +121,7 @@ class TestSseTransport(InputTransportFixture):
                 object,
             ),
             (
-                DirectResponse(socket.timeout("private")),
+                DirectResponse(TimeoutError("private")),
                 None,
                 "timeout",
                 socket.timeout,
@@ -168,7 +179,13 @@ class TestSseTransport(InputTransportFixture):
             b'{"type":"reasoning","encrypted_content":"secret"}]}}\n\n'
         )
         with running_proxy(
-            [{"status": 200, "chunks": [encrypted], "content_type": "text/event-stream"}]
+            [
+                {
+                    "status": 200,
+                    "chunks": [encrypted],
+                    "content_type": "text/event-stream",
+                }
+            ]
         ) as (port, _received):
             projected = rewrite.sanitize_responses_body(body).body
             assert projected is not None
@@ -326,7 +343,7 @@ class TestSseTransport(InputTransportFixture):
         mocker.patch.object(sse.time, "monotonic", return_value=2.0)
         result = sse._read_one_stream(
             handler,
-            DirectResponse(socket.timeout("late")),
+            DirectResponse(TimeoutError("late")),
             "/v1/responses",
             3,
             lambda: None,

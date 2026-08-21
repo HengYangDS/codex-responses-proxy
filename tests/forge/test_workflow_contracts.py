@@ -235,7 +235,7 @@ def _assert_github_required_tokens(text: str) -> None:
         'uv run --locked --no-sync python tools/release/metadata.py --tag "$GITHUB_REF_NAME"',
         "uv run --locked --no-sync python tools/release/metadata.py",
         "python-quality:",
-        "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
+        "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d",
         "uv run --locked --group quality nox -s quality",
         "python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py",
         "tests/release/test_publish_gitlab.py",
@@ -278,7 +278,7 @@ def _assert_github_matrix_contract(text: str, release_text: str) -> None:
     matrix_end = text.index("\n  python:", matrix_start)
     matrix_block = text[matrix_start:matrix_end]
     for token in (
-        "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
+        "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d",
         "uv sync --locked --all-groups",
         "uv run --locked --no-sync python -m tools.quality.python_matrix",
     ):
@@ -307,7 +307,7 @@ def _assert_github_platform_contract(text: str, release_text: str) -> None:
     governance_start = text.index("\n  accepted-source:")
     mac_block = text[mac_start:windows_start]
     windows_block = text[windows_start:governance_start]
-    setup_uv = "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9"
+    setup_uv = "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d"
     if (
         mac_block.count(setup_uv) != 1
         or "cache-suffix: ${{ matrix.python-version }}" not in mac_block

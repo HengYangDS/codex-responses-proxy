@@ -14,10 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from codex_responses_proxy.service import digest
-from tools.release.publication import evaluator
-from tools.release.publication import git
-from tools.release.publication import github
-from tools.release.publication import gitlab
+from tools.release.publication import evaluator, git, github, gitlab
 
 _TAG = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 

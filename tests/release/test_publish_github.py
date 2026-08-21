@@ -25,7 +25,10 @@ def test_release_record_selection_is_exact_and_fail_closed(subtests) -> None:
         [{**matching, "name": "wrong"}],
         [{**matching, "published_at": None}],
     ):
-        with subtests.test(records=records), pytest.raises(publish_github.GitHubPublishError):
+        with (
+            subtests.test(records=records),
+            pytest.raises(publish_github.GitHubPublishError),
+        ):
             publish_github.select_release(records, "v1.2.3")
 
 
@@ -44,7 +47,10 @@ def test_remote_annotated_tag_is_bound_to_local_objects() -> None:
     )
     with pytest.raises(publish_github.GitHubPublishError):
         publish_github.verify_remote_tag(
-            ref={"ref": "refs/tags/v1.2.3", "object": {"type": "commit", "sha": tag_oid}},
+            ref={
+                "ref": "refs/tags/v1.2.3",
+                "object": {"type": "commit", "sha": tag_oid},
+            },
             tag_object={},
             tag="v1.2.3",
             tag_oid=tag_oid,

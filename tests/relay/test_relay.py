@@ -9,11 +9,12 @@ import urllib.request
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from codex_responses_proxy.protocol import request as rewrite
 from codex_responses_proxy.relay import admission, cooldown, operational_log, telemetry
 from codex_responses_proxy.relay import exchange as upstream_exchange
 from tests.relay.proxy_fixture import request, running_proxy
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -31,7 +32,10 @@ class TestProxyTransport:
 
     def exchange(self, scripted, body):
         """Run one loopback exchange and return received requests and payload."""
-        with running_proxy(scripted) as (port, received), request(port, body) as response:
+        with (
+            running_proxy(scripted) as (port, received),
+            request(port, body) as response,
+        ):
             assert response.status == 200
             return received, response.read()
 
@@ -84,15 +88,27 @@ class TestProxyTransport:
                 "stream": False,
                 "prompt_cache_key": "full-history-cache-key",
                 "input": [
-                    {"type": "message", "role": "user", "content": "old" + "x" * 100_000},
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": "old" + "x" * 100_000,
+                    },
                     {
                         "type": "function_call",
                         "call_id": "call_old",
                         "name": "tool",
                         "arguments": "{}",
                     },
-                    {"type": "function_call_output", "call_id": "call_old", "output": "old result"},
-                    {"type": "message", "role": "user", "content": "latest user context"},
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call_old",
+                        "output": "old result",
+                    },
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": "latest user context",
+                    },
                 ],
             },
             separators=(",", ":"),
@@ -126,15 +142,27 @@ class TestProxyTransport:
                 "prompt_cache_key": "full-history-cache-key",
                 "input": [
                     {"type": "message", "role": "developer", "content": "policy"},
-                    {"type": "message", "role": "user", "content": "old" + "x" * 100_000},
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": "old" + "x" * 100_000,
+                    },
                     {
                         "type": "function_call",
                         "call_id": "call_old",
                         "name": "tool",
                         "arguments": "{}",
                     },
-                    {"type": "function_call_output", "call_id": "call_old", "output": "old result"},
-                    {"type": "message", "role": "user", "content": "latest user context"},
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call_old",
+                        "output": "old result",
+                    },
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": "latest user context",
+                    },
                 ],
             },
             separators=(",", ":"),
@@ -165,7 +193,11 @@ class TestProxyTransport:
                 "model": "gpt-5.6-terra",
                 "stream": False,
                 "input": [
-                    {"type": "message", "role": "user", "content": "latest user context"},
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": "latest user context",
+                    },
                 ],
             },
             separators=(",", ":"),
@@ -193,9 +225,21 @@ class TestProxyTransport:
                 "stream": False,
                 "prompt_cache_key": "full-history-cache-key",
                 "input": [
-                    {"type": "message", "role": "developer", "content": "old" + "x" * 100_000},
-                    {"type": "message", "role": "developer", "content": "current policy"},
-                    {"type": "message", "role": "user", "content": "latest user context"},
+                    {
+                        "type": "message",
+                        "role": "developer",
+                        "content": "old" + "x" * 100_000,
+                    },
+                    {
+                        "type": "message",
+                        "role": "developer",
+                        "content": "current policy",
+                    },
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": "latest user context",
+                    },
                     {
                         "type": "custom_tool_call",
                         "call_id": "call_new",
@@ -247,8 +291,16 @@ class TestProxyTransport:
                 "model": "gpt-5.6-terra",
                 "stream": False,
                 "input": [
-                    {"type": "message", "role": "developer", "content": "current policy"},
-                    {"type": "message", "role": "user", "content": "latest user context"},
+                    {
+                        "type": "message",
+                        "role": "developer",
+                        "content": "current policy",
+                    },
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": "latest user context",
+                    },
                     {
                         "type": "custom_tool_call",
                         "call_id": "call_new",
@@ -266,7 +318,10 @@ class TestProxyTransport:
         ).encode()
         mocker.patch.object(upstream_exchange, "RESPONSE_FAILED_MAX_STAGES", 0)
 
-        with running_proxy([(400, response_failed), (400, response_failed)]) as (port, received):
+        with running_proxy([(400, response_failed), (400, response_failed)]) as (
+            port,
+            received,
+        ):
             with pytest.raises(urllib.error.HTTPError) as raised:
                 request(port, body)
             error = raised.value
@@ -599,7 +654,10 @@ class TestProxyTransport:
                         "type": "message",
                         "role": "user",
                         "content": [
-                            {"type": "input_image", "image_url": "https://example.test/valid.png"},
+                            {
+                                "type": "input_image",
+                                "image_url": "https://example.test/valid.png",
+                            },
                             {
                                 "type": "input_image",
                                 "image_url": "data:image/png;base64,not-supported",
@@ -646,7 +704,10 @@ class TestProxyTransport:
                         "call_id": "image-call",
                         "output": [{"type": "input_image", "image_url": url} for url in bad_urls]
                         + [
-                            {"type": "input_image", "image_url": "https://example.test/valid.png"},
+                            {
+                                "type": "input_image",
+                                "image_url": "https://example.test/valid.png",
+                            },
                         ],
                     },
                 ],

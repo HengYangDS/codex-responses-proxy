@@ -49,7 +49,11 @@ class ResponseFailedContracts:
             (477, b'{"error":"unprocessable"}', ""),
             (477, b'{"error":{"type":"other_gateway","code":"empty_response"}}', ""),
             (400, b'{"error":"not-an-object"}', ""),
-            (400, b'{"error":{"type":"new_api_error","code":"response_failed"}}', "full"),
+            (
+                400,
+                b'{"error":{"type":"new_api_error","code":"response_failed"}}',
+                "full",
+            ),
             (418, b"teapot", ""),
             (400, b"invalid_encrypted_content", ""),
             (400, b"could not be verified", ""),
@@ -58,7 +62,11 @@ class ResponseFailedContracts:
                 b'{"error":{"message":"Request blocked. (fixture)","type":"invalid_request_error","code":"invalid_prompt"}}',
                 "full",
             ),
-            (400, b'{"error":{"type":"invalid_request_error","code":"invalid_payload"}}', "once"),
+            (
+                400,
+                b'{"error":{"type":"invalid_request_error","code":"invalid_payload"}}',
+                "once",
+            ),
         )
         for status, payload, expected in cases:
             with subtests.test(status=status, payload=payload):
@@ -135,7 +143,9 @@ class ResponseFailedContracts:
         assert detail["removed_inputs"] == 1
         assert "prompt_cache_key" not in json.loads(compact)
 
-    def test_response_failed_compaction_uses_smallest_safe_suffix_when_budget_is_impossible(self):
+    def test_response_failed_compaction_uses_smallest_safe_suffix_when_budget_is_impossible(
+        self,
+    ):
         body = _body(
             [
                 _message("user", "old context"),
@@ -168,7 +178,9 @@ class ResponseFailedContracts:
         monkeypatch.setattr(response_failed, "tool_pair_boundary_is_safe", lambda *_args: False)
         assert response_failed.compact_request(body, COMPACTION_BUDGET) == (None, None)
 
-    def test_response_failed_dialogue_recovery_keeps_latest_context_without_tool_replay(self):
+    def test_response_failed_dialogue_recovery_keeps_latest_context_without_tool_replay(
+        self,
+    ):
         body = _body(
             [
                 _message("developer", "old policy"),
@@ -195,7 +207,9 @@ class ResponseFailedContracts:
         assert detail["dropped_input_items"] == 7
         assert len(recovery) < len(body)
 
-    def test_response_failed_dialogue_recovery_allows_current_user_without_instruction(self):
+    def test_response_failed_dialogue_recovery_allows_current_user_without_instruction(
+        self,
+    ):
         body = _body(
             [
                 _message("user", "old request"),
@@ -230,7 +244,10 @@ class ResponseFailedContracts:
             response_failed.recover_dialogue,
             (
                 *common,
-                (b'{"input":[{"type":"message","role":"developer","content":"x"}]}', None),
+                (
+                    b'{"input":[{"type":"message","role":"developer","content":"x"}]}',
+                    None,
+                ),
                 (valid, 0),
                 (valid, 1),
             ),

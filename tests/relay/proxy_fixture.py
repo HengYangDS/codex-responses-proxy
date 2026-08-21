@@ -134,7 +134,9 @@ def serve_proxy(
 
 @contextlib.contextmanager
 def running_proxy(
-    responses: Sequence[ScriptedResponse], *, captures: list[dict[str, object]] | None = None
+    responses: Sequence[ScriptedResponse],
+    *,
+    captures: list[dict[str, object]] | None = None,
 ):
     """Yield a scripted loopback proxy and always release both servers."""
     with tempfile.TemporaryDirectory() as log_dir:

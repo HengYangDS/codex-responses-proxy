@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import command, context as runtime_context, state
-from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.lifecycle import command, projection, state
+from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle.supervision.native_service import adapter
 from codex_responses_proxy.runtime import config as runtime_config

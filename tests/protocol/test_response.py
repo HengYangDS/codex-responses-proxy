@@ -18,12 +18,19 @@ def _event(value: object) -> bytes:
 
 
 class LiveStreamContracts:
-    def test_preserves_encrypted_agent_payload_for_current_turn_decryption(self) -> None:
+    def test_preserves_encrypted_agent_payload_for_current_turn_decryption(
+        self,
+    ) -> None:
         event = _event(
             {
                 "item": {
                     "type": "agent_message",
-                    "content": [{"type": "encrypted_content", "encrypted_content": "agent-secret"}],
+                    "content": [
+                        {
+                            "type": "encrypted_content",
+                            "encrypted_content": "agent-secret",
+                        }
+                    ],
                 }
             }
         )

@@ -147,7 +147,14 @@ def committed_payload(executable: Path) -> LoadedPayloadIdentity | None:
             digest.sha256_file(root / inventory.MANIFEST_FILENAME),
             root,
         )
-    except (IndexError, KeyError, OSError, TypeError, ValueError, digest.PayloadDigestError):
+    except (
+        IndexError,
+        KeyError,
+        OSError,
+        TypeError,
+        ValueError,
+        digest.PayloadDigestError,
+    ):
         return None
 
 

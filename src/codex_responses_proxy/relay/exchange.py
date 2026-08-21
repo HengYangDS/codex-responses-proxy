@@ -12,13 +12,11 @@ from typing import Any
 
 import certifi
 
-from codex_responses_proxy.protocol import input_variant
-from codex_responses_proxy.protocol import response_failed
-from codex_responses_proxy.relay import operational_log, telemetry
-from codex_responses_proxy.relay import cooldown
+from codex_responses_proxy.protocol import input_variant, response_failed
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.runtime import config as runtime_config
+from codex_responses_proxy.relay import cooldown, operational_log, telemetry
 from codex_responses_proxy.relay import relay as downstream
+from codex_responses_proxy.runtime import config as runtime_config
 
 _SETTINGS = runtime_config.load()
 UPSTREAM_TIMEOUT = _SETTINGS.upstream_timeout
@@ -66,7 +64,9 @@ def _request(url: str, body: bytes, method: str, headers: dict[str, str]) -> url
     return request
 
 
-def _input_variant_recovery(raw: bytes) -> tuple[bytes | None, dict[str, object] | None]:
+def _input_variant_recovery(
+    raw: bytes,
+) -> tuple[bytes | None, dict[str, object] | None]:
     recovery, metrics = input_variant.build_recovery(raw, RESPONSE_FAILED_COMPACTION_BUDGET)
     if metrics is None:
         return recovery, None
@@ -104,7 +104,10 @@ class Exchange:
     def upstream(self, body: bytes | None = None):
         return urlopen_direct(
             _request(
-                self.url, self.attempt_body if body is None else body, self.method, self.headers
+                self.url,
+                self.attempt_body if body is None else body,
+                self.method,
+                self.headers,
             ),
             timeout=UPSTREAM_TIMEOUT,
         )
@@ -251,7 +254,10 @@ def _exhaust_response_failed(exchange: Exchange) -> None:
     telemetry.record_failure("response_failed_recovery_exhausted")
     attempts = exchange.response_failed_stages + int(exchange.used_response_failed_dialogue) + 1
     downstream.send_payload(
-        exchange.handler, 503, response_failed.exhausted_payload(attempts), retry_after="3"
+        exchange.handler,
+        503,
+        response_failed.exhausted_payload(attempts),
+        retry_after="3",
     )
     exchange.log(
         "response_failed_recovery_exhausted",

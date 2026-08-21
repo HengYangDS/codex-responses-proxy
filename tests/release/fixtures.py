@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
 import urllib.request
-import hashlib
 from pathlib import Path
 
 import pytest
@@ -179,6 +179,10 @@ def cleanup_runtime(ctx: runtime_context.RuntimeContext, wrapper: Path | None = 
         if wrapper is not None:
             for pid in process.pids_naming_path(str(wrapper)):
                 process.terminate_pid(pid, expected_path=str(wrapper))
-        roles = {"--internal-listener", "--internal-handoff-child", "--internal-watchdog"}
+        roles = {
+            "--internal-listener",
+            "--internal-handoff-child",
+            "--internal-watchdog",
+        }
         for pid in process.pids_naming_executable(ctx.executable, roles=roles):
             process.terminate_executable(pid, ctx.executable, roles=roles)

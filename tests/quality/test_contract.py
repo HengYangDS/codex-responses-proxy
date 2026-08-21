@@ -10,10 +10,11 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterator
+from typing import Any
 
 import pytest
 from pytest_mock import MockerFixture
@@ -44,7 +45,10 @@ def _commit_checker() -> ModuleType:
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
-    environment = os.environ | {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
+    environment = os.environ | {
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+    }
     result = subprocess.run(
         ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args],
         stdout=subprocess.PIPE,
@@ -451,7 +455,9 @@ class TestQualityPolicyContracts:
                 (root / "tracked.txt").chmod(0o755)
                 assert checker.worktree_fingerprint(root) != untracked_changed
 
-    def test_worktree_fingerprint_is_path_sensitive_and_ignores_git_internals(self) -> None:
+    def test_worktree_fingerprint_is_path_sensitive_and_ignores_git_internals(
+        self,
+    ) -> None:
         checker = _checker()
         with _test_repository(("first.txt",)) as root:
             before = checker.worktree_fingerprint(root)
@@ -531,7 +537,9 @@ class TestQualityPolicyContracts:
     def test_tracked_project_files_follow_semantic_type_grammars(self) -> None:
         assert _checker().semantic_name_gaps(ROOT) == []
 
-    def test_semantic_name_gate_rejects_numeric_and_cross_language_grammar(self) -> None:
+    def test_semantic_name_gate_rejects_numeric_and_cross_language_grammar(
+        self,
+    ) -> None:
         checker = _checker()
         with _test_repository(
             (

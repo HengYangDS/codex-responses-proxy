@@ -148,7 +148,14 @@ def _load_policy(name: str) -> WirePolicy:
     module_name = f"{package}.{name}"
     try:
         module = importlib.import_module(module_name)
-    except (ImportError, OSError, RuntimeError, SyntaxError, TypeError, ValueError) as exc:
+    except (
+        ImportError,
+        OSError,
+        RuntimeError,
+        SyntaxError,
+        TypeError,
+        ValueError,
+    ) as exc:
         sys.modules.pop(module_name, None)
         raise ValueError(f"provider policy {name!r} is unavailable") from exc
     module_file = getattr(module, "__file__", None)
@@ -219,7 +226,11 @@ def _base_url(name: str, value: object) -> str:
         or parsed.fragment
     ):
         raise ValueError(message)
-    if parsed.scheme.lower() == "http" and parsed.hostname not in ("127.0.0.1", "localhost", "::1"):
+    if parsed.scheme.lower() == "http" and parsed.hostname not in (
+        "127.0.0.1",
+        "localhost",
+        "::1",
+    ):
         raise ValueError(message)
     return urllib.parse.urlunsplit(
         (parsed.scheme.lower(), parsed.netloc, parsed.path.rstrip("/"), "", "")

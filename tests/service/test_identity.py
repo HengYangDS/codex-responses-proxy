@@ -8,9 +8,12 @@ import tempfile
 from pathlib import Path
 
 from codex_responses_proxy.lifecycle import projection
-from codex_responses_proxy.service import identity
-from codex_responses_proxy.service import inventory
-from tests.lifecycle.fixtures import executable_relative, install_context, install_payload
+from codex_responses_proxy.service import identity, inventory
+from tests.lifecycle.fixtures import (
+    executable_relative,
+    install_context,
+    install_payload,
+)
 
 
 class TestServiceIdentity:

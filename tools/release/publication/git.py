@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import tempfile
-import re
 from pathlib import Path
 
 _TAG = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
@@ -93,11 +93,23 @@ def collect(*, provider: str, remote: str, tag: str, anchor: Path) -> dict[str, 
                     environment,
                 ),
                 "commit_oid": _output(
-                    (git, "-C", str(repository), "rev-parse", f"refs/tags/{tag}^{{commit}}"),
+                    (
+                        git,
+                        "-C",
+                        str(repository),
+                        "rev-parse",
+                        f"refs/tags/{tag}^{{commit}}",
+                    ),
                     environment,
                 ),
                 "tree_oid": _output(
-                    (git, "-C", str(repository), "rev-parse", f"refs/tags/{tag}^{{tree}}"),
+                    (
+                        git,
+                        "-C",
+                        str(repository),
+                        "rev-parse",
+                        f"refs/tags/{tag}^{{tree}}",
+                    ),
                     environment,
                 ),
                 "anchor_sha256": hashlib.sha256(anchor.read_bytes()).hexdigest(),

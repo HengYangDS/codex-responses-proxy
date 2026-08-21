@@ -32,7 +32,12 @@ HISTORY_PAYLOAD = {
             "role": "assistant",
             "phase": "final_answer",
             "content": [
-                {"type": "output_text", "text": "visible answer", "annotations": [], "logprobs": []}
+                {
+                    "type": "output_text",
+                    "text": "visible answer",
+                    "annotations": [],
+                    "logprobs": [],
+                }
             ],
             "internal_chat_message_metadata_passthrough": {"opaque": True},
         },

@@ -9,8 +9,8 @@ from typing import Any
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.service import digest, inventory
 from codex_responses_proxy.lifecycle import owned_files
+from codex_responses_proxy.service import digest, inventory
 
 TRANSACTION_JOURNAL_FILENAME = "transaction.json"
 INSTALLED_RELEASE_STATE_SCHEMA = 1

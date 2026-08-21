@@ -16,12 +16,9 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Annotated
-from typing import Any
-from typing import TypeGuard
+from typing import Annotated, Any, TypeGuard
 
 from cyclopts import App, Parameter
-
 
 SCHEMA_VERSION = 1
 EMPTY_RESPONSE_INCIDENT_THRESHOLD = 3
@@ -120,7 +117,8 @@ def normalize_status(value: object) -> dict[str, Any]:
         "uptime_seconds": uptime,
         "counters": _count_map(runtime.get("counters"), label="runtime.counters"),
         "upstream_classifications": _count_map(
-            runtime.get("upstream_classifications"), label="runtime.upstream_classifications"
+            runtime.get("upstream_classifications"),
+            label="runtime.upstream_classifications",
         ),
         # Retain a stable class as context only.  It is intentionally excluded
         # from policy decisions: it may describe an old event in this process.
@@ -223,7 +221,9 @@ def _append_runtime_reasons(current: dict[str, Any], add: Any) -> None:
 
     if not current["payload_integrity_ok"]:
         add(
-            "payload_integrity_failed", "incident", "The installed payload manifest did not verify."
+            "payload_integrity_failed",
+            "incident",
+            "The installed payload manifest did not verify.",
         )
     if current["service"] != "running":
         severity = "observe" if current["service"] in (None, "unknown") else "incident"
@@ -269,7 +269,11 @@ def _append_delta_reasons(
             "local_stream_pre_content_exhausted",
             "stream(s) exhausted pre-content reconnects.",
         ),
-        ("streams_failed", "local_stream_failed", "stream failure(s) occurred after admission."),
+        (
+            "streams_failed",
+            "local_stream_failed",
+            "stream failure(s) occurred after admission.",
+        ),
     ):
         count = counter_deltas.get(name, 0)
         if count:
@@ -302,7 +306,11 @@ def _append_delta_reasons(
     )
     for count, threshold, code, detail in bursts:
         if count:
-            add(code, "incident" if count >= threshold else "observe", f"{count} {detail}")
+            add(
+                code,
+                "incident" if count >= threshold else "observe",
+                f"{count} {detail}",
+            )
 
 
 def _window_deltas(
@@ -376,7 +384,10 @@ def evaluate(
         "observed_at_unix": now,
         "runtime": current["identity"],
         "window": window,
-        "deltas": {"counters": counter_deltas, "upstream_classifications": upstream_deltas},
+        "deltas": {
+            "counters": counter_deltas,
+            "upstream_classifications": upstream_deltas,
+        },
         "reasons": reasons,
         "limits": [
             "The observer reads one supplied secret-free status snapshot; it does not prove client-visible recovery.",

@@ -8,8 +8,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
-from tools.release.publication import git
 import pytest
+
+from tools.release.publication import git
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -30,15 +31,26 @@ class GitPublicationContracts:
             f'release@example.test namespaces="git" {public}\n', encoding="utf-8"
         )
         subprocess.run(
-            ["git", "-c", "core.hooksPath=/dev/null", "init", "-q", "-b", "main", self.repo],
+            [
+                "git",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "init",
+                "-q",
+                "-b",
+                "main",
+                self.repo,
+            ],
             check=True,
         )
         subprocess.run(
-            ["git", "-C", self.repo, "config", "core.hooksPath", "/dev/null"], check=True
+            ["git", "-C", self.repo, "config", "core.hooksPath", "/dev/null"],
+            check=True,
         )
         subprocess.run(["git", "-C", self.repo, "config", "user.name", "Release Test"], check=True)
         subprocess.run(
-            ["git", "-C", self.repo, "config", "user.email", "release@example.test"], check=True
+            ["git", "-C", self.repo, "config", "user.email", "release@example.test"],
+            check=True,
         )
         (self.repo / "VERSION").write_text("1.2.3\n", encoding="utf-8")
         subprocess.run(["git", "-C", self.repo, "add", "VERSION"], check=True)
@@ -65,7 +77,16 @@ class GitPublicationContracts:
         )
         subprocess.run(["git", "init", "-q", "--bare", self.remote], check=True)
         subprocess.run(
-            ["git", "-C", self.repo, "push", "-q", self.remote, "main", "refs/tags/v1.2.3"],
+            [
+                "git",
+                "-C",
+                self.repo,
+                "push",
+                "-q",
+                self.remote,
+                "main",
+                "refs/tags/v1.2.3",
+            ],
             check=True,
         )
 
@@ -85,11 +106,15 @@ class GitPublicationContracts:
     def test_rejects_lightweight_tag_and_wrong_anchor(self) -> None:
         subprocess.run(["git", "-C", self.repo, "tag", "v1.2.4"], check=True)
         subprocess.run(
-            ["git", "-C", self.repo, "push", "-q", self.remote, "refs/tags/v1.2.4"], check=True
+            ["git", "-C", self.repo, "push", "-q", self.remote, "refs/tags/v1.2.4"],
+            check=True,
         )
         with pytest.raises(git.GitProofError):
             git.collect(
-                provider="gitlab", remote=str(self.remote), tag="v1.2.4", anchor=self.anchor
+                provider="gitlab",
+                remote=str(self.remote),
+                tag="v1.2.4",
+                anchor=self.anchor,
             )
         wrong = self.root / "wrong"
         wrong.write_text(
@@ -122,7 +147,10 @@ class GitPublicationContracts:
             )
             with pytest.raises(git.GitProofError):
                 git.collect(
-                    provider="gitlab", remote=str(self.remote), tag="v1.2.3", anchor=self.anchor
+                    provider="gitlab",
+                    remote=str(self.remote),
+                    tag="v1.2.3",
+                    anchor=self.anchor,
                 )
 
     def test_environment_error_translation_and_ascii_boundary(self, *, mocker) -> None:
@@ -152,5 +180,8 @@ class GitPublicationContracts:
 
         with pytest.raises(git.GitProofError, match="fetch, verification"):
             git.collect(
-                provider="gitlab", remote=str(self.remote), tag="v1.2.3", anchor=self.anchor
+                provider="gitlab",
+                remote=str(self.remote),
+                tag="v1.2.3",
+                anchor=self.anchor,
             )

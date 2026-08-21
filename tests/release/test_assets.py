@@ -9,10 +9,11 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from tools.release import assets as asset_command
-from tools.release import assemble_assets
-from tools.release import product_assets as assets
 import pytest
+
+from tools.release import assemble_assets
+from tools.release import assets as asset_command
+from tools.release import product_assets as assets
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -33,7 +34,8 @@ def _installed_distribution(root: Path, provenance: str) -> Path:
         json.dumps({"url": f"file://{provenance}/product.whl"}), encoding="utf-8"
     )
     (metadata / "uv_cache.json").write_text(
-        json.dumps({"timestamp": {"secs_since_epoch": len(provenance)}}), encoding="utf-8"
+        json.dumps({"timestamp": {"secs_since_epoch": len(provenance)}}),
+        encoding="utf-8",
     )
     rows = [
         "codex_responses_proxy/__init__.py,,",
@@ -271,14 +273,21 @@ class ReleaseAssetContracts:
         manifest = assets.checksums(payload)
         expected = hashlib.sha256(archive).hexdigest()
         assert assets.verify(payload, manifest)[archive_name] == expected
-        release_files = {**payload, assets.CHECKSUM_NAME: manifest, assets.SIGNATURE_NAME: b"sig"}
+        release_files = {
+            **payload,
+            assets.CHECKSUM_NAME: manifest,
+            assets.SIGNATURE_NAME: b"sig",
+        }
         assert set(assets.release_digests(release_files, "1.2.3", ("linux-x86_64",))) == {
             next(iter(payload)),
             assets.manifest_name("linux-x86_64"),
             assets.CHECKSUM_NAME,
             assets.SIGNATURE_NAME,
         }
-        for changed, checksum in (({"wrong": b"archive"}, manifest), (payload, b"bad\n")):
+        for changed, checksum in (
+            ({"wrong": b"archive"}, manifest),
+            (payload, b"bad\n"),
+        ):
             with (
                 subtests.test(changed=changed, checksum=checksum),
                 pytest.raises(assets.AssetError),

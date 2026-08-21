@@ -8,9 +8,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from codex_responses_proxy.lifecycle.supervision import watchdog
 from tests.lifecycle.fixtures import assert_private_log_mode
-import pytest
 
 
 def load_watchdog():

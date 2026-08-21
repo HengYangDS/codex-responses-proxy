@@ -116,7 +116,10 @@ def _policy_gaps(policy: Mapping[str, Any]) -> list[str]:
         value = policy.get(field)
         if not isinstance(value, str) or not value.strip():
             gaps.append(f"architecture_policy_value:{field}")
-    if policy.get("package_initializers") not in {"declarations-only", "ordinary-modules"}:
+    if policy.get("package_initializers") not in {
+        "declarations-only",
+        "ordinary-modules",
+    }:
         gaps.append("architecture_policy_value:package_initializers")
     return gaps
 

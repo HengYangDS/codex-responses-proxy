@@ -7,10 +7,10 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import Iterator
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,7 +35,10 @@ def checker() -> ModuleType:
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     """Run isolated fixture Git and fail with its diagnostic."""
-    environment = os.environ | {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
+    environment = os.environ | {
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+    }
     result = subprocess.run(
         ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args],
         stdout=subprocess.PIPE,

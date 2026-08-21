@@ -7,15 +7,19 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from codex_responses_proxy import errors
 from codex_responses_proxy.cli import application
 from codex_responses_proxy.lifecycle import control, install, uninstall
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import digest as payload_digest
-from tests.lifecycle.fixtures import install_context
-from tests.lifecycle.fixtures import begin_transaction, released_artifact
-import pytest
+from tests.lifecycle.fixtures import (
+    begin_transaction,
+    install_context,
+    released_artifact,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -112,7 +116,10 @@ class TestControllerLifecycle:
         )
         mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
         evidence = control.status(ctx)
-        assert evidence["payload_integrity"] == {"ok": False, "detail": str(current_error)}
+        assert evidence["payload_integrity"] == {
+            "ok": False,
+            "detail": str(current_error),
+        }
         assert evidence["service"] == "unknown"
 
         mocker.patch.object(
@@ -232,7 +239,11 @@ class TestControllerLifecycle:
         command_status = mocker.patch.object(
             control.command,
             "status",
-            return_value={"path": str(installed_command), "available": True, "owned": True},
+            return_value={
+                "path": str(installed_command),
+                "available": True,
+                "owned": True,
+            },
         )
         mocker.patch.object(
             control.projection, "verify_payload_manifest", return_value=(True, "ok")
@@ -368,7 +379,11 @@ class TestControllerLifecycle:
             assert evidence["payload_transaction"]["state"] == "recovery_required"
             assert "reason" not in evidence["payload_transaction"]
             rendered = json.dumps(evidence)
-            for forbidden in ("secret-token", "private request", "/private/release-stage"):
+            for forbidden in (
+                "secret-token",
+                "private request",
+                "/private/release-stage",
+            ):
                 assert forbidden not in rendered
             assert journal_path.read_bytes() == before
 

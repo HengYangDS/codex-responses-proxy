@@ -80,7 +80,11 @@ def publish(
             "description": "Provider-native source release. See CHANGELOG.md for user-relevant changes.",
             "assets": {
                 "links": [
-                    {"name": item, "url": f"{asset_base}/{item}", "link_type": "package"}
+                    {
+                        "name": item,
+                        "url": f"{asset_base}/{item}",
+                        "link_type": "package",
+                    }
                     for item in names
                 ]
             },

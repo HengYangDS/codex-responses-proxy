@@ -20,19 +20,21 @@ import uuid
 from collections.abc import Callable
 from typing import TypeGuard
 
-from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy import errors
+from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import process
-from codex_responses_proxy.service import inventory
 from codex_responses_proxy.runtime import config as runtime_config
+from codex_responses_proxy.service import inventory
 
 HANDOFF_PROTOCOL_VERSION = 2
 _MAX_BODY_BYTES = 64 * 1024
 _TRANSPORT_MARGIN_SECONDS = 1.0
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_RUNTIME_DIGEST_FIELDS = (
-    "serving_payload_sha256 release_receipt_sha256 payload_manifest_sha256".split()
-)
+_RUNTIME_DIGEST_FIELDS = [
+    "serving_payload_sha256",
+    "release_receipt_sha256",
+    "payload_manifest_sha256",
+]
 
 RuntimeReader = Callable[[runtime_context.RuntimeContext], dict | None]
 

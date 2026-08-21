@@ -11,10 +11,11 @@ import sys
 import tempfile
 import textwrap
 import tomllib
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterator
+from typing import Any
 
 import pytest
 from pytest_mock import MockerFixture
@@ -47,7 +48,10 @@ def _checker() -> ModuleType:
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
-    environment = os.environ | {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
+    environment = os.environ | {
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+    }
     result = subprocess.run(
         ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args],
         stdout=subprocess.PIPE,
@@ -145,7 +149,7 @@ class TestVerificationContracts:
             assert re.search(r"\buv==\d", source) is None
 
         github = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
-        assert "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9" in github
+        assert "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" in github
         assert "version:" not in "\n".join(
             line for line in github.splitlines() if "setup-uv" in line or "uv-version" in line
         )
@@ -198,14 +202,17 @@ class TestVerificationContracts:
             relative = path.relative_to(ROOT).as_posix()
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
             for node in ast.walk(tree):
-                if isinstance(node, ast.Import) and any(
-                    alias.name == "unittest" or alias.name.startswith("unittest.")
-                    for alias in node.names
-                ):
-                    offenders.append(f"{relative}:{node.lineno}:unittest_import")
-                elif isinstance(node, ast.ImportFrom) and (
-                    node.module == "unittest"
-                    or (node.module is not None and node.module.startswith("unittest."))
+                if (
+                    isinstance(node, ast.Import)
+                    and any(
+                        alias.name == "unittest" or alias.name.startswith("unittest.")
+                        for alias in node.names
+                    )
+                    or isinstance(node, ast.ImportFrom)
+                    and (
+                        node.module == "unittest"
+                        or (node.module is not None and node.module.startswith("unittest."))
+                    )
                 ):
                     offenders.append(f"{relative}:{node.lineno}:unittest_import")
                 elif isinstance(node, ast.ClassDef) and any(
@@ -237,7 +244,11 @@ class TestVerificationContracts:
         source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-        assert set(functions) >= {"_build_wheel", "_install_wheel", "_assert_installed_product"}
+        assert set(functions) >= {
+            "_build_wheel",
+            "_install_wheel",
+            "_assert_installed_product",
+        }
         calls = [
             node
             for node in ast.walk(tree)
@@ -269,7 +280,11 @@ class TestVerificationContracts:
             for node in ast.walk(functions["tests"])
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         }
-        assert tests_calls >= {"_build_wheel", "_install_wheel", "_assert_installed_product"}
+        assert tests_calls >= {
+            "_build_wheel",
+            "_install_wheel",
+            "_assert_installed_product",
+        }
         assert "_build_executable" not in tests_calls
         tests_source = ast.get_source_segment(source, functions["tests"]) or ""
         quality_source = ast.get_source_segment(source, functions["quality"]) or ""
@@ -339,7 +354,9 @@ class TestVerificationContracts:
         }
         assert native_build_owners == {"release", "release_compatibility"}
 
-    def test_release_compatibility_uses_one_verified_published_predecessor(self) -> None:
+    def test_release_compatibility_uses_one_verified_published_predecessor(
+        self,
+    ) -> None:
         """A release candidate must upgrade a real signed predecessor, never a relabeled build."""
 
         source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
@@ -491,7 +508,9 @@ class TestVerificationContracts:
         assert isinstance(exist_ok, ast.Constant)
         assert exist_ok.value is True
 
-    def test_release_black_box_commands_are_isolated_from_the_live_installation(self) -> None:
+    def test_release_black_box_commands_are_isolated_from_the_live_installation(
+        self,
+    ) -> None:
         source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         function = next(

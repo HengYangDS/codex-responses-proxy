@@ -180,7 +180,13 @@ def _verify_remote_identity(repository: str, tag: str, tag_oid: str, commit_oid:
 def _release_records(repository: str) -> list[Mapping[str, object]]:
     gh = hosted.executable("gh", GitHubPublishError)
     value = hosted.api_json(
-        (gh, "api", "--paginate", "--slurp", f"repos/{repository}/releases?per_page=100"),
+        (
+            gh,
+            "api",
+            "--paginate",
+            "--slurp",
+            f"repos/{repository}/releases?per_page=100",
+        ),
         unavailable="GitHub release records are unavailable",
         error_type=GitHubPublishError,
     )

@@ -239,7 +239,11 @@ def load(environment: Mapping[str, str] | None = None) -> Settings:
                 64 * 1024 * 1024,
             ),
             backup_count=_integer(
-                source, PROXY_LOG_BACKUP_COUNT_ENV, DEFAULT_PROXY_LOG_BACKUP_COUNT, 0, 10
+                source,
+                PROXY_LOG_BACKUP_COUNT_ENV,
+                DEFAULT_PROXY_LOG_BACKUP_COUNT,
+                0,
+                10,
             ),
         ),
         watchdog_log=LogRetention(
@@ -263,7 +267,11 @@ def load(environment: Mapping[str, str] | None = None) -> Settings:
             source, UPSTREAM_TIMEOUT_ENV, DEFAULT_UPSTREAM_TIMEOUT, 0.001, 3600
         ),
         upstream_read_timeout=_number(
-            source, UPSTREAM_READ_TIMEOUT_ENV, DEFAULT_UPSTREAM_READ_TIMEOUT, 0.001, 3600
+            source,
+            UPSTREAM_READ_TIMEOUT_ENV,
+            DEFAULT_UPSTREAM_READ_TIMEOUT,
+            0.001,
+            3600,
         ),
         watchdog_interval=_number(
             source, WATCHDOG_INTERVAL_ENV, DEFAULT_WATCHDOG_INTERVAL, 0.1, 3600

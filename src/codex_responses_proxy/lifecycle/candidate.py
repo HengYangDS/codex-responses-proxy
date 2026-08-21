@@ -10,9 +10,9 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.service import digest, inventory
 from codex_responses_proxy.lifecycle import artifact, owned_files, projection
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.service import digest, inventory
 
 _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 

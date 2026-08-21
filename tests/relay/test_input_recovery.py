@@ -9,6 +9,8 @@ import urllib.request
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from codex_responses_proxy.protocol import request as rewrite
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.relay import admission, cooldown, operational_log, telemetry
@@ -19,7 +21,6 @@ from tests.relay.exchange_fixture import (
     request_body,
 )
 from tests.relay.proxy_fixture import request, running_proxy
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 PROVIDERS = provider_registry.load()
@@ -65,7 +66,9 @@ class TestInputRecovery(InputTransportFixture):
         assert "serving_payload_sha256" in status
         assert "release_receipt_sha256" in status
 
-    def test_exact_error_without_a_strictly_smaller_recovery_is_passed_through(self) -> None:
+    def test_exact_error_without_a_strictly_smaller_recovery_is_passed_through(
+        self,
+    ) -> None:
         body = json.dumps(
             {"input": [{"type": "message", "role": "user", "content": "current"}]},
             separators=(",", ":"),
@@ -160,7 +163,11 @@ class TestInputRecovery(InputTransportFixture):
             ),
             "same-exact-error": (400, EXACT_ERROR, "input_variant_validation_error"),
         }
-        for label, (status_code, terminal_body, classification) in terminal_errors.items():
+        for label, (
+            status_code,
+            terminal_body,
+            classification,
+        ) in terminal_errors.items():
             with subtests.test(label=label):
                 admission.reset_for_test()
                 telemetry.reset_for_test()
@@ -185,7 +192,10 @@ class TestInputRecovery(InputTransportFixture):
                 assert counters["response_failed_compaction_attempts"] == 0
                 assert counters["response_failed_dialogue_recovery_attempts"] == 0
                 assert counters["streams_pre_content_reconnect_attempts"] == 0
-                expected_classifications = {classification: 1, "input_variant_validation_error": 1}
+                expected_classifications = {
+                    classification: 1,
+                    "input_variant_validation_error": 1,
+                }
                 expected_classifications[classification] += (
                     classification == "input_variant_validation_error"
                 )

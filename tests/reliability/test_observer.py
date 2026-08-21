@@ -104,7 +104,9 @@ class TestInputVariantObservation(ObserverCase):
 class TestReliabilityWindowPolicy(ObserverCase):
     """Keep lifetime counters distinct from bounded observation windows."""
 
-    def test_first_snapshot_does_not_reclassify_lifetime_counts_as_an_incident(self) -> None:
+    def test_first_snapshot_does_not_reclassify_lifetime_counts_as_an_incident(
+        self,
+    ) -> None:
         report, baseline = self.observer.evaluate(
             _status(
                 counters={"streams_failed": 7},
@@ -166,9 +168,12 @@ class TestReliabilityWindowPolicy(ObserverCase):
         assert "payload_integrity_failed" in [item["code"] for item in integrity_report["reasons"]]
         assert "listener_cardinality" in [item["code"] for item in integrity_report["reasons"]]
 
-    def test_changed_runtime_starts_new_window_and_state_has_no_payload_snapshot(self) -> None:
+    def test_changed_runtime_starts_new_window_and_state_has_no_payload_snapshot(
+        self,
+    ) -> None:
         _, baseline = self.observer.evaluate(
-            _status(digest="a" * 64, upstream={"empty_response": 10}), observed_at_unix=10
+            _status(digest="a" * 64, upstream={"empty_response": 10}),
+            observed_at_unix=10,
         )
         report, next_baseline = self.observer.evaluate(
             _status(digest="b" * 64, uptime=1, upstream={"empty_response": 40}),

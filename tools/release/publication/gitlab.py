@@ -8,8 +8,8 @@ import urllib.parse
 from collections.abc import Mapping, Sequence
 from typing import Final, cast
 
-from tools.release.publication import hosted
 from tools.release import product_assets as release_assets
+from tools.release.publication import hosted
 
 DEFAULT_REQUIRED_JOBS: Final = (
     "verify-python-matrix",
@@ -97,10 +97,12 @@ def normalize(
         if job.get("allow_failure") is not False:
             raise GitLabProofError("GitLab required job permits failure")
         nested_pipeline = _mapping(
-            job.get("pipeline"), "GitLab required job identity does not match the tag pipeline"
+            job.get("pipeline"),
+            "GitLab required job identity does not match the tag pipeline",
         )
         commit = _mapping(
-            job.get("commit"), "GitLab required job identity does not match the tag pipeline"
+            job.get("commit"),
+            "GitLab required job identity does not match the tag pipeline",
         )
         job_identity = {"ref": tag, "tag": True}
         pipeline_job_identity = {
@@ -255,7 +257,13 @@ def collect(
 
 def _api(endpoint: str) -> object:
     return hosted.api_json(
-        (hosted.executable("glab", GitLabProofError), "api", "--method", "GET", endpoint),
+        (
+            hosted.executable("glab", GitLabProofError),
+            "api",
+            "--method",
+            "GET",
+            endpoint,
+        ),
         unavailable="GitLab API evidence is unavailable",
         error_type=GitLabProofError,
     )
@@ -265,7 +273,16 @@ def _api_pages(endpoint: str) -> list[object]:
     executable = hosted.executable("glab", GitLabProofError)
     try:
         completed = subprocess.run(
-            (executable, "api", "--method", "GET", "--paginate", "--output", "ndjson", endpoint),
+            (
+                executable,
+                "api",
+                "--method",
+                "GET",
+                "--paginate",
+                "--output",
+                "ndjson",
+                endpoint,
+            ),
             check=True,
             capture_output=True,
             text=True,

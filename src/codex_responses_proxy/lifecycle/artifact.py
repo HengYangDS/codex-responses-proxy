@@ -82,7 +82,14 @@ _AUTHORITY = _ArtifactAuthority()
 class VerifiedArtifact:
     """Opaque single-use authority over one exact verified native artifact."""
 
-    __slots__ = ("_blobs", "_claimed", "_receipt", "_receipt_sha256", "_sidecar", "__weakref__")
+    __slots__ = (
+        "__weakref__",
+        "_blobs",
+        "_claimed",
+        "_receipt",
+        "_receipt_sha256",
+        "_sidecar",
+    )
 
     _blobs: tuple[ArtifactFile, ...]
     _claimed: bool
@@ -104,7 +111,9 @@ class VerifiedArtifact:
         object.__setattr__(self, "_receipt", digest.freeze_mapping(receipt))
         object.__setattr__(self, "_sidecar", digest.freeze_mapping(sidecar))
         object.__setattr__(
-            self, "_receipt_sha256", hashlib.sha256(digest.canonical_json(receipt)).hexdigest()
+            self,
+            "_receipt_sha256",
+            hashlib.sha256(digest.canonical_json(receipt)).hexdigest(),
         )
         object.__setattr__(self, "_claimed", False)
 
@@ -296,7 +305,15 @@ def _verify_signature(content: bytes, signature: Path, trust_anchor: Path) -> No
     if not ssh_keygen:
         raise errors.InstallError("ssh-keygen is required to verify release assets")
     found = subprocess.run(
-        [ssh_keygen, "-Y", "find-principals", "-s", str(signature), "-f", str(trust_anchor)],
+        [
+            ssh_keygen,
+            "-Y",
+            "find-principals",
+            "-s",
+            str(signature),
+            "-f",
+            str(trust_anchor),
+        ],
         input=content,
         capture_output=True,
         check=False,

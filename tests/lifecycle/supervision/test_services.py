@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import xml.dom.minidom as minidom
+from xml.dom import minidom
 
 from codex_responses_proxy.lifecycle.supervision import linux, macos, windows
 from tests.lifecycle.fixtures import platform_context

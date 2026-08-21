@@ -9,24 +9,24 @@ import tempfile
 from pathlib import Path
 from typing import Literal, cast
 
+import pytest
+
 from codex_responses_proxy import errors
+from codex_responses_proxy.lifecycle import artifact, owned_files
 from codex_responses_proxy.lifecycle import candidate as payload_candidate
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.lifecycle import projection as payload_projection
 from codex_responses_proxy.lifecycle import rollback as payload_rollback
-from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import inventory
-from tests.lifecycle.fixtures import install_context
 from tests.lifecycle.fixtures import (
     begin_transaction,
     executable_relative,
+    install_context,
     released_artifact,
     runtime_files,
 )
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -48,7 +48,13 @@ class TestPayloadValidation:
         cases = [
             (blobs, "1.2.3-rc1", "0" * 64, receipt, "version is invalid"),
             (blobs, "1.2.3", "short", receipt, "receipt digest is invalid"),
-            (blobs, "1.2.3", "0" * 64, {**receipt, "version": "0.0.0"}, "version mismatch"),
+            (
+                blobs,
+                "1.2.3",
+                "0" * 64,
+                {**receipt, "version": "0.0.0"},
+                "version mismatch",
+            ),
             (blobs[:-1], "1.2.3", "0" * 64, receipt, "file set mismatch"),
             (
                 blobs,
@@ -83,7 +89,10 @@ class TestPayloadValidation:
 
         cases += (
             (
-                (altered_blob(mode=cast("Literal['100644', '100755']", "100600")), *blobs[1:]),
+                (
+                    altered_blob(mode=cast("Literal['100644', '100755']", "100600")),
+                    *blobs[1:],
+                ),
                 "1.2.3",
                 "0" * 64,
                 receipt,
@@ -235,7 +244,12 @@ class TestPayloadValidation:
             payload_rollback,
             "load_inventory",
             return_value=payload_rollback.RollbackInventory(
-                present={inventory.PROVIDER_MANIFEST: (hashlib.sha256(content).hexdigest(), 0o644)},
+                present={
+                    inventory.PROVIDER_MANIFEST: (
+                        hashlib.sha256(content).hexdigest(),
+                        0o644,
+                    )
+                },
                 owned=frozenset({*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA}),
             ),
         )
@@ -277,7 +291,10 @@ class TestPayloadValidation:
         )
 
         mutations = [
-            (lambda value: value.update(schema_version=99), "manifest schema is unsupported"),
+            (
+                lambda value: value.update(schema_version=99),
+                "manifest schema is unsupported",
+            ),
             (lambda value: value.pop("release"), "manifest is incomplete"),
             (
                 lambda value: value["files"].pop(executable_relative()),

@@ -193,7 +193,10 @@ def _process_inventory() -> list[tuple[int, list[str]]]:
 
 
 def argv_names_executable(
-    argv: list[str], expected_path: str, *, roles: set[str] | frozenset[str] | None = None
+    argv: list[str],
+    expected_path: str,
+    *,
+    roles: set[str] | frozenset[str] | None = None,
 ) -> bool:
     """Bind a native process to one exact executable and optional private role."""
 

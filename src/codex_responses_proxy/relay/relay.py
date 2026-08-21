@@ -8,9 +8,8 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any, Protocol
 
 from codex_responses_proxy.protocol import response as live_response
-from codex_responses_proxy.relay import operational_log, telemetry
-from codex_responses_proxy.relay import sse
 from codex_responses_proxy.providers import registry as provider_registry
+from codex_responses_proxy.relay import operational_log, sse, telemetry
 
 HOP_BY_HOP = {
     "connection",
@@ -142,7 +141,10 @@ def relay_sse(exchange: Exchange, response) -> None:
             if exchange.used_input_variant_dialogue:
                 exchange.input_variant_exhausted("")
             send_payload(
-                exchange.handler, 503, sse.exhausted_payload(result["attempts"]), retry_after="3"
+                exchange.handler,
+                503,
+                sse.exhausted_payload(result["attempts"]),
+                retry_after="3",
             )
             exchange.log("sse_pre_content_exhausted", f"attempts={result['attempts']} ")
         else:
@@ -151,7 +153,8 @@ def relay_sse(exchange: Exchange, response) -> None:
         exchange.log("downstream_client_closed")
     except Exception as error:
         exchange.log(
-            "stream_handler_exception", f"exception={operational_log.safe_exception_label(error)} "
+            "stream_handler_exception",
+            f"exception={operational_log.safe_exception_label(error)} ",
         )
 
 
@@ -180,7 +183,8 @@ def relay_body(exchange: Exchange, response) -> None:
         exchange.log("downstream_client_closed")
     except Exception as error:
         exchange.log(
-            "stream_handler_exception", f"exception={operational_log.safe_exception_label(error)} "
+            "stream_handler_exception",
+            f"exception={operational_log.safe_exception_label(error)} ",
         )
 
 

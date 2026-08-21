@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from codex_responses_proxy.lifecycle import artifact
+from codex_responses_proxy.lifecycle import artifact, transaction
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import apply
 from codex_responses_proxy.runtime import config as runtime_config
 

@@ -9,6 +9,8 @@ import urllib.request
 from email.message import Message
 from pathlib import Path
 
+import pytest
+
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.relay import admission, cooldown, responses, telemetry
 from codex_responses_proxy.relay import exchange as upstream_exchange
@@ -19,7 +21,6 @@ from tests.relay.exchange_fixture import (
     http_error,
 )
 from tests.relay.proxy_fixture import request, running_proxy
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 PROVIDERS = provider_registry.load()
@@ -60,7 +61,11 @@ class TestRateLimitTransport(InputTransportFixture):
         payload = b'{"error":{"message":"provider concurrency limit reached"}}'
         with running_proxy([(429, payload)]) as (port, received):
             with pytest.raises(urllib.error.HTTPError) as raised:
-                request(port, json.dumps({"input": []}).encode(), path="/ucloud/v1/responses")
+                request(
+                    port,
+                    json.dumps({"input": []}).encode(),
+                    path="/ucloud/v1/responses",
+                )
             with raised.value as error:
                 assert error.code == 429
                 assert error.read() == payload

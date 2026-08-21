@@ -11,8 +11,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
 
-from codex_responses_proxy.providers import registry
 import pytest
+
+from codex_responses_proxy.providers import registry
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -164,7 +165,10 @@ class ProviderRegistryTests:
                     "policy = 'incomplete'\n",
                 )
                 for declaration in documents:
-                    with subtests.test(declaration=declaration), pytest.raises(ValueError):
+                    with (
+                        subtests.test(declaration=declaration),
+                        pytest.raises(ValueError),
+                    ):
                         registry.load(
                             _manifest(
                                 root,
@@ -177,7 +181,10 @@ class ProviderRegistryTests:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             with _policy_package(
-                root, "first_policy_fixture", {"shared": _policy_source("first")}, mocker=mocker
+                root,
+                "first_policy_fixture",
+                {"shared": _policy_source("first")},
+                mocker=mocker,
             ):
                 first = registry.load(
                     _manifest(
@@ -187,13 +194,19 @@ class ProviderRegistryTests:
                     )
                 )
             with _policy_package(
-                root, "second_policy_fixture", {"shared": _policy_source("second")}, mocker=mocker
+                root,
+                "second_policy_fixture",
+                {"shared": _policy_source("second")},
+                mocker=mocker,
             ):
                 second = registry.load(root / "codex_responses_proxy/providers/manifest.toml")
         first_policy = first.profiles["gateway"].wire_policy
         second_policy = second.profiles["gateway"].wire_policy
         assert first_policy is not None and second_policy is not None
-        assert (first_policy.POLICY_VERSION, second_policy.POLICY_VERSION) == ("first", "second")
+        assert (first_policy.POLICY_VERSION, second_policy.POLICY_VERSION) == (
+            "first",
+            "second",
+        )
 
     def test_failed_manifest_load_leaves_no_policy_module_residue(
         self, subtests, *, mocker
@@ -214,7 +227,10 @@ class ProviderRegistryTests:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             with _policy_package(
-                root, "atomic_policy_fixture", {"first": _policy_source("first")}, mocker=mocker
+                root,
+                "atomic_policy_fixture",
+                {"first": _policy_source("first")},
+                mocker=mocker,
             ) as prefix:
                 module_name = f"{prefix}.first"
                 for label, document in cases:

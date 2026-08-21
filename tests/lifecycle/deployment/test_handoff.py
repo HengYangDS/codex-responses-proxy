@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from contextlib import ExitStack
-
 import io
 import json
 import tempfile
 import urllib.error
+from contextlib import ExitStack
 from email.message import Message
 from pathlib import Path
+
+import pytest
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import control
@@ -25,7 +26,6 @@ from tests.service.handoff.fixtures import (
     matching_health,
     ready_ack,
 )
-import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 

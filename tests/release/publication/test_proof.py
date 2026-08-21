@@ -69,8 +69,14 @@ def _gitlab_forge(*, tree: str = "c" * 40) -> dict[str, object]:
         tag_object_oid="a" * 40,
         commit_oid="d" * 40,
         jobs=tuple(
-            "verify-python-matrix verify-release-metadata "
-            "verify-release-tag verify-python-quality build-gitlab-native-asset publish-gitlab-release".split()
+            [
+                "verify-python-matrix",
+                "verify-release-metadata",
+                "verify-release-tag",
+                "verify-python-quality",
+                "build-gitlab-native-asset",
+                "publish-gitlab-release",
+            ]
         ),
         tree=tree,
     )
@@ -83,12 +89,21 @@ def _github_forge(*, tree: str = "c" * 40) -> dict[str, object]:
         tag_object_oid="a" * 40,
         commit_oid="d" * 40,
         jobs=tuple(
-            (
-                "Python 3.12|Python 3.13|Python 3.14|Python 3.12 (Windows)|"
-                "Python 3.13 (Windows)|Python 3.14 (Windows)|Governance and presentation|"
-                "Python quality|Native asset (linux-x86_64)|Native asset (macos-arm64)|"
-                "Native asset (windows-x86_64)|Release assets|Verify tag and publish record"
-            ).split("|")
+            [
+                "Python 3.12",
+                "Python 3.13",
+                "Python 3.14",
+                "Python 3.12 (Windows)",
+                "Python 3.13 (Windows)",
+                "Python 3.14 (Windows)",
+                "Governance and presentation",
+                "Python quality",
+                "Native asset (linux-x86_64)",
+                "Native asset (macos-arm64)",
+                "Native asset (windows-x86_64)",
+                "Release assets",
+                "Verify tag and publish record",
+            ]
         ),
         tree=tree,
     )

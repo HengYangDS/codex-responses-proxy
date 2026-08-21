@@ -117,7 +117,7 @@ def is_proxy_up(host: str = HOST, port: int = PORT, timeout: float = 2.0) -> boo
         return False
 
 
-def spawn_proxy() -> "subprocess.Popen | None":
+def spawn_proxy() -> subprocess.Popen | None:
     """Start the proxy detached from this watchdog so it outlives us.
 
     Uses the exact installed executable path. Detaches via ``start_new_session``
@@ -154,7 +154,7 @@ def spawn_proxy() -> "subprocess.Popen | None":
         return None
 
 
-def run(max_iterations: "int | None" = None) -> None:
+def run(max_iterations: int | None = None) -> None:
     """Resident supervise loop. ``max_iterations`` bounds the loop for testing."""
     _log(
         f"watchdog starting: guard {HOST}:{PORT} every {CHECK_INTERVAL}s "

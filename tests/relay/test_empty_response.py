@@ -15,6 +15,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from codex_responses_proxy.protocol import content as portable_content
 from codex_responses_proxy.protocol import request as rewrite
 from codex_responses_proxy.providers.policies import dmxapi as policy
@@ -28,7 +30,6 @@ from tests.relay.empty_response_fixture import (
     semantic_body,
 )
 from tests.relay.proxy_fixture import request, serve_proxy
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -138,7 +139,11 @@ class EmptyResponseTransportTests:
                         "name": "inspect",
                         "arguments": "{}",
                     },
-                    {"type": "function_call_output", "call_id": "c1", "output": [image]},
+                    {
+                        "type": "function_call_output",
+                        "call_id": "c1",
+                        "output": [image],
+                    },
                 ],
             }
         )
@@ -399,7 +404,9 @@ class EmptyResponseTransportTests:
         assert cooldown.failure_count_for_test() <= policy.FAILURE_CACHE_CAPACITY
         assert not cooldown.has_failure_for_test("key-0")
 
-    def test_successful_fallback_does_not_enter_cooldown_and_metrics_are_secret_free(self):
+    def test_successful_fallback_does_not_enter_cooldown_and_metrics_are_secret_free(
+        self,
+    ):
         secret = "private-prompt-must-not-appear"
         body = self._body(
             {

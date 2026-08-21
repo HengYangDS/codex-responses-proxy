@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from contextlib import ExitStack
-
 import io
 import json
 import tempfile
 import urllib.error
+from contextlib import ExitStack
 from email.message import Message
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path

@@ -21,8 +21,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import projection
-from codex_responses_proxy.lifecycle import runtime_spec
+from codex_responses_proxy.lifecycle import projection, runtime_spec
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.relay import admission as runtime_state_module
 from codex_responses_proxy.service import entrypoint as entrypoint_module

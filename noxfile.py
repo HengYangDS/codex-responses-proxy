@@ -33,7 +33,15 @@ def quick(session: nox.Session) -> None:
 
     _install_tools(session)
     environment = _environment()
-    session.run("ruff", "check", "--config", str(RUFF_CONFIG), "--no-cache", ".", env=environment)
+    session.run(
+        "ruff",
+        "check",
+        "--config",
+        str(RUFF_CONFIG),
+        "--no-cache",
+        ".",
+        env=environment,
+    )
     session.run(
         "ruff",
         "format",
@@ -100,7 +108,15 @@ def quality(session: nox.Session) -> None:
         **_environment(),
         "CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session)),
     }
-    session.run("ruff", "check", "--config", str(RUFF_CONFIG), "--no-cache", ".", env=environment)
+    session.run(
+        "ruff",
+        "check",
+        "--config",
+        str(RUFF_CONFIG),
+        "--no-cache",
+        ".",
+        env=environment,
+    )
     session.run(
         "ruff",
         "format",

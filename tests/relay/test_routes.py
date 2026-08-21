@@ -6,9 +6,10 @@ import json
 import urllib.error
 from pathlib import Path
 
+import pytest
+
 from codex_responses_proxy.relay import admission, cooldown, telemetry
 from tests.relay.proxy_fixture import raw_exchange, request, running_proxy
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -29,7 +30,11 @@ class ProviderRouteTests:
                 "previous_response_id": "provider-response",
                 "include": ["reasoning.encrypted_content"],
                 "input": [
-                    {"type": "reasoning", "id": "rs_old", "encrypted_content": "opaque"},
+                    {
+                        "type": "reasoning",
+                        "id": "rs_old",
+                        "encrypted_content": "opaque",
+                    },
                     {
                         "type": "message",
                         "id": "msg_old",
@@ -100,7 +105,10 @@ class ProviderRouteTests:
                     400,
                 ),
             ):
-                with subtests.test(path=path), pytest.raises(urllib.error.HTTPError) as raised:
+                with (
+                    subtests.test(path=path),
+                    pytest.raises(urllib.error.HTTPError) as raised,
+                ):
                     request(port, body, path=path)
                 with raised.value as error:
                     assert error.code == expected_code
@@ -121,7 +129,10 @@ class ProviderRouteTests:
         log = mocker.patch("codex_responses_proxy.relay.operational_log.log")
         with running_proxy([]) as (port, received):
             for path, body, status in cases:
-                with subtests.test(path=path), pytest.raises(urllib.error.HTTPError) as raised:
+                with (
+                    subtests.test(path=path),
+                    pytest.raises(urllib.error.HTTPError) as raised,
+                ):
                     request(port, body, path=path)
                 with raised.value as error:
                     assert error.code == status
@@ -168,7 +179,9 @@ class ProviderRouteTests:
         assert [capture["method"] for capture in captures] == ["GET", "GET", "GET"]
         assert [capture["path"] for capture in captures] == ["/models?limit=1"] * 3
 
-    def test_catalog_http_error_is_relayed_once_without_responses_recovery(self) -> None:
+    def test_catalog_http_error_is_relayed_once_without_responses_recovery(
+        self,
+    ) -> None:
         payload = b'{"error":{"type":"catalog_denied"}}'
         with running_proxy([(403, payload)]) as (port, received):
             with pytest.raises(urllib.error.HTTPError) as raised:
@@ -191,7 +204,10 @@ class ProviderRouteTests:
         success = b'{"id":"resp_ucloud","status":"completed"}'
         body = _body({"input": [{"type": "message", "role": "user", "content": "same"}]})
 
-        with running_proxy([(477, empty), (477, empty), (200, success)]) as (port, received):
+        with running_proxy([(477, empty), (477, empty), (200, success)]) as (
+            port,
+            received,
+        ):
             with pytest.raises(urllib.error.HTTPError) as raised:
                 request(port, body, path="/dmxapi/v1/responses")
             with raised.value as error:

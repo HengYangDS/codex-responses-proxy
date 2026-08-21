@@ -6,6 +6,8 @@ import struct
 import threading
 from pathlib import Path
 
+import pytest
+
 from codex_responses_proxy.service.handoff import protocol as handoff_protocol_module
 from tests.service.handoff.fixtures import (
     HandoffFixture,
@@ -19,7 +21,6 @@ from tests.service.handoff.fixtures import (
     matching_health,
     wait_until,
 )
-import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -31,7 +32,10 @@ class TestParentHandoffStateMachine(HandoffFixture):
         expected = kwargs.pop("expected", expected_metadata())
         child = kwargs.pop("child", fake_child(mocker=mocker))
         server = kwargs.pop("server", fake_server(mocker=mocker))
-        child.recv_message.side_effect = [child_message("ready", child, expected), *after_ready]
+        child.recv_message.side_effect = [
+            child_message("ready", child, expected),
+            *after_ready,
+        ]
         mocker.patch.object(self.p, "spawn_child", return_value=child)
         prepared = self.p.prepare(server, expected, self.context, **kwargs)
         mocker.patch.object(
@@ -220,7 +224,10 @@ class TestParentHandoffStateMachine(HandoffFixture):
             (b"{", "response is invalid"),
             (b"[]", "must be an object"),
         ):
-            with subtests.test(error=error), pytest.raises(self.p.HandoffError, match=error):
+            with (
+                subtests.test(error=error),
+                pytest.raises(self.p.HandoffError, match=error),
+            ):
                 response.read.return_value = payload
                 self.p.probe_health(8791, timeout_seconds=1)
         response.read.return_value = b'{"ok":true}'
@@ -314,10 +321,20 @@ class TestParentHandoffStateMachine(HandoffFixture):
         cases = (
             ("commit pipe", (), BrokenPipeError("commit pipe failed")),
             ("serving timeout", (TimeoutError("no serving message"),), None),
-            ("serving pid", ({"type": "serving", "pid": 1, "transaction_id": "txn-1"},), None),
+            (
+                "serving pid",
+                ({"type": "serving", "pid": 1, "transaction_id": "txn-1"},),
+                None,
+            ),
             (
                 "serving transaction",
-                ({"type": "serving", "pid": child.process.pid, "transaction_id": "wrong-txn"},),
+                (
+                    {
+                        "type": "serving",
+                        "pid": child.process.pid,
+                        "transaction_id": "wrong-txn",
+                    },
+                ),
                 None,
             ),
         )
@@ -395,7 +412,7 @@ class TestParentHandoffStateMachine(HandoffFixture):
                     child = fake_child(mocker=mocker)
                     message = {
                         **child_message(stage if stage != "health" else "serving", child, expected),
-                        **{field: bad_value},
+                        field: bad_value,
                     }
                     if stage == "ready":
                         child.recv_message.side_effect = [message]
@@ -415,7 +432,11 @@ class TestParentHandoffStateMachine(HandoffFixture):
                     health = {**health, field: bad_value} if stage == "health" else health
                     after_ready += [message] * (stage == "finalized")
                     outcome, _, child, _ = self.committed(
-                        *after_ready, child=child, health=health, timeout_seconds=1, mocker=mocker
+                        *after_ready,
+                        child=child,
+                        health=health,
+                        timeout_seconds=1,
+                        mocker=mocker,
                     )
                     assert outcome == "rolled_back"
                     child.terminate_bounded.assert_called_once()

@@ -40,7 +40,10 @@ class AdmissionTests:
             admission.end_handler(),
             admission.end_handler(),
         ) == (1, 1, 0, 0)
-        assert (admission.is_loopback_client("::1"), admission.is_loopback_client("invalid")) == (
+        assert (
+            admission.is_loopback_client("::1"),
+            admission.is_loopback_client("invalid"),
+        ) == (
             True,
             False,
         )

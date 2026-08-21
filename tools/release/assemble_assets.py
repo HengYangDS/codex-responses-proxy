@@ -10,7 +10,8 @@ from typing import Annotated
 
 from cyclopts import App, Parameter
 
-from tools.release import product_assets as assets, signing
+from tools.release import product_assets as assets
+from tools.release import signing
 
 
 def assemble(inputs: tuple[Path, ...], output: Path) -> dict[str, bytes]:

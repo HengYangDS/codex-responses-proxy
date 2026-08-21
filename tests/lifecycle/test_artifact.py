@@ -26,7 +26,9 @@ PLATFORM = "linux-x86_64"
 NAMESPACE = "codex-responses-proxy-release"
 
 
-def _release_files(platform: str = PLATFORM) -> dict[str, product_assets.ArchiveFile | bytes]:
+def _release_files(
+    platform: str = PLATFORM,
+) -> dict[str, product_assets.ArchiveFile | bytes]:
     executable = (
         "bin/codex-responses-proxy.exe"
         if platform.startswith("windows-")
@@ -229,7 +231,9 @@ def _tar_bytes(
     return output.getvalue()
 
 
-def _members(platform: str = PLATFORM) -> tuple[tuple[str, bytes, int, bytes | None], ...]:
+def _members(
+    platform: str = PLATFORM,
+) -> tuple[tuple[str, bytes, int, bytes | None], ...]:
     prefix = f"codex-responses-proxy-{VERSION}-{platform}/"
     files = _release_files(platform)
     return tuple(
@@ -258,7 +262,7 @@ def test_verified_artifact_is_opaque_immutable_and_single_use() -> None:
     )
     assert candidate.peek_blobs()
     with pytest.raises(artifact.ArtifactError, match="immutable"):
-        setattr(candidate, "_claimed", False)
+        candidate._claimed = False
 
     claimed = artifact.claim(candidate)
     assert tuple(blob.path for blob in claimed[0]) == runtime_files()
@@ -492,7 +496,9 @@ def test_platform_manifest_rejects_inconsistent_fields(
         )
 
 
-def test_archive_rejects_incomplete_duplicate_and_unexpected_members(tmp_path: Path) -> None:
+def test_archive_rejects_incomplete_duplicate_and_unexpected_members(
+    tmp_path: Path,
+) -> None:
     paths = _write_asset_set(tmp_path)
     document = json.loads(paths["manifest"].read_bytes())
     members = _members()

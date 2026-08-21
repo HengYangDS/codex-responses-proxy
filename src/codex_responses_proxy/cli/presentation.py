@@ -89,7 +89,9 @@ def render(command: str, result: Any) -> str:
         runtime = result.get("runtime") if isinstance(result.get("runtime"), dict) else {}
         release = result.get("release") or runtime.get("release") or "Verified release"
         return _page(
-            "Installed", (("Release", release),), next_command="codex-responses-proxy status"
+            "Installed",
+            (("Release", release),),
+            next_command="codex-responses-proxy status",
         )
     if command == "reload":
         return _page(
@@ -105,7 +107,10 @@ def render(command: str, result: Any) -> str:
             "Recovered",
             (
                 ("Transaction", result.get("version", "Unknown")),
-                ("State", str(result.get("state", "Unknown")).replace("_", " ").title()),
+                (
+                    "State",
+                    str(result.get("state", "Unknown")).replace("_", " ").title(),
+                ),
             ),
             next_command="codex-responses-proxy status",
         )

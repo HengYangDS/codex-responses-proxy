@@ -16,6 +16,8 @@ from codex_responses_proxy.protocol.content import (
     ProjectionRejected,
     project_assistant_text,
     project_input_content,
+)
+from codex_responses_proxy.protocol.content import (
     reject as _reject,
 )
 
@@ -306,7 +308,11 @@ def _project_output(
             root_ciphertext=root_ciphertext,
         )
     outputs.add(valid_call_id)
-    projected: JsonObject = {"type": item_type, "call_id": valid_call_id, "output": output}
+    projected: JsonObject = {
+        "type": item_type,
+        "call_id": valid_call_id,
+        "output": output,
+    }
     if caller is not None:
         projected["caller"] = caller
     return projected, {

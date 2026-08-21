@@ -10,10 +10,10 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from collections.abc import Sequence, Set
+from collections.abc import Mapping, Sequence, Set
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field
-from typing import Final, Mapping, cast
+from typing import Final, cast
 
 type JsonObject = dict[str, object]
 type ReadOnlyJsonObject = Mapping[str, object]
@@ -23,16 +23,50 @@ _ERROR_MESSAGE: Final = (
 )
 _INVALID_JSON: Final = object()
 _KNOWN_ITEM_TYPES: Final = frozenset(
-    """message agent_message reasoning function_call function_call_output
-    custom_tool_call custom_tool_call_output web_search_call tool_search_call
-    tool_search_output file_search_call computer_call computer_call_output
-    code_interpreter_call image_generation_call local_shell_call local_shell_call_output
-    shell_call shell_call_output apply_patch_call apply_patch_call_output mcp_list_tools
-    mcp_approval_request mcp_approval_response mcp_call compaction compaction_trigger
-    item_reference additional_tools program program_output""".split()
+    [
+        "message",
+        "agent_message",
+        "reasoning",
+        "function_call",
+        "function_call_output",
+        "custom_tool_call",
+        "custom_tool_call_output",
+        "web_search_call",
+        "tool_search_call",
+        "tool_search_output",
+        "file_search_call",
+        "computer_call",
+        "computer_call_output",
+        "code_interpreter_call",
+        "image_generation_call",
+        "local_shell_call",
+        "local_shell_call_output",
+        "shell_call",
+        "shell_call_output",
+        "apply_patch_call",
+        "apply_patch_call_output",
+        "mcp_list_tools",
+        "mcp_approval_request",
+        "mcp_approval_response",
+        "mcp_call",
+        "compaction",
+        "compaction_trigger",
+        "item_reference",
+        "additional_tools",
+        "program",
+        "program_output",
+    ]
 )
 _KNOWN_CONTENT_TYPES: Final = frozenset(
-    "input_text output_text input_image input_file input_audio refusal encrypted_content".split()
+    [
+        "input_text",
+        "output_text",
+        "input_image",
+        "input_file",
+        "input_audio",
+        "refusal",
+        "encrypted_content",
+    ]
 )
 _PAIR_TYPES: Final = {
     "custom_tool_call": "custom_tool_call_output",
@@ -272,7 +306,10 @@ def _shape(value: object, depth: int = 0) -> object:
     entries: set[object] = set()
     for key, item in value.items():
         if key == "type":
-            entry = "type", _closed_label(item, _KNOWN_ITEM_TYPES | _KNOWN_CONTENT_TYPES)
+            entry = (
+                "type",
+                _closed_label(item, _KNOWN_ITEM_TYPES | _KNOWN_CONTENT_TYPES),
+            )
         elif key == "role":
             entry = "role", item if item in (*_ROLES, "assistant") else "unknown"
         else:

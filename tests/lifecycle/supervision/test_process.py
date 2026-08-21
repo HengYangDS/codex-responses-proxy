@@ -339,7 +339,10 @@ class TestTermination:
     def test_bounded_termination_accepts_an_adopted_zombie_tombstone(self, *, mocker):
         candidate = mocker.Mock()
         candidate.create_time.return_value = 42.0
-        candidate.status.side_effect = [process.psutil.STATUS_RUNNING, process.psutil.STATUS_ZOMBIE]
+        candidate.status.side_effect = [
+            process.psutil.STATUS_RUNNING,
+            process.psutil.STATUS_ZOMBIE,
+        ]
         candidate.wait.side_effect = process.psutil.TimeoutExpired(123, 1)
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
 

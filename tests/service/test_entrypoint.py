@@ -8,8 +8,7 @@ from pathlib import Path
 import pytest
 
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.service import entrypoint
-from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import entrypoint, identity
 
 
 class TestListenerEntrypoint:
@@ -34,7 +33,10 @@ class TestListenerEntrypoint:
             result = entrypoint.bootstrap(executable)
 
         assert result == entrypoint.Bootstrap(executable, loaded, providers)
-        assert freeze.call_args_list == [mocker.call(executable), mocker.call(executable)]
+        assert freeze.call_args_list == [
+            mocker.call(executable),
+            mocker.call(executable),
+        ]
         load.assert_called_once_with(root / "providers.toml")
 
     def test_bootstrap_rejects_missing_and_changed_payload_identity(

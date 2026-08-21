@@ -9,16 +9,14 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler
-from http.server import ThreadingHTTPServer
-from typing import Callable
-from typing import Mapping
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import cast
 
+from codex_responses_proxy.relay import admission
 from codex_responses_proxy.service.handoff import protocol as handoff_protocol
 from codex_responses_proxy.service.handoff import transaction as handoff
-from codex_responses_proxy.relay import admission
 
 
 @dataclass(frozen=True)

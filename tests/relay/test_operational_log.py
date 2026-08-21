@@ -134,7 +134,7 @@ class OperationalLogPrivacyContracts:
         assert "path=/v1/responses" in text
         assert_private_log_mode(self, mode)
         assert (
-            max((len(line.encode("utf-8")) for line in text.splitlines()))
+            max(len(line.encode("utf-8")) for line in text.splitlines())
             <= operational_log.LOG_LINE_MAX_BYTES + 96
         )
 

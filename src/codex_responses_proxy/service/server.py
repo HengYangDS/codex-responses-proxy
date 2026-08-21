@@ -10,13 +10,11 @@ from __future__ import annotations
 import socket
 import socketserver
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, cast
 
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.relay import admission, operational_log
-from codex_responses_proxy.relay import responses
+from codex_responses_proxy.relay import admission, operational_log, responses
 from codex_responses_proxy.service import control
 
 

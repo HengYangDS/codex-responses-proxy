@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import http.client
 import json
-import socket
 import time
 from collections.abc import Callable
 from contextlib import suppress
@@ -20,7 +19,6 @@ from typing import Any, Protocol, TypedDict
 from codex_responses_proxy.protocol import response as live_response
 from codex_responses_proxy.relay import operational_log, telemetry
 from codex_responses_proxy.runtime import config as runtime_config
-
 
 UPSTREAM_READ_TIMEOUT = runtime_config.load().upstream_read_timeout
 UPSTREAM_TIMEOUT = runtime_config.load().upstream_timeout
@@ -209,7 +207,7 @@ def _read_one_stream(
         except http.client.IncompleteRead as error:
             chunk = error.partial
             upstream_detail = "incomplete_read"
-        except (socket.timeout, TimeoutError) as error:
+        except TimeoutError as error:
             upstream_detail, upstream_error = "timeout", error
             if time.monotonic() >= deadline:
                 upstream_detail = "deadline"

@@ -5,10 +5,9 @@ from __future__ import annotations
 import urllib.error
 from http.server import BaseHTTPRequestHandler
 
-from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.protocol import request as replay_request
-from codex_responses_proxy.relay import admission, operational_log, telemetry
-from codex_responses_proxy.relay import cooldown
+from codex_responses_proxy.providers import registry as provider_registry
+from codex_responses_proxy.relay import admission, cooldown, operational_log, telemetry
 from codex_responses_proxy.relay import exchange as upstream_exchange
 from codex_responses_proxy.relay import relay as downstream
 
