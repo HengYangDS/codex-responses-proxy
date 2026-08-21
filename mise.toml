@@ -6,6 +6,7 @@ locked = true
 
 [tools]
 cue = "0.17.1"
+node = "26.7.0"
 python = "3.14.7"
 uv = "0.12.5"
 "npm:@fission-ai/openspec" = "1.10.0"

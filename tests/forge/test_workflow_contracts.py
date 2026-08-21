@@ -15,7 +15,6 @@ from tools.ci.project import reconcile
 ROOT = Path(__file__).resolve().parents[2]
 GITLAB_LOCKED_PYTHON = "uv run --locked --no-sync --python python --no-python-downloads"
 CI_MODEL = ROOT / ".config" / "ci" / "pipeline.cue"
-pytestmark = pytest.mark.repository_toolchain
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -40,13 +39,15 @@ def _mapping(value: object) -> Mapping[str, Any]:
     return cast(Mapping[str, Any], value)
 
 
+@pytest.mark.repository_toolchain
 def test_forge_workflows_are_generated_from_one_declarative_graph() -> None:
     """Keep Forge syntax as projections, never independent topology owners."""
 
     repository = (ROOT / "tools" / "quality" / "repository.py").read_text(encoding="utf-8")
     projector = (ROOT / "tools" / "ci" / "project.py").read_text(encoding="utf-8")
-    assert "reconcile_ci_projections" in repository
-    assert "projection drift" in repository
+    governance = (ROOT / "tools" / "quality" / "governance.py").read_text(encoding="utf-8")
+    assert "reconcile_ci_projections" not in repository
+    assert 'sys.executable, "-m", "tools.ci.project"' in governance
     assert 'MODEL = ROOT / ".config/ci/pipeline.cue"' in projector
     assert reconcile(write=False) == ()
 

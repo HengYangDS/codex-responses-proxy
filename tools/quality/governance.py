@@ -24,6 +24,7 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
     link_mode = () if online_links else ("--offline",)
     return (
         ("cue", "vet", ".config/ci/pipeline.cue"),
+        (sys.executable, "-m", "tools.ci.project"),
         ("openspec", "validate", "--all", "--strict", "--no-interactive"),
         ("actionlint", ".github/workflows/verify.yml"),
         (

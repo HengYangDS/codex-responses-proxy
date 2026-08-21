@@ -18,7 +18,7 @@ import "list"
 #Toolchains: {
 	githubMiseAction: "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
 	gitlabMiseImage:  "ghcr.io/jdx/mise@sha256:f2d637d5e5189f7ec177b73bce5cd5db7e7b17a4f466f887c1b88ac2dd431129"
-	quality:          "python,uv,cue,npm:@fission-ai/openspec,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
+	quality:          "python,uv,node,cue,npm:@fission-ai/openspec,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
 }
 
 gitlab: {

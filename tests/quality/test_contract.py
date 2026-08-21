@@ -102,7 +102,6 @@ def _audit_source(source_text: str, **overrides: Any):
 class TestQualityPolicyContracts:
     """Keep the repository quality scope executable rather than documentary."""
 
-    @pytest.mark.repository_toolchain
     def test_current_repository_policy_is_internally_consistent(self) -> None:
         report = _checker().audit()
         assert report["policy_errors"] == []
@@ -312,6 +311,7 @@ class TestQualityPolicyContracts:
         commands = [tuple(call.args[0]) for call in run.call_args_list]
         assert commands == [
             ("cue", "vet", ".config/ci/pipeline.cue"),
+            (governance.sys.executable, "-m", "tools.ci.project"),
             ("openspec", "validate", "--all", "--strict", "--no-interactive"),
             ("actionlint", ".github/workflows/verify.yml"),
             (
