@@ -101,7 +101,7 @@ class TestVerificationContracts:
         quality = metadata["dependency-groups"]["quality"]
         assert any(requirement.startswith("pytest==") for requirement in quality)
         assert any(requirement.startswith("pytest-mock==") for requirement in quality)
-        pytest_config = (ROOT / ".config/checks/pytest/pytest.ini").read_text(encoding="utf-8")
+        pytest_config = (ROOT / "pytest.ini").read_text(encoding="utf-8")
         assert "addopts = --import-mode=importlib --strict-config --strict-markers" in pytest_config
         assert "cache_dir = .cache/pytest" in pytest_config
         assert "filterwarnings = error" in pytest_config
@@ -273,9 +273,11 @@ class TestVerificationContracts:
         assert "_build_executable" not in tests_calls
         tests_source = ast.get_source_segment(source, functions["tests"]) or ""
         quality_source = ast.get_source_segment(source, functions["quality"]) or ""
+        assert "PYTEST_CONFIG" not in source
+        assert 'ROOT / "pytest.ini"' not in source
+        assert 'f"--rootdir={ROOT}"' not in source
         assert '"compileall",' in tests_source
         for owner_source in (tests_source, quality_source):
-            assert "str(PYTEST_CONFIG)" in owner_source
             assert '"not native_distribution"' in owner_source
         assert (
             '"CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session))'
@@ -353,7 +355,7 @@ class TestVerificationContracts:
         assert "_previous_patch" not in lifecycle
 
     def test_native_distribution_tests_are_explicit_and_release_owned(self) -> None:
-        pytest_config = (ROOT / ".config/checks/pytest/pytest.ini").read_text(encoding="utf-8")
+        pytest_config = (ROOT / "pytest.ini").read_text(encoding="utf-8")
         assert (
             "native_distribution: requires the self-contained released executable" in pytest_config
         )

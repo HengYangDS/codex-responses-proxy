@@ -5,7 +5,7 @@
 | Concern | Owner | Consumer |
 | --- | --- | --- |
 | Lint and format | `.config/checks/ruff/ruff.toml` | Ruff through Nox |
-| Test discovery and warnings | `.config/checks/pytest/pytest.ini` | pytest through Nox |
+| Test discovery and warnings | `pytest.ini` | pytest native discovery |
 | Type analysis | `.config/checks/ty/ty.toml` | Ty through Nox |
 | Coverage measurement | `.config/checks/coverage/coverage.ini` | coverage.py through Nox |
 | Coverage hard floor | `.config/checks/coverage/policy.toml` | coverage gate |

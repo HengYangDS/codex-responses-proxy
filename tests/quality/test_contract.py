@@ -204,7 +204,7 @@ class TestQualityPolicyContracts:
 
         for path in (
             ".config/checks/ruff/ruff.toml",
-            ".config/checks/pytest/pytest.ini",
+            "pytest.ini",
             ".config/checks/ty/ty.toml",
             ".config/checks/coverage/coverage.ini",
             ".config/checks/coverage/policy.toml",
