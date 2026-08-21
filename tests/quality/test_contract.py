@@ -220,6 +220,15 @@ class TestQualityPolicyContracts:
         repository = tool.get("codex-responses-proxy", {})
         assert "quality" not in repository
 
+        governance = (ROOT / "docs/governance/release-and-change-policy.md").read_text(
+            encoding="utf-8"
+        )
+        assert "`pytest.ini` therefore owns test discovery and warning policy" in governance
+        assert "`.config/checks/<concern>/` owns quality policy" not in governance
+
+        ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        assert ".pytest_cache/" in ignored
+
         rationale = {
             "risk_model",
             "measurement",

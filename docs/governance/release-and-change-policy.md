@@ -72,7 +72,12 @@ flowchart LR
 
 ## Quality
 
-`.config/checks/<concern>/` owns quality policy. Nox executes those owners; `.ethos/profile.toml` registers gates, and CI/hooks only project them.
+Each tool-native configuration is the sole policy owner for its concern. Root
+placement is preferred when the tool and IDEs discover that file natively;
+`pytest.ini` therefore owns test discovery and warning policy. Explicitly
+addressed reusable policies live under `.config/checks/<concern>/`. Nox executes
+those owners, `.ethos/profile.toml` registers gates, and CI/hooks only project
+them.
 
 Required local evidence includes:
 
