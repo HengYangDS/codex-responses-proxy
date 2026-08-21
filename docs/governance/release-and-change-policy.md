@@ -141,8 +141,9 @@ The installer must:
 2. verify the complete candidate native bundle;
 3. prepare an owned transaction and commit exact payload files;
 4. prewarm the exact committed executable within the rollback domain;
-5. prove one accepting native listener;
-6. finalize or retain an explicit recovery-required state.
+5. bind native supervision to the committed executable;
+6. prove one accepting native listener through transactional handoff;
+7. finalize or retain an explicit recovery-required state.
 
 ## Runtime operations
 

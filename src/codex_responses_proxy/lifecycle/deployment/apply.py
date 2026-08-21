@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -20,7 +21,7 @@ RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | N
 
 
 class ServiceAdapter(Protocol):
-    """Native supervision operation required by a fresh install."""
+    """Native supervision operations required by payload deployment."""
 
     def install(self, ctx: runtime_context.RuntimeContext) -> None: ...
 
@@ -122,6 +123,11 @@ def _upgrade(
 ) -> dict[str, object]:
     payload.commit_projection()
     try:
+        adapter.install(ctx)
+        if not _same_executable(adapter.configured_executable(ctx), ctx.executable):
+            raise errors.InstallError(
+                "native supervisor did not bind the committed successor executable"
+            )
         runtime = request_handoff(
             ctx,
             payload.expected,
@@ -218,6 +224,16 @@ def _runtime_matches(runtime: Mapping[str, object], expected: Mapping[str, objec
         and runtime.get("release_receipt_sha256") == expected.get("release_receipt_sha256")
         and runtime.get("accepting") is True
         and runtime.get("draining") is not True
+    )
+
+
+def _same_executable(configured: str | None, expected: str) -> bool:
+    """Compare declared executable paths using platform path semantics."""
+
+    if configured is None:
+        return False
+    return os.path.normcase(os.path.abspath(configured)) == os.path.normcase(
+        os.path.abspath(expected)
     )
 
 

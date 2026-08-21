@@ -8,7 +8,6 @@ from typing import Protocol, cast
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import runtime_spec
-from codex_responses_proxy.service import runtime as service_runtime
 
 
 class NativeServiceAdapter(Protocol):
@@ -52,15 +51,3 @@ def adapter() -> NativeServiceAdapter:
             ) from error
         return cast("NativeServiceAdapter", windows)
     raise errors.UnsupportedPlatform(f"unsupported platform: {sys.platform}")
-
-
-def install_current() -> None:
-    """Install supervision from the exact committed successor executable."""
-
-    context = runtime_spec.service_context(service_runtime.current_executable())
-    implementation = adapter()
-    implementation.install(context)
-    if implementation.configured_executable(context) != context.executable:
-        raise errors.InstallError(
-            "native supervisor did not bind the committed successor executable"
-        )

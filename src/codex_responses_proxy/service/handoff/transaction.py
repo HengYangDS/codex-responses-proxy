@@ -13,25 +13,27 @@ import socket
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from typing import Callable
 from typing import TypedDict
 
 from codex_responses_proxy.service import identity
-from codex_responses_proxy.service.handoff.protocol import HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS
-from codex_responses_proxy.service.handoff.protocol import HANDOFF_PROTOCOL_VERSION
-from codex_responses_proxy.service.handoff.protocol import HandoffChild
-from codex_responses_proxy.service.handoff.protocol import HandoffError
-from codex_responses_proxy.service.handoff.protocol import JsonObject
-from codex_responses_proxy.service.handoff.protocol import ReadOnlyJsonObject
-from codex_responses_proxy.service.handoff.protocol import listener_from_prepare
-from codex_responses_proxy.service.handoff.protocol import probe_health
+from codex_responses_proxy.service.handoff.protocol import (
+    HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS,
+    HANDOFF_PROTOCOL_VERSION,
+    HandoffChild,
+    HandoffError,
+    JsonObject,
+    ReadOnlyJsonObject,
+    listener_from_prepare,
+    probe_health,
+    spawn_child,
+)
 from codex_responses_proxy.service.handoff.protocol import (
     read_control_message as _read_control_message,
 )
-from codex_responses_proxy.service.handoff.protocol import spawn_child
 from codex_responses_proxy.service.handoff.protocol import (
     write_control_message as _write_control_message,
 )
@@ -40,7 +42,7 @@ from codex_responses_proxy.service.handoff.protocol import (
 class PreparedHandoff(TypedDict):
     """Validated replacement and bounded timing used at the commit barrier."""
 
-    child: "HandoffChild"
+    child: HandoffChild
     expected: JsonObject
     timeout_seconds: float
     lease_seconds: float
@@ -81,7 +83,6 @@ class Context:
     log: Callable[[str], None]
     server_factory: Callable[[socket.socket], ThreadingHTTPServer]
     set_server_instance: Callable[[ThreadingHTTPServer], None]
-    finalize_successor: Callable[[], None]
 
 
 _HANDOFF_TRANSITIONS = {
@@ -489,7 +490,6 @@ def run_child(context: Context) -> int:
         if command != {"type": "finalize"}:
             raise HandoffError("handoff child did not receive FINALIZE")
         _transition("finalizing")
-        context.finalize_successor()
         _transition("finalized")
         _write_control_message(output_stream, _control_message("finalized", child_expected))
         serve_with_resume(server, context, initial_serving_thread=serving_thread)

@@ -11,6 +11,9 @@ publication authority.
 
 ### Fixed
 
+- Move native-supervisor rebinding from the handoff child into the installer
+  transaction before listener transfer, so Linux and Windows successors do not
+  terminate or replace the process that is actively finalizing the handoff.
 - Replace the macOS watchdog by exact launchd service generation, proving the
   predecessor process exited and the successor executes the committed payload
   without interrupting the independent listener.

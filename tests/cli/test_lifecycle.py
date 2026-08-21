@@ -456,14 +456,8 @@ class CliLifecycleContracts:
         mocker.stop(entrypoint)
 
         handoff = mocker.patch("codex_responses_proxy.service.entrypoint.run", return_value=8)
-        install_supervision = mocker.patch(
-            "codex_responses_proxy.lifecycle.supervision.native_service.install_current"
-        )
         assert application.main([application.service_runtime.HANDOFF_CHILD_MODE]) == 8
-        handoff.assert_called_once_with(
-            handoff_child=True,
-            finalize_successor=install_supervision,
-        )
+        handoff.assert_called_once_with(handoff_child=True)
         mocker.stop(handoff)
 
         watchdog = mocker.patch(

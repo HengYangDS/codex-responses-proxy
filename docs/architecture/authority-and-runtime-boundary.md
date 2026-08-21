@@ -175,7 +175,10 @@ stateDiagram-v2
 
 Artifact admission verifies the release asset, complete bundle inventory, and
 external trust anchor. The installer commits the verified projection, then
-prewarms that exact executable before handoff while rollback remains available.
+prewarms that exact executable, rebinds native supervision to it, and only then
+requests listener handoff while rollback remains available. The handoff child
+owns listener transfer and runtime identity; it does not mutate launchd,
+systemd, or Task Scheduler state.
 The same transaction projects one native user-command link and records its
 exact path in installed state. Rollback and uninstall therefore do not re-derive
 ownership from a later shell environment. Installation finalizes only after one

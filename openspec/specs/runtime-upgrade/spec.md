@@ -115,7 +115,9 @@ manifest, serving aggregate, receipt, accepting state, and non-draining state.
 
 - **WHEN** the sole verified listener supports handoff and the successor proves
   the admitted identity
-- **THEN** the transaction finalizes without replacing native supervision
+- **THEN** installation rebinds native supervision to the committed successor
+  before requesting listener handoff
+- **AND** the handoff child owns only listener transfer and runtime identity
 - **AND** startup performs no first-run bundle extraction
 - **AND** at most one listener accepts requests at each barrier.
 

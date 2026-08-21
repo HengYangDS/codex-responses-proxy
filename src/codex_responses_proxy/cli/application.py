@@ -352,13 +352,9 @@ def _run_internal(arguments: list[str]) -> int:
 
         return entrypoint.run()
     if mode == service_runtime.HANDOFF_CHILD_MODE:
-        from codex_responses_proxy.lifecycle.supervision import native_service
         from codex_responses_proxy.service import entrypoint
 
-        return entrypoint.run(
-            handoff_child=True,
-            finalize_successor=native_service.install_current,
-        )
+        return entrypoint.run(handoff_child=True)
     if mode == service_runtime.WATCHDOG_MODE:
         from codex_responses_proxy.lifecycle.supervision import watchdog
 

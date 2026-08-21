@@ -18,11 +18,13 @@ import pytest
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.service.handoff import protocol as handoff_protocol_module
-from tests.service.handoff.fixtures import entrypoint_module
-from tests.service.handoff.fixtures import expected_metadata
-from tests.service.handoff.fixtures import handoff_module
-from tests.service.handoff.fixtures import http_json
-from tests.service.handoff.fixtures import runtime_state_module
+from tests.service.handoff.fixtures import (
+    entrypoint_module,
+    expected_metadata,
+    handoff_module,
+    http_json,
+    runtime_state_module,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -36,7 +38,10 @@ class TestProtocolContract:
         handoff_module.reset_session_to_idle()
 
     def test_parent_and_controller_declare_protocol_version_two(self):
-        assert (handoff_module.HANDOFF_PROTOCOL_VERSION, handoff.HANDOFF_PROTOCOL_VERSION) == (2, 2)
+        assert (
+            handoff_module.HANDOFF_PROTOCOL_VERSION,
+            handoff.HANDOFF_PROTOCOL_VERSION,
+        ) == (2, 2)
 
     def test_runtime_status_contains_full_handoff_health_shape(self):
         status = self.p.runtime_status()
@@ -58,14 +63,20 @@ class TestProtocolContract:
 
     def test_runtime_status_reports_an_accepting_idle_state(self):
         status = self.p.runtime_status()
-        assert (status["accepting"], status["draining"], status["handoff_transaction_id"]) == (
+        assert (
+            status["accepting"],
+            status["draining"],
+            status["handoff_transaction_id"],
+        ) == (
             True,
             False,
             None,
         )
         assert status["handoff_state"] in (None, "idle")
 
-    def test_a_prepared_or_committing_child_window_is_not_draining_but_is_also_not_accepting(self):
+    def test_a_prepared_or_committing_child_window_is_not_draining_but_is_also_not_accepting(
+        self,
+    ):
         # ``accepting`` is not merely ``not draining``: a transaction that owns
         # the single-flight session but has not yet closed admission (draining
         # is still False) must still report itself as unavailable for a fresh
@@ -121,7 +132,13 @@ class TestHandoffTransitionValidation:
                 ("rolled_back", "idle"),
                 *tuple(
                     (state, "aborting")
-                    for state in ("preparing", "ready", "committing", "serving", "finalizing")
+                    for state in (
+                        "preparing",
+                        "ready",
+                        "committing",
+                        "serving",
+                        "finalizing",
+                    )
                 ),
             )
         )
@@ -184,7 +201,10 @@ class TestHandoffPlatformHelpers:
 
         cases = (
             (b"", "control pipe closed"),
-            (b"x" * (self.p.HANDOFF_CONTROL_MAX_BYTES + 1), "exceeds the control limit"),
+            (
+                b"x" * (self.p.HANDOFF_CONTROL_MAX_BYTES + 1),
+                "exceeds the control limit",
+            ),
             (b"{\n", "invalid JSON"),
             (b"[]\n", "must be an object"),
         )
@@ -211,7 +231,10 @@ class TestHandoffPlatformHelpers:
             child.recv_message(0.1)
 
         child = self.p.HandoffChild(
-            mocker.Mock(stdin=io.BytesIO(), stdout=io.BytesIO(b'{"type":"started","pid":false}\n'))
+            mocker.Mock(
+                stdin=io.BytesIO(),
+                stdout=io.BytesIO(b'{"type":"started","pid":false}\n'),
+            )
         )
         with pytest.raises(self.p.HandoffError, match="STARTED identity mismatch"):
             child.await_runtime(1)
@@ -404,8 +427,7 @@ class TestHandoffPlatformHelpers:
     def test_child_protocol_accepts_finalize_and_rejects_invalid_commands(
         self, subtests, *, mocker
     ):
-        finalized_supervision = mocker.Mock()
-        context = entrypoint_module._handoff_context(finalize_successor=finalized_supervision)
+        context = entrypoint_module._handoff_context()
         prepare = {
             "type": "prepare",
             "protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
@@ -449,10 +471,7 @@ class TestHandoffPlatformHelpers:
             "serving",
             "finalized",
         ]
-        finalized_supervision.assert_called_once_with()
         server.server_close.assert_not_called()
-
-        finalized_supervision.reset_mock()
 
         for commands, valid_prepare in (
             ((), False),
@@ -464,7 +483,6 @@ class TestHandoffPlatformHelpers:
                 result, server, _ = run(*commands, valid_prepare=valid_prepare)
                 assert result == 1
                 assert server.server_close.call_count == int(valid_prepare)
-                finalized_supervision.assert_not_called()
 
         failed = mocker.Mock()
         failed.shutdown.side_effect = OSError
@@ -473,41 +491,3 @@ class TestHandoffPlatformHelpers:
         assert result == 1
         failed.shutdown.assert_called_once()
         failed.server_close.assert_called_once()
-
-    def test_child_refuses_finalization_when_successor_supervision_is_unproved(
-        self, *, mocker
-    ) -> None:
-        handoff_module.reset_session_to_idle()
-        finalizer = mocker.Mock(side_effect=OSError("launchd unavailable"))
-        context = entrypoint_module._handoff_context(finalize_successor=finalizer)
-        prepare = {
-            "type": "prepare",
-            "protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
-            "transaction_id": "txn-child",
-            "release": entrypoint_module.release_version(),
-            "serving_payload_sha256": entrypoint_module.serving_payload_sha256(),
-            "release_receipt_sha256": entrypoint_module.release_receipt_sha256(),
-            "manifest_sha256": context.payload_manifest_sha256(),
-            "listener_fd": 37,
-        }
-        commands = (prepare, {"type": "commit"}, {"type": "finalize"})
-        raw = b"".join(
-            json.dumps(message, separators=(",", ":")).encode() + b"\n" for message in commands
-        )
-        stdout = io.BytesIO()
-        fake_server = mocker.Mock()
-        object.__setattr__(context, "server_factory", lambda _listener: fake_server)
-        mocker.patch.object(sys, "stdin", mocker.Mock(buffer=io.BytesIO(raw)))
-        mocker.patch.object(sys, "stdout", mocker.Mock(buffer=stdout))
-        mocker.patch.object(handoff_module, "listener_from_prepare", return_value=mocker.Mock())
-        mocker.patch.object(handoff_module, "serve_with_resume")
-        mocker.patch("threading.Thread")
-
-        assert handoff_module.run_child(context) == 1
-
-        finalizer.assert_called_once_with()
-        assert [json.loads(line)["type"] for line in stdout.getvalue().splitlines()] == [
-            "started",
-            "ready",
-            "serving",
-        ]
