@@ -282,6 +282,13 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
         ),
         "entrypoint": [""],
     }
+    assert _mapping(source["variables"]) == {
+        "GIT_DEPTH": "0",
+        "MISE_ENABLE_TOOLS": (
+            "python,uv,node,cue,npm:@fission-ai/openspec,github:gitleaks/gitleaks,"
+            "github:rhysd/actionlint,github:lycheeverse/lychee"
+        ),
+    }
     assert source["before_script"] == [
         "mise install --locked",
         "git fetch --tags --force --prune --prune-tags origin",

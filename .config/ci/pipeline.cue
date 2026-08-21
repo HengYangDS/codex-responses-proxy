@@ -88,9 +88,8 @@ gitlab: {
 			entrypoint: [""]
 		}
 		variables: {
-			GIT_DEPTH:         "0"
-			MISE_ENABLE_TOOLS:  #Toolchains.quality
-			MISE_GITHUB_TOKEN: "$CI_JOB_TOKEN"
+			GIT_DEPTH:        "0"
+			MISE_ENABLE_TOOLS: #Toolchains.quality
 		}
 		before_script: [
 			"mise install --locked",
