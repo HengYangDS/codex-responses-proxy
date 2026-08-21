@@ -61,7 +61,8 @@ def write(ctx: RuntimeContext) -> Path:
     """Atomically persist the exact native runtime contract."""
 
     target = path(ctx)
-    payload = _payload({name: getattr(ctx, name) for name in _FIELDS})
+    payload = {"schema_version": SCHEMA_VERSION}
+    payload.update({name: getattr(ctx, name) for name in _FIELDS})
     owned_files.write_bytes(
         target,
         digest.canonical_json(payload),
@@ -117,10 +118,6 @@ def activate(executable: str | os.PathLike[str]) -> Path:
         os.environ.pop(name, None)
     os.environ.update(projected)
     return target
-
-
-def _payload(values: dict[str, Any]) -> dict[str, Any]:
-    return {"schema_version": SCHEMA_VERSION, **values}
 
 
 @dataclass(frozen=True, slots=True)
