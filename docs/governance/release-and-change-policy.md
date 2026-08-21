@@ -117,11 +117,12 @@ GitLab and GitHub are optional, peer-local publication planes. They use separate
 transport credentials, account verification, CI, and Release APIs while
 observing the same commit and annotated tag objects.
 
-Product construction is not duplicated per Forge. Native builders create one
-asset pair for every platform in the product SSOT; one assembler verifies the
-complete inventory, creates `SHA256SUMS`, and signs it once. Publishers consume,
-verify, upload, and re-download those exact bytes. They cannot rebuild, subset,
-repackage, or re-sign the bundle.
+Product construction is independent of Forge publication. The admitted native
+builder for each platform creates that platform's asset pair. One product
+assembler then verifies the complete inventory, creates `SHA256SUMS`, and signs
+the resulting bundle once. GitLab and GitHub consume, verify, upload, and
+re-download those exact bytes; neither Forge may build, subset, repackage, or
+re-sign the bundle.
 
 One peer may publish while the other is unavailable. That is one-sided
 publication, not dual-Forge parity. Parity requires exact commit and tag objects,

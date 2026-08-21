@@ -31,7 +31,7 @@
 
 ## 3. Governance and closeout
 
-- [ ] 3.1 Update release policy, Forge operations, DR-0004, and the main
+- [x] 3.1 Update release policy, Forge operations, DR-0004, and the main
   release-governance specification; verify docs and strict OpenSpec validation
   pass without contradictory build-once or provider-asymmetric language.
 - [ ] 3.2 Replace the syntax-only Ruff floor with the reviewed applicable rule

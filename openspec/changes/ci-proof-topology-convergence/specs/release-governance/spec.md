@@ -154,12 +154,20 @@ verification node.
 
 ### Requirement: Dual-Forge releases project one complete signed bundle
 
-The release owner SHALL define exactly one complete release-bundle identity for
-each version. Each selected Forge SHALL publish and re-download the exact same
-files, and dual-Forge parity SHALL require equal complete inventories, bytes,
-checksum manifest, signature, and trust-anchor digest. The bundle SHALL be
-constructed and signed once per release identity; provider adapters SHALL only
-transport and verify it.
+The admitted native builder for each supported platform SHALL produce that
+platform's asset pair. The release owner SHALL admit those assets into exactly
+one complete release-bundle identity and sign it once. Each selected Forge
+SHALL publish and re-download the exact same files, and dual-Forge parity SHALL
+require equal complete inventories, bytes, checksum manifest, signature, and
+trust-anchor digest. Provider adapters SHALL only transport and verify the
+bundle.
+
+#### Scenario: Physical build execution
+
+- **WHEN** native assets are built on different platform executors or one
+  executor is hosted by a selected Forge
+- **THEN** runner placement SHALL NOT make that Forge a product authority
+- **AND** no Forge publication adapter SHALL build, repackage, or sign assets.
 
 #### Scenario: Complete parity
 

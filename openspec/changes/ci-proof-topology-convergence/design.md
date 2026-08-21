@@ -156,11 +156,13 @@ unreviewed maintainer push to borrow a different SHA, base, or peer result.
 
 ### Preserve one bundle identity, not one physical executor
 
-The complete bundle inventory and bytes remain the authority. A Forge may
-consume an already assembled bundle or independently reproduce it, but the
-publisher only accepts the exact complete signed bytes and verifies them again
-after download. This resolves the false choice between independent peers and a
-single Forge-owned builder: execution may differ; product identity cannot.
+The complete bundle inventory and bytes remain the authority. Native platform
+builders may run on different trusted executors, including infrastructure
+hosted by a Forge, but each platform contributes one admitted asset pair to one
+complete bundle. The product assembler verifies that inventory and signs it
+once. Forge publishers only accept those exact signed bytes and verify them
+again after download. Execution placement may differ; construction and product
+identity do not become Forge-specific.
 
 ### Keep proof ownership local to each layer
 

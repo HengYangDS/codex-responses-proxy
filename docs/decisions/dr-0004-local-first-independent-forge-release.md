@@ -1,4 +1,4 @@
-# DR-0004: Project One Signed Product Bundle through Independent Forges
+# DR-0004: Publish One Signed Product Bundle through Independent Forges
 
 - Status: accepted
 - Date: 2026-08-07
@@ -14,15 +14,16 @@ publish through the other creates a common failure path and prevents local closu
 
 A clean accepted source tree can build, verify, install, exercise, and uninstall
 without a Forge. The product commit and annotated release tag are created and
-signed once in local Git. Native builders produce one exact asset pair per
-supported platform; the assembler verifies the complete platform inventory,
-creates one checksum manifest, and signs that manifest once.
+signed once in local Git. The admitted native builder for each supported
+platform produces that platform's exact asset pair. One product assembler
+verifies the complete platform inventory, creates one checksum manifest, and
+signs the resulting bundle once.
 
-GitLab and GitHub remain optional publication peers. Each authenticates its own
-transport and verifies the same Git objects, but neither may rebuild, subset,
-repackage, or re-sign the product bundle. A publication adapter only transfers
-and re-downloads the immutable bundle. One peer may obtain the bundle from the
-successful authoritative build without making that peer a source of product
+GitLab and GitHub remain optional publication peers with the same semantic
+role. Each authenticates its own transport and verifies the same Git objects,
+but neither may build assets, subset, repackage, or re-sign the product bundle.
+A publication adapter only transfers and re-downloads the immutable bundle.
+Physical runner placement does not make either peer a source of product
 identity.
 
 Cross-Forge comparison is read-only and occurs only after both publications
@@ -32,11 +33,12 @@ byte-identical checksums and signature, and the same product trust-anchor digest
 ## Consequences
 
 One Forge can remain usable during an outage of the other. One-sided success is
-reported as one-sided publication, never as a dual release. The bundle is built
-once; Forge independence concerns publication and availability, not duplicate
-product construction or signing. Push credentials may
-differ, but they never change Git objects. Product source contains no personal
-private key, credential, or checkout path.
+reported as one-sided publication, never as a dual release. Each platform asset
+is admitted once into one complete bundle, and that bundle is assembled and
+signed once. Forge independence concerns publication and availability, not
+duplicate construction or signing. Push credentials may differ, but they never
+change Git objects. Product source contains no personal private key, credential,
+or checkout path.
 
 ## Revisit Trigger
 

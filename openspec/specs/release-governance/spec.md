@@ -1,7 +1,9 @@
 # release-governance Specification
 
 ## Purpose
-TBD - created by archiving change release-state-aware-metadata. Update Purpose after archive.
+Define the provider-neutral validation, product identity, release construction,
+and independent publication contract from reviewed source through installation
+authority.
 
 ## Requirements
 
@@ -54,9 +56,18 @@ commit and proof context.
 
 ### Requirement: Dual-Forge releases project one complete signed bundle
 
-The release owner SHALL assemble and sign exactly one complete release bundle.
-Each selected Forge SHALL publish and re-download the exact same files, and
-dual-Forge parity SHALL require equal complete inventories and digests.
+The admitted native builder for each supported platform SHALL produce that
+platform's asset pair. The release owner SHALL admit those assets into exactly
+one complete release bundle and sign it once. Each selected Forge SHALL publish
+and re-download the exact same files, and dual-Forge parity SHALL require equal
+complete inventories and digests.
+
+#### Scenario: Physical build execution
+
+- **WHEN** native assets are built on different platform executors or one
+  executor is hosted by a selected Forge
+- **THEN** runner placement SHALL NOT make that Forge a product authority
+- **AND** no Forge publication adapter SHALL build, repackage, or sign assets
 
 #### Scenario: Complete parity
 

@@ -16,9 +16,10 @@ flowchart LR
 | Plane | Owns |
 | --- | --- |
 | Local | Commit and tag objects, source proof, install, runtime proof |
-| Bundle builder | Complete platform assets, one checksum inventory, one product signature |
-| GitLab | Transport authentication, tag proof, Release projection |
-| GitHub | Transport authentication, review proof, bundle build, Release projection |
+| Native builders | One admitted asset pair for each supported platform |
+| Product assembler | Complete platform inventory, one checksum manifest, one product signature |
+| GitLab | Peer-local review and tag verification, transport authentication, Release projection |
+| GitHub | Peer-local review and tag verification, transport authentication, Release projection |
 | Audit | Read-only comparison after publication |
 
 The commit and annotated tag are signed once locally. The public signing key and
@@ -98,11 +99,11 @@ uv run --locked --no-sync python -m tools.release.tag \
 ```
 
 An existing remote tag with the same OID is idempotent. A different OID fails
-closed. The GitHub verification graph has the available native runners to build
-all supported platform assets and assemble one signed bundle. Publication is a
-separate product operation, not a second provider-specific workflow. A
-publisher accepts only that pre-signed bundle and cannot regenerate its
-checksum inventory or signature.
+closed. Current runner placement may make one Forge the physical execution host
+for some native builds, but it does not make that Forge a product authority.
+Publication is a separate product operation, not a second provider-specific
+workflow. A publisher accepts only the complete pre-signed bundle and cannot
+build assets or regenerate its checksum inventory or signature.
 
 Publish the same bundle to both peers with the single composition root:
 
