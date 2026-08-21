@@ -99,9 +99,9 @@ class Handler(BaseHTTPRequestHandler):
     def _bindings(self) -> Bindings:
         return cast(ResilientProxyServer, self.server).bindings
 
-    def log_message(self, format_string: str, *args: object) -> None:
+    def log_message(self, *args: object, **kwargs: object) -> None:
         """Suppress the base server's unstructured stderr access log."""
-        del format_string, args
+        del args, kwargs
 
     def do_POST(self) -> None:
         if self.path == "/control/drain":

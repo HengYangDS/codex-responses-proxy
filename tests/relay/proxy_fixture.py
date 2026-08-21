@@ -32,8 +32,8 @@ def serve_proxy(
     scripted_lock = threading.Lock()
 
     class UpstreamHandler(BaseHTTPRequestHandler):
-        def log_message(self, format_string: str, *args: Any) -> None:
-            del format_string, args
+        def log_message(self, *args: Any, **kwargs: Any) -> None:
+            del args, kwargs
 
         def _receive(self) -> bytes:
             length = int(self.headers.get("Content-Length", "0"))
