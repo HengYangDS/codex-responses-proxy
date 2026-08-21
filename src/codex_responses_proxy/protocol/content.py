@@ -37,8 +37,8 @@ def _text_block_value(typed: JsonObject, block_type: object) -> str:
         allowed = {"type", "text", "prompt_cache_breakpoint"}
         if set(typed) - allowed:
             reject("invalid_text_block")
-        breakpoint = typed.get("prompt_cache_breakpoint")
-        if breakpoint is not None and breakpoint != {"mode": "explicit"}:
+        cache_breakpoint = typed.get("prompt_cache_breakpoint")
+        if cache_breakpoint is not None and cache_breakpoint != {"mode": "explicit"}:
             reject("invalid_text_block")
     else:
         allowed = {"type", "text", "annotations", "logprobs"}

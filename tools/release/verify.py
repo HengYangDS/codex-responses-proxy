@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Emit secret-free evidence from live dual-Forge publication verification."""
 
 from __future__ import annotations

@@ -181,6 +181,8 @@ class TestQualityPolicyContracts:
             "I",
             "N",
             "ARG",
+            "A",
+            "EXE",
             "UP",
             "B",
             "C4",

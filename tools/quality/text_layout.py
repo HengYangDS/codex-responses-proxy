@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Validate tracked text files against the repository editor contract."""
 
 from __future__ import annotations

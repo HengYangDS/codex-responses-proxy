@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Assemble verified native platform outputs into one release asset set."""
 
 from __future__ import annotations

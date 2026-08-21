@@ -319,8 +319,8 @@ class ScriptedUpstream:
         self._queue: list[UpstreamBehavior] = []
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, format: str, *args: Any) -> None:
-                del format, args
+            def log_message(self, format_string: str, *args: Any) -> None:
+                del format_string, args
 
             def do_POST(self):
                 length = int(self.headers.get("Content-Length", "0"))

@@ -386,10 +386,10 @@ class ProxyOwnerBoundaryContracts:
     def test_cygwin_selection_reports_missing_windows_adapter(self, *, mocker) -> None:
         real_import = __import__
 
-        def missing_windows(name, globals=None, locals=None, fromlist=(), level=0):
+        def missing_windows(name, globals_=None, locals_=None, fromlist=(), level=0):
             if name.endswith("lifecycle.supervision") and fromlist == ("windows",):
                 raise ImportError("missing bundled Windows adapter")
-            return real_import(name, globals, locals, fromlist, level)
+            return real_import(name, globals_, locals_, fromlist, level)
 
         mocker.patch.object(native_service, "_platform_adapters", return_value=())
         mocker.patch.object(sys, "platform", "cygwin")

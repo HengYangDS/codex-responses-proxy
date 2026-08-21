@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Package one accepted native executable into a manifest-bound release asset."""
 
 from __future__ import annotations
