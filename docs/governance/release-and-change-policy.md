@@ -82,11 +82,13 @@ them.
 Required local evidence includes:
 
 ```bash
-uv run --locked --no-sync nox -s quick
-uv run --locked --no-sync nox -s quality
-uv run --locked --no-sync nox -s tests-3.12 tests-3.13 tests-3.14
+uv run --locked --no-sync nox -s full
 uv run --locked --no-sync nox -s release
 ```
+
+`quick` is optional feedback, not a second admission graph. `full` composes the
+locked governance tools, strict Python 3.12 quality and coverage owner, and the
+remaining Python compatibility runs without repeating equivalent work.
 
 Statement and measured branch coverage must each be strictly above 95%.
 Warnings are errors. Product and development dependencies come from this

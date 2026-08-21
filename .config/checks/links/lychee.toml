@@ -1,0 +1,5 @@
+include_fragments = "anchor-only"
+max_retries = 3
+require_https = true
+root_dir = "."
+timeout = 10

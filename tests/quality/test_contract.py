@@ -44,6 +44,12 @@ def _commit_checker() -> ModuleType:
     return _load("codex_responses_proxy_commit_checker", "tools/quality/commits.py")
 
 
+def _governance_checker() -> ModuleType:
+    _load("tools", "tools/__init__.py")
+    _load("tools.quality", "tools/quality/__init__.py")
+    return _load("codex_responses_proxy_governance_checker", "tools/quality/governance.py")
+
+
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     environment = os.environ | {
         "GIT_CONFIG_NOSYSTEM": "1",
@@ -214,6 +220,7 @@ class TestQualityPolicyContracts:
             ".config/checks/architecture/policy.toml",
             ".config/checks/commits/policy.toml",
             ".config/checks/text-layout/policy.toml",
+            ".config/checks/links/lychee.toml",
             ".editorconfig",
         ):
             assert (ROOT / path).is_file(), path
@@ -267,6 +274,31 @@ class TestQualityPolicyContracts:
             assert all(
                 isinstance(policy.get(field), str) and policy[field].strip() for field in rationale
             ), relative
+
+    def test_governance_composition_owns_each_repository_check_once(self, mocker) -> None:
+        governance = _governance_checker()
+        completed = mocker.Mock(returncode=0)
+        run = mocker.patch.object(governance.subprocess, "run", return_value=completed)
+
+        governance.audit(online_links=False)
+
+        commands = [tuple(call.args[0]) for call in run.call_args_list]
+        assert commands == [
+            ("cue", "vet", ".config/ci/pipeline.cue"),
+            ("openspec", "validate", "--all", "--strict", "--no-interactive"),
+            ("actionlint", ".github/workflows/verify.yml"),
+            ("gitleaks", "git", "--platform", "gitlab", "--redact", "--no-banner", "."),
+            (
+                "lychee",
+                "--config",
+                ".config/checks/links/lychee.toml",
+                "--offline",
+                "./*.md",
+                "./**/*.md",
+            ),
+            (governance.sys.executable, "tools/release/metadata.py"),
+            (governance.sys.executable, "-m", "tools.quality.repository"),
+        ]
 
     def test_editor_defaults_and_text_layout_policy_are_aligned(self) -> None:
         editor = (ROOT / ".editorconfig").read_text(encoding="utf-8")

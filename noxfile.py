@@ -166,12 +166,34 @@ def quality(session: nox.Session) -> None:
 
 
 @nox.session(python=False)
-def full(session: nox.Session) -> None:
-    """Run quick checks, strict quality, and every supported interpreter."""
+def governance(session: nox.Session) -> None:
+    """Run the repository governance graph with the locked external toolchain."""
 
-    session.notify("quick")
+    session.run(
+        "mise",
+        "exec",
+        "--locked",
+        "--",
+        "uv",
+        "run",
+        "--locked",
+        "--no-sync",
+        "python",
+        "-m",
+        "tools.quality.governance",
+        *session.posargs,
+        external=True,
+        env=_environment(),
+    )
+
+
+@nox.session(python=False)
+def full(session: nox.Session) -> None:
+    """Run governance, strict quality, and every remaining supported interpreter."""
+
+    session.notify("governance")
     session.notify("quality")
-    for python in PYTHONS:
+    for python in PYTHONS[1:]:
         session.notify(f"tests-{python}")
 
 

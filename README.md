@@ -190,11 +190,13 @@ chain. These commands are DX, not product UX:
 
 ```bash
 uv sync --locked --all-groups
-uv run --locked --no-sync nox -s quick
-uv run --locked --no-sync nox -s quality
-uv run --locked --no-sync nox -s tests-3.12 tests-3.13 tests-3.14
+uv run --locked --no-sync nox -s full
 uv run --locked --no-sync nox -s release
 ```
+
+Use `nox -s quick` while editing. `full` is the non-redundant admission graph:
+repository governance, strict quality and Python 3.12 coverage, then complete
+compatibility runs on Python 3.13 and 3.14.
 
 See [CONTRIBUTING](CONTRIBUTING.md) for source verification and release work.
 

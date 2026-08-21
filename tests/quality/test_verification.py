@@ -465,6 +465,9 @@ class TestVerificationContracts:
         tree = ast.parse(noxfile)
         functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
         full_source = ast.get_source_segment(noxfile, functions["full"]) or ""
+        assert 'session.notify("governance")' in full_source
+        assert 'session.notify("quick")' not in full_source
+        assert "for python in PYTHONS[1:]" in full_source
         assert 'session.notify(f"tests-{python}")' in full_source
         assert 'session.notify("tests",' not in full_source
 

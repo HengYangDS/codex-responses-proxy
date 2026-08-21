@@ -97,12 +97,7 @@ gitlab: {
 			"mise exec --locked -- uv sync --locked --group quality --no-install-project --python python --no-python-downloads",
 		]
 		script: [
-			"mise exec --locked -- cue vet .config/ci/pipeline.cue",
-			"mise exec --locked -- openspec validate --all --strict --no-interactive",
-			"mise exec --locked -- actionlint .github/workflows/*.yml",
-			"mise exec --locked -- gitleaks git --redact --no-banner .",
-			"mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py",
-			"mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository",
+			"mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links",
 		]
 	}
 	"verify-python": {
@@ -252,12 +247,7 @@ githubVerify: {
 				name: "Confirm source identity and repository governance"
 				run: """
 					uv sync --locked --all-groups
-					mise exec --locked -- cue vet .config/ci/pipeline.cue
-					mise exec --locked -- openspec validate --all --strict --no-interactive
-					mise exec --locked -- actionlint .github/workflows/*.yml
-					mise exec --locked -- gitleaks git --redact --no-banner .
-					uv run --locked --no-sync python tools/release/metadata.py
-					uv run --locked --no-sync python -m tools.quality.repository
+					uv run --locked --no-sync python -m tools.quality.governance --online-links
 					"""
 			}]
 		}

@@ -32,11 +32,13 @@ uv sync --locked --all-groups
 Run the repository-owned gates:
 
 ```bash
-uv run --locked --no-sync nox -s quick
-uv run --locked --no-sync nox -s quality
-uv run --locked --no-sync nox -s tests-3.12 tests-3.13 tests-3.14
+uv run --locked --no-sync nox -s full
 uv run --locked --no-sync nox -s release
 ```
+
+`quick` is the editing feedback loop. `full` is the admission owner and avoids
+rerunning `quick` or the Python 3.12 behavior inventory already exercised by
+strict branch-aware coverage.
 
 Nox installs a non-editable wheel in isolated environments. Do not add
 `PYTHONPATH`, user-site fallback, or another repository's virtual environment

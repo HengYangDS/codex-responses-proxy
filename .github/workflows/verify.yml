@@ -63,12 +63,7 @@ jobs:
       - name: Confirm source identity and repository governance
         run: |-
           uv sync --locked --all-groups
-          mise exec --locked -- cue vet .config/ci/pipeline.cue
-          mise exec --locked -- openspec validate --all --strict --no-interactive
-          mise exec --locked -- actionlint .github/workflows/*.yml
-          mise exec --locked -- gitleaks git --redact --no-banner .
-          uv run --locked --no-sync python tools/release/metadata.py
-          uv run --locked --no-sync python -m tools.quality.repository
+          uv run --locked --no-sync python -m tools.quality.governance --online-links
   python:
     name: Python ${{ matrix.python-version }}
     if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')

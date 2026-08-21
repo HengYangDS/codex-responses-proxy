@@ -288,7 +288,12 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
             "--no-install-project --python python --no-python-downloads"
         ),
     ]
-    assert all(command.startswith("mise exec --locked -- ") for command in source["script"])
+    assert source["script"] == [
+        (
+            "mise exec --locked -- uv run --locked --no-sync --python python "
+            "--no-python-downloads python -m tools.quality.governance --online-links"
+        )
+    ]
     assert _mapping(source["variables"])["MISE_ENABLE_TOOLS"].startswith("python,uv,")
 
 
@@ -313,6 +318,7 @@ def _assert_github_required_tokens(text: str) -> None:
         "fetch-tags: true",
         "if: github.ref_type == 'tag'",
         "python -m tools.release.publish prepare-checkout",
+        "python -m tools.quality.governance --online-links",
         'uv run --locked --no-sync python tools/release/metadata.py --tag "$GITHUB_REF_NAME"',
         "uv run --locked --no-sync python tools/release/metadata.py",
         "python-quality:",
@@ -509,6 +515,17 @@ def test_github_verification_workflow_contract() -> None:
     _assert_github_platform_contract(text)
     _assert_github_governance_contract(text)
     _assert_github_native_and_forbidden_contract(text)
+    source = text.split("\n  source-and-governance:", 1)[1].split("\n  python:", 1)[0]
+    assert source.count("python -m tools.quality.governance --online-links") == 1
+    for duplicate in (
+        "cue vet .config/ci/pipeline.cue",
+        "openspec validate --all",
+        "actionlint .github/workflows",
+        "gitleaks git",
+        "tools/release/metadata.py",
+        "python -m tools.quality.repository",
+    ):
+        assert duplicate not in source
 
 
 def test_gitlab_pytest_invocations_preserve_repository_module_resolution() -> None:
