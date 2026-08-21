@@ -364,6 +364,7 @@ class TestQualityPolicyContracts:
         (subject,) = _commit_checker().commit_subject_patterns(policy)
 
         assert subject.fullmatch("refactor(quality): centralize repository policy owners")
+        assert subject.fullmatch("fix(ci): provision quality projection tools")
         assert subject.fullmatch("fix(install): restore exact payload on rollback")
         assert subject.fullmatch("fix(supervision): classify zombie tombstones")
         assert not subject.fullmatch("refactor: centralize repository policy owners")

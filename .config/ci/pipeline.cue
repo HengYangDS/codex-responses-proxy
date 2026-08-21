@@ -239,9 +239,8 @@ githubVerify: {
 			}, {
 				uses: #Toolchains.githubMiseAction
 				with: {
-					install:     true
-					cache:       true
-					tool_config: "mise.toml"
+					install: true
+					cache:   true
 				}
 			}, {
 				name: "Confirm source identity and repository governance"
@@ -413,9 +412,8 @@ githubVerify: {
 			}, {
 				uses: #Toolchains.githubMiseAction
 				with: {
-					install:     true
-					cache:       true
-					tool_config: "mise.toml"
+					install: true
+					cache:   true
 				}
 			}, {
 				name: "Verify lint, format, types, structure, docstrings, and product branch coverage"

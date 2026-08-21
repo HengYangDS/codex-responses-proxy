@@ -309,7 +309,6 @@ def test_github_python_quality_installs_its_declared_projection_toolchain() -> N
     assert _mapping(mise["with"]) == {
         "install": "true",
         "cache": "true",
-        "tool_config": "mise.toml",
     }
 
 
