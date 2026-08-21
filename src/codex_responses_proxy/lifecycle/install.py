@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from codex_responses_proxy.lifecycle import artifact, transaction
+from codex_responses_proxy.lifecycle import artifact, control, transaction
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.deployment import apply
 from codex_responses_proxy.runtime import config as runtime_config
@@ -48,7 +48,7 @@ def install_asset(
             ctx,
             payload_transaction,
             adapter=native_service.adapter(),
-            runtime_reader=apply.read_runtime,
+            runtime_reader=control.read_runtime,
             timeout_seconds=timeout_seconds,
         )
     except BaseException:

@@ -10,7 +10,7 @@ from typing import cast
 import pytest
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import install, transaction
+from codex_responses_proxy.lifecycle import control, install, transaction
 from codex_responses_proxy.lifecycle.deployment import apply
 from codex_responses_proxy.lifecycle.supervision import process
 from tests.lifecycle.fixtures import install_context
@@ -352,18 +352,18 @@ class TestReleasedDeployment:
                 return self.payload
 
         opener = mocker.Mock()
-        mocker.patch.object(apply.urllib.request, "build_opener", return_value=opener)
+        mocker.patch.object(control.urllib.request, "build_opener", return_value=opener)
         opener.open.return_value = Response(200, b'{"pid": 222}')
-        assert apply.read_runtime(self.ctx) == {"pid": 222}
+        assert control.read_runtime(self.ctx) == {"pid": 222}
         for response in (
             Response(204, b""),
             Response(200, b"[]"),
             Response(200, b"bad"),
         ):
             opener.open.return_value = response
-            assert apply.read_runtime(self.ctx) is None
+            assert control.read_runtime(self.ctx) is None
         opener.open.side_effect = urllib.error.URLError("offline")
-        assert apply.read_runtime(self.ctx) is None
+        assert control.read_runtime(self.ctx) is None
 
 
 def test_install_has_no_json_publication_proof_loader() -> None:

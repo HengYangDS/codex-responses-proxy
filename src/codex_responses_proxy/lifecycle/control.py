@@ -39,7 +39,7 @@ def _installed_command(ctx: runtime_context.RuntimeContext) -> Path:
     )
 
 
-def _runtime_metrics(ctx: runtime_context.RuntimeContext) -> dict | None:
+def read_runtime(ctx: runtime_context.RuntimeContext) -> dict[str, object] | None:
     """Read the proxy's secret-free health snapshot from loopback only."""
 
     request = urllib.request.Request(
@@ -70,7 +70,7 @@ def status(ctx: runtime_context.RuntimeContext) -> dict:
     except (OSError, errors.InstallError, errors.UnsupportedPlatform):
         service = "unknown"
     listeners = process.verified_proxy_listener_pids(ctx)
-    runtime = _runtime_metrics(ctx)
+    runtime = read_runtime(ctx)
     pid = runtime.get("pid") if isinstance(runtime, dict) else None
     if type(pid) is not int or listeners != [pid]:
         runtime = None
@@ -88,7 +88,7 @@ def status(ctx: runtime_context.RuntimeContext) -> dict:
 def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -> dict[str, object]:
     """Reload the same installed protocol-v2 payload through live handoff."""
 
-    runtime = _runtime_metrics(ctx)
+    runtime = read_runtime(ctx)
     if not handoff.runtime_supports_handoff(runtime):
         raise errors.InstallError("installed runtime does not support transactional reload")
     assert runtime is not None
@@ -103,7 +103,7 @@ def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -
         result = handoff.request(
             ctx,
             expected,
-            runtime_reader=_runtime_metrics,
+            runtime_reader=read_runtime,
             timeout_seconds=timeout_seconds,
             lease_seconds=lease_seconds,
         )
@@ -113,7 +113,7 @@ def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -
                 ctx,
                 runtime,
                 expected,
-                runtime_reader=_runtime_metrics,
+                runtime_reader=read_runtime,
                 timeout_seconds=timeout_seconds,
                 lease_seconds=lease_seconds,
             )

@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import os
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Callable, Mapping
 from typing import Protocol
 
@@ -15,7 +12,6 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
-from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.service import identity
 
 RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | None]
@@ -217,22 +213,3 @@ def _same_executable(configured: str | None, expected: str) -> bool:
     return os.path.normcase(os.path.abspath(configured)) == os.path.normcase(
         os.path.abspath(expected)
     )
-
-
-def read_runtime(ctx: runtime_context.RuntimeContext) -> dict[str, object] | None:
-    """Read the secret-free listener health snapshot over loopback."""
-
-    request = urllib.request.Request(
-        runtime_config.loopback_url(ctx.port, "/healthz"),
-        headers={"Accept": "application/json"},
-        method="GET",
-    )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    try:
-        with opener.open(request, timeout=2) as response:
-            if response.status != 200:
-                return None
-            value = json.loads(response.read())
-    except (OSError, urllib.error.URLError, ValueError):
-        return None
-    return value if isinstance(value, dict) else None

@@ -219,7 +219,7 @@ class CliLifecycleContracts:
         pids = mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[321])
         mocker.patch.object(
             application.control,
-            "_runtime_metrics",
+            "read_runtime",
             return_value={"pid": 321, "accepting": True},
         )
         mocker.patch.object(payload_state, "status", return_value=None)
@@ -346,7 +346,7 @@ class CliLifecycleContracts:
     def test_recover_restores_only_the_runtime_bound_retained_transaction(self, *, mocker) -> None:
         runtime = {"pid": 321, "release": "2.0.10", "accepting": True}
         context = mocker.patch.object(application.control, "_context", return_value="context")
-        mocker.patch.object(application.control, "_runtime_metrics", return_value=runtime)
+        mocker.patch.object(application.control, "read_runtime", return_value=runtime)
         recover = mocker.patch.object(
             application.transaction,
             "recover",

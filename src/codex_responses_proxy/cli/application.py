@@ -112,7 +112,7 @@ def dispatch(command: str, **arguments: Any) -> Any:
     if command == "doctor":
         return _doctor(control.status(context))
     if command == "recover":
-        return transaction.recover(context, runtime=control._runtime_metrics(context))
+        return transaction.recover(context, runtime=control.read_runtime(context))
     if command == "reload":
         return control.reload(context, timeout_seconds=arguments["timeout_seconds"])
     raise ValueError(f"{command} is not implemented")

@@ -42,18 +42,18 @@ class TestControllerLifecycle:
 
         build = mocker.patch.object(control.urllib.request, "build_opener")
         build.return_value.open.return_value = Response()
-        assert control._runtime_metrics(ctx) == {"pid": 7}
+        assert control.read_runtime(ctx) == {"pid": 7}
         build = mocker.patch.object(control.urllib.request, "build_opener")
         build.return_value.open.side_effect = OSError("offline")
-        assert control._runtime_metrics(ctx) is None
+        assert control.read_runtime(ctx) is None
         build = mocker.patch.object(control.urllib.request, "build_opener")
         build.return_value.open.return_value = Response()
         build.return_value.open.return_value.status = 503
-        assert control._runtime_metrics(ctx) is None
+        assert control.read_runtime(ctx) is None
 
         runtime = {"pid": 7}
         expected = {"transaction_id": "tx"}
-        mocker.patch.object(control, "_runtime_metrics", return_value=runtime)
+        mocker.patch.object(control, "read_runtime", return_value=runtime)
         mocker.patch.object(control.handoff, "runtime_supports_handoff", return_value=True)
         mocker.patch.object(
             control.projection, "verify_payload_manifest", return_value=(True, "ok")
@@ -71,7 +71,7 @@ class TestControllerLifecycle:
             "transaction_id": "tx",
             "recovered_after_controller_failure": True,
         }
-        mocker.patch.object(control, "_runtime_metrics", return_value=runtime)
+        mocker.patch.object(control, "read_runtime", return_value=runtime)
         mocker.patch.object(control.handoff, "runtime_supports_handoff", return_value=True)
         mocker.patch.object(
             control.projection,
@@ -86,7 +86,7 @@ class TestControllerLifecycle:
             ("unknown", errors.InstallError),
             ("rolled_back", OSError),
         ):
-            mocker.patch.object(control, "_runtime_metrics", return_value=runtime)
+            mocker.patch.object(control, "read_runtime", return_value=runtime)
             mocker.patch.object(control.handoff, "runtime_supports_handoff", return_value=True)
             mocker.patch.object(
                 control.projection,
@@ -130,7 +130,7 @@ class TestControllerLifecycle:
         with pytest.raises(errors.ProductAssemblyError, match="product assembly incomplete"):
             control.status(ctx)
 
-        mocker.patch.object(control, "_runtime_metrics", return_value={"pid": 7})
+        mocker.patch.object(control, "read_runtime", return_value={"pid": 7})
         mocker.patch.object(control.handoff, "runtime_supports_handoff", return_value=True)
         mocker.patch.object(
             control.projection, "verify_payload_manifest", return_value=(True, "ok")
@@ -250,7 +250,7 @@ class TestControllerLifecycle:
         )
         mocker.patch.object(control, "adapter").return_value.status.return_value = "running"
         mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
-        mocker.patch.object(control, "_runtime_metrics", return_value=None)
+        mocker.patch.object(control, "read_runtime", return_value=None)
 
         assert control.status(ctx)["command"]["path"] == str(installed_command)
         command_status.assert_called_once_with(installed_command, Path(ctx.executable))
@@ -292,7 +292,7 @@ class TestControllerLifecycle:
             ctx,
             payload_transaction,
             adapter=service,
-            runtime_reader=install.apply.read_runtime,
+            runtime_reader=control.read_runtime,
             timeout_seconds=4,
         )
 
@@ -302,7 +302,7 @@ class TestControllerLifecycle:
         with pytest.raises(errors.InstallError, match="no host"):
             uninstall.uninstall_product()
 
-    def test_control_status_includes_secret_free_runtime_metrics_when_listener_is_available(
+    def test_control_status_includes_secret_free_runtime_when_listener_is_available(
         self, *, mocker
     ):
         with tempfile.TemporaryDirectory() as tmp:
@@ -319,7 +319,7 @@ class TestControllerLifecycle:
                 "upstream_classifications": {},
                 "last_failure": None,
             }
-            mocker.patch.object(control, "_runtime_metrics", return_value=runtime)
+            mocker.patch.object(control, "read_runtime", return_value=runtime)
             mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[1])
             evidence = control.status(ctx)
             assert evidence["runtime"] == runtime
@@ -338,7 +338,7 @@ class TestControllerLifecycle:
             "payload_manifest_sha256": "3" * 64,
             "accepting": True,
         }
-        mocker.patch.object(control, "_runtime_metrics", return_value=foreign)
+        mocker.patch.object(control, "read_runtime", return_value=foreign)
         mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
 
         evidence = control.status(ctx)
@@ -372,7 +372,7 @@ class TestControllerLifecycle:
             journal_path.write_bytes(payload_digest.canonical_json(journal))
             before = journal_path.read_bytes()
             mocker.patch.object(application.control, "_context", return_value=ctx)
-            mocker.patch.object(application.control, "_runtime_metrics", return_value=None)
+            mocker.patch.object(application.control, "read_runtime", return_value=None)
             adapter = mocker.patch.object(application.control, "adapter")
             adapter.return_value.status.return_value = "running"
             evidence = application.dispatch("status", port=ctx.port)
@@ -389,7 +389,7 @@ class TestControllerLifecycle:
 
     def test_reload_refuses_incompatible_listener_without_mutation(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
-        mocker.patch.object(control, "_runtime_metrics", return_value={"pid": 12345})
+        mocker.patch.object(control, "read_runtime", return_value={"pid": 12345})
         terminate = mocker.patch.object(process, "terminate_pid")
         with pytest.raises(errors.InstallError, match="transactional reload"):
             control.reload(ctx)

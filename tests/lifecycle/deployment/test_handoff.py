@@ -480,9 +480,7 @@ class TestControllerHandoffWiring:
 
     def test_reload_uses_handoff_without_terminating_the_old_pid_when_supported(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
-        mocker.patch.object(
-            control, "_runtime_metrics", return_value={"handoff_protocol_version": 2}
-        )
+        mocker.patch.object(control, "read_runtime", return_value={"handoff_protocol_version": 2})
         mocker.patch.object(handoff, "runtime_supports_handoff", return_value=True)
         mocker.patch.object(
             payload_projection, "verify_payload_manifest", return_value=(True, "ok")
@@ -501,9 +499,7 @@ class TestControllerHandoffWiring:
 
     def test_reload_rejects_v2_handoff_when_installed_payload_integrity_fails(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
-        mocker.patch.object(
-            control, "_runtime_metrics", return_value={"handoff_protocol_version": 2}
-        )
+        mocker.patch.object(control, "read_runtime", return_value={"handoff_protocol_version": 2})
         mocker.patch.object(handoff, "runtime_supports_handoff", return_value=True)
         mocker.patch.object(
             payload_projection,
@@ -520,7 +516,7 @@ class TestControllerHandoffWiring:
         expected = expected_metadata()
         old = idle_runtime()
         finalized = matching_health(1000, expected, pid=1000, handoff_state="finalized")
-        mocker.patch.object(control, "_runtime_metrics", return_value=old)
+        mocker.patch.object(control, "read_runtime", return_value=old)
         mocker.patch.object(handoff, "runtime_supports_handoff", return_value=True)
         mocker.patch.object(
             payload_projection, "verify_payload_manifest", return_value=(True, "ok")
