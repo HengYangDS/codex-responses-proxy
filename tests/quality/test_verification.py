@@ -428,6 +428,12 @@ class TestVerificationContracts:
         assert metadata["tool"]["uv"]["link-mode"] == "copy"
         assert (ROOT / "uv.lock").is_file()
 
+        toolchain = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+        assert toolchain["settings"] == {
+            "idiomatic_version_file_enable_tools": [],
+            "locked": True,
+        }
+
     def test_native_release_tools_are_isolated_from_quality(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         groups = metadata["dependency-groups"]
