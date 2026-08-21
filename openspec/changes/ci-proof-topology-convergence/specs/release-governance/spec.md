@@ -108,13 +108,15 @@ verification node.
 
 #### Scenario: Tagged release checkout
 
-- **WHEN** a Forge evaluates an existing release tag
+- **WHEN** a Forge verification projection evaluates an existing release tag
 - **THEN** it SHALL verify the exact annotated tag and source identity
 - **AND** it SHALL build or consume every supported native platform asset
-- **AND** it SHALL verify its provider-local publication and re-downloaded
-  bytes
-- **AND** it SHALL NOT substitute a successful peer pipeline for its own
-  publication proof.
+- **AND** the release owner SHALL pass the resulting complete pre-signed bundle
+  to the selected provider adapter
+- **AND** that adapter SHALL verify its provider-local publication and
+  re-downloaded bytes
+- **AND** neither the projection nor the adapter SHALL substitute a successful
+  peer pipeline for provider-local publication proof.
 
 #### Scenario: Dual-Forge admission race
 
@@ -147,17 +149,17 @@ verification node.
 - **THEN** its projection SHALL expose that capability gap in the declarative
   topology
 - **AND** another Forge's native-platform proof MAY establish product support
-- **AND** the selected Forge SHALL still verify the complete immutable bundle
-  before claiming provider-local publication.
+- **AND** the selected provider adapter SHALL still verify the complete
+  immutable bundle before claiming provider-local publication.
 
 ### Requirement: Dual-Forge releases project one complete signed bundle
 
 The release owner SHALL define exactly one complete release-bundle identity for
 each version. Each selected Forge SHALL publish and re-download the exact same
 files, and dual-Forge parity SHALL require equal complete inventories, bytes,
-checksum manifest, signature, and trust-anchor digest. Independent deterministic
-construction is permitted only when it reproduces that exact bundle identity;
-it does not authorize provider-specific packaging or signing semantics.
+checksum manifest, signature, and trust-anchor digest. The bundle SHALL be
+constructed and signed once per release identity; provider adapters SHALL only
+transport and verify it.
 
 #### Scenario: Complete parity
 
@@ -167,13 +169,12 @@ it does not authorize provider-specific packaging or signing semantics.
 - **AND** every corresponding byte digest SHALL be identical
 - **AND** both releases SHALL report the same product trust-anchor digest.
 
-#### Scenario: Provider reproduces the bundle independently
+#### Scenario: Provider publishes the canonical bundle
 
-- **WHEN** a Forge constructs release files from the same signed source object
-- **THEN** the resulting complete bundle SHALL match the canonical bundle
-  identity byte for byte
-- **AND** any nondeterministic or provider-specific result SHALL fail before
-  publication.
+- **WHEN** a provider adapter publishes a release
+- **THEN** it SHALL consume the canonical pre-signed bundle without rebuilding
+  or re-signing any file
+- **AND** the re-downloaded result SHALL match that bundle byte for byte.
 
 #### Scenario: Incomplete or independently signed projection
 

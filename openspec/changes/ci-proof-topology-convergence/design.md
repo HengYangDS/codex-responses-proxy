@@ -37,9 +37,9 @@ and group independent proof dimensions differently.
 
 `.config/ci/pipeline.cue` owns proof contexts, node identifiers, dependencies,
 runner capabilities, commands, and immutable third-party action/image
-coordinates. CUE exports `.gitlab-ci.yml` and both GitHub workflows. The
-repository's existing Python quality command checks that tracked projections
-equal fresh exports.
+coordinates. CUE exports `.gitlab-ci.yml` and the GitHub verification workflow.
+The repository's existing Python quality command checks that tracked
+projections equal fresh exports.
 
 CUE is already the accepted lightweight schema/projection tool in the sibling
 AIGW product and provides structural constraints without introducing a runtime
@@ -95,8 +95,23 @@ The five contexts are:
    release readiness, and current accepted `dev` proof;
 4. `main_admission`: exact-ref confirmation after the reviewed CAS
    fast-forward;
-5. `release_tag`: exact signed tag, complete bundle, provider-local publish,
-   re-download, and parity proof.
+5. `release_tag`: exact signed tag and complete bundle construction, followed
+   by provider-local publication, re-download, and parity proof through the
+   release command rather than a second Forge-specific workflow.
+
+### Keep publication outside Forge workflow syntax
+
+The verification graph constructs and signs the complete native bundle once.
+`python -m tools.release.publish` is the only publication composition root. Its
+`github` and `gitlab` commands select one transport adapter; `both` gives the
+same immutable bundle to both adapters and reports partial failure without
+claiming parity. Each adapter owns only its provider API, upload, re-download,
+and byte verification. Neither adapter rebuilds or re-signs product assets.
+
+This removes the GitHub-only Release workflow instead of inventing a matching
+GitLab wrapper. Forge workflows remain disposable projections of schedulable
+proof; publication remains a product lifecycle operation that also works with
+one Forge or from a local release workspace.
 
 `dev` advancing while a promotion review is open makes the promotion head
 stale and triggers proof for the new head. `main` advancing changes the target

@@ -360,30 +360,6 @@ def test_github_tag_metadata_fetches_complete_provider_tags() -> None:
     require_tokens(checkout, ("fetch-depth: 0", "fetch-tags: true"), "GitHub tag checkout")
 
 
-def test_github_release_metadata_is_strict() -> None:
-    """Publish only the exact successful Verify tag run and its signed bundle."""
-
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-    require_tokens(
-        workflow,
-        (
-            "workflow_run:",
-            "github.event.workflow_run.event == 'push'",
-            "github.event.workflow_run.conclusion == 'success'",
-            "python -m tools.release.publish github",
-            "${{ github.event.workflow_run.head_branch }}",
-            "${{ github.event.workflow_run.head_sha }}",
-            '--assets "$RUNNER_TEMP/github-release/source"',
-        ),
-        "GitHub exact release projection",
-    )
-    require(
-        "--allow-unpublished-history" not in workflow,
-        "GitHub release bypasses chronology",
-    )
-    require("wait-verify" not in workflow, "GitHub release retains polling orchestration")
-
-
 def test_native_bundle_has_one_runtime_and_one_signer() -> None:
     """Build every platform once and sign only the complete assembled bundle."""
 

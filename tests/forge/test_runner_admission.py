@@ -43,17 +43,13 @@ def test_gitlab_requires_an_online_unpaused_eligible_runner() -> None:
     assert not admission.gitlab_ready([ready], "windows")
 
 
-def test_github_requires_actions_and_both_active_workflows() -> None:
+def test_github_requires_actions_and_the_active_verification_workflow() -> None:
     admission = _load()
-    workflows = [
-        {"path": ".github/workflows/verify.yml", "state": "active"},
-        {"path": ".github/workflows/release.yml", "state": "active"},
-    ]
+    workflows = [{"path": ".github/workflows/verify.yml", "state": "active"}]
     assert admission.github_ready(workflows, {"enabled": True})
     assert not admission.github_ready(workflows, {"enabled": False})
-    assert not admission.github_ready(workflows[:1], {"enabled": True})
     assert not admission.github_ready(
-        [{**workflows[0], "state": "disabled_manually"}, workflows[1]],
+        [{**workflows[0], "state": "disabled_manually"}],
         {"enabled": True},
     )
 

@@ -469,7 +469,6 @@ class TestVerificationContracts:
         assert 'session.notify("tests",' not in full_source
 
         github = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
-        release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         supported = (ROOT / ".python-versions").read_text(encoding="utf-8").splitlines()
         uv_version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
@@ -498,7 +497,7 @@ class TestVerificationContracts:
         assert "needs.python-matrix.outputs.floor" in github
         assert "needs.python-matrix.outputs.latest" in github
         assert "needs.python-matrix.outputs.release" in github
-        assert "python-version-file: .python-release" in release
+        assert "python-version: ${{ needs.python-matrix.outputs.release }}" in github
         pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
         assert pipeline["default"]["image"] == {
             "name": "$UV_PYTHON_LATEST_IMAGE",
@@ -607,7 +606,5 @@ class TestVerificationContracts:
     def test_hosted_governance_tools_use_the_complete_locked_environment(self) -> None:
         github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-        release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
         assert "uv sync --locked --group quality --no-install-project" in gitlab
-        for source in (github, release):
-            assert "uv sync --locked --all-groups" in source
+        assert "uv sync --locked --all-groups" in github

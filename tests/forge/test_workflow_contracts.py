@@ -220,15 +220,15 @@ def test_single_bundle_is_built_once_and_forges_only_project_it() -> None:
     """Keep native construction and product signing in one authoritative workflow."""
 
     verify = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
-    release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
 
     assert verify.count("uv run --locked --no-sync python -m tools.release.assemble_assets") == 1
     assert verify.count("--sign") == 1
     assert "container: ${{ needs.python-matrix.outputs.linux-release-image }}" in verify
-    assert "python -m tools.release.publish github" in release
-    assert '--assets "$RUNNER_TEMP/github-release/source"' in release
-    assert "workflow_run:" in release
+    publish = (ROOT / "tools/release/publish.py").read_text(encoding="utf-8")
+    assert '"both"' in publish
+    assert "publish_github.publish" in publish
+    assert "publish_gitlab.publish" in publish
     for forbidden in (
         "tools.release.publish_gitlab",
         "nox -s release",
@@ -352,7 +352,7 @@ def _assert_github_required_tokens(text: str) -> None:
         raise AssertionError("verification workflow must use read-only repository permissions")
 
 
-def _assert_github_matrix_contract(text: str, release_text: str) -> None:
+def _assert_github_matrix_contract(text: str) -> None:
     matrix_start = text.index("\n  python-matrix:")
     matrix_end = text.index("\n  python:", matrix_start)
     matrix_block = text[matrix_start:matrix_end]
@@ -380,7 +380,7 @@ def _assert_github_matrix_contract(text: str, release_text: str) -> None:
         raise AssertionError("GitHub Actions must use immutable action revisions")
 
 
-def _assert_github_platform_contract(text: str, release_text: str) -> None:
+def _assert_github_platform_contract(text: str) -> None:
     mac_start = text.index("\n  python:")
     windows_start = text.index("\n  python-windows:")
     governance_start = text.index("\n  accepted-source:")
@@ -435,7 +435,7 @@ def _assert_github_platform_contract(text: str, release_text: str) -> None:
         if token not in quality_block:
             raise AssertionError(f"quality checkout must contain {token!r}")
     for patch_pin in ("3.12.", "3.13.", "3.14."):
-        if patch_pin in text or patch_pin in release_text:
+        if patch_pin in text:
             raise AssertionError(
                 f"GitHub workflows must select supported Python lines, not patch releases: {patch_pin!r}"
             )
@@ -463,7 +463,7 @@ def _assert_github_governance_contract(text: str) -> None:
         raise AssertionError("accepted source verification must not require release preparation")
 
 
-def _assert_github_native_and_forbidden_contract(text: str, release_text: str) -> None:
+def _assert_github_native_and_forbidden_contract(text: str) -> None:
     windows_start = text.index("\n  python-windows:")
     governance_start = text.index("\n  accepted-source:")
     windows_block = text[windows_start:governance_start]
@@ -485,12 +485,12 @@ def _assert_github_native_and_forbidden_contract(text: str, release_text: str) -
         "refs/codex-responses-proxy/runner-checkout-retained",
         "git update-ref",
     ):
-        if forbidden in text or forbidden in release_text:
+        if forbidden in text:
             raise AssertionError(
                 f"GitHub workflows must not depend on runner-local state: {forbidden!r}"
             )
     for forbidden in ("git config --global", "GIT_ADVICE", "advice.detachedHead"):
-        if forbidden in text or forbidden in release_text:
+        if forbidden in text:
             raise AssertionError(
                 f"GitHub workflows must not suppress Git diagnostics with {forbidden!r}"
             )
@@ -504,12 +504,11 @@ def test_github_verification_workflow_contract() -> None:
         "push": {"branches": ["dev", "main"], "tags": ["v*"]},
     }
     text = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
-    release_text = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     _assert_github_required_tokens(text)
-    _assert_github_matrix_contract(text, release_text)
-    _assert_github_platform_contract(text, release_text)
+    _assert_github_matrix_contract(text)
+    _assert_github_platform_contract(text)
     _assert_github_governance_contract(text)
-    _assert_github_native_and_forbidden_contract(text, release_text)
+    _assert_github_native_and_forbidden_contract(text)
 
 
 def test_gitlab_pytest_invocations_preserve_repository_module_resolution() -> None:
@@ -518,26 +517,3 @@ def test_gitlab_pytest_invocations_preserve_repository_module_resolution() -> No
     if f"{GITLAB_LOCKED_PYTHON} pytest" in text:
         raise AssertionError("GitLab must not invoke the pytest console script directly")
     assert f"{GITLAB_LOCKED_PYTHON} pytest" not in text
-
-
-def test_github_release_workflow_contract() -> None:
-    workflow = _load_yaml(ROOT / ".github/workflows/release.yml")
-    assert workflow["on"] == {"workflow_run": {"workflows": ["Verify"], "types": ["completed"]}}
-    text = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    job = _mapping(_mapping(workflow["jobs"])["verify-and-publish"])
-    assert job["if"] == (
-        "github.event.workflow_run.event == 'push' && "
-        "github.event.workflow_run.conclusion == 'success' && "
-        "startsWith(github.event.workflow_run.head_branch, 'v')"
-    )
-    for token in (
-        "gh run download",
-        "${{ github.event.workflow_run.id }}",
-        "python -m tools.release.publish github",
-        "${{ github.event.workflow_run.head_branch }}",
-        "${{ github.event.workflow_run.head_sha }}",
-        '--assets "$RUNNER_TEMP/github-release/source"',
-    ):
-        assert token in text
-    for forbidden in ("wait-verify", "sleep 10", "deadline=", "--run-id"):
-        assert forbidden not in text

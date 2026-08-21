@@ -60,29 +60,21 @@ class ForgeAdapterContracts:
     ]:
         runs: list[dict[str, object]] = [
             {
-                "id": index,
-                "name": name,
-                "path": f".github/workflows/{name.lower()}.yml",
+                "id": 1,
+                "name": "Verify",
+                "path": ".github/workflows/verify.yml",
                 "event": "push",
                 "head_branch": "v1.2.3",
                 "head_sha": commit,
                 "status": "completed",
                 "conclusion": "success",
             }
-            for index, name in ((1, "Verify"), (2, "Release"))
         ]
         jobs: dict[int, list[dict[str, object]]] = {
             1: [
                 {"name": name, "status": "completed", "conclusion": "success"}
-                for name in github.DEFAULT_REQUIRED_JOBS[:-1]
-            ],
-            2: [
-                {
-                    "name": github.DEFAULT_REQUIRED_JOBS[-1],
-                    "status": "completed",
-                    "conclusion": "success",
-                }
-            ],
+                for name in github.DEFAULT_REQUIRED_JOBS
+            ]
         }
         release: dict[str, object] = {
             "id": 3,
@@ -179,7 +171,7 @@ class ForgeAdapterContracts:
         }
         return pipeline, jobs, release, _release_assets(("linux-x86_64",))
 
-    def test_github_requires_exact_verify_and_release_runs(self) -> None:
+    def test_github_requires_exact_verify_run_and_release_record(self) -> None:
         commit = "a" * 40
         runs, jobs, release, assets = self._github_fixture(commit)
         result = self._normalize_github(commit, (runs, jobs, release, assets))
@@ -229,16 +221,7 @@ class ForgeAdapterContracts:
             {
                 "jobs": [
                     {"name": name, "status": "completed", "conclusion": "success"}
-                    for name in github.DEFAULT_REQUIRED_JOBS[:-1]
-                ]
-            },
-            {
-                "jobs": [
-                    {
-                        "name": github.DEFAULT_REQUIRED_JOBS[-1],
-                        "status": "completed",
-                        "conclusion": "success",
-                    }
+                    for name in github.DEFAULT_REQUIRED_JOBS
                 ]
             },
             {
@@ -261,10 +244,8 @@ class ForgeAdapterContracts:
             "_api_pages",
             side_effect=[
                 [{"workflow_runs": [runs[0]]}],
-                [{"workflow_runs": [runs[1]]}],
                 [{"jobs": responses[3]["jobs"]}],
-                [{"jobs": responses[4]["jobs"]}],
-                [[responses[5]]],
+                [[responses[4]]],
             ],
         )
         mocker.patch.object(github.hosted, "api_bytes", side_effect=list(asset_bytes.values()))
@@ -284,19 +265,6 @@ class ForgeAdapterContracts:
                 tag_object_oid=tag_object,
                 commit_oid=commit,
             )
-
-    def test_required_job_cannot_move_to_the_wrong_github_workflow(self) -> None:
-        commit = "a" * 40
-        runs, jobs, release, assets = self._github_fixture(commit)
-        jobs: dict[int, list[dict[str, object]]] = {
-            1: [],
-            2: [
-                {"name": name, "status": "completed", "conclusion": "success"}
-                for name in github.DEFAULT_REQUIRED_JOBS
-            ],
-        }
-        with pytest.raises(github.GitHubProofError, match="wrong workflow"):
-            self._normalize_github(commit, (runs, jobs, release, assets))
 
     def test_provider_candidates_and_release_identity_fail_closed(self, subtests) -> None:
         commit = "a" * 40

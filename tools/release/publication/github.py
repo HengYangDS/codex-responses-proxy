@@ -15,7 +15,6 @@ DEFAULT_REQUIRED_JOBS: Final = (
     "Native asset (macos-arm64)",
     "Native asset (windows-x86_64)",
     "Release assets",
-    "Verify tag and publish record",
 )
 
 
@@ -68,42 +67,35 @@ def normalize(
     assets: Mapping[str, bytes],
     required_jobs: Sequence[str] = DEFAULT_REQUIRED_JOBS,
 ) -> dict[str, object]:
-    """Normalize exact successful Verify and Release workflow evidence."""
+    """Normalize exact successful Verify workflow and Release record evidence."""
 
-    workflows = (
-        ("Verify", ".github/workflows/verify.yml", set(required_jobs[:-1])),
-        ("Release", ".github/workflows/release.yml", set(required_jobs[-1:])),
-    )
-    selected: dict[str, Mapping[str, object]] = {}
+    tagged_runs = [
+        run
+        for run in runs
+        if run.get("path") == ".github/workflows/verify.yml" and run.get("head_branch") == tag
+    ]
+    run = _one(tagged_runs, "GitHub Verify run is missing or ambiguous")
+    if (
+        run.get("name"),
+        run.get("event"),
+        run.get("head_sha"),
+        run.get("status"),
+        run.get("conclusion"),
+    ) != ("Verify", "push", commit_oid, "completed", "success"):
+        raise GitHubProofError("GitHub Verify run identity does not match")
+    run_id = run.get("id")
+    if isinstance(run_id, bool) or not isinstance(run_id, int):
+        raise GitHubProofError("GitHub workflow run has no stable id")
     statuses: dict[str, str] = {}
-    for workflow, path, allowed_jobs in workflows:
-        tagged_runs = [
-            run for run in runs if run.get("path") == path and run.get("head_branch") == tag
-        ]
-        run = _one(tagged_runs, f"GitHub {workflow} run is missing or ambiguous")
-        if (
-            run.get("name"),
-            run.get("event"),
-            run.get("head_sha"),
-            run.get("status"),
-            run.get("conclusion"),
-        ) != (workflow, "push", commit_oid, "completed", "success"):
-            raise GitHubProofError(f"GitHub {workflow} run identity does not match")
-        run_id = run.get("id")
-        if isinstance(run_id, bool) or not isinstance(run_id, int):
-            raise GitHubProofError("GitHub workflow run has no stable id")
-        selected[workflow] = run
-        for job in jobs.get(run_id, ()):
-            name = job.get("name")
-            if not isinstance(name, str) or name not in required_jobs:
-                continue
-            if name not in allowed_jobs:
-                raise GitHubProofError("GitHub required job belongs to the wrong workflow")
-            if name in statuses:
-                raise GitHubProofError("GitHub required job identity is ambiguous")
-            statuses[name] = (
-                str(job.get("conclusion")) if job.get("status") == "completed" else "incomplete"
-            )
+    for job in jobs.get(run_id, ()):
+        name = job.get("name")
+        if not isinstance(name, str) or name not in required_jobs:
+            continue
+        if name in statuses:
+            raise GitHubProofError("GitHub required job identity is ambiguous")
+        statuses[name] = (
+            str(job.get("conclusion")) if job.get("status") == "completed" else "incomplete"
+        )
     if any(statuses.get(name) != "success" for name in required_jobs):
         raise GitHubProofError("GitHub required jobs are incomplete or unsuccessful")
     release_id = release.get("id")
@@ -122,7 +114,7 @@ def normalize(
     return {
         "repository": repository,
         "ci": {
-            "id": {name.lower(): selected[name]["id"] for name in ("Verify", "Release")},
+            "id": run_id,
             "revision_oid": commit_oid,
             "status": "success",
             "jobs": statuses,
@@ -175,15 +167,11 @@ def collect(
     ) != (tag, tag_object_oid, "commit", commit_oid):
         raise GitHubProofError("GitHub tag identity does not match fetched Git objects")
 
-    runs = [
-        run
-        for workflow in ("verify.yml", "release.yml")
-        for run in _object_pages(
-            f"repos/{repository}/actions/workflows/{workflow}/runs?branch={tag}&per_page=100",
-            "workflow_runs",
-            "GitHub workflow response is malformed",
-        )
-    ]
+    runs = _object_pages(
+        f"repos/{repository}/actions/workflows/verify.yml/runs?branch={tag}&per_page=100",
+        "workflow_runs",
+        "GitHub workflow response is malformed",
+    )
     jobs = {
         run_id: _object_pages(
             f"repos/{repository}/actions/runs/{run_id}/jobs?per_page=100",

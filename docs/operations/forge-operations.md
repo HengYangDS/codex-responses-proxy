@@ -98,10 +98,30 @@ uv run --locked --no-sync python -m tools.release.tag \
 ```
 
 An existing remote tag with the same OID is idempotent. A different OID fails
-closed. The tag workflow builds all supported platform assets, assembles and
-signs one complete bundle, then each selected Forge publishes those exact bytes.
-A publisher accepts only a verified pre-signed bundle and cannot regenerate its
+closed. The GitHub verification graph has the available native runners to build
+all supported platform assets and assemble one signed bundle. Publication is a
+separate product operation, not a second provider-specific workflow. A
+publisher accepts only that pre-signed bundle and cannot regenerate its
 checksum inventory or signature.
+
+Publish the same bundle to both peers with the single composition root:
+
+```bash
+uv run --locked --no-sync python -m tools.release.publish both \
+  --github-repository "$GITHUB_REPOSITORY" \
+  --gitlab-api-base "$GITLAB_API_BASE" \
+  --gitlab-project-id "$GITLAB_PROJECT_ID" \
+  --tag "v$VERSION" \
+  --commit-oid "$RELEASE_COMMIT_OID" \
+  --assets "$RELEASE_BUNDLE" \
+  --workspace "$RELEASE_WORKSPACE"
+```
+
+`CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST`, `RELEASE_ASSET_TRUST`, and
+`CI_JOB_TOKEN` are protected execution inputs. The command attempts both peers,
+reports every failure, and returns nonzero unless both provider-local
+publications complete. The provider-specific subcommands support an explicitly
+one-sided topology; neither result alone is dual-Forge parity.
 
 ## Read-only parity audit
 

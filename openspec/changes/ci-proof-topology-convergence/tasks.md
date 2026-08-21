@@ -20,9 +20,10 @@
   parsed pipeline exposes every required node without an aggregate `nox full`.
 - [x] 2.3 Project the equivalent GitHub review graph and explicit Forge runner
   capability differences; verify actionlint and workflow contract tests pass.
-- [ ] 2.4 Give both tag projections exact tag, complete bundle, provider-local
-  publish, re-download, and byte-verification responsibilities; verify neither
-  projection treats peer CI success as provider-local publication proof.
+- [x] 2.4 Keep tag verification and bundle construction in the CI graph, then
+  publish the same pre-signed bundle through the single provider-neutral
+  release command; verify each adapter uploads, re-downloads, and validates its
+  own peer without treating peer CI as provider-local publication proof.
 - [ ] 2.5 Verify Developer review admission, direct Maintainer admission, and
   `dev` to `main` promotion through their real lifecycle and Forge protection
   owners; reject stale or replacement-object transitions without duplicating

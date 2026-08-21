@@ -27,7 +27,6 @@ class Projection:
 PROJECTIONS = (
     Projection(ROOT / ".gitlab-ci.yml", "gitlab"),
     Projection(ROOT / ".github/workflows/verify.yml", "githubVerify"),
-    Projection(ROOT / ".github/workflows/release.yml", "githubRelease"),
 )
 
 
