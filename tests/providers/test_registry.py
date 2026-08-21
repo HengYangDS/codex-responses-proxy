@@ -84,7 +84,7 @@ class ProviderRegistryTests:
                 subtests.test(value=value),
                 pytest.raises(
                     ValueError,
-                    match="^provider 'test' base_url must be an absolute HTTP\\(S\\) URL$",
+                    match=r"^provider 'test' base_url must be an absolute HTTP\(S\) URL$",
                 ),
             ):
                 registry._base_url("test", value)

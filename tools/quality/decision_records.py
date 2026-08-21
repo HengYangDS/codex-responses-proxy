@@ -49,11 +49,11 @@ def decision_record_gaps(root: Path) -> list[str]:
             gaps.append(f"decision_record_status_invalid:{path.relative_to(root).as_posix()}")
         if re.search(r"^- Date: [0-9]{4}-[0-9]{2}-[0-9]{2}$", text, re.MULTILINE) is None:
             gaps.append(f"decision_record_date_invalid:{path.relative_to(root).as_posix()}")
-        for section in required_sections:
-            if section not in text:
-                gaps.append(
-                    f"decision_record_section_missing:{path.relative_to(root).as_posix()}:{section[3:]}"
-                )
+        gaps.extend(
+            f"decision_record_section_missing:{path.relative_to(root).as_posix()}:{section[3:]}"
+            for section in required_sections
+            if section not in text
+        )
         registrations = register_text.count(f"({path.name})")
         if registrations == 0:
             gaps.append(f"decision_record_unregistered:{path.relative_to(root).as_posix()}")

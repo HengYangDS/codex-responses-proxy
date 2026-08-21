@@ -228,7 +228,8 @@ class TestVerificationContracts:
                         alias.name == "unittest" or alias.name.startswith("unittest.")
                         for alias in node.names
                     )
-                    or isinstance(node, ast.ImportFrom)
+                ) or (
+                    isinstance(node, ast.ImportFrom)
                     and (
                         node.module == "unittest"
                         or (node.module is not None and node.module.startswith("unittest."))

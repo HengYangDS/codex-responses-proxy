@@ -283,7 +283,7 @@ class TestRealSubprocessHandoffIntegration:
         )
         assert status_code == 202
         assert ready.get("transaction_id") == expected["transaction_id"]
-        child_pid, observe = child_pid_observer(
+        _child_pid, observe = child_pid_observer(
             port,
             expected,
             exclude_pid=old_runtime_pid,
@@ -335,7 +335,7 @@ class TestRealSubprocessHandoffIntegration:
             timeout=35,
         )
         assert status_code == 202
-        child_two, observe_second = child_pid_observer(
+        _child_two, observe_second = child_pid_observer(
             port,
             second,
             exclude_pid=child_one["value"],
@@ -395,12 +395,12 @@ class TestRealSubprocessHandoffIntegration:
         )
 
         expected = installed_expected_metadata(ctx, "txn-real-2")
-        status_code, ready = http_json(
+        status_code, _ready = http_json(
             port, "/control/handoff", method="POST", body=expected, timeout=35
         )
         assert status_code == 202
 
-        child_pid, observe = child_pid_observer(
+        _child_pid, observe = child_pid_observer(
             port,
             expected,
             exclude_pid=old.pid,
@@ -468,7 +468,7 @@ class TestRealSubprocessHandoffIntegration:
 
         expected = installed_expected_metadata(ctx, "txn-real-3")
         expected["lease_seconds"] = 1
-        status_code, ready = http_json(
+        status_code, _ready = http_json(
             port, "/control/handoff", method="POST", body=expected, timeout=35
         )
         assert status_code == 202

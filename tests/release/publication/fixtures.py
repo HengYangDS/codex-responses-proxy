@@ -22,16 +22,16 @@ class VerifyArguments(TypedDict):
     github_anchor: Path
 
 
-VERIFY_ARGUMENTS: VerifyArguments = dict(
-    tag="v1.2.3",
-    gitlab_remote="gitlab-remote",
-    gitlab_api_base="https://gitlab.example/api/v4",
-    gitlab_repo="gitlab/repository",
-    github_remote="github-remote",
-    github_repo="github/repository",
-    gitlab_anchor=Path("gitlab-anchor"),
-    github_anchor=Path("github-anchor"),
-)
+VERIFY_ARGUMENTS: VerifyArguments = {
+    "tag": "v1.2.3",
+    "gitlab_remote": "gitlab-remote",
+    "gitlab_api_base": "https://gitlab.example/api/v4",
+    "gitlab_repo": "gitlab/repository",
+    "github_remote": "github-remote",
+    "github_repo": "github/repository",
+    "gitlab_anchor": Path("gitlab-anchor"),
+    "github_anchor": Path("github-anchor"),
+}
 
 
 def forge_evidence(*, items: list[dict[str, object]] | None = None) -> dict[str, object]:

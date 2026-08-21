@@ -83,7 +83,7 @@ class TestServeWithHandoffResume(HandoffFixture):
                 object.__setattr__(context, "log", logs.append)
                 server = mocker.Mock()
 
-                def serve():
+                def serve(outcome=outcome):
                     self.p._HANDOFF_SESSION["outcome"] = outcome
                     handoff_outcome_ready().set()
 

@@ -463,7 +463,7 @@ def test_platform_manifest_rejects_malformed_or_incomplete_json(
     tmp_path: Path, manifest: bytes
 ) -> None:
     paths = _write_asset_set(tmp_path)
-    with pytest.raises(errors.InstallError, match="malformed|inconsistent"):
+    with pytest.raises(errors.InstallError, match=r"malformed|inconsistent"):
         artifact._verify_archive(
             paths["archive"].read_bytes(),
             manifest,
@@ -507,7 +507,7 @@ def test_archive_rejects_incomplete_duplicate_and_unexpected_members(
         artifact._archive_blobs(_tar_bytes(members[:-1]), document)
 
     duplicate = (members[0], members[0], members[2])
-    with pytest.raises(errors.InstallError, match="invalid member|inventory"):
+    with pytest.raises(errors.InstallError, match=r"invalid member|inventory"):
         artifact._archive_blobs(_tar_bytes(duplicate), document)
 
     prefix = f"codex-responses-proxy-{VERSION}-{PLATFORM}/"

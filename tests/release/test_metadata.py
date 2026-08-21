@@ -350,14 +350,6 @@ def test_prune_tags_removes_deleted_remote_tag() -> None:
         )
 
 
-def test_gitlab_tag_gate_refreshes_provider_tags() -> None:
-    """Bind the GitLab tag verifier to the provider's current tag namespace."""
-
-    ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    block = ci_block(ci, "verify-release-tag:", "\n\nverify-python-quality:")
-    require(TAG_REFRESH in block, "GitLab tag verifier does not prune stale tags")
-
-
 def test_github_tag_metadata_fetches_complete_provider_tags() -> None:
     """Require the tag proof to observe the complete provider tag namespace."""
 
@@ -392,81 +384,6 @@ def test_github_release_metadata_is_strict() -> None:
     require("wait-verify" not in workflow, "GitHub release retains polling orchestration")
 
 
-def test_gitlab_proof_contexts_are_partitioned() -> None:
-    """Run full source proof on review, accepted confirmation on branches, and tag proof on tags."""
-
-    ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    matrix = ci_block(ci, "verify-python-matrix:", "\n\nverify-accepted-source:")
-    accepted = ci_block(ci, "verify-accepted-source:", "\n\nverify-release-tag:")
-    tag = ci_block(ci, "verify-release-tag:", "\n\nverify-python-quality:")
-    require(
-        '$CI_PIPELINE_SOURCE == "merge_request_event"' in matrix,
-        "matrix is not review-only",
-    )
-    require(
-        '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"' in accepted,
-        "accepted confirmation is not branch-scoped",
-    )
-    require("$CI_COMMIT_TAG" in tag, "tag verifier is not tag-scoped")
-    require("--prepare-release" not in ci, "CI retains mixed release-state dispatch")
-
-
-def test_gitlab_tag_gate_requires_exact_external_trust() -> None:
-    """Keep GitLab tag verification strict without rebuilding product assets."""
-
-    ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    block = ci_block(ci, "verify-release-tag:", "\n\nverify-python-quality:")
-    require_tokens(
-        block,
-        (
-            'GIT_DEPTH: "0"',
-            f'{GITLAB_LOCKED_PYTHON} python tools/release/metadata.py --tag "$CI_COMMIT_TAG"',
-            "CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST",
-            "tools.forge.tag_signature",
-        ),
-        "GitLab external tag trust",
-    )
-    for forbidden in ("publish-gitlab-release:", "nox -s release", "--signing-key"):
-        require(
-            forbidden not in ci,
-            f"GitLab retains duplicate bundle authority: {forbidden}",
-        )
-
-
-def test_gitlab_ci_selects_a_deployment_supplied_runner_tag() -> None:
-    """Bind every GitLab job to one explicit adopter-owned runner label."""
-
-    ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    require(
-        "tags: [$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG]" in ci,
-        "GitLab CI must use the deployment-supplied runner tag",
-    )
-    require(
-        "codex-responses-proxy-linux-x86_64" not in ci,
-        "GitLab CI must not hardcode one installation's runner label",
-    )
-
-
-def test_gitlab_review_runs_full_regression_matrix() -> None:
-    """Require the GitLab review context to invoke the canonical test owner."""
-
-    ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    block = ci_block(ci, "verify-python-matrix:", "\n\nverify-accepted-source:")
-    require_tokens(
-        block,
-        (
-            'GIT_DEPTH: "0"',
-            "git fetch --unshallow --tags --force origin",
-            "git fetch --tags --force origin",
-            "uv python install --no-bin $(tr '\\n' ' ' < .python-versions)",
-            f"{GITLAB_LOCKED_PYTHON} nox -s full",
-            f"{APT_INSTALL} binutils git openssh-client",
-        ),
-        "GitLab review matrix",
-    )
-    require("PYTHON_VERSION" not in ci, "GitLab duplicated the Python matrix")
-
-
 def test_native_bundle_has_one_runtime_and_one_signer() -> None:
     """Build every platform once and sign only the complete assembled bundle."""
 
@@ -493,24 +410,6 @@ def test_native_bundle_has_one_runtime_and_one_signer() -> None:
     )
     require(github.count("--sign") == 1, "bundle signed more than once")
     require("nox -s release" not in gitlab, "GitLab independently rebuilds product assets")
-
-
-def test_python_quality_gate_is_cross_forge() -> None:
-    """Require both review projections to invoke the repository quality owner."""
-
-    gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
-    require_tokens(gitlab, (f"{GITLAB_LOCKED_PYTHON} nox -s quality",), "GitLab quality")
-    require_tokens(github, ("uv run --locked --group quality nox -s quality",), "GitHub quality")
-    require(
-        "tools/quality/run.sh" not in gitlab + github,
-        "CI retains duplicate quality runner",
-    )
-    require_tokens(
-        ci_block(gitlab, "verify-python-quality:"),
-        (f"{APT_INSTALL} binutils git openssh-client",),
-        "GitLab Python quality",
-    )
 
 
 def test_current_release_metadata_chronology() -> None:

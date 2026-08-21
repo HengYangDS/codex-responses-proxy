@@ -480,14 +480,14 @@ class ForgeAdapterContracts:
 
         pipeline, jobs, release, assets = self._gitlab_fixture(commit)
         for mutation in (
-            lambda: pipeline.update(yaml_errors="bad"),
-            lambda: jobs[0].update(ref="wrong"),
-            lambda: jobs[0].update(commit={"id": "0" * 40}),
-            lambda: release.update(commit={"id": "0" * 40}),
-            lambda: release.update(evidences=[{"sha": ""}]),
+            lambda pipeline, _jobs, _release: pipeline.update(yaml_errors="bad"),
+            lambda _pipeline, jobs, _release: jobs[0].update(ref="wrong"),
+            lambda _pipeline, jobs, _release: jobs[0].update(commit={"id": "0" * 40}),
+            lambda _pipeline, _jobs, release: release.update(commit={"id": "0" * 40}),
+            lambda _pipeline, _jobs, release: release.update(evidences=[{"sha": ""}]),
         ):
             pipeline, jobs, release, assets = self._gitlab_fixture(commit)
-            mutation()
+            mutation(pipeline, jobs, release)
             with pytest.raises(gitlab.GitLabProofError):
                 self._normalize_gitlab(commit, (pipeline, jobs, release, assets))
 

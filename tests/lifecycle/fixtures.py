@@ -106,12 +106,12 @@ def released_artifact(version: str = "1.2.3") -> artifact.VerifiedArtifact:
         "serving_payload_sha256": projection.serving_payload_sha256(serving),
         "serving_files": list(files),
         "payload": [
-            dict(
-                path=item.path,
-                mode=item.mode,
-                blob_oid=item.blob_oid,
-                sha256=item.sha256,
-            )
+            {
+                "path": item.path,
+                "mode": item.mode,
+                "blob_oid": item.blob_oid,
+                "sha256": item.sha256,
+            }
             for item in blobs
         ],
     }

@@ -293,7 +293,7 @@ def _app() -> App:
         tag: str,
         commit_oid: str,
         assets: Path,
-        checkout: Path = Path.cwd(),
+        checkout: Path | None = None,
         workspace: Path,
     ) -> None:
         """Publish or verify one exact GitHub release."""
@@ -302,7 +302,7 @@ def _app() -> App:
             repository=repository,
             tag=tag,
             commit_oid=commit_oid,
-            checkout=checkout,
+            checkout=checkout or Path.cwd(),
             tag_trust=os.environ.get("CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST", ""),
             asset_trust=os.environ.get("RELEASE_ASSET_TRUST", ""),
             source=assets,
@@ -311,10 +311,12 @@ def _app() -> App:
         print(f"GitHub release {state}: {tag}")
 
     @app.command(name="prepare-checkout")
-    def prepare_checkout_command(*, tag: str, commit_oid: str, checkout: Path = Path.cwd()) -> None:
+    def prepare_checkout_command(
+        *, tag: str, commit_oid: str, checkout: Path | None = None
+    ) -> None:
         """Prepare one exact annotated release checkout."""
 
-        tag_oid, target = prepare_checkout(checkout, tag, commit_oid)
+        tag_oid, target = prepare_checkout(checkout or Path.cwd(), tag, commit_oid)
         print(f"GitHub release checkout prepared: {tag_oid} -> {target}")
 
     return app

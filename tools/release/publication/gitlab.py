@@ -52,7 +52,7 @@ def _evidence(value: object) -> Mapping[str, object]:
 
 def _page_items(page: object) -> list[object]:
     if isinstance(page, list):
-        return [item for item in page]
+        return list(page)
     if isinstance(page, dict):
         return [page]
     raise GitLabProofError("GitLab paginated API response is malformed")
@@ -170,7 +170,7 @@ def collect(
     base = api_base.rstrip("/")
     if not base.startswith(("http://", "https://")):
         raise GitLabProofError("GitLab API base must be HTTP(S)")
-    project, encoded_tag = map(lambda value: urllib.parse.quote(value, safe=""), (repository, tag))
+    project, encoded_tag = (urllib.parse.quote(value, safe="") for value in (repository, tag))
     tag_record = _mapping(
         _api(f"{base}/projects/{project}/repository/tags/{encoded_tag}"),
         "GitLab API tag object differs from fetched tag",

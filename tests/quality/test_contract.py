@@ -51,8 +51,7 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     }
     result = subprocess.run(
         ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
         env=environment,
     )
@@ -232,6 +231,24 @@ class TestQualityPolicyContracts:
 
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
         assert ".pytest_cache/" in ignored
+
+        ruff = tomllib.loads((ROOT / ".config/checks/ruff/ruff.toml").read_text(encoding="utf-8"))
+        assert ruff["lint"]["select"] == [
+            "E4",
+            "E7",
+            "E9",
+            "F",
+            "I",
+            "UP",
+            "B",
+            "C4",
+            "PIE",
+            "RET",
+            "PERF",
+            "RUF",
+        ]
+        assert "ignore" not in ruff["lint"]
+        assert "per-file-ignores" not in ruff["lint"]
 
         rationale = {
             "risk_model",

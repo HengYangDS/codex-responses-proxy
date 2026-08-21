@@ -239,7 +239,7 @@ def pid_names_executable(
     argv = process_argv(pid)
     if argv_names_executable(argv, expected_path, roles=roles):
         return True
-    if not argv or roles is not None and not roles.intersection(argv[1:]):
+    if not argv or (roles is not None and not roles.intersection(argv[1:])):
         return False
     try:
         candidate = psutil.Process(pid)
@@ -259,7 +259,7 @@ def _argv_or_kernel_names_executable(
 
     if argv_names_executable(argv, expected_path, roles=roles):
         return True
-    if not argv or roles is not None and not roles.intersection(argv[1:]):
+    if not argv or (roles is not None and not roles.intersection(argv[1:])):
         return False
     return _kernel_executable_matches(candidate, expected_path)
 

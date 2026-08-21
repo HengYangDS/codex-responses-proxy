@@ -97,7 +97,7 @@ def write_bytes(
 
     root = root or target.parent
     _real_parent(target, root)
-    if target.is_symlink() or target.exists() and not target.is_file():
+    if target.is_symlink() or (target.exists() and not target.is_file()):
         raise errors.InstallError(f"owned path is not a regular file: {target.relative_to(root)}")
     temporary = target.with_name(f".{target.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}")
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
@@ -107,7 +107,7 @@ def write_bytes(
             stream.flush()
             os.fsync(stream.fileno())
         _real_parent(target, root)
-        if target.is_symlink() or target.exists() and not target.is_file():
+        if target.is_symlink() or (target.exists() and not target.is_file()):
             raise errors.InstallError(f"owned path changed type: {target.relative_to(root)}")
         os.replace(temporary, target)
     finally:

@@ -83,8 +83,7 @@ def _index_entries(root: Path) -> tuple[dict[str, str], list[str]]:
     try:
         result = subprocess.run(
             ["git", "-C", str(root), "ls-files", "--stage", "-z"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             check=False,
         )
     except OSError as exc:
@@ -146,7 +145,8 @@ def _repository_inventory(
         for path, mode in scoped_entries.items()
         if path not in symlinks
         and (
-            mode not in {"100644", "100755"} or path not in missing and not (root / path).is_file()
+            mode not in {"100644", "100755"}
+            or (path not in missing and not (root / path).is_file())
         )
     )
     test_entries = sorted(path for path in tracked if _in_scope(path, test_roots))

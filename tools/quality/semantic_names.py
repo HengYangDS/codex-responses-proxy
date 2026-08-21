@@ -37,10 +37,11 @@ def semantic_name_gaps(root: Path) -> list[str]:
         if (
             grammar is None
             or name in _NATIVE_NAMES
-            or path.parent == _PYINSTALLER_HOOK_ROOT
-            and _PYINSTALLER_HOOK.fullmatch(name) is not None
-            or name in _OPEN_SPEC_CARRIERS
-            and PurePosixPath(relative).parts[0] == "openspec"
+            or (
+                path.parent == _PYINSTALLER_HOOK_ROOT
+                and _PYINSTALLER_HOOK.fullmatch(name) is not None
+            )
+            or (name in _OPEN_SPEC_CARRIERS and PurePosixPath(relative).parts[0] == "openspec")
         ):
             continue
         label, pattern = grammar

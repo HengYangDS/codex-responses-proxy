@@ -260,4 +260,4 @@ def _api_pages(endpoint: str) -> list[object]:
     )
     if not isinstance(value, list):
         raise GitHubProofError("GitHub paginated API response is malformed")
-    return [item for item in value]
+    return list(value)

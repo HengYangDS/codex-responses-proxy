@@ -203,7 +203,7 @@ class TestPayloadValidation:
             "owned": sorted({*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA}),
         }
         (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
-        with pytest.raises(errors.InstallError, match="rollback.*unavailable"):
+        with pytest.raises(errors.InstallError, match=r"rollback.*unavailable"):
             payload_rollback.restore_snapshot(ctx, rollback)
 
     def test_rollback_reports_symlink_and_read_failures(self, *, mocker, tmp_path: Path) -> None:

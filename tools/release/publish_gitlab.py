@@ -103,7 +103,7 @@ def publish(
             ):
                 raise GitLabPublishError(
                     "existing GitLab release does not match immutable identity"
-                )
+                ) from None
             return "matched"
 
 

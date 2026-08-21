@@ -206,8 +206,9 @@ class ProxyOwnerBoundaryContracts:
             server_version="dmx/test",
         )
         assert bindings.providers is providers
+        attribute = "server_version"
         with pytest.raises(dataclasses.FrozenInstanceError):
-            setattr(bindings, "server_version", "dmx/other")
+            setattr(bindings, attribute, "dmx/other")
 
     def test_server_routes_each_method_to_one_owner(self, subtests, *, mocker) -> None:
         handler = object.__new__(server.Handler)

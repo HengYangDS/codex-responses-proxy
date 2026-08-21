@@ -129,7 +129,13 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
             '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
         }
     ]
-    assert "verify-release-tag" in gitlab
+    tag = _mapping(gitlab["verify-release-tag"])
+    assert tag["rules"] == [{"if": "$CI_COMMIT_TAG"}]
+    assert _mapping(tag["variables"])["GIT_DEPTH"] == "0"
+    assert "git fetch --tags --force --prune --prune-tags origin" in tag["before_script"]
+    assert 'test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"' in tag["before_script"]
+    assert any("tools/release/metadata.py --tag" in command for command in tag["script"])
+    assert any("tools.forge.tag_signature" in command for command in tag["script"])
 
 
 def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> None:
@@ -256,6 +262,7 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     }
     assert "python -m pip install" not in text
     assert "uv sync --locked --group quality --no-install-project" in text
+    assert "apt-get install -qq -y --no-install-recommends binutils" in quality["before_script"]
     python = _mapping(gitlab["verify-python"])
     assert "uv python install --no-bin $PYTHON_VERSION" in python["before_script"]
 

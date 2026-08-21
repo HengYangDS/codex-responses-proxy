@@ -75,7 +75,7 @@ def _rotate_log_if_needed(path: Path, incoming_bytes: int) -> int:
     if current_size > LOG_MAX_BYTES:
         path.unlink(missing_ok=True)
         return current_size
-    elif LOG_BACKUP_COUNT <= 0:
+    if LOG_BACKUP_COUNT <= 0:
         path.unlink(missing_ok=True)
     else:
         path.with_name(f"{path.name}.{LOG_BACKUP_COUNT}").unlink(missing_ok=True)

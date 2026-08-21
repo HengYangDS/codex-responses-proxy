@@ -131,9 +131,8 @@ def check_active_release_train(
         return
     if version in published:
         latest_heading = releases[0][0] if releases else ""
-        if (
-            pending_release
-            or version == latest_heading
+        if pending_release or (
+            version == latest_heading
             and (not known or _version_key(version) > max(map(_version_key, known)))
         ):
             return

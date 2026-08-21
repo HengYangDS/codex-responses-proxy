@@ -130,7 +130,7 @@ class TestSseTransport(InputTransportFixture):
             (DirectResponse(encrypted), None, "eof", object),
         )
         results = []
-        for upstream, terminal, detail, error_type in cases:
+        for upstream, _, _, error_type in cases:
             admission.reset_for_test()
             telemetry.reset_for_test()
             cooldown.reset_for_test()
