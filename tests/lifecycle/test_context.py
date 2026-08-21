@@ -190,68 +190,13 @@ class TestRuntimeContext:
         assert {name: os.environ[name] for name in config.RUNTIME_ENVIRONMENT} == expected
         assert os.environ["UNRELATED_SETTING"] == "preserved"
 
-    def test_runtime_activation_materializes_missing_carrier_from_service_environment(
-        self, tmp_path, *, mocker
-    ):
-        install_dir = tmp_path / "payload"
-        executable = install_dir / "bin" / "codex-responses-proxy"
-        executable.parent.mkdir(parents=True)
-        executable.write_bytes(b"native")
-        projected = context.RuntimeContext(
-            install_dir=str(install_dir),
-            executable=str(executable),
-            command=str(tmp_path / "bin" / "codex-responses-proxy"),
-            log_dir=str(tmp_path / "state"),
-            port=8808,
-        )
-        target = runtime_spec.write(projected)
-        inherited = runtime_spec.environment(target)
-        target.unlink()
-        mocker.patch.dict(os.environ, inherited, clear=True)
-
-        assert runtime_spec.activate(executable, bootstrap_missing=True) == target
-
-        assert target.is_file()
-        assert runtime_spec.environment(target) == inherited
-
-    def test_runtime_activation_materializes_platform_defaults_without_legacy_environment(
-        self, tmp_path, *, mocker
-    ):
-        install_dir = tmp_path / "payload"
-        executable = install_dir / "bin" / "codex-responses-proxy"
-        executable.parent.mkdir(parents=True)
-        executable.write_bytes(b"native")
-        state_dir = tmp_path / "state"
-        mocker.patch.object(config, "state_dir", return_value=str(state_dir))
-        mocker.patch.dict(os.environ, {}, clear=True)
-
-        target = runtime_spec.activate(executable, bootstrap_missing=True)
-
-        environment = runtime_spec.environment(target)
-        assert environment[config.HOME_ENV] == str(install_dir)
-        assert environment[config.STATE_HOME_ENV] == str(state_dir)
-        assert environment[config.PROXY_PORT_ENV] == str(config.DEFAULT_PORT)
-
-    def test_runtime_activation_rejects_missing_carrier_outside_handoff_bootstrap(self, tmp_path):
+    def test_runtime_activation_rejects_missing_carrier(self, tmp_path):
         executable = tmp_path / "payload" / "bin" / "codex-responses-proxy"
         executable.parent.mkdir(parents=True)
         executable.write_bytes(b"native")
 
         with pytest.raises(errors.InstallError, match="unavailable or invalid"):
             runtime_spec.activate(executable)
-
-    def test_runtime_activation_rejects_partial_predecessor_environment(self, tmp_path, *, mocker):
-        executable = tmp_path / "payload" / "bin" / "codex-responses-proxy"
-        executable.parent.mkdir(parents=True)
-        executable.write_bytes(b"native")
-        mocker.patch.dict(
-            os.environ,
-            {config.HOME_ENV: str(executable.parent.parent)},
-            clear=True,
-        )
-
-        with pytest.raises(errors.InstallError, match="unavailable or invalid"):
-            runtime_spec.activate(executable, bootstrap_missing=True)
 
     def test_context_rejects_invalid_cli_overrides(self, subtests, *, mocker):
         invalid = (

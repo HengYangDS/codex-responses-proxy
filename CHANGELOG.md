@@ -7,6 +7,16 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.56] - 2026-08-21
+
+### Changed
+
+- Require every private service role to read the executable-owned
+  `runtime-config.json`; the temporary `2.0.52 → 2.0.55` carrier bridge has
+  completed its migration and is no longer part of the product.
+- Define native forward-upgrade support through the immediately preceding
+  released runtime instead of retaining historical fallback behavior.
+
 ## [2.0.55] - 2026-08-21
 
 ### Fixed

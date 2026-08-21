@@ -470,18 +470,9 @@ class CliLifecycleContracts:
 
         assert activate.call_count == 3
         assert activate.call_args_list == [
-            mocker.call(
-                "/opt/proxy/bin/codex-responses-proxy",
-                bootstrap_missing=False,
-            ),
-            mocker.call(
-                "/opt/proxy/bin/codex-responses-proxy",
-                bootstrap_missing=True,
-            ),
-            mocker.call(
-                "/opt/proxy/bin/codex-responses-proxy",
-                bootstrap_missing=False,
-            ),
+            mocker.call("/opt/proxy/bin/codex-responses-proxy"),
+            mocker.call("/opt/proxy/bin/codex-responses-proxy"),
+            mocker.call("/opt/proxy/bin/codex-responses-proxy"),
         ]
         assert executable.call_count == 3
 

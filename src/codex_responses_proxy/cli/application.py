@@ -346,10 +346,7 @@ def _run_internal(arguments: list[str]) -> int:
         _error("internal service mode accepts no additional arguments", as_json=False)
         return 2
     mode = arguments[0]
-    runtime_spec.activate(
-        service_runtime.current_executable(),
-        bootstrap_missing=mode == service_runtime.HANDOFF_CHILD_MODE,
-    )
+    runtime_spec.activate(service_runtime.current_executable())
     if mode == service_runtime.LISTENER_MODE:
         from codex_responses_proxy.service import entrypoint
 
