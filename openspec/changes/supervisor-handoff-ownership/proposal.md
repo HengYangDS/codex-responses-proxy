@@ -17,7 +17,7 @@ installer before listener capability transfer begins.
   handoff fails; retain recovery state only when the listener outcome is
   genuinely unknown.
 - Validate the repair through the Python matrix and native macOS, Linux, and
-  hosted Windows product flows.
+  hosted Windows product flows before a release tag is minted.
 
 ## Capabilities
 

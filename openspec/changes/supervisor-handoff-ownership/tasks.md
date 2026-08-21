@@ -9,7 +9,7 @@
 - [x] 2.1 Run `uv run --locked --no-sync nox -s quick quality` and verify both sessions pass without warnings.
 - [x] 2.2 Run `uv run --locked --no-sync nox -s tests-3.12 tests-3.13 tests-3.14` and verify the supported Python matrix passes.
 - [x] 2.3 Run the complete macOS and Linux native release flows from the exact candidate tree and verify frozen install, handoff, teardown, and zero host residue.
-- [ ] 2.4 Push one signed proposal commit and verify the hosted Windows Python matrix and native release flow pass on the exact product commit.
+- [ ] 2.4 Run native macOS, Linux, and Windows product acceptance on the signed proposal commit, not only its interpreter matrix; verify every hosted job binds to the exact product commit.
 
 ## 3. Publish and accept
 

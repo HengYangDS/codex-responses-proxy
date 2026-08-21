@@ -3,6 +3,7 @@ id = "change:supervisor-handoff-ownership"
 intent = "Make the installer the sole owner of native-supervisor rebinding before listener handoff."
 subjects = ["repository:codex-responses-proxy"]
 scope = [
+  ".github/workflows/verify.yml",
   "CHANGELOG.md",
   "docs/architecture/authority-and-runtime-boundary.md",
   "docs/governance/release-and-change-policy.md",
@@ -15,6 +16,7 @@ scope = [
   "src/codex_responses_proxy/service/entrypoint.py",
   "src/codex_responses_proxy/service/handoff/transaction.py",
   "tests/cli/test_lifecycle.py",
+  "tests/forge/test_workflow_contracts.py",
   "tests/release/test_installation.py",
   "tests/service/handoff/test_protocol.py",
 ]

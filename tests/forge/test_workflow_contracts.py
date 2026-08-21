@@ -55,7 +55,11 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
         "github.event_name == 'push' && github.ref_type == 'branch'"
     )
     assert _mapping(github_jobs["tag-metadata"])["if"] == "github.ref_type == 'tag'"
-    for job_id in ("native-assets", "native-linux", "release-assets"):
+    for job_id in ("native-assets", "native-linux"):
+        assert _mapping(github_jobs[job_id])["if"] == (
+            "github.event_name == 'pull_request' || github.ref_type == 'tag'"
+        )
+    for job_id in ("release-assets",):
         assert _mapping(github_jobs[job_id])["if"] == "github.ref_type == 'tag'"
 
     head = "${{ github.event.pull_request.head.sha }}"

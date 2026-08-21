@@ -156,7 +156,7 @@ jobs:
 
   native-assets:
     name: Native asset (${{ matrix.platform }})
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'pull_request' || github.ref_type == 'tag'
     needs: python-matrix
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
@@ -190,7 +190,7 @@ jobs:
 
   native-linux:
     name: Native asset (linux-x86_64)
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'pull_request' || github.ref_type == 'tag'
     needs: python-matrix
     runs-on: ubuntu-24.04
     container: ${{ needs.python-matrix.outputs.linux-release-image }}
