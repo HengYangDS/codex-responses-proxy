@@ -1,33 +1,32 @@
 ## 1. Proof graph contract
 
-- [ ] 1.1 Add failing workflow tests that require one declarative CI owner,
+- [x] 1.1 Add failing workflow tests that require one declarative CI owner,
   generated Forge projections, separate source/quality/Python-version/native
   nodes, and complete tag publication obligations; verify the focused tests fail
   for the current handwritten topology.
-- [ ] 1.2 Define semantic publication capabilities independently from provider
-  display names; verify evaluator and adapter tests reject missing or duplicated
-  capabilities.
-- [ ] 1.3 Encode Developer and Maintainer authorization separately from
-  proposal-review, dev-admission, main-promotion, main-admission, and tag proof;
-  verify proposal updates, direct Maintainer fast-forwards, stale heads/bases,
-  and exact proof reuse all fail closed at the correct boundary.
+- [ ] 1.2 Define semantic publication capabilities in the existing publication
+  evaluator rather than provider display names; verify adapters reject missing
+  or duplicated capabilities without creating another proof owner.
+- [x] 1.3 Keep Developer and Maintainer authorization and guarded ref admission
+  in the repository lifecycle owner; remove unconsumed authorization, proof
+  reuse, graph-digest, and capability fields from the CI projection model.
 
 ## 2. Declarative projections
 
-- [ ] 2.1 Add the CUE CI graph and the minimal projection command; verify fresh
+- [x] 2.1 Add the CUE CI graph and the minimal projection command; verify fresh
   exports reproduce deterministic GitLab and GitHub YAML on repeated runs.
-- [ ] 2.2 Replace the GitLab aggregate Python job with a matrix of independent
+- [x] 2.2 Replace the GitLab aggregate Python job with a matrix of independent
   3.12, 3.13, and 3.14 jobs, plus separate source and quality nodes; verify the
   parsed pipeline exposes every required node without an aggregate `nox full`.
-- [ ] 2.3 Project the equivalent GitHub review graph and explicit Forge runner
+- [x] 2.3 Project the equivalent GitHub review graph and explicit Forge runner
   capability differences; verify actionlint and workflow contract tests pass.
 - [ ] 2.4 Give both tag projections exact tag, complete bundle, provider-local
   publish, re-download, and byte-verification responsibilities; verify neither
   projection treats peer CI success as provider-local publication proof.
-- [ ] 2.5 Add exact same-Forge proof resolution for `dev` admission and guarded
-  `dev` to `main` promotion; reuse only matching head/base/graph/capability
-  evidence, execute missing proof for direct Maintainer admission, and reject
-  non-fast-forward or replacement-object transitions.
+- [ ] 2.5 Verify Developer review admission, direct Maintainer admission, and
+  `dev` to `main` promotion through their real lifecycle and Forge protection
+  owners; reject stale or replacement-object transitions without duplicating
+  those semantics in CUE.
 
 ## 3. Governance and closeout
 

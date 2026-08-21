@@ -19,8 +19,11 @@ parallelism, and makes a green Forge mean something different on each peer.
   evidence of publication on the other.
 - Replace handwritten, drifting workflow topology with one declarative source
   and generated GitLab/GitHub projections.
-- Remove obsolete job names and publication-policy expectations after the new
-  topology becomes authoritative.
+- Keep branch admission and proof reuse in the repository lifecycle owner;
+  generated CI expresses only checks that the Forges actually execute.
+- Remove obsolete job names, publication-policy expectations, and declarative
+  fields without an executable consumer after the new topology becomes
+  authoritative.
 
 ## Capabilities
 

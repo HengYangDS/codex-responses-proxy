@@ -10,6 +10,8 @@ from typing import Any, cast
 import pytest
 import yaml
 
+from tools.ci.project import reconcile
+
 ROOT = Path(__file__).resolve().parents[2]
 GITLAB_LOCKED_PYTHON = "uv run --locked --no-sync --python python --no-python-downloads"
 CI_MODEL = ROOT / ".config" / "ci" / "pipeline.cue"
@@ -40,20 +42,12 @@ def _mapping(value: object) -> Mapping[str, Any]:
 def test_forge_workflows_are_generated_from_one_declarative_graph() -> None:
     """Keep Forge syntax as projections, never independent topology owners."""
 
-    model = CI_MODEL.read_text(encoding="utf-8")
-    assert '"python": ["3.12", "3.13", "3.14"]' in model
-    assert "gitlab: windows: false" in model
-    assert "github: windows: true" in model
-    assert '"source-and-governance"' in model
-    assert '"python-quality"' in model
-    assert '"python-tests"' in model
-    assert '"native-release"' in model
-
     repository = (ROOT / "tools" / "quality" / "repository.py").read_text(encoding="utf-8")
     projector = (ROOT / "tools" / "ci" / "project.py").read_text(encoding="utf-8")
     assert "reconcile_ci_projections" in repository
     assert "projection drift" in repository
     assert 'MODEL = ROOT / ".config/ci/pipeline.cue"' in projector
+    assert reconcile(write=False) == ()
 
 
 def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
@@ -136,26 +130,6 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
         }
     ]
     assert "verify-release-tag" in gitlab
-
-
-def test_proposal_updates_and_direct_maintainer_admission_keep_complete_proof() -> None:
-    """Require new review heads and proof-less direct dev pushes to be verified."""
-
-    model = CI_MODEL.read_text(encoding="utf-8")
-    for context in (
-        "proposal-review",
-        "dev-admission",
-        "main-promotion",
-        "main-admission",
-        "release-tag",
-    ):
-        assert f'"{context}"' in model
-    for coordinate in ("head_sha", "base_sha", "graph_digest", "capabilities"):
-        assert coordinate in model
-    assert "synchronize" in model
-    assert "missing_product_proof" in model
-    assert "expected_old_sha" in model
-    assert "exact_new_sha" in model
 
 
 def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> None:

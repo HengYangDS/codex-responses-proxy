@@ -22,7 +22,7 @@ invariants = [
 acceptance = [
   "cue_exports_reproduce_all_tracked_forge_workflows",
   "source_quality_python_and_native_proofs_remain_separate_capabilities",
-  "developer_and_maintainer_admission_paths_bind_exact_product_coordinates",
+  "ci_model_contains_only_semantics_consumed_by_generated_forge_workflows",
 ]
 risks = [
   "generated_workflows_diverge_from_the_semantic_graph",

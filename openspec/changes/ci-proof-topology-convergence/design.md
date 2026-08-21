@@ -60,14 +60,17 @@ The review graph contains:
 This avoids a nine-job Python-by-OS Cartesian product while proving both
 language compatibility and native portability. GitLab exports the Python nodes
 as `parallel:matrix`; GitHub exports `strategy.matrix`. Native Windows remains
-required product evidence on GitHub while GitLab's current runner capability is
-declared false rather than represented by a disabled or allowed-failure job.
+required product evidence on GitHub. GitLab's generated projection has no
+fictitious, disabled, or allowed-failure Windows job while its current runner
+inventory lacks that capability.
 
-### Separate authorization modes from proof contexts
+### Keep authorization out of CI projection syntax
 
-The product has two authorization modes and five lifecycle proof contexts.
-They are different dimensions and SHALL NOT be encoded as a growing set of
-branch-name exceptions.
+Developer and Maintainer admission are repository-lifecycle semantics, not
+extra fields in the CI projection model. CUE owns only the checks a Forge can
+actually schedule. Admission tooling and Forge branch protection own guarded
+ref transitions; CI reports proof for the exact ref and commit it observes.
+The two concerns share coordinates but do not share an evaluator.
 
 The **Developer** mode requires a `proposal/*` review into `dev`. Updating the
 proposal updates the existing MR/PR and runs review proof for the new head. A
@@ -78,18 +81,16 @@ fast-forward and deletes the absorbed proposal ref.
 
 The **Maintainer** mode may use the same review path or fast-forward an exact
 locally proven commit directly to `dev`. Direct admission cannot manufacture a
-pre-push hosted review. The resulting `dev` pipeline therefore resolves whether
-the same Forge already has a complete review proof for the exact product head,
-target base, and CI graph digest. It reuses that immutable proof when present
-and runs the missing product proof when absent. The branch is never promoted
-while its accepted proof is red.
+pre-push hosted review. The resulting `dev` pipeline runs the product proof for
+that admitted commit. A branch is never promoted while its accepted proof is
+red.
 
 The five contexts are:
 
 1. `proposal_review`: complete product proof for an exact proposal head and
    exact `dev` base;
-2. `dev_admission`: exact-ref admission plus either verified review-proof reuse
-   or the complete missing product proof;
+2. `dev_admission`: exact-ref admission followed by product proof for the
+   accepted commit;
 3. `main_promotion`: a `dev` to `main` MR/PR proving exact heads, ancestry,
    release readiness, and current accepted `dev` proof;
 4. `main_admission`: exact-ref confirmation after the reviewed CAS
@@ -99,10 +100,9 @@ The five contexts are:
 
 `dev` advancing while a promotion review is open makes the promotion head
 stale and triggers proof for the new head. `main` advancing changes the target
-base and invalidates the promotion even when the `dev` head is unchanged. A
-promotion proof is therefore keyed by Forge, head SHA, base SHA, CI graph
-digest, and semantic capability set rather than by a branch name or a green UI
-label alone.
+base and invalidates the promotion even when the `dev` head is unchanged. The
+review carrier and guarded ref update must therefore observe exact head and
+base objects rather than a branch name or a green UI label alone.
 
 GitLab can fast-forward-merge an MR, but GitHub does not offer a true
 SHA-preserving PR merge mode. To keep one signed commit object on both Forges,
@@ -110,9 +110,9 @@ MRs and PRs are review carriers; the admitted transition is the same guarded
 ref fast-forward on both peers. Squash, rebase, merge commits, movable tags,
 and provider-authored replacement commits are invalid product transitions.
 
-Avoiding duplicate work means eliminating duplicate event contexts and reusing
-an exact immutable proof. It never means allowing an unreviewed maintainer push
-to borrow a different SHA, base, graph generation, or peer Forge result.
+Avoiding duplicate work means eliminating duplicate event contexts. It never
+means inventing an unimplemented cross-pipeline proof cache or allowing an
+unreviewed maintainer push to borrow a different SHA, base, or peer result.
 
 ### Treat races and failures as state transitions
 

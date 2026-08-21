@@ -5,74 +5,20 @@ import "list"
 // pipeline.cue owns the provider-neutral proof graph. Forge YAML files remain
 // projections; product behavior stays in Nox and repository-owned Python tools.
 
-runtimeMatrix: {
+#RuntimeMatrix: {
 	"python": ["3.12", "3.13", "3.14"]
 }
 
-conditions: {
+#Conditions: {
 	productProof: "(github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')"
-	nativeProof:  conditions.productProof + " || github.ref_type == 'tag'"
+	nativeProof:  #Conditions.productProof + " || github.ref_type == 'tag'"
 	productSHA:   "${{ github.event.pull_request.head.sha || github.sha }}"
 }
 
-toolchains: {
+#Toolchains: {
 	githubMiseAction: "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
 	gitlabMiseImage:  "ghcr.io/jdx/mise@sha256:f2d637d5e5189f7ec177b73bce5cd5db7e7b17a4f466f887c1b88ac2dd431129"
 	quality:          "python,uv,cue,npm:@fission-ai/openspec,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
-}
-
-forgeCapabilities: {
-	gitlab: windows: false
-	github: windows: true
-}
-
-// Authorization and lifecycle are independent axes. A Developer reaches dev
-// through proposal review; a Maintainer can use that path or direct admission.
-authorizationModes: ["developer", "maintainer"]
-
-lifecycleContexts: {
-	"proposal-review": {
-		event:        "pull_request_synchronize"
-		target:       "dev"
-		productProof: "complete"
-		coordinates: ["head_sha", "base_sha", "graph_digest", "capabilities"]
-	}
-	"dev-admission": {
-		event:      "push_dev"
-		target:     "dev"
-		proofReuse: "same_forge_review_proof"
-		fallback:   "missing_product_proof"
-		transition: ["expected_old_sha", "exact_new_sha"]
-	}
-	"main-promotion": {
-		event:  "pull_request_synchronize"
-		source: "dev"
-		target: "main"
-		coordinates: ["head_sha", "base_sha", "graph_digest", "capabilities"]
-	}
-	"main-admission": {
-		event:  "push_main"
-		target: "main"
-		transition: ["expected_old_sha", "exact_new_sha"]
-	}
-	"release-tag": {
-		event:  "push_tag"
-		target: "v*"
-	}
-}
-
-proofNodes: {
-	"source-and-governance": {}
-	"python-quality": {}
-	"python-tests": {}
-	"native-release": {}
-}
-
-// These tokens are structural contracts for the proof resolver implemented by
-// repository tooling rather than ad-hoc Forge conditions.
-proofResolution: {
-	reusable: ["same_forge_review_proof", "head_sha", "base_sha", "graph_digest", "capabilities"]
-	fallback: "missing_product_proof"
 }
 
 gitlab: {
@@ -138,12 +84,12 @@ gitlab: {
 		stage: "verify"
 		rules: #productRules
 		image: {
-			name: toolchains.gitlabMiseImage
+			name: #Toolchains.gitlabMiseImage
 			entrypoint: [""]
 		}
 		variables: {
 			GIT_DEPTH:        "0"
-			MISE_ENABLE_TOOLS: toolchains.quality
+			MISE_ENABLE_TOOLS: #Toolchains.quality
 		}
 		before_script: [
 			"mise install --locked",
@@ -162,7 +108,7 @@ gitlab: {
 	"verify-python": {
 		stage: "verify"
 		rules: #productRules
-		parallel: matrix: [{PYTHON_VERSION: runtimeMatrix.python}]
+		parallel: matrix: [{PYTHON_VERSION: #RuntimeMatrix.python}]
 		variables: GIT_DEPTH: "0"
 		before_script: list.Concat([#systemBootstrap, [
 			"apt-get install -qq -y --no-install-recommends binutils",
@@ -255,7 +201,7 @@ githubVerify: {
 	jobs: {
 		"python-matrix": {
 			name:              "Resolve supported Python versions"
-			if:                conditions.nativeProof
+			if:                #Conditions.nativeProof
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 5
 			outputs: {
@@ -280,7 +226,7 @@ githubVerify: {
 		}
 		"source-and-governance": {
 			name:              "Source and governance"
-			if:                conditions.productProof
+			if:                #Conditions.productProof
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 10
 			steps: [{
@@ -288,7 +234,7 @@ githubVerify: {
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
-					ref:           conditions.productSHA
+					ref:           #Conditions.productSHA
 				}
 			}, {
 				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
@@ -296,7 +242,7 @@ githubVerify: {
 			}, {
 				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d"
 			}, {
-				uses: toolchains.githubMiseAction
+				uses: #Toolchains.githubMiseAction
 				with: {
 					install:     true
 					cache:       true
@@ -317,7 +263,7 @@ githubVerify: {
 		}
 		python: {
 			name:              "Python ${{ matrix.python-version }}"
-			if:                conditions.productProof
+			if:                #Conditions.productProof
 			needs:             "python-matrix"
 			"runs-on":         "macos-26"
 			"timeout-minutes": 15
@@ -330,7 +276,7 @@ githubVerify: {
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
-					ref:           conditions.productSHA
+					ref:           #Conditions.productSHA
 				}
 			}, {
 				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
@@ -345,7 +291,7 @@ githubVerify: {
 		}
 		"python-windows": {
 			name:              "Python ${{ matrix.python-version }} (Windows)"
-			if:                conditions.productProof
+			if:                #Conditions.productProof
 			needs:             "python-matrix"
 			"runs-on":         "windows-2025"
 			"timeout-minutes": 15
@@ -358,7 +304,7 @@ githubVerify: {
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
-					ref:           conditions.productSHA
+					ref:           #Conditions.productSHA
 				}
 			}, {
 				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
@@ -458,7 +404,7 @@ githubVerify: {
 		}
 		"python-quality": {
 			name:              "Python quality"
-			if:                conditions.productProof
+			if:                #Conditions.productProof
 			needs:             "python-matrix"
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 15
@@ -467,7 +413,7 @@ githubVerify: {
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
-					ref:           conditions.productSHA
+					ref:           #Conditions.productSHA
 				}
 			}, {
 				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
@@ -481,7 +427,7 @@ githubVerify: {
 		}
 		"native-assets": {
 			name:              "Native asset (${{ matrix.platform }})"
-			if:                conditions.nativeProof
+			if:                #Conditions.nativeProof
 			needs:             "python-matrix"
 			"runs-on":         "${{ matrix.runner }}"
 			"timeout-minutes": 20
@@ -500,7 +446,7 @@ githubVerify: {
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
-					ref:           conditions.productSHA
+					ref:           #Conditions.productSHA
 				}
 			}, {
 				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
@@ -525,7 +471,7 @@ githubVerify: {
 		}
 		"native-linux": {
 			name:              "Native asset (linux-x86_64)"
-			if:                conditions.nativeProof
+			if:                #Conditions.nativeProof
 			needs:             "python-matrix"
 			"runs-on":         "ubuntu-24.04"
 			container:         "${{ needs.python-matrix.outputs.linux-release-image }}"
@@ -535,7 +481,7 @@ githubVerify: {
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
-					ref:           conditions.productSHA
+					ref:           #Conditions.productSHA
 				}
 			}, {
 				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1

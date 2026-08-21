@@ -2,13 +2,14 @@
 
 ### Requirement: Validation follows authorization and lifecycle state
 
-The repository SHALL expose one provider-neutral proof graph with exactly two
-authorization modes, Developer and Maintainer, and distinct proposal-review,
-dev-admission, main-promotion, main-admission, tagged-release, publication, and
-parity contexts. GitLab and GitHub SHALL project the same required proof nodes
-from that graph. A provider projection MAY omit only a native platform whose
-runner capability is explicitly unavailable; that omission SHALL remain
-visible and SHALL NOT be interpreted as product-level platform evidence.
+The repository SHALL expose one provider-neutral CI graph for the checks that
+GitLab and GitHub actually schedule. Developer and Maintainer authorization,
+guarded ref admission, publication, and parity SHALL remain in their existing
+repository-lifecycle owners rather than being redeclared as unconsumed CI
+fields. GitLab and GitHub SHALL project the same required proof nodes from the
+CI graph. A provider projection MAY omit only a native platform whose runner
+capability is explicitly unavailable; that omission SHALL remain visible and
+SHALL NOT be interpreted as product-level platform evidence.
 
 Each supported Python version SHALL have an independently observable test node.
 Independent nodes SHALL be schedulable in parallel and one failed version or
@@ -43,9 +44,9 @@ verification node.
 #### Scenario: Developer admission to dev
 
 - **WHEN** an exact proposal head has complete review proof on a selected Forge
-- **THEN** admission SHALL require the reviewed head to descend from the current
-  exact `dev` head
-- **AND** `dev` SHALL advance only by expected-old/exact-new fast-forward
+- **THEN** the repository lifecycle owner SHALL require the reviewed head to
+  descend from the current exact `dev` head
+- **AND** that owner SHALL advance `dev` only by guarded fast-forward
 - **AND** the absorbed proposal ref SHALL be deleted after successful admission
 - **AND** squash, rebase, merge-commit, or provider-authored replacement objects
   SHALL NOT be accepted as the reviewed product commit.
@@ -53,10 +54,8 @@ verification node.
 #### Scenario: Maintainer admission to dev
 
 - **WHEN** a Maintainer fast-forwards a locally proven commit directly to `dev`
-- **THEN** the `dev` pipeline SHALL resolve exact same-Forge review proof for
-  the admitted head, target base, CI graph digest, and capability set
-- **AND** it SHALL reuse that proof only when every coordinate matches
-- **AND** it SHALL execute the complete missing product proof otherwise
+- **THEN** the `dev` pipeline SHALL execute complete product proof for the
+  admitted exact commit
 - **AND** failed admission SHALL block promotion and be repaired by a new
   forward commit rather than history rewrite.
 
@@ -65,8 +64,8 @@ verification node.
 - **WHEN** a reviewed commit is absorbed into `dev`
 - **THEN** the branch pipeline SHALL confirm exact accepted-source identity and
   release metadata
-- **AND** it SHALL execute only product capabilities not already established by
-  an exact valid same-Forge review proof.
+- **AND** it SHALL execute the declared accepted-branch proof without consulting
+  an undeclared cross-pipeline cache.
 
 #### Scenario: Promotion from dev to main
 
@@ -74,9 +73,8 @@ verification node.
 - **THEN** the promotion proof SHALL bind the exact `dev` head and exact `main`
   base
 - **AND** it SHALL require `main` to be an ancestor of `dev`
-- **AND** it SHALL require current same-Forge accepted `dev` proof and release
-  readiness
-- **AND** completion SHALL advance `main` only by expected-old/exact-new
+- **AND** it SHALL require current accepted `dev` proof and release readiness
+- **AND** the repository lifecycle owner SHALL advance `main` only by guarded
   fast-forward of the reviewed `dev` commit.
 
 #### Scenario: Promotion head or base changes
@@ -89,10 +87,10 @@ verification node.
 #### Scenario: Accepted main projection
 
 - **WHEN** the reviewed `dev` commit is admitted to `main`
-- **THEN** the branch pipeline SHALL confirm the exact accepted ref transition,
-  promotion proof, source identity, and release metadata
-- **AND** it SHALL NOT substitute branch-name equality for exact proof
-  coordinates.
+- **THEN** the branch pipeline SHALL confirm source identity and release
+  metadata for the exact accepted commit
+- **AND** the repository lifecycle owner SHALL retain responsibility for the
+  guarded ref transition and promotion authorization.
 
 #### Scenario: Direct main mutation
 
