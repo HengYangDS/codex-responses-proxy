@@ -282,7 +282,7 @@ class TestPublishedPredecessorCompatibility:
             cleanups.callback(release.set)
 
             upgraded = run_command(
-                current_executable,
+                previous_executable,
                 environment,
                 "install",
                 "--asset",

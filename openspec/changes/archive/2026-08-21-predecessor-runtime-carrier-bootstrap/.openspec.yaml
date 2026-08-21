@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-21
+goal: Restore real predecessor-driven native upgrades without introducing a
+  second runtime authority.

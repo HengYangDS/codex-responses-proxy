@@ -4,9 +4,7 @@
 
 Define the current native payload, transactional handoff, rollback, recovery,
 and supervision invariants.
-
 ## Requirements
-
 ### Requirement: Source-side upgrade authority
 
 Only the signed-asset installer SHALL admit a different release. The payload
@@ -109,10 +107,37 @@ rollback SHALL restore the complete predecessor projection.
 A running upgrade SHALL bind the health snapshot to exactly one listener owned
 by the installed executable, commit the admitted prewarmed bundle, and bind
 native supervision to that committed executable before requesting transactional
-handoff. A successor SHALL prove its PID, executable, release, manifest, serving
-aggregate, receipt, accepting state, and non-draining state. The handoff child
-SHALL own only listener transfer and runtime identity; it SHALL NOT mutate the
-platform-native supervisor.
+handoff. A successor SHALL prove its PID, executable, release, manifest,
+serving aggregate, receipt, accepting state, and non-draining state. The
+handoff child SHALL own only listener transfer and runtime identity; it SHALL
+NOT mutate the platform-native supervisor. When an admitted published
+predecessor predates the sole runtime carrier, only the successor handoff child
+MAY atomically materialize that missing carrier before activation. It SHALL use
+either one complete predecessor runtime environment or platform defaults and
+SHALL reject partial predecessor settings. Listener and watchdog startup SHALL
+NOT materialize a missing carrier.
+
+#### Scenario: A published predecessor drives the upgrade
+
+- **WHEN** the admitted predecessor projects a successor payload without the
+  successor runtime carrier
+- **THEN** the successor handoff child atomically creates the carrier from the
+  complete inherited contract or platform defaults
+- **AND** activates that carrier before protocol startup
+- **AND** the upgrade continues through exact successor identity proof.
+
+#### Scenario: Predecessor runtime settings are partial
+
+- **WHEN** some but not all product runtime settings are inherited and the
+  carrier is absent
+- **THEN** handoff-child startup fails before listener transfer
+- **AND** no mixed predecessor/default contract is persisted.
+
+#### Scenario: Another private role lacks the carrier
+
+- **WHEN** listener or watchdog startup cannot read the sole runtime carrier
+- **THEN** it fails closed
+- **AND** does not synthesize a parallel runtime authority.
 
 #### Scenario: A current release upgrades successfully
 

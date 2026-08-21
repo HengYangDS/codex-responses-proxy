@@ -469,7 +469,20 @@ class CliLifecycleContracts:
         mocker.stop(watchdog)
 
         assert activate.call_count == 3
-        activate.assert_called_with("/opt/proxy/bin/codex-responses-proxy")
+        assert activate.call_args_list == [
+            mocker.call(
+                "/opt/proxy/bin/codex-responses-proxy",
+                bootstrap_missing=False,
+            ),
+            mocker.call(
+                "/opt/proxy/bin/codex-responses-proxy",
+                bootstrap_missing=True,
+            ),
+            mocker.call(
+                "/opt/proxy/bin/codex-responses-proxy",
+                bootstrap_missing=False,
+            ),
+        ]
         assert executable.call_count == 3
 
         for arguments in (

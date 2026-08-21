@@ -7,6 +7,18 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.55] - 2026-08-21
+
+### Fixed
+
+- Let the successor handoff child materialize the sole `runtime-config.json`
+  carrier when an admitted published predecessor predates that carrier, while
+  rejecting partial predecessor settings and keeping every other private role
+  fail-closed.
+- Drive published-predecessor compatibility with the predecessor executable
+  that users actually invoke, preventing candidate-driven false-positive
+  upgrade proof.
+
 ## [2.0.54] - 2026-08-21
 
 ### Fixed

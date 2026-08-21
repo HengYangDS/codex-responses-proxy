@@ -1,0 +1,43 @@
+schema_version = 2
+id = "change:predecessor-runtime-carrier-bootstrap"
+intent = "Restore predecessor-driven native hot upgrade through one temporary carrier bootstrap."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/predecessor-runtime-carrier-bootstrap/**",
+  "openspec/changes/archive/*-predecessor-runtime-carrier-bootstrap/**",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "src/codex_responses_proxy/cli/application.py",
+  "src/codex_responses_proxy/lifecycle/runtime_spec.py",
+  "tests/cli/test_lifecycle.py",
+  "tests/lifecycle/test_context.py",
+  "tests/release/test_native_compatibility.py",
+]
+invariants = [
+  "runtime_config_remains_the_only_persistent_runtime_authority",
+  "only_handoff_child_may_bootstrap_a_missing_carrier",
+  "partial_predecessor_environment_fails_closed",
+  "formal_runtime_is_untouched_before_release_acceptance",
+]
+acceptance = [
+  "focused_runtime_and_cli_tests_pass",
+  "published_predecessor_compatibility_passes",
+  "full_quality_matrix_release_and_openspec_pass",
+  "formal_hot_upgrade_and_runtime_operations_pass",
+  "successor_release_deletes_the_temporary_bridge",
+]
+risks = [
+  "partial_predecessor_settings_are_ambiguous",
+  "temporary_bootstrap_outlives_its_migration_window",
+]
+authority_refs = [
+  "openspec/specs/runtime-upgrade/spec.md",
+  "docs/architecture/authority-and-runtime-boundary.md",
+]
+predecessors = ["change:predecessor-handoff-health-retry"]
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []

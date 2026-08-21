@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Protocol
@@ -61,8 +62,7 @@ def write(ctx: RuntimeContext) -> Path:
     """Atomically persist the exact native runtime contract."""
 
     target = path(ctx)
-    payload = {"schema_version": SCHEMA_VERSION}
-    payload.update({name: getattr(ctx, name) for name in _FIELDS})
+    payload = _payload({name: getattr(ctx, name) for name in _FIELDS})
     owned_files.write_bytes(
         target,
         digest.canonical_json(payload),
@@ -109,15 +109,60 @@ def from_executable(executable: str | os.PathLike[str]) -> Path:
     return path.parent.parent / FILENAME
 
 
-def activate(executable: str | os.PathLike[str]) -> Path:
+def activate(executable: str | os.PathLike[str], *, bootstrap_missing: bool = False) -> Path:
     """Replace inherited product settings with the executable-owned carrier."""
 
     target = from_executable(executable)
+    if bootstrap_missing and not target.exists():
+        _materialize_from_environment(target, os.environ)
     projected = environment(target)
     for name in config.RUNTIME_ENVIRONMENT:
         os.environ.pop(name, None)
     os.environ.update(projected)
     return target
+
+
+def _materialize_from_environment(target: Path, source: Mapping[str, str]) -> None:
+    """Persist the carrier once from an older supervisor's process contract."""
+
+    present = config.RUNTIME_ENVIRONMENT.intersection(source)
+    if present and present != config.RUNTIME_ENVIRONMENT:
+        raise errors.InstallError("native runtime configuration is unavailable or invalid")
+    install_dir = str(target.parent)
+    declared_install = source.get(config.HOME_ENV, install_dir)
+    log_dir = config.state_dir(source)
+    if not _absolute(declared_install) or not _absolute(log_dir):
+        raise errors.InstallError("native runtime configuration is unavailable or invalid")
+    if _normalized(install_dir) != _normalized(declared_install):
+        raise errors.InstallError("native runtime configuration is outside its payload")
+    settings = config.load(source)
+    payload = _payload(
+        {
+            "install_dir": install_dir,
+            "log_dir": log_dir,
+            "port": settings.port,
+            "proxy_log_max_bytes": settings.proxy_log.max_bytes,
+            "proxy_log_backup_count": settings.proxy_log.backup_count,
+            "watchdog_log_max_bytes": settings.watchdog_log.max_bytes,
+            "watchdog_log_backup_count": settings.watchdog_log.backup_count,
+            "upstream_timeout": settings.upstream_timeout,
+            "upstream_read_timeout": settings.upstream_read_timeout,
+            "watchdog_interval": settings.watchdog_interval,
+            "watchdog_max_backoff": settings.watchdog_max_backoff,
+            "response_failed_compaction_budget": settings.response_failed_compaction_budget,
+            "response_failed_max_stages": settings.response_failed_max_stages,
+        }
+    )
+    owned_files.write_bytes(
+        target,
+        digest.canonical_json(payload),
+        mode=0o600,
+        root=target.parent,
+    )
+
+
+def _payload(values: dict[str, Any]) -> dict[str, Any]:
+    return {"schema_version": SCHEMA_VERSION, **values}
 
 
 @dataclass(frozen=True, slots=True)
