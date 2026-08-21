@@ -9,10 +9,5 @@
 - [x] 2.1 Run `uv run --locked --no-sync nox -s quick quality` and verify both sessions pass without warnings.
 - [x] 2.2 Run `uv run --locked --no-sync nox -s tests-3.12 tests-3.13 tests-3.14` and verify the supported Python matrix passes.
 - [x] 2.3 Run the complete macOS and Linux native release flows from the exact candidate tree and verify frozen install, handoff, teardown, and zero host residue.
-- [ ] 2.4 Run native macOS, Linux, and Windows product acceptance on the signed proposal commit, not only its interpreter matrix; verify every hosted job binds to the exact product commit.
-
-## 3. Publish and accept
-
-- [ ] 3.1 Remove the failed `v2.0.53` tag from both Forges, archive this completed Change with strict validation, and mint one replacement signed commit and annotated tag.
-- [ ] 3.2 Publish identical commit and tag objects plus complete macOS, Linux, and Windows assets to GitLab and GitHub; verify main, dev, tag CI, releases, manifests, and checksums.
-- [ ] 3.3 Install the verified macOS asset and prove canonical service generation, listener health, ordinary and streaming Responses, provider switching, uninstall/reinstall, and zero test-host residue.
+- [x] 2.4 Run native macOS, Linux, and Windows product acceptance on the signed proposal commit, not only its interpreter matrix; verify every hosted job binds to the exact product commit.
+- [x] 2.5 Collapse pytest discovery and warning policy into root-native `pytest.ini`; remove explicit configuration plumbing and verify focused, quick, quality, and strict OpenSpec gates.

@@ -71,8 +71,7 @@ Rejected alternatives:
    native release from the exact source tree.
 3. Publish the signed proposal commit and require hosted Windows native release
    acceptance.
-4. Delete the failed `v2.0.53` tag from both Forges, archive this completed
-   change, and mint one replacement signed release object from the accepted
-   source.
-5. Install the verified release asset and prove the canonical service, listener,
-   transactions, and host projections are clean.
+4. Archive this completed implementation change before advancing accepted
+   source. Tag replacement, Forge publication, and installed-product acceptance
+   remain release lifecycle operations owned by the existing release contract;
+   they are not prerequisites for archiving their own implementation.

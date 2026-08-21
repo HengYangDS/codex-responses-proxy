@@ -1,15 +1,18 @@
 schema_version = 2
 id = "change:supervisor-handoff-ownership"
-intent = "Make the installer the sole owner of native-supervisor rebinding before listener handoff."
+intent = "Make the installer the sole owner of native-supervisor rebinding before listener handoff and remove pytest configuration indirection found during release proof."
 subjects = ["repository:codex-responses-proxy"]
 scope = [
   ".github/workflows/verify.yml",
+  ".config/checks/pytest/pytest.ini",
   "CHANGELOG.md",
   "docs/architecture/authority-and-runtime-boundary.md",
   "docs/governance/release-and-change-policy.md",
   "openspec/changes/supervisor-handoff-ownership/**",
   "openspec/changes/archive/*-supervisor-handoff-ownership/**",
   "openspec/specs/runtime-upgrade/spec.md",
+  "noxfile.py",
+  "pytest.ini",
   "src/codex_responses_proxy/cli/application.py",
   "src/codex_responses_proxy/lifecycle/deployment/apply.py",
   "src/codex_responses_proxy/lifecycle/supervision/native_service.py",
@@ -18,6 +21,8 @@ scope = [
   "tests/cli/test_lifecycle.py",
   "tests/forge/test_workflow_contracts.py",
   "tests/release/test_installation.py",
+  "tests/quality/test_contract.py",
+  "tests/quality/test_verification.py",
   "tests/service/handoff/test_protocol.py",
 ]
 invariants = [
