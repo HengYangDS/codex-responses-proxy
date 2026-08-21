@@ -275,6 +275,32 @@ class TestQualityPolicyContracts:
                 isinstance(policy.get(field), str) and policy[field].strip() for field in rationale
             ), relative
 
+    def test_dependency_and_dead_code_policy_has_one_precise_owner(self) -> None:
+        dependency = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
+            "deptry"
+        ]
+        assert dependency == {"known_first_party": ["codex_responses_proxy"]}
+
+        dead_code = tomllib.loads(
+            (ROOT / ".config/checks/dead-code/vulture.toml").read_text(encoding="utf-8")
+        )["tool"]["vulture"]
+        assert dead_code == {"min_confidence": 100, "sort_by_size": True}
+
+        governance = _governance_checker()
+        commands = governance._commands(online_links=False)
+        assert sum(command[0] == "deptry" for command in commands) == 1
+        assert sum(command[0] == "vulture" for command in commands) == 1
+        quality_commands = tuple(
+            argument
+            for command in commands
+            if command[0] in {"deptry", "vulture"}
+            for argument in command
+        )
+        assert "--ignore" not in quality_commands
+        assert "--exclude" not in quality_commands
+        assert "--whitelist" not in quality_commands
+        assert "--baseline" not in quality_commands
+
     def test_governance_composition_owns_each_repository_check_once(self, mocker) -> None:
         governance = _governance_checker()
         completed = mocker.Mock(returncode=0)
@@ -287,6 +313,19 @@ class TestQualityPolicyContracts:
             ("cue", "vet", ".config/ci/pipeline.cue"),
             ("openspec", "validate", "--all", "--strict", "--no-interactive"),
             ("actionlint", ".github/workflows/verify.yml"),
+            (
+                "deptry",
+                "src/codex_responses_proxy",
+                "--config",
+                "pyproject.toml",
+                "--no-ansi",
+            ),
+            (
+                "vulture",
+                "src/codex_responses_proxy",
+                "--config",
+                ".config/checks/dead-code/vulture.toml",
+            ),
             ("gitleaks", "git", "--platform", "gitlab", "--redact", "--no-banner", "."),
             (
                 "lychee",

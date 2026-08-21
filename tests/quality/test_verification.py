@@ -406,6 +406,7 @@ class TestVerificationContracts:
         names = [requirement.partition("==")[0] for requirement in requirements]
         assert set(names) == {
             "coverage",
+            "deptry",
             "hatchling",
             "nox",
             "pytest",
@@ -414,6 +415,7 @@ class TestVerificationContracts:
             "pyyaml",
             "ruff",
             "ty",
+            "vulture",
         }
         assert len(names) == len(set(names))
         assert all(
