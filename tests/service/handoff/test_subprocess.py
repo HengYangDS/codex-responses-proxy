@@ -16,9 +16,7 @@ import pytest
 
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import native_service, process
-from tests.release.fixtures import (
-    preserve_native_host_projection as preserve_native_host_projection,
-)
+from tests.release.fixtures import preserve_native_host_projection
 from tests.service.handoff import fixtures as handoff_fixtures
 from tests.service.handoff.fixtures import (
     ScriptedUpstream,
@@ -39,7 +37,10 @@ ROOT = Path(__file__).resolve().parents[3]
 PACKAGED_SUCCESSOR_TIMEOUT_SECONDS = 60
 PAYLOAD_UNLOCK_TIMEOUT_SECONDS = 5
 
-pytestmark = pytest.mark.native_distribution
+pytestmark = [
+    pytest.mark.usefixtures(preserve_native_host_projection.__name__),
+    pytest.mark.native_distribution,
+]
 
 
 class TestRealSubprocessHandoffIntegration:

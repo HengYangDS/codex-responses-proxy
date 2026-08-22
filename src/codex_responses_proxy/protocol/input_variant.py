@@ -10,7 +10,8 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from collections.abc import Mapping, Sequence, Set
+from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from typing import Final, cast
@@ -324,7 +325,7 @@ def _shape(value: object, depth: int = 0) -> object:
     )
 
 
-def _bounded(entries: Set[object]) -> tuple[tuple[object, ...], str]:
+def _bounded(entries: AbstractSet[object]) -> tuple[tuple[object, ...], str]:
     ordered = tuple(sorted(entries, key=repr))
     return ordered[:32], _presence(len(ordered) > 32)
 

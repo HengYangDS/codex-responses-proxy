@@ -73,9 +73,8 @@ def serve_proxy(
                     self.send_header("Transfer-Encoding", "chunked")
                 self.end_headers()
                 for chunk in chunks:
-                    if stall is not None:
-                        chunk = b"%X\r\n%s\r\n" % (len(chunk), chunk)
-                    self.wfile.write(chunk)
+                    framed = b"%X\r\n%s\r\n" % (len(chunk), chunk) if stall is not None else chunk
+                    self.wfile.write(framed)
                     self.wfile.flush()
                 if stall is not None:
                     stall.wait(timeout=10)

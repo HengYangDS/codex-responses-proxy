@@ -5,7 +5,8 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-from collections.abc import Mapping, Set
+from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -65,8 +66,8 @@ def manifest_for(
 
 def reject_unowned_collisions(
     ctx: runtime_context.RuntimeContext,
-    previous_owned: Set[str],
-    candidate_paths: Set[str],
+    previous_owned: AbstractSet[str],
+    candidate_paths: AbstractSet[str],
 ) -> None:
     """Refuse to overwrite a candidate path not owned by the prior projection."""
 
@@ -112,8 +113,8 @@ def write_projection(
 
 def retire_previous_projection(
     ctx: runtime_context.RuntimeContext,
-    previous_owned: Set[str],
-    candidate_paths: Set[str],
+    previous_owned: AbstractSet[str],
+    candidate_paths: AbstractSet[str],
 ) -> None:
     """Delete files owned only by the verified previous projection."""
 
@@ -128,7 +129,7 @@ def retire_previous_projection(
     projection.remove_empty_owned_directories(install, retired)
 
 
-def remove_projection(ctx: runtime_context.RuntimeContext, paths: Set[str]) -> None:
+def remove_projection(ctx: runtime_context.RuntimeContext, paths: AbstractSet[str]) -> None:
     """Remove only files owned by an uncommitted fresh candidate."""
 
     install = Path(ctx.install_dir)

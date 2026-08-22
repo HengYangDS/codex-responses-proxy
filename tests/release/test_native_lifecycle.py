@@ -18,18 +18,17 @@ from tests.release.fixtures import (
     cleanup_runtime,
     native_environment,
     post_response,
+    preserve_native_host_projection,
     run_command,
     runtime_context_for,
     signed_asset,
-)
-from tests.release.fixtures import (
-    preserve_native_host_projection as preserve_native_host_projection,
 )
 from tests.service.handoff.fixtures import ScriptedUpstream, free_port
 from tools.release import signing
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = [
+    pytest.mark.usefixtures(preserve_native_host_projection.__name__),
     pytest.mark.native_distribution,
     pytest.mark.skipif(
         sys.platform != "darwin", reason="native lifecycle acceptance is macOS-only"

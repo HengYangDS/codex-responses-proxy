@@ -61,7 +61,7 @@ def _macos_service_projection() -> tuple[
     return labels, overrides, plists
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(scope="module")
 def preserve_native_host_projection():
     """Prove one native test module leaves the host projection unchanged."""
 

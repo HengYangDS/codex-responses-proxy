@@ -84,6 +84,7 @@ class PublicationProofCliContracts:
         completed = subprocess.run(
             [sys.executable, "-m", "tools.release.verify", "--tag", "latest"],
             capture_output=True,
+            check=False,
             text=True,
             env={"PATH": "/usr/bin:/bin", "SECRET_TOKEN": "do-not-print"},
         )

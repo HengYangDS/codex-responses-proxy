@@ -329,7 +329,20 @@ class TestVerificationContracts:
             "native_distribution: requires the self-contained released executable" in pytest_config
         )
         source = (ROOT / "tests/service/handoff/test_subprocess.py").read_text(encoding="utf-8")
-        assert "pytestmark = pytest.mark.native_distribution" in source
+        tree = ast.parse(source)
+        pytestmark = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "pytestmark"
+                for target in node.targets
+            )
+        )
+        assert isinstance(pytestmark.value, ast.List)
+        markers = {ast.unparse(element) for element in pytestmark.value.elts}
+        assert "pytest.mark.native_distribution" in markers
+        assert "pytest.mark.usefixtures(preserve_native_host_projection.__name__)" in markers
 
     def test_quality_environment_is_repository_owned_and_locked(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
