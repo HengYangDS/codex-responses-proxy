@@ -8,7 +8,7 @@ from pathlib import Path
 
 from cyclopts import App
 
-from tools.release.publication.git import _TAG
+from tools.release import identity
 
 
 class TagSignatureError(RuntimeError):
@@ -18,7 +18,7 @@ class TagSignatureError(RuntimeError):
 def verify(repository: Path, tag: str, anchor: Path) -> None:
     """Verify one exact product tag with one explicit external anchor."""
 
-    if _TAG.fullmatch(tag) is None:
+    if not identity.is_tag(tag):
         raise TagSignatureError(f"release tag must be v<semver>: {tag}")
     if not anchor.is_file() or anchor.is_symlink():
         raise TagSignatureError("product release trust anchor is unavailable")

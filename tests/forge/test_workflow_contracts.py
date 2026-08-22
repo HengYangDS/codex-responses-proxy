@@ -136,7 +136,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     assert _mapping(tag["variables"])["GIT_DEPTH"] == "0"
     assert "git fetch --tags --force --prune --prune-tags origin" in tag["before_script"]
     assert 'test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"' in tag["before_script"]
-    assert any("tools/release/metadata.py --tag" in command for command in tag["script"])
+    assert any("tools.release.metadata --tag" in command for command in tag["script"])
     assert any("tools.forge.tag_signature" in command for command in tag["script"])
 
 
@@ -343,8 +343,8 @@ def _assert_github_required_tokens(text: str) -> None:
         "if: github.ref_type == 'tag'",
         "python -m tools.release.publish prepare-checkout",
         "python -m tools.quality.governance --online-links",
-        'uv run --locked --no-sync python tools/release/metadata.py --tag "$GITHUB_REF_NAME"',
-        "uv run --locked --no-sync python tools/release/metadata.py",
+        'uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"',
+        "uv run --locked --no-sync python -m tools.release.metadata",
         "python-quality:",
         "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d",
         "uv run --locked --group quality nox -s quality",
@@ -482,9 +482,9 @@ def _assert_github_governance_contract(text: str) -> None:
             if token not in block:
                 raise AssertionError(f"governance checkout must contain {token!r}")
     tag_check = (
-        'uv run --locked --no-sync python tools/release/metadata.py --tag "$GITHUB_REF_NAME"'
+        'uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"'
     )
-    branch_check = "uv run --locked --no-sync python tools/release/metadata.py"
+    branch_check = "uv run --locked --no-sync python -m tools.release.metadata"
     if tag_check not in tag_block:
         raise AssertionError("tag metadata must validate the exact annotated tag")
     if branch_check not in accepted_block:
@@ -546,7 +546,7 @@ def test_github_verification_workflow_contract() -> None:
         "openspec validate --all",
         "actionlint .github/workflows",
         "gitleaks git",
-        "tools/release/metadata.py",
+        "python -m tools.release.metadata",
         "python -m tools.quality.repository",
     ):
         assert duplicate not in source

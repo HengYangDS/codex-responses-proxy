@@ -43,7 +43,7 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
         ),
         ("gitleaks", "git", "--platform", "gitlab", "--redact", "--no-banner", "."),
         ("lychee", "--config", LINK_POLICY, *link_mode, *MARKDOWN_INPUTS),
-        (sys.executable, "tools/release/metadata.py"),
+        (sys.executable, "-m", "tools.release.metadata"),
         (sys.executable, "-m", "tools.quality.repository"),
     )
 

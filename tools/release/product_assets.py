@@ -12,13 +12,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath, PureWindowsPath
 
+from tools.release import identity
+
 ARCHIVE_NAME = "codex-responses-proxy-{version}-{platform}.tar.gz"
 MANIFEST_NAME = "codex-responses-proxy-{platform}.manifest.json"
 CHECKSUM_NAME = "SHA256SUMS"
 SIGNATURE_NAME = "SHA256SUMS.sig"
 RELEASE_PLATFORMS = ("linux-x86_64", "macos-arm64", "windows-x86_64")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
-_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _PLATFORM = re.compile(r"^[a-z0-9]+(?:-[a-z0-9_]+)+$")
 
 
@@ -304,5 +305,5 @@ def _safe_relative(value: str) -> bool:
 
 
 def _validate_identity(version: str, platform: str) -> None:
-    if _VERSION.fullmatch(version) is None or _PLATFORM.fullmatch(platform) is None:
+    if not identity.is_version(version) or _PLATFORM.fullmatch(platform) is None:
         raise AssetError("release version or platform identity is invalid")

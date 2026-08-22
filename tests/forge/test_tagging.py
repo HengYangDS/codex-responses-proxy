@@ -61,6 +61,8 @@ def tag_fixture(monkeypatch):
         _run("git", "config", "user.email", "fixture@example.test", cwd=source)
         (source / "tools/release").mkdir(parents=True)
         (source / "tools/forge").mkdir(parents=True)
+        (source / "tools/__init__.py").touch()
+        (source / "tools/release/__init__.py").touch()
         (source / "tools/release/metadata.py").write_text(
             "import sys\nraise SystemExit(0 if '--prepare-release' in sys.argv or '--tag' in sys.argv else 1)\n"
         )
@@ -97,6 +99,7 @@ def test_local_tag_is_signed_once_and_identical_on_both_peers(tag_fixture) -> No
         publication_context=publication,
         anchor=anchor,
     )
+    assert not (source / "tools/release/__pycache__").exists()
     github_oid = tag.create(
         root=source,
         provider="github",

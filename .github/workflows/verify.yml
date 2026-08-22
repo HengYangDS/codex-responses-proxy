@@ -128,7 +128,7 @@ jobs:
       - name: Confirm accepted source and metadata
         run: |
           uv sync --locked --all-groups
-          uv run --locked --no-sync python tools/release/metadata.py
+          uv run --locked --no-sync python -m tools.release.metadata
           uv run --locked --no-sync python -m tools.quality.repository
   promotion:
     name: Promote dev to main
@@ -150,7 +150,7 @@ jobs:
           git fetch origin main dev --tags --force --prune --prune-tags
           git merge-base --is-ancestor origin/main "${{ github.event.pull_request.head.sha }}"
           uv sync --locked --all-groups
-          uv run --locked --no-sync python tools/release/metadata.py
+          uv run --locked --no-sync python -m tools.release.metadata
           uv run --locked --no-sync python -m tools.quality.repository
   tag-metadata:
     name: Tag metadata and governance
@@ -172,7 +172,7 @@ jobs:
       - name: Fetch the exact annotated tag object
         run: uv run --locked --no-sync python -m tools.release.publish prepare-checkout --tag "$GITHUB_REF_NAME" --commit-oid "$GITHUB_SHA"
       - name: Verify exact release metadata
-        run: uv run --locked --no-sync python tools/release/metadata.py --tag "$GITHUB_REF_NAME"
+        run: uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"
       - name: Verify repository governance
         run: uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/test_publish.py tests/release/test_publish_gitlab.py
   python-quality:

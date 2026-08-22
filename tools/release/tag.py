@@ -11,7 +11,7 @@ from cyclopts import App
 
 from tools.forge import context, tag_signature
 from tools.git_environment import isolated_config_environment
-from tools.release.publication.git import _TAG
+from tools.release import identity
 
 
 class TagError(RuntimeError):
@@ -39,13 +39,14 @@ def _metadata(repository: Path, *args: str) -> None:
         subprocess.run(
             (
                 sys.executable,
-                str(repository / "tools/release/metadata.py"),
+                "-m",
+                "tools.release.metadata",
                 *args,
             ),
             cwd=repository,
             check=True,
             capture_output=True,
-            env=isolated_config_environment(),
+            env=isolated_config_environment({"PYTHONDONTWRITEBYTECODE": "1"}),
         )
     except (OSError, subprocess.CalledProcessError) as error:
         raise TagError("product release metadata validation failed") from error
@@ -62,23 +63,25 @@ def create(
 ) -> str:
     """Create the local tag once, then publish that exact object to one peer."""
 
-    if provider not in {"gitlab", "github"} or _TAG.fullmatch(tag) is None:
+    if provider not in {"gitlab", "github"} or not identity.is_tag(tag):
         raise TagError("provider and tag must identify gitlab|github and vMAJOR.MINOR.PATCH")
     if _run(root, "status", "--porcelain"):
         raise TagError(f"refusing {provider} tag with a dirty checkout")
-    identity = context.load(publication_context)
+    publication_identity = context.load(publication_context)
     reference = f"refs/tags/{tag}"
     if not _run(root, "tag", "--list", tag):
         target = _run(root, "rev-parse", "refs/heads/main^{commit}")
         _metadata(root, "--prepare-release")
         with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-tag-") as name:
-            signing = context.select_signing_key(identity, Path(name) / "signing-key.pub")
+            signing = context.select_signing_key(
+                publication_identity, Path(name) / "signing-key.pub"
+            )
             _run(
                 root,
                 "-c",
-                f"user.name={identity.name}",
+                f"user.name={publication_identity.name}",
                 "-c",
-                f"user.email={identity.email}",
+                f"user.email={publication_identity.email}",
                 "-c",
                 "user.useConfigOnly=true",
                 "-c",

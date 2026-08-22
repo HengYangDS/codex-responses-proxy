@@ -8,6 +8,7 @@ import urllib.parse
 from collections.abc import Mapping, Sequence
 from typing import Final, cast
 
+from tools.release import identity
 from tools.release import product_assets as release_assets
 from tools.release.publication import hosted
 
@@ -150,8 +151,8 @@ def normalize(
         },
         "assets": release_assets.release_digests(
             assets,
-            tag.removeprefix("v"),
-            release_assets.release_platforms(set(assets), tag.removeprefix("v")),
+            identity.version_from_tag(tag),
+            release_assets.release_platforms(set(assets), identity.version_from_tag(tag)),
         ),
     }
 

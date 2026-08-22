@@ -9,9 +9,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from tools.forge import tag_signature
-from tools.release import assemble_assets, signing
+from tools.release import assemble_assets, identity, signing
 from tools.release.publication import hosted
-from tools.release.publication.git import _TAG
 
 
 class GitHubPublishError(RuntimeError):
@@ -81,7 +80,7 @@ def publish(
 
     if (
         not repository
-        or _TAG.fullmatch(tag) is None
+        or not identity.is_tag(tag)
         or len(commit_oid) not in {40, 64}
         or not checkout.is_dir()
         or not tag_trust.strip()
@@ -148,11 +147,12 @@ def _verify_source(checkout: Path, tag: str, trust: str) -> None:
             raise GitHubPublishError("GitHub release tag signature is invalid") from error
     # Keep the active repository environment; resolving a venv executable
     # escapes it to the system interpreter on hosted runners.
-    python = Path(sys.executable)
     _run(
         (
-            str(python),
-            str(checkout / "tools/release/metadata.py"),
+            sys.executable,
+            "-B",
+            "-m",
+            "tools.release.metadata",
             "--tag",
             tag,
         ),

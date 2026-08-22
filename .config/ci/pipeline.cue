@@ -139,7 +139,7 @@ gitlab: {
 		variables: GIT_DEPTH: "0"
 		before_script: #qualityBootstrap
 		script: [
-			"uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py",
+			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata",
 			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository",
 		]
 	}
@@ -155,7 +155,7 @@ gitlab: {
 		]])
 		script: [
 			"git merge-base --is-ancestor origin/main \"$CI_COMMIT_SHA\"",
-			"uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py",
+			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata",
 			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository",
 		]
 	}
@@ -167,7 +167,7 @@ gitlab: {
 			"test -f \"${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}\"",
 		]])
 		script: [
-			"uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --tag \"$CI_COMMIT_TAG\"",
+			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata --tag \"$CI_COMMIT_TAG\"",
 			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.forge.tag_signature . \"$CI_COMMIT_TAG\" \"$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST\"",
 		]
 	}
@@ -326,7 +326,7 @@ githubVerify: {
 				name: "Confirm accepted source and metadata"
 				run: """
 					uv sync --locked --all-groups
-					uv run --locked --no-sync python tools/release/metadata.py
+					uv run --locked --no-sync python -m tools.release.metadata
 					uv run --locked --no-sync python -m tools.quality.repository
 
 					"""
@@ -355,7 +355,7 @@ githubVerify: {
 					git fetch origin main dev --tags --force --prune --prune-tags
 					git merge-base --is-ancestor origin/main "${{ github.event.pull_request.head.sha }}"
 					uv sync --locked --all-groups
-					uv run --locked --no-sync python tools/release/metadata.py
+					uv run --locked --no-sync python -m tools.release.metadata
 					uv run --locked --no-sync python -m tools.quality.repository
 					"""
 			}]
@@ -385,7 +385,7 @@ githubVerify: {
 				run:  "uv run --locked --no-sync python -m tools.release.publish prepare-checkout --tag \"$GITHUB_REF_NAME\" --commit-oid \"$GITHUB_SHA\""
 			}, {
 				name: "Verify exact release metadata"
-				run:  "uv run --locked --no-sync python tools/release/metadata.py --tag \"$GITHUB_REF_NAME\""
+				run:  "uv run --locked --no-sync python -m tools.release.metadata --tag \"$GITHUB_REF_NAME\""
 			}, {
 				name: "Verify repository governance"
 				run:  "uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/test_publish.py tests/release/test_publish_gitlab.py"

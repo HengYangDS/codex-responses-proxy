@@ -12,8 +12,9 @@ from typing import Annotated
 
 from cyclopts import App, Parameter
 
+from tools.release import identity
+
 ROOT = Path(__file__).resolve().parents[2]
-SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 CHANGELOG_HEADING = re.compile(
     r"^## \[(?P<version>Unreleased|(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))\](?: - (?P<date>\d{4}-\d{2}-\d{2}))?$"
 )
@@ -23,7 +24,7 @@ def read_version() -> str:
     """Return the repository release version after strict SemVer validation."""
 
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-    if not SEMVER.fullmatch(version):
+    if not identity.is_version(version):
         raise ValueError(f"VERSION is not a release SemVer: {version!r}")
     return version
 
@@ -55,13 +56,8 @@ def known_release_versions() -> list[str]:
     """Return this checkout's product tags in descending SemVer order."""
 
     tags = _git("tag", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
-    return [
-        tag.removeprefix("v")
-        for tag in sorted(
-            tags, key=lambda value: _version_key(value.removeprefix("v")), reverse=True
-        )
-        if re.fullmatch(r"v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", tag)
-    ]
+    versions = [identity.version_from_tag(tag) for tag in tags if identity.is_tag(tag)]
+    return sorted(versions, key=_version_key, reverse=True)
 
 
 def changelog_releases(path: Path | None = None) -> list[tuple[str, str]]:
@@ -232,7 +228,7 @@ def check_governance_contract() -> None:
     if not readme.startswith("# Codex Responses Proxy\n"):
         raise ValueError("README.md must use the formal Project Name as its title")
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    if "python tools/release/metadata.py" not in ci:
+    if "python -m tools.release.metadata" not in ci:
         raise ValueError("GitLab CI must execute the release and governance checker")
     if "verify-release-tag:" not in ci or "tools.forge.tag_signature" not in ci:
         raise ValueError("GitLab CI must verify the exact trusted product tag")

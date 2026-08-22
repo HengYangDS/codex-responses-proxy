@@ -9,8 +9,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from tools.release import assemble_assets, signing
-from tools.release.publication.git import _TAG
+from tools.release import assemble_assets, identity, signing
 
 
 class GitLabPublishError(RuntimeError):
@@ -49,7 +48,7 @@ def publish(
 ) -> str:
     """Upload, re-download, verify, then create or validate one GitLab Release."""
 
-    if not api_base.startswith(("http://", "https://")) or _TAG.fullmatch(tag) is None:
+    if not api_base.startswith(("http://", "https://")) or not identity.is_tag(tag):
         raise GitLabPublishError("GitLab API base or release tag is invalid")
     if project_id < 1 or not source.is_dir() or source.is_symlink():
         raise GitLabPublishError("GitLab project or release asset directory is invalid")

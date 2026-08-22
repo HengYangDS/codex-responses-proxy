@@ -71,7 +71,7 @@ class TestVerificationContracts:
         assert "uv sync --locked --all-groups" not in metadata_job
         locked_python = "uv run --locked --no-sync --python python --no-python-downloads"
         assert "python tools/" not in metadata_job.replace(f"{locked_python} python tools/", "")
-        assert f"{locked_python} python tools/release/metadata.py" in metadata_job
+        assert f"{locked_python} python -m tools.release.metadata" in metadata_job
         assert f"{locked_python} python -m tools.quality.repository" in metadata_job
         assert "python -m pytest" not in metadata_job
 

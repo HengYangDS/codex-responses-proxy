@@ -6,9 +6,8 @@ import re
 from collections.abc import Mapping
 from typing import Final, cast
 
-from tools.release import product_assets
+from tools.release import identity, product_assets
 
-_TAG: Final = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _OID: Final = re.compile(r"^[0-9a-f]{40,64}$")
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
 _FORGE_FIELDS: Final = frozenset(
@@ -120,7 +119,7 @@ def _evaluate_forge(
     if (
         evidence.get("provider") != provider
         or evidence.get("tag") != tag
-        or not _TAG.fullmatch(tag)
+        or not identity.is_tag(tag)
     ):
         return None, [f"{provider}.invalid_evidence"]
     if not isinstance(evidence.get("repository"), str) or not evidence["repository"]:
@@ -201,7 +200,7 @@ def _validated_assets(provider: str, tag: str, assets: object) -> Mapping[str, o
         return None
     typed_assets = cast(Mapping[str, object], assets)
     expected_assets = product_assets.release_asset_names(
-        tag.removeprefix("v"),
+        identity.version_from_tag(tag),
         product_assets.RELEASE_PLATFORMS,
     )
     if set(typed_assets) != expected_assets:

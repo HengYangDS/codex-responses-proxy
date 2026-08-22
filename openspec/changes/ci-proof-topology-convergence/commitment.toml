@@ -18,6 +18,7 @@ scope = [
   "tools/ci/**",
   "tools/forge/tag_signature.py",
   "tools/git_environment.py",
+  "tools/quality/governance.py",
   "tools/quality/repository.py",
   "tools/release/publication/**",
   "tools/release/**",

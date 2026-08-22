@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 from tools.git_environment import immutable_remote_proof_environment
-
-_TAG = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+from tools.release import identity
 
 
 class GitProofError(RuntimeError):
@@ -23,7 +21,7 @@ def collect(*, provider: str, remote: str, tag: str, anchor: Path) -> dict[str, 
 
     if provider not in {"gitlab", "github"}:
         raise GitProofError("unknown publication provider")
-    if _TAG.fullmatch(tag) is None:
+    if not identity.is_tag(tag):
         raise GitProofError("publication tag must be exact vMAJOR.MINOR.PATCH")
     if not anchor.is_file() or anchor.is_symlink():
         raise GitProofError("publication trust anchor is unavailable")

@@ -132,7 +132,7 @@ verify-accepted-source:
     - git fetch --tags --force --prune --prune-tags origin
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
   script:
-    - uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py
+    - uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata
     - uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
 verify-promotion:
   stage: verify
@@ -158,7 +158,7 @@ verify-promotion:
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
   script:
     - git merge-base --is-ancestor origin/main "$CI_COMMIT_SHA"
-    - uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py
+    - uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata
     - uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
 verify-release-tag:
   stage: release
@@ -184,5 +184,5 @@ verify-release-tag:
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
     - test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"
   script:
-    - uv run --locked --no-sync --python python --no-python-downloads python tools/release/metadata.py --tag "$CI_COMMIT_TAG"
+    - uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata --tag "$CI_COMMIT_TAG"
     - uv run --locked --no-sync --python python --no-python-downloads python -m tools.forge.tag_signature . "$CI_COMMIT_TAG" "$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST"

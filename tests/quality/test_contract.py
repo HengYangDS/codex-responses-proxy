@@ -318,7 +318,7 @@ class TestQualityPolicyContracts:
                 "./*.md",
                 "./**/*.md",
             ),
-            (governance.sys.executable, "tools/release/metadata.py"),
+            (governance.sys.executable, "-m", "tools.release.metadata"),
             (governance.sys.executable, "-m", "tools.quality.repository"),
         ]
 

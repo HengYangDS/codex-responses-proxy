@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import importlib.util
+import importlib
 import re
 import subprocess
 import sys
@@ -13,8 +13,10 @@ from datetime import date
 from pathlib import Path
 from types import ModuleType
 
+from tools.release import identity
+
 ROOT = Path(__file__).resolve().parents[2]
-CHECKER = ROOT / "tools" / "release" / "metadata.py"
+METADATA_MODULE = "tools.release.metadata"
 TAG_REFRESH = "git fetch --tags --force --prune --prune-tags origin"
 APT_INSTALL = "apt-get install -qq -y --no-install-recommends"
 GITLAB_LOCKED_PYTHON = "uv run --locked --no-sync --python python --no-python-downloads"
@@ -65,7 +67,14 @@ def expect_rejection(text: str, description: str, *args: str) -> None:
         path = Path(handle.name)
         handle.write(text)
     try:
-        completed = _run(sys.executable, str(CHECKER), *args, "--changelog", str(path))
+        completed = _run(
+            sys.executable,
+            "-m",
+            METADATA_MODULE,
+            *args,
+            "--changelog",
+            str(path),
+        )
         require(
             completed.returncode != 0,
             f"release metadata checker accepted {description}",
@@ -77,12 +86,7 @@ def expect_rejection(text: str, description: str, *args: str) -> None:
 def load_checker() -> ModuleType:
     """Load the checker so pure policy units can replace Git observations."""
 
-    spec = importlib.util.spec_from_file_location("check_release_metadata", CHECKER)
-    if spec is None or spec.loader is None:
-        raise SystemExit("could not load release metadata checker")
-    checker = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(checker)
-    return checker
+    return importlib.import_module(METADATA_MODULE)
 
 
 def expect_value_error(action: Callable[[], object], message: str, description: str) -> None:
@@ -94,6 +98,25 @@ def expect_value_error(action: Callable[[], object], message: str, description: 
         require(message in str(exc), f"{description} returned an unclear error: {exc}")
     else:
         raise SystemExit(f"release metadata checker accepted {description}")
+
+
+def test_release_identity_has_one_strict_semver_and_tag_contract() -> None:
+    """Keep release versions and annotated tag names on one exact grammar."""
+
+    for version in ("0.0.0", "1.2.3", "20.56.300"):
+        assert identity.is_version(version)
+        tag = f"v{version}"
+        assert identity.is_tag(tag)
+        assert identity.version_from_tag(tag) == version
+    for invalid in ("01.2.3", "1.02.3", "1.2", "1.2.3-rc.1", "v1.2.3"):
+        assert not identity.is_version(invalid)
+    for invalid in ("1.2.3", "v01.2.3", "v1.2", "v1.2.3-rc.1"):
+        assert not identity.is_tag(invalid)
+        expect_value_error(
+            lambda value=invalid: identity.version_from_tag(value),
+            "exact vMAJOR.MINOR.PATCH",
+            f"invalid release tag {invalid!r}",
+        )
 
 
 def test_product_release_history_is_provider_neutral(*, mocker) -> None:
@@ -198,9 +221,9 @@ def test_exact_release_tag_contract(*, mocker) -> None:
 def test_release_metadata_command_has_no_forge_semantics() -> None:
     """Keep ordinary product validation independent from publication peers."""
 
-    completed = _run(sys.executable, str(CHECKER))
+    completed = _run(sys.executable, "-m", METADATA_MODULE)
     require_success(completed)
-    legacy = _run(sys.executable, str(CHECKER), "--provider", "gitlab")
+    legacy = _run(sys.executable, "-m", METADATA_MODULE, "--provider", "gitlab")
     require(legacy.returncode != 0, "metadata retained a Forge-specific compatibility flag")
 
 
@@ -403,12 +426,12 @@ def test_current_release_metadata_chronology() -> None:
     tag_exists = _run("git", "rev-parse", "--verify", f"refs/tags/v{version}").returncode == 0
     if heading in source and not tag_exists:
         subprocess.run(
-            [sys.executable, str(CHECKER), "--prepare-release"],
+            [sys.executable, "-m", METADATA_MODULE, "--prepare-release"],
             cwd=ROOT,
             check=True,
         )
     else:
-        subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT, check=True)
+        subprocess.run([sys.executable, "-m", METADATA_MODULE], cwd=ROOT, check=True)
         if tag_exists:
             expect_rejection(
                 source,
@@ -429,4 +452,4 @@ def test_current_release_metadata_chronology() -> None:
     expect_rejection(missing_tag_source, "a missing reachable tag")
     # Forge publication state is audited separately; product chronology has one
     # provider-neutral result for the exact local checkout.
-    subprocess.run([sys.executable, str(CHECKER)], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, "-m", METADATA_MODULE], cwd=ROOT, check=True)

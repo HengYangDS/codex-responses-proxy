@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Final
 
+from tools.release import identity
 from tools.release import product_assets as release_assets
 from tools.release.publication import hosted
 
@@ -128,7 +129,7 @@ def normalize(
             "prerelease": False,
         },
         "assets": release_assets.release_digests(
-            assets, tag.removeprefix("v"), release_assets.RELEASE_PLATFORMS
+            assets, identity.version_from_tag(tag), release_assets.RELEASE_PLATFORMS
         ),
     }
 
@@ -191,7 +192,7 @@ def collect(
     typed_release = _one(matches, "GitHub release record is missing or ambiguous")
     asset_records = _mappings(typed_release.get("assets"), "GitHub release assets are malformed")
     expected_names = release_assets.release_asset_names(
-        tag.removeprefix("v"), release_assets.RELEASE_PLATFORMS
+        identity.version_from_tag(tag), release_assets.RELEASE_PLATFORMS
     )
     selected_assets = {
         str(record.get("name")): hosted.api_bytes(

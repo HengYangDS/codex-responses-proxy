@@ -7,15 +7,13 @@ and never consumes this evidence as authority.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from codex_responses_proxy.service import digest
+from tools.release import identity
 from tools.release.publication import evaluator, git, github, gitlab
-
-_TAG = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
 
 class PublicationError(RuntimeError):
@@ -35,7 +33,7 @@ def verify(
 ) -> Mapping[str, Any]:
     """Return immutable evidence for exact signed releases on both Forges."""
 
-    if _TAG.fullmatch(tag) is None:
+    if not identity.is_tag(tag):
         raise PublicationError("publication tag must be exact vMAJOR.MINOR.PATCH")
     try:
         gitlab_git = git.collect(
