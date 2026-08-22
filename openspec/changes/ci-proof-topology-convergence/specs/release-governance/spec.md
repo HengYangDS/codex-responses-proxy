@@ -1,3 +1,8 @@
+## RENAMED Requirements
+
+- FROM: `### Requirement: Validation follows the release state`
+- TO: `### Requirement: Validation follows authorization and lifecycle state`
+
 ## MODIFIED Requirements
 
 ### Requirement: Validation follows authorization and lifecycle state
@@ -198,6 +203,8 @@ bundle.
 - **THEN** the other Forge MAY publish the unchanged complete bundle
 - **AND** the result SHALL be reported as one-sided publication rather than
   dual-Forge parity.
+
+## ADDED Requirements
 
 ### Requirement: CI projects the complete repository quality contract
 
