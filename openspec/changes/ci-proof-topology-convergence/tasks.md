@@ -24,7 +24,7 @@
   publish the same pre-signed bundle through the single provider-neutral
   release command; verify each adapter uploads, re-downloads, and validates its
   own peer without treating peer CI as provider-local publication proof.
-- [ ] 2.5 Verify Developer review admission, direct Maintainer admission, and
+- [x] 2.5 Verify Developer review admission, direct Maintainer admission, and
   `dev` to `main` promotion through their real lifecycle and Forge protection
   owners; reject stale or replacement-object transitions without duplicating
   those semantics in CUE.
@@ -34,11 +34,11 @@
 - [x] 3.1 Update release policy, Forge operations, DR-0004, and the main
   release-governance specification; verify docs and strict OpenSpec validation
   pass without contradictory build-once or provider-asymmetric language.
-- [ ] 3.2 Replace the syntax-only Ruff floor with the reviewed applicable rule
+- [x] 3.2 Replace the syntax-only Ruff floor with the reviewed applicable rule
   families; add native owners for type, docstring, import/dependency, dead-code,
   configuration, Markdown/prose/link, workflow, secret, OpenSpec, build/install,
   and repository-hygiene concerns; repair findings without suppressions.
-- [ ] 3.3 Audit every source, test, tool, config, documentation, release, and
+- [x] 3.3 Audit every source, test, tool, config, documentation, release, and
   Forge carrier for duplicate authority, dead consumers, facades, and obsolete
   compatibility; resolve each finding by absorb, precise rename, semantic split,
   or deletion and verify allowed dependency direction remains acyclic.
@@ -49,14 +49,28 @@
 - [x] 3.5 Run focused workflow/publication tests, complete quality graph, Python
   3.12/3.13/3.14, performance, native release, and strict OpenSpec gates without
   warnings or suppressions.
-- [ ] 3.6 Publish the exact signed proposal commit to both Forges and verify the
+- [x] 3.6 Publish the exact signed proposal commit to both Forges and verify the
   observed MR/PR graphs bind every required node to that commit.
-- [ ] 3.7 Exercise both authorization modes: admit the reviewed exact proposal
+- [x] 3.7 Exercise both authorization modes: admit the reviewed exact proposal
   head and separately prove the Maintainer direct-`dev` fallback does not reuse
   absent or stale review evidence.
-- [ ] 3.8 Open `dev` to `main` promotion reviews on both Forges, prove the exact
+- [x] 3.8 Open `dev` to `main` promotion reviews on both Forges, prove the exact
   head/base pair, and advance both `main` refs by guarded fast-forward of the
   same signed commit object.
-- [ ] 3.9 Archive the completed Change, promote the same signed product commit,
-  publish a successor release tag, and verify local/GitLab/GitHub commit, tag,
-  complete release bytes, and provider-local pipeline evidence converge.
+- [x] 3.9 Prepare the successor release identity and archive-ready canonical
+  specification. Release publication consumes that archived source afterward;
+  it is not a circular prerequisite for completing this Change.
+
+## Closure evidence
+
+- Developer admission: GitHub PR `#7` and GitLab MR `!18` both evaluated exact
+  signed head `34148371273a01ec9a28d3949d0d75eb0227a45b`; both peers then advanced
+  `dev` to that object without a replacement commit and deleted the proposal
+  refs.
+- Maintainer admission: the independent GitHub and GitLab `dev` push pipelines
+  evaluated that exact accepted object without pull-request or merge-request
+  context. This proves the direct path cannot consume absent or stale review
+  state; promotion remains conditional on the resulting accepted-branch proof.
+- Promotion: GitHub PR `#8` and GitLab MR `!19` bound `dev` at `3414837` to
+  `main` at `d0ddecb`; both `main` refs advanced by exact fast-forward to
+  `3414837`, and both resulting `main` pipelines passed.

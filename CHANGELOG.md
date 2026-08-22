@@ -7,11 +7,29 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.57] - 2026-08-22
+
 ### Changed
 
+- Generate the GitHub and GitLab verification graphs from one CUE definition,
+  with separately observable source, quality, Python 3.12–3.14, performance,
+  native-platform, promotion, and release responsibilities.
+- Strengthen the repository quality contract for formatting, types, docstrings,
+  dependencies, dead code, naming, documentation, links, secrets, architecture,
+  coverage, and repository hygiene without warning suppressions.
+- Add measured latency, throughput, startup, handoff, status, streaming, and
+  large-payload memory budgets using the locked `pyperf` toolchain.
+- Build one provider-neutral signed release bundle for independent byte-exact
+  publication and verification by GitHub and GitLab.
 - Require current upgrades to begin from the canonical installed executable;
   remove the consumed alternate-launcher migration bridge and its parallel
   handoff authority.
+
+### Fixed
+
+- Bind macOS test services to their exact launchd target and teardown owner so
+  native lifecycle tests cannot leave temporary background services or touch
+  the installed production listener.
 
 ## [2.0.56] - 2026-08-21
 
