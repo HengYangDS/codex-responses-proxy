@@ -11,16 +11,18 @@ from pathlib import Path
 import pytest
 
 from tools.forge import context, tag_signature
+from tools.git_environment import isolated_config_environment
 from tools.release import tag
 
 
 def _run(*args: str, cwd: Path, environment: dict[str, str] | None = None) -> str:
-    value = os.environ.copy()
-    value.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
-    if environment:
-        value.update(environment)
     return subprocess.run(
-        args, cwd=cwd, env=value, check=True, capture_output=True, text=True
+        args,
+        cwd=cwd,
+        env=isolated_config_environment(environment),
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
 
 

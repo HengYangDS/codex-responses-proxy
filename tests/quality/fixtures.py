@@ -12,6 +12,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
 
+from tools.git_environment import isolated_config_environment
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -35,15 +37,11 @@ def checker() -> ModuleType:
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     """Run isolated fixture Git and fail with its diagnostic."""
-    environment = os.environ | {
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": os.devnull,
-    }
     result = subprocess.run(
         ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args],
         capture_output=True,
         check=False,
-        env=environment,
+        env=isolated_config_environment(),
     )
     if result.returncode:
         raise AssertionError(result.stderr.decode(errors="replace"))

@@ -12,6 +12,7 @@ from typing import TypedDict
 import pytest
 
 from tools.forge.project import ProjectionError, project
+from tools.git_environment import isolated_config_environment
 
 
 class ForgeFixture(TypedDict):
@@ -27,10 +28,13 @@ class ForgeFixture(TypedDict):
 def run(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
     """Run Git with isolated user configuration."""
 
-    environment = os.environ.copy()
-    environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
     result = subprocess.run(
-        args, cwd=cwd, env=environment, text=True, capture_output=True, check=False
+        args,
+        cwd=cwd,
+        env=isolated_config_environment(),
+        text=True,
+        capture_output=True,
+        check=False,
     )
     if check and result.returncode:
         raise RuntimeError(result.stderr or result.stdout)

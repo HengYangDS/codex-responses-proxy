@@ -193,6 +193,10 @@ class TestStructuralQualityContracts:
             ROOT / "tools/forge/project.py",
             ROOT / "tools/quality/repository_state.py",
             ROOT / "tools/release/tag.py",
+            ROOT / "tests/forge/test_audit.py",
+            ROOT / "tests/forge/test_forward_only.py",
+            ROOT / "tests/forge/test_tagging.py",
+            ROOT / "tests/quality/fixtures.py",
         )
 
         assert owner.is_file()

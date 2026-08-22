@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
@@ -14,15 +13,14 @@ from tools.forge.audit import (
     exact_tag_parity,
     remote_branch_oids,
 )
+from tools.git_environment import isolated_config_environment
 
 
 def _run(*args: str, cwd: Path) -> str:
-    environment = os.environ.copy()
-    environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
     return subprocess.run(
         args,
         cwd=cwd,
-        env=environment,
+        env=isolated_config_environment(),
         check=True,
         text=True,
         capture_output=True,
