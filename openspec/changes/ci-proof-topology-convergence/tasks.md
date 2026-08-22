@@ -42,11 +42,11 @@
   Forge carrier for duplicate authority, dead consumers, facades, and obsolete
   compatibility; resolve each finding by absorb, precise rename, semantic split,
   or deletion and verify allowed dependency direction remains acyclic.
-- [ ] 3.4 Add deterministic Proxy performance benchmarks and reviewed budgets
+- [x] 3.4 Add deterministic Proxy performance benchmarks and reviewed budgets
   for startup, request/stream overhead, forwarding throughput, large-payload
   memory, registry resolution, protocol transforms, status, and handoff; record
   machine-readable repeated evidence and profile only failed metrics.
-- [ ] 3.5 Run focused workflow/publication tests, complete quality graph, Python
+- [x] 3.5 Run focused workflow/publication tests, complete quality graph, Python
   3.12/3.13/3.14, performance, native release, and strict OpenSpec gates without
   warnings or suppressions.
 - [ ] 3.6 Publish the exact signed proposal commit to both Forges and verify the
