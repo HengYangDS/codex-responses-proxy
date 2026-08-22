@@ -231,18 +231,24 @@ def test_exact_local_object_forge_publication_contract() -> None:
     """Require one provider-parametric projector that never recreates Git objects."""
 
     source = (ROOT / "tools" / "forge" / "project.py").read_text(encoding="utf-8")
+    git_environment = (ROOT / "tools" / "git_environment.py").read_text(encoding="utf-8")
     require_tokens(
         source,
         (
             "provider: str",
             '("main", source), ("dev", source)',
-            '"GIT_CONFIG_GLOBAL": os.devnull',
+            "isolated_config_environment",
             "verify-commit",
             "runner_admission",
             '"push", "--atomic"',
             "--force-with-lease=refs/heads/",
         ),
         "exact local-object projector",
+    )
+    require_tokens(
+        git_environment,
+        ('"GIT_CONFIG_GLOBAL": os.devnull', '"GIT_CONFIG_NOSYSTEM": "1"'),
+        "canonical Git subprocess environment",
     )
     require(
         "canonical GitLab" not in source and "GitLab receives" not in source,

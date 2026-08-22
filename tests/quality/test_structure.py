@@ -186,6 +186,23 @@ class TestStructuralQualityContracts:
             )
         )
 
+    def test_git_subprocess_isolation_has_one_semantic_owner(self) -> None:
+        owner = ROOT / "tools/git_environment.py"
+        consumers = (
+            ROOT / "tools/forge/audit.py",
+            ROOT / "tools/forge/project.py",
+            ROOT / "tools/quality/repository_state.py",
+            ROOT / "tools/release/tag.py",
+        )
+
+        assert owner.is_file()
+        assert owner.read_text(encoding="utf-8").count("GIT_CONFIG_NOSYSTEM") == 1
+        for consumer in consumers:
+            source = consumer.read_text(encoding="utf-8")
+            assert "from tools.git_environment import isolated_config_environment" in source
+            assert "GIT_CONFIG_NOSYSTEM" not in source
+            assert "GIT_CONFIG_GLOBAL" not in source
+
     def test_package_initializer_contract_is_explicit_and_configurable(self) -> None:
         quality_checker = checker()
         with tempfile.TemporaryDirectory() as directory:

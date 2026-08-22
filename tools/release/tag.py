@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import tempfile
@@ -11,6 +10,7 @@ from pathlib import Path
 from cyclopts import App
 
 from tools.forge import context, tag_signature
+from tools.git_environment import isolated_config_environment
 from tools.release.publication.git import _TAG
 
 
@@ -25,17 +25,11 @@ def _run(repository: Path, *args: str, environment: dict[str, str] | None = None
             check=True,
             capture_output=True,
             text=True,
-            env=environment or _environment(),
+            env=environment or isolated_config_environment(),
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError) as error:
         detail = error.stderr.strip() if isinstance(error, subprocess.CalledProcessError) else ""
         raise TagError(detail or "Git release tag operation failed") from error
-
-
-def _environment() -> dict[str, str]:
-    value = os.environ.copy()
-    value.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
-    return value
 
 
 def _metadata(repository: Path, *args: str) -> None:
@@ -51,7 +45,7 @@ def _metadata(repository: Path, *args: str) -> None:
             cwd=repository,
             check=True,
             capture_output=True,
-            env=_environment(),
+            env=isolated_config_environment(),
         )
     except (OSError, subprocess.CalledProcessError) as error:
         raise TagError("product release metadata validation failed") from error

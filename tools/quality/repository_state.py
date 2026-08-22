@@ -9,6 +9,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from tools.git_environment import isolated_config_environment
+
 
 def _hash_field(digest: Any, label: bytes, value: bytes) -> None:
     """Add one length-delimited field to a repository fingerprint."""
@@ -19,13 +21,14 @@ def _hash_field(digest: Any, label: bytes, value: bytes) -> None:
 def _git_output(root: Path, *args: str, allow_absent_head: bool = False) -> bytes:
     """Return raw Git output without inheriting host-specific configuration."""
 
-    environment = os.environ | {
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": os.devnull,
-    }
     command = ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args]
     try:
-        return subprocess.run(command, capture_output=True, check=True, env=environment).stdout
+        return subprocess.run(
+            command,
+            capture_output=True,
+            check=True,
+            env=isolated_config_environment(),
+        ).stdout
     except subprocess.CalledProcessError as error:
         if allow_absent_head:
             return b"<unborn>"

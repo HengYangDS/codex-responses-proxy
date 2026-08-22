@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -13,17 +12,11 @@ from typing import Annotated, Any
 
 from cyclopts import App, Parameter
 
+from tools.git_environment import isolated_config_environment
+
 ROOT = Path(__file__).resolve().parents[2]
 WORKSPACE_POLICY = ROOT / ".ethos/workspace.toml"
 PERSISTENT_BRANCHES = ("main", "dev")
-
-
-def _environment() -> dict[str, str]:
-    """Return a Git environment independent from personal configuration."""
-
-    environment = os.environ.copy()
-    environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
-    return environment
 
 
 def command(*args: str, cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -32,7 +25,7 @@ def command(*args: str, cwd: Path = ROOT, check: bool = True) -> subprocess.Comp
     result = subprocess.run(
         args,
         cwd=cwd,
-        env=_environment(),
+        env=isolated_config_environment(),
         text=True,
         capture_output=True,
         check=False,

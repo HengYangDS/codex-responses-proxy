@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,18 +11,11 @@ from typing import Annotated
 from cyclopts import App, Parameter
 
 from tools.forge import runner_admission
+from tools.git_environment import isolated_config_environment
 
 
 class ProjectionError(RuntimeError):
     """Exact local-object publication cannot complete safely."""
-
-
-def _environment() -> dict[str, str]:
-    """Return a Git environment independent from personal global configuration."""
-
-    environment = os.environ.copy()
-    environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
-    return environment
 
 
 def _git(
@@ -39,7 +31,7 @@ def _git(
             check=False,
             capture_output=True,
             text=True,
-            env=_environment(),
+            env=isolated_config_environment(),
         )
     except OSError as error:
         raise ProjectionError("Git publication operation is unavailable") from error
