@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from decimal import Decimal
 from importlib import import_module
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any
 
 from cyclopts import App, Parameter
 
@@ -31,14 +31,6 @@ _POLICY_KEYS = {
     "remediation",
     "review_condition",
 }
-
-
-class CoverageData(Protocol):
-    """Minimal coverage.py surface needed to load and report current data."""
-
-    def load(self) -> None: ...
-
-    def json_report(self, *, outfile: str) -> float: ...
 
 
 def _ratio_gaps(
@@ -96,7 +88,7 @@ def statement_gaps(totals: Mapping[str, Any], floor: float) -> list[str]:
     )
 
 
-def measured_report(coverage: CoverageData) -> dict[str, Any]:
+def measured_report(coverage: Any) -> dict[str, Any]:
     """Return the exact configured coverage report."""
 
     with tempfile.TemporaryDirectory() as directory:
@@ -213,7 +205,7 @@ def _command(
 
     policy = load_policy(policy_path)
     floor = policy["minimum_percent"]
-    coverage: CoverageData = import_module("coverage").Coverage()
+    coverage = import_module("coverage").Coverage()
     coverage.load()
     report = measured_report(coverage)
     totals = report["totals"]

@@ -297,6 +297,7 @@ class TestQualityPolicyContracts:
             (
                 "vulture",
                 "src/codex_responses_proxy",
+                "tools",
                 "--config",
                 ".config/checks/dead-code/vulture.toml",
             ),
