@@ -25,7 +25,9 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
     for key, resolvers in tuple(WorkflowLoader.yaml_implicit_resolvers.items()):
         WorkflowLoader.yaml_implicit_resolvers[key] = [
-            resolver for resolver in resolvers if resolver[0] != "tag:yaml.org,2002:bool"
+            resolver
+            for resolver in resolvers
+            if resolver[0] != "tag:yaml.org,2002:bool"
         ]
     data = yaml.load(path.read_text(encoding="utf-8"), Loader=WorkflowLoader)
     assert isinstance(data, dict)
@@ -43,9 +45,13 @@ def _mapping(value: object) -> Mapping[str, Any]:
 def test_forge_workflows_are_generated_from_one_declarative_graph() -> None:
     """Keep Forge syntax as projections, never independent topology owners."""
 
-    repository = (ROOT / "tools" / "quality" / "repository.py").read_text(encoding="utf-8")
+    repository = (ROOT / "tools" / "quality" / "repository.py").read_text(
+        encoding="utf-8"
+    )
     projector = (ROOT / "tools" / "ci" / "project.py").read_text(encoding="utf-8")
-    governance = (ROOT / "tools" / "quality" / "governance.py").read_text(encoding="utf-8")
+    governance = (ROOT / "tools" / "quality" / "governance.py").read_text(
+        encoding="utf-8"
+    )
     assert "reconcile_ci_projections" not in repository
     assert 'sys.executable, "-m", "tools.ci.project"' in governance
     assert 'MODEL = ROOT / ".config/ci/pipeline.cue"' in projector
@@ -101,6 +107,12 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
         "github.head_ref == 'dev'"
     )
     assert _mapping(github_jobs["tag-metadata"])["if"] == "github.ref_type == 'tag'"
+    tag_steps = _mapping(github_jobs["tag-metadata"])["steps"]
+    assert any(
+        _mapping(step).get("uses")
+        == "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
+        for step in tag_steps
+    )
 
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
     rules = _mapping(gitlab["workflow"])["rules"]
@@ -123,7 +135,9 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     matrix = _mapping(_mapping(python["parallel"])["matrix"][0])
     assert matrix["PYTHON_VERSION"] == ["3.12", "3.13", "3.14"]
     assert "nox -s full" not in "\n".join(python["script"])
-    assert any('nox -s "tests-$PYTHON_VERSION"' in command for command in python["script"])
+    assert any(
+        'nox -s "tests-$PYTHON_VERSION"' in command for command in python["script"]
+    )
     assert "verify-accepted-source" in gitlab
     promotion = _mapping(gitlab["verify-promotion"])
     assert promotion["rules"] == [
@@ -136,8 +150,12 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     tag = _mapping(gitlab["verify-release-tag"])
     assert tag["rules"] == [{"if": "$CI_COMMIT_TAG"}]
     assert _mapping(tag["variables"])["GIT_DEPTH"] == "0"
-    assert "git fetch --tags --force --prune --prune-tags origin" in tag["before_script"]
-    assert 'test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"' in tag["before_script"]
+    assert (
+        "git fetch --tags --force --prune --prune-tags origin" in tag["before_script"]
+    )
+    assert (
+        'test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"' in tag["before_script"]
+    )
     assert any("tools.release.metadata --tag" in command for command in tag["script"])
     assert any("tools.forge.tag_signature" in command for command in tag["script"])
 
@@ -204,13 +222,15 @@ def test_python_matrix_rejects_invalid_or_mismatched_release_runtime(
 
 def test_native_release_runtime_is_exact_and_platform_independent() -> None:
     native_runtime = (ROOT / ".python-release").read_text(encoding="ascii").strip()
-    image = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
-        "codex-responses-proxy"
-    ]["linux-release-image"]
+    image = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))[
+        "tool"
+    ]["codex-responses-proxy"]["linux-release-image"]
     image_version = re.search(r"python:(\d+\.\d+\.\d+)-", image)
     nox_source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
-    native_job = workflow.split("\n  native-assets:", 1)[1].split("\n  native-linux:", 1)[0]
+    native_job = workflow.split("\n  native-assets:", 1)[1].split(
+        "\n  native-linux:", 1
+    )[0]
 
     assert re.fullmatch(r"\d+\.\d+\.\d+", native_runtime)
     assert image_version is not None
@@ -226,7 +246,12 @@ def test_single_bundle_is_built_once_and_forges_only_project_it() -> None:
     verify = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
     gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
 
-    assert verify.count("uv run --locked --no-sync python -m tools.release.assemble_assets") == 1
+    assert (
+        verify.count(
+            "uv run --locked --no-sync python -m tools.release.assemble_assets"
+        )
+        == 1
+    )
     assert verify.count("--sign") == 1
     assert "container: ${{ needs.python-matrix.outputs.linux-release-image }}" in verify
     publish = (ROOT / "tools/release/publish.py").read_text(encoding="utf-8")
@@ -266,7 +291,10 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     }
     assert "python -m pip install" not in text
     assert "uv sync --locked --group quality --no-install-project" in text
-    assert "apt-get install -qq -y --no-install-recommends binutils" in quality["before_script"]
+    assert (
+        "apt-get install -qq -y --no-install-recommends binutils"
+        in quality["before_script"]
+    )
     python = _mapping(gitlab["verify-python"])
     assert "uv python install --no-bin $PYTHON_VERSION" in python["before_script"]
 
@@ -314,7 +342,11 @@ def test_github_python_quality_installs_its_declared_projection_toolchain() -> N
     jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
     quality = _mapping(jobs["python-quality"])
     steps = tuple(_mapping(step) for step in quality["steps"])
-    mise = next(step for step in steps if str(step.get("uses", "")).startswith("jdx/mise-action@"))
+    mise = next(
+        step
+        for step in steps
+        if str(step.get("uses", "")).startswith("jdx/mise-action@")
+    )
 
     assert mise["uses"] == "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
     assert _mapping(mise["with"]) == {
@@ -379,9 +411,13 @@ def _assert_github_required_tokens(text: str) -> None:
     ]
     for token in required:
         if token not in text:
-            raise AssertionError(f"GitHub Actions verification contract is missing {token!r}")
+            raise AssertionError(
+                f"GitHub Actions verification contract is missing {token!r}"
+            )
     if "contents: write" in text:
-        raise AssertionError("verification workflow must use read-only repository permissions")
+        raise AssertionError(
+            "verification workflow must use read-only repository permissions"
+        )
 
 
 def _assert_github_matrix_contract(text: str) -> None:
@@ -405,9 +441,13 @@ def _assert_github_matrix_contract(text: str) -> None:
         "RELEASE_ASSET_SIGNING_KEY_PATH: "
         "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY }}"
     ) in text:
-        raise AssertionError("the product signer must receive a key path, not secret text")
+        raise AssertionError(
+            "the product signer must receive a key path, not secret text"
+        )
     if "pull_request_target:" in text:
-        raise AssertionError("verification workflow must not execute privileged pull-request code")
+        raise AssertionError(
+            "verification workflow must not execute privileged pull-request code"
+        )
     if "@main" in text or "@master" in text:
         raise AssertionError("GitHub Actions must use immutable action revisions")
 
@@ -423,8 +463,12 @@ def _assert_github_platform_contract(text: str) -> None:
         mac_block.count(setup_uv) != 1
         or "cache-suffix: ${{ matrix.python-version }}" not in mac_block
     ):
-        raise AssertionError("macOS Python matrix must isolate setup-uv caches by interpreter")
-    test_owner = 'uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"'
+        raise AssertionError(
+            "macOS Python matrix must isolate setup-uv caches by interpreter"
+        )
+    test_owner = (
+        'uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"'
+    )
     if test_owner not in mac_block:
         raise AssertionError(f"macOS Python matrix must run {test_owner}")
     for token in (
@@ -451,15 +495,20 @@ def _assert_github_platform_contract(text: str) -> None:
     for job_id in host_native_jobs:
         steps = _mapping(jobs[job_id])["steps"]
         assert any(
-            _mapping(step).get("uses", "").startswith("actions/setup-python@") for step in steps
+            _mapping(step).get("uses", "").startswith("actions/setup-python@")
+            for step in steps
         ), f"{job_id} must use pinned setup-python"
     if windows_block.count("actions/setup-python@") != 1:
-        raise AssertionError("Windows verification must use exactly one pinned setup-python action")
+        raise AssertionError(
+            "Windows verification must use exactly one pinned setup-python action"
+        )
     if (
         windows_block.count(setup_uv) != 1
         or "cache-suffix: ${{ matrix.python-version }}" not in windows_block
     ):
-        raise AssertionError("Windows Python matrix must isolate setup-uv caches by interpreter")
+        raise AssertionError(
+            "Windows Python matrix must isolate setup-uv caches by interpreter"
+        )
     quality_start = text.index("\n  python-quality:")
     quality_end = text.index("\n  native-assets:", quality_start)
     quality_block = text[quality_start:quality_end]
@@ -483,16 +532,16 @@ def _assert_github_governance_contract(text: str) -> None:
         for token in ("fetch-depth: 0", "fetch-tags: true"):
             if token not in block:
                 raise AssertionError(f"governance checkout must contain {token!r}")
-    tag_check = (
-        'uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"'
-    )
+    tag_check = 'uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"'
     branch_check = "uv run --locked --no-sync python -m tools.release.metadata"
     if tag_check not in tag_block:
         raise AssertionError("tag metadata must validate the exact annotated tag")
     if branch_check not in accepted_block:
         raise AssertionError("accepted source must validate mainline metadata")
     if "--prepare-release" in accepted_block:
-        raise AssertionError("accepted source verification must not require release preparation")
+        raise AssertionError(
+            "accepted source verification must not require release preparation"
+        )
 
 
 def _assert_github_native_and_forbidden_contract(text: str) -> None:
@@ -503,9 +552,15 @@ def _assert_github_native_and_forbidden_contract(text: str) -> None:
     native_end = text.index("\n  release-assets:", native_start)
     native_block = text[native_start:native_end]
     if "shell: bash" in native_block or "set -euo pipefail" in native_block:
-        raise AssertionError("native asset builds must use each runner's native command shell")
-    if "shell:" in windows_block or re.search(r"(?:^|\s)\S+\.sh(?:\s|$)", windows_block):
-        raise AssertionError("Windows verification must not depend on Bash or POSIX shell scripts")
+        raise AssertionError(
+            "native asset builds must use each runner's native command shell"
+        )
+    if "shell:" in windows_block or re.search(
+        r"(?:^|\s)\S+\.sh(?:\s|$)", windows_block
+    ):
+        raise AssertionError(
+            "Windows verification must not depend on Bash or POSIX shell scripts"
+        )
     if "secrets:" in windows_block or "permissions:" in windows_block:
         raise AssertionError(
             "Windows verification must inherit the read-only, secret-free workflow contract"
@@ -558,5 +613,7 @@ def test_gitlab_pytest_invocations_preserve_repository_module_resolution() -> No
     text = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
 
     if f"{GITLAB_LOCKED_PYTHON} pytest" in text:
-        raise AssertionError("GitLab must not invoke the pytest console script directly")
+        raise AssertionError(
+            "GitLab must not invoke the pytest console script directly"
+        )
     assert f"{GITLAB_LOCKED_PYTHON} pytest" not in text

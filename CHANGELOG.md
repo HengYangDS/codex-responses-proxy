@@ -21,6 +21,8 @@ publication authority.
   large-payload memory budgets using the locked `pyperf` toolchain.
 - Build one provider-neutral signed release bundle for independent byte-exact
   publication and verification by GitHub and GitLab.
+- Provision the repository-owned projection toolchain in release-tag governance
+  so a clean hosted runner can verify the generated Forge workflows.
 - Require current upgrades to begin from the canonical installed executable;
   remove the consumed alternate-launcher migration bridge and its parallel
   handoff authority.

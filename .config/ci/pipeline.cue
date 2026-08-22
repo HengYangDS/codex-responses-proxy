@@ -392,6 +392,12 @@ githubVerify: {
 			}, {
 				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
 			}, {
+				uses: #Toolchains.githubMiseAction
+				with: {
+					install: true
+					cache:   true
+				}
+			}, {
 				name: "Install the complete locked tool environment"
 				run:  "uv sync --locked --all-groups"
 			}, {

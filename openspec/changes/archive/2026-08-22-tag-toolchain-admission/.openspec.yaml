@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-22
+goal: A release tag verifies the same SSOT-backed governance contract as review
+  CI without depending on undeclared runner software.
+skip_specs: true
