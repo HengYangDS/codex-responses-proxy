@@ -78,7 +78,9 @@ class TestVerificationContracts:
             "verify-release-tag:", 1
         )[0]
         assert "*install-uv" not in metadata_job
-        assert "uv sync --locked --group quality --no-install-project" in metadata_job
+        assert (
+            "uv sync --locked --group quality --python python --no-python-downloads" in metadata_job
+        )
         assert "uv sync --locked --all-groups" not in metadata_job
         locked_python = "uv run --locked --no-sync --python python --no-python-downloads"
         assert "python tools/" not in metadata_job.replace(f"{locked_python} python tools/", "")
@@ -577,7 +579,7 @@ class TestVerificationContracts:
         quality_job = github.split("  python-quality:", 1)[1].split("  native-assets:", 1)[0]
         assert "uv run --locked --group quality nox -s quality" in quality_job
         assert "uv sync --locked --only-group quality" not in quality_job
-        assert "uv sync --locked --group quality --no-install-project" in gitlab
+        assert "uv sync --locked --group quality --python python --no-python-downloads" in gitlab
         assert (
             "uv run --locked --no-sync --python python --no-python-downloads nox -s quality"
             in gitlab
@@ -591,7 +593,8 @@ class TestVerificationContracts:
     def test_hosted_governance_tools_use_the_complete_locked_environment(self) -> None:
         github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-        assert "uv sync --locked --group quality --no-install-project" in gitlab
+        source = gitlab.split("source-and-governance:", 1)[1].split("verify-python:", 1)[0]
+        assert "uv sync --locked --group quality --python python --no-python-downloads" in source
         assert "uv sync --locked --all-groups" in github
 
     def test_performance_is_an_independent_locked_proof_surface(self) -> None:
