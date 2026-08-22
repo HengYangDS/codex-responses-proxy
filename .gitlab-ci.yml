@@ -42,7 +42,7 @@ source-and-governance:
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin
-    - mise exec --locked -- uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+    - mise exec --locked -- uv sync --locked --group quality --python python --no-python-downloads
   script:
     - mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links
 verify-python:
@@ -74,7 +74,7 @@ verify-python:
     - apt-get install -qq -y --no-install-recommends git openssh-client
     - apt-get install -qq -y --no-install-recommends binutils
     - git fetch --tags --force --prune --prune-tags origin
-    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+    - uv sync --locked --group quality --python python --no-python-downloads
     - uv python install --no-bin $PYTHON_VERSION
   script:
     - python --version
@@ -107,7 +107,7 @@ verify-python-quality:
     - apt-get install -qq -y --no-install-recommends binutils
     - git fetch --tags --force --prune --prune-tags origin
   script:
-    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+    - uv sync --locked --group quality --python python --no-python-downloads
     - uv run --locked --no-sync --python python --no-python-downloads nox -s quality
 verify-performance:
   stage: verify
@@ -131,7 +131,7 @@ verify-performance:
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends git openssh-client
   script:
-    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+    - uv sync --locked --group quality --python python --no-python-downloads
     - uv run --locked --no-sync --python python --no-python-downloads nox -s performance -- "$CI_PROJECT_DIR/.performance"
   artifacts:
     when: always
@@ -159,7 +159,7 @@ verify-accepted-source:
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends git openssh-client
     - git fetch --tags --force --prune --prune-tags origin
-    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+    - uv sync --locked --group quality --python python --no-python-downloads
   script:
     - uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata
     - uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
@@ -184,7 +184,7 @@ verify-promotion:
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends git openssh-client
     - git fetch origin main dev --tags --force --prune --prune-tags
-    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+    - uv sync --locked --group quality --python python --no-python-downloads
   script:
     - git merge-base --is-ancestor origin/main "$CI_COMMIT_SHA"
     - uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata
@@ -210,7 +210,7 @@ verify-release-tag:
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends git openssh-client
     - git fetch --tags --force --prune --prune-tags origin
-    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+    - uv sync --locked --group quality --python python --no-python-downloads
     - test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"
   script:
     - uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata --tag "$CI_COMMIT_TAG"

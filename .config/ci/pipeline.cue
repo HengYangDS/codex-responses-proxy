@@ -77,7 +77,7 @@ gitlab: {
 	]
 	#qualityBootstrap: list.Concat([#systemBootstrap, [
 		"git fetch --tags --force --prune --prune-tags origin",
-		"uv sync --locked --group quality --no-install-project --python python --no-python-downloads",
+		"uv sync --locked --group quality --python python --no-python-downloads",
 	]])
 
 	"source-and-governance": {
@@ -94,7 +94,7 @@ gitlab: {
 		before_script: [
 			"mise install --locked",
 			"git fetch --tags --force --prune --prune-tags origin",
-			"mise exec --locked -- uv sync --locked --group quality --no-install-project --python python --no-python-downloads",
+			"mise exec --locked -- uv sync --locked --group quality --python python --no-python-downloads",
 		]
 		script: [
 			"mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links",
@@ -108,7 +108,7 @@ gitlab: {
 		before_script: list.Concat([#systemBootstrap, [
 			"apt-get install -qq -y --no-install-recommends binutils",
 			"git fetch --tags --force --prune --prune-tags origin",
-			"uv sync --locked --group quality --no-install-project --python python --no-python-downloads",
+			"uv sync --locked --group quality --python python --no-python-downloads",
 			"uv python install --no-bin $PYTHON_VERSION",
 		]])
 		script: [
@@ -129,7 +129,7 @@ gitlab: {
 			"git fetch --tags --force --prune --prune-tags origin",
 		]])
 		script: [
-			"uv sync --locked --group quality --no-install-project --python python --no-python-downloads",
+			"uv sync --locked --group quality --python python --no-python-downloads",
 			"uv run --locked --no-sync --python python --no-python-downloads nox -s quality",
 		]
 	}
@@ -139,7 +139,7 @@ gitlab: {
 		variables: GIT_DEPTH: "0"
 		before_script: #systemBootstrap
 		script: [
-			"uv sync --locked --group quality --no-install-project --python python --no-python-downloads",
+			"uv sync --locked --group quality --python python --no-python-downloads",
 			"uv run --locked --no-sync --python python --no-python-downloads nox -s performance -- \"$CI_PROJECT_DIR/.performance\"",
 		]
 		artifacts: {
@@ -165,7 +165,7 @@ gitlab: {
 		variables: GIT_DEPTH: "0"
 		before_script: list.Concat([#systemBootstrap, [
 			"git fetch origin main dev --tags --force --prune --prune-tags",
-			"uv sync --locked --group quality --no-install-project --python python --no-python-downloads",
+			"uv sync --locked --group quality --python python --no-python-downloads",
 		]])
 		script: [
 			"git merge-base --is-ancestor origin/main \"$CI_COMMIT_SHA\"",

@@ -317,7 +317,7 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
         "docker": {"platform": "linux/amd64"},
     }
     assert "python -m pip install" not in text
-    assert "uv sync --locked --group quality --no-install-project" in text
+    assert "uv sync --locked --group quality --python python --no-python-downloads" in text
     assert "apt-get install -qq -y --no-install-recommends binutils" in _strings(
         quality["before_script"]
     )
@@ -350,7 +350,7 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
         "git fetch --tags --force --prune --prune-tags origin",
         (
             "mise exec --locked -- uv sync --locked --group quality "
-            "--no-install-project --python python --no-python-downloads"
+            "--python python --no-python-downloads"
         ),
     ]
     assert source["script"] == [
