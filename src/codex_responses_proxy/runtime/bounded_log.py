@@ -92,21 +92,20 @@ def append(
 
     safe_message = redact(message)
     line = _line(safe_message)
-    with suppress(OSError):
-        with _LOCK:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            discarded = rotate(
-                path,
-                len(line.encode("utf-8", "replace")),
-                max_bytes=max_bytes,
-                backup_count=backup_count,
-            )
-            if discarded:
-                line = _line(f"log_retention_discarded_oversized_bytes={discarded} {safe_message}")
-            with path.open("a", encoding="utf-8") as handle:
-                with suppress(OSError):
-                    os.chmod(path, 0o600)
-                handle.write(line)
+    with suppress(OSError), _LOCK:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        discarded = rotate(
+            path,
+            len(line.encode("utf-8", "replace")),
+            max_bytes=max_bytes,
+            backup_count=backup_count,
+        )
+        if discarded:
+            line = _line(f"log_retention_discarded_oversized_bytes={discarded} {safe_message}")
+        with path.open("a", encoding="utf-8") as handle:
+            with suppress(OSError):
+                os.chmod(path, 0o600)
+            handle.write(line)
     if mirror is not None:
         with suppress(Exception):
             mirror(line)

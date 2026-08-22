@@ -32,7 +32,7 @@ def is_runtime_file(relative: str, *, windows: bool = False) -> bool:
     """Return whether a canonical member belongs to the current native bundle."""
 
     executable = executable_name(windows=windows)
-    return relative == PROVIDER_MANIFEST or relative == executable or relative.startswith("bin/")
+    return relative in (PROVIDER_MANIFEST, executable) or relative.startswith("bin/")
 
 
 def installed_executable(root: str, *, windows: bool = False) -> str:

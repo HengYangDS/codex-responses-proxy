@@ -362,7 +362,7 @@ class ProductInterfaceContracts:
                 "PATH": home,
             }
             if sys.platform == "win32":
-                environment["SystemRoot"] = os.environ["SystemRoot"]
+                environment["SystemRoot"] = os.environ["SYSTEMROOT"]
             with socket.socket() as reservation:
                 reservation.bind(("127.0.0.1", 0))
                 port = str(reservation.getsockname()[1])

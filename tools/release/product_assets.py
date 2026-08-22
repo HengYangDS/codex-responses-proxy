@@ -54,31 +54,33 @@ def archive_bytes(files: Mapping[str, bytes | ArchiveFile], version: str, platfo
     _validate_identity(version, platform)
     prefix = f"codex-responses-proxy-{version}-{platform}"
     output = io.BytesIO()
-    with gzip.GzipFile(fileobj=output, mode="wb", compresslevel=9, mtime=0) as compressed:
-        with tarfile.open(fileobj=compressed, mode="w") as archive:
-            for relative, raw_file in sorted(files.items()):
-                file = raw_file if isinstance(raw_file, ArchiveFile) else ArchiveFile(raw_file)
-                content = file.content
-                path = PurePosixPath(relative)
-                windows_path = PureWindowsPath(relative)
-                if (
-                    path.is_absolute()
-                    or windows_path.is_absolute()
-                    or windows_path.drive
-                    or ".." in path.parts
-                    or ".." in windows_path.parts
-                    or not path.parts
-                ):
-                    raise AssetError("release asset path escapes the source root")
-                info = tarfile.TarInfo(f"{prefix}/{path.as_posix()}")
-                info.size = len(content)
-                if file.mode not in {0o644, 0o755}:
-                    raise AssetError("release asset mode is invalid")
-                info.mode = file.mode
-                info.mtime = 0
-                info.uid = info.gid = 0
-                info.uname = info.gname = ""
-                archive.addfile(info, io.BytesIO(content))
+    with (
+        gzip.GzipFile(fileobj=output, mode="wb", compresslevel=9, mtime=0) as compressed,
+        tarfile.open(fileobj=compressed, mode="w") as archive,
+    ):
+        for relative, raw_file in sorted(files.items()):
+            file = raw_file if isinstance(raw_file, ArchiveFile) else ArchiveFile(raw_file)
+            content = file.content
+            path = PurePosixPath(relative)
+            windows_path = PureWindowsPath(relative)
+            if (
+                path.is_absolute()
+                or windows_path.is_absolute()
+                or windows_path.drive
+                or ".." in path.parts
+                or ".." in windows_path.parts
+                or not path.parts
+            ):
+                raise AssetError("release asset path escapes the source root")
+            info = tarfile.TarInfo(f"{prefix}/{path.as_posix()}")
+            info.size = len(content)
+            if file.mode not in {0o644, 0o755}:
+                raise AssetError("release asset mode is invalid")
+            info.mode = file.mode
+            info.mtime = 0
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            archive.addfile(info, io.BytesIO(content))
     return output.getvalue()
 
 

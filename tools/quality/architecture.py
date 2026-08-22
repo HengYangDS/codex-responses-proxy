@@ -162,9 +162,13 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, Any] | None = None
         for path in sorted(package.rglob("__init__.py")):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             body = list(tree.body)
-            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
-                if isinstance(body[0].value.value, str):
-                    body.pop(0)
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                body.pop(0)
             if body:
                 gaps.append(f"architecture_init_behavior:{path.relative_to(root).as_posix()}")
     edges = _package_edges(package, package_name)

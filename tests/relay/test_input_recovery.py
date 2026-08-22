@@ -30,10 +30,12 @@ class TestInputRecovery(InputTransportFixture):
     def test_exact_error_recovers_once_with_fresh_content_length(self) -> None:
         success = b'{"id":"resp_recovered","status":"completed"}'
         body = request_body()
-        with running_proxy([(400, EXACT_ERROR), (200, success)]) as (port, received):
-            with request(port, body) as response:
-                assert response.status == 200
-                assert response.read() == success
+        with (
+            running_proxy([(400, EXACT_ERROR), (200, success)]) as (port, received),
+            request(port, body) as response,
+        ):
+            assert response.status == 200
+            assert response.read() == success
 
         assert len(received) == 2
         recovery = received[1]
