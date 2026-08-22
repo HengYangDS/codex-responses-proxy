@@ -77,13 +77,51 @@ class TestRuntimeContext:
         )
 
         environment = runtime_spec.environment(runtime_spec.write(projected))
+        carrier = json.loads(runtime_spec.path(projected).read_text(encoding="utf-8"))
 
+        assert carrier["schema_version"] == 1
+        assert "user_home" not in carrier
         assert environment[config.HOME_ENV] == str(install_dir)
         assert environment[config.STATE_HOME_ENV] == str(tmp_path / "state")
         assert environment[config.PROXY_PORT_ENV] == "8808"
         assert "CODEX_RESPONSES_PROXY_EXECUTABLE" not in environment
         assert environment[config.PROXY_LOG_ENV] == str(tmp_path / "state" / "proxy.log")
         assert environment[config.UPSTREAM_TIMEOUT_ENV] == "45.0"
+
+    def test_runtime_spec_accepts_the_stable_carrier_written_by_the_previous_release(
+        self, tmp_path
+    ) -> None:
+        install_dir = tmp_path / "payload"
+        target = install_dir / runtime_spec.FILENAME
+        target.parent.mkdir(parents=True)
+        target.write_bytes(
+            digest.canonical_json(
+                {
+                    "schema_version": 1,
+                    "install_dir": str(install_dir),
+                    "log_dir": str(tmp_path / "state"),
+                    "port": 8808,
+                    "proxy_log_max_bytes": config.DEFAULT_PROXY_LOG_MAX_BYTES,
+                    "proxy_log_backup_count": config.DEFAULT_PROXY_LOG_BACKUP_COUNT,
+                    "watchdog_log_max_bytes": config.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
+                    "watchdog_log_backup_count": config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
+                    "upstream_timeout": config.DEFAULT_UPSTREAM_TIMEOUT,
+                    "upstream_read_timeout": config.DEFAULT_UPSTREAM_READ_TIMEOUT,
+                    "watchdog_interval": config.DEFAULT_WATCHDOG_INTERVAL,
+                    "watchdog_max_backoff": config.DEFAULT_WATCHDOG_MAX_BACKOFF,
+                    "response_failed_compaction_budget": (
+                        config.DEFAULT_RESPONSE_FAILED_COMPACTION_BUDGET
+                    ),
+                    "response_failed_max_stages": config.DEFAULT_RESPONSE_FAILED_MAX_STAGES,
+                }
+            )
+        )
+
+        environment = runtime_spec.environment(target)
+
+        assert environment[config.HOME_ENV] == str(install_dir)
+        assert environment[config.STATE_HOME_ENV] == str(tmp_path / "state")
+        assert environment[config.PROXY_PORT_ENV] == "8808"
 
     def test_posix_projection_is_not_reinterpreted_by_a_windows_host(self, tmp_path, *, mocker):
         install_dir = tmp_path / "posix-payload"
@@ -124,27 +162,6 @@ class TestRuntimeContext:
         environment = runtime_spec.environment(runtime_spec.write(projected))
         assert "CODEX_RESPONSES_PROXY_PROXY_PYTHON" not in environment
         assert "CODEX_RESPONSES_PROXY_PROXY_SCRIPT" not in environment
-
-    def test_service_context_contains_no_platform_definition_path(self, tmp_path):
-        install_dir = tmp_path / "payload"
-        executable = install_dir / "bin" / "codex-responses-proxy"
-        executable.parent.mkdir(parents=True)
-        executable.write_bytes(b"native")
-        projected = context.RuntimeContext(
-            install_dir=str(install_dir),
-            executable=str(executable),
-            command=str(tmp_path / "bin" / "codex-responses-proxy"),
-            log_dir=str(tmp_path / "state"),
-        )
-
-        runtime_spec.write(projected)
-        service = runtime_spec.service_context(str(executable))
-
-        assert service.install_dir == str(install_dir)
-        assert service.executable == str(executable)
-        assert service.log_dir == str(tmp_path / "state")
-        assert service.user_home == config.home_dir()
-        assert "service_definition" not in service.__dataclass_fields__
 
     def test_runtime_spec_rejects_schema_location_and_setting_drift(self, tmp_path, subtests):
         install_dir = tmp_path / "payload"

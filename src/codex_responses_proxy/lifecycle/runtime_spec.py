@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -16,10 +15,9 @@ if TYPE_CHECKING:
     from codex_responses_proxy.lifecycle.context import RuntimeContext
 
 FILENAME = inventory.RUNTIME_CONFIG_FILENAME
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 1
 
 _FIELDS = (
-    "user_home",
     "install_dir",
     "log_dir",
     "port",
@@ -124,41 +122,6 @@ def activate(executable: str | os.PathLike[str]) -> Path:
     return target
 
 
-@dataclass(frozen=True, slots=True)
-class ServiceContext:
-    """Minimum native-service projection reconstructed inside the payload."""
-
-    user_home: str
-    install_dir: str
-    executable: str
-    log_dir: str
-
-    @property
-    def service_id(self) -> str:
-        from codex_responses_proxy.lifecycle.context import service_id
-
-        return service_id(self.install_dir)
-
-
-def service_context(executable: str) -> ServiceContext:
-    """Reconstruct the exact native-service projection from its carrier."""
-
-    target = from_executable(executable)
-    value = _read(target)
-    expected = inventory.installed_executable(
-        value["install_dir"],
-        windows=PureWindowsPath(executable).suffix.lower() == ".exe",
-    )
-    if _normalized(executable) != _normalized(expected):
-        raise errors.InstallError("runtime configuration executable does not match its payload")
-    return ServiceContext(
-        user_home=value["user_home"],
-        install_dir=value["install_dir"],
-        executable=executable,
-        log_dir=value["log_dir"],
-    )
-
-
 def _read(target: Path) -> dict[str, Any]:
     value = owned_files.read_canonical_json(target, "native runtime configuration")
     if value.get("schema_version") != SCHEMA_VERSION or set(value) != {
@@ -166,7 +129,7 @@ def _read(target: Path) -> dict[str, Any]:
         *_FIELDS,
     }:
         raise errors.InstallError("native runtime configuration schema is unsupported")
-    for name in ("user_home", "install_dir", "log_dir"):
+    for name in ("install_dir", "log_dir"):
         if not isinstance(value.get(name), str) or not _absolute(value[name]):
             raise errors.InstallError(f"native runtime configuration {name} is invalid")
     expected = Path(value["install_dir"], FILENAME)

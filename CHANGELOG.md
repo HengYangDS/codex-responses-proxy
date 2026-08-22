@@ -7,6 +7,18 @@ publication authority.
 
 ## [Unreleased]
 
+## [2.0.58] - 2026-08-22
+
+### Fixed
+
+- Keep the native runtime carrier stable across supported installer generations,
+  so the published predecessor can start and hand off to its signed successor
+  without a schema migration layer.
+- Keep exact macOS launch-agent ownership in the live installation context
+  rather than persisting a host-only home path in the product runtime carrier.
+- Resume supported upgrades from `2.0.56`; `2.0.57` is an unusable intermediate
+  release and is not an upgrade predecessor.
+
 ## [2.0.57] - 2026-08-22
 
 ### Changed
