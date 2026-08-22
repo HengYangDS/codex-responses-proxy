@@ -171,6 +171,27 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     assert any("tools.forge.tag_signature" in command for command in tag_script)
 
 
+def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:
+    """Make the source package importable while Nox loads its release sessions."""
+
+    jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
+    expected = {
+        "native-assets": "uv sync --locked --group quality",
+        "native-linux": (
+            "cd /workspace && uv sync --locked --group quality "
+            "--python python --no-python-downloads"
+        ),
+    }
+    for job_id, command in expected.items():
+        steps = _sequence(_mapping(jobs[job_id])["steps"])
+        install = next(
+            _mapping(step)
+            for step in steps
+            if _mapping(step).get("name") == "Install the locked release tool environment"
+        )
+        assert install["run"] == command
+
+
 def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> None:
     module = importlib.import_module("tools.quality.python_matrix")
     versions = tmp_path / ".python-versions"

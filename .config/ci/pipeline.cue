@@ -501,7 +501,7 @@ githubVerify: {
 				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
 			}, {
 				name: "Install the locked release tool environment"
-				run:  "uv sync --locked --only-group quality"
+				run:  "uv sync --locked --group quality"
 			}, {
 				name: "Build and accept the native release asset"
 				run:  "uv run --locked --no-sync nox -s release -- \"${{ runner.temp }}/native-assets\""
@@ -536,7 +536,7 @@ githubVerify: {
 				run:  "install -d /workspace && git -c safe.directory=\"$GITHUB_WORKSPACE\" archive --format=tar HEAD | tar -xf - -C /workspace"
 			}, {
 				name: "Install the locked release tool environment"
-				run:  "cd /workspace && uv sync --locked --only-group quality --python python --no-python-downloads"
+				run:  "cd /workspace && uv sync --locked --group quality --python python --no-python-downloads"
 			}, {
 				name: "Build and accept the native release asset"
 				run:  "cd /workspace && uv run --locked --no-sync --python python --no-python-downloads nox -s release -- \"$GITHUB_WORKSPACE/.release-assets/linux-x86_64\""
