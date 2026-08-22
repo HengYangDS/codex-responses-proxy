@@ -35,12 +35,39 @@ def journal_path(ctx: runtime_context.RuntimeContext) -> Path:
 
 def status(ctx: runtime_context.RuntimeContext) -> dict[str, object] | None:
     """Return the bounded identity of one active transaction."""
-    path = journal_path(ctx)
-    if not path.exists():
+    root = transaction_root(ctx)
+    if not root.exists() and not root.is_symlink():
         return None
-    journal = owned_files.read_canonical_json(path, "payload transaction journal")
+    try:
+        journal = read_journal(ctx)
+    except errors.InstallError as exc:
+        return {"state": "invalid", "detail": str(exc)}
     allowed = ("transaction_id", "version", "receipt_sha256", "state", "fresh")
     return {key: journal[key] for key in allowed if key in journal}
+
+
+def read_journal(ctx: runtime_context.RuntimeContext) -> dict[str, Any]:
+    """Read one existing transaction through its strict current schema."""
+
+    root = transaction_root(ctx)
+    if root.is_symlink() or not root.is_dir():
+        raise errors.InstallError("payload transaction root is invalid")
+    path = journal_path(ctx)
+    if path.is_symlink():
+        raise errors.InstallError("payload transaction journal is invalid")
+    if not path.is_file():
+        raise errors.InstallError("payload transaction journal is missing")
+    journal = owned_files.read_canonical_json(path, "payload transaction journal")
+    if (
+        journal.get("schema_version") != TRANSACTION_JOURNAL_SCHEMA
+        or journal.get("state") not in {"prepared", "committed", "recovery_required"}
+        or not isinstance(journal.get("transaction_id"), str)
+        or not isinstance(journal.get("version"), str)
+        or not isinstance(journal.get("receipt_sha256"), str)
+        or not isinstance(journal.get("fresh"), bool)
+    ):
+        raise errors.InstallError("payload transaction journal is invalid")
+    return journal
 
 
 def write_journal(
@@ -70,11 +97,24 @@ def write_journal(
 def read_installed(ctx: runtime_context.RuntimeContext) -> dict[str, Any] | None:
     """Read and validate the installed release state when present."""
     path = installed_path(ctx)
-    if not path.exists():
+    if not path.exists() and not path.is_symlink():
         return None
+    if path.is_symlink() or not path.is_file():
+        raise errors.InstallError("installed release state is invalid")
     state = owned_files.read_canonical_json(path, "installed release state")
     if state.get("schema_version") != INSTALLED_RELEASE_STATE_SCHEMA:
         raise errors.InstallError("installed release state schema is unsupported")
+    if (
+        not isinstance(state.get("transaction_id"), str)
+        or not state["transaction_id"]
+        or not isinstance(state.get("receipt_sha256"), str)
+        or len(state["receipt_sha256"]) != 64
+        or any(character not in "0123456789abcdef" for character in state["receipt_sha256"])
+        or not isinstance(state.get("runtime"), dict)
+    ):
+        raise errors.InstallError("installed release state is invalid")
+    require_version(state)
+    require_command(state)
     return state
 
 

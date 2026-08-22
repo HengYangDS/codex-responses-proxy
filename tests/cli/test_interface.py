@@ -82,7 +82,7 @@ class ProductInterfaceContracts:
             "doctor": {"ok": True, "checks": {}},
             "recover": {"state": "closed", "version": "2.0.48"},
             "reload": {"old_pid": 41, "new_pid": 42},
-            "uninstall": {"stopped": 1, "purged": False},
+            "uninstall": {"state": "uninstalled", "stopped": 1, "command_removed": True},
             "version": "2.0.48",
         }
         arguments = {
@@ -255,11 +255,19 @@ class ProductInterfaceContracts:
         assert stderr == ""
 
     def test_expected_errors_are_concise_and_machine_readable(self, *, mocker) -> None:
-        mocker.patch.object(application, "dispatch", side_effect=ValueError("invalid value"))
+        mocker.patch.object(
+            application,
+            "dispatch",
+            side_effect=errors.InstallError(
+                "invalid value",
+                next_command="codex-responses-proxy status",
+            ),
+        )
         code, stdout, stderr = self.invoke("doctor", "--json")
         assert code == 2
         assert stdout == ""
         payload = json.loads(stderr)
+        assert payload["error"]["code"] == "lifecycle_error"
         assert payload["error"]["message"] == "invalid value"
         assert payload["error"]["next"] == "codex-responses-proxy status"
         assert "Traceback" not in stderr
@@ -275,7 +283,11 @@ class ProductInterfaceContracts:
     def test_human_error_has_problem_and_next_action_without_internal_leakage(
         self, *, mocker
     ) -> None:
-        mocker.patch.object(application, "dispatch", side_effect=ValueError("listener unavailable"))
+        mocker.patch.object(
+            application,
+            "dispatch",
+            side_effect=errors.InstallError("listener unavailable"),
+        )
 
         code, stdout, stderr = self.invoke("status")
 
@@ -383,7 +395,7 @@ class ProductInterfaceContracts:
                     "install": (2, ()),
                     "status": (0, ("--port", port)),
                     "doctor": (1, ("--port", port)),
-                    "recover": (2, ("--port", port)),
+                    "recover": (0, ("--port", port)),
                     "reload": (2, ("--port", port)),
                     "uninstall": (0, ("--port", port)),
                     "version": (0, ()),
@@ -424,7 +436,7 @@ class ProductInterfaceContracts:
             application,
             "dispatch",
             return_value={
-                "command": {"available": False, "owned": False},
+                "command": {"state": "absent", "kind": None},
                 "listener_pids": [],
                 "payload_integrity": {"ok": False},
                 "release": None,

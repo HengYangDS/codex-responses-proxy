@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import artifact, control, transaction
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.deployment import apply
@@ -41,7 +42,10 @@ def install_asset(
     from codex_responses_proxy.lifecycle.supervision import native_service
 
     ctx = build_context(port)
-    released = artifact.admit(asset, trust_anchor=trust_anchor)
+    try:
+        released = artifact.admit(asset, trust_anchor=trust_anchor)
+    except errors.InstallError as exc:
+        raise errors.InstallInputError(str(exc)) from exc
     payload_transaction = transaction.begin_transaction(ctx, released)
     try:
         return apply.install(

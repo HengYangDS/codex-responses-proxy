@@ -41,12 +41,33 @@ def recover(
 ) -> dict[str, object]:
     """Close an unmutated transaction or restore one exact retained rollback."""
 
-    journal = owned_files.read_canonical_json(
-        state.journal_path(ctx), "payload transaction journal"
-    )
+    root = state.transaction_root(ctx)
+    if not root.exists() and not root.is_symlink():
+        return {"state": "not_required"}
+    try:
+        journal = state.read_journal(ctx)
+    except errors.InstallError as exc:
+        raise errors.RecoveryStateError(str(exc)) from exc
     if journal.get("state") == "prepared":
         return _close_prepared(ctx, journal)
-    return _rollback_recovery(ctx, journal=journal, runtime=runtime)
+    candidate = _recovery_candidate(ctx, journal)
+    installed = state.read_installed(ctx)
+    if installed is not None and _installed_matches_transaction(
+        installed,
+        journal=journal,
+        candidate=candidate,
+        command_path=ctx.command,
+    ):
+        return _close_finalized(ctx, journal=journal, candidate=candidate, installed=installed)
+    if _runtime_matches_projection(runtime, candidate):
+        return _finalize_recovery(ctx, journal=journal, runtime=runtime)
+    if journal["fresh"] is True:
+        if runtime is not None:
+            raise errors.InstallError(
+                "payload recovery runtime does not match the candidate projection"
+            )
+        return _rollback_fresh(ctx, journal=journal, candidate=candidate)
+    return _rollback_upgrade(ctx, journal=journal, runtime=runtime, candidate=candidate)
 
 
 def _close_prepared(
@@ -64,7 +85,7 @@ def _close_prepared(
         or not isinstance(journal.get("receipt_sha256"), str)
         or not isinstance(journal.get("fresh"), bool)
     ):
-        raise errors.InstallError("payload recovery transaction is unavailable or invalid")
+        raise errors.RecoveryStateError("payload recovery transaction is unavailable or invalid")
     result = {
         "transaction_id": journal["transaction_id"],
         "version": journal["version"],
@@ -74,21 +95,150 @@ def _close_prepared(
     return result
 
 
-def _rollback_recovery(
+def _recovery_candidate(
+    ctx: runtime_context.RuntimeContext,
+    journal: Mapping[str, object],
+) -> identity.LoadedPayloadIdentity:
+    """Verify one mutated transaction and its exact candidate projection."""
+
+    if (
+        journal.get("schema_version") != state.TRANSACTION_JOURNAL_SCHEMA
+        or journal.get("state") not in {"committed", "recovery_required"}
+        or not isinstance(journal.get("transaction_id"), str)
+        or not isinstance(journal.get("version"), str)
+    ):
+        raise errors.InstallError("payload recovery transaction is unavailable or invalid")
+    candidate = identity.committed_payload(Path(ctx.executable))
+    if candidate is None:
+        raise errors.RecoveryStateError("payload recovery candidate projection identity is invalid")
+    if candidate.release != journal["version"] or candidate.release_receipt_sha256 != journal.get(
+        "receipt_sha256"
+    ):
+        raise errors.RecoveryStateError("payload recovery candidate does not match the transaction")
+    return candidate
+
+
+def _close_finalized(
+    ctx: runtime_context.RuntimeContext,
+    *,
+    journal: Mapping[str, object],
+    candidate: identity.LoadedPayloadIdentity,
+    installed: Mapping[str, object],
+) -> dict[str, object]:
+    """Remove transaction residue only after finalized state proves the candidate."""
+
+    if not _installed_matches_transaction(
+        installed,
+        journal=journal,
+        candidate=candidate,
+        command_path=ctx.command,
+    ):
+        raise errors.RecoveryStateError("installed release state does not match the transaction")
+    result = {
+        "transaction_id": journal["transaction_id"],
+        "version": journal["version"],
+        "state": "finalized",
+    }
+    _remove_transaction_root(ctx)
+    return result
+
+
+def _installed_matches_transaction(
+    installed: Mapping[str, object],
+    *,
+    journal: Mapping[str, object],
+    candidate: identity.LoadedPayloadIdentity,
+    command_path: str,
+) -> bool:
+    """Return whether finalized state proves this exact candidate transaction."""
+
+    return (
+        installed.get("transaction_id") == journal["transaction_id"]
+        and installed.get("version") == candidate.release
+        and installed.get("receipt_sha256") == candidate.release_receipt_sha256
+        and installed.get("command") == command_path
+    )
+
+
+def _runtime_matches_projection(
+    runtime: Mapping[str, object] | None,
+    projection: identity.LoadedPayloadIdentity,
+) -> bool:
+    """Return whether one accepting runtime serves the verified projection."""
+
+    return (
+        runtime is not None
+        and identity.runtime_payload_matches(runtime, projection.handoff())
+        and runtime.get("accepting") is True
+        and runtime.get("draining") is False
+        and runtime.get("handoff_state") in {"idle", "serving", "finalized"}
+    )
+
+
+def _finalize_recovery(
     ctx: runtime_context.RuntimeContext,
     *,
     journal: Mapping[str, object],
     runtime: Mapping[str, object] | None,
 ) -> dict[str, object]:
-    """Restore one exact retained transaction bound to its prior live runtime."""
+    """Finalize an installed candidate after its runtime proves success."""
 
-    if (
-        journal.get("schema_version") != state.TRANSACTION_JOURNAL_SCHEMA
-        or journal.get("state") != "recovery_required"
-        or not isinstance(journal.get("transaction_id"), str)
-        or not isinstance(journal.get("version"), str)
-    ):
-        raise errors.InstallError("payload recovery transaction is unavailable or invalid")
+    assert runtime is not None
+    installed = {
+        "schema_version": state.INSTALLED_RELEASE_STATE_SCHEMA,
+        "version": journal["version"],
+        "receipt_sha256": journal["receipt_sha256"],
+        "transaction_id": journal["transaction_id"],
+        "command": ctx.command,
+        "runtime": dict(runtime),
+    }
+    owned_files.write_bytes(
+        state.installed_path(ctx),
+        digest.canonical_json(installed),
+        mode=0o600,
+    )
+    result = {
+        "transaction_id": journal["transaction_id"],
+        "version": journal["version"],
+        "state": "finalized",
+    }
+    _remove_transaction_root(ctx)
+    return result
+
+
+def _rollback_fresh(
+    ctx: runtime_context.RuntimeContext,
+    *,
+    journal: Mapping[str, object],
+    candidate: identity.LoadedPayloadIdentity,
+) -> dict[str, object]:
+    """Restore pre-install absence for one interrupted fresh projection."""
+
+    rollback = state.transaction_root(ctx) / "rollback"
+    command_snapshot = command.read_snapshot(rollback)
+    inventory_snapshot = payload_rollback.load_inventory(rollback)
+    if command_snapshot.state != "absent" or inventory_snapshot.present:
+        raise errors.RecoveryStateError("fresh payload recovery rollback snapshot is invalid")
+    command.detach(Path(ctx.command), Path(ctx.executable), command_snapshot)
+    payload_candidate.remove_projection(ctx, owned_files.current_inventory(Path(ctx.install_dir)))
+    result = {
+        "transaction_id": journal["transaction_id"],
+        "version": candidate.release,
+        "state": "rolled_back",
+    }
+    _remove_transaction_root(ctx)
+    return result
+
+
+def _rollback_upgrade(
+    ctx: runtime_context.RuntimeContext,
+    *,
+    journal: Mapping[str, object],
+    runtime: Mapping[str, object] | None,
+    candidate: identity.LoadedPayloadIdentity,
+) -> dict[str, object]:
+    """Restore one exact retained upgrade bound to its prior live runtime."""
+
     rollback = state.transaction_root(ctx) / "rollback"
     command_snapshot = command.read_snapshot(rollback)
     previous_executable = next(
@@ -103,25 +253,26 @@ def _rollback_recovery(
         identity.committed_payload(previous_executable) if previous_executable is not None else None
     )
     if previous is None:
-        raise errors.InstallError("payload recovery rollback runtime identity is invalid")
-    candidate = identity.committed_payload(Path(ctx.executable))
-    if candidate is None:
-        raise errors.InstallError("payload recovery candidate projection identity is invalid")
-    if candidate.release != journal["version"] or candidate.release_receipt_sha256 != journal.get(
-        "receipt_sha256"
-    ):
-        raise errors.InstallError("payload recovery candidate does not match the transaction")
-    expected_runtime = previous.handoff()
+        raise errors.RecoveryStateError("payload recovery rollback runtime identity is invalid")
     if (
         runtime is None
-        or not identity.runtime_payload_matches(runtime, expected_runtime)
+        or runtime.get("release") != previous.release
+        or runtime.get("serving_payload_sha256") != previous.serving_payload_sha256
+        or runtime.get("release_receipt_sha256") != previous.release_receipt_sha256
+        or runtime.get("payload_manifest_sha256") != candidate.manifest_sha256
         or runtime.get("accepting") is not True
         or runtime.get("draining") is not False
         or runtime.get("handoff_state") not in {"idle", "serving", "finalized"}
     ):
-        raise errors.InstallError("payload recovery runtime does not match the rollback projection")
+        raise errors.RecoveryStateError(
+            "payload recovery runtime does not match the rollback projection"
+        )
     command.detach(Path(ctx.command), Path(ctx.executable), command_snapshot)
-    payload_rollback.restore_snapshot(ctx, rollback)
+    payload_rollback.restore_snapshot(
+        ctx,
+        rollback,
+        candidate_paths=owned_files.current_inventory(Path(ctx.install_dir)),
+    )
     command.restore(Path(ctx.command), Path(ctx.executable), command_snapshot)
     result = {
         "transaction_id": journal["transaction_id"],
@@ -336,7 +487,12 @@ def begin_transaction(
 
     root = state.transaction_root(ctx)
     if root.exists() or root.is_symlink():
-        raise errors.InstallError(f"payload transaction path already exists: {root}")
+        transaction_state = state.status(ctx)
+        if transaction_state is not None and transaction_state.get("state") != "invalid":
+            raise errors.RecoveryRequiredError("complete payload recovery before installing")
+        raise errors.RecoveryStateError(
+            "payload transaction evidence is invalid; preserve it for diagnosis"
+        )
     try:
         blobs, version, receipt_sha256, receipt, _sidecar = artifact.claim(candidate)
     except artifact.ArtifactError as exc:

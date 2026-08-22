@@ -170,11 +170,11 @@ def remove(command_path: Path, target: Path) -> bool:
 def status(command_path: Path, target: Path) -> dict[str, object]:
     """Return one read-only command discoverability result."""
 
-    state, _kind = _classify(command_path, target)
+    state, kind = _classify(command_path, target)
     return {
+        "state": state,
+        "kind": kind or None,
         "path": str(command_path),
-        "available": state == "owned",
-        "owned": state == "owned",
     }
 
 

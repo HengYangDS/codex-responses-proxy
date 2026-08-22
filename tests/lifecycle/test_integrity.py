@@ -40,7 +40,7 @@ class TestPayloadValidation:
         ctx = install_context(Path(tempfile.mkdtemp()))
         transaction_root = Path(payload_state.transaction_root(ctx))
         transaction_root.mkdir(parents=True)
-        with pytest.raises(errors.InstallError, match="already exists"):
+        with pytest.raises(errors.RecoveryStateError, match="evidence is invalid"):
             begin_transaction(ctx, released_artifact(), mocker=mocker)
 
         valid = released_artifact()

@@ -67,6 +67,8 @@ class CliLifecycleContracts:
 
     def test_status_uses_the_read_only_lifecycle_owner(self, *, mocker) -> None:
         evidence = {
+            "state": "running",
+            "detail": "healthy",
             "release": "2.0.8",
             "payload_integrity": {"ok": True, "detail": "verified"},
             "service": "running",
@@ -75,8 +77,8 @@ class CliLifecycleContracts:
             "payload_transaction": None,
             "command": {
                 "path": "/commands/codex-responses-proxy",
-                "available": True,
-                "owned": True,
+                "state": "owned",
+                "kind": "symlink",
             },
         }
         context = mocker.patch.object(application.runtime_context, "create", return_value="context")
@@ -98,8 +100,8 @@ class CliLifecycleContracts:
             "payload_transaction": None,
             "command": {
                 "path": "/commands/codex-responses-proxy",
-                "available": True,
-                "owned": True,
+                "state": "owned",
+                "kind": "symlink",
             },
         }
         mocker.patch.object(application.control, "status", return_value=evidence)
@@ -118,7 +120,7 @@ class CliLifecycleContracts:
         assert "Listener" in stdout
         assert "PID 321" in stdout
         assert "Command" in stdout
-        assert "Available" in stdout
+        assert "Owned" in stdout
         assert not stdout.lstrip().startswith("{")
         lines = stdout.splitlines()
         value_columns = {
@@ -130,6 +132,40 @@ class CliLifecycleContracts:
             )
         }
         assert len(value_columns) == 1
+
+    def test_status_human_next_action_follows_the_lifecycle_state(self) -> None:
+        base = {
+            "release": "2.0.58",
+            "payload_integrity": {"ok": True, "detail": "verified"},
+            "service": "running",
+            "listener_pids": [321],
+            "runtime": {"pid": 321, "accepting": True},
+            "command": {"state": "owned", "kind": "symlink"},
+        }
+
+        invalid = application.presentation.render(
+            "status",
+            {
+                **base,
+                "state": "invalid",
+                "payload_transaction": {
+                    "state": "invalid",
+                    "detail": "payload transaction journal is missing",
+                },
+            },
+        )
+        recoverable = application.presentation.render(
+            "status",
+            {
+                **base,
+                "state": "recovery_required",
+                "payload_transaction": {"state": "committed"},
+            },
+        )
+
+        assert "codex-responses-proxy status --json" in invalid
+        assert "codex-responses-proxy recover" not in invalid
+        assert "codex-responses-proxy recover" in recoverable
 
     def test_human_projection_covers_degraded_and_complete_command_results(
         self,
@@ -150,14 +186,14 @@ class CliLifecycleContracts:
         doctor = application.presentation.render(
             "doctor",
             {
+                "next": "codex-responses-proxy reload",
                 "checks": {
                     "payload": {"status": "passed"},
                     "listener": {
                         "status": "failed",
-                        "next": "run `codex-responses-proxy reload`, then inspect the service log",
                     },
                     "ignored": "not a check",
-                }
+                },
             },
         )
         assert "Payload" in doctor
@@ -169,14 +205,61 @@ class CliLifecycleContracts:
         installed = application.presentation.render("install", {"runtime": {"release": "2.0.11"}})
         assert "Installed" in installed
         assert "2.0.11" in installed
+        upgraded = application.presentation.render(
+            "install", {"state": "upgraded", "runtime": {"release": "2.0.12"}}
+        )
+        assert "Upgraded" in upgraded
+        assert "2.0.12" in upgraded
         assert "Reloaded" in application.presentation.render("reload", {"old_pid": 1, "new_pid": 2})
-        assert "Recovered" in application.presentation.render(
+        assert "Rolled Back" in application.presentation.render(
             "recover", {"version": "2.0.11", "state": "rolled_back"}
         )
+        assert "Finalized" in application.presentation.render(
+            "recover", {"version": "2.0.12", "state": "finalized"}
+        )
+        assert "No recovery required" in application.presentation.render(
+            "recover", {"state": "not_required"}
+        )
+        closed = application.presentation.render(
+            "recover",
+            {"transaction_id": "tx-closed", "version": "2.0.12", "state": "closed"},
+        )
+        assert "Closed" in closed
+        assert "Transaction tx-closed" in closed
+        assert "Release     2.0.12" in closed
+        assert "Not installed" in application.presentation.render(
+            "uninstall",
+            {
+                "state": "not_installed",
+                "stopped": 0,
+                "command_removed": False,
+            },
+        )
         assert "Purged" in application.presentation.render(
-            "uninstall", {"stopped": 1, "purged": True}
+            "uninstall", {"state": "purged", "stopped": 1, "command_removed": True}
         )
         assert application.presentation.render("future", {}) == ""
+
+    def test_status_human_output_exposes_the_classification_detail(self) -> None:
+        rendered = application.presentation.render(
+            "status",
+            {
+                "state": "invalid",
+                "detail": "payload transaction journal is missing",
+                "release": "2.0.58",
+                "payload_integrity": {"ok": True, "detail": "verified"},
+                "service": "running",
+                "listener_pids": [321],
+                "runtime": None,
+                "payload_transaction": {
+                    "state": "invalid",
+                    "detail": "payload transaction journal is missing",
+                },
+                "command": {"state": "owned", "kind": "symlink"},
+            },
+        )
+
+        assert "payload transaction journal is missing" in rendered
 
     def test_status_returns_bounded_current_runtime_evidence(self, *, mocker) -> None:
         evidence = {
@@ -221,7 +304,7 @@ class CliLifecycleContracts:
         mocker.patch.object(
             application.control.command,
             "status",
-            return_value={"path": context.command, "available": True, "owned": True},
+            return_value={"path": context.command, "state": "owned", "kind": "symlink"},
         )
         adapter = mocker.patch.object(application.control, "adapter")
         pids = mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[321])
@@ -247,6 +330,7 @@ class CliLifecycleContracts:
             "listener_pids": [],
             "runtime": None,
             "payload_transaction": None,
+            "command": {"state": "owned", "kind": "symlink"},
         }
         mocker.patch.object(application.runtime_context, "create", return_value="context")
         mocker.patch.object(application.control, "status", return_value=evidence)
@@ -256,12 +340,72 @@ class CliLifecycleContracts:
         assert stderr == ""
         assert not report["ok"]
         assert report["checks"]["listener"]["status"] == "failed"
-        assert (
-            report["checks"]["listener"]["next"]
-            == "run `codex-responses-proxy reload`, then inspect the service log"
-        )
+        assert report["next"] == "codex-responses-proxy reload"
         assert "Traceback" not in stdout
         assert "Warning" not in stdout
+
+    def test_doctor_classifies_a_pristine_host_without_false_failures(self) -> None:
+        report = application._doctor(
+            {
+                "state": "not_installed",
+                "release": None,
+                "payload_integrity": {
+                    "ok": False,
+                    "detail": "installed payload manifest is unavailable",
+                },
+                "service": "absent",
+                "listener_pids": [],
+                "runtime": None,
+                "payload_transaction": None,
+                "command": {"state": "absent", "kind": None, "path": "/bin/proxy"},
+            }
+        )
+
+        assert report == {
+            "ok": False,
+            "state": "not_installed",
+            "next": "codex-responses-proxy install --help",
+            "checks": {
+                "installation": {
+                    "status": "failed",
+                    "detail": "not installed",
+                }
+            },
+        }
+
+    def test_doctor_uses_one_state_level_next_action(self) -> None:
+        recovery = application._doctor(
+            {
+                "state": "recovery_required",
+                "release": "2.0.58",
+                "payload_integrity": {"ok": True, "detail": "verified"},
+                "service": "running",
+                "listener_pids": [321],
+                "runtime": {"pid": 321, "accepting": True},
+                "payload_transaction": {"state": "committed"},
+                "command": {"state": "owned", "kind": "symlink"},
+            }
+        )
+        invalid = application._doctor(
+            {
+                "state": "invalid",
+                "detail": "payload transaction journal is missing",
+                "release": "2.0.58",
+                "payload_integrity": {"ok": True, "detail": "verified"},
+                "service": "running",
+                "listener_pids": [321],
+                "runtime": {"pid": 321, "accepting": True},
+                "payload_transaction": {
+                    "state": "invalid",
+                    "detail": "payload transaction journal is missing",
+                },
+                "command": {"state": "owned", "kind": "symlink"},
+            }
+        )
+
+        assert recovery["next"] == "codex-responses-proxy recover"
+        assert invalid["next"] == "codex-responses-proxy status --json"
+        assert all("next" not in check for check in recovery["checks"].values())
 
     def test_doctor_requires_integrity_service_and_exact_listener_identity(self, subtests) -> None:
         healthy = {
@@ -273,8 +417,8 @@ class CliLifecycleContracts:
             "payload_transaction": None,
             "command": {
                 "path": "/commands/codex-responses-proxy",
-                "available": True,
-                "owned": True,
+                "state": "owned",
+                "kind": "symlink",
             },
         }
         cases = (
@@ -302,8 +446,8 @@ class CliLifecycleContracts:
                     **healthy,
                     "command": {
                         "path": "/commands/codex-responses-proxy",
-                        "available": False,
-                        "owned": False,
+                        "state": "foreign",
+                        "kind": "symlink",
                     },
                 },
                 False,
@@ -375,7 +519,7 @@ class CliLifecycleContracts:
         uninstall = mocker.patch.object(
             application.uninstall,
             "uninstall_product",
-            return_value={"stopped": 1, "command_removed": True, "purged": False},
+            return_value={"state": "uninstalled", "stopped": 1, "command_removed": True},
         )
         code, stdout, stderr = self.invoke("uninstall", "--port", "8801")
         assert code == 0
@@ -387,7 +531,7 @@ class CliLifecycleContracts:
         uninstall = mocker.patch.object(
             application.uninstall,
             "uninstall_product",
-            return_value={"stopped": 0, "command_removed": True, "purged": True},
+            return_value={"state": "purged", "stopped": 0, "command_removed": True},
         )
         code, stdout, stderr = self.invoke("uninstall", "--purge")
         assert code == 0
@@ -396,17 +540,53 @@ class CliLifecycleContracts:
         assert not stdout.lstrip().startswith("{")
         uninstall.assert_called_once_with(port=8792, purge=True)
 
+    def test_pristine_recover_and_uninstall_are_explicit_no_ops(self, *, mocker) -> None:
+        context = mocker.patch.object(application.runtime_context, "create", return_value="context")
+        mocker.patch.object(application.control, "read_runtime", return_value=None)
+        recover = mocker.patch.object(
+            application.transaction, "recover", return_value={"state": "not_required"}
+        )
+
+        code, stdout, stderr = self.invoke("recover", "--json")
+
+        assert code == 0
+        assert json.loads(stdout) == {"state": "not_required"}
+        assert stderr == ""
+        context.assert_called_once_with(port=8792)
+        recover.assert_called_once_with("context", runtime=None)
+
+        uninstall = mocker.patch.object(
+            application.uninstall,
+            "uninstall_product",
+            return_value={
+                "state": "not_installed",
+                "stopped": 0,
+                "command_removed": False,
+            },
+        )
+        code, stdout, stderr = self.invoke("uninstall", "--purge", "--json")
+        assert code == 0
+        assert json.loads(stdout)["state"] == "not_installed"
+        assert stderr == ""
+        uninstall.assert_called_once_with(port=8792, purge=True)
+
     def test_expected_lifecycle_failures_are_rendered_once(self, *, mocker) -> None:
         mocker.patch.object(
-            application.runtime_context, "create", side_effect=errors.InstallError("bad port")
+            application.runtime_context,
+            "create",
+            side_effect=errors.InstallError(
+                "bad port",
+                next_command="codex-responses-proxy status --help",
+            ),
         )
         code, stdout, stderr = self.invoke("status", "--json")
         assert code == 2
         assert stdout == ""
         assert json.loads(stderr) == {
             "error": {
+                "code": "lifecycle_error",
                 "message": "bad port",
-                "next": "codex-responses-proxy doctor",
+                "next": "codex-responses-proxy status --help",
             }
         }
 

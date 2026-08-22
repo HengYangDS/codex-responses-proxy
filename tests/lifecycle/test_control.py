@@ -15,6 +15,7 @@ from codex_responses_proxy.lifecycle import control, install, uninstall
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import digest as payload_digest
+from codex_responses_proxy.service import identity
 from tests.lifecycle.fixtures import (
     begin_transaction,
     install_context,
@@ -27,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class TestControllerLifecycle:
     def test_control_reads_bounded_runtime_and_recovers_finalized_reload(self, subtests, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
+        Path(ctx.install_dir).mkdir(parents=True)
 
         class Response:
             status = 200
@@ -66,6 +68,7 @@ class TestControllerLifecycle:
             return_value=("finalized", {"pid": 8}),
         )
         assert control.reload(ctx) == {
+            "state": "reloaded",
             "old_pid": 7,
             "new_pid": 8,
             "transaction_id": "tx",
@@ -105,6 +108,7 @@ class TestControllerLifecycle:
 
     def test_status_and_reload_bound_unobservable_failures(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
+        Path(ctx.install_dir).mkdir(parents=True)
         current_error = errors.InstallError("current manifest invalid")
         mocker.patch.object(
             control.projection, "verify_payload_manifest", side_effect=current_error
@@ -147,16 +151,67 @@ class TestControllerLifecycle:
         with pytest.raises(errors.InstallError, match="outcome is unconfirmed"):
             control.reload(ctx)
 
-    def test_lifecycle_helpers_cover_local_files_and_process_failures(self, *, mocker):
-        ctx = install_context(Path(tempfile.mkdtemp()))
-        installed_state = mocker.patch.object(
-            control.payload_state,
-            "read_installed",
-            return_value={"schema_version": 1, "version": "2.0.0"},
+    def test_status_distinguishes_invalid_evidence_from_runtime_degradation(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        Path(ctx.install_dir).mkdir(parents=True)
+        mocker.patch.object(control, "adapter").return_value.status.return_value = "absent"
+        mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
+        mocker.patch.object(control, "read_runtime", return_value=None)
+        mocker.patch.object(
+            control.command,
+            "status",
+            return_value={"path": ctx.command, "state": "absent", "kind": None},
         )
-        assert control._installed_release(ctx) == "2.0.0"
-        installed_state.return_value = None
-        assert control._installed_release(ctx) is None
+        mocker.patch.object(
+            control.projection,
+            "verify_payload_manifest",
+            return_value=(False, "installed payload manifest is unavailable"),
+        )
+
+        degraded = control.status(ctx)
+
+        assert degraded["state"] == "degraded"
+        assert degraded["detail"] == "installed payload manifest is unavailable"
+
+        transaction_root = Path(payload_state.transaction_root(ctx))
+        transaction_root.mkdir()
+
+        invalid = control.status(ctx)
+
+        assert invalid["state"] == "invalid"
+        assert invalid["detail"] == "payload transaction journal is missing"
+
+    def test_status_reports_an_invalid_installed_state_without_losing_read_only_evidence(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        install_root = Path(ctx.install_dir)
+        install_root.mkdir(parents=True)
+        Path(payload_state.installed_path(ctx)).write_text("not-json", encoding="utf-8")
+        mocker.patch.object(control, "adapter").return_value.status.return_value = "absent"
+        mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
+        mocker.patch.object(control, "read_runtime", return_value=None)
+        mocker.patch.object(
+            control.command,
+            "status",
+            return_value={"path": ctx.command, "state": "absent", "kind": None},
+        )
+        mocker.patch.object(
+            control.projection,
+            "verify_payload_manifest",
+            return_value=(False, "installed payload manifest is unavailable"),
+        )
+
+        result = control.status(ctx)
+
+        assert result["state"] == "invalid"
+        assert result["release"] is None
+        assert result["detail"] == "installed release state is unavailable or invalid"
+
+    def test_process_teardown_fails_closed_when_exit_is_unproved(self, *, mocker):
+        ctx = install_context(Path(tempfile.mkdtemp()))
         mocker.patch.object(
             uninstall.process,
             "verified_proxy_listener_pids",
@@ -184,6 +239,7 @@ class TestControllerLifecycle:
 
     def test_uninstall_product_covers_success_and_fail_closed_boundaries(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
+        Path(ctx.install_dir).mkdir(parents=True)
         service = mocker.Mock()
         service.status.return_value = "absent"
         mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
@@ -192,9 +248,9 @@ class TestControllerLifecycle:
         mocker.patch.object(uninstall.projection, "purge_installed_projection", return_value=[])
         remove_command = mocker.patch.object(uninstall.command, "remove", return_value=True)
         assert uninstall.uninstall_product(purge=True) == {
+            "state": "purged",
             "stopped": 0,
             "command_removed": True,
-            "purged": True,
         }
         remove_command.assert_called_once_with(Path(ctx.command), Path(ctx.executable))
         service.uninstall.assert_called_once_with(ctx)
@@ -208,9 +264,9 @@ class TestControllerLifecycle:
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
         assert uninstall.uninstall_product() == {
+            "state": "uninstalled",
             "stopped": 0,
             "command_removed": True,
-            "purged": False,
         }
         mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
         mocker.patch.object(uninstall, "adapter", return_value=service)
@@ -223,6 +279,44 @@ class TestControllerLifecycle:
 
         with pytest.raises(errors.InstallError, match="unknown install content remains"):
             uninstall.uninstall_product(purge=True)
+
+    def test_uninstall_is_idempotent_when_no_installation_exists(self, tmp_path, *, mocker):
+        ctx = install_context(tmp_path)
+        service = mocker.Mock()
+        service.status.return_value = "absent"
+        mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
+        mocker.patch.object(uninstall, "adapter", return_value=service)
+        mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
+
+        assert uninstall.uninstall_product(purge=True) == {
+            "state": "not_installed",
+            "stopped": 0,
+            "command_removed": False,
+        }
+        assert not Path(ctx.install_dir).exists()
+
+    def test_uninstall_refuses_any_retained_transaction_before_mutation(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        service = mocker.Mock()
+        service.status.return_value = "absent"
+        mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
+        mocker.patch.object(uninstall, "adapter", return_value=service)
+        mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
+
+        root = Path(payload_state.transaction_root(ctx))
+        root.mkdir(parents=True)
+        with pytest.raises(errors.RecoveryStateError, match="invalid"):
+            uninstall.uninstall_product(purge=True)
+        service.uninstall.assert_not_called()
+
+        root.rmdir()
+        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+        with pytest.raises(errors.RecoveryRequiredError, match="recovery"):
+            uninstall.uninstall_product(purge=True)
+        service.uninstall.assert_not_called()
+        transaction.rollback()
 
     def test_status_and_uninstall_use_the_finalized_command_path(self, tmp_path: Path, *, mocker):
         ctx = install_context(tmp_path)
@@ -240,8 +334,8 @@ class TestControllerLifecycle:
             "status",
             return_value={
                 "path": str(installed_command),
-                "available": True,
-                "owned": True,
+                "state": "owned",
+                "kind": "symlink",
             },
         )
         mocker.patch.object(
@@ -300,7 +394,7 @@ class TestControllerLifecycle:
             "create",
             side_effect=errors.UnsupportedPlatformError("no host"),
         )
-        with pytest.raises(errors.InstallError, match="no host"):
+        with pytest.raises(errors.UnsupportedPlatformError, match="no host"):
             uninstall.uninstall_product()
 
     def test_control_status_includes_secret_free_runtime_when_listener_is_available(
@@ -312,19 +406,88 @@ class TestControllerLifecycle:
             transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
             transaction.commit_projection()
             transaction.finalize({"pid": 1})
+            committed = identity.committed_payload(Path(ctx.executable))
+            assert committed is not None
             runtime = {
                 "pid": 1,
+                **committed.handoff(),
+                "payload_manifest_sha256": committed.manifest_sha256,
                 "uptime_seconds": 12,
                 "active_responses": 0,
                 "counters": {},
                 "upstream_classifications": {},
                 "last_failure": None,
+                "handoff_protocol_version": 2,
+                "handoff_state": "idle",
+                "handoff_transaction_id": None,
+                "accepting": True,
+                "draining": False,
             }
             mocker.patch.object(control, "read_runtime", return_value=runtime)
             mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[1])
             evidence = control.status(ctx)
             assert evidence["runtime"] == runtime
             assert "authorization" not in json.dumps(evidence).lower()
+
+    def test_status_rejects_a_listener_serving_a_different_payload(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+        transaction.commit_projection()
+        transaction.finalize({"pid": 1})
+        foreign = {
+            "pid": 1,
+            "release": "9.9.9",
+            "serving_payload_sha256": "1" * 64,
+            "release_receipt_sha256": "2" * 64,
+            "payload_manifest_sha256": "3" * 64,
+            "handoff_protocol_version": 2,
+            "handoff_state": "idle",
+            "handoff_transaction_id": None,
+            "accepting": True,
+            "draining": False,
+        }
+        mocker.patch.object(control, "read_runtime", return_value=foreign)
+        mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[1])
+        mocker.patch.object(control, "adapter").return_value.status.return_value = "running"
+
+        evidence = control.status(ctx)
+
+        assert evidence["state"] == "degraded"
+        assert evidence["detail"] == "listener runtime identity is unavailable"
+        assert evidence["runtime"] is None
+
+    def test_status_rejects_a_non_accepting_or_draining_runtime(
+        self, tmp_path: Path, *, mocker, subtests
+    ) -> None:
+        ctx = install_context(tmp_path)
+        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+        transaction.commit_projection()
+        transaction.finalize({"pid": 1})
+        committed = identity.committed_payload(Path(ctx.executable))
+        assert committed is not None
+        healthy = {
+            "pid": 1,
+            **committed.handoff(),
+            "payload_manifest_sha256": committed.manifest_sha256,
+            "handoff_protocol_version": 2,
+            "handoff_state": "idle",
+            "handoff_transaction_id": None,
+            "accepting": True,
+            "draining": False,
+        }
+        runtime = mocker.patch.object(control, "read_runtime")
+        mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[1])
+        mocker.patch.object(control, "adapter").return_value.status.return_value = "running"
+
+        for overrides in ({"accepting": False}, {"draining": True}):
+            with subtests.test(overrides=overrides):
+                runtime.return_value = {**healthy, **overrides}
+                evidence = control.status(ctx)
+                assert evidence["state"] == "degraded"
+                assert evidence["detail"] == "listener runtime identity is unavailable"
+                assert evidence["runtime"] is None
 
     def test_status_rejects_runtime_from_an_unowned_listener(self, tmp_path: Path, *, mocker):
         ctx = install_context(tmp_path)
@@ -390,8 +553,9 @@ class TestControllerLifecycle:
 
     def test_reload_refuses_incompatible_listener_without_mutation(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
+        Path(ctx.install_dir).mkdir(parents=True)
         mocker.patch.object(control, "read_runtime", return_value={"pid": 12345})
         terminate = mocker.patch.object(process, "terminate_pid")
-        with pytest.raises(errors.InstallError, match="transactional reload"):
+        with pytest.raises(errors.InstallError, match="not healthy enough to reload"):
             control.reload(ctx)
         terminate.assert_not_called()

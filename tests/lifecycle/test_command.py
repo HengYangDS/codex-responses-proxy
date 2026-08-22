@@ -100,9 +100,9 @@ def test_status_reports_exact_owned_link(tmp_path: Path) -> None:
     command.project(command_path, target)
 
     assert command.status(command_path, target) == {
+        "state": "owned",
+        "kind": "symlink",
         "path": str(command_path),
-        "available": True,
-        "owned": True,
     }
 
 
@@ -201,7 +201,11 @@ def test_project_uses_a_native_hardlink_on_windows(
 
     assert calls[0][0] == target
     assert os.path.samefile(command_path, target)
-    assert command.status(command_path, target)["owned"] is True
+    assert command.status(command_path, target) == {
+        "state": "owned",
+        "kind": "hardlink",
+        "path": str(command_path),
+    }
 
 
 def test_project_requires_post_projection_ownership_proof(

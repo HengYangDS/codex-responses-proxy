@@ -480,6 +480,7 @@ class TestControllerHandoffWiring:
 
     def test_reload_uses_handoff_without_terminating_the_old_pid_when_supported(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
+        Path(ctx.install_dir).mkdir(parents=True)
         mocker.patch.object(control, "read_runtime", return_value={"handoff_protocol_version": 2})
         mocker.patch.object(handoff, "runtime_supports_handoff", return_value=True)
         mocker.patch.object(
@@ -495,10 +496,11 @@ class TestControllerHandoffWiring:
         result = control.reload(ctx, timeout_seconds=5)
         request_handoff.assert_called_once()
         terminate.assert_not_called()
-        assert result == {"old_pid": 1, "new_pid": 2}
+        assert result == {"state": "reloaded", "old_pid": 1, "new_pid": 2}
 
     def test_reload_rejects_v2_handoff_when_installed_payload_integrity_fails(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
+        Path(ctx.install_dir).mkdir(parents=True)
         mocker.patch.object(control, "read_runtime", return_value={"handoff_protocol_version": 2})
         mocker.patch.object(handoff, "runtime_supports_handoff", return_value=True)
         mocker.patch.object(
@@ -513,6 +515,7 @@ class TestControllerHandoffWiring:
 
     def test_reload_recovers_a_finalized_result_after_controller_failure(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
+        Path(ctx.install_dir).mkdir(parents=True)
         expected = expected_metadata()
         old = idle_runtime()
         finalized = matching_health(1000, expected, pid=1000, handoff_state="finalized")

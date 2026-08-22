@@ -29,6 +29,24 @@ from tests.lifecycle.fixtures import (
 )
 
 
+def recovery_runtime(
+    runtime_identity: listener_identity.LoadedPayloadIdentity,
+    candidate_identity: listener_identity.LoadedPayloadIdentity,
+) -> dict[str, object]:
+    """Project one accepting runtime against the committed candidate manifest."""
+
+    return {
+        "pid": 321,
+        "release": runtime_identity.release,
+        "serving_payload_sha256": runtime_identity.serving_payload_sha256,
+        "release_receipt_sha256": runtime_identity.release_receipt_sha256,
+        "payload_manifest_sha256": candidate_identity.manifest_sha256,
+        "accepting": True,
+        "draining": False,
+        "handoff_state": "idle",
+    }
+
+
 def test_commit_prewarms_the_exact_installed_executable(tmp_path: Path, *, mocker) -> None:
     ctx = install_context(tmp_path)
     candidate = released_artifact()
@@ -168,6 +186,34 @@ class TestPayloadTransaction:
     def test_transaction_status_is_absent_without_a_journal(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         assert payload_state.status(ctx) is None
+
+    def test_recovery_is_idempotent_when_no_transaction_exists(self) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+
+        assert payload_transaction.recover(ctx, runtime=None) == {"state": "not_required"}
+
+    def test_transaction_status_classifies_an_existing_invalid_carrier(self) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        root = Path(payload_state.transaction_root(ctx))
+        root.mkdir(parents=True)
+
+        assert payload_state.status(ctx) == {
+            "state": "invalid",
+            "detail": "payload transaction journal is missing",
+        }
+        with pytest.raises(errors.InstallError, match="journal is missing"):
+            payload_transaction.recover(ctx, runtime=None)
+
+    def test_installed_state_rejects_a_symlink_even_when_its_target_is_absent(
+        self, tmp_path: Path
+    ) -> None:
+        ctx = install_context(tmp_path)
+        installed = Path(payload_state.installed_path(ctx))
+        installed.parent.mkdir(parents=True)
+        installed.symlink_to(tmp_path / "missing-installed-state.json")
+
+        with pytest.raises(errors.InstallError, match="installed release state is invalid"):
+            payload_state.read_installed(ctx)
 
     def test_recovery_closes_an_unmutated_prepared_transaction(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -365,14 +411,7 @@ class TestPayloadTransaction:
         candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
         assert previous_identity is not None
         assert candidate_identity is not None
-        runtime = {
-            **previous_identity.handoff(),
-            "payload_manifest_sha256": previous_identity.manifest_sha256,
-            "accepting": True,
-            "draining": False,
-            "handoff_state": "idle",
-        }
-        runtime.pop("manifest_sha256")
+        runtime = recovery_runtime(previous_identity, candidate_identity)
 
         result = payload_transaction.recover(ctx, runtime=runtime)
 
@@ -414,7 +453,7 @@ class TestPayloadTransaction:
                 Path(payload_state.journal_path(ctx)).write_bytes(
                     payload_digest.canonical_json(journal)
                 )
-                with pytest.raises(errors.InstallError, match="unavailable or invalid"):
+                with pytest.raises(errors.InstallError, match="invalid"):
                     payload_transaction.recover(ctx, runtime=runtime)
                 for path in sorted(root.rglob("*"), reverse=True):
                     path.unlink() if path.is_file() else path.rmdir()
@@ -429,13 +468,7 @@ class TestPayloadTransaction:
         candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
         assert previous_identity is not None
         assert candidate_identity is not None
-        runtime = {
-            **previous_identity.handoff(),
-            "payload_manifest_sha256": candidate_identity.manifest_sha256,
-            "accepting": True,
-            "handoff_state": "idle",
-        }
-        runtime.pop("manifest_sha256")
+        runtime = recovery_runtime(previous_identity, candidate_identity)
         with pytest.raises(errors.InstallError, match="does not match"):
             payload_transaction.recover(
                 ctx,
@@ -459,6 +492,92 @@ class TestPayloadTransaction:
         with pytest.raises(errors.InstallError, match="runtime identity is invalid"):
             payload_transaction.recover(ctx, runtime=runtime)
         assert root.exists()
+
+    def test_recovery_rolls_back_an_interrupted_committed_upgrade(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        previous = Path(ctx.executable).read_bytes()
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
+        previous_identity = listener_identity.committed_payload(rollback / executable_relative())
+        candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
+        assert previous_identity is not None
+        assert candidate_identity is not None
+        runtime = recovery_runtime(previous_identity, candidate_identity)
+
+        result = payload_transaction.recover(ctx, runtime=runtime)
+
+        assert result["state"] == "rolled_back"
+        assert Path(ctx.executable).read_bytes() == previous
+        assert not Path(payload_state.transaction_root(ctx)).exists()
+
+    def test_recovery_finalizes_a_verified_successor_after_controller_loss(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        candidate.preserve_for_recovery("controller outcome unknown")
+        candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
+        assert candidate_identity is not None
+        runtime = recovery_runtime(candidate_identity, candidate_identity)
+
+        result = payload_transaction.recover(ctx, runtime=runtime)
+
+        assert result == {
+            "transaction_id": result["transaction_id"],
+            "version": "1.2.3",
+            "state": "finalized",
+        }
+        installed = payload_state.read_installed(ctx)
+        assert installed is not None
+        assert installed["transaction_id"] == result["transaction_id"]
+        assert installed["version"] == "1.2.3"
+        assert installed["runtime"] == runtime
+        assert not Path(payload_state.transaction_root(ctx)).exists()
+
+    def test_recovery_cleans_a_finalized_transaction_without_rolling_back(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
+        assert candidate_identity is not None
+        runtime = recovery_runtime(candidate_identity, candidate_identity)
+        installed = {
+            "schema_version": payload_state.INSTALLED_RELEASE_STATE_SCHEMA,
+            "version": "1.2.3",
+            "receipt_sha256": candidate.receipt_sha256,
+            "transaction_id": json.loads(
+                Path(payload_state.journal_path(ctx)).read_text(encoding="utf-8")
+            )["transaction_id"],
+            "command": ctx.command,
+            "runtime": runtime,
+        }
+        Path(payload_state.installed_path(ctx)).write_bytes(
+            payload_digest.canonical_json(installed)
+        )
+        candidate_bytes = Path(ctx.executable).read_bytes()
+
+        result = payload_transaction.recover(ctx, runtime=runtime)
+
+        assert result["state"] == "finalized"
+        assert Path(ctx.executable).read_bytes() == candidate_bytes
+        assert not Path(payload_state.transaction_root(ctx)).exists()
+
+    def test_recovery_removes_an_interrupted_fresh_projection_without_a_runtime(
+        self, *, mocker
+    ) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+
+        result = payload_transaction.recover(ctx, runtime=None)
+
+        assert result["state"] == "rolled_back"
+        assert not Path(ctx.install_dir).exists()
+        assert not Path(ctx.command).exists()
+        assert not Path(payload_state.transaction_root(ctx)).exists()
 
     def test_transaction_status_projects_only_the_read_only_recovery_contract(
         self, *, mocker

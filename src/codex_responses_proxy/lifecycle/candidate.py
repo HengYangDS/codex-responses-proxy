@@ -135,6 +135,17 @@ def remove_projection(ctx: runtime_context.RuntimeContext, paths: AbstractSet[st
     install = Path(ctx.install_dir)
     for relative in paths | set(owned_files.OWNED_PAYLOAD_METADATA):
         owned_files.path(install, relative).unlink(missing_ok=True)
+    projection.remove_empty_owned_directories(
+        install,
+        set(paths) | set(owned_files.OWNED_PAYLOAD_METADATA),
+    )
+    try:
+        install.rmdir()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        if not any(install.iterdir()):
+            raise
 
 
 def prewarm(executable: Path) -> None:

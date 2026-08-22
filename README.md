@@ -117,12 +117,24 @@ codex-responses-proxy doctor
 # Transactional same-payload handoff
 codex-responses-proxy reload
 
+# Resolve an interrupted install or upgrade; idle recovery is a successful no-op
+codex-responses-proxy recover
+
 # Remove native supervision; preserve the verified payload
 codex-responses-proxy uninstall
 
 # Remove supervision and manifest-owned payload files
 codex-responses-proxy uninstall --purge
 ```
+
+Lifecycle JSON uses one explicit `state` discriminator. `recover` returns
+`not_required` when no transaction exists, `closed` when an unmutated prepared
+transaction is discarded, `finalized` when the committed candidate is already
+the proven live installation, and `rolled_back` when the exact prior state is
+restored. `uninstall` and `uninstall --purge` return `not_installed` with exit
+status zero only when no owned service, listener, command, payload, or
+transaction exists. Existing but unverifiable state is never treated as
+absence and remains unchanged for diagnosis.
 
 Expected failures are concise and actionable. Human mode does not emit a
 traceback, warning dump, serialized object, credential, request body, or private

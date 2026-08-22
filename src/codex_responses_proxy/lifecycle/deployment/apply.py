@@ -90,7 +90,7 @@ def _fresh_install(
         payload.rollback()
         raise
     payload.finalize(runtime)
-    return {"mode": "fresh-install", "runtime": runtime}
+    return {"state": "installed", "runtime": runtime}
 
 
 def _upgrade(
@@ -124,7 +124,7 @@ def _upgrade(
         adapter.install(ctx)
         raise
     payload.finalize(runtime)
-    return {"mode": "upgrade", "runtime": runtime}
+    return {"state": "upgraded", "runtime": runtime}
 
 
 def request_handoff(

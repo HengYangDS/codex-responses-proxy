@@ -130,7 +130,7 @@ class TestReleasedDeployment:
 
         result = self.deploy(payload, None, adapter=service, mocker=mocker)
 
-        assert result == {"mode": "fresh-install", "runtime": runtime}
+        assert result == {"state": "installed", "runtime": runtime}
         assert payload.events == ["commit", ("finalize", runtime)]
         service.install_mock.assert_called_once_with(self.ctx)
 
@@ -148,7 +148,7 @@ class TestReleasedDeployment:
 
         result = self.deploy(payload, current, adapter=service, mocker=mocker)
 
-        assert result == {"mode": "upgrade", "runtime": runtime}
+        assert result == {"state": "upgraded", "runtime": runtime}
         assert payload.events == ["commit", ("finalize", runtime)]
         request.assert_called_once()
         service.install_mock.assert_called_once_with(self.ctx)
@@ -166,7 +166,7 @@ class TestReleasedDeployment:
         request = mocker.patch.object(apply, "request_handoff", return_value=runtime)
 
         assert self.deploy(payload, current, adapter=service, mocker=mocker) == {
-            "mode": "upgrade",
+            "state": "upgraded",
             "runtime": runtime,
         }
         request.assert_called_once()

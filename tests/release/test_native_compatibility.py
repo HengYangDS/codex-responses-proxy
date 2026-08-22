@@ -119,7 +119,7 @@ class TestPublishedPredecessorCompatibility:
                 str(published_port),
                 "--json",
             )
-            assert installed_published["mode"] == "fresh-install"
+            assert installed_published["state"] == "installed"
             published_status = run_command(
                 previous_executable,
                 published_environment,
@@ -213,7 +213,7 @@ class TestPublishedPredecessorCompatibility:
                 str(port),
                 "--json",
             )
-            assert installed["mode"] == "fresh-install"
+            assert installed["state"] == "installed"
             before = run_command(
                 current_executable,
                 environment,
@@ -309,7 +309,7 @@ class TestPublishedPredecessorCompatibility:
             assert {held.get(f"normal-{index}") for index in range(3)} == {
                 b'{"id":"held","status":"completed"}'
             }
-            assert upgraded["mode"] == "upgrade"
+            assert upgraded["state"] == "upgraded"
 
             after = run_command(
                 current_executable,
@@ -360,7 +360,11 @@ class TestPublishedPredecessorCompatibility:
                 "--purge",
                 "--json",
             )
-            assert removed == {"command_removed": True, "purged": True, "stopped": 1}
+            assert removed == {
+                "command_removed": True,
+                "state": "purged",
+                "stopped": 1,
+            }
             assert not install.exists()
             assert not payload_state.transaction_root(ctx).exists()
             assert process.listener_pids(runtime_config.DEFAULT_PORT) == canonical_before

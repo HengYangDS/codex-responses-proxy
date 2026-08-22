@@ -95,7 +95,7 @@ class TestSignedNativeLifecycle:
                 str(port),
                 "--json",
             )
-            assert installed["mode"] == "fresh-install"
+            assert installed["state"] == "installed"
             status = run_command(executable, environment, "status", "--port", str(port), "--json")
             assert status["release"] == current_version
             assert status["service"] == "running"

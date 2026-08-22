@@ -51,18 +51,40 @@ def uninstall_product(
 ) -> dict[str, object]:
     """Remove owned supervision and optionally purge the verified payload."""
 
-    try:
-        ctx = runtime_context.create(port=port)
-        service = cast(ServiceAdapter, adapter())
-    except (errors.InstallError, errors.UnsupportedPlatformError) as exc:
-        raise errors.InstallError(str(exc)) from exc
+    ctx = runtime_context.create(port=port)
+    service = cast(ServiceAdapter, adapter())
 
-    _remove_service(service, ctx)
-    stopped = _stop_proxy(ctx)
+    transaction_state = state.status(ctx)
+    if transaction_state is not None:
+        if transaction_state.get("state") == "invalid":
+            raise errors.RecoveryStateError(
+                "payload transaction evidence is invalid; preserve it for diagnosis"
+            )
+        raise errors.RecoveryRequiredError("complete payload recovery before uninstalling")
     installed = state.read_installed(ctx)
     command_path = (
         Path(state.require_command(installed)) if installed is not None else Path(ctx.command)
     )
+    command_state = command.status(command_path, Path(ctx.executable))
+    service_state = service.status(ctx)
+    listeners = process.verified_proxy_listener_pids(ctx)
+    install_root = Path(ctx.install_dir)
+    if (
+        installed is None
+        and not install_root.exists()
+        and not install_root.is_symlink()
+        and service_state == "absent"
+        and not listeners
+        and command_state.get("state") == "absent"
+    ):
+        return {
+            "state": "not_installed",
+            "stopped": 0,
+            "command_removed": False,
+        }
+
+    _remove_service(service, ctx)
+    stopped = _stop_proxy(ctx)
     command_removed = command.remove(command_path, Path(ctx.executable))
 
     if purge:
@@ -72,4 +94,8 @@ def uninstall_product(
                 "manifest-owned payload was removed, but unknown install content remains: "
                 + ", ".join(remaining)
             )
-    return {"stopped": stopped, "command_removed": command_removed, "purged": purge}
+    return {
+        "state": "purged" if purge else "uninstalled",
+        "stopped": stopped,
+        "command_removed": command_removed,
+    }

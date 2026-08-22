@@ -14,6 +14,7 @@ from cyclopts.exceptions import CycloptsError
 from cyclopts.validators import Number
 from rich.console import Console
 
+from codex_responses_proxy import errors
 from codex_responses_proxy.cli import presentation
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import (
@@ -29,16 +30,7 @@ PUBLIC_COMMANDS = frozenset(
     {"install", "status", "doctor", "recover", "reload", "uninstall", "version"}
 )
 _FAILURE_STATUS = "failed"
-_RECOVERY_NEXT = "run `codex-responses-proxy reload`, then inspect the service log"
-_ERROR_NEXT = {
-    "install": "codex-responses-proxy install --help",
-    "status": "codex-responses-proxy doctor",
-    "doctor": "codex-responses-proxy status",
-    "recover": "codex-responses-proxy status",
-    "reload": "codex-responses-proxy status",
-    "uninstall": "codex-responses-proxy status",
-    "version": "codex-responses-proxy --help",
-}
+_RECOVERY_NEXT = "codex-responses-proxy reload"
 _JSON = Annotated[
     bool,
     Parameter(
@@ -121,6 +113,19 @@ def dispatch(command: str, **arguments: Any) -> Any:
 def _doctor(evidence: dict[str, Any]) -> dict[str, Any]:
     """Classify installed state without introducing another observation path."""
 
+    state = evidence.get("state")
+    if state == "not_installed":
+        return {
+            "ok": False,
+            "state": "not_installed",
+            "next": "codex-responses-proxy install --help",
+            "checks": {
+                "installation": {
+                    "status": _FAILURE_STATUS,
+                    "detail": "not installed",
+                }
+            },
+        }
     integrity = evidence.get("payload_integrity")
     integrity_ok = isinstance(integrity, dict) and integrity.get("ok") is True
     service = evidence.get("service")
@@ -135,41 +140,58 @@ def _doctor(evidence: dict[str, Any]) -> dict[str, Any]:
         and runtime.get("accepting") is not False
     )
     command = evidence.get("command")
-    command_ok = (
-        isinstance(command, dict)
-        and command.get("available") is True
-        and command.get("owned") is True
-    )
+    command_ok = isinstance(command, dict) and command.get("state") == "owned"
+    transaction_state = evidence.get("payload_transaction")
+    transaction_ok = transaction_state is None
     checks = {
         "payload": {
             "status": "passed" if integrity_ok else _FAILURE_STATUS,
             "detail": integrity.get("detail", "unavailable")
             if isinstance(integrity, dict)
             else "unavailable",
-            "next": None
-            if integrity_ok
-            else "reinstall the verified release before changing client configuration",
         },
         "service": {
             "status": "passed" if service == "running" else _FAILURE_STATUS,
             "detail": str(service or "unknown"),
-            "next": None if service == "running" else _RECOVERY_NEXT,
         },
         "listener": {
             "status": "passed" if listener_ok else _FAILURE_STATUS,
             "detail": "accepting" if listener_ok else "unavailable or identity mismatch",
-            "next": None if listener_ok else _RECOVERY_NEXT,
         },
         "command": {
             "status": "passed" if command_ok else _FAILURE_STATUS,
             "detail": str(command.get("path", "unavailable"))
             if isinstance(command, dict)
             else "unavailable",
-            "next": None if command_ok else "reinstall the verified release",
+        },
+        "transaction": {
+            "status": "passed" if transaction_ok else _FAILURE_STATUS,
+            "detail": "none"
+            if transaction_ok
+            else str(transaction_state.get("state", "invalid"))
+            if isinstance(transaction_state, dict)
+            else "invalid",
         },
     }
+    next_command = (
+        "codex-responses-proxy status --json"
+        if state == "invalid"
+        else "codex-responses-proxy recover"
+        if state == "recovery_required"
+        else "codex-responses-proxy install --help"
+        if not integrity_ok or not command_ok
+        else _RECOVERY_NEXT
+        if service != "running" or not listener_ok
+        else None
+    )
     return {
         "ok": all(check["status"] == "passed" for check in checks.values()),
+        "state": state
+        if state in {"invalid", "recovery_required"}
+        else "running"
+        if all(check["status"] == "passed" for check in checks.values())
+        else "degraded",
+        "next": next_command,
         "checks": checks,
     }
 
@@ -195,10 +217,14 @@ def _error(
     *,
     as_json: bool,
     next_command: str = "codex-responses-proxy doctor",
+    code: str = "usage_error",
 ) -> None:
     if as_json:
         print(
-            json.dumps({"error": {"message": message, "next": next_command}}, sort_keys=True),
+            json.dumps(
+                {"error": {"code": code, "message": message, "next": next_command}},
+                sort_keys=True,
+            ),
             file=sys.stderr,
         )
     else:
@@ -211,8 +237,13 @@ def _error(
 def _execute(command: str, *, as_json: bool = False, **arguments: Any) -> int:
     try:
         result = dispatch(command, **arguments)
-    except (OSError, RuntimeError, ValueError) as error:
-        _error(str(error), as_json=as_json, next_command=_ERROR_NEXT[command])
+    except errors.ProductError as error:
+        _error(
+            str(error),
+            as_json=as_json,
+            next_command=error.next_command,
+            code=error.code,
+        )
         return 2
     _render(command, result, as_json=as_json)
     return _result_code(command, result)
@@ -276,7 +307,7 @@ def _app() -> App:
 
     @app.command(name="recover")
     def recover(*, json_output: _JSON = False, port: _PORT = runtime_context.DEFAULT_PORT) -> int:
-        """Restore a retained failed installation transaction."""
+        """Resolve an interrupted installation transaction."""
 
         return _execute("recover", as_json=json_output, port=port)
 

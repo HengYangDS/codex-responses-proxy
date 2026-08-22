@@ -102,12 +102,26 @@ rollback SHALL restore the complete predecessor projection.
 
 ### Requirement: Recovery binds candidate, rollback, and live runtime
 
-Recovery SHALL distinguish an unmutated `prepared` transaction from a
-`recovery_required` payload transition. A prepared transaction SHALL be closed
-only when its canonical journal is the sole transaction-root entry. Recovery of
-a mutated projection SHALL require one canonical journal, a fully verified
-current candidate bundle, a fully verified current rollback bundle, and matching
-accepting runtime identity.
+Recovery SHALL distinguish no transaction, an unmutated `prepared`
+transaction, a `recovery_required` payload transition, and an invalid retained
+transaction. No transaction SHALL be an idempotent successful no-op. A prepared
+transaction SHALL be closed only when its canonical journal is the sole
+transaction-root entry. Recovery of a mutated projection SHALL require one
+canonical journal, a fully verified current candidate bundle, a fully verified
+current rollback bundle, and matching accepting runtime identity. Any existing
+but unverifiable transaction carrier SHALL fail closed without mutation.
+
+The public recovery result SHALL be exactly one of `not_required`, `closed`,
+`finalized`, or `rolled_back`. `finalized` requires the accepting runtime to
+match the committed candidate's release, serving payload, release receipt, and
+manifest identities. `rolled_back` requires the retained rollback identity;
+neither outcome may be inferred from process presence alone.
+
+#### Scenario: No transaction exists
+
+- **WHEN** the exact transaction root is absent
+- **THEN** recovery succeeds with state `not_required`
+- **AND** changes no payload, command, listener, service, or filesystem entry.
 
 #### Scenario: A prepared transaction contains only its canonical journal
 
@@ -220,11 +234,25 @@ immediately before mutation.
 
 ### Requirement: Uninstall removes only proved product ownership
 
-Uninstall SHALL remove native supervision and exact owned listener processes.
-It SHALL remove the user command link only while that link still resolves to
-the exact installed executable. `--purge` SHALL additionally require a valid
-current manifest, remove only its owned files, preserve unknown content, and
-fail nonzero if residue remains.
+Uninstall SHALL remove only the exact service, processes, command projection,
+and manifest-owned payload associated with the selected installation. An
+absent installation SHALL be an idempotent successful no-op. An existing
+payload root without valid ownership evidence SHALL be preserved and purge
+SHALL fail closed.
+
+#### Scenario: No installation exists
+
+- **WHEN** no owned service, listener, command projection, payload root, or
+  installed-state record exists
+- **THEN** uninstall succeeds with state `not_installed`
+- **AND** `--purge` has the same result without creating or deleting content.
+
+#### Scenario: Unverified content occupies the payload root
+
+- **WHEN** purge observes an existing payload root without a valid ownership
+  manifest
+- **THEN** it exits nonzero with a precise ownership diagnostic
+- **AND** preserves every byte.
 
 #### Scenario: Unknown content shares the install directory
 
