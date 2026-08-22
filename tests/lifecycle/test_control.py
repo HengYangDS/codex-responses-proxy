@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import json
+import ssl
 import tempfile
+import threading
 from dataclasses import replace
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -16,6 +21,7 @@ from codex_responses_proxy.lifecycle import install
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle import uninstall
 from codex_responses_proxy.lifecycle.supervision import process
+from codex_responses_proxy.runtime import loopback
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import identity
 from tests.lifecycle.fixtures import begin_transaction
@@ -26,6 +32,38 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestControllerLifecycle:
+    def test_loopback_transport_does_not_initialize_https(self, *, mocker) -> None:
+        """Keep local control-plane requests independent of TLS support."""
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"ok":true}')
+
+            @override
+            def log_message(self, format: str, *args: object) -> None:
+                del format, args
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        mocker.patch.object(
+            ssl, "create_default_context", side_effect=AssertionError("TLS initialized")
+        )
+        try:
+            request = control.urllib.request.Request(
+                f"http://127.0.0.1:{server.server_port}/healthz",
+                method="GET",
+            )
+            with loopback.open_request(request, timeout_seconds=1) as response:
+                assert response.status == 200
+                assert response.read() == b'{"ok":true}'
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=1)
+
     def test_control_reads_bounded_runtime_and_recovers_finalized_reload(self, subtests, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
         Path(ctx.install_dir).mkdir(parents=True)
@@ -42,15 +80,17 @@ class TestControllerLifecycle:
             def read(self):
                 return b'{"pid": 7}'
 
-        build = mocker.patch.object(control.urllib.request, "build_opener")
-        build.return_value.open.return_value = Response()
+        open_request = mocker.patch.object(
+            control.loopback,
+            "open_request",
+            return_value=Response(),
+        )
         assert control.read_runtime(ctx) == {"pid": 7}
-        build = mocker.patch.object(control.urllib.request, "build_opener")
-        build.return_value.open.side_effect = OSError("offline")
+        open_request.side_effect = OSError("offline")
         assert control.read_runtime(ctx) is None
-        build = mocker.patch.object(control.urllib.request, "build_opener")
-        build.return_value.open.return_value = Response()
-        build.return_value.open.return_value.status = 503
+        open_request.side_effect = None
+        open_request.return_value = Response()
+        open_request.return_value.status = 503
         assert control.read_runtime(ctx) is None
 
         runtime = {"pid": 7}

@@ -358,18 +358,20 @@ class TestReleasedDeployment:
             def read(self):
                 return self.payload
 
-        opener = mocker.Mock()
-        mocker.patch.object(control.urllib.request, "build_opener", return_value=opener)
-        opener.open.return_value = Response(200, b'{"pid": 222}')
+        open_request = mocker.patch.object(
+            control.loopback,
+            "open_request",
+            return_value=Response(200, b'{"pid": 222}'),
+        )
         assert control.read_runtime(self.ctx) == {"pid": 222}
         for response in (
             Response(204, b""),
             Response(200, b"[]"),
             Response(200, b"bad"),
         ):
-            opener.open.return_value = response
+            open_request.return_value = response
             assert control.read_runtime(self.ctx) is None
-        opener.open.side_effect = urllib.error.URLError("offline")
+        open_request.side_effect = urllib.error.URLError("offline")
         assert control.read_runtime(self.ctx) is None
 
 

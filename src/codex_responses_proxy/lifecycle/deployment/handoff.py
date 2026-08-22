@@ -23,6 +23,7 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
+from codex_responses_proxy.runtime import loopback
 from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import inventory
@@ -142,9 +143,11 @@ def post_ready(
         headers={"Content-Type": "application/json", "Accept": "application/json"},
         method="POST",
     )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with opener.open(request, timeout=timeout_seconds + _TRANSPORT_MARGIN_SECONDS) as response:
+        with loopback.open_request(
+            request,
+            timeout_seconds=timeout_seconds + _TRANSPORT_MARGIN_SECONDS,
+        ) as response:
             if response.status != 202:
                 raise errors.InstallError(f"handoff control returned HTTP {response.status}")
             raw = response.read(_MAX_BODY_BYTES + 1)

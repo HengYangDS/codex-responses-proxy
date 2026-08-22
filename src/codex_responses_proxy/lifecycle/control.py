@@ -16,6 +16,7 @@ from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle.supervision.native_service import adapter
 from codex_responses_proxy.runtime import config as runtime_config
+from codex_responses_proxy.runtime import loopback
 from codex_responses_proxy.service import identity
 
 
@@ -26,9 +27,8 @@ def read_runtime(ctx: runtime_context.RuntimeContext) -> dict[str, object] | Non
         headers={"Accept": "application/json"},
         method="GET",
     )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with opener.open(request, timeout=2) as response:
+        with loopback.open_request(request, timeout_seconds=2) as response:
             if response.status != 200:
                 return None
             payload: object = json.loads(response.read())

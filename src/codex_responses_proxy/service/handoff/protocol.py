@@ -26,6 +26,7 @@ from typing import cast
 
 from codex_responses_proxy import product_identity
 from codex_responses_proxy.runtime import config as runtime_config
+from codex_responses_proxy.runtime import loopback
 
 type JsonObject = dict[str, object]
 type ReadOnlyJsonObject = Mapping[str, object]
@@ -320,8 +321,10 @@ def _read_health(port: int, *, timeout_seconds: float) -> JsonObject:
     """Read one loopback-only health snapshot through the shared listener."""
     url = runtime_config.loopback_url(int(port), "/healthz")
     request = urllib.request.Request(url, method="GET")
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(request, timeout=max(0.1, float(timeout_seconds))) as response:
+    with loopback.open_request(
+        request,
+        timeout_seconds=max(0.1, float(timeout_seconds)),
+    ) as response:
         payload = response.read(HANDOFF_CONTROL_MAX_BYTES + 1)
     if len(payload) > HANDOFF_CONTROL_MAX_BYTES:
         raise HandoffError("handoff health response exceeds the control limit")

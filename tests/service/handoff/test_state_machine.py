@@ -210,9 +210,10 @@ class TestParentHandoffStateMachine(HandoffFixture):
     ):
         response = mocker.MagicMock()
         response.__enter__.return_value = response
-        opener = mocker.Mock(open=mocker.Mock(return_value=response))
         mocker.patch.object(
-            handoff_protocol_module.urllib.request, "build_opener", return_value=opener
+            handoff_protocol_module.loopback,
+            "open_request",
+            return_value=response,
         )
         for payload, error in (
             (

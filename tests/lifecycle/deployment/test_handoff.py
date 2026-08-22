@@ -163,9 +163,11 @@ class TestControllerHandoffWiring:
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
         valid = ready_ack(expected)
-        opener = mocker.Mock()
-        mocker.patch.object(handoff.urllib.request, "build_opener", return_value=opener)
-        opener.open.return_value = Response(valid)
+        open_request = mocker.patch.object(
+            handoff.loopback,
+            "open_request",
+            return_value=Response(valid),
+        )
         assert handoff.post_ready(ctx, expected)["child_pid"] == 1000
         for field, bad_value in (
             ("ok", False),
@@ -175,7 +177,7 @@ class TestControllerHandoffWiring:
             ("child_pid", 0),
         ):
             with subtests.test(field=field):
-                opener.open.return_value = Response({**valid, field: bad_value})
+                open_request.return_value = Response({**valid, field: bad_value})
                 with pytest.raises(errors.InstallError):
                     handoff.post_ready(ctx, expected)
 
@@ -235,11 +237,13 @@ class TestControllerHandoffWiring:
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
         valid = json.dumps(ready_ack(expected)).encode()
-        opener = mocker.Mock()
-        mocker.patch.object(handoff.urllib.request, "build_opener", return_value=opener)
-        opener.open.return_value = Response(valid)
+        open_request = mocker.patch.object(
+            handoff.loopback,
+            "open_request",
+            return_value=Response(valid),
+        )
         handoff.post_ready(ctx, expected, lease_seconds=0.1, timeout_seconds=999)
-        request = opener.open.call_args.args[0]
+        request = open_request.call_args.args[0]
         body = json.loads(request.data)
         assert body["lease_seconds"] == 1
         assert body["timeout_seconds"] == 120
@@ -251,8 +255,8 @@ class TestControllerHandoffWiring:
         )
         for response, message in failures:
             with subtests.test(message=message):
-                opener.open.side_effect = None
-                opener.open.return_value = response
+                open_request.side_effect = None
+                open_request.return_value = response
                 with pytest.raises(errors.InstallError, match=message):
                     handoff.post_ready(ctx, expected)
 
@@ -266,7 +270,7 @@ class TestControllerHandoffWiring:
             (ValueError("bad timeout"), "unavailable"),
         ):
             with subtests.test(failure=type(failure).__name__):
-                opener.open.side_effect = failure
+                open_request.side_effect = failure
                 with pytest.raises(errors.InstallError, match=message):
                     handoff.post_ready(ctx, expected)
         assert conflict_body.closed
