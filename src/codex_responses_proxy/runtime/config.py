@@ -9,23 +9,28 @@ import posixpath
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 
-HOME_ENV = "CODEX_RESPONSES_PROXY_HOME"
-STATE_HOME_ENV = "CODEX_RESPONSES_PROXY_STATE_HOME"
-PROXY_PORT_ENV = "CODEX_RESPONSES_PROXY_PROXY_PORT"
-PROXY_LOG_ENV = "CODEX_RESPONSES_PROXY_PROXY_LOG"
-WATCHDOG_LOG_ENV = "CODEX_RESPONSES_PROXY_WATCHDOG_LOG"
-PROXY_LOG_MAX_BYTES_ENV = "CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES"
-PROXY_LOG_BACKUP_COUNT_ENV = "CODEX_RESPONSES_PROXY_PROXY_LOG_BACKUP_COUNT"
-WATCHDOG_LOG_MAX_BYTES_ENV = "CODEX_RESPONSES_PROXY_WATCHDOG_LOG_MAX_BYTES"
-WATCHDOG_LOG_BACKUP_COUNT_ENV = "CODEX_RESPONSES_PROXY_WATCHDOG_LOG_BACKUP_COUNT"
-UPSTREAM_TIMEOUT_ENV = "CODEX_RESPONSES_PROXY_UPSTREAM_TIMEOUT"
-UPSTREAM_READ_TIMEOUT_ENV = "CODEX_RESPONSES_PROXY_UPSTREAM_READ_TIMEOUT"
-WATCHDOG_INTERVAL_ENV = "CODEX_RESPONSES_PROXY_WATCHDOG_INTERVAL"
-WATCHDOG_MAX_BACKOFF_ENV = "CODEX_RESPONSES_PROXY_WATCHDOG_MAX_BACKOFF"
-RESPONSE_FAILED_COMPACTION_BUDGET_ENV = "CODEX_RESPONSES_PROXY_RESPONSE_FAILED_COMPACTION_BUDGET"
-RESPONSE_FAILED_MAX_STAGES_ENV = "CODEX_RESPONSES_PROXY_RESPONSE_FAILED_MAX_STAGES"
+from codex_responses_proxy import product_identity
+
+HOME_ENV = product_identity.environment_name("HOME")
+STATE_HOME_ENV = product_identity.environment_name("STATE_HOME")
+PROXY_PORT_ENV = product_identity.environment_name("PROXY_PORT")
+PROXY_LOG_ENV = product_identity.environment_name("PROXY_LOG")
+WATCHDOG_LOG_ENV = product_identity.environment_name("WATCHDOG_LOG")
+PROXY_LOG_MAX_BYTES_ENV = product_identity.environment_name("PROXY_LOG_MAX_BYTES")
+PROXY_LOG_BACKUP_COUNT_ENV = product_identity.environment_name("PROXY_LOG_BACKUP_COUNT")
+WATCHDOG_LOG_MAX_BYTES_ENV = product_identity.environment_name("WATCHDOG_LOG_MAX_BYTES")
+WATCHDOG_LOG_BACKUP_COUNT_ENV = product_identity.environment_name("WATCHDOG_LOG_BACKUP_COUNT")
+UPSTREAM_TIMEOUT_ENV = product_identity.environment_name("UPSTREAM_TIMEOUT")
+UPSTREAM_READ_TIMEOUT_ENV = product_identity.environment_name("UPSTREAM_READ_TIMEOUT")
+WATCHDOG_INTERVAL_ENV = product_identity.environment_name("WATCHDOG_INTERVAL")
+WATCHDOG_MAX_BACKOFF_ENV = product_identity.environment_name("WATCHDOG_MAX_BACKOFF")
+RESPONSE_FAILED_COMPACTION_BUDGET_ENV = product_identity.environment_name(
+    "RESPONSE_FAILED_COMPACTION_BUDGET"
+)
+RESPONSE_FAILED_MAX_STAGES_ENV = product_identity.environment_name("RESPONSE_FAILED_MAX_STAGES")
 RUNTIME_ENVIRONMENT = frozenset(
     (
         HOME_ENV,
@@ -90,19 +95,16 @@ class Settings:
     @property
     def listener(self) -> tuple[str, int]:
         """Return the immutable local listener address."""
-
         return self.host, self.port
 
 
 def home_dir() -> str:
     """Return the active user's expanded home directory."""
-
     return os.path.expanduser("~")
 
 
 def path_join(root: str, *parts: str) -> str:
     """Join an owned path without reinterpreting its existing platform syntax."""
-
     if PureWindowsPath(root).drive or "\\" in root:
         return ntpath.join(root, *parts)
     return posixpath.join(root, *parts)
@@ -122,7 +124,6 @@ def _absolute_override(source: Mapping[str, str], name: str) -> str | None:
 
 def data_dir(environment: Mapping[str, str] | None = None) -> str:
     """Return the portable product data root, allowing an explicit override."""
-
     source = os.environ if environment is None else environment
     if override := _absolute_override(source, HOME_ENV):
         return override
@@ -131,43 +132,39 @@ def data_dir(environment: Mapping[str, str] | None = None) -> str:
 
 def default_data_dir(environment: Mapping[str, str] | None = None) -> str:
     """Return the platform data root without consulting the product override."""
-
     source = os.environ if environment is None else environment
     home = home_dir()
     if os.name == "nt":
         base = source.get("LOCALAPPDATA", path_join(home, "AppData", "Local"))
-        return path_join(base, "codex-responses-proxy")
+        return path_join(base, product_identity.PRODUCT_SLUG)
     if sys.platform == "darwin":
-        return path_join(home, "Library", "Application Support", "codex-responses-proxy")
+        return path_join(home, "Library", "Application Support", product_identity.PRODUCT_SLUG)
     base = source.get("XDG_DATA_HOME", path_join(home, ".local", "share"))
-    return path_join(base, "codex-responses-proxy")
+    return path_join(base, product_identity.PRODUCT_SLUG)
 
 
 def state_dir(environment: Mapping[str, str] | None = None) -> str:
     """Return the portable product state root, allowing an explicit override."""
-
     source = os.environ if environment is None else environment
     if override := _absolute_override(source, STATE_HOME_ENV):
         return override
     home = home_dir()
     if os.name == "nt":
         base = source.get("LOCALAPPDATA", path_join(home, "AppData", "Local"))
-        return path_join(base, "codex-responses-proxy", "state")
+        return path_join(base, product_identity.PRODUCT_SLUG, "state")
     if sys.platform == "darwin":
-        return path_join(home, "Library", "Logs", "codex-responses-proxy")
+        return path_join(home, "Library", "Logs", product_identity.PRODUCT_SLUG)
     base = source.get("XDG_STATE_HOME", path_join(home, ".local", "state"))
-    return path_join(base, "codex-responses-proxy")
+    return path_join(base, product_identity.PRODUCT_SLUG)
 
 
 def listener_host() -> str:
     """Return the product-invariant loopback listener host."""
-
     return "127.0.0.1"
 
 
 def loopback_url(port: int, path: str) -> str:
     """Build one internal HTTP URL from the invariant listener host."""
-
     return f"http://{listener_host()}:{port}{path}"
 
 
@@ -203,28 +200,24 @@ def _number(
 
 def listener_port(environment: Mapping[str, str] | None = None) -> int:
     """Return the configured TCP port after strict range validation."""
-
     source = os.environ if environment is None else environment
     return _integer(source, PROXY_PORT_ENV, DEFAULT_PORT, 1, 65535)
 
 
 def proxy_log_path(environment: Mapping[str, str] | None = None) -> str:
     """Return the proxy log path owned by the portable state root."""
-
     source = os.environ if environment is None else environment
     return source.get(PROXY_LOG_ENV, path_join(state_dir(source), "proxy.log"))
 
 
 def watchdog_log_path(environment: Mapping[str, str] | None = None) -> str:
     """Return the watchdog log path owned by the portable state root."""
-
     source = os.environ if environment is None else environment
     return source.get(WATCHDOG_LOG_ENV, path_join(state_dir(source), "watchdog.log"))
 
 
 def load(environment: Mapping[str, str] | None = None) -> Settings:
     """Load every process-local setting once and reject unsafe values."""
-
     source = os.environ if environment is None else environment
     return Settings(
         host=listener_host(),

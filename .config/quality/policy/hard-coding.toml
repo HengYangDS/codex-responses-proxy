@@ -1,0 +1,108 @@
+schema_version = 1
+owner = "repository-quality"
+purpose = "Assign every intentionally controlled value class to one source owner and distinguish authored policy from generated projections."
+allowed_kinds = [
+  "derived-projection",
+  "domain-constant",
+  "policy-parameter",
+  "supply-chain-pin",
+]
+
+[[controls]]
+id = "product-slug"
+kind = "domain-constant"
+owner = "src/codex_responses_proxy/product_identity.py"
+rationale = "The package, command, service, environment namespace, asset prefix, and release title are facets of one product identity."
+projections = [
+  "pyproject.toml",
+  "README.md",
+  "docs/",
+  "src/",
+  "tools/",
+  "tests/",
+]
+projection_checks = [
+  { source = "PACKAGE_NAME", target = "pyproject.toml", selector = "project.name", match = "toml-value" },
+  { source = "COMMAND_NAME", target = "pyproject.toml", selector = "project.scripts", match = "toml-key" },
+  { source = "PRODUCT_SLUG", target = "pyproject.toml", selector = "tool", match = "toml-key" },
+]
+
+[[controls]]
+id = "runtime-policy"
+kind = "policy-parameter"
+owner = "src/codex_responses_proxy/runtime/config.py"
+rationale = "Ports, time budgets, retry budgets, log retention, and portable data locations are validated runtime policy rather than call-site literals."
+projections = ["README.md", "docs/", "src/", "tests/"]
+
+[[controls]]
+id = "provider-catalog"
+kind = "domain-constant"
+owner = "src/codex_responses_proxy/providers/manifest.toml"
+rationale = "Provider route names, origins, and optional wire policies form one released product catalog."
+projections = ["README.md", "src/", "tests/"]
+
+[[controls]]
+id = "supported-python"
+kind = "supply-chain-pin"
+owner = ".python-versions"
+rationale = "The compatibility matrix has one ordered version-series owner."
+projections = [
+  ".config/ci/pipeline.cue",
+  "CONTRIBUTING.md",
+  "docs/",
+  "noxfile.py",
+  "tests/",
+]
+
+[[controls]]
+id = "release-python"
+kind = "supply-chain-pin"
+owner = ".python-release"
+rationale = "Native release construction uses one exact Python patch release."
+projections = [
+  "mise.toml",
+  "pyproject.toml",
+  ".config/ci/pipeline.cue",
+  "tools/",
+  "tests/",
+]
+
+[[controls]]
+id = "python-dependencies"
+kind = "supply-chain-pin"
+owner = "uv.lock"
+rationale = "Resolved Python dependency versions and hashes are owned by the universal lock."
+projections = ["pyproject.toml"]
+
+[[controls]]
+id = "external-tools"
+kind = "supply-chain-pin"
+owner = "mise.lock"
+rationale = "External executable versions and integrity are owned by the mise lock."
+projections = ["mise.toml", ".config/ci/pipeline.cue"]
+
+[[controls]]
+id = "ci-proof-graph"
+kind = "derived-projection"
+owner = ".config/ci/pipeline.cue"
+rationale = "GitHub and GitLab express one provider-neutral proof graph through forge-native syntax."
+projections = [".github/workflows/verify.yml", ".gitlab-ci.yml"]
+
+[[controls]]
+id = "quality-thresholds"
+kind = "policy-parameter"
+owner = ".config/quality/policy/"
+rationale = "Coverage, complexity, performance, naming, text, and governance thresholds require explicit risk and review rationale."
+projections = [
+  ".config/quality/native/",
+  "noxfile.py",
+  "tools/quality/",
+  "tests/quality/",
+]
+
+[[controls]]
+id = "release-platforms"
+kind = "domain-constant"
+owner = "tools/release/product_assets.py"
+rationale = "The published native platform set and asset grammar form one release-domain contract."
+projections = [".config/ci/pipeline.cue", "docs/", "tests/release/"]

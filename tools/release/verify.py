@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
-from cyclopts import App, Parameter
+from cyclopts import App
+from cyclopts import Parameter
 
 from tools.release.publication import verification as publication
 
@@ -29,7 +30,6 @@ class VerificationRequest:
 
 def verify(request: VerificationRequest) -> dict[str, object]:
     """Run live verification and copy only displayable evidence."""
-
     evidence = publication.verify(
         tag=request.tag,
         gitlab_remote=request.gitlab_remote,
@@ -40,11 +40,14 @@ def verify(request: VerificationRequest) -> dict[str, object]:
         gitlab_anchor=request.gitlab_anchor,
         github_anchor=request.github_anchor,
     )
-    return _plain(evidence)
+    plain = _plain(evidence)
+    if not isinstance(plain, dict) or not all(isinstance(key, str) for key in plain):
+        raise TypeError("publication verification evidence must be an object")
+    return {key: item for key, item in plain.items() if isinstance(key, str)}
 
 
-def _plain(value):
-    if isinstance(value, dict) or hasattr(value, "items"):
+def _plain(value: object) -> object:
+    if isinstance(value, dict):
         return {str(key): _plain(item) for key, item in value.items()}
     if isinstance(value, tuple):
         return [_plain(item) for item in value]
@@ -64,7 +67,6 @@ def _command(
     as_json: Annotated[bool, Parameter(name="--json", negative=False)] = False,
 ) -> None:
     """Verify one published tag without mutating either Forge."""
-
     request = VerificationRequest(
         tag,
         gitlab_remote,
@@ -96,7 +98,6 @@ def _command(
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run publication verification through the repository's single parser stack."""
-
     try:
         App(
             default_command=_command,

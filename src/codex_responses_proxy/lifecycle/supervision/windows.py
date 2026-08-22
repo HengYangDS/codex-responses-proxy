@@ -9,6 +9,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 from codex_responses_proxy import errors
+from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import runtime as service_runtime
@@ -36,10 +37,9 @@ def _current_user() -> str:
 
 def render_task_xml(ctx: runtime_spec.NativeServiceContext) -> str:
     """Serialize the minimal Task Scheduler projection for one runtime."""
-
     root = ET.Element(f"{{{_TASK_NAMESPACE}}}Task", {"version": "1.2"})
     registration = _element(root, "RegistrationInfo")
-    _element(registration, "Description", "Codex Responses Proxy watchdog")
+    _element(registration, "Description", f"{product_identity.DISPLAY_NAME} watchdog")
     triggers = _element(root, "Triggers")
     logon = _element(triggers, "LogonTrigger")
     _element(logon, "Enabled", "true")
@@ -78,7 +78,6 @@ def render_task_xml(ctx: runtime_spec.NativeServiceContext) -> str:
 
 def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
     """Return the executable declared by the registered scheduled task."""
-
     completed = subprocess.run(
         ["schtasks", "/query", "/tn", ctx.service_id, "/xml"],
         capture_output=True,
@@ -138,7 +137,6 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
 
 def _running_watchdog_pids(ctx: runtime_spec.NativeServiceContext) -> list[int]:
     """Return PIDs exactly naming this installation's native watchdog role."""
-
     return process.pids_naming_executable(ctx.executable, roles={service_runtime.WATCHDOG_MODE})
 
 

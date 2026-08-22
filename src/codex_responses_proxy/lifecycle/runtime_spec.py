@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, Any, Protocol
+from pathlib import Path
+from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
+from typing import TYPE_CHECKING
+from typing import Protocol
 
 from codex_responses_proxy import errors
+from codex_responses_proxy.json_value import JsonObject
 from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.runtime import config
-from codex_responses_proxy.service import digest, inventory
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import inventory
 
 if TYPE_CHECKING:
     from codex_responses_proxy.lifecycle.context import RuntimeContext
@@ -38,30 +43,38 @@ class NativeServiceContext(Protocol):
     """Minimum context consumed by every native service adapter."""
 
     @property
-    def user_home(self) -> str: ...
+    def user_home(self) -> str:
+        """Return the operating-system user home that owns native service files."""
+        ...
 
     @property
-    def install_dir(self) -> str: ...
+    def install_dir(self) -> str:
+        """Return the immutable product installation directory."""
+        ...
 
     @property
-    def executable(self) -> str: ...
+    def executable(self) -> str:
+        """Return the installed executable selected for supervision."""
+        ...
 
     @property
-    def log_dir(self) -> str: ...
+    def log_dir(self) -> str:
+        """Return the product-owned runtime log directory."""
+        ...
 
     @property
-    def service_id(self) -> str: ...
+    def service_id(self) -> str:
+        """Return the exact native service identity for this installation."""
+        ...
 
 
 def path(ctx: RuntimeContext) -> Path:
     """Return the product-owned configuration carrier for ``ctx``."""
-
     return Path(ctx.install_dir, FILENAME)
 
 
 def write(ctx: RuntimeContext) -> Path:
     """Atomically persist the exact native runtime contract."""
-
     target = path(ctx)
     payload = {"schema_version": SCHEMA_VERSION}
     payload.update({name: getattr(ctx, name) for name in _FIELDS})
@@ -76,17 +89,20 @@ def write(ctx: RuntimeContext) -> Path:
 
 def environment(target: Path) -> dict[str, str]:
     """Validate one carrier and project it into process-local settings."""
-
     return _project(_read(target))
 
 
-def _project(value: dict[str, Any]) -> dict[str, str]:
+def _project(value: JsonObject) -> dict[str, str]:
+    install_dir = value.get("install_dir")
+    log_dir = value.get("log_dir")
+    if not isinstance(install_dir, str) or not isinstance(log_dir, str):
+        raise errors.InstallError("native runtime configuration paths are invalid")
     return {
-        config.HOME_ENV: value["install_dir"],
-        config.STATE_HOME_ENV: value["log_dir"],
+        config.HOME_ENV: install_dir,
+        config.STATE_HOME_ENV: log_dir,
         config.PROXY_PORT_ENV: str(value["port"]),
-        config.PROXY_LOG_ENV: config.path_join(value["log_dir"], "proxy.log"),
-        config.WATCHDOG_LOG_ENV: config.path_join(value["log_dir"], "watchdog.log"),
+        config.PROXY_LOG_ENV: config.path_join(log_dir, "proxy.log"),
+        config.WATCHDOG_LOG_ENV: config.path_join(log_dir, "watchdog.log"),
         config.PROXY_LOG_MAX_BYTES_ENV: str(value["proxy_log_max_bytes"]),
         config.PROXY_LOG_BACKUP_COUNT_ENV: str(value["proxy_log_backup_count"]),
         config.WATCHDOG_LOG_MAX_BYTES_ENV: str(value["watchdog_log_max_bytes"]),
@@ -104,7 +120,6 @@ def _project(value: dict[str, Any]) -> dict[str, str]:
 
 def from_executable(executable: str | os.PathLike[str]) -> Path:
     """Locate the carrier owned by the executable's installed payload root."""
-
     path = Path(executable).resolve(strict=True)
     if path.parent.name != "bin":
         raise errors.InstallError("native executable is outside the installed payload layout")
@@ -113,7 +128,6 @@ def from_executable(executable: str | os.PathLike[str]) -> Path:
 
 def activate(executable: str | os.PathLike[str]) -> Path:
     """Replace inherited product settings with the executable-owned carrier."""
-
     target = from_executable(executable)
     projected = environment(target)
     for name in config.RUNTIME_ENVIRONMENT:
@@ -122,17 +136,20 @@ def activate(executable: str | os.PathLike[str]) -> Path:
     return target
 
 
-def _read(target: Path) -> dict[str, Any]:
+def _read(target: Path) -> JsonObject:
     value = owned_files.read_canonical_json(target, "native runtime configuration")
     if value.get("schema_version") != SCHEMA_VERSION or set(value) != {
         "schema_version",
         *_FIELDS,
     }:
         raise errors.InstallError("native runtime configuration schema is unsupported")
-    for name in ("install_dir", "log_dir"):
-        if not isinstance(value.get(name), str) or not _absolute(value[name]):
-            raise errors.InstallError(f"native runtime configuration {name} is invalid")
-    expected = Path(value["install_dir"], FILENAME)
+    install_dir = value.get("install_dir")
+    log_dir = value.get("log_dir")
+    if not isinstance(install_dir, str) or not _absolute(install_dir):
+        raise errors.InstallError("native runtime configuration install_dir is invalid")
+    if not isinstance(log_dir, str) or not _absolute(log_dir):
+        raise errors.InstallError("native runtime configuration log_dir is invalid")
+    expected = Path(install_dir, FILENAME)
     if _normalized(target) != _normalized(expected):
         raise errors.InstallError("native runtime configuration is outside its payload")
     try:

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import unicodedata
 from collections.abc import Iterable
-from typing import Any
+from collections.abc import Mapping
+from itertools import starmap
+
+from codex_responses_proxy import product_identity
 
 _LABEL_WIDTH = 12
 _RULE = "-" * 40
@@ -24,19 +27,18 @@ def _row(label: str, value: object) -> str:
 def _page(
     title: str, rows: Iterable[tuple[str, object]], *, next_command: str | None = None
 ) -> str:
-    lines = [f"Codex Responses Proxy  {title}", _RULE, ""]
-    lines.extend(_row(label, value) for label, value in rows)
+    lines = [f"{product_identity.DISPLAY_NAME}  {title}", _RULE, ""]
+    lines.extend(starmap(_row, rows))
     if next_command:
         lines.extend(("", "Next", f"  {next_command}"))
     return "\n".join(lines)
 
 
-def render(command: str, result: Any) -> str:
+def render(command: str, result: str | Mapping[str, object] | None) -> str:
     """Render one successful public command without exposing serialized internals."""
-
     if command == "version" or isinstance(result, str):
         return str(result)
-    if not isinstance(result, dict):
+    if not isinstance(result, Mapping):
         return ""
     if command == "status":
         integrity = result.get("payload_integrity")
@@ -58,13 +60,13 @@ def render(command: str, result: Any) -> str:
             else "None"
         )
         next_command = (
-            "codex-responses-proxy install --help"
+            product_identity.command("install", "--help")
             if absent
-            else "codex-responses-proxy status --json"
+            else product_identity.command("status", "--json")
             if state == "invalid"
-            else "codex-responses-proxy recover"
+            else product_identity.command("recover")
             if state == "recovery_required"
-            else "codex-responses-proxy doctor"
+            else product_identity.command("doctor")
             if state == "degraded"
             else None
         )
@@ -89,24 +91,27 @@ def render(command: str, result: Any) -> str:
             next_command=next_command,
         )
     if command == "doctor":
-        checks = result.get("checks") if isinstance(result.get("checks"), dict) else {}
+        raw_checks = result.get("checks")
+        checks = raw_checks if isinstance(raw_checks, Mapping) else {}
         rows = tuple(
             (
                 str(name).capitalize(),
                 "Passed" if check.get("status") == "passed" else "Action required",
             )
             for name, check in checks.items()
-            if isinstance(check, dict)
+            if isinstance(check, Mapping)
         )
-        next_command = result.get("next")
+        raw_next = result.get("next")
+        next_command = raw_next if isinstance(raw_next, str) else None
         return _page("Doctor", rows, next_command=next_command)
     if command == "install":
-        runtime = result.get("runtime") if isinstance(result.get("runtime"), dict) else {}
+        raw_runtime = result.get("runtime")
+        runtime = raw_runtime if isinstance(raw_runtime, Mapping) else {}
         release = result.get("release") or runtime.get("release") or "Verified release"
         return _page(
             "Upgraded" if result.get("state") == "upgraded" else "Installed",
             (("Release", release),),
-            next_command="codex-responses-proxy status",
+            next_command=product_identity.command("status"),
         )
     if command == "reload":
         return _page(
@@ -115,7 +120,7 @@ def render(command: str, result: Any) -> str:
                 ("Previous PID", result.get("old_pid", "Unknown")),
                 ("Current PID", result.get("new_pid", "Unknown")),
             ),
-            next_command="codex-responses-proxy status",
+            next_command=product_identity.command("status"),
         )
     if command == "recover":
         if result.get("state") == "not_required":
@@ -127,7 +132,7 @@ def render(command: str, result: Any) -> str:
                 ("Transaction", result.get("transaction_id", "Unknown")),
                 ("Release", result.get("version", "Unknown")),
             ),
-            next_command="codex-responses-proxy status",
+            next_command=product_identity.command("status"),
         )
     if command == "uninstall":
         if result.get("state") == "not_installed":
@@ -145,5 +150,4 @@ def render(command: str, result: Any) -> str:
 
 def error(message: str, *, next_command: str) -> str:
     """Render one bounded problem with a single safe next action."""
-
     return _page("Action required", (("Problem", message),), next_command=next_command)

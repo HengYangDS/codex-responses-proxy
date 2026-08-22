@@ -17,14 +17,19 @@ def is_retryable_failure(status: int, payload: bytes) -> bool:
     if status != 477:
         return False
     try:
-        document = json.loads(payload)
+        document: object = json.loads(payload)
     except (TypeError, ValueError, json.JSONDecodeError):
         return False
-    error = document.get("error") if isinstance(document, dict) else None
+    error: object = document.get("error") if isinstance(document, dict) else None
+    if not isinstance(error, dict):
+        return False
+    error_type: object = error.get("type")
+    error_code: object = error.get("code")
     return (
-        isinstance(error, dict)
-        and error.get("type") == "dmx_api_error"
-        and error.get("code") == "empty_response"
+        isinstance(error_type, str)
+        and error_type == "dmx_api_error"
+        and isinstance(error_code, str)
+        and error_code == "empty_response"
     )
 
 

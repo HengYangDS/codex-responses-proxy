@@ -10,13 +10,16 @@ from collections import defaultdict
 from collections.abc import Mapping
 from decimal import Decimal
 from importlib import import_module
-from pathlib import Path, PurePosixPath
-from typing import Annotated, Any
+from pathlib import Path
+from pathlib import PurePosixPath
+from typing import Annotated
 
-from cyclopts import App, Parameter
+from coverage import Coverage
+from cyclopts import App
+from cyclopts import Parameter
 
 ROOT = Path(__file__).resolve().parents[2]
-ARCHITECTURE_POLICY = ROOT / ".config/checks/architecture/policy.toml"
+ARCHITECTURE_POLICY = ROOT / ".config/quality/policy/architecture.toml"
 _POLICY_KEYS = {
     "minimum_percent",
     "comparison",
@@ -33,8 +36,15 @@ _POLICY_KEYS = {
 }
 
 
+def _object_mapping(value: object, *, label: str) -> dict[str, object]:
+    """Narrow one decoded mapping to string keys."""
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise ValueError(f"{label} must be an object")
+    return {str(key): item for key, item in value.items()}
+
+
 def _ratio_gaps(
-    totals: Mapping[str, Any],
+    totals: Mapping[str, object],
     floor: float,
     *,
     total_key: str,
@@ -43,7 +53,6 @@ def _ratio_gaps(
     missing_gap: str,
 ) -> list[str]:
     """Validate one exact measured ratio and report its stable coverage gap."""
-
     total = totals.get(total_key)
     covered = totals.get(covered_key)
     if (
@@ -62,9 +71,8 @@ def _ratio_gaps(
     return []
 
 
-def branch_gaps(totals: Mapping[str, Any], floor: float) -> list[str]:
+def branch_gaps(totals: Mapping[str, object], floor: float) -> list[str]:
     """Return a gap when exact branch coverage is absent or below ``floor``."""
-
     return _ratio_gaps(
         totals,
         floor,
@@ -75,9 +83,8 @@ def branch_gaps(totals: Mapping[str, Any], floor: float) -> list[str]:
     )
 
 
-def statement_gaps(totals: Mapping[str, Any], floor: float) -> list[str]:
+def statement_gaps(totals: Mapping[str, object], floor: float) -> list[str]:
     """Return a gap when exact statement coverage is absent or below ``floor``."""
-
     return _ratio_gaps(
         totals,
         floor,
@@ -88,13 +95,15 @@ def statement_gaps(totals: Mapping[str, Any], floor: float) -> list[str]:
     )
 
 
-def measured_report(coverage: Any) -> dict[str, Any]:
+def measured_report(coverage: Coverage) -> dict[str, object]:
     """Return the exact configured coverage report."""
-
     with tempfile.TemporaryDirectory() as directory:
         report = Path(directory) / "coverage.json"
         coverage.json_report(outfile=str(report))
-        return json.loads(report.read_text(encoding="utf-8"))
+        return _object_mapping(
+            json.loads(report.read_text(encoding="utf-8")),
+            label="coverage JSON report",
+        )
 
 
 def _semantic_package(path: str, package_marker: str) -> str | None:
@@ -109,14 +118,12 @@ def _semantic_package(path: str, package_marker: str) -> str | None:
 
 def _package_gap(package: str, gap: str) -> str:
     """Qualify one stable aggregate gap with its semantic package."""
-
     reason, separator, detail = gap.partition(":")
     return f"package_{reason}:{package}{separator}{detail}"
 
 
-def package_totals(files: Mapping[str, Any], package_marker: str) -> dict[str, dict[str, int]]:
+def package_totals(files: Mapping[str, object], package_marker: str) -> dict[str, dict[str, int]]:
     """Aggregate exact coverage counts by the declared semantic package root."""
-
     totals: defaultdict[str, dict[str, int]] = defaultdict(
         lambda: {
             "num_statements": 0,
@@ -140,7 +147,6 @@ def package_totals(files: Mapping[str, Any], package_marker: str) -> dict[str, d
 
 def package_gaps(totals: Mapping[str, Mapping[str, int]]) -> list[str]:
     """Require non-zero execution evidence for every semantic package."""
-
     gaps: list[str] = []
     for package in sorted(totals):
         package_totals = totals[package]
@@ -153,10 +159,12 @@ def package_gaps(totals: Mapping[str, Mapping[str, int]]) -> list[str]:
     return gaps
 
 
-def load_policy(path: Path) -> dict[str, Any]:
+def load_policy(path: Path) -> dict[str, object]:
     """Load the complete coverage contract without implicit defaults."""
-
-    policy = tomllib.loads(path.read_text(encoding="utf-8"))
+    policy = _object_mapping(
+        tomllib.loads(path.read_text(encoding="utf-8")),
+        label="coverage policy",
+    )
     if set(policy) != _POLICY_KEYS:
         raise ValueError("coverage policy fields do not match the canonical schema")
     floor = policy["minimum_percent"]
@@ -179,14 +187,15 @@ def load_policy(path: Path) -> dict[str, Any]:
         "remediation",
         "review_condition",
     )
-    if any(not isinstance(policy[key], str) or not policy[key].strip() for key in rationale):
-        raise ValueError("coverage policy rationale fields must be non-empty")
+    for key in rationale:
+        value = policy[key]
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("coverage policy rationale fields must be non-empty")
     return policy
 
 
 def package_marker(path: Path = ARCHITECTURE_POLICY) -> str:
     """Derive the Python package marker from the architecture SSOT."""
-
     policy = tomllib.loads(path.read_text(encoding="utf-8"))
     root = policy.get("package_root")
     if not isinstance(root, str) or not root.strip():
@@ -202,14 +211,17 @@ def _command(
     policy_path: Annotated[Path, Parameter(name="--policy")],
 ) -> int:
     """Load current coverage data and report one machine-readable verdict."""
-
     policy = load_policy(policy_path)
-    floor = policy["minimum_percent"]
+    raw_floor = policy["minimum_percent"]
+    if isinstance(raw_floor, bool) or not isinstance(raw_floor, int | float):
+        raise AssertionError("validated coverage floor must be numeric")
+    floor = float(raw_floor)
     coverage = import_module("coverage").Coverage()
     coverage.load()
     report = measured_report(coverage)
-    totals = report["totals"]
-    packages = package_totals(report.get("files", {}), package_marker())
+    totals = _object_mapping(report.get("totals"), label="coverage totals")
+    files = _object_mapping(report.get("files"), label="coverage files")
+    packages = package_totals(files, package_marker())
     gaps = [
         *statement_gaps(totals, floor),
         *branch_gaps(totals, floor),
@@ -226,7 +238,6 @@ def _command(
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run the coverage policy through the repository parser stack."""
-
     result = App(default_command=_command, help=__doc__, result_action="return_value")(
         tuple(sys.argv[1:] if argv is None else argv)
     )

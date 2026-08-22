@@ -204,6 +204,7 @@ class TestTermination:
         candidate = mocker.Mock()
         candidate.pid = 123
         candidate.create_time.return_value = 42.0
+        candidate.status.return_value = process.psutil.STATUS_RUNNING
         candidate.cmdline.side_effect = [
             ["/installed/codex-responses-proxy", "--internal-handoff-child"],
             process.psutil.AccessDenied(123),
@@ -295,6 +296,7 @@ class TestTermination:
                     "--internal-handoff-child",
                 ]
                 candidate.create_time.return_value = 42.0
+                candidate.status.return_value = process.psutil.STATUS_RUNNING
                 if case == "terminate":
                     candidate.wait.side_effect = failure
                 constructor = (
@@ -318,6 +320,7 @@ class TestTermination:
     def test_captured_native_identity_reports_the_same_running_generation(self, *, mocker):
         candidate = mocker.Mock()
         candidate.create_time.return_value = 42.0
+        candidate.status.return_value = process.psutil.STATUS_RUNNING
         candidate.is_running.return_value = True
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
 

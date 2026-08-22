@@ -24,7 +24,6 @@ _SECRET_PATTERNS = (
 
 def redact(message: str, *, max_bytes: int = LINE_MAX_BYTES) -> str:
     """Remove secret-shaped values and bound one caller-controlled message."""
-
     value = str(message).replace("\r", " ").replace("\n", " ")
     for pattern in _SECRET_PATTERNS:
         value = pattern.sub("[redacted]", value)
@@ -36,7 +35,6 @@ def redact(message: str, *, max_bytes: int = LINE_MAX_BYTES) -> str:
 
 def rotate(path: Path, incoming_bytes: int, *, max_bytes: int, backup_count: int) -> int:
     """Rotate regular-file segments and return bytes discarded as oversized."""
-
     try:
         metadata = path.lstat()
     except OSError:
@@ -89,7 +87,6 @@ def append(
     mirror: Callable[[str], object] | None = None,
 ) -> None:
     """Best-effort append of one timestamped, private, bounded log line."""
-
     safe_message = redact(message)
     line = _line(safe_message)
     with suppress(OSError), _LOCK:

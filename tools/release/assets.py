@@ -9,6 +9,7 @@ from pathlib import Path
 
 from cyclopts import App
 
+from codex_responses_proxy import product_identity
 from tools.release import product_assets as assets
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,7 +18,6 @@ INSTALLER_PROVENANCE = frozenset({"direct_url.json", "uv_cache.json"})
 
 def _normalize(packages: Path) -> None:
     """Remove installer-local product metadata before executable freezing."""
-
     metadata = tuple(packages.glob("codex_responses_proxy-*.dist-info"))
     if len(metadata) != 1 or not metadata[0].is_dir() or metadata[0].is_symlink():
         raise RuntimeError("installed product distribution metadata is ambiguous")
@@ -43,7 +43,6 @@ def _normalize(packages: Path) -> None:
 
 def _is_within(bundle: Path, member: Path) -> bool:
     """Return whether two resolved paths share the host's bundle identity."""
-
     canonical_bundle = os.path.normcase(str(bundle))
     canonical_member = os.path.normcase(str(member))
     shared = os.path.normcase(os.path.commonpath((canonical_bundle, canonical_member)))
@@ -52,7 +51,6 @@ def _is_within(bundle: Path, member: Path) -> bool:
 
 def bundle_files(bundle: Path) -> tuple[tuple[Path, Path], ...]:
     """Return logical bundle files after safely materializing internal links."""
-
     files: list[tuple[Path, Path]] = []
 
     def visit(logical: Path, source: Path, ancestors: frozenset[Path]) -> None:
@@ -82,16 +80,13 @@ def bundle_files(bundle: Path) -> tuple[tuple[Path, Path], ...]:
 
 def _command(*, bundle: Path, platform: str, output: Path) -> None:
     """Write one platform archive, machine manifest, and checksum manifest."""
-
     if output.exists() and any(output.iterdir()):
         raise SystemExit("release asset output directory must be empty")
     bundle = bundle.resolve(strict=True)
     if not bundle.is_dir():
         raise SystemExit("native bundle must be a directory")
     version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
-    executable_name = (
-        "codex-responses-proxy.exe" if platform.startswith("windows-") else "codex-responses-proxy"
-    )
+    executable_name = product_identity.executable_name(windows=platform.startswith("windows-"))
     executable = bundle / executable_name
     if not executable.is_file() or executable.is_symlink():
         raise SystemExit("native bundle executable is unavailable")
@@ -130,7 +125,6 @@ def _command(*, bundle: Path, platform: str, output: Path) -> None:
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run asset assembly through the repository's single parser stack."""
-
     app = App(default_command=_command, help=__doc__, result_action="return_value")
     app.command(_normalize, name="normalize")
     app(tuple(sys.argv[1:] if argv is None else argv))

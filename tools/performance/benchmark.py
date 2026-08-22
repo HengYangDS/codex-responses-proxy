@@ -8,18 +8,17 @@ import json
 import threading
 import urllib.request
 from collections.abc import Iterator
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
+from typing import override
 
 import pyperf
 
 from codex_responses_proxy.protocol.request import sanitize_responses_body
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.service import entrypoint
-from codex_responses_proxy.service.handoff.protocol import (
-    read_control_message,
-    write_control_message,
-)
+from codex_responses_proxy.service.handoff.protocol import read_control_message
+from codex_responses_proxy.service.handoff.protocol import write_control_message
 
 _SMALL_RESPONSE = b'{"id":"response","status":"completed"}'
 _STREAM_RESPONSE = b'data: {"type":"response.completed"}\n\n'
@@ -50,7 +49,8 @@ class _UpstreamHandler(BaseHTTPRequestHandler):
 
     protocol_version = "HTTP/1.1"
 
-    def log_message(self, *args: Any, **kwargs: Any) -> None:
+    @override
+    def log_message(self, *args: object, **kwargs: object) -> None:
         del args, kwargs
 
     def do_POST(self) -> None:
@@ -92,7 +92,6 @@ class _Environment:
 
     def close(self) -> None:
         """Stop both owned listeners and join their threads."""
-
         self.proxy.shutdown()
         self.proxy.server_close()
         self.proxy_thread.join()
@@ -102,7 +101,6 @@ class _Environment:
 
     def exchange(self, query: str = "") -> bytes:
         """Return one complete loopback response."""
-
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.proxy.server_address[1]}/dmxapi/v1/responses{query}",
             data=_REQUEST_BODY,
@@ -110,15 +108,20 @@ class _Environment:
             method="POST",
         )
         with self.opener.open(request) as response:
-            return response.read()
+            content: object = response.read()
+            if not isinstance(content, bytes):
+                raise TypeError("benchmark response must be bytes")
+            return content
 
     def health(self) -> bytes:
         """Return one process-local health response."""
-
         with self.opener.open(
             f"http://127.0.0.1:{self.proxy.server_address[1]}/healthz"
         ) as response:
-            return response.read()
+            content: object = response.read()
+            if not isinstance(content, bytes):
+                raise TypeError("benchmark health response must be bytes")
+            return content
 
 
 @contextlib.contextmanager
@@ -161,7 +164,6 @@ def _handoff_round_trip() -> dict[str, object]:
 
 def main() -> None:
     """Run repeated benchmarks and let pyperf own process isolation and JSON."""
-
     runner = pyperf.Runner(program_args=("-m", "tools.performance.benchmark"))
     registry = provider_registry.Registry(
         {"dmxapi": provider_registry.Profile("dmxapi", "https://example.invalid/v1")}
@@ -179,7 +181,6 @@ def main() -> None:
 
 def memory_main() -> None:
     """Measure peak process memory for the largest pure request projection."""
-
     runner = pyperf.Runner(program_args=("-m", "tools.performance.memory"))
     runner.bench_func("large-request-projection-1mib", sanitize_responses_body, _LARGE_REQUEST_BODY)
     with _environment() as environment:

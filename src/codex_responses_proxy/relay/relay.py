@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import http.client
 from http.server import BaseHTTPRequestHandler
-from typing import Any, Protocol
+from typing import Protocol
 
 from codex_responses_proxy.protocol import response as live_response
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.relay import operational_log, sse, telemetry
+from codex_responses_proxy.relay import operational_log
+from codex_responses_proxy.relay import sse
+from codex_responses_proxy.relay import telemetry
+from codex_responses_proxy.relay.contracts import ResponseHeaders
+from codex_responses_proxy.relay.contracts import UpstreamResponse
 
 HOP_BY_HOP = {
     "connection",
@@ -34,7 +38,7 @@ class Exchange(Protocol):
     is_responses: bool
     used_input_variant_dialogue: bool
 
-    def upstream(self, body: bytes | None = None) -> Any:
+    def upstream(self, body: bytes | None = None) -> UpstreamResponse:
         """Open the current upstream attempt."""
 
     def log(self, event: str, detail: str = "") -> None:
@@ -45,6 +49,13 @@ class Exchange(Protocol):
 
     def input_variant_exhausted(self, detail: str) -> None:
         """Record exhausted input-variant recovery."""
+
+
+class ReadableResponse(Protocol):
+    """Bounded binary read capability required by response relaying."""
+
+    def read(self, amount: int = -1) -> bytes:
+        """Read at most ``amount`` bytes from the upstream response."""
 
 
 def send_payload(
@@ -83,7 +94,12 @@ def send_wire_failure_exhausted(
     send_payload(handler, 503, payload, retry_after="3")
 
 
-def relay_error(handler: BaseHTTPRequestHandler, status: int, headers, payload: bytes) -> None:
+def relay_error(
+    handler: BaseHTTPRequestHandler,
+    status: int,
+    headers: ResponseHeaders,
+    payload: bytes,
+) -> None:
     """Relay one bounded upstream HTTP error."""
     handler.send_response(status)
     for name, value in headers.items():
@@ -94,7 +110,7 @@ def relay_error(handler: BaseHTTPRequestHandler, status: int, headers, payload: 
     handler.wfile.write(payload)
 
 
-def _send_stream_headers(handler: BaseHTTPRequestHandler, response) -> None:
+def _send_stream_headers(handler: BaseHTTPRequestHandler, response: UpstreamResponse) -> None:
     handler.send_response(response.status)
     for name, value in response.headers.items():
         if name.lower() not in HOP_BY_HOP and name.lower() != "content-length":
@@ -103,10 +119,10 @@ def _send_stream_headers(handler: BaseHTTPRequestHandler, response) -> None:
     handler.end_headers()
 
 
-def relay_sse(exchange: Exchange, response) -> None:
+def relay_sse(exchange: Exchange, response: UpstreamResponse) -> None:
     """Relay one Responses SSE stream with bounded pre-content recovery."""
 
-    def reopen():
+    def reopen() -> UpstreamResponse:
         return exchange.upstream()
 
     try:
@@ -152,14 +168,14 @@ def relay_sse(exchange: Exchange, response) -> None:
         )
 
 
-def _read_chunk(response) -> tuple[bytes, bool]:
+def _read_chunk(response: ReadableResponse) -> tuple[bytes, bool]:
     try:
         return response.read(8192), False
     except http.client.IncompleteRead as error:
         return error.partial, True
 
 
-def relay_body(exchange: Exchange, response) -> None:
+def relay_body(exchange: Exchange, response: UpstreamResponse) -> None:
     """Relay one length-unknown upstream body as chunked downstream data."""
     _send_stream_headers(exchange.handler, response)
     try:
@@ -182,7 +198,7 @@ def relay_body(exchange: Exchange, response) -> None:
         )
 
 
-def relay_readonly_body(handler: BaseHTTPRequestHandler, response) -> None:
+def relay_readonly_body(handler: BaseHTTPRequestHandler, response: UpstreamResponse) -> None:
     """Relay one non-Responses body without replay or recovery side effects."""
     _send_stream_headers(handler, response)
     try:
@@ -216,7 +232,7 @@ def _invalid_responses_success(exchange: Exchange, reason: str) -> None:
     exchange.log("invalid_responses_success_body", f"reason={reason} ")
 
 
-def relay_responses_json(exchange: Exchange, response) -> None:
+def relay_responses_json(exchange: Exchange, response: UpstreamResponse) -> None:
     """Validate one complete non-stream Responses body before commitment."""
     chunks: list[bytes] = []
     total = 0

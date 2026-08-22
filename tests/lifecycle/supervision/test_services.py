@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from xml.dom import minidom
 
-from codex_responses_proxy.lifecycle.supervision import linux, macos, windows
+from codex_responses_proxy.lifecycle.supervision import linux
+from codex_responses_proxy.lifecycle.supervision import macos
+from codex_responses_proxy.lifecycle.supervision import windows
 from tests.lifecycle.fixtures import platform_context
 from tests.lifecycle.supervision.fixtures import assert_fragments as _assert_fragments
 

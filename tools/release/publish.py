@@ -9,7 +9,9 @@ from pathlib import Path
 
 from cyclopts import App
 
-from tools.release import publish_github, publish_gitlab
+from codex_responses_proxy import product_identity
+from tools.release import publish_github
+from tools.release import publish_gitlab
 
 
 class PublicationError(RuntimeError):
@@ -26,13 +28,12 @@ def _github(
     checkout: Path | None = None,
 ) -> None:
     """Publish or verify one exact GitHub release."""
-
     state = publish_github.publish(
         repository=repository,
         tag=tag,
         commit_oid=commit_oid,
         checkout=checkout or Path.cwd(),
-        tag_trust=os.environ.get("CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST", ""),
+        tag_trust=os.environ.get(product_identity.environment_name("GITHUB_TAG_TRUST"), ""),
         asset_trust=os.environ.get("RELEASE_ASSET_TRUST", ""),
         source=assets,
         workspace=workspace,
@@ -42,7 +43,6 @@ def _github(
 
 def _gitlab(*, api_base: str, project_id: int, tag: str, assets: Path) -> None:
     """Publish or verify one exact GitLab release."""
-
     token = os.environ.get("CI_JOB_TOKEN", "")
     trust = os.environ.get("RELEASE_ASSET_TRUST", "")
     if not token or not trust:
@@ -72,7 +72,6 @@ def _both(
     checkout: Path | None = None,
 ) -> None:
     """Publish the same immutable bundle through both independent adapters."""
-
     failures: list[str] = []
     try:
         _github(
@@ -100,7 +99,6 @@ def _both(
 
 def _prepare_checkout(*, tag: str, commit_oid: str, checkout: Path | None = None) -> None:
     """Prepare one exact annotated release checkout."""
-
     tag_oid, target = publish_github.prepare_checkout(checkout or Path.cwd(), tag, commit_oid)
     print(f"release checkout prepared: {tag_oid} -> {target}")
 
@@ -116,7 +114,6 @@ def _app() -> App:
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run provider-neutral publication through the repository parser stack."""
-
     try:
         _app()(tuple(sys.argv[1:] if argv is None else argv))
     except (

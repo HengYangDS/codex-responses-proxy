@@ -8,10 +8,11 @@ import tomllib
 from pathlib import Path
 from typing import Annotated
 
-from cyclopts import App, Parameter
+from cyclopts import App
+from cyclopts import Parameter
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_POLICY = ROOT / ".config/checks/text-layout/policy.toml"
+DEFAULT_POLICY = ROOT / ".config/quality/policy/text.toml"
 
 
 def _tracked(root: Path) -> tuple[str, ...]:
@@ -25,7 +26,6 @@ def _tracked(root: Path) -> tuple[str, ...]:
 
 def audit(root: Path = ROOT, policy_path: Path = DEFAULT_POLICY) -> tuple[str, ...]:
     """Return stable layout gaps for tracked text surfaces."""
-
     policy = tomllib.loads(policy_path.read_text(encoding="utf-8"))
     suffixes = frozenset(policy["tracked_suffixes"])
     names = frozenset(policy["tracked_names"])
@@ -58,7 +58,6 @@ def _command(
     policy: Annotated[Path, Parameter(name="--policy")] = DEFAULT_POLICY,
 ) -> None:
     """Validate the repository text layout."""
-
     gaps = audit(policy_path=policy)
     if gaps:
         raise SystemExit("\n".join(gaps))
@@ -66,7 +65,6 @@ def _command(
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run the text-layout gate through the repository parser stack."""
-
     App(default_command=_command, help=__doc__, result_action="return_value")(
         tuple(sys.argv[1:] if argv is None else argv)
     )

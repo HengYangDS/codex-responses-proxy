@@ -8,13 +8,30 @@ source_roots = ["src/codex_responses_proxy", "tools"]
 test_roots = ["tests"]
 package_root = "src/codex_responses_proxy"
 root_configuration_modules = ["noxfile.py"]
+package_root_modules = ["errors", "json_value", "product_identity"]
 package_initializers = "declarations-only"
 
 [allowed_package_edges]
-cli = ["lifecycle", "service"]
-lifecycle = ["protocol", "providers", "relay", "runtime", "service"]
+cli = ["errors", "lifecycle", "product_identity", "service"]
+lifecycle = [
+  "errors",
+  "json_value",
+  "product_identity",
+  "protocol",
+  "providers",
+  "relay",
+  "runtime",
+  "service",
+]
 protocol = []
 providers = []
 relay = ["protocol", "providers", "runtime"]
-service = ["protocol", "providers", "relay", "runtime"]
-runtime = []
+service = [
+  "json_value",
+  "product_identity",
+  "protocol",
+  "providers",
+  "relay",
+  "runtime",
+]
+runtime = ["product_identity"]

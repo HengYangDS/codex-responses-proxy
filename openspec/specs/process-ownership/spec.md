@@ -1,8 +1,11 @@
 # process-ownership Specification
 
 ## Purpose
+
 TBD - created by archiving change windows-successor-ownership. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: protocol-proven successor capture
 
 After handoff health proves the successor PID, transaction, release, payload,

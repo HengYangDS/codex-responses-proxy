@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 from codex_responses_proxy import errors
+from codex_responses_proxy.json_value import JsonObject
+from codex_responses_proxy.json_value import ReadOnlyJsonObject
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import owned_files
-from codex_responses_proxy.service import digest, inventory
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import inventory
 
 TRANSACTION_JOURNAL_FILENAME = "transaction.json"
 INSTALLED_RELEASE_STATE_SCHEMA = 1
@@ -46,9 +47,8 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object] | None:
     return {key: journal[key] for key in allowed if key in journal}
 
 
-def read_journal(ctx: runtime_context.RuntimeContext) -> dict[str, Any]:
+def read_journal(ctx: runtime_context.RuntimeContext) -> JsonObject:
     """Read one existing transaction through its strict current schema."""
-
     root = transaction_root(ctx)
     if root.is_symlink() or not root.is_dir():
         raise errors.InstallError("payload transaction root is invalid")
@@ -81,7 +81,7 @@ def write_journal(
     reason: str | None = None,
 ) -> None:
     """Write one canonical secret-free transaction journal."""
-    journal: dict[str, Any] = {
+    journal: JsonObject = {
         "schema_version": TRANSACTION_JOURNAL_SCHEMA,
         "transaction_id": transaction_id,
         "version": version,
@@ -94,7 +94,7 @@ def write_journal(
     owned_files.write_bytes(journal_path(ctx), digest.canonical_json(journal), mode=0o600)
 
 
-def read_installed(ctx: runtime_context.RuntimeContext) -> dict[str, Any] | None:
+def read_installed(ctx: runtime_context.RuntimeContext) -> JsonObject | None:
     """Read and validate the installed release state when present."""
     path = installed_path(ctx)
     if not path.exists() and not path.is_symlink():
@@ -104,12 +104,13 @@ def read_installed(ctx: runtime_context.RuntimeContext) -> dict[str, Any] | None
     state = owned_files.read_canonical_json(path, "installed release state")
     if state.get("schema_version") != INSTALLED_RELEASE_STATE_SCHEMA:
         raise errors.InstallError("installed release state schema is unsupported")
+    receipt_sha256 = state.get("receipt_sha256")
     if (
         not isinstance(state.get("transaction_id"), str)
         or not state["transaction_id"]
-        or not isinstance(state.get("receipt_sha256"), str)
-        or len(state["receipt_sha256"]) != 64
-        or any(character not in "0123456789abcdef" for character in state["receipt_sha256"])
+        or not isinstance(receipt_sha256, str)
+        or len(receipt_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in receipt_sha256)
         or not isinstance(state.get("runtime"), dict)
     ):
         raise errors.InstallError("installed release state is invalid")
@@ -118,7 +119,7 @@ def read_installed(ctx: runtime_context.RuntimeContext) -> dict[str, Any] | None
     return state
 
 
-def require_version(state: Mapping[str, Any]) -> str:
+def require_version(state: ReadOnlyJsonObject) -> str:
     """Return a strict installed-state version."""
     version = state.get("version")
     if not isinstance(version, str) or _STRICT_VERSION.fullmatch(version) is None:
@@ -126,9 +127,8 @@ def require_version(state: Mapping[str, Any]) -> str:
     return version
 
 
-def require_command(state: Mapping[str, Any]) -> str:
+def require_command(state: ReadOnlyJsonObject) -> str:
     """Return the absolute command path recorded at installation."""
-
     command = state.get("command")
     if not isinstance(command, str) or not command or not Path(command).is_absolute():
         raise errors.InstallError("installed release state command path is invalid")

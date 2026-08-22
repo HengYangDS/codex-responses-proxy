@@ -11,16 +11,16 @@ import pytest
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.cli import application
-from codex_responses_proxy.lifecycle import control, install, uninstall
+from codex_responses_proxy.lifecycle import control
+from codex_responses_proxy.lifecycle import install
 from codex_responses_proxy.lifecycle import state as payload_state
+from codex_responses_proxy.lifecycle import uninstall
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import identity
-from tests.lifecycle.fixtures import (
-    begin_transaction,
-    install_context,
-    released_artifact,
-)
+from tests.lifecycle.fixtures import begin_transaction
+from tests.lifecycle.fixtures import install_context
+from tests.lifecycle.fixtures import released_artifact
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -345,7 +345,9 @@ class TestControllerLifecycle:
         mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
         mocker.patch.object(control, "read_runtime", return_value=None)
 
-        assert control.status(ctx)["command"]["path"] == str(installed_command)
+        command_evidence = control.status(ctx)["command"]
+        assert isinstance(command_evidence, dict)
+        assert command_evidence["path"] == str(installed_command)
         command_status.assert_called_once_with(installed_command, Path(ctx.executable))
 
         mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
@@ -540,8 +542,10 @@ class TestControllerLifecycle:
             adapter = mocker.patch.object(application.control, "adapter")
             adapter.return_value.status.return_value = "running"
             evidence = application.dispatch("status", port=ctx.port)
-            assert evidence["payload_transaction"]["state"] == "recovery_required"
-            assert "reason" not in evidence["payload_transaction"]
+            transaction_evidence = evidence["payload_transaction"]
+            assert isinstance(transaction_evidence, dict)
+            assert transaction_evidence["state"] == "recovery_required"
+            assert "reason" not in transaction_evidence
             rendered = json.dumps(evidence)
             for forbidden in (
                 "secret-token",

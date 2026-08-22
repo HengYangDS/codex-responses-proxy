@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import replace
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
+from pathlib import PureWindowsPath
 from types import SimpleNamespace
 
 import pytest

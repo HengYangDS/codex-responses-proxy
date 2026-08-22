@@ -12,9 +12,13 @@ from typing import cast
 import pytest
 
 from codex_responses_proxy.protocol import request as rewrite
-from codex_responses_proxy.relay import admission, cooldown, operational_log, telemetry
+from codex_responses_proxy.relay import admission
+from codex_responses_proxy.relay import cooldown
 from codex_responses_proxy.relay import exchange as upstream_exchange
-from tests.relay.proxy_fixture import request, running_proxy
+from codex_responses_proxy.relay import operational_log
+from codex_responses_proxy.relay import telemetry
+from tests.relay.proxy_fixture import request
+from tests.relay.proxy_fixture import running_proxy
 
 ROOT = Path(__file__).resolve().parents[2]
 

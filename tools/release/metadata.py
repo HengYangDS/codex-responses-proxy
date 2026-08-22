@@ -6,12 +6,16 @@ import re
 import subprocess
 import sys
 import tomllib
-from datetime import UTC, date, datetime
+from datetime import UTC
+from datetime import date
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from cyclopts import App, Parameter
+from cyclopts import App
+from cyclopts import Parameter
 
+from codex_responses_proxy import product_identity
 from tools.release import identity
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,7 +26,6 @@ CHANGELOG_HEADING = re.compile(
 
 def read_version() -> str:
     """Return the repository release version after strict SemVer validation."""
-
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     if not identity.is_version(version):
         raise ValueError(f"VERSION is not a release SemVer: {version!r}")
@@ -31,7 +34,6 @@ def read_version() -> str:
 
 def check_python_metadata() -> None:
     """Keep Python support metadata aligned without duplicating release ownership."""
-
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     project = metadata.get("project", {})
     if project.get("requires-python") != ">=3.12":
@@ -41,7 +43,7 @@ def check_python_metadata() -> None:
     hatch_version = metadata.get("tool", {}).get("hatch", {}).get("version", {})
     if hatch_version.get("path") != "VERSION":
         raise ValueError("pyproject.toml must read package version from VERSION")
-    if metadata.get("tool", {}).get("codex-responses-proxy", {}).get("distribution") != (
+    if metadata.get("tool", {}).get(product_identity.PRODUCT_SLUG, {}).get("distribution") != (
         "native-executable"
     ):
         raise ValueError("the product distribution must be the native executable")
@@ -54,7 +56,6 @@ def _version_key(version: str) -> tuple[int, int, int]:
 
 def known_release_versions() -> list[str]:
     """Return this checkout's product tags in descending SemVer order."""
-
     tags = _git("tag", "--list", "v[0-9]*", "--sort=-version:refname").splitlines()
     versions = [identity.version_from_tag(tag) for tag in tags if identity.is_tag(tag)]
     return sorted(versions, key=_version_key, reverse=True)
@@ -62,7 +63,6 @@ def known_release_versions() -> list[str]:
 
 def changelog_releases(path: Path | None = None) -> list[tuple[str, str]]:
     """Return dated Changelog releases after validating section structure."""
-
     headings: list[tuple[str, str | None]] = []
     changelog = path or ROOT / "CHANGELOG.md"
     for line in changelog.read_text(encoding="utf-8").splitlines():
@@ -92,7 +92,6 @@ def check_changelog_provenance(
     pending_version: str | None = None,
 ) -> None:
     """Validate local product tags against the shared Changelog."""
-
     actual_versions = [version for version, _ in releases]
     expected_versions = known_release_versions()
     if len(actual_versions) != len(set(actual_versions)):
@@ -144,7 +143,6 @@ def check_active_release_train(
 
 def check_release_tag(tag: str, version: str) -> None:
     """Bind an exact annotated tag directly to the ``HEAD`` commit."""
-
     expected = f"v{version}"
     if tag != expected:
         raise ValueError(f"tag {tag!r} does not match expected {expected!r}")
@@ -184,7 +182,6 @@ def check_pending_release_date(
     today: date | None = None,
 ) -> None:
     """Reject a prepared release heading dated after the current UTC day."""
-
     current_date = today or datetime.now(UTC).date()
     value = next((item_date for item, item_date in releases if item == version), None)
     try:
@@ -199,7 +196,6 @@ def check_pending_release_date(
 
 def check_governance_contract() -> None:
     """Validate the repository's release and dual-forge governance surfaces."""
-
     required = (
         "AGENTS.md",
         "CONTRIBUTING.md",
@@ -225,7 +221,7 @@ def check_governance_contract() -> None:
     if missing:
         raise ValueError("missing governance documents: " + ", ".join(missing))
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    if not readme.startswith("# Codex Responses Proxy\n"):
+    if not readme.startswith(f"# {product_identity.DISPLAY_NAME}\n"):
         raise ValueError("README.md must use the formal Project Name as its title")
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     if "python -m tools.release.metadata" not in ci:
@@ -261,7 +257,6 @@ def _command(
     changelog: Annotated[Path | None, Parameter(show=False)] = None,
 ) -> None:
     """Validate release identity and repository governance."""
-
     if prepare_release and tag:
         raise SystemExit("--prepare-release cannot be combined with --tag")
     version = read_version()
@@ -318,7 +313,6 @@ def _command(
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run release validation through the repository's single parser stack."""
-
     App(default_command=_command, help=__doc__, result_action="return_value")(
         tuple(sys.argv[1:] if argv is None else argv)
     )

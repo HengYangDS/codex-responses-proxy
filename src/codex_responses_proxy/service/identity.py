@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from codex_responses_proxy.service import digest, inventory
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import inventory
 
 _RUNTIME_PAYLOAD_FIELDS = {
     "release": "release",
@@ -30,7 +31,6 @@ class LoadedPayloadIdentity:
 
     def handoff(self) -> dict[str, str]:
         """Return the fields exchanged by protocol-v2 handoff."""
-
         return {
             "release": self.release,
             "serving_payload_sha256": self.serving_payload_sha256,
@@ -41,7 +41,6 @@ class LoadedPayloadIdentity:
 
 def runtime_payload_matches(runtime: Mapping[str, object], expected: Mapping[str, object]) -> bool:
     """Match one runtime snapshot to the canonical payload identity fields."""
-
     return all(
         runtime.get(runtime_field) == expected.get(expected_field)
         for runtime_field, expected_field in _RUNTIME_PAYLOAD_FIELDS.items()
@@ -50,7 +49,6 @@ def runtime_payload_matches(runtime: Mapping[str, object], expected: Mapping[str
 
 def freeze_loaded_payload(executable: Path) -> LoadedPayloadIdentity | None:
     """Validate and freeze the manifest-owned files loaded by this process."""
-
     try:
         root, windows = _runtime_root(executable)
         manifest = _read_manifest(root / inventory.MANIFEST_FILENAME)
@@ -71,7 +69,6 @@ def freeze_loaded_payload(executable: Path) -> LoadedPayloadIdentity | None:
 
 def committed_payload(executable: Path) -> LoadedPayloadIdentity | None:
     """Return the complete successor identity currently committed on disk."""
-
     try:
         root, windows = _runtime_root(executable)
         manifest = _read_manifest(root / inventory.MANIFEST_FILENAME)
@@ -156,7 +153,7 @@ def _identity(
 
 
 def _read_manifest(path: Path) -> dict[str, object]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
+    value: object = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise TypeError("payload manifest must be an object")
-    return value
+    return {key: item for key, item in value.items() if isinstance(key, str)}

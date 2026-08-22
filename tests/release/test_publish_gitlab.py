@@ -9,7 +9,9 @@ from typing import TypedDict
 
 import pytest
 
-from tools.release import product_assets, publish_gitlab, signing
+from tools.release import product_assets
+from tools.release import publish_gitlab
+from tools.release import signing
 
 
 class _PublicationArguments(TypedDict):

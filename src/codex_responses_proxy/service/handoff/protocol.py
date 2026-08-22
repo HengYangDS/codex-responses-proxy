@@ -16,14 +16,33 @@ import subprocess
 import threading
 import time
 import urllib.request
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
+from collections.abc import Mapping
 from pathlib import Path
-from typing import IO, Protocol, TypedDict
+from typing import IO
+from typing import Protocol
+from typing import TypedDict
+from typing import cast
 
+from codex_responses_proxy import product_identity
 from codex_responses_proxy.runtime import config as runtime_config
 
 type JsonObject = dict[str, object]
 type ReadOnlyJsonObject = Mapping[str, object]
+
+
+class _ShareableSocket(Protocol):
+    """Windows socket capability exposed only on supported interpreters."""
+
+    def share(self, _process_id: int, /) -> bytes:
+        """Serialize this socket for one Windows process."""
+
+
+class _SocketShareModule(Protocol):
+    """Windows socket reconstruction capability."""
+
+    def fromshare(self, info: bytes) -> socket.socket:
+        """Reconstruct one socket from serialized Windows state."""
 
 
 class _PopenKwargs(TypedDict, total=False):
@@ -102,12 +121,12 @@ def _decode_control_message(
     if len(line) > HANDOFF_CONTROL_MAX_BYTES or not line.endswith(b"\n"):
         raise HandoffError(limit_error)
     try:
-        message = json.loads(line)
+        message: object = json.loads(line)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise HandoffError(invalid_error) from exc
-    if not isinstance(message, dict):
+    if not isinstance(message, dict) or not all(isinstance(key, str) for key in message):
         raise HandoffError(object_error)
-    return message
+    return {key: value for key, value in message.items() if isinstance(key, str)}
 
 
 class HandoffChild:
@@ -134,6 +153,7 @@ class HandoffChild:
         return self._runtime_pid
 
     def send_message(self, message: JsonObject) -> None:
+        """Send one bounded canonical control message to the replacement child."""
         if not isinstance(message, dict):
             raise HandoffError("handoff message must be an object")
         encoded = _encode_control_message(message, "handoff message exceeds the control limit")
@@ -174,6 +194,7 @@ class HandoffChild:
             ).start()
 
     def recv_message(self, timeout: float) -> JsonObject:
+        """Receive one validated child message within ``timeout`` seconds."""
         self._start_reader()
         try:
             item = self._events.get(timeout=max(0.01, float(timeout)))
@@ -209,9 +230,11 @@ class HandoffChild:
             return self.process.poll() is not None
 
     def terminate_bounded(self, timeout: float) -> bool:
+        """Request graceful child termination and prove exit within the bound."""
         return self._stop_bounded(self.process.terminate, timeout)
 
     def kill_bounded(self, timeout: float) -> bool:
+        """Force child termination and prove exit within the bound."""
         return self._stop_bounded(self.process.kill, timeout)
 
 
@@ -228,7 +251,7 @@ def spawn_child(
     listener_fd = None if windows else listener.fileno()
     kwargs = popen_kwargs(listener_fd, is_windows=windows)
     env = os.environ.copy()
-    env["CODEX_RESPONSES_PROXY_HANDOFF_CHILD"] = "1"
+    env[product_identity.environment_name("HANDOFF_CHILD")] = "1"
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     env.pop("PYTHONHOME", None)
     env.pop("PYTHONPATH", None)
@@ -255,8 +278,11 @@ def spawn_child(
     try:
         runtime_pid = child.await_runtime(startup_timeout_seconds)
         if windows:
+            share: object = getattr(listener, "share", None)
+            if not callable(share):
+                raise HandoffError("Windows listener sharing is unavailable")
             try:
-                shared = listener.share(runtime_pid)
+                shared = cast(Callable[[int], bytes], share)(runtime_pid)
             except Exception as exc:
                 raise HandoffError("Windows listener sharing failed") from exc
             message["listener_share_b64"] = base64.b64encode(shared).decode("ascii")
@@ -278,7 +304,10 @@ def listener_from_prepare(message: ReadOnlyJsonObject) -> socket.socket:
             raise HandoffError("invalid Windows listener share")
         try:
             shared = base64.b64decode(encoded.encode("ascii"), validate=True)
-            return socket.fromshare(shared)
+            fromshare: object = getattr(socket, "fromshare", None)
+            if not callable(fromshare):
+                raise HandoffError("Windows listener reconstruction is unavailable")
+            return cast(Callable[[bytes], socket.socket], fromshare)(shared)
         except Exception as exc:
             raise HandoffError("Windows listener reconstruction failed") from exc
     listener_fd = message.get("listener_fd")
@@ -297,12 +326,12 @@ def _read_health(port: int, *, timeout_seconds: float) -> JsonObject:
     if len(payload) > HANDOFF_CONTROL_MAX_BYTES:
         raise HandoffError("handoff health response exceeds the control limit")
     try:
-        decoded = json.loads(payload)
+        decoded: object = json.loads(payload)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise HandoffError("handoff health response is invalid") from exc
-    if not isinstance(decoded, dict):
+    if not isinstance(decoded, dict) or not all(isinstance(key, str) for key in decoded):
         raise HandoffError("handoff health response must be an object")
-    return decoded
+    return {key: value for key, value in decoded.items() if isinstance(key, str)}
 
 
 def probe_health(
@@ -312,7 +341,6 @@ def probe_health(
     expected: ReadOnlyJsonObject | None = None,
 ) -> JsonObject:
     """Wait until the inherited listener serves the expected child identity."""
-
     if expected is None:
         return _read_health(port, timeout_seconds=timeout_seconds)
     deadline = time.monotonic() + max(0.1, float(timeout_seconds))

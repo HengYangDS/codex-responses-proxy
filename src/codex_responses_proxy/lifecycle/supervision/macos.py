@@ -7,9 +7,11 @@ import plistlib
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import cast
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle.supervision import process
@@ -60,7 +62,6 @@ class _Service:
 
 def _native_tool(name: str) -> str:
     """Resolve one macOS system tool independently of the caller's PATH."""
-
     executable = shutil.which(name, path=os.defpath)
     if executable is None:
         raise errors.InstallError(f"native macOS tool is unavailable: {name}")
@@ -69,12 +70,15 @@ def _native_tool(name: str) -> str:
 
 def _plist_path(ctx: runtime_spec.NativeServiceContext) -> str:
     """Return the launch-agent carrier owned by this service identity."""
-
     return str(Path(ctx.user_home, "Library", "LaunchAgents", f"{ctx.service_id}.plist"))
 
 
 def _domain_target() -> str:
-    return f"gui/{os.getuid()}"
+    getuid: object = getattr(os, "getuid", None)
+    if not callable(getuid):
+        raise errors.InstallError("macOS user identity is unavailable")
+    uid = cast(Callable[[], int], getuid)()
+    return f"gui/{uid}"
 
 
 def _service_target(ctx: runtime_spec.NativeServiceContext) -> str:
@@ -109,7 +113,6 @@ def _require_success(completed: subprocess.CompletedProcess[str], operation: str
 
 def render_plist(ctx: runtime_spec.NativeServiceContext) -> str:
     """Serialize the minimal launchd projection for one installed runtime."""
-
     payload = {
         "Label": ctx.service_id,
         "ProgramArguments": [ctx.executable, service_runtime.WATCHDOG_MODE],
@@ -125,7 +128,6 @@ def render_plist(ctx: runtime_spec.NativeServiceContext) -> str:
 
 def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
     """Return the executable declared by one valid product launch agent."""
-
     try:
         with Path(_plist_path(ctx)).open("rb") as handle:
             payload = plistlib.load(handle)
@@ -139,12 +141,12 @@ def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
         or arguments[1] != service_runtime.WATCHDOG_MODE
     ):
         return None
-    return arguments[0]
+    executable = arguments[0]
+    return executable if isinstance(executable, str) else None
 
 
 def install(ctx: runtime_spec.NativeServiceContext) -> None:
     """Replace and prove one exact launchd watchdog process generation."""
-
     plist = _plist_path(ctx)
     Path(ctx.log_dir).mkdir(mode=0o700, parents=True, exist_ok=True)
     Path(plist).parent.mkdir(parents=True, exist_ok=True)
@@ -216,7 +218,6 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
 
 def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
     """Boot out and remove only this installation's launchd service."""
-
     plist = _plist_path(ctx)
     current = _service(ctx)
     generation = None
@@ -248,7 +249,6 @@ def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
 
 def status(ctx: runtime_spec.NativeServiceContext) -> str:
     """Return the macOS launchd service's read-only status classification."""
-
     plist = _plist_path(ctx)
     if not Path(plist).exists():
         return "absent"

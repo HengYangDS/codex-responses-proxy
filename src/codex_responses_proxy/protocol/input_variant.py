@@ -10,11 +10,15 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
+from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
 from contextlib import suppress
-from dataclasses import asdict, dataclass, field
-from typing import Final, cast
+from dataclasses import asdict
+from dataclasses import dataclass
+from dataclasses import field
+from typing import Final
+from typing import cast
 
 type JsonObject = dict[str, object]
 type ReadOnlyJsonObject = Mapping[str, object]
@@ -138,20 +142,19 @@ class RecoveryMetrics:
 
 def is_exact_validation_error(status_code: int, error_body: bytes) -> bool:
     """Return whether an upstream response is the complete observed error contract."""
-
     payload = _load_json(error_body)
     error = payload.get("error") if isinstance(payload, dict) else None
-    return status_code == 400 and error == {
+    expected: object = {
         "message": _ERROR_MESSAGE,
         "type": "invalid_request_error",
         "param": "",
         "code": "validation_error",
     }
+    return status_code == 400 and bool(error == expected)
 
 
 def diagnose(raw: bytes) -> InputDiagnostic:
     """Describe request structure without retaining values or high-cardinality sizes."""
-
     payload = _load_json(raw)
     if payload is _INVALID_JSON:
         return _diagnostic(first_reason="invalid_json", shape="invalid-json")
@@ -176,13 +179,25 @@ def _load_json(raw: bytes) -> object:
 
 def diagnostic_dict(diagnostic: InputDiagnostic) -> dict[str, object]:
     """Project an immutable diagnostic to the stable runtime mapping contract."""
-
-    return asdict(diagnostic)
+    return {
+        "input_items_bucket": diagnostic.input_items_bucket,
+        "item_types": diagnostic.item_types,
+        "content_types": diagnostic.content_types,
+        "matched_pairs": diagnostic.matched_pairs,
+        "unmatched_calls": diagnostic.unmatched_calls,
+        "unmatched_outputs": diagnostic.unmatched_outputs,
+        "outputs_before_calls": diagnostic.outputs_before_calls,
+        "duplicate_calls": diagnostic.duplicate_calls,
+        "duplicate_outputs": diagnostic.duplicate_outputs,
+        "missing_call_ids": diagnostic.missing_call_ids,
+        "mismatched_output_types": diagnostic.mismatched_output_types,
+        "first_incompatible_reason": diagnostic.first_incompatible_reason,
+        "shape_sha256": diagnostic.shape_sha256,
+    }
 
 
 def format_diagnostic(diagnostic: InputDiagnostic | dict[str, object]) -> str:
     """Render a bounded, content-free diagnostic fragment."""
-
     values = asdict(diagnostic) if isinstance(diagnostic, InputDiagnostic) else diagnostic
     fields: dict[str, object] = {
         "input_items_bucket": _size_bucket_value(values.get("input_items_bucket")),
@@ -197,7 +212,6 @@ def format_diagnostic(diagnostic: InputDiagnostic | dict[str, object]) -> str:
 
 def build_recovery(raw: bytes, budget: int) -> tuple[bytes | None, RecoveryMetrics | None]:
     """Build one instructions-plus-current-dialogue request, or reject safely."""
-
     if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
         return None, None
     payload = _load_json(raw)
@@ -296,7 +310,6 @@ def _remove_reasoning_include(candidate: JsonObject) -> bool:
 
 def _shape(value: object, depth: int = 0) -> object:
     """Return a capped categorical shape; cardinalities and unknown names are erased."""
-
     if depth >= 6:
         return "truncated", _value_kind(value)
     if isinstance(value, list):

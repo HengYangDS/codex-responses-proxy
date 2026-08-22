@@ -9,7 +9,9 @@ from pathlib import Path
 
 from cyclopts import App
 
-from tools.forge import context, tag_signature
+from codex_responses_proxy import product_identity
+from tools.forge import context
+from tools.forge import tag_signature
 from tools.git_environment import isolated_config_environment
 from tools.release import identity
 
@@ -34,7 +36,6 @@ def _run(repository: Path, *args: str, environment: dict[str, str] | None = None
 
 def _metadata(repository: Path, *args: str) -> None:
     """Run provider-neutral product metadata validation."""
-
     try:
         subprocess.run(
             (
@@ -62,7 +63,6 @@ def create(
     anchor: Path,
 ) -> str:
     """Create the local tag once, then publish that exact object to one peer."""
-
     if provider not in {"gitlab", "github"} or not identity.is_tag(tag):
         raise TagError("provider and tag must identify gitlab|github and vMAJOR.MINOR.PATCH")
     if _run(root, "status", "--porcelain"):
@@ -72,7 +72,7 @@ def create(
     if not _run(root, "tag", "--list", tag):
         target = _run(root, "rev-parse", "refs/heads/main^{commit}")
         _metadata(root, "--prepare-release")
-        with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-tag-") as name:
+        with tempfile.TemporaryDirectory(prefix=f"{product_identity.PRODUCT_SLUG}-tag-") as name:
             signing = context.select_signing_key(
                 publication_identity, Path(name) / "signing-key.pub"
             )
@@ -96,7 +96,7 @@ def create(
                 tag,
                 target,
                 "-m",
-                f"Codex Responses Proxy {tag}",
+                product_identity.release_title(tag),
             )
     _metadata(root, "--tag", tag)
     tag_signature.verify(root, tag, anchor)
@@ -125,7 +125,6 @@ def _command(
     remote: str | None = None,
 ) -> None:
     """Create one signed tag on exactly one selected Forge."""
-
     root = (root or Path.cwd()).resolve()
     selected_remote = remote or ("origin" if provider == "gitlab" else "github")
     try:
@@ -149,7 +148,6 @@ def _command(
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run tag creation through the repository parser stack."""
-
     App(default_command=_command, help=__doc__, result_action="return_value")(
         tuple(sys.argv[1:] if argv is None else argv)
     )

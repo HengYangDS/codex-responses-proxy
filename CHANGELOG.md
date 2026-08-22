@@ -177,7 +177,6 @@ publication authority.
 - Refresh the locked runtime and release toolchain to current stable versions.
 - Keep provider-native GitLab and GitHub publication independent.
 
-
 ## [2.0.43] - 2026-08-17
 
 ### Changed
@@ -487,7 +486,6 @@ publication authority.
   tooling is no longer shipped as product runtime.
 - Retain exact read-only provider model-catalog routes and close connections for
   local rejections emitted before a request body is consumed.
-
 
 ## [2.0.10] - 2026-08-04
 
@@ -1203,7 +1201,7 @@ publication authority.
   provider tag namespace before checking release chronology. This prevents a
   shared runner's deleted local tag from creating a false Changelog failure.
 - Added an isolated regression fixture that proves `git fetch --tags --force
-  --prune --prune-tags origin` removes a tag deleted from the remote.
+--prune --prune-tags origin` removes a tag deleted from the remote.
 - Require the GitLab release-metadata gate to use complete history before it
   tests an intentionally untagged release fixture, preventing shallow-clone
   history from masking the fixture's historical-release premise.

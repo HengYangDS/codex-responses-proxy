@@ -10,8 +10,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-NAMESPACE = "codex-responses-proxy-release"
-PRINCIPAL = "codex-responses-proxy-release"
+from codex_responses_proxy import product_identity
+
+NAMESPACE = product_identity.RELEASE_NAMESPACE
+PRINCIPAL = product_identity.RELEASE_PRINCIPAL
 
 
 class SignatureError(RuntimeError):
@@ -21,12 +23,13 @@ class SignatureError(RuntimeError):
 @contextmanager
 def _signing_key(key: Path) -> Iterator[Path]:
     """Preserve provider-owned key identity unless POSIX newline repair is needed."""
-
     content = key.read_bytes()
     if content.endswith(b"\n") or os.name != "posix":
         yield key
         return
-    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-release-key-") as name:
+    with tempfile.TemporaryDirectory(
+        prefix=f"{product_identity.PRODUCT_SLUG}-release-key-"
+    ) as name:
         normalized = Path(name) / "key"
         normalized.write_bytes(content + b"\n")
         os.chmod(normalized, 0o600)
@@ -35,7 +38,6 @@ def _signing_key(key: Path) -> Iterator[Path]:
 
 def sign_and_verify(*, assets: Path, key: Path, trust: str) -> None:
     """Sign and verify the canonical checksum inventory with explicit inputs."""
-
     ssh_keygen = shutil.which("ssh-keygen")
     if not ssh_keygen or not key.is_file() or key.is_symlink() or not trust.strip():
         raise SignatureError("release signing inputs are unavailable")
@@ -73,7 +75,6 @@ def sign_and_verify(*, assets: Path, key: Path, trust: str) -> None:
 
 def verify(*, assets: Path, trust: str) -> None:
     """Verify the canonical checksum signature with one ephemeral trust anchor."""
-
     ssh_keygen = shutil.which("ssh-keygen")
     checksums, signature = assets / "SHA256SUMS", assets / "SHA256SUMS.sig"
     if (
@@ -85,7 +86,9 @@ def verify(*, assets: Path, trust: str) -> None:
         or signature.is_symlink()
     ):
         raise SignatureError("release signature inputs are unavailable")
-    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-release-trust-") as name:
+    with tempfile.TemporaryDirectory(
+        prefix=f"{product_identity.PRODUCT_SLUG}-release-trust-"
+    ) as name:
         anchor = Path(name) / "allowed-signers"
         anchor.write_text(trust.rstrip("\n") + "\n", encoding="utf-8")
         try:

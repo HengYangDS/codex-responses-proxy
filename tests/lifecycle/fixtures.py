@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import os
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
+from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 
-from codex_responses_proxy.lifecycle import artifact, projection
+from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle import transaction as payload_transaction
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import inventory

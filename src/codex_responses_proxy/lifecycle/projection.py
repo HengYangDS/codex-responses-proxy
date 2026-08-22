@@ -4,26 +4,27 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from pathlib import Path, PurePosixPath
-from typing import Any
+from pathlib import Path
+from pathlib import PurePosixPath
 
 from codex_responses_proxy import errors
+from codex_responses_proxy.json_value import JsonObject
+from codex_responses_proxy.json_value import ReadOnlyJsonObject
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import owned_files
-from codex_responses_proxy.service import digest, inventory
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import inventory
 
 PAYLOAD_MANIFEST_SCHEMA_VERSION = 2
 
 
 def payload_manifest_path(ctx: runtime_context.RuntimeContext) -> Path:
     """Return the installed payload manifest path."""
-
     return Path(ctx.install_dir, inventory.MANIFEST_FILENAME)
 
 
 def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str, ...]:
     """Delete only bytes proven by the current installed manifest."""
-
     install = Path(ctx.install_dir)
     manifest_path = payload_manifest_path(ctx)
     if manifest_path.is_symlink():
@@ -57,7 +58,6 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
 
 def manifest_serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
     """Return the canonical identity of every manifest-owned serving file."""
-
     try:
         return inventory.validated_serving_payload_sha256(file_digests)
     except digest.PayloadDigestError as exc:
@@ -66,9 +66,8 @@ def manifest_serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
 
 def manifest_for_digests(
     version: str, file_digests: Mapping[str, str], receipt_sha256: str
-) -> dict[str, Any]:
+) -> JsonObject:
     """Build the canonical current manifest from exact runtime digests."""
-
     serving_files = dict(file_digests)
     return {
         "schema_version": PAYLOAD_MANIFEST_SCHEMA_VERSION,
@@ -80,15 +79,13 @@ def manifest_for_digests(
     }
 
 
-def manifest_bytes(manifest: Mapping[str, Any]) -> bytes:
+def manifest_bytes(manifest: ReadOnlyJsonObject) -> bytes:
     """Encode a deterministic, human-readable payload manifest."""
-
     return (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
 
 
 def remove_empty_owned_directories(install: Path, owned: set[str]) -> None:
     """Remove empty directories implied by one owned file inventory."""
-
     directories = {
         parent
         for relative in owned
@@ -134,12 +131,11 @@ def _write_payload_manifest_for_fixture(
     release_receipt_sha256: str | None = None,
 ) -> Path:
     """Write the production manifest shape for a current test payload."""
-
     install = Path(ctx.install_dir)
     windows = (install / inventory.WINDOWS_EXECUTABLE).is_file()
     paths = sorted(inventory.required_runtime_files(windows=windows))
     digests = {relative: digest.sha256_file(Path(ctx.install_dir, relative)) for relative in paths}
-    manifest: dict[str, Any] = {
+    manifest: JsonObject = {
         "schema_version": PAYLOAD_MANIFEST_SCHEMA_VERSION,
         "release": "0.0.0",
         "files": digests,
@@ -155,7 +151,6 @@ def _write_payload_manifest_for_fixture(
 
 def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, str]:
     """Verify the installed executable and provider manifest."""
-
     try:
         manifest = json.loads(payload_manifest_path(ctx).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

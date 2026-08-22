@@ -19,14 +19,12 @@ from codex_responses_proxy.lifecycle import transaction as payload_transaction
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import identity as listener_identity
 from codex_responses_proxy.service import inventory
-from tests.lifecycle.fixtures import (
-    begin_transaction,
-    executable_relative,
-    install_context,
-    install_payload,
-    released_artifact,
-    runtime_files,
-)
+from tests.lifecycle.fixtures import begin_transaction
+from tests.lifecycle.fixtures import executable_relative
+from tests.lifecycle.fixtures import install_context
+from tests.lifecycle.fixtures import install_payload
+from tests.lifecycle.fixtures import released_artifact
+from tests.lifecycle.fixtures import runtime_files
 
 
 def recovery_runtime(

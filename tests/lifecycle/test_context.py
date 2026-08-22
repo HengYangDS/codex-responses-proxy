@@ -10,9 +10,11 @@ from pathlib import Path
 import pytest
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import context, runtime_spec
+from codex_responses_proxy.lifecycle import context
+from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.runtime import config
-from codex_responses_proxy.service import digest, runtime
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import runtime
 
 ROOT = Path(__file__).resolve().parents[2]
 

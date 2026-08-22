@@ -7,7 +7,8 @@ import subprocess
 import sys
 import threading
 from contextlib import ExitStack
-from pathlib import Path, PurePosixPath
+from pathlib import Path
+from pathlib import PurePosixPath
 
 import pytest
 
@@ -15,15 +16,14 @@ from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
-from tests.release.fixtures import (
-    cleanup_runtime,
-    native_environment,
-    post_response,
-    run_command,
-    runtime_context_for,
-    signed_asset,
-)
-from tests.service.handoff.fixtures import ScriptedUpstream, free_port
+from tests.release.fixtures import cleanup_runtime
+from tests.release.fixtures import native_environment
+from tests.release.fixtures import post_response
+from tests.release.fixtures import run_command
+from tests.release.fixtures import runtime_context_for
+from tests.release.fixtures import signed_asset
+from tests.service.handoff.fixtures import ScriptedUpstream
+from tests.service.handoff.fixtures import free_port
 from tools.release import signing
 
 ROOT = Path(__file__).resolve().parents[2]

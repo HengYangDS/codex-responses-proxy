@@ -5,7 +5,8 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC
+from datetime import datetime
 from email.message import Message
 from email.utils import parsedate_to_datetime
 

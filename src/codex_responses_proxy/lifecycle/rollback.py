@@ -6,12 +6,14 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from codex_responses_proxy import errors
+from codex_responses_proxy.json_value import ReadOnlyJsonObject
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import owned_files, projection
-from codex_responses_proxy.service import digest, inventory
+from codex_responses_proxy.lifecycle import owned_files
+from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import inventory
 
 
 @dataclass(frozen=True)
@@ -24,7 +26,6 @@ class RollbackInventory:
 
 def write_snapshot(ctx: runtime_context.RuntimeContext, root: Path) -> RollbackInventory:
     """Persist the exact current payload, or its complete absence."""
-
     install = Path(ctx.install_dir)
     manifest = projection.payload_manifest_path(ctx)
     if not (manifest.exists() or manifest.is_symlink()):
@@ -50,15 +51,13 @@ def write_snapshot(ctx: runtime_context.RuntimeContext, root: Path) -> RollbackI
 
 def load_inventory(root: Path) -> RollbackInventory:
     """Load and verify a retained rollback inventory."""
-
     return read_inventory(
         owned_files.read_canonical_json(root / "snapshot.json", "payload rollback snapshot")
     )
 
 
-def read_inventory(snapshot: Mapping[str, Any]) -> RollbackInventory:
+def read_inventory(snapshot: ReadOnlyJsonObject) -> RollbackInventory:
     """Validate an in-memory rollback snapshot."""
-
     raw_present = snapshot.get("present")
     raw_owned = snapshot.get("owned")
     if (
@@ -105,7 +104,6 @@ def restore_snapshot(
     candidate_paths: frozenset[str] = frozenset(),
 ) -> None:
     """Restore retained bytes and remove candidate files absent beforehand."""
-
     snapshot = load_inventory(root)
     install = Path(ctx.install_dir)
     restored: dict[str, tuple[bytes, int]] = {}

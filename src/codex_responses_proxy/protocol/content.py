@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import urllib.parse
+from typing import Never
 from typing import cast
 
 type JsonObject = dict[str, object]
@@ -14,7 +15,7 @@ class ProjectionRejectedError(ValueError):
     """A replay structure has no proved provider-portable representation."""
 
 
-def reject(reason: str) -> None:
+def reject(reason: str) -> Never:
     """Reject one structure using its bounded diagnostic code."""
     raise ProjectionRejectedError(reason)
 
@@ -55,7 +56,7 @@ def _text_block_value(typed: JsonObject, block_type: object) -> str:
     text = typed.get("text")
     if not isinstance(text, str):
         reject("invalid_text_block")
-    return cast(str, text)
+    return text
 
 
 def project_input_content(
@@ -175,7 +176,7 @@ def project_assistant_text(
             refusal = typed.get("refusal")
             if set(typed) != {"type", "refusal"} or not isinstance(refusal, str):
                 reject("invalid_refusal_block")
-            text_parts.append(cast(str, refusal))
+            text_parts.append(refusal)
             changed = True
         elif block_type == "encrypted_content":
             encrypted += 1

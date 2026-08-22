@@ -10,7 +10,9 @@ from typing import cast
 import pytest
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import control, install, transaction
+from codex_responses_proxy.lifecycle import control
+from codex_responses_proxy.lifecycle import install
+from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import apply
 from codex_responses_proxy.lifecycle.supervision import process
 from tests.lifecycle.fixtures import install_context
@@ -66,7 +68,8 @@ class FakeServiceAdapter:
         self.configured = "canonical"
 
     def configured_executable(self, ctx) -> str | None:
-        return ctx.executable if self.configured == "canonical" else self.configured
+        configured = ctx.executable if self.configured == "canonical" else self.configured
+        return configured if isinstance(configured, str) else None
 
 
 class TestReleasedDeployment:

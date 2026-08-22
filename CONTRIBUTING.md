@@ -8,12 +8,12 @@ This guide is for repository development. Product use belongs in the
 Contributions may change only the proxy data plane, native lifecycle, product
 CLI, and repository-owned delivery system.
 
-| Never mutate | Reason |
-| --- | --- |
-| Codex JSONL, SQLite, history, stored items, model metadata | Portability belongs at the network edge |
-| Client configuration | The proxy is not a client control plane |
-| Provider credentials | Credentials pass through; the proxy does not store them |
-| Another repository environment | Verification must be reproducible from this repository |
+| Never mutate                                               | Reason                                                  |
+| ---------------------------------------------------------- | ------------------------------------------------------- |
+| Codex JSONL, SQLite, history, stored items, model metadata | Portability belongs at the network edge                 |
+| Client configuration                                       | The proxy is not a client control plane                 |
+| Provider credentials                                       | Credentials pass through; the proxy does not store them |
+| Another repository environment                             | Verification must be reproducible from this repository  |
 
 ## Development environment
 
@@ -57,7 +57,7 @@ flowchart LR
 - Add a failing regression before changing behavior.
 - Keep expected failures free of traceback and warning noise.
 - Keep statement and measured branch coverage strictly above 95%.
-- Use `type(scope): imperative subject`; `.config/checks/commits/policy.toml` is the machine-enforced grammar.
+- Use `type(scope): imperative subject`; `.config/quality/policy/commits.toml` is the machine-enforced grammar.
 - Preserve released history in Git, signed Forge records, the Changelog,
   completed OpenSpec lifecycle records, and admitted evidence. Keep historical
   carriers outside current mutation authority; remove only redundant current
@@ -68,10 +68,10 @@ flowchart LR
 The provider registry is
 `src/codex_responses_proxy/providers/manifest.toml`.
 
-| Extension | Required change |
-| --- | --- |
-| Ordinary OpenAI-compatible Responses provider | One `[providers.<slug>]` manifest table |
-| Provider-specific wire behavior | One pure policy module plus its manifest `policy` field |
+| Extension                                     | Required change                                         |
+| --------------------------------------------- | ------------------------------------------------------- |
+| Ordinary OpenAI-compatible Responses provider | One `[providers.<slug>]` manifest table                 |
+| Provider-specific wire behavior               | One pure policy module plus its manifest `policy` field |
 
 An ordinary provider must not require:
 
@@ -86,13 +86,13 @@ credentials, host paths, or Forge identity.
 
 ## Source organization
 
-| Package | Responsibility |
-| --- | --- |
-| `cli` | Public command grammar and human/JSON projection |
-| `providers` | Declarative provider registry and optional wire policies |
-| `protocol` | Provider-portable request and response projection |
-| `relay` | HTTP/SSE exchange, admission, retry, and cooldown |
-| `service` | Listener process, health, logs, and handoff protocol |
+| Package     | Responsibility                                                  |
+| ----------- | --------------------------------------------------------------- |
+| `cli`       | Public command grammar and human/JSON projection                |
+| `providers` | Declarative provider registry and optional wire policies        |
+| `protocol`  | Provider-portable request and response projection               |
+| `relay`     | HTTP/SSE exchange, admission, retry, and cooldown               |
+| `service`   | Listener process, health, logs, and handoff protocol            |
 | `lifecycle` | Artifact admission, install, supervision, reload, and uninstall |
 
 Tests mirror these semantic packages. New generic buckets, forwarding modules,

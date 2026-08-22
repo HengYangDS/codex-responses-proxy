@@ -20,20 +20,18 @@ from pathlib import Path
 from typing import TypedDict
 
 from codex_responses_proxy.service import identity
-from codex_responses_proxy.service.handoff.protocol import (
-    HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS,
-    HANDOFF_PROTOCOL_VERSION,
-    HandoffChild,
-    HandoffError,
-    JsonObject,
-    ReadOnlyJsonObject,
-    listener_from_prepare,
-    probe_health,
-    spawn_child,
-)
+from codex_responses_proxy.service.handoff.protocol import HANDOFF_CHILD_EXIT_TIMEOUT_SECONDS
+from codex_responses_proxy.service.handoff.protocol import HANDOFF_PROTOCOL_VERSION
+from codex_responses_proxy.service.handoff.protocol import HandoffChild
+from codex_responses_proxy.service.handoff.protocol import HandoffError
+from codex_responses_proxy.service.handoff.protocol import JsonObject
+from codex_responses_proxy.service.handoff.protocol import ReadOnlyJsonObject
+from codex_responses_proxy.service.handoff.protocol import listener_from_prepare
+from codex_responses_proxy.service.handoff.protocol import probe_health
 from codex_responses_proxy.service.handoff.protocol import (
     read_control_message as _read_control_message,
 )
+from codex_responses_proxy.service.handoff.protocol import spawn_child
 from codex_responses_proxy.service.handoff.protocol import (
     write_control_message as _write_control_message,
 )

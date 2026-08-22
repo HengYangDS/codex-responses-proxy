@@ -6,6 +6,7 @@ import io
 import json
 import tempfile
 import urllib.error
+from collections.abc import Iterator
 from contextlib import ExitStack
 from email.message import Message
 from pathlib import Path
@@ -19,13 +20,11 @@ from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import install_context
-from tests.service.handoff.fixtures import (
-    Response,
-    expected_metadata,
-    idle_runtime,
-    matching_health,
-    ready_ack,
-)
+from tests.service.handoff.fixtures import Response
+from tests.service.handoff.fixtures import expected_metadata
+from tests.service.handoff.fixtures import idle_runtime
+from tests.service.handoff.fixtures import matching_health
+from tests.service.handoff.fixtures import ready_ack
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -42,7 +41,7 @@ class TestControllerHandoffWiring:
     def test_runtime_supports_handoff_requires_a_complete_available_identity(self, subtests):
         incomplete = idle_runtime()
         incomplete.pop("serving_payload_sha256")
-        for runtime, supported in (
+        cases: list[tuple[dict[str, object] | None, bool]] = [
             (idle_runtime(), True),
             (
                 idle_runtime(
@@ -51,21 +50,20 @@ class TestControllerHandoffWiring:
                 ),
                 True,
             ),
-            *(
-                (runtime, False)
-                for runtime in (
-                    {"handoff_protocol_version": 1},
-                    {"handoff_protocol_version": 2},
-                    incomplete,
-                    idle_runtime(accepting=False),
-                    idle_runtime(draining=True),
-                    idle_runtime(handoff_state="ready"),
-                    {},
-                    None,
-                    {"release": "1.0.24"},
-                )
-            ),
-        ):
+        ]
+        unsupported: list[dict[str, object] | None] = [
+            {"handoff_protocol_version": 1},
+            {"handoff_protocol_version": 2},
+            incomplete,
+            idle_runtime(accepting=False),
+            idle_runtime(draining=True),
+            idle_runtime(handoff_state="ready"),
+            {},
+            None,
+            {"release": "1.0.24"},
+        ]
+        cases.extend((runtime, False) for runtime in unsupported)
+        for runtime, supported in cases:
             with subtests.test(runtime=runtime, supported=supported):
                 assert handoff.runtime_supports_handoff(runtime) is supported
 
@@ -442,10 +440,11 @@ class TestControllerHandoffWiring:
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
         old = idle_runtime()
-        runtimes = iter(
+        invalid_runtime: dict[str, object] = {"pid": True}
+        runtimes: Iterator[dict[str, object] | None] = iter(
             (
                 None,
-                {"pid": True},
+                invalid_runtime,
                 matching_health(1000, expected, pid=1000, handoff_state="finalized"),
             )
         )

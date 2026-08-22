@@ -12,7 +12,8 @@ import pytest
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import install, runtime_spec
+from codex_responses_proxy.lifecycle import install
+from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.runtime import config as runtime_config
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -359,12 +360,12 @@ class TestReleaseMetadata:
             (
                 ("src/codex_responses_proxy/runtime/config.py",),
                 (
-                    "CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES",
-                    "CODEX_RESPONSES_PROXY_PROXY_LOG_BACKUP_COUNT",
-                    "CODEX_RESPONSES_PROXY_WATCHDOG_LOG_MAX_BYTES",
-                    "CODEX_RESPONSES_PROXY_WATCHDOG_LOG_BACKUP_COUNT",
+                    'product_identity.environment_name("PROXY_LOG_MAX_BYTES")',
+                    'product_identity.environment_name("PROXY_LOG_BACKUP_COUNT")',
+                    'product_identity.environment_name("WATCHDOG_LOG_MAX_BYTES")',
+                    'product_identity.environment_name("WATCHDOG_LOG_BACKUP_COUNT")',
                 ),
-                (),
+                ("CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES",),
             ),
         )
         for paths, required, forbidden in cases:

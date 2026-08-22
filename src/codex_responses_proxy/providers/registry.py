@@ -11,7 +11,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Protocol, cast
+from typing import Protocol
+from typing import cast
 
 _NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 POLICY_PACKAGE = "codex_responses_proxy.providers.policies"
@@ -27,9 +28,13 @@ class WirePolicy(Protocol):
     FAILURE_COOLDOWN_SECONDS: int
     POLICY_VERSION: str
 
-    def is_retryable_failure(self, status: int, payload: bytes) -> bool: ...
+    def is_retryable_failure(self, status: int, payload: bytes) -> bool:
+        """Return whether one provider response permits a bounded retry."""
+        ...
 
-    def request_fingerprint(self, raw: bytes) -> str: ...
+    def request_fingerprint(self, raw: bytes) -> str:
+        """Return the provider-defined identity for one request payload."""
+        ...
 
 
 _POLICY_MEMBERS = (
@@ -60,12 +65,10 @@ class Registry:
 
     def __post_init__(self) -> None:
         """Detach the registry from caller-owned mutable mappings."""
-
         object.__setattr__(self, "profiles", MappingProxyType(dict(self.profiles)))
 
     def resolve(self, path: str) -> tuple[Profile, str, str] | None:
         """Resolve one exact provider-scoped supported target."""
-
         try:
             parsed = urllib.parse.urlsplit(path)
         except ValueError:
@@ -90,13 +93,11 @@ class Registry:
 
 def default_manifest_path() -> Path:
     """Return the provider manifest owned by this semantic package."""
-
     return Path(__file__).with_name("manifest.toml")
 
 
 def load(path: str | Path | None = None) -> Registry:
     """Load the released manifest or an explicit test/admission fixture."""
-
     selected = Path(path) if path is not None else default_manifest_path()
     try:
         with selected.open("rb") as handle:
@@ -144,7 +145,6 @@ def _profile(name: object, raw: object) -> Profile:
 
 def _load_policy(name: str) -> WirePolicy:
     """Load one closed wire-policy module from the selected policy package."""
-
     package = POLICY_PACKAGE
     module_name = f"{package}.{name}"
     try:
@@ -210,7 +210,6 @@ def _load_policy(name: str) -> WirePolicy:
 
 def policy_module_names(registry: Registry) -> tuple[str, ...]:
     """Return the distinct loaded wire-policy modules in deterministic order."""
-
     return tuple(
         sorted(
             {

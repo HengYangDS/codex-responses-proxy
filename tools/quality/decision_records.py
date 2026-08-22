@@ -14,7 +14,6 @@ _DECISION_REGISTER = "decision-register.md"
 
 def decision_record_gaps(root: Path) -> list[str]:
     """Validate the one Decision Record register and its semantic file grammar."""
-
     directory = root / "docs/decisions"
     register = directory / _DECISION_REGISTER
     if not directory.is_dir() or not register.is_file():

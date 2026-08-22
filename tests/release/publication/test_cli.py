@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
+import operator
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 
 from codex_responses_proxy.lifecycle import artifact
-from tests.release.publication.fixtures import (
-    VERIFY_ARGUMENTS,
-    VerifyArguments,
-    forge_evidence,
-    verified_evidence,
-)
-from tools.release.publication import evaluator, hosted
+from tests.release.publication.fixtures import VERIFY_ARGUMENTS
+from tests.release.publication.fixtures import VerifyArguments
+from tests.release.publication.fixtures import forge_evidence
+from tests.release.publication.fixtures import verified_evidence
+from tools.release.publication import evaluator
+from tools.release.publication import hosted
 from tools.release.publication import verification as publication
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -77,8 +78,16 @@ class PublicationProofCliContracts:
 
     def test_publication_evidence_is_deeply_frozen(self, *, mocker) -> None:
         evidence = verified_evidence(forge_evidence(items=[{"value": 1}]), mocker=mocker)
+        forges = evidence["forges"]
+        assert isinstance(forges, Mapping)
+        gitlab = forges["gitlab"]
+        assert isinstance(gitlab, Mapping)
+        items = gitlab["items"]
+        assert isinstance(items, tuple)
+        item = items[0]
+        assert isinstance(item, Mapping)
         with pytest.raises(TypeError):
-            evidence["forges"]["gitlab"]["items"][0]["value"] = 2
+            operator.setitem(item, "value", 2)
 
     def test_cli_invalid_tag_fails_without_echoing_secret_environment(self) -> None:
         completed = subprocess.run(

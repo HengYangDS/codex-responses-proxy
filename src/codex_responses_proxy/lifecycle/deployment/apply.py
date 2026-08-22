@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
+from collections.abc import Mapping
 from typing import Protocol
 
 from codex_responses_proxy import errors
@@ -20,9 +21,13 @@ RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | N
 class ServiceAdapter(Protocol):
     """Native supervision operations required by payload deployment."""
 
-    def install(self, ctx: runtime_context.RuntimeContext) -> None: ...
+    def install(self, ctx: runtime_context.RuntimeContext) -> None:
+        """Install or replace the native service for this runtime context."""
+        ...
 
-    def configured_executable(self, ctx: runtime_context.RuntimeContext) -> str | None: ...
+    def configured_executable(self, ctx: runtime_context.RuntimeContext) -> str | None:
+        """Return the executable configured in the native service definition."""
+        ...
 
 
 class UnknownDeploymentOutcome(errors.InstallError):
@@ -38,7 +43,6 @@ def install(
     timeout_seconds: float = 30.0,
 ) -> dict[str, object]:
     """Install fresh bytes or hand off one verified current native runtime."""
-
     current = runtime_reader(ctx)
     if current is None and not process.listener_pids(ctx.port):
         return _fresh_install(
@@ -136,7 +140,6 @@ def request_handoff(
     timeout_seconds: float,
 ) -> dict[str, object]:
     """Request handoff and resolve controller failure from runtime evidence."""
-
     try:
         result = handoff.request(
             ctx,
@@ -146,9 +149,9 @@ def request_handoff(
             lease_seconds=max(1.0, timeout_seconds),
         )
         runtime = result.get("runtime")
-        if not isinstance(runtime, dict):
+        if not isinstance(runtime, dict) or not all(isinstance(key, str) for key in runtime):
             raise errors.InstallError("handoff did not return successor runtime proof")
-        return runtime
+        return {key: value for key, value in runtime.items() if isinstance(key, str)}
     except BaseException as error:
         try:
             resolution, runtime = handoff.resolve_after_controller_failure(
@@ -161,8 +164,12 @@ def request_handoff(
             )
         except BaseException:
             resolution, runtime = "unknown", None
-        if resolution == "finalized" and isinstance(runtime, dict):
-            return runtime
+        if (
+            resolution == "finalized"
+            and isinstance(runtime, dict)
+            and all(isinstance(key, str) for key in runtime)
+        ):
+            return {key: value for key, value in runtime.items() if isinstance(key, str)}
         if resolution == "unknown":
             raise UnknownDeploymentOutcome(
                 "handoff outcome is unconfirmed; transaction preserved for recovery"
@@ -179,7 +186,6 @@ def wait_for_serving_runtime(
     old_pid: int | None = None,
 ) -> dict[str, object]:
     """Wait for one accepting listener with the exact release identity."""
-
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         runtime = runtime_reader(ctx)
@@ -207,7 +213,6 @@ def _runtime_matches(runtime: Mapping[str, object], expected: Mapping[str, objec
 
 def _same_executable(configured: str | None, expected: str) -> bool:
     """Compare declared executable paths using platform path semantics."""
-
     if configured is None:
         return False
     return os.path.normcase(os.path.abspath(configured)) == os.path.normcase(

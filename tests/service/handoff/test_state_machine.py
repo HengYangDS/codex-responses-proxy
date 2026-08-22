@@ -9,18 +9,16 @@ from pathlib import Path
 import pytest
 
 from codex_responses_proxy.service.handoff import protocol as handoff_protocol_module
-from tests.service.handoff.fixtures import (
-    HandoffFixture,
-    child_message,
-    entrypoint_module,
-    expected_metadata,
-    fake_child,
-    fake_server,
-    handoff_module,
-    handoff_outcome_ready,
-    matching_health,
-    wait_until,
-)
+from tests.service.handoff.fixtures import HandoffFixture
+from tests.service.handoff.fixtures import child_message
+from tests.service.handoff.fixtures import entrypoint_module
+from tests.service.handoff.fixtures import expected_metadata
+from tests.service.handoff.fixtures import fake_child
+from tests.service.handoff.fixtures import fake_server
+from tests.service.handoff.fixtures import handoff_module
+from tests.service.handoff.fixtures import handoff_outcome_ready
+from tests.service.handoff.fixtures import matching_health
+from tests.service.handoff.fixtures import wait_until
 
 ROOT = Path(__file__).resolve().parents[3]
 

@@ -10,11 +10,11 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
-    "certifi==2026.7.22",
-    "cyclopts==4.23.1",
-    "psutil==7.2.2",
-    "platformdirs==4.11.3",
-    "rich==15.0.0",
+  "certifi==2026.7.22",
+  "cyclopts==4.23.1",
+  "psutil==7.2.2",
+  "platformdirs==4.11.3",
+  "rich==15.0.0",
 ]
 
 [project.scripts]
@@ -26,18 +26,18 @@ linux-release-image = "python:3.14.7-bookworm@sha256:8771427e2ac3e39208c1632f17e
 
 [dependency-groups]
 quality = [
-    "coverage==7.15.4",
-    "deptry==0.25.1",
-    "hatchling==1.32.0",
-    "nox==2026.8.17",
-    "pyperf==2.10.0",
-    "pytest==9.1.1",
-    "pytest-mock==3.15.1",
-    "pytest-subtests==0.15.0",
-    "pyyaml==6.0.3",
-    "ruff==0.16.4",
-    "ty==0.0.73",
-    "vulture==2.16",
+  "coverage==7.15.4",
+  "deptry==0.25.1",
+  "hatchling==1.32.0",
+  "nox==2026.8.17",
+  "pyperf==2.10.0",
+  "pytest==9.1.1",
+  "pytest-mock==3.15.1",
+  "pytest-subtests==0.15.0",
+  "pyyaml==6.0.3",
+  "ruff==0.16.4",
+  "ty==0.0.73",
+  "vulture==2.16",
 ]
 release = ["pyinstaller==6.22.2"]
 

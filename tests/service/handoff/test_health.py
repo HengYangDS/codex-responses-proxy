@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.service.handoff.fixtures import (
-    child_pid_matching_health,
-    expected_metadata,
-    matching_health,
-)
+from tests.service.handoff.fixtures import child_pid_matching_health
+from tests.service.handoff.fixtures import expected_metadata
+from tests.service.handoff.fixtures import matching_health
 
 ROOT = Path(__file__).resolve().parents[3]
 

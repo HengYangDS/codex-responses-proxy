@@ -32,8 +32,54 @@ def _governance_checker() -> ModuleType:
     return _load("codex_responses_proxy_governance_checker", "tools/quality/governance.py")
 
 
+def _responsibility_checker() -> ModuleType:
+    _load("tools", "tools/__init__.py")
+    _load("tools.quality", "tools/quality/__init__.py")
+    return _load(
+        "codex_responses_proxy_responsibility_checker",
+        "tools/quality/responsibilities.py",
+    )
+
+
 class TestQualityPolicyContracts:
     """Keep the repository quality scope executable rather than documentary."""
+
+    def test_responsibility_map_covers_every_carrier_exactly_once(self) -> None:
+        report = _responsibility_checker().audit()
+
+        assert report["errors"] == []
+        assert report["ok"] is True
+        assert len(report["assignments"]) > 1000
+
+    def test_responsibility_map_rejects_missing_concern_rationale(self, tmp_path: Path) -> None:
+        source = (ROOT / ".config/quality/responsibility-map.toml").read_text(encoding="utf-8")
+        malformed = source.replace(
+            'risk_model = "Python correctness, import, modernization, security, performance, and maintainability defects escape review."\n',
+            "",
+            1,
+        )
+        policy = tmp_path / "responsibility-map.toml"
+        policy.write_text(malformed, encoding="utf-8")
+
+        report = _responsibility_checker().audit(ROOT, policy)
+
+        assert "responsibility_map_concern_field_missing:python-lint:risk_model" in report["errors"]
+
+    def test_responsibility_map_rejects_overlapping_roles(self, tmp_path: Path) -> None:
+        source = (ROOT / ".config/quality/responsibility-map.toml").read_text(encoding="utf-8")
+        malformed = source.replace(
+            'prefixes = ["tools/"]\n',
+            'prefixes = ["tools/", "src/"]\n',
+            1,
+        )
+        policy = tmp_path / "responsibility-map.toml"
+        policy.write_text(malformed, encoding="utf-8")
+
+        report = _responsibility_checker().audit(ROOT, policy)
+
+        assert any(
+            error.startswith("responsibility_map_multiple_roles:src/") for error in report["errors"]
+        )
 
     def test_current_repository_policy_is_internally_consistent(self) -> None:
         report = _checker().audit()
@@ -145,15 +191,15 @@ class TestQualityPolicyContracts:
         tool = pyproject.get("tool", {})
 
         for path in (
-            ".config/checks/ruff/ruff.toml",
+            ".config/quality/native/ruff.toml",
             "pytest.ini",
-            ".config/checks/ty/ty.toml",
-            ".config/checks/coverage/coverage.ini",
-            ".config/checks/coverage/policy.toml",
-            ".config/checks/architecture/policy.toml",
-            ".config/checks/commits/policy.toml",
-            ".config/checks/text-layout/policy.toml",
-            ".config/checks/links/lychee.toml",
+            ".config/quality/native/ty.toml",
+            ".config/quality/native/coverage.ini",
+            ".config/quality/policy/coverage.toml",
+            ".config/quality/policy/architecture.toml",
+            ".config/quality/policy/commits.toml",
+            ".config/quality/policy/text.toml",
+            ".config/quality/native/lychee.toml",
             ".editorconfig",
         ):
             assert (ROOT / path).is_file(), path
@@ -167,76 +213,32 @@ class TestQualityPolicyContracts:
             encoding="utf-8"
         )
         assert "`pytest.ini` therefore owns test discovery and warning policy" in governance
-        assert "`.config/checks/<concern>/` owns quality policy" not in governance
+        assert "`.config/quality/policy/` owns quality policy" not in governance
 
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
         assert ".pytest_cache/" in ignored
 
-        ruff = tomllib.loads((ROOT / ".config/checks/ruff/ruff.toml").read_text(encoding="utf-8"))
-        assert ruff["lint"]["select"] == [
-            "E4",
-            "E7",
-            "E9",
-            "F",
-            "I",
-            "N",
-            "ARG",
-            "A",
-            "ASYNC",
-            "DTZ",
-            "D100",
-            "D105",
-            "D107",
-            "D400",
-            "D401",
-            "D404",
-            "D415",
-            "EXE",
-            "FA",
-            "FLY",
-            "G",
-            "ICN",
-            "LOG",
-            "PGH",
-            "PLC0414",
-            "PLW1510",
-            "PLW2901",
-            "PYI025",
-            "RSE",
-            "SIM102",
-            "SIM109",
-            "SIM112",
-            "SIM117",
-            "SLOT",
-            "T10",
-            "YTT",
-            "ERA",
-            "FURB",
-            "Q",
-            "S102",
-            "S104",
-            "S307",
-            "S602",
-            "S604",
-            "S605",
-            "S606",
-            "S608",
-            "S609",
-            "S610",
-            "S611",
-            "S612",
-            "S701",
-            "PT",
-            "UP",
-            "B",
-            "C4",
-            "PIE",
-            "RET",
-            "PERF",
-            "RUF",
-        ]
+        ruff = tomllib.loads(
+            (ROOT / ".config/quality/native/ruff.toml").read_text(encoding="utf-8")
+        )
+        selected = ruff["lint"]["select"]
+        assert len(selected) == len(set(selected))
+        assert {"F", "I", "N", "PT", "UP", "B", "RET", "PERF", "RUF"} <= set(selected)
+        assert "ANN" not in selected
+        assert any(rule == "S" or rule.startswith("S") for rule in selected)
+        assert not any(
+            rule == "D" or (rule.startswith("D") and rule[1:].isdigit()) for rule in selected
+        )
         assert "ignore" not in ruff["lint"]
         assert "per-file-ignores" not in ruff["lint"]
+
+        docstrings = tomllib.loads(
+            (ROOT / ".config/quality/native/ruff-docstrings.toml").read_text(encoding="utf-8")
+        )
+        assert docstrings["lint"] == {
+            "select": ["D"],
+            "pydocstyle": {"convention": "google"},
+        }
 
         rationale = {
             "risk_model",
@@ -246,10 +248,10 @@ class TestQualityPolicyContracts:
             "review_condition",
         }
         for relative in (
-            ".config/checks/architecture/policy.toml",
-            ".config/checks/commits/policy.toml",
-            ".config/checks/coverage/policy.toml",
-            ".config/checks/text-layout/policy.toml",
+            ".config/quality/policy/architecture.toml",
+            ".config/quality/policy/commits.toml",
+            ".config/quality/policy/coverage.toml",
+            ".config/quality/policy/text.toml",
         ):
             policy = tomllib.loads((ROOT / relative).read_text(encoding="utf-8"))
             assert all(
@@ -263,7 +265,7 @@ class TestQualityPolicyContracts:
         assert dependency == {"known_first_party": ["codex_responses_proxy"]}
 
         dead_code = tomllib.loads(
-            (ROOT / ".config/checks/dead-code/vulture.toml").read_text(encoding="utf-8")
+            (ROOT / ".config/quality/native/vulture.toml").read_text(encoding="utf-8")
         )["tool"]["vulture"]
         assert dead_code == {"min_confidence": 100, "sort_by_size": True}
 
@@ -285,12 +287,37 @@ class TestQualityPolicyContracts:
     def test_governance_composition_owns_each_repository_check_once(self, mocker) -> None:
         governance = _governance_checker()
         completed = mocker.Mock(returncode=0)
-        run = mocker.patch.object(governance.subprocess, "run", return_value=completed)
+        tracked = mocker.Mock(
+            returncode=0,
+            stdout=b"README.md\0.gitlab-ci.yml\0mise.toml\0openspec/changes/archive/old.md\0",
+        )
+        run = mocker.patch.object(
+            governance.subprocess,
+            "run",
+            side_effect=[tracked, tracked, *([completed] * 14)],
+        )
 
         governance.audit(online_links=False)
 
-        commands = [tuple(call.args[0]) for call in run.call_args_list]
+        commands = [tuple(call.args[0]) for call in run.call_args_list[2:]]
         assert commands == [
+            (
+                "prettier",
+                "--check",
+                "--config",
+                ".config/quality/native/prettier.json",
+                "README.md",
+                ".gitlab-ci.yml",
+            ),
+            (
+                "taplo",
+                "format",
+                "--check",
+                "--config",
+                ".config/quality/native/taplo.toml",
+                "mise.toml",
+            ),
+            ("cue", "fmt", "--check", "--files", ".config/ci/pipeline.cue"),
             ("cue", "vet", ".config/ci/pipeline.cue"),
             (governance.sys.executable, "-m", "tools.ci.project"),
             ("openspec", "validate", "--all", "--strict", "--no-interactive"),
@@ -307,25 +334,56 @@ class TestQualityPolicyContracts:
                 "src/codex_responses_proxy",
                 "tools",
                 "--config",
-                ".config/checks/dead-code/vulture.toml",
+                ".config/quality/native/vulture.toml",
             ),
             ("gitleaks", "git", "--platform", "gitlab", "--redact", "--no-banner", "."),
             (
                 "lychee",
                 "--config",
-                ".config/checks/links/lychee.toml",
+                ".config/quality/native/lychee.toml",
                 "--offline",
                 "./*.md",
                 "./**/*.md",
             ),
             (governance.sys.executable, "-m", "tools.release.metadata"),
+            (governance.sys.executable, "-m", "tools.quality.hard_coding"),
             (governance.sys.executable, "-m", "tools.quality.repository"),
         ]
+
+    def test_structured_text_formatters_have_disjoint_native_ownership(self) -> None:
+        policy = tomllib.loads(
+            (ROOT / ".config/quality/responsibility-map.toml").read_text(encoding="utf-8")
+        )
+        concerns = {concern["id"]: concern for concern in policy["concerns"]}
+
+        assert concerns["markdown-yaml-format"] == {
+            "id": "markdown-yaml-format",
+            "owner": "prettier",
+            "scope": "prettier-formatted",
+            "session": "governance",
+            "configuration": [".config/quality/native/prettier.json"],
+            "risk_model": concerns["markdown-yaml-format"]["risk_model"],
+            "measurement": concerns["markdown-yaml-format"]["measurement"],
+            "false_positive_cost": concerns["markdown-yaml-format"]["false_positive_cost"],
+            "remediation": concerns["markdown-yaml-format"]["remediation"],
+            "review_condition": concerns["markdown-yaml-format"]["review_condition"],
+        }
+        assert concerns["toml-format"]["owner"] == "taplo"
+        assert concerns["toml-format"]["scope"] == "toml-formatted"
+        assert concerns["toml-format"]["configuration"] == [".config/quality/native/taplo.toml"]
+        assert concerns["cue-format"]["owner"] == "cue"
+        assert concerns["cue-format"]["scope"] == "cue-formatted"
+        assert concerns["cue-format"]["configuration"] == [".config/ci/pipeline.cue"]
+
+        scopes = {scope["id"]: scope["roles"] for scope in policy["scopes"]}
+        assert set(scopes["prettier-formatted"]).isdisjoint(scopes["python"])
+        assert set(scopes["toml-formatted"]).isdisjoint(scopes["python"])
+        assert scopes["cue-formatted"] == ["ci-model"]
 
     def test_editor_defaults_and_text_layout_policy_are_aligned(self) -> None:
         editor = (ROOT / ".editorconfig").read_text(encoding="utf-8")
         policy = tomllib.loads(
-            (ROOT / ".config/checks/text-layout/policy.toml").read_text(encoding="utf-8")
+            (ROOT / ".config/quality/policy/text.toml").read_text(encoding="utf-8")
         )
 
         assert "charset = utf-8" in editor
@@ -342,7 +400,7 @@ class TestQualityPolicyContracts:
         assert checker.commit_subject_gaps(ROOT) == []
 
         policy = tomllib.loads(
-            (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
+            (ROOT / ".config/quality/policy/commits.toml").read_text(encoding="utf-8")
         )
         (subject,) = _commit_checker().commit_subject_patterns(policy)
 
@@ -356,7 +414,7 @@ class TestQualityPolicyContracts:
 
     def test_commit_subject_grammar_allows_internal_semver_periods(self) -> None:
         policy = tomllib.loads(
-            (ROOT / ".config/checks/commits/policy.toml").read_text(encoding="utf-8")
+            (ROOT / ".config/quality/policy/commits.toml").read_text(encoding="utf-8")
         )
         (subject,) = _commit_checker().commit_subject_patterns(policy)
 

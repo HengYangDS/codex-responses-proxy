@@ -13,14 +13,16 @@ import pytest
 
 from codex_responses_proxy.protocol import request as rewrite
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.relay import admission, cooldown, operational_log, telemetry
+from codex_responses_proxy.relay import admission
+from codex_responses_proxy.relay import cooldown
 from codex_responses_proxy.relay import exchange as upstream_exchange
-from tests.relay.exchange_fixture import (
-    EXACT_ERROR,
-    InputTransportFixture,
-    request_body,
-)
-from tests.relay.proxy_fixture import request, running_proxy
+from codex_responses_proxy.relay import operational_log
+from codex_responses_proxy.relay import telemetry
+from tests.relay.exchange_fixture import EXACT_ERROR
+from tests.relay.exchange_fixture import InputTransportFixture
+from tests.relay.exchange_fixture import request_body
+from tests.relay.proxy_fixture import request
+from tests.relay.proxy_fixture import running_proxy
 
 ROOT = Path(__file__).resolve().parents[2]
 PROVIDERS = provider_registry.load()

@@ -1,0 +1,477 @@
+schema_version = 1
+owner = "repository-quality"
+purpose = "Classify every repository carrier once and assign each quality concern to one semantic owner and scope."
+
+[[roles]]
+id = "product-python"
+description = "Installed product implementation."
+prefixes = ["src/"]
+
+[[roles]]
+id = "repository-python"
+description = "Repository-owned build, verification, publication, and operations tooling."
+files = ["noxfile.py"]
+prefixes = ["tools/"]
+
+[[roles]]
+id = "test-python"
+description = "Executable product and repository contract tests."
+prefixes = ["tests/"]
+
+[[roles]]
+id = "agent-guidance"
+description = "Repository entry instructions for coding agents."
+files = ["AGENTS.md"]
+
+[[roles]]
+id = "product-documentation"
+description = "Human-facing product, contribution, and operating documentation."
+files = ["CONTRIBUTING.md", "README.md"]
+prefixes = ["docs/"]
+
+[[roles]]
+id = "release-history"
+description = "Chronological public release history."
+files = ["CHANGELOG.md"]
+
+[[roles]]
+id = "openspec"
+description = "OpenSpec workspace, active changes, and immutable archived specifications."
+prefixes = ["openspec/"]
+
+[[roles]]
+id = "ethos-adoption"
+description = "Tracked ETHOS adoption declarations owned by this repository."
+prefixes = [".ethos/"]
+
+[[roles]]
+id = "ci-model"
+description = "Provider-neutral continuous-integration model."
+prefixes = [".config/ci/"]
+
+[[roles]]
+id = "github-ci"
+description = "GitHub Actions projection of the provider-neutral CI model."
+prefixes = [".github/"]
+
+[[roles]]
+id = "gitlab-ci"
+description = "GitLab CI projection of the provider-neutral CI model."
+files = [".gitlab-ci.yml"]
+
+[[roles]]
+id = "quality-policy"
+description = "Repository-owned quality responsibilities and product-semantic policy."
+files = [".config/quality/responsibility-map.toml"]
+prefixes = [".config/quality/policy/"]
+
+[[roles]]
+id = "quality-tool-configuration"
+description = "Native quality-tool configuration without product rationale."
+files = [".gitleaks.toml", "pytest.ini"]
+prefixes = [".config/quality/native/"]
+
+[[roles]]
+id = "editor-configuration"
+description = "Cross-editor text defaults."
+files = [".editorconfig"]
+
+[[roles]]
+id = "toolchain"
+description = "Locked language, dependency, build, and development toolchain declarations."
+files = [
+  ".python-release",
+  ".python-versions",
+  "mise.lock",
+  "mise.toml",
+  "pyproject.toml",
+  "uv.lock",
+]
+
+[[roles]]
+id = "source-control-configuration"
+description = "Source-control behavior declared by this repository."
+files = [".gitignore"]
+
+[[roles]]
+id = "product-identity"
+description = "Canonical product version and licensing identity."
+files = ["LICENSE", "VERSION"]
+
+[[scopes]]
+id = "all-carriers"
+roles = [
+  "product-python",
+  "repository-python",
+  "test-python",
+  "agent-guidance",
+  "product-documentation",
+  "release-history",
+  "openspec",
+  "ethos-adoption",
+  "ci-model",
+  "github-ci",
+  "gitlab-ci",
+  "quality-policy",
+  "quality-tool-configuration",
+  "editor-configuration",
+  "toolchain",
+  "source-control-configuration",
+  "product-identity",
+]
+
+[[scopes]]
+id = "python"
+roles = ["product-python", "repository-python", "test-python"]
+
+[[scopes]]
+id = "documented-python"
+roles = ["product-python", "repository-python"]
+
+[[scopes]]
+id = "production-python"
+roles = ["product-python", "repository-python"]
+
+[[scopes]]
+id = "documentation"
+roles = ["agent-guidance", "product-documentation", "release-history"]
+
+[[scopes]]
+id = "prettier-formatted"
+roles = [
+  "agent-guidance",
+  "product-documentation",
+  "release-history",
+  "ci-model",
+  "github-ci",
+  "gitlab-ci",
+]
+
+[[scopes]]
+id = "toml-formatted"
+roles = [
+  "ethos-adoption",
+  "quality-policy",
+  "quality-tool-configuration",
+  "toolchain",
+]
+
+[[scopes]]
+id = "cue-formatted"
+roles = ["ci-model"]
+
+[[scopes]]
+id = "ci"
+roles = ["ci-model", "github-ci", "gitlab-ci"]
+
+[[scopes]]
+id = "release"
+roles = ["release-history", "ethos-adoption", "toolchain", "product-identity"]
+
+[[concerns]]
+id = "controlled-values"
+owner = "tools.quality.hard_coding"
+scope = "all-carriers"
+session = "quick"
+configuration = [".config/quality/policy/hard-coding.toml"]
+risk_model = "Duplicated product identity, policy, supply-chain, and generated values drift across runtime, release, documentation, and Forge projections."
+measurement = "Validate one declared owner, rationale, class, and projection set for every controlled-value family and run focused semantic consistency checks."
+false_positive_cost = "An incidental literal must not be promoted into policy; only values whose drift changes product, governance, release, or portability semantics are controlled."
+remediation = "Move the value to its semantic owner and derive or validate every projection rather than adding another source."
+review_condition = "Reassess when a new product identity facet, policy surface, supply-chain carrier, or generated projection is introduced."
+
+[[concerns]]
+id = "python-lint"
+owner = "ruff"
+scope = "python"
+session = "quick"
+configuration = [".config/quality/native/ruff.toml"]
+risk_model = "Python correctness, import, modernization, security, performance, and maintainability defects escape review."
+measurement = "Ruff static analysis over every Python carrier."
+false_positive_cost = "An inapplicable rule can force an obscuring rewrite, so applicability is changed only through this role contract."
+remediation = "Correct or simplify the owning implementation; change applicability only with a reviewed responsibility-map update."
+review_condition = "Reassess when Ruff adds a stable rule family relevant to a declared Python role."
+
+[[concerns]]
+id = "python-format"
+owner = "ruff"
+scope = "python"
+session = "quick"
+configuration = [".config/quality/native/ruff.toml"]
+risk_model = "Inconsistent source layout raises review cost and permits host-dependent formatting drift."
+measurement = "Ruff formatter verification over every Python carrier."
+false_positive_cost = "Formatter changes must preserve syntax and must not encode product policy."
+remediation = "Apply the locked formatter to the owning Python carrier."
+review_condition = "Reassess when the supported Python grammar or formatter contract changes."
+
+[[concerns]]
+id = "python-public-docstrings"
+owner = "ruff"
+scope = "documented-python"
+session = "quality"
+configuration = [".config/quality/native/ruff-docstrings.toml"]
+risk_model = "Undocumented public product and repository interfaces make behavior ambiguous to users and maintainers."
+measurement = "Ruff Google-style public-docstring rules over product and repository Python."
+false_positive_cost = "Private helpers and behavior-named tests should not repeat implementation details as ornamental prose."
+remediation = "Document the public contract or make the symbol private when it is not an interface."
+review_condition = "Reassess when a public surface becomes private or a native checker expresses the boundary more precisely."
+
+[[concerns]]
+id = "python-types"
+owner = "ty"
+scope = "python"
+session = "quality"
+configuration = [".config/quality/native/ty.toml"]
+risk_model = "Unsound boundaries and platform-specific assumptions can fail only after installation on a supported host."
+measurement = "All ty diagnostics are errors under Python 3.12 semantics and the all-platform model."
+false_positive_cost = "Incomplete third-party stubs can require explicit validated adapters at integration boundaries."
+remediation = "Validate and narrow external values or isolate platform APIs behind typed capability boundaries."
+review_condition = "Reassess when supported Python versions, platforms, or third-party stub contracts change."
+
+[[concerns]]
+id = "python-package-architecture"
+owner = "tools.quality.architecture"
+scope = "production-python"
+session = "quick"
+configuration = [".config/quality/policy/architecture.toml"]
+risk_model = "Undeclared package edges create parallel ownership and non-local change risk."
+measurement = "Repository-semantic analysis of declared package owners, imports, and dependency cycles."
+false_positive_cost = "A legitimate new owner requires an explicit architectural decision."
+remediation = "Move behavior to its existing owner or declare the new owner and edge with focused tests."
+review_condition = "Reassess when product topology changes."
+
+[[concerns]]
+id = "python-tests"
+owner = "pytest"
+scope = "python"
+session = "tests"
+configuration = ["pytest.ini"]
+risk_model = "Product behavior can regress without executable contracts across every supported Python runtime."
+measurement = "Warnings-as-errors pytest execution against installed artifacts on Python 3.12, 3.13, and 3.14."
+false_positive_cost = "Host-native capabilities cannot be proved by emulation and remain separate explicit evidence."
+remediation = "Repair the behavior or its test fixture at the owning boundary."
+review_condition = "Reassess when the supported runtime or native-platform matrix changes."
+
+[[concerns]]
+id = "python-coverage"
+owner = "coverage.py"
+scope = "product-python"
+session = "quality"
+configuration = [
+  ".config/quality/native/coverage.ini",
+  ".config/quality/policy/coverage.toml",
+]
+risk_model = "Unobserved lifecycle and protocol branches permit silent regressions."
+measurement = "Exact statement and branch coverage plus semantic-package observation."
+false_positive_cost = "Per-file floors can reward fragmentation, so the blocking floor is aggregate and package visibility remains diagnostic."
+remediation = "Test meaningful behavior, delete unreachable code, or simplify the responsible package."
+review_condition = "Reassess after escaped defects or repeated legitimate denominator-only failures."
+
+[[concerns]]
+id = "python-dependencies"
+owner = "deptry"
+scope = "product-python"
+session = "governance"
+configuration = ["pyproject.toml", "uv.lock"]
+risk_model = "Undeclared, obsolete, or misplaced dependencies make builds non-reproducible and enlarge the supply chain."
+measurement = "Locked dependency resolution and Deptry analysis of the installed product package."
+false_positive_cost = "Build-only and platform-specific dependencies require correct group ownership rather than exclusions."
+remediation = "Declare the dependency in its owning group or remove its last consumer."
+review_condition = "Reassess when packaging or supported platforms change."
+
+[[concerns]]
+id = "python-unused-code"
+owner = "vulture"
+scope = "production-python"
+session = "governance"
+configuration = [".config/quality/native/vulture.toml"]
+risk_model = "Unreachable implementation preserves obsolete semantics and raises maintenance cost."
+measurement = "High-confidence Vulture analysis of product and repository tool Python."
+false_positive_cost = "Dynamic framework entrypoints may look unused and must instead be proved through an explicit executable entrypoint."
+remediation = "Delete dead behavior or connect the real entrypoint without a waiver list."
+review_condition = "Reassess when an admitted framework changes static discoverability."
+
+[[concerns]]
+id = "text-bytes"
+owner = "tools.quality.text_layout"
+scope = "all-carriers"
+session = "quick"
+configuration = [".config/quality/policy/text.toml", ".editorconfig"]
+risk_model = "Host-dependent bytes create noisy diffs and parser disagreement."
+measurement = "UTF-8, LF, final-newline, and trailing-whitespace verification over declared text carriers."
+false_positive_cost = "Binary or generated carriers must be correctly classified instead of forced through text rules."
+remediation = "Format with the native owner or correct the carrier role."
+review_condition = "Reassess when a supported platform cannot preserve a declared invariant."
+
+[[concerns]]
+id = "markdown-yaml-format"
+owner = "prettier"
+scope = "prettier-formatted"
+session = "governance"
+configuration = [".config/quality/native/prettier.json"]
+risk_model = "Inconsistent Markdown and YAML structure raises review cost and can obscure semantic drift across documentation and generated Forge projections."
+measurement = "Locked Prettier checks every current Markdown and YAML authority while immutable OpenSpec archives remain byte-stable."
+false_positive_cost = "Formatting must preserve authored prose wrapping and must not rewrite immutable historical evidence."
+remediation = "Apply the locked Prettier version to current Markdown and YAML carriers through the repository governance session."
+review_condition = "Reassess when Prettier changes supported syntax or a new current Markdown or YAML role is introduced."
+
+[[concerns]]
+id = "toml-format"
+owner = "taplo"
+scope = "toml-formatted"
+session = "governance"
+configuration = [".config/quality/native/taplo.toml"]
+risk_model = "Noncanonical TOML layout makes configuration ownership harder to review and permits tool-dependent rewrites."
+measurement = "Locked Taplo validates and checks formatting for every current TOML authority while immutable OpenSpec archives remain byte-stable."
+false_positive_cost = "Formatting must preserve semantic key order where ordering communicates repository intent."
+remediation = "Apply the locked Taplo formatter to current TOML carriers through its single native configuration."
+review_condition = "Reassess when Taplo changes stable formatting semantics or a new current TOML role is introduced."
+
+[[concerns]]
+id = "cue-format"
+owner = "cue"
+scope = "cue-formatted"
+session = "governance"
+configuration = [".config/ci/pipeline.cue"]
+risk_model = "A noncanonical CI model increases projection review cost and can conceal divergence between the Forge renderings."
+measurement = "The locked CUE formatter checks the provider-neutral CI model before validation and projection verification."
+false_positive_cost = "CUE formatting is syntax-aware and must not be replaced by a generic text formatter."
+remediation = "Apply the locked CUE formatter to the canonical CI model."
+review_condition = "Reassess when another CUE authority is introduced or the CUE formatter contract changes."
+
+[[concerns]]
+id = "documentation-links"
+owner = "lychee"
+scope = "documentation"
+session = "governance"
+configuration = [".config/quality/native/lychee.toml"]
+risk_model = "Broken local or external references make otherwise correct documentation unusable."
+measurement = "Lychee validates documentation links, offline deterministically and online before publication."
+false_positive_cost = "Transient external failure can block publication and therefore requires bounded retries."
+remediation = "Correct the target or replace the unstable external dependency with durable documentation."
+review_condition = "Reassess after recurring failures from a legitimate stable domain."
+
+[[concerns]]
+id = "repository-secrets"
+owner = "gitleaks"
+scope = "all-carriers"
+session = "governance"
+configuration = [".gitleaks.toml"]
+risk_model = "Committed credentials or private material can compromise users and publication infrastructure."
+measurement = "Gitleaks scans current repository content and Git history with redacted diagnostics."
+false_positive_cost = "Test fixtures that resemble secrets must use structurally non-secret data."
+remediation = "Remove and rotate exposed material; redesign fixtures instead of adding allowlists."
+review_condition = "Reassess when secret formats or publication credentials change."
+
+[[concerns]]
+id = "ci-model-validation"
+owner = "cue"
+scope = "ci"
+session = "governance"
+configuration = [".config/ci/pipeline.cue"]
+risk_model = "Independently handwritten Forge workflows drift in triggers, proof strength, and release behavior."
+measurement = "CUE and repository contracts prove GitHub and GitLab are projections of one CI model."
+false_positive_cost = "Runner-native setup may differ while semantic jobs and evidence remain isomorphic."
+remediation = "Change the CUE owner and update both projections in one atom."
+review_condition = "Reassess when either Forge gains a materially different required capability."
+
+[[concerns]]
+id = "github-workflow-syntax"
+owner = "actionlint"
+scope = "github-ci"
+session = "governance"
+configuration = [".github/workflows/verify.yml"]
+risk_model = "Invalid GitHub workflow syntax can make the public proof plane silently unavailable."
+measurement = "Actionlint validates the tracked GitHub Actions projection."
+false_positive_cost = "Provider-specific syntax must remain distinct from product-semantic CI behavior."
+remediation = "Correct the GitHub projection without changing the shared CI model."
+review_condition = "Reassess when GitHub Actions syntax or the projection generator changes."
+
+[[concerns]]
+id = "openspec-validation"
+owner = "openspec"
+scope = "openspec"
+session = "governance"
+configuration = ["openspec/config.yaml"]
+risk_model = "Implementation can diverge from declared behavior or archive incomplete lifecycle state."
+measurement = "OpenSpec strict validation of active and archived change carriers."
+false_positive_cost = "Historical archives remain immutable evidence and are not reformatted as live authority."
+remediation = "Correct the active specification or explicitly reopen the affected semantic change."
+review_condition = "Reassess when the OpenSpec schema or lifecycle model changes."
+
+[[concerns]]
+id = "commit-message-grammar"
+owner = "tools.quality.commits"
+scope = "all-carriers"
+session = "quick"
+configuration = [".config/quality/policy/commits.toml"]
+risk_model = "Unstructured commit subjects make release history difficult to search, automate, and audit."
+measurement = "Parse each governed commit subject against the tracked type, scope, and concise subject grammar."
+false_positive_cost = "A legitimate new semantic scope requires an intentional policy update."
+remediation = "Choose the nearest existing semantic scope or add one reviewed scope with the behavior that needs it."
+review_condition = "Reassess when the product gains a durable semantic owner."
+
+[[concerns]]
+id = "decision-record-integrity"
+owner = "tools.quality.decision_records"
+scope = "product-documentation"
+session = "quick"
+configuration = ["docs/decisions/decision-register.md"]
+risk_model = "Durable architectural decisions can become undiscoverable, inconsistently named, or detached from their supersession state."
+measurement = "Validate decision filenames, register membership, state, and referenced carriers."
+false_positive_cost = "Routine implementation choices must not generate ceremonial decision records."
+remediation = "Record only durable decisions and update their single register entry."
+review_condition = "Reassess when the decision lifecycle or naming contract changes."
+
+[[concerns]]
+id = "semantic-path-names"
+owner = "tools.quality.semantic_names"
+scope = "all-carriers"
+session = "quick"
+configuration = [".config/quality/responsibility-map.toml"]
+risk_model = "Compressed, historical, or implementation-leaking names obscure responsibility and encourage parallel semantics."
+measurement = "Validate current authoritative path segments against the repository naming contract."
+false_positive_cost = "Established external protocol and vendor names must retain their canonical spelling."
+remediation = "Rename the carrier to its narrow semantic responsibility and update every live reference in the same atom."
+review_condition = "Reassess when a new durable repository responsibility is introduced."
+
+[[concerns]]
+id = "product-performance"
+owner = "pyperf"
+scope = "product-python"
+session = "performance"
+configuration = [".config/quality/policy/performance.toml"]
+risk_model = "Unmeasured request and lifecycle overhead can degrade interactive use while functional behavior remains correct."
+measurement = "Process-isolated measurements of provider resolution, Responses projection, lifecycle readiness, loopback forwarding, and peak memory."
+false_positive_cost = "Host noise can move absolute latency, so review uses distributions rather than a single wall-clock sample."
+remediation = "Reproduce the regressed metric, profile its semantic owner, and remove the bottleneck without weakening correctness."
+review_condition = "Reassess workloads and budgets when production traces identify a new dominant path."
+
+[[concerns]]
+id = "release-identity"
+owner = "tools.release.metadata"
+scope = "release"
+session = "release"
+configuration = [
+  "VERSION",
+  "CHANGELOG.md",
+  "pyproject.toml",
+  ".ethos/release.toml",
+]
+risk_model = "Inconsistent version, tag, changelog, and artifact identity breaks reproducible publication."
+measurement = "Release metadata and black-box artifact verification bind one SemVer identity to one signed source commit."
+false_positive_cost = "A development checkout must remain distinguishable from a publishable release."
+remediation = "Repair the canonical VERSION and derived release carriers before publication."
+review_condition = "Reassess when the release or signing model changes."
+
+[[concerns]]
+id = "quality-responsibility-map"
+owner = "tools.quality.responsibilities"
+scope = "all-carriers"
+session = "quick"
+configuration = [".config/quality/responsibility-map.toml"]
+risk_model = "Unowned or multiply classified carriers create gaps, duplicated gates, and ambiguous remediation."
+measurement = "Classify every tracked or pending carrier exactly once and validate every declared scope, concern, and configuration reference."
+false_positive_cost = "A new carrier cannot enter the repository until its positive role is declared."
+remediation = "Assign the carrier to one existing semantic role or add one non-overlapping role with explicit responsibility."
+review_condition = "Reassess when repository responsibilities change."

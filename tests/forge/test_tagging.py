@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from tools.forge import context, tag_signature
+from tools.forge import context
+from tools.forge import tag_signature
 from tools.git_environment import isolated_config_environment
 from tools.release import tag
 

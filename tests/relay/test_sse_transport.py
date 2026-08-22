@@ -15,22 +15,19 @@ import pytest
 from codex_responses_proxy.protocol import request as rewrite
 from codex_responses_proxy.protocol import response as response_projection
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.relay import (
-    admission,
-    cooldown,
-    operational_log,
-    sse,
-    telemetry,
-)
+from codex_responses_proxy.relay import admission
+from codex_responses_proxy.relay import cooldown
+from codex_responses_proxy.relay import operational_log
 from codex_responses_proxy.relay import relay as downstream
-from tests.relay.exchange_fixture import (
-    EXACT_ERROR,
-    DirectResponse,
-    InputTransportFixture,
-    MemoryHandler,
-    request_body,
-)
-from tests.relay.proxy_fixture import request, running_proxy
+from codex_responses_proxy.relay import sse
+from codex_responses_proxy.relay import telemetry
+from tests.relay.exchange_fixture import EXACT_ERROR
+from tests.relay.exchange_fixture import DirectResponse
+from tests.relay.exchange_fixture import InputTransportFixture
+from tests.relay.exchange_fixture import MemoryHandler
+from tests.relay.exchange_fixture import request_body
+from tests.relay.proxy_fixture import request
+from tests.relay.proxy_fixture import running_proxy
 
 ROOT = Path(__file__).resolve().parents[2]
 PROVIDERS = provider_registry.load()
@@ -130,6 +127,7 @@ class TestSseTransport(InputTransportFixture):
             (DirectResponse(encrypted), None, "eof", object),
         )
         results = []
+        final_output = b""
         for upstream, _, _, error_type in cases:
             admission.reset_for_test()
             telemetry.reset_for_test()
@@ -143,8 +141,9 @@ class TestSseTransport(InputTransportFixture):
                     isinstance(result["error"], error_type),
                 )
             )
+            final_output = handler.output()
         assert results == [(terminal, detail, True) for _, terminal, detail, _ in cases]
-        assert b"secret" in handler.output()
+        assert b"secret" in final_output
 
     def test_live_sse_preserves_ciphertext_after_commit(self, *, mocker) -> None:
         plaintext = b'data: {"type":"response.output_text.delta","delta":"visible"}\n\n'

@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import subprocess
 import urllib.parse
-from collections.abc import Mapping, Sequence
-from typing import Final, cast
+from collections.abc import Mapping
+from collections.abc import Sequence
+from typing import Final
+from typing import cast
 
+from codex_responses_proxy import product_identity
 from tools.release import identity
 from tools.release import product_assets as release_assets
 from tools.release.publication import hosted
@@ -71,7 +74,6 @@ def normalize(
     required_jobs: Sequence[str] = DEFAULT_REQUIRED_JOBS,
 ) -> dict[str, object]:
     """Normalize one exact successful tag pipeline and release record."""
-
     pipeline_identity = {
         "sha": commit_oid,
         "ref": tag,
@@ -120,7 +122,7 @@ def normalize(
     release_commit = _mapping(release.get("commit"), "GitLab release commit is unavailable")
     release_identity = {
         "tag_name": tag,
-        "name": f"Codex Responses Proxy {tag}",
+        "name": product_identity.release_title(tag),
         "upcoming_release": False,
         "description": (
             "Provider-native source release. See CHANGELOG.md for user-relevant changes."
@@ -167,7 +169,6 @@ def collect(
     required_jobs: Sequence[str] = DEFAULT_REQUIRED_JOBS,
 ) -> dict[str, object]:
     """Query GitLab through authenticated read-only API calls."""
-
     base = api_base.rstrip("/")
     if not base.startswith(("http://", "https://")):
         raise GitLabProofError("GitLab API base must be HTTP(S)")

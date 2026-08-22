@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 from typing import Annotated
 
-from cyclopts import App, Parameter
+from cyclopts import App
+from cyclopts import Parameter
 
 from tools.forge import runner_admission
 from tools.git_environment import isolated_config_environment
@@ -24,7 +25,6 @@ def _git(
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Run one captured Git operation."""
-
     try:
         result = subprocess.run(
             ("git", "-C", str(root), *args),
@@ -42,13 +42,11 @@ def _git(
 
 def _output(root: Path, *args: str) -> str:
     """Return stripped stdout from one successful Git operation."""
-
     return _git(root, *args).stdout.strip()
 
 
 def _local_branch(root: Path, source_ref: str) -> tuple[str, str]:
     """Resolve one admitted local publication branch and its commit."""
-
     if source_ref != "main" and not source_ref.startswith("proposal/"):
         raise ProjectionError("publication branch must be main or proposal/*")
     ref = _output(root, "rev-parse", "--symbolic-full-name", "--verify", source_ref)
@@ -59,7 +57,6 @@ def _local_branch(root: Path, source_ref: str) -> tuple[str, str]:
 
 def _verify_local_identity(root: Path, commit: str, email: str, allowed_signers: Path) -> None:
     """Verify the unchanged product commit against the selected peer policy."""
-
     if not allowed_signers.is_file() or allowed_signers.is_symlink():
         raise ProjectionError("commit trust anchor is unavailable")
     identities = _output(root, "show", "-s", "--format=%ae%n%ce", commit).splitlines()
@@ -83,7 +80,6 @@ def _verify_local_identity(root: Path, commit: str, email: str, allowed_signers:
 
 def _remote_tip(root: Path, remote: str, branch: str) -> str | None:
     """Read one remote branch without creating a tracking ref."""
-
     result = _output(root, "ls-remote", "--heads", remote, f"refs/heads/{branch}")
     if not result:
         return None
@@ -95,13 +91,11 @@ def _remote_tip(root: Path, remote: str, branch: str) -> str | None:
 
 def _fetch_remote_branch(root: Path, remote: str, branch: str) -> None:
     """Materialize one observed remote branch object for an ancestry check."""
-
     _git(root, "fetch", "--quiet", "--no-tags", remote, f"refs/heads/{branch}")
 
 
 def _is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
     """Return Git ancestry while preserving operational failures."""
-
     result = _git(root, "merge-base", "--is-ancestor", ancestor, descendant, check=False)
     if result.returncode in {0, 1}:
         return result.returncode == 0
@@ -110,7 +104,6 @@ def _is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
 
 def _refspecs(source: str, source_ref: str) -> tuple[tuple[str, str], ...]:
     """Return the exact remote refs owned by one publication operation."""
-
     if source_ref == "main":
         return (("main", source), ("dev", source))
     return ((source_ref, source),)
@@ -129,7 +122,6 @@ def project(
     runner_tag: str | None = None,
 ) -> str:
     """Atomically publish one exact local commit to one selected Forge."""
-
     if provider not in {"gitlab", "github"}:
         raise ProjectionError("provider must be gitlab or github")
     if _output(root, "status", "--porcelain"):
@@ -172,7 +164,6 @@ def project(
 
 def _parse_expected(values: tuple[str, ...]) -> dict[str, str]:
     """Parse explicit branch=OID cutover coordinates."""
-
     expected: dict[str, str] = {}
     for value in values:
         branch, separator, oid = value.partition("=")
@@ -196,7 +187,6 @@ def _command(
     as_json: Annotated[bool, Parameter(name="--json", negative=False)] = False,
 ) -> None:
     """Publish one local branch to exactly one selected peer."""
-
     root = (root or Path.cwd()).resolve()
     selected_remote = remote or ("origin" if provider == "gitlab" else "github")
     try:
@@ -222,7 +212,6 @@ def _command(
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run exact publication through the repository parser stack."""
-
     App(default_command=_command, help=__doc__, result_action="return_value")(
         tuple(sys.argv[1:] if argv is None else argv)
     )

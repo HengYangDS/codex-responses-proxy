@@ -15,10 +15,16 @@ import re
 import sys
 import tempfile
 import time
+from collections.abc import Callable
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated, Any, TypeGuard
+from typing import Annotated
+from typing import NotRequired
+from typing import TypedDict
+from typing import TypeGuard
 
-from cyclopts import App, Parameter
+from cyclopts import App
+from cyclopts import Parameter
 
 SCHEMA_VERSION = 1
 EMPTY_RESPONSE_INCIDENT_THRESHOLD = 3
@@ -39,9 +45,51 @@ class ObservationError(ValueError):
     """Raised for an invalid or unsafe observation contract."""
 
 
-def _is_object(value: object) -> TypeGuard[dict[str, Any]]:
-    """Narrow a decoded JSON value to a string-keyed object."""
+class RuntimeIdentity(TypedDict):
+    """Stable fields that identify one serving runtime generation."""
 
+    release: str
+    serving_payload_sha256: str | None
+
+
+class NormalizedStatus(TypedDict):
+    """Validated secret-free status fields used by observation policy."""
+
+    identity: RuntimeIdentity
+    payload_integrity_ok: bool
+    service: str | None
+    listener_count: int
+    draining: bool
+    active_responses: int
+    uptime_seconds: int
+    counters: dict[str, int]
+    upstream_classifications: dict[str, int]
+    last_failure_classification: str | None
+
+
+class Baseline(TypedDict):
+    """Persisted fields needed to compare one runtime generation."""
+
+    observed_at_unix: int
+    identity: RuntimeIdentity
+    uptime_seconds: int
+    counters: dict[str, int]
+    upstream_classifications: dict[str, int]
+
+
+class ObservationWindow(TypedDict):
+    """Comparison metadata for one observation interval."""
+
+    comparison: str
+    comparable: bool
+    seconds: NotRequired[int]
+
+
+type AddReason = Callable[[str, str, str], None]
+
+
+def _is_object(value: object) -> TypeGuard[dict[str, object]]:
+    """Narrow a decoded JSON value to a string-keyed object."""
     return isinstance(value, dict) and all(isinstance(key, str) for key in value)
 
 
@@ -62,7 +110,7 @@ def _count_map(value: object, *, label: str) -> dict[str, int]:
     return result
 
 
-def _runtime_identity(status: dict[str, Any]) -> dict[str, str | None]:
+def _runtime_identity(status: Mapping[str, object]) -> RuntimeIdentity:
     runtime = status.get("runtime")
     if not _is_object(runtime):
         raise ObservationError("runtime must be an object")
@@ -78,7 +126,7 @@ def _runtime_identity(status: dict[str, Any]) -> dict[str, str | None]:
     return {"release": release, "serving_payload_sha256": serving_payload_sha256}
 
 
-def normalize_status(value: object) -> dict[str, Any]:
+def normalize_status(value: object) -> NormalizedStatus:
     """Extract the small, secret-free status contract used by this observer."""
     if not _is_object(value):
         raise ObservationError("status snapshot must be a JSON object")
@@ -88,6 +136,8 @@ def normalize_status(value: object) -> dict[str, Any]:
     payload_integrity = value.get("payload_integrity")
     if not _is_object(payload_integrity) or not isinstance(payload_integrity.get("ok"), bool):
         raise ObservationError("payload_integrity.ok must be boolean")
+    payload_integrity_ok = payload_integrity["ok"]
+    assert isinstance(payload_integrity_ok, bool)
     service = value.get("service")
     if service is not None and not isinstance(service, str):
         raise ObservationError("service must be a string or null")
@@ -102,14 +152,11 @@ def normalize_status(value: object) -> dict[str, Any]:
     active = _integer(runtime.get("active_responses"), label="runtime.active_responses")
     uptime = _integer(runtime.get("uptime_seconds"), label="runtime.uptime_seconds")
     last_failure = runtime.get("last_failure")
-    last_failure_classification = (
-        last_failure.get("classification")
-        if _is_object(last_failure) and isinstance(last_failure.get("classification"), str)
-        else None
-    )
+    classification = last_failure.get("classification") if _is_object(last_failure) else None
+    last_failure_classification = classification if isinstance(classification, str) else None
     return {
         "identity": _runtime_identity(value),
-        "payload_integrity_ok": payload_integrity["ok"],
+        "payload_integrity_ok": payload_integrity_ok,
         "service": service,
         "listener_count": len(listener_pids),
         "draining": draining,
@@ -126,7 +173,7 @@ def normalize_status(value: object) -> dict[str, Any]:
     }
 
 
-def _load_state(path: Path) -> dict[str, Any] | None:
+def _load_state(path: Path) -> dict[str, object] | None:
     if not path.exists():
         return None
     if path.is_symlink() or not path.is_file():
@@ -143,7 +190,7 @@ def _load_state(path: Path) -> dict[str, Any] | None:
     return baseline
 
 
-def _write_state(path: Path, baseline: dict[str, Any]) -> None:
+def _write_state(path: Path, baseline: Mapping[str, object]) -> None:
     """Atomically persist only the normalized, non-sensitive baseline."""
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if path.is_symlink():
@@ -159,7 +206,7 @@ def _write_state(path: Path, baseline: dict[str, Any]) -> None:
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary = Path(temporary_name)
     try:
-        os.fchmod(descriptor, 0o600)
+        os.chmod(temporary, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             descriptor = -1
             handle.write(payload)
@@ -173,7 +220,7 @@ def _write_state(path: Path, baseline: dict[str, Any]) -> None:
             temporary.unlink()
 
 
-def _baseline(current: dict[str, Any], observed_at_unix: int) -> dict[str, Any]:
+def _baseline(current: NormalizedStatus, observed_at_unix: int) -> Baseline:
     return {
         "observed_at_unix": observed_at_unix,
         "identity": current["identity"],
@@ -183,7 +230,7 @@ def _baseline(current: dict[str, Any], observed_at_unix: int) -> dict[str, Any]:
     }
 
 
-def _comparable(baseline: object, current: dict[str, Any]) -> tuple[bool, str]:
+def _comparable(baseline: object, current: NormalizedStatus) -> tuple[bool, str]:
     if not _is_object(baseline):
         return False, "baseline_absent"
     if baseline.get("identity") != current["identity"]:
@@ -199,7 +246,7 @@ def _comparable(baseline: object, current: dict[str, Any]) -> tuple[bool, str]:
     return True, "same_runtime"
 
 
-def _delta(current: dict[str, int], baseline: dict[str, Any]) -> dict[str, int]:
+def _delta(current: Mapping[str, int], baseline: Mapping[str, object]) -> dict[str, int]:
     result: dict[str, int] = {}
     for key, value in current.items():
         old = baseline.get(key, 0)
@@ -216,9 +263,8 @@ def _reason(code: str, severity: str, detail: str) -> dict[str, str]:
     return {"code": code, "severity": severity, "detail": detail}
 
 
-def _append_runtime_reasons(current: dict[str, Any], add: Any) -> None:
+def _append_runtime_reasons(current: NormalizedStatus, add: AddReason) -> None:
     """Append classifications visible in the current runtime snapshot."""
-
     if not current["payload_integrity_ok"]:
         add(
             "payload_integrity_failed",
@@ -245,12 +291,11 @@ def _append_runtime_reasons(current: dict[str, Any], add: Any) -> None:
 def _append_delta_reasons(
     counter_deltas: dict[str, int],
     upstream_deltas: dict[str, int],
-    add: Any,
+    add: AddReason,
     *,
     allow_drain: bool,
 ) -> None:
     """Append classifications measured inside one comparable window."""
-
     draining = counter_deltas.get("responses_rejected_while_draining", 0)
     if draining:
         add(
@@ -314,12 +359,11 @@ def _append_delta_reasons(
 
 
 def _window_deltas(
-    current: dict[str, Any], baseline: object, now: int
-) -> tuple[dict[str, Any], dict[str, int], dict[str, int]]:
+    current: NormalizedStatus, baseline: object, now: int
+) -> tuple[ObservationWindow, dict[str, int], dict[str, int]]:
     """Return comparison metadata plus counter deltas for one runtime window."""
-
     comparable, comparison = _comparable(baseline, current)
-    window: dict[str, Any] = {"comparison": comparison, "comparable": comparable}
+    window: ObservationWindow = {"comparison": comparison, "comparable": comparable}
     if not comparable:
         return window, {}, {}
     if not _is_object(baseline):
@@ -348,9 +392,8 @@ def evaluate(
     *,
     allow_drain: bool = False,
     observed_at_unix: int | None = None,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, object], Baseline]:
     """Evaluate one snapshot and return ``(report, next_baseline)``."""
-
     current = normalize_status(status)
     now = (
         int(time.time())
@@ -426,7 +469,6 @@ def _command(
     ] = False,
 ) -> int:
     """Evaluate one secret-free reliability snapshot."""
-
     try:
         baseline = _load_state(state) if state else None
         report, next_baseline = evaluate(
@@ -443,7 +485,6 @@ def _command(
 
 def main(argv: list[str] | None = None) -> int:
     """Run the observer through the repository's single parser stack."""
-
     result = App(default_command=_command, help=__doc__, result_action="return_value")(
         tuple(sys.argv[1:] if argv is None else argv)
     )

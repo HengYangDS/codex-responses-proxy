@@ -12,14 +12,10 @@ import json
 from dataclasses import dataclass
 from typing import cast
 
-from codex_responses_proxy.protocol.content import (
-    ProjectionRejectedError,
-    project_assistant_text,
-    project_input_content,
-)
-from codex_responses_proxy.protocol.content import (
-    reject as _reject,
-)
+from codex_responses_proxy.protocol.content import ProjectionRejectedError
+from codex_responses_proxy.protocol.content import project_assistant_text
+from codex_responses_proxy.protocol.content import project_input_content
+from codex_responses_proxy.protocol.content import reject as _reject
 
 type JsonObject = dict[str, object]
 
@@ -159,11 +155,12 @@ def _valid_caller(value: object) -> bool:
         return True
     if not isinstance(value, dict):
         return False
-    if value.get("type") == "direct":
+    caller_type: object = value.get("type")
+    if caller_type == "direct":
         return set(value) == {"type"}
-    caller_id = value.get("caller_id")
+    caller_id: object = value.get("caller_id")
     return (
-        value.get("type") == "program"
+        caller_type == "program"
         and set(value) == {"type", "caller_id"}
         and isinstance(caller_id, str)
         and bool(caller_id)
@@ -363,17 +360,18 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
             metrics["item_ids"] += int("id" in item)
             continue
         if item_type == "message":
-            value, item_metrics = _project_message(item)
+            projection = _project_message(item)
         elif item_type == "agent_message":
-            value, item_metrics = _project_agent_message(item)
+            projection = _project_agent_message(item)
         elif item_type in _CALL_ARGUMENT_FIELD:
-            value, item_metrics = _project_call(item, calls)
+            projection = _project_call(item, calls)
         elif item_type in _OUTPUT_CALL_TYPE:
-            value, item_metrics = _project_output(item, calls, outputs)
+            projection = _project_output(item, calls, outputs)
         elif item_type == "compaction_trigger":
-            value, item_metrics = _project_compaction_trigger(item)
+            projection = _project_compaction_trigger(item)
         else:
             _reject("unknown_item_type")
+        value, item_metrics = projection
         projected.append(value)
         for key, value_count in item_metrics.items():
             metrics["changed_items" if key == "changed" else key] += value_count

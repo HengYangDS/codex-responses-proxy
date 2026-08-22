@@ -13,17 +13,25 @@ import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
+from typing import override
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.service import digest, inventory
+from codex_responses_proxy import product_identity
+from codex_responses_proxy.json_value import FrozenJsonObject
+from codex_responses_proxy.json_value import JsonObject
+from codex_responses_proxy.json_value import ReadOnlyJsonObject
+from codex_responses_proxy.json_value import is_json_object
+from codex_responses_proxy.json_value import thaw_value
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import inventory
 
 RECEIPT_SCHEMA = 1
 _ARCHIVE = re.compile(
-    r"^codex-responses-proxy-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-"
+    rf"^{re.escape(product_identity.PRODUCT_SLUG)}-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-"
     r"(?P<platform>[a-z0-9]+(?:-[a-z0-9_]+)+)\.tar\.gz$"
 )
-_NAMESPACE = "codex-responses-proxy-release"
+_NAMESPACE = product_identity.RELEASE_NAMESPACE
 _MAX_ASSET_BYTES = 512 * 1024 * 1024
 
 
@@ -47,13 +55,13 @@ class _ArtifactAuthority:
 
     def __init__(self) -> None:
         self.token = object()
-        self.issued: weakref.WeakSet[Any] = weakref.WeakSet()
+        self.issued: weakref.WeakSet[VerifiedArtifact] = weakref.WeakSet()
 
     def mint(
         self,
         blobs: tuple[ArtifactFile, ...],
-        receipt: Mapping[str, Any],
-        sidecar: Mapping[str, Any],
+        receipt: ReadOnlyJsonObject,
+        sidecar: ReadOnlyJsonObject,
     ) -> VerifiedArtifact:
         candidate = VerifiedArtifact(
             blobs=blobs, receipt=receipt, sidecar=sidecar, _token=self.token
@@ -63,7 +71,7 @@ class _ArtifactAuthority:
 
     def claim(
         self, candidate: object
-    ) -> tuple[tuple[ArtifactFile, ...], str, str, Mapping[str, Any], Mapping[str, Any]]:
+    ) -> tuple[tuple[ArtifactFile, ...], str, str, FrozenJsonObject, FrozenJsonObject]:
         if type(candidate) is not VerifiedArtifact or candidate not in self.issued:
             raise ArtifactError("installation requires an admitted VerifiedArtifact")
         candidate._verify_integrity()
@@ -93,16 +101,16 @@ class VerifiedArtifact:
 
     _blobs: tuple[ArtifactFile, ...]
     _claimed: bool
-    _receipt: Mapping[str, Any]
+    _receipt: FrozenJsonObject
     _receipt_sha256: str
-    _sidecar: Mapping[str, Any]
+    _sidecar: FrozenJsonObject
 
     def __init__(
         self,
         *,
         blobs: tuple[ArtifactFile, ...],
-        receipt: Mapping[str, Any],
-        sidecar: Mapping[str, Any],
+        receipt: ReadOnlyJsonObject,
+        sidecar: ReadOnlyJsonObject,
         _token: object | None = None,
     ) -> None:
         """Construct an admitted artifact through the private authority token."""
@@ -118,6 +126,7 @@ class VerifiedArtifact:
         )
         object.__setattr__(self, "_claimed", False)
 
+    @override
     def __setattr__(self, name: str, value: object) -> None:
         """Reject mutation of admitted artifact identity."""
         raise ArtifactError("verified artifact capability is immutable")
@@ -125,36 +134,30 @@ class VerifiedArtifact:
     @property
     def version(self) -> str:
         """Return the admitted strict release version."""
-
         return str(self._receipt["version"])
 
     @property
     def serving_payload_sha256(self) -> str:
         """Return the aggregate digest of admitted serving files."""
-
         return str(self._receipt["serving_payload_sha256"])
 
     @property
     def receipt_sha256(self) -> str:
         """Return the digest of the canonical receipt bytes."""
-
         return self._receipt_sha256
 
     @property
-    def receipt(self) -> Mapping[str, Any]:
+    def receipt(self) -> FrozenJsonObject:
         """Return immutable signed-artifact evidence."""
-
         return self._receipt
 
     @property
-    def sidecar(self) -> Mapping[str, Any]:
+    def sidecar(self) -> FrozenJsonObject:
         """Return immutable receipt-integrity evidence."""
-
         return self._sidecar
 
     def peek_blobs(self) -> tuple[ArtifactFile, ...]:
         """Return immutable bytes for read-only identity checks."""
-
         return self._blobs
 
     def _claim_blobs(self) -> tuple[ArtifactFile, ...]:
@@ -207,33 +210,25 @@ class VerifiedArtifact:
 
 def mint(
     blobs: tuple[ArtifactFile, ...],
-    receipt: Mapping[str, Any],
-    sidecar: Mapping[str, Any],
+    receipt: ReadOnlyJsonObject,
+    sidecar: ReadOnlyJsonObject,
 ) -> VerifiedArtifact:
     """Mint one process-local capability after signed-asset verification."""
-
     return _AUTHORITY.mint(blobs, receipt, sidecar)
 
 
 def claim(candidate: object):
     """Consume one live admitted verified-artifact authority."""
-
     return _AUTHORITY.claim(candidate)
 
 
-def plain_value(value: Any) -> Any:
+def plain_value(value: object) -> object:
     """Copy frozen payload evidence into canonical JSON-compatible values."""
-
-    if isinstance(value, Mapping):
-        return {str(key): plain_value(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [plain_value(item) for item in value]
-    return value
+    return thaw_value(value)
 
 
 def admit(asset: Path, *, trust_anchor: Path) -> VerifiedArtifact:
     """Admit one archive whose checksum manifest has an authorized SSH signature."""
-
     if not asset.is_file():
         raise errors.InstallError("native release archive is unavailable")
     archive = asset.resolve(strict=True)
@@ -242,7 +237,9 @@ def admit(asset: Path, *, trust_anchor: Path) -> VerifiedArtifact:
     match = _ARCHIVE.fullmatch(archive.name)
     if match is None:
         raise errors.InstallError("native release archive name is invalid")
-    manifest_path = archive.with_name(f"codex-responses-proxy-{match['platform']}.manifest.json")
+    manifest_path = archive.with_name(
+        f"{product_identity.PRODUCT_SLUG}-{match['platform']}.manifest.json"
+    )
     checksums_path = archive.with_name("SHA256SUMS")
     signature_path = archive.with_name("SHA256SUMS.sig")
     if not trust_anchor.is_file():
@@ -364,7 +361,7 @@ def _parse_checksums(content: bytes) -> dict[str, str]:
     return parsed
 
 
-def _verify_archive(archive: bytes, manifest: bytes, identity: dict[str, str]) -> dict[str, Any]:
+def _verify_archive(archive: bytes, manifest: bytes, identity: dict[str, str]) -> JsonObject:
     try:
         document = json.loads(manifest)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -379,14 +376,14 @@ def _verify_archive(archive: bytes, manifest: bytes, identity: dict[str, str]) -
         "files",
     }
     if (
-        not isinstance(document, dict)
+        not is_json_object(document)
         or set(document) != required
         or document.get("schema_version") != 1
-        or document.get("product") != "codex-responses-proxy"
+        or document.get("product") != product_identity.PRODUCT_SLUG
         or document.get("version") != identity["version"]
         or document.get("platform") != identity["platform"]
         or document.get("archive")
-        != f"codex-responses-proxy-{identity['version']}-{identity['platform']}.tar.gz"
+        != f"{product_identity.PRODUCT_SLUG}-{identity['version']}-{identity['platform']}.tar.gz"
         or document.get("archive_sha256") != hashlib.sha256(archive).hexdigest()
         or not isinstance(document.get("files"), dict)
     ):
@@ -394,16 +391,22 @@ def _verify_archive(archive: bytes, manifest: bytes, identity: dict[str, str]) -
     return document
 
 
-def _archive_blobs(archive: bytes, document: dict[str, Any]) -> tuple[ArtifactFile, ...]:
+def _archive_blobs(archive: bytes, document: JsonObject) -> tuple[ArtifactFile, ...]:
     platform = str(document["platform"])
     version = str(document["version"])
-    files = document["files"]
+    raw_files = document["files"]
+    if not isinstance(raw_files, dict) or not all(
+        isinstance(path, str) and isinstance(file_digest, str)
+        for path, file_digest in raw_files.items()
+    ):
+        raise errors.InstallError("release archive inventory is invalid")
+    files = dict(raw_files)
     executable_name = (
-        "bin/codex-responses-proxy.exe"
+        f"bin/{product_identity.executable_name(windows=True)}"
         if platform.startswith("windows-")
-        else "bin/codex-responses-proxy"
+        else f"bin/{product_identity.executable_name(windows=False)}"
     )
-    expected = set(files) if isinstance(files, dict) else set()
+    expected = set(files)
     if (
         not expected
         or not {executable_name, "providers.toml", "LICENSE"}.issubset(expected)
@@ -414,7 +417,7 @@ def _archive_blobs(archive: bytes, document: dict[str, Any]) -> tuple[ArtifactFi
         )
     ):
         raise errors.InstallError("release archive inventory is invalid")
-    prefix = f"codex-responses-proxy-{version}-{platform}/"
+    prefix = f"{product_identity.PRODUCT_SLUG}-{version}-{platform}/"
     blobs: list[ArtifactFile] = []
     try:
         with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as bundle:

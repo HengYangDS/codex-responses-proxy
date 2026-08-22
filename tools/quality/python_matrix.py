@@ -14,7 +14,6 @@ from cyclopts import App
 
 def write(*, versions: Path, release: Path, metadata: Path, output: Path) -> None:
     """Write Python and native-runtime outputs from repository SSOTs."""
-
     values = versions.read_text(encoding="utf-8").splitlines()
     if not values or len(values) != len(set(values)) or output.is_symlink():
         raise ValueError("supported Python matrix is unavailable or invalid")
@@ -22,7 +21,8 @@ def write(*, versions: Path, release: Path, metadata: Path, output: Path) -> Non
     if re.fullmatch(r"\d+\.\d+\.\d+", release_version) is None:
         raise ValueError("native release Python is unavailable or invalid")
     project = tomllib.loads(metadata.read_text(encoding="utf-8"))
-    image = project["tool"]["codex-responses-proxy"]["linux-release-image"]
+    project_name = project["project"]["name"]
+    image = project["tool"][project_name]["linux-release-image"]
     if (
         not isinstance(image, str)
         or f"python:{release_version}-" not in image
@@ -45,7 +45,6 @@ def _command(
     output: Path | None = None,
 ) -> None:
     """Project the matrix to an explicit or GitHub-provided output path."""
-
     configured = os.environ.get("GITHUB_OUTPUT")
     if output is None and not configured:
         raise SystemExit("GitHub output path is unavailable")
@@ -55,7 +54,6 @@ def _command(
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run matrix projection through the repository parser stack."""
-
     App(default_command=_command, help=__doc__, result_action="return_value")(
         tuple(sys.argv[1:] if argv is None else argv)
     )

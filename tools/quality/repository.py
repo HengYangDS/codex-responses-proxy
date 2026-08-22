@@ -9,11 +9,12 @@ import subprocess
 import sys
 import tokenize
 import tomllib
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
+from collections.abc import Mapping
 from dataclasses import dataclass
 from io import BytesIO
-from pathlib import Path, PurePosixPath
-from typing import Any
+from pathlib import Path
+from pathlib import PurePosixPath
 
 from cyclopts import App
 
@@ -24,7 +25,7 @@ from tools.quality.repository_state import worktree_fingerprint
 from tools.quality.semantic_names import semantic_name_gaps
 
 ROOT = Path(__file__).resolve().parents[2]
-CONFIG = ROOT / ".config/checks/architecture/policy.toml"
+CONFIG = ROOT / ".config/quality/policy/architecture.toml"
 PROJECT = ROOT / "pyproject.toml"
 _DEFINITION_TYPES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 
@@ -39,7 +40,6 @@ class RepositoryInventory:
 
 def _in_scope(relative: str, configured_roots: Iterable[str]) -> bool:
     """Return whether a repository-relative path belongs to a configured root."""
-
     path = PurePosixPath(relative)
     for configured in configured_roots:
         configured_path = PurePosixPath(configured)
@@ -55,7 +55,6 @@ def _in_scope(relative: str, configured_roots: Iterable[str]) -> bool:
 
 def _physical_python_paths(root: Path, configured_roots: Iterable[str]) -> set[str]:
     """Resolve configured files and directories into one checkout inventory."""
-
     paths: set[str] = set()
     for configured in configured_roots:
         matches = (
@@ -78,7 +77,6 @@ def _physical_python_paths(root: Path, configured_roots: Iterable[str]) -> set[s
 
 def _index_entries(root: Path) -> tuple[dict[str, str], list[str]]:
     """Read stage-zero index modes without treating the working tree as ownership truth."""
-
     try:
         result = subprocess.run(
             ["git", "-C", str(root), "ls-files", "--stage", "-z"],
@@ -113,7 +111,6 @@ def _index_entries(root: Path) -> tuple[dict[str, str], list[str]]:
 
 def _has_symlink(root: Path, relative: str) -> bool:
     """Reject a file reached through a symlink at any repository-relative component."""
-
     path = PurePosixPath(relative)
     return any((root.joinpath(*parent.parts)).is_symlink() for parent in (path, *path.parents[:-1]))
 
@@ -122,7 +119,6 @@ def _repository_inventory(
     root: Path, source_roots: Iterable[str], test_roots: Iterable[str]
 ) -> RepositoryInventory:
     """Return index-owned regular Python files and fail-closed checkout gaps."""
-
     source_roots = tuple(source_roots)
     test_roots = tuple(test_roots)
     configured_roots = (*source_roots, *test_roots)
@@ -179,7 +175,6 @@ def _repository_inventory(
 
 def _docstring_expressions(tree: ast.Module) -> Iterable[ast.Expr]:
     """Yield syntax nodes that carry module, class, or function docstrings."""
-
     for node in ast.walk(tree):
         if (
             isinstance(node, (ast.Module, *_DEFINITION_TYPES))
@@ -190,7 +185,6 @@ def _docstring_expressions(tree: ast.Module) -> Iterable[ast.Expr]:
 
 def _effective_lines(path: Path, tree: ast.Module) -> int:
     """Count code lines while excluding comments, blanks, and docstring carriers."""
-
     lines = path.read_text(encoding="utf-8").splitlines()
     excluded: set[int] = set()
     for token in tokenize.tokenize(BytesIO(path.read_bytes()).readline):
@@ -206,7 +200,6 @@ def _effective_lines(path: Path, tree: ast.Module) -> int:
 
 def _nesting_depth(node: ast.AST) -> int:
     """Return the deepest control-flow nesting below one syntax node."""
-
     control = (
         ast.AsyncFor,
         ast.AsyncWith,
@@ -235,7 +228,6 @@ def _nesting_depth(node: ast.AST) -> int:
 
 def _function_structure(tree: ast.Module) -> tuple[int, int]:
     """Return the largest function ELOC and control-flow nesting depth."""
-
     metrics = [
         (node.end_lineno - node.lineno + 1, _nesting_depth(node))
         for node in ast.walk(tree)
@@ -249,7 +241,6 @@ def _function_structure(tree: ast.Module) -> tuple[int, int]:
 
 def _logical_statements(path: Path, tree: ast.Module) -> int:
     """Count non-docstring logical statements independently of formatter wrapping."""
-
     tokens = tokenize.tokenize(BytesIO(path.read_bytes()).readline)
     return sum(token.type == tokenize.NEWLINE for token in tokens) - sum(
         1 for _ in _docstring_expressions(tree)
@@ -261,7 +252,6 @@ def audit_paths(
     paths: Iterable[Path],
 ) -> tuple[list[str], list[dict[str, object]]]:
     """Audit semantic contracts and report descriptive source metrics."""
-
     gaps: list[str] = []
     inventory: list[dict[str, object]] = []
     selected = sorted(set(paths))
@@ -283,22 +273,22 @@ def audit_paths(
     return sorted(gaps), inventory
 
 
-def _string_list(policy: Mapping[str, Any], key: str, errors: list[str]) -> list[str]:
+def _string_list(policy: Mapping[str, object], key: str, errors: list[str]) -> list[str]:
     value = policy.get(key)
     if not isinstance(value, list) or not value or not all(isinstance(item, str) for item in value):
         errors.append(f"quality_policy_{key}_must_be_nonempty_string_list")
         return []
-    return value
+    return [item for item in value if isinstance(item, str)]
 
 
 def audit() -> dict[str, object]:
     """Return one deterministic quality report for CI and local verification."""
-
     policy = tomllib.loads(CONFIG.read_text(encoding="utf-8"))
     config = tomllib.loads(PROJECT.read_text(encoding="utf-8"))
     tool = config.get("tool", {})
-    repository = tool.get("codex-responses-proxy", {})
     project = config.get("project", {})
+    project_name = project.get("name") if isinstance(project, dict) else None
+    repository = tool.get(project_name, {}) if isinstance(project_name, str) else {}
     policy_errors: list[str] = []
     if not isinstance(project, dict) or project.get("requires-python") != ">=3.12":
         policy_errors.append("requires_python_must_be_3_12_without_upper_bound")
@@ -342,7 +332,6 @@ def audit() -> dict[str, object]:
 
 def _command(*, fingerprint: bool = False) -> None:
     """Print an explicit fingerprint or audit the repository quietly."""
-
     if fingerprint:
         print(worktree_fingerprint(ROOT))
         return
@@ -355,7 +344,6 @@ def _command(*, fingerprint: bool = False) -> None:
 
 def main(argv: Iterable[str] = ()) -> None:
     """Run the repository audit through the repository's single parser stack."""
-
     App(default_command=_command, help=__doc__, result_action="return_value")(tuple(argv))
 
 

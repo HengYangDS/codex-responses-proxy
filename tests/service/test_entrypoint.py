@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.service import entrypoint, identity
+from codex_responses_proxy.service import entrypoint
+from codex_responses_proxy.service import identity
 
 
 class TestListenerEntrypoint:

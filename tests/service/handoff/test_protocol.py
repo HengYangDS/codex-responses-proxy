@@ -18,13 +18,11 @@ import pytest
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.service.handoff import protocol as handoff_protocol_module
-from tests.service.handoff.fixtures import (
-    entrypoint_module,
-    expected_metadata,
-    handoff_module,
-    http_json,
-    runtime_state_module,
-)
+from tests.service.handoff.fixtures import entrypoint_module
+from tests.service.handoff.fixtures import expected_metadata
+from tests.service.handoff.fixtures import handoff_module
+from tests.service.handoff.fixtures import http_json
+from tests.service.handoff.fixtures import runtime_state_module
 
 ROOT = Path(__file__).resolve().parents[3]
 

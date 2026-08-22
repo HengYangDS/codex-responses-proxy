@@ -6,13 +6,15 @@ import os
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
+from pathlib import PureWindowsPath
 
 from codex_responses_proxy import errors
+from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.service import digest
 
-COMMAND_NAME = "codex-responses-proxy"
+COMMAND_NAME = product_identity.COMMAND_NAME
 SNAPSHOT_FILENAME = "command.json"
 SNAPSHOT_SCHEMA = 1
 
@@ -29,7 +31,6 @@ class Snapshot:
 
 def path(home: str, environment: Mapping[str, str], *, windows: bool) -> Path:
     """Return the current user's platform-native command path."""
-
     if windows:
         local = environment.get("LOCALAPPDATA") or str(PureWindowsPath(home) / "AppData" / "Local")
         return Path(
@@ -47,7 +48,6 @@ def path(home: str, environment: Mapping[str, str], *, windows: bool) -> Path:
 
 def snapshot(command_path: Path, target: Path) -> Snapshot:
     """Prove the command path is absent or owned before payload mutation."""
-
     state, kind = _classify(command_path, target)
     if state == "foreign":
         raise errors.InstallError(f"command path is occupied by another owner: {command_path}")
@@ -64,7 +64,6 @@ def snapshot(command_path: Path, target: Path) -> Snapshot:
 
 def write_snapshot(root: Path, value: Snapshot) -> None:
     """Persist the command rollback fact beside the payload snapshot."""
-
     owned_files.write_bytes(
         root / SNAPSHOT_FILENAME,
         digest.canonical_json(
@@ -82,29 +81,28 @@ def write_snapshot(root: Path, value: Snapshot) -> None:
 
 def read_snapshot(root: Path) -> Snapshot:
     """Read one canonical command rollback fact."""
-
     value = owned_files.read_canonical_json(root / SNAPSHOT_FILENAME, "command snapshot")
+    state = value.get("state")
+    kind = value.get("kind")
+    device = value.get("device")
+    inode = value.get("inode")
     if (
         value.get("schema_version") != SNAPSHOT_SCHEMA
-        or value.get("state") not in {"absent", "owned"}
-        or value.get("kind") not in {"", "symlink", "hardlink"}
-        or type(value.get("device")) is not int
-        or type(value.get("inode")) is not int
-        or (value["state"] == "absent" and any((value["kind"], value["device"], value["inode"])))
-        or (value["state"] == "owned" and not all((value["kind"], value["device"], value["inode"])))
+        or not isinstance(state, str)
+        or state not in {"absent", "owned"}
+        or not isinstance(kind, str)
+        or kind not in {"", "symlink", "hardlink"}
+        or type(device) is not int
+        or type(inode) is not int
+        or (state == "absent" and any((kind, device, inode)))
+        or (state == "owned" and not all((kind, device, inode)))
     ):
         raise errors.InstallError("command snapshot is invalid")
-    return Snapshot(
-        state=value["state"],
-        kind=value["kind"],
-        device=value["device"],
-        inode=value["inode"],
-    )
+    return Snapshot(state=state, kind=kind, device=device, inode=inode)
 
 
 def project(command_path: Path, target: Path, previous: Snapshot | None = None) -> None:
     """Atomically project the installed executable through one native link."""
-
     if target.is_symlink() or not target.is_file():
         raise errors.InstallError("installed command target is not a regular file")
     state, _kind = _classify(command_path, target)
@@ -128,7 +126,6 @@ def project(command_path: Path, target: Path, previous: Snapshot | None = None) 
 
 def detach(command_path: Path, target: Path, previous: Snapshot) -> None:
     """Remove only the current candidate link or the proved prior link."""
-
     state, _kind = _classify(command_path, target)
     if state == "absent":
         return
@@ -142,7 +139,6 @@ def detach(command_path: Path, target: Path, previous: Snapshot) -> None:
 
 def restore(command_path: Path, target: Path, previous: Snapshot) -> None:
     """Restore the exact prior link state after payload restoration."""
-
     state, _kind = _classify(command_path, target)
     if state == "foreign":
         raise errors.InstallError(f"command path changed ownership: {command_path}")
@@ -154,7 +150,6 @@ def restore(command_path: Path, target: Path, previous: Snapshot) -> None:
 
 def remove(command_path: Path, target: Path) -> bool:
     """Remove only a live command link still owned by this payload."""
-
     state, _kind = _classify(command_path, target)
     if state == "absent":
         return False
@@ -169,7 +164,6 @@ def remove(command_path: Path, target: Path) -> bool:
 
 def status(command_path: Path, target: Path) -> dict[str, object]:
     """Return one read-only command discoverability result."""
-
     state, kind = _classify(command_path, target)
     return {
         "state": state,

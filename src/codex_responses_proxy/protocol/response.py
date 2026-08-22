@@ -21,7 +21,6 @@ def error_payload(
     attempts: int | None = None,
 ) -> bytes:
     """Encode one stable local Responses error envelope."""
-
     error: dict[str, object] = {"message": message, "type": error_type, "code": code}
     if reason is not None:
         error["reason"] = reason

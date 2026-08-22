@@ -1,2 +1,5 @@
 [environment]
 extra-paths = ["src", "."]
+
+[rules]
+all = "error"

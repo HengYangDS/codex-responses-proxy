@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import json
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
+from collections.abc import Mapping
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
 from typing import cast
 
 from codex_responses_proxy.relay import admission

@@ -24,7 +24,6 @@ def _measurements(
     percentile: int,
 ) -> dict[str, float]:
     """Return an observed percentile from complete pyperf sample distributions."""
-
     suite = pyperf.BenchmarkSuite.load(str(path))
     measurements: dict[str, float] = {}
     for benchmark in suite:
@@ -44,7 +43,6 @@ def _measurements(
 
 def _budgets(contract: Mapping[str, object], group: str) -> dict[str, float]:
     """Return one positive numeric budget group."""
-
     raw = contract.get(group)
     if not isinstance(raw, Mapping) or not raw:
         raise PerformanceError(f"performance policy section is invalid: {group}")
@@ -58,7 +56,6 @@ def _budgets(contract: Mapping[str, object], group: str) -> dict[str, float]:
 
 def verify(*, policy: Path, latency: Path, memory: Path) -> None:
     """Require every declared metric and reject values above its explicit budget."""
-
     document = tomllib.loads(policy.read_text(encoding="utf-8"))
     execution = document.get("execution")
     if not isinstance(execution, Mapping):
@@ -111,7 +108,6 @@ def _command(*, policy: Path, latency: Path, memory: Path) -> None:
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run performance verification through the repository parser stack."""
-
     try:
         App(default_command=_command, help=__doc__, result_action="return_value")(
             tuple(sys.argv[1:] if argv is None else argv)

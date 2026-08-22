@@ -26,11 +26,11 @@ on a real machine. This is the first such run.
 
 Each fix in this branch was reproduced against its original real-host failure.
 
-| Fix | Original real-host failure | Evidence after fix |
-| --- | --- | --- |
-| Watchdog self-heal | Killing the watchdog left it absent for 180 s (3× the interval); `RestartOnFailure` reacts only to a failed task *launch*, and a `LogonTrigger` `<Repetition>` only arms at an actual logon. | With the repeating `<TimeTrigger>` (past `StartBoundary` + `PT1M`) and `MultipleInstancesPolicy=IgnoreNew`, a killed watchdog relaunched in ~32 s; repeated fires while alive were no-ops. |
-| Uninstall stops the watchdog | `schtasks /delete` removed only the definition; the surviving watchdog respawned the proxy in the same second. | Uninstall now terminates the watchdog matched to this install's own launcher/script paths; after uninstall the watchdog and proxy were gone and nothing respawned over a full interval. |
-| Windowless run | The `cmd.exe /c` wrapper held a visible console for the whole watchdog lifetime. | The task runs a generated `.pyw` via `pythonw.exe`; the watchdog and proxy report `MainWindowHandle=0` and no `cmd`/`conhost` is allocated for them. |
+| Fix                          | Original real-host failure                                                                                                                                                                   | Evidence after fix                                                                                                                                                                         |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Watchdog self-heal           | Killing the watchdog left it absent for 180 s (3× the interval); `RestartOnFailure` reacts only to a failed task _launch_, and a `LogonTrigger` `<Repetition>` only arms at an actual logon. | With the repeating `<TimeTrigger>` (past `StartBoundary` + `PT1M`) and `MultipleInstancesPolicy=IgnoreNew`, a killed watchdog relaunched in ~32 s; repeated fires while alive were no-ops. |
+| Uninstall stops the watchdog | `schtasks /delete` removed only the definition; the surviving watchdog respawned the proxy in the same second.                                                                               | Uninstall now terminates the watchdog matched to this install's own launcher/script paths; after uninstall the watchdog and proxy were gone and nothing respawned over a full interval.    |
+| Windowless run               | The `cmd.exe /c` wrapper held a visible console for the whole watchdog lifetime.                                                                                                             | The task runs a generated `.pyw` via `pythonw.exe`; the watchdog and proxy report `MainWindowHandle=0` and no `cmd`/`conhost` is allocated for them.                                       |
 
 ## Standard-user interactive logon
 
@@ -38,13 +38,13 @@ Two properties can only be observed under a real interactive logon of a standard
 user; they were confirmed here from a separate elevated session after a
 fast-user-switch logon of the standard account.
 
-| Property | Evidence |
-| --- | --- |
+| Property                                        | Evidence                                                                                                                                             |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | (a) Auto-start at logon under the standard user | On logon the watchdog `pythonw` appeared owned by the standard user, and the proxy was spawned as its direct child, also owned by the standard user. |
-| (b) Non-elevated least-privilege token | Both the watchdog and proxy reported `TokenIsElevated=0` with `ElevationType=1` (Default; no split token). |
-| Consumer endpoint | The standard user's client independently pointed at the loopback listener; the proxy did not write that configuration. |
-| Listener | The proxy owned the loopback listener on the configured port. |
-| Idempotent self-heal | While the watchdog was alive, the task's last result was the `IgnoreNew` duplicate-instance rejection (`0x800710E0`), i.e. a re-fire is a no-op. |
+| (b) Non-elevated least-privilege token          | Both the watchdog and proxy reported `TokenIsElevated=0` with `ElevationType=1` (Default; no split token).                                           |
+| Consumer endpoint                               | The standard user's client independently pointed at the loopback listener; the proxy did not write that configuration.                               |
+| Listener                                        | The proxy owned the loopback listener on the configured port.                                                                                        |
+| Idempotent self-heal                            | While the watchdog was alive, the task's last result was the `IgnoreNew` duplicate-instance rejection (`0x800710E0`), i.e. a re-fire is a no-op.     |
 
 ### Note on elevation type
 

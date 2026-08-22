@@ -8,16 +8,19 @@ from http.server import BaseHTTPRequestHandler
 from codex_responses_proxy.protocol import request as replay_request
 from codex_responses_proxy.protocol import response as replay_response
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.relay import admission, cooldown, operational_log, telemetry
+from codex_responses_proxy.relay import admission
+from codex_responses_proxy.relay import cooldown
 from codex_responses_proxy.relay import exchange as upstream_exchange
+from codex_responses_proxy.relay import operational_log
 from codex_responses_proxy.relay import relay as downstream
+from codex_responses_proxy.relay import telemetry
+from codex_responses_proxy.relay.contracts import header_value
 
 
 def resolve_upstream(
     path: str, providers: provider_registry.Registry
 ) -> tuple[str, str, str] | None:
     """Resolve one configured provider namespace without provider branching."""
-
     resolved = providers.resolve(path)
     return None if resolved is None else (resolved[0].name, resolved[1], resolved[2])
 
@@ -83,7 +86,6 @@ def _reject_route(
     handler: BaseHTTPRequestHandler, request_id: int, method: str | None = None
 ) -> None:
     """Reject one unsupported route without retaining its unread request body."""
-
     telemetry.record_counter("provider_route_rejected")
     telemetry.record_failure("provider_route_rejected")
     code = "provider_route_not_found" if method is None else "provider_route_method_not_allowed"
@@ -108,7 +110,6 @@ def _reject_route(
 
 def _request_headers(handler: BaseHTTPRequestHandler) -> dict[str, str]:
     """Return the shared upstream header projection for supported routes."""
-
     headers = {
         name: value
         for name, value in handler.headers.items()
@@ -126,7 +127,6 @@ def _relay_catalog(
     headers: dict[str, str],
 ) -> None:
     """Relay one model catalog read exactly once without Responses policy."""
-
     try:
         response = upstream_exchange.open_readonly(upstream_url, "GET", headers)
     except urllib.error.HTTPError as error:
@@ -239,7 +239,7 @@ def relay(
         response = upstream_exchange.open_upstream(exchange)
         if response is None:
             return
-        content_type = response.headers.get("Content-Type", "")
+        content_type = header_value(response.headers, "Content-Type")
         if "text/event-stream" in content_type.lower():
             downstream.relay_sse(exchange, response)
         else:

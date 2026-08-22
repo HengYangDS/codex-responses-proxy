@@ -13,14 +13,14 @@ flowchart LR
     GH --> A
 ```
 
-| Plane | Owns |
-| --- | --- |
-| Local | Commit and tag objects, source proof, install, runtime proof |
-| Native builders | One admitted asset pair for each supported platform |
-| Product assembler | Complete platform inventory, one checksum manifest, one product signature |
-| GitLab | Peer-local review and tag verification, transport authentication, Release projection |
-| GitHub | Peer-local review and tag verification, transport authentication, Release projection |
-| Audit | Read-only comparison after publication |
+| Plane             | Owns                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| Local             | Commit and tag objects, source proof, install, runtime proof                         |
+| Native builders   | One admitted asset pair for each supported platform                                  |
+| Product assembler | Complete platform inventory, one checksum manifest, one product signature            |
+| GitLab            | Peer-local review and tag verification, transport authentication, Release projection |
+| GitHub            | Peer-local review and tag verification, transport authentication, Release projection |
+| Audit             | Read-only comparison after publication                                               |
 
 The commit and annotated tag are signed once locally. The public signing key and
 product email must be accepted by each selected Forge. SSH keys or tokens used to
@@ -134,16 +134,16 @@ uv run --locked --no-sync python -m tools.forge.audit \
   --json
 ```
 
-| Compared | Required result |
-| --- | --- |
-| Local/GitLab/GitHub `main` and `dev` | One exact commit OID |
-| Product commit | Expected email and trusted signature |
-| Local/GitLab/GitHub tags | Same annotated tag names and object OIDs |
-| Tag targets | Same peeled commit and tree OIDs |
-| Tag signatures | Trusted against the supplied product anchor |
-| Remote branches | Only `main`, `dev`, and transient `proposal/*` while active |
-| Release inventory | Every platform from the product SSOT plus one checksum and signature |
-| Release bytes | Exact equality for every asset and one trust-anchor digest |
+| Compared                             | Required result                                                      |
+| ------------------------------------ | -------------------------------------------------------------------- |
+| Local/GitLab/GitHub `main` and `dev` | One exact commit OID                                                 |
+| Product commit                       | Expected email and trusted signature                                 |
+| Local/GitLab/GitHub tags             | Same annotated tag names and object OIDs                             |
+| Tag targets                          | Same peeled commit and tree OIDs                                     |
+| Tag signatures                       | Trusted against the supplied product anchor                          |
+| Remote branches                      | Only `main`, `dev`, and transient `proposal/*` while active          |
+| Release inventory                    | Every platform from the product SSOT plus one checksum and signature |
+| Release bytes                        | Exact equality for every asset and one trust-anchor digest           |
 
 Equal trees, equal messages, or a shared history suffix do not establish parity.
 

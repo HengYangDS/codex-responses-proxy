@@ -7,7 +7,8 @@ import threading
 import time
 from collections.abc import Buffer
 from contextlib import suppress
-from typing import SupportsIndex, SupportsInt
+from typing import SupportsIndex
+from typing import SupportsInt
 
 from codex_responses_proxy.relay import telemetry
 
@@ -157,8 +158,13 @@ def is_loopback_client(address: str) -> bool:
 
 def reset_for_test() -> None:
     """Reset admission state for deterministic unit tests."""
-    global _ACTIVE_RESPONSES, _ACTIVE_HANDLERS, _DRAINING
-    global _DRAIN_GENERATION, _DRAIN_DEADLINE, _REQUEST_SEQUENCE
+    global \
+        _ACTIVE_RESPONSES, \
+        _ACTIVE_HANDLERS, \
+        _DRAINING, \
+        _DRAIN_GENERATION, \
+        _DRAIN_DEADLINE, \
+        _REQUEST_SEQUENCE
     with _RESPONSE_GATE_LOCK:
         _ACTIVE_RESPONSES = 0
         _ACTIVE_HANDLERS = 0

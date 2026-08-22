@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
+from collections.abc import Sequence
 from typing import Final
 
+from codex_responses_proxy import product_identity
 from tools.release import identity
 from tools.release import product_assets as release_assets
 from tools.release.publication import hosted
@@ -25,7 +27,6 @@ class GitHubProofError(RuntimeError):
 
 def _mapping(value: object, unavailable: str) -> Mapping[str, object]:
     """Require one mapping-shaped GitHub API object."""
-
     if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
         raise GitHubProofError(unavailable)
     return {key: item for key, item in value.items() if isinstance(key, str)}
@@ -33,7 +34,6 @@ def _mapping(value: object, unavailable: str) -> Mapping[str, object]:
 
 def _mappings(value: object, malformed: str) -> list[Mapping[str, object]]:
     """Require a JSON array containing only object records."""
-
     if not isinstance(value, list):
         raise GitHubProofError(malformed)
     return [_mapping(item, malformed) for item in value]
@@ -41,7 +41,6 @@ def _mappings(value: object, malformed: str) -> list[Mapping[str, object]]:
 
 def _one(records: Sequence[Mapping[str, object]], message: str) -> Mapping[str, object]:
     """Require one unambiguous GitHub record."""
-
     if len(records) != 1:
         raise GitHubProofError(message)
     return records[0]
@@ -49,7 +48,6 @@ def _one(records: Sequence[Mapping[str, object]], message: str) -> Mapping[str, 
 
 def _object_pages(endpoint: str, key: str, malformed: str) -> list[Mapping[str, object]]:
     """Flatten paginated object records after validating every envelope."""
-
     records: list[Mapping[str, object]] = []
     for page in _api_pages(endpoint):
         items = _mapping(page, malformed).get(key)
@@ -69,7 +67,6 @@ def normalize(
     required_jobs: Sequence[str] = DEFAULT_REQUIRED_JOBS,
 ) -> dict[str, object]:
     """Normalize exact successful Verify workflow and Release record evidence."""
-
     tagged_runs = [
         run
         for run in runs
@@ -105,7 +102,7 @@ def normalize(
         (
             isinstance(release_id, int) and not isinstance(release_id, bool),
             release.get("tag_name") == tag,
-            release.get("name") == f"Codex Responses Proxy {tag}",
+            release.get("name") == product_identity.release_title(tag),
             release.get("draft") is False,
             release.get("prerelease") is False,
             isinstance(published_at, str) and bool(published_at),
@@ -143,7 +140,6 @@ def collect(
     required_jobs: Sequence[str] = DEFAULT_REQUIRED_JOBS,
 ) -> dict[str, object]:
     """Query GitHub and bind API identity to independently fetched Git objects."""
-
     ref = _mapping(
         _api(f"repos/{repository}/git/ref/tags/{tag}"),
         "GitHub tag ref response is malformed",

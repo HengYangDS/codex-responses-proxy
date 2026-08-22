@@ -31,11 +31,12 @@ _TOOL_OUTPUT_TYPES = frozenset(_TOOL_PAIR_TYPES.values())
 def _request(raw: bytes, minimum_items: int = 1) -> Request | None:
     """Decode a request with enough input items and return its latest user index."""
     try:
-        payload = json.loads(raw)
-    except Exception:
+        decoded: object = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
         return None
-    if not isinstance(payload, dict):
+    if not isinstance(decoded, dict) or not all(isinstance(key, str) for key in decoded):
         return None
+    payload: JsonObject = {key: value for key, value in decoded.items() if isinstance(key, str)}
     items = payload.get("input")
     if not isinstance(items, list) or len(items) < minimum_items:
         return None
@@ -49,7 +50,8 @@ def _request(raw: bytes, minimum_items: int = 1) -> Request | None:
         ),
         -1,
     )
-    return (payload, items, latest_user) if latest_user >= 0 else None
+    typed_items: list[object] = list(items)
+    return (payload, typed_items, latest_user) if latest_user >= 0 else None
 
 
 def _budget(raw: bytes, budget: int) -> int | None:

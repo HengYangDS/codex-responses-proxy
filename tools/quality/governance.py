@@ -10,8 +10,23 @@ from pathlib import Path
 from cyclopts import App
 
 ROOT = Path(__file__).resolve().parents[2]
-LINK_POLICY = ".config/checks/links/lychee.toml"
+LINK_POLICY = ".config/quality/native/lychee.toml"
 MARKDOWN_INPUTS = ("./*.md", "./**/*.md")
+
+
+def _tracked_current(suffixes: tuple[str, ...]) -> tuple[str, ...]:
+    """Return tracked current authorities for one native formatter."""
+    completed = subprocess.run(
+        ("git", "ls-files", "-z"),
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    )
+    return tuple(
+        path
+        for path in completed.stdout.decode().split("\0")
+        if path and path.endswith(suffixes) and not path.startswith("openspec/changes/archive/")
+    )
 
 
 class GovernanceError(RuntimeError):
@@ -20,9 +35,26 @@ class GovernanceError(RuntimeError):
 
 def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
     """Return the single ordered governance graph for this repository."""
-
     link_mode = () if online_links else ("--offline",)
+    markdown_yaml = _tracked_current((".md", ".yaml", ".yml"))
+    toml = _tracked_current((".toml",))
     return (
+        (
+            "prettier",
+            "--check",
+            "--config",
+            ".config/quality/native/prettier.json",
+            *markdown_yaml,
+        ),
+        (
+            "taplo",
+            "format",
+            "--check",
+            "--config",
+            ".config/quality/native/taplo.toml",
+            *toml,
+        ),
+        ("cue", "fmt", "--check", "--files", ".config/ci/pipeline.cue"),
         ("cue", "vet", ".config/ci/pipeline.cue"),
         (sys.executable, "-m", "tools.ci.project"),
         ("openspec", "validate", "--all", "--strict", "--no-interactive"),
@@ -39,18 +71,18 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
             "src/codex_responses_proxy",
             "tools",
             "--config",
-            ".config/checks/dead-code/vulture.toml",
+            ".config/quality/native/vulture.toml",
         ),
         ("gitleaks", "git", "--platform", "gitlab", "--redact", "--no-banner", "."),
         ("lychee", "--config", LINK_POLICY, *link_mode, *MARKDOWN_INPUTS),
         (sys.executable, "-m", "tools.release.metadata"),
+        (sys.executable, "-m", "tools.quality.hard_coding"),
         (sys.executable, "-m", "tools.quality.repository"),
     )
 
 
 def audit(*, online_links: bool = False) -> None:
     """Execute every governance concern from one composition root."""
-
     for command in _commands(online_links=online_links):
         try:
             completed = subprocess.run(command, cwd=ROOT, check=False)
@@ -62,13 +94,11 @@ def audit(*, online_links: bool = False) -> None:
 
 def _command(*, online_links: bool = False) -> None:
     """Run deterministic checks, optionally including external links."""
-
     audit(online_links=online_links)
 
 
 def main(argv: Iterable[str] = ()) -> None:
     """Run repository governance through the shared parser stack."""
-
     try:
         App(default_command=_command, help=__doc__, result_action="return_value")(tuple(argv))
     except GovernanceError as error:

@@ -7,20 +7,25 @@ import os
 import stat
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Protocol
 
 from tools.git_environment import isolated_config_environment
 
 
-def _hash_field(digest: Any, label: bytes, value: bytes) -> None:
-    """Add one length-delimited field to a repository fingerprint."""
+class Digest(Protocol):
+    """Minimal mutable digest interface used by the fingerprint encoder."""
 
+    def update(self, data: bytes, /) -> None:
+        """Incorporate bytes into the digest state."""
+
+
+def _hash_field(digest: Digest, label: bytes, value: bytes) -> None:
+    """Add one length-delimited field to a repository fingerprint."""
     digest.update(len(label).to_bytes(2, "big") + label + len(value).to_bytes(8, "big") + value)
 
 
 def _git_output(root: Path, *args: str, allow_absent_head: bool = False) -> bytes:
     """Return raw Git output without inheriting host-specific configuration."""
-
     command = ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args]
     try:
         return subprocess.run(
@@ -38,7 +43,6 @@ def _git_output(root: Path, *args: str, allow_absent_head: bool = False) -> byte
 
 def worktree_fingerprint(root: Path) -> str:
     """Fingerprint HEAD and the current tracked or untracked worktree content."""
-
     digest = hashlib.sha256()
     head = _git_output(root, "rev-parse", "--verify", "HEAD", allow_absent_head=True).strip()
     _hash_field(digest, b"head", head)

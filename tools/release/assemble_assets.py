@@ -7,15 +7,16 @@ import sys
 from pathlib import Path
 from typing import Annotated
 
-from cyclopts import App, Parameter
+from cyclopts import App
+from cyclopts import Parameter
 
+from codex_responses_proxy import product_identity
 from tools.release import product_assets as assets
 from tools.release import signing
 
 
 def assemble(inputs: tuple[Path, ...], output: Path) -> dict[str, bytes]:
     """Verify and copy one exact asset pair for every supported platform."""
-
     if output.exists() and any(output.iterdir()):
         raise assets.AssetError("release asset output directory must be empty")
     discovered: dict[str, bytes] = {}
@@ -46,10 +47,9 @@ def assemble(inputs: tuple[Path, ...], output: Path) -> dict[str, bytes]:
 
 def verify(root: Path, *, require_signature: bool = True) -> dict[str, str]:
     """Verify one complete release directory and return its exact digests."""
-
     files = {path.name: path.read_bytes() for path in root.iterdir() if path.is_file()}
     versions = {
-        name.removeprefix("codex-responses-proxy-").removesuffix(f"-{platform}.tar.gz")
+        name.removeprefix(f"{product_identity.PRODUCT_SLUG}-").removesuffix(f"-{platform}.tar.gz")
         for platform in assets.RELEASE_PLATFORMS
         for name in files
         if name.endswith(f"-{platform}.tar.gz")
@@ -68,7 +68,6 @@ def assemble_sign_verify(
     *, inputs: tuple[Path, ...], output: Path, key: Path, trust: str
 ) -> dict[str, str]:
     """Assemble, sign, and verify one complete release asset set."""
-
     if not key.is_file() or key.is_symlink() or not trust.strip():
         raise assets.AssetError("release signing inputs are unavailable")
     assemble(inputs, output)
@@ -81,7 +80,7 @@ def assemble_sign_verify(
 
 def _version(discovered: dict[str, bytes]) -> str:
     versions = {
-        name.removeprefix("codex-responses-proxy-").removesuffix(f"-{platform}.tar.gz")
+        name.removeprefix(f"{product_identity.PRODUCT_SLUG}-").removesuffix(f"-{platform}.tar.gz")
         for platform in assets.RELEASE_PLATFORMS
         for name in discovered
         if name.endswith(f"-{platform}.tar.gz")
@@ -99,7 +98,6 @@ def _command(
     sign: bool = False,
 ) -> None:
     """Assemble or verify one complete release asset set."""
-
     if verify_path:
         if inputs or output:
             raise SystemExit("--verify cannot be combined with --input or --output")
@@ -123,7 +121,6 @@ def _command(
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run release assembly through the repository's single parser stack."""
-
     try:
         App(default_command=_command, help=__doc__, result_action="return_value")(
             tuple(sys.argv[1:] if argv is None else argv)

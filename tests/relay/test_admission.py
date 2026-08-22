@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-from codex_responses_proxy.relay import admission, telemetry
+from codex_responses_proxy.relay import admission
+from codex_responses_proxy.relay import telemetry
 
 ROOT = Path(__file__).resolve().parents[2]
 

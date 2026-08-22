@@ -20,16 +20,17 @@ import pytest
 from codex_responses_proxy.protocol import content as portable_content
 from codex_responses_proxy.protocol import request as rewrite
 from codex_responses_proxy.providers.policies import dmxapi as policy
-from codex_responses_proxy.relay import admission, cooldown, telemetry
+from codex_responses_proxy.relay import admission
+from codex_responses_proxy.relay import cooldown
+from codex_responses_proxy.relay import telemetry
 from codex_responses_proxy.service import entrypoint as proxy
-from tests.relay.empty_response_fixture import (
-    EMPTY_RESPONSE,
-    SUCCESS,
-    UNKNOWN_477,
-    body,
-    semantic_body,
-)
-from tests.relay.proxy_fixture import request, serve_proxy
+from tests.relay.empty_response_fixture import EMPTY_RESPONSE
+from tests.relay.empty_response_fixture import SUCCESS
+from tests.relay.empty_response_fixture import UNKNOWN_477
+from tests.relay.empty_response_fixture import body
+from tests.relay.empty_response_fixture import semantic_body
+from tests.relay.proxy_fixture import request
+from tests.relay.proxy_fixture import serve_proxy
 
 ROOT = Path(__file__).resolve().parents[2]
 

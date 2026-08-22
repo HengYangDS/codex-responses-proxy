@@ -62,7 +62,8 @@ class TestPerformanceEvidence:
     def test_rejects_exceeded_or_invalid_budget(
         self, tmp_path: Path, maximum: float, observed: float
     ) -> None:
-        from tools.performance.verify import PerformanceError, verify
+        from tools.performance.verify import PerformanceError
+        from tools.performance.verify import verify
 
         policy = _policy(tmp_path / "policy.toml", maximum=maximum)
         with pytest.raises(PerformanceError):
@@ -73,7 +74,8 @@ class TestPerformanceEvidence:
             )
 
     def test_rejects_missing_and_undeclared_metrics(self, tmp_path: Path) -> None:
-        from tools.performance.verify import PerformanceError, verify
+        from tools.performance.verify import PerformanceError
+        from tools.performance.verify import verify
 
         with pytest.raises(PerformanceError, match=r"missing.*undeclared"):
             verify(

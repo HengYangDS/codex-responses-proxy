@@ -11,7 +11,6 @@ from pathlib import Path
 
 def executable(name: str, error_type: type[Exception]) -> str:
     """Resolve one required Forge CLI to a canonical absolute path."""
-
     candidate = shutil.which(name)
     if not candidate:
         raise error_type(f"{name} is unavailable")
@@ -25,7 +24,6 @@ def api_json(
     error_type: type[Exception],
 ) -> object:
     """Run one read-only Forge CLI request and decode its JSON response."""
-
     try:
         completed = subprocess.run(command, check=True, capture_output=True, text=True)
         return json.loads(completed.stdout)
@@ -35,7 +33,6 @@ def api_json(
 
 def api_bytes(command: Sequence[str], *, unavailable: str, error_type: type[Exception]) -> bytes:
     """Run one read-only request and return its exact response bytes."""
-
     try:
         return subprocess.run(command, check=True, capture_output=True).stdout
     except (OSError, subprocess.CalledProcessError) as error:

@@ -22,7 +22,6 @@ def isolated_config_environment(
     overrides: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """Return the host environment without personal Git configuration."""
-
     environment = os.environ | _CONFIG_ISOLATION
     if overrides:
         environment.update(overrides)
@@ -31,7 +30,6 @@ def isolated_config_environment(
 
 def immutable_remote_proof_environment() -> dict[str, str]:
     """Return a non-interactive Git environment without inherited Git state."""
-
     environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
     environment.update(_CONFIG_ISOLATION)
     environment.update(_IMMUTABLE_REMOTE_PROOF)

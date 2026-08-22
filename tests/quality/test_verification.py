@@ -8,7 +8,6 @@ import re
 import subprocess
 import tomllib
 from pathlib import Path
-from typing import Any
 
 import pytest
 import yaml
@@ -18,18 +17,30 @@ from tests.quality.fixtures import ROOT
 from tests.quality.fixtures import load as _load
 
 
-def _load_yaml(path: Path) -> dict[str, Any]:
+def _load_yaml(path: Path) -> dict[str, object]:
     """Load a workflow as semantic data rather than presentation text."""
 
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(data, dict)
-    return data
+    assert all(isinstance(key, str) for key in data)
+    return {str(key): value for key, value in data.items()}
+
+
+def _mapping(value: object) -> dict[str, object]:
+    """Narrow one parsed configuration table for semantic assertions."""
+    assert isinstance(value, dict)
+    assert all(isinstance(key, str) for key in value)
+    return {str(key): item for key, item in value.items()}
 
 
 def _required_uv_version() -> str:
-    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    requirement = metadata["tool"]["uv"]["required-version"]
-    if not re.fullmatch(r"==\d+\.\d+\.\d+", requirement):
+    metadata: object = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    if not isinstance(metadata, dict):
+        raise AssertionError("project metadata must be a table")
+    tool = metadata.get("tool")
+    uv = tool.get("uv") if isinstance(tool, dict) else None
+    requirement: object = uv.get("required-version") if isinstance(uv, dict) else None
+    if not isinstance(requirement, str) or not re.fullmatch(r"==\d+\.\d+\.\d+", requirement):
         raise AssertionError("uv must use an exact semantic version")
     return requirement.removeprefix("==")
 
@@ -128,9 +139,13 @@ class TestVerificationContracts:
         self, tmp_path: Path, reported_version: str, expected_returncode: int
     ) -> None:
         pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
+        verify_python = _mapping(pipeline["verify-python"])
+        before_script = verify_python["before_script"]
+        assert isinstance(before_script, list)
         script = next(
             item
-            for item in pipeline["verify-python"]["before_script"]
+            for item in before_script
+            if isinstance(item, str)
             if '["tool"]["uv"]["required-version"]' in item
         )
         executable = tmp_path / "uv"
@@ -245,14 +260,8 @@ class TestVerificationContracts:
         assert '"compileall",' in tests_source
         for owner_source in (tests_source, quality_source):
             assert '"not native_distribution and not repository_toolchain"' in owner_source
-        assert (
-            '"CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session))'
-            in tests_source
-        )
-        assert (
-            '"CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session))'
-            in quality_source
-        )
+        for owner_source in (tests_source, quality_source):
+            assert 'product_identity.environment_name("EXECUTABLE")' in owner_source
         assert "PYTHONPATH=src" not in source
 
     def test_nox_tool_environment_contains_product_runtime_dependencies(self) -> None:
@@ -280,7 +289,9 @@ class TestVerificationContracts:
         release_source = ast.get_source_segment(source, functions["release"]) or ""
         assert '"tests/cli/test_interface.py"' in release_source
         assert '"tests/service/handoff/test_subprocess.py"' in release_source
-        assert '"CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE": str(executable)' in release_source
+        assert 'product_identity.environment_name("NATIVE_EXECUTABLE"): str(executable)' in (
+            release_source
+        )
         assert '"-m", "tests.' not in release_source
         release_calls = {
             node.func.id
@@ -318,8 +329,12 @@ class TestVerificationContracts:
         compatibility_source = ast.get_source_segment(source, compatibility) or ""
         lifecycle = (ROOT / "tests/release/test_native_lifecycle.py").read_text(encoding="utf-8")
 
-        assert "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET" in compatibility_source
-        assert "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR" in compatibility_source
+        assert 'product_identity.environment_name("PREVIOUS_RELEASE_ASSET")' in (
+            compatibility_source
+        )
+        assert 'product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR")' in (
+            compatibility_source
+        )
         assert '"tests/release/test_native_compatibility.py"' in compatibility_source
         assert "_previous_patch" not in lifecycle
 
@@ -455,11 +470,11 @@ class TestVerificationContracts:
         assert "needs.python-matrix.outputs.release" in github
         assert "python-version: ${{ needs.python-matrix.outputs.release }}" in github
         pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
-        assert pipeline["default"]["image"] == {
+        assert _mapping(pipeline["default"])["image"] == {
             "name": "$UV_PYTHON_LATEST_IMAGE",
             "docker": {"platform": "linux/amd64"},
         }
-        assert pipeline["verify-python-quality"]["image"] == {
+        assert _mapping(pipeline["verify-python-quality"])["image"] == {
             "name": "$UV_PYTHON_FLOOR_IMAGE",
             "docker": {"platform": "linux/amd64"},
         }
@@ -498,8 +513,12 @@ class TestVerificationContracts:
         )
         owner_source = ast.get_source_segment(source, function) or ""
 
-        assert '"CODEX_RESPONSES_PROXY_HOME": str(sandbox / "payload")' in owner_source
-        assert '"CODEX_RESPONSES_PROXY_STATE_HOME": str(sandbox / "state")' in owner_source
+        assert 'product_identity.environment_name("HOME"): str(sandbox / "payload")' in (
+            owner_source
+        )
+        assert 'product_identity.environment_name("STATE_HOME"): str(sandbox / "state")' in (
+            owner_source
+        )
         assert '"HOME": str(sandbox / "home")' in owner_source
         assert '"USERPROFILE": str(sandbox / "home")' in owner_source
         assert '"HOME": str(Path.home())' not in owner_source
@@ -581,7 +600,7 @@ class TestVerificationContracts:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         quality = metadata["dependency-groups"]["quality"]
         assert "pyperf==2.10.0" in quality
-        assert (ROOT / ".config/checks/performance/policy.toml").is_file()
+        assert (ROOT / ".config/quality/policy/performance.toml").is_file()
         assert (ROOT / "tools/performance/benchmark.py").is_file()
         assert (ROOT / "tools/performance/memory.py").is_file()
 
@@ -593,7 +612,7 @@ class TestVerificationContracts:
 
         github = _load_yaml(ROOT / ".github/workflows/verify.yml")
         gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
-        github_jobs = github["jobs"]
+        github_jobs = _mapping(github["jobs"])
         assert "performance" in github_jobs
         assert "uv run --locked --group quality nox -s performance" in str(
             github_jobs["performance"]

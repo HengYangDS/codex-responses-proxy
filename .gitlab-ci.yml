@@ -38,7 +38,7 @@ source-and-governance:
       - ""
   variables:
     GIT_DEPTH: "0"
-    MISE_ENABLE_TOOLS: python,uv,node,cue,npm:@fission-ai/openspec,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee
+    MISE_ENABLE_TOOLS: python,uv,node,cue,aqua:tamasfe/taplo,npm:@fission-ai/openspec,npm:prettier,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin

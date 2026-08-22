@@ -8,10 +8,12 @@ import sys
 import tempfile
 import tomllib
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
-from cyclopts import App, Parameter
+from cyclopts import App
+from cyclopts import Parameter
 
+from codex_responses_proxy import product_identity
 from tools.git_environment import isolated_config_environment
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,7 +23,6 @@ PERSISTENT_BRANCHES = ("main", "dev")
 
 def command(*args: str, cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess[str]:
     """Run a captured subprocess and raise a concise error when requested."""
-
     result = subprocess.run(
         args,
         cwd=cwd,
@@ -37,7 +38,6 @@ def command(*args: str, cwd: Path = ROOT, check: bool = True) -> subprocess.Comp
 
 def output(*args: str, cwd: Path = ROOT) -> str:
     """Return stripped standard output for a successful command."""
-
     return command(*args, cwd=cwd).stdout.strip()
 
 
@@ -45,22 +45,28 @@ def branches_for_audit(
     path: Path = WORKSPACE_POLICY,
 ) -> tuple[frozenset[str], frozenset[str]]:
     """Return persistent local and remote branches from repository policy."""
-
     try:
-        roles = tomllib.loads(path.read_text(encoding="utf-8"))["branch_roles"]
-        release = roles["release_branch"]
-        accepted = roles["accepted_branch"]
-        candidate = roles["candidate_branch"]
+        document: object = tomllib.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise TypeError
+        roles: object = document.get("branch_roles")
+        if not isinstance(roles, dict):
+            raise TypeError
+        release: object = roles.get("release_branch")
+        accepted: object = roles.get("accepted_branch")
+        candidate: object = roles.get("candidate_branch")
     except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
         raise RuntimeError("repository branch-role policy is unavailable or invalid") from error
     if not all(isinstance(branch, str) and branch for branch in (release, accepted, candidate)):
         raise RuntimeError("repository branch-role policy is incomplete")
+    assert isinstance(release, str)
+    assert isinstance(accepted, str)
+    assert isinstance(candidate, str)
     return frozenset((release, accepted, candidate)), frozenset((release, accepted))
 
 
 def remote_branches(root: Path, remote: str, expected: frozenset[str]) -> list[str]:
     """Return provider branches outside the declared persistent roles."""
-
     refs = output("git", "ls-remote", "--heads", remote, cwd=root).splitlines()
     return sorted(
         ref.removeprefix("refs/heads/")
@@ -73,7 +79,6 @@ def remote_branches(root: Path, remote: str, expected: frozenset[str]) -> list[s
 
 def local_branches(root: Path, expected: frozenset[str]) -> list[str]:
     """Return local branches outside the declared persistent roles."""
-
     return sorted(
         branch
         for branch in output(
@@ -85,7 +90,6 @@ def local_branches(root: Path, expected: frozenset[str]) -> list[str]:
 
 def local_branch_oids(root: Path) -> dict[str, str]:
     """Return exact local persistent branch commits."""
-
     return {
         branch: output("git", "rev-parse", "--verify", f"refs/heads/{branch}^{{commit}}", cwd=root)
         for branch in PERSISTENT_BRANCHES
@@ -94,7 +98,6 @@ def local_branch_oids(root: Path) -> dict[str, str]:
 
 def remote_branch_oids(root: Path, remote: str) -> dict[str, str]:
     """Return exact remote persistent branch commits."""
-
     refs = output(
         "git",
         "ls-remote",
@@ -118,7 +121,6 @@ def exact_branch_parity(
     local: dict[str, str], gitlab: dict[str, str], github: dict[str, str]
 ) -> bool:
     """Return whether every persistent ref names one product commit."""
-
     values = [
         mapping[branch] for mapping in (local, gitlab, github) for branch in PERSISTENT_BRANCHES
     ]
@@ -127,13 +129,11 @@ def exact_branch_parity(
 
 def _tag_names(repository: Path) -> list[str]:
     """Return local SemVer tag names."""
-
     return output("git", "tag", "--list", "v[0-9]*", cwd=repository).splitlines()
 
 
 def _tag_evidence(repository: Path, tags: list[str], anchor: Path) -> dict[str, dict[str, object]]:
     """Describe and verify exact annotated tag objects in one repository."""
-
     evidence: dict[str, dict[str, object]] = {}
     for tag in tags:
         reference = f"refs/tags/{tag}"
@@ -167,7 +167,6 @@ def _tag_evidence(repository: Path, tags: list[str], anchor: Path) -> dict[str, 
 
 def local_release_evidence(root: Path, anchor: Path) -> dict[str, dict[str, object]]:
     """Return local release-tag object evidence."""
-
     return _tag_evidence(root, _tag_names(root), anchor)
 
 
@@ -175,9 +174,8 @@ def provider_release_evidence(
     root: Path, remote: str, anchor: Path
 ) -> dict[str, dict[str, object]]:
     """Fetch and verify one peer's release-tag objects in isolation."""
-
     remote_url = output("git", "config", "--local", "--get", f"remote.{remote}.url", cwd=root)
-    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-parity-") as name:
+    with tempfile.TemporaryDirectory(prefix=f"{product_identity.PRODUCT_SLUG}-parity-") as name:
         repository = Path(name) / "repository.git"
         command("git", "init", "--quiet", "--bare", str(repository), cwd=root)
         command(
@@ -201,7 +199,6 @@ def exact_tag_parity(
     github: dict[str, dict[str, object]],
 ) -> bool:
     """Return whether all peers expose the same verified annotated tag objects."""
-
     if not local or set(local) != set(gitlab) or set(local) != set(github):
         return False
     return all(
@@ -214,7 +211,6 @@ def exact_tag_parity(
 
 def _verify_product_commit(root: Path, commit: str, anchor: Path, email: str) -> bool:
     """Verify the shared commit identity once at the local authority."""
-
     identities = output("git", "show", "-s", "--format=%ae%n%ce", commit, cwd=root).splitlines()
     return (
         identities == [email, email]
@@ -243,9 +239,8 @@ def audit(
     tag_anchor: Path,
     gitlab_remote: str,
     github_remote: str,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Collect exact local/GitLab/GitHub parity and housekeeping evidence."""
-
     local_refs = local_branch_oids(root)
     gitlab_refs = remote_branch_oids(root, gitlab_remote)
     github_refs = remote_branch_oids(root, github_remote)
@@ -262,7 +257,7 @@ def audit(
         "worktrees": output("git", "worktree", "list", "--porcelain", cwd=root).splitlines(),
     }
     commit_verified = _verify_product_commit(root, local_refs["main"], commit_anchor, author_email)
-    result: dict[str, Any] = {
+    result: dict[str, object] = {
         "branches": {"local": local_refs, "gitlab": gitlab_refs, "github": github_refs},
         "branch_object_parity": branches_equal,
         "product_commit_verified": commit_verified,
@@ -292,7 +287,6 @@ def _command(
     as_json: Annotated[bool, Parameter(name="--json", negative=False)] = False,
 ) -> None:
     """Collect live exact-object parity from explicit product trust inputs."""
-
     root = (root or Path.cwd()).resolve()
     for path in (commit_anchor, tag_anchor):
         if not path.is_file() or path.is_symlink():
@@ -320,7 +314,6 @@ def _command(
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run Forge parity audit through the repository's single parser stack."""
-
     App(default_command=_command, help=__doc__, result_action="return_value")(
         tuple(sys.argv[1:] if argv is None else argv)
     )

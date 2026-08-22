@@ -17,13 +17,13 @@ A current document must not carry a delivery-lane status or incident narrative.
 
 ## Branches
 
-| Ref | Local | Remote |
-| --- | --- | --- |
-| `main` | Yes | Yes; protected default |
-| `dev` | Yes | Yes; protected integration |
-| `proposal/*` | Yes | Yes |
-| `candidate/*` | Yes | No |
-| `work/*` | Yes | No |
+| Ref           | Local | Remote                     |
+| ------------- | ----- | -------------------------- |
+| `main`        | Yes   | Yes; protected default     |
+| `dev`         | Yes   | Yes; protected integration |
+| `proposal/*`  | Yes   | Yes                        |
+| `candidate/*` | Yes   | No                         |
+| `work/*`      | Yes   | No                         |
 
 Pre-push rejects every remote branch outside the whitelist. Release tags are
 local product objects published unchanged to either optional Forge.
@@ -75,7 +75,7 @@ flowchart LR
 Each tool-native configuration is the sole policy owner for its concern. Root
 placement is preferred when the tool and IDEs discover that file natively;
 `pytest.ini` therefore owns test discovery and warning policy. Explicitly
-addressed reusable policies live under `.config/checks/<concern>/`. Nox executes
+addressed reusable policies live under `.config/quality/policy/`. Nox executes
 those owners, `.ethos/profile.toml` registers gates, and CI/hooks only project
 them.
 
@@ -155,14 +155,14 @@ The installer must:
 
 ## Runtime operations
 
-| Command | Mutation | Proof boundary |
-| --- | --- | --- |
-| `status` | None | Installed payload and listener evidence |
-| `doctor` | None | Classified local lifecycle checks |
-| `reload` | Same-payload handoff | Exact successor identity |
-| `install` | Payload replacement | Verified asset and successor |
-| `uninstall` | Service removal | Exact owned process exit |
-| `uninstall --purge` | Owned payload removal | Valid manifest inventory |
+| Command             | Mutation              | Proof boundary                          |
+| ------------------- | --------------------- | --------------------------------------- |
+| `status`            | None                  | Installed payload and listener evidence |
+| `doctor`            | None                  | Classified local lifecycle checks       |
+| `reload`            | Same-payload handoff  | Exact successor identity                |
+| `install`           | Payload replacement   | Verified asset and successor            |
+| `uninstall`         | Service removal       | Exact owned process exit                |
+| `uninstall --purge` | Owned payload removal | Valid manifest inventory                |
 
 No lifecycle command edits a client or conversation.
 

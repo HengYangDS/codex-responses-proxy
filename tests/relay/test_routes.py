@@ -8,8 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.relay import admission, cooldown, telemetry
-from tests.relay.proxy_fixture import raw_exchange, request, running_proxy
+from codex_responses_proxy.relay import admission
+from codex_responses_proxy.relay import cooldown
+from codex_responses_proxy.relay import telemetry
+from tests.relay.proxy_fixture import raw_exchange
+from tests.relay.proxy_fixture import request
+from tests.relay.proxy_fixture import running_proxy
 
 ROOT = Path(__file__).resolve().parents[2]
 

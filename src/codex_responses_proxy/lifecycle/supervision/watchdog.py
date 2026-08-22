@@ -35,7 +35,6 @@ LOG_BACKUP_COUNT = SETTINGS.watchdog_log.backup_count
 
 def _reap_children(children: list[subprocess.Popen[bytes]]) -> None:
     """Reap exited listener children so the watchdog never leaves zombies."""
-
     children[:] = [child for child in children if child.poll() is None]
 
 
@@ -52,7 +51,7 @@ def is_proxy_up(host: str = HOST, port: int = PORT, timeout: float = 2.0) -> boo
         return False
 
 
-def spawn_proxy() -> subprocess.Popen | None:
+def spawn_proxy() -> subprocess.Popen[bytes] | None:
     """Start the proxy detached from this watchdog so it outlives us.
 
     Uses the exact installed executable path. Detaches via ``start_new_session``

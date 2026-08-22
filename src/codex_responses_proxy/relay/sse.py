@@ -13,10 +13,14 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from http.server import BaseHTTPRequestHandler
-from typing import Any, Protocol, TypedDict
+from typing import Protocol
+from typing import TypedDict
+from typing import runtime_checkable
 
 from codex_responses_proxy.protocol import response as live_response
-from codex_responses_proxy.relay import operational_log, telemetry
+from codex_responses_proxy.relay import operational_log
+from codex_responses_proxy.relay import telemetry
+from codex_responses_proxy.relay.contracts import UpstreamResponse
 from codex_responses_proxy.runtime import config as runtime_config
 
 UPSTREAM_READ_TIMEOUT = runtime_config.load().upstream_read_timeout
@@ -33,14 +37,17 @@ _TERMINALS = ("completed", "failed", "incomplete")
 _CLEAN_TERMINALS = {"response.completed", "response.incomplete"}
 
 
-class ResponseLike(Protocol):
+class ResponseLike(UpstreamResponse, Protocol):
     """Minimum upstream response surface consumed by the SSE reader."""
 
-    fp: Any
 
-    def read(self, amount: int = -1) -> bytes: ...
+@runtime_checkable
+class _TimeoutSocket(Protocol):
+    """Socket capability required to arm one bounded upstream read."""
 
-    def close(self) -> None: ...
+    def settimeout(self, timeout: float) -> None:
+        """Set the next blocking operation's deadline."""
+        ...
 
 
 class StreamResult(TypedDict):
@@ -72,13 +79,16 @@ def exhausted_payload(attempts: int) -> bytes:
 
 
 def _set_read_timeout(response: ResponseLike, timeout: float) -> None:
-    try:
-        response.fp.raw._sock.settimeout(timeout)
-    except Exception:
-        try:
-            response.fp.raw._fp.fp.raw._sock.settimeout(timeout)
-        except Exception:
-            pass
+    current = response.fp
+    for path in (("raw", "_sock"), ("raw", "_fp", "fp", "raw", "_sock")):
+        candidate = current
+        for attribute in path:
+            candidate = getattr(candidate, attribute, None)
+            if candidate is None:
+                break
+        if isinstance(candidate, _TimeoutSocket):
+            candidate.settimeout(timeout)
+            return
 
 
 def _terminal_type(event: bytes) -> str | None:
@@ -174,8 +184,7 @@ def _read_one_stream(
         raw_write(data)
 
     def process_event(event: bytes) -> None:
-        nonlocal event_count, terminal_event
-        nonlocal upstream_detail, upstream_error
+        nonlocal event_count, terminal_event, upstream_detail, upstream_error
         try:
             validated = live_response.validate_sse_event(event)
         except ValueError as error:

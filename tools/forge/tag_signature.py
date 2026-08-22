@@ -17,7 +17,6 @@ class TagSignatureError(RuntimeError):
 
 def verify(repository: Path, tag: str, anchor: Path) -> None:
     """Verify one exact product tag with one explicit external anchor."""
-
     if not identity.is_tag(tag):
         raise TagSignatureError(f"release tag must be v<semver>: {tag}")
     if not anchor.is_file() or anchor.is_symlink():
@@ -51,7 +50,6 @@ def verify(repository: Path, tag: str, anchor: Path) -> None:
 
 def _command(repository: Path, tag: str, anchor: Path) -> None:
     """Verify one product tag without implicit trust sources."""
-
     try:
         verify(repository.resolve(), tag, anchor)
     except TagSignatureError as error:
@@ -62,7 +60,6 @@ def _command(repository: Path, tag: str, anchor: Path) -> None:
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run tag verification through the repository parser stack."""
-
     App(default_command=_command, help=__doc__, result_action="return_value")(
         tuple(sys.argv[1:] if argv is None else argv)
     )

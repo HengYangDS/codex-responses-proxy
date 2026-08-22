@@ -11,8 +11,12 @@ from email.message import Message
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import cast
+from typing import override
 
-from codex_responses_proxy.relay import admission, cooldown, operational_log, telemetry
+from codex_responses_proxy.relay import admission
+from codex_responses_proxy.relay import cooldown
+from codex_responses_proxy.relay import operational_log
+from codex_responses_proxy.relay import telemetry
 from codex_responses_proxy.service import entrypoint as proxy
 
 EXACT_ERROR = json.dumps(
@@ -70,13 +74,16 @@ class MemoryHandler(BaseHTTPRequestHandler):
         self.statuses: list[int] = []
         self.sent_headers: list[tuple[str, str]] = []
 
+    @override
     def send_response(self, code: int, message: str | None = None) -> None:
         del message
         self.statuses.append(code)
 
+    @override
     def send_header(self, keyword: str, value: str) -> None:
         self.sent_headers.append((keyword, value))
 
+    @override
     def end_headers(self) -> None:
         pass
 

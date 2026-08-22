@@ -6,7 +6,8 @@ import importlib.machinery
 import inspect
 import sys
 import tempfile
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
+from collections.abc import Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType

@@ -11,18 +11,30 @@ from pathlib import Path
 
 import pytest
 
-from tests.quality.fixtures import (
-    ROOT,
-    audit_source,
-    checker,
-    git,
-    load,
-    quality_inventory,
-    repository,
-)
+from tests.quality.fixtures import ROOT
+from tests.quality.fixtures import audit_source
+from tests.quality.fixtures import checker
+from tests.quality.fixtures import git
+from tests.quality.fixtures import load
+from tests.quality.fixtures import quality_inventory
+from tests.quality.fixtures import repository
 
 
 class TestStructuralQualityContracts:
+    def test_python_data_models_do_not_escape_through_any(self) -> None:
+        offenders = []
+        for root in (ROOT / "src", ROOT / "tools", ROOT / "tests"):
+            for path in root.rglob("*.py"):
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+                if any(
+                    isinstance(node, ast.ImportFrom)
+                    and node.module == "typing"
+                    and any(alias.name == "Any" for alias in node.names)
+                    for node in ast.walk(tree)
+                ):
+                    offenders.append(path.relative_to(ROOT).as_posix())
+        assert offenders == []
+
     def test_product_and_tests_never_mutate_import_resolution_or_suppress_analysis(
         self,
     ) -> None:
@@ -116,9 +128,9 @@ class TestStructuralQualityContracts:
         assert inventory[0]["effective_lines"] == 122
 
     def test_coverage_floor_has_one_owner_and_semantic_risk_scopes(self) -> None:
-        coverage = (ROOT / ".config/checks/coverage/coverage.ini").read_text(encoding="utf-8")
+        coverage = (ROOT / ".config/quality/native/coverage.ini").read_text(encoding="utf-8")
         policy = tomllib.loads(
-            (ROOT / ".config/checks/coverage/policy.toml").read_text(encoding="utf-8")
+            (ROOT / ".config/quality/policy/coverage.toml").read_text(encoding="utf-8")
         )
         assert "branch = True" in coverage
         assert "source_pkgs = codex_responses_proxy" in coverage
@@ -146,7 +158,7 @@ class TestStructuralQualityContracts:
         self,
     ) -> None:
         policy = tomllib.loads(
-            (ROOT / ".config/checks/architecture/policy.toml").read_text(encoding="utf-8")
+            (ROOT / ".config/quality/policy/architecture.toml").read_text(encoding="utf-8")
         )
         assert policy["source_roots"] == ["src/codex_responses_proxy", "tools"]
         assert policy["test_roots"] == ["tests"]
@@ -170,6 +182,7 @@ class TestStructuralQualityContracts:
             "source_roots",
             "test_roots",
             "package_root",
+            "package_root_modules",
             "root_configuration_modules",
             "package_initializers",
             "allowed_package_edges",
@@ -232,6 +245,7 @@ class TestStructuralQualityContracts:
                 "source_roots": ["src/codex_responses_proxy"],
                 "test_roots": ["tests"],
                 "package_root": "src/codex_responses_proxy",
+                "package_root_modules": [],
                 "root_configuration_modules": [],
                 "package_initializers": "declarations-only",
                 "allowed_package_edges": {"service": []},

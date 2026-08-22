@@ -9,7 +9,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from tools.release import assemble_assets, identity, signing
+from codex_responses_proxy import product_identity
+from tools.release import assemble_assets
+from tools.release import identity
+from tools.release import signing
 
 
 class GitLabPublishError(RuntimeError):
@@ -23,7 +26,10 @@ def _request(url: str, token: str, *, data: bytes | None = None, method: str = "
         request.add_header("Content-Type", "application/json")
     try:
         with urllib.request.urlopen(request) as response:
-            return response.read()
+            content: object = response.read()
+            if not isinstance(content, bytes):
+                raise GitLabPublishError("GitLab publication response is not binary")
+            return content
     except urllib.error.HTTPError as error:
         if error.code == 409:
             raise FileExistsError(url) from error
@@ -34,7 +40,6 @@ def _request(url: str, token: str, *, data: bytes | None = None, method: str = "
 
 def _verify(assets: Path, trust: str) -> list[str]:
     """Verify one complete pre-signed bundle without changing its bytes."""
-
     try:
         signing.verify(assets=assets, trust=trust)
         assemble_assets.verify(assets)
@@ -47,17 +52,21 @@ def publish(
     *, api_base: str, project_id: int, tag: str, token: str, source: Path, trust: str
 ) -> str:
     """Upload, re-download, verify, then create or validate one GitLab Release."""
-
     if not api_base.startswith(("http://", "https://")) or not identity.is_tag(tag):
         raise GitLabPublishError("GitLab API base or release tag is invalid")
     if project_id < 1 or not source.is_dir() or source.is_symlink():
         raise GitLabPublishError("GitLab project or release asset directory is invalid")
-    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-gitlab-release-") as name:
+    with tempfile.TemporaryDirectory(
+        prefix=f"{product_identity.PRODUCT_SLUG}-gitlab-release-"
+    ) as name:
         root, downloaded = Path(name) / "assets", Path(name) / "downloaded"
         shutil.copytree(source, root)
         downloaded.mkdir()
         names = _verify(root, trust)
-        asset_base = f"{api_base.rstrip('/')}/projects/{project_id}/packages/generic/codex-responses-proxy/{tag}"
+        asset_base = (
+            f"{api_base.rstrip('/')}/projects/{project_id}/packages/generic/"
+            f"{product_identity.PRODUCT_SLUG}/{tag}"
+        )
         for asset_name in names:
             payload = (root / asset_name).read_bytes()
             try:
@@ -72,7 +81,7 @@ def publish(
             raise GitLabPublishError("GitLab release asset inventory differs after upload")
         release = {
             "tag_name": tag,
-            "name": f"Codex Responses Proxy {tag}",
+            "name": product_identity.release_title(tag),
             "description": "Provider-native source release. See CHANGELOG.md for user-relevant changes.",
             "assets": {
                 "links": [

@@ -18,12 +18,12 @@ flowchart LR
 
 ## Product boundary
 
-| Owner | Responsibility |
-| --- | --- |
-| Codex | Conversations, tools, and per-conversation model selection |
-| Client control plane | Credentials, provider selection, and client configuration |
+| Owner                 | Responsibility                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| Codex                 | Conversations, tools, and per-conversation model selection                                  |
+| Client control plane  | Credentials, provider selection, and client configuration                                   |
 | Codex Responses Proxy | Responses normalization, replay portability, bounded recovery, and native service lifecycle |
-| Provider | Model execution, quotas, and upstream availability |
+| Provider              | Model execution, quotas, and upstream availability                                          |
 
 The proxy does not configure or restart clients. A client control plane does
 not manage the proxy process. Each product is installed and verified independently.
@@ -80,10 +80,10 @@ credentials.
 
 The listener exposes one provider-scoped namespace per admitted provider:
 
-| Provider | Responses base URL |
-| --- | --- |
-| DMXAPI | `http://127.0.0.1:8792/dmxapi/v1` |
-| UCloud | `http://127.0.0.1:8792/ucloud/v1` |
+| Provider | Responses base URL                  |
+| -------- | ----------------------------------- |
+| DMXAPI   | `http://127.0.0.1:8792/dmxapi/v1`   |
+| UCloud   | `http://127.0.0.1:8792/ucloud/v1`   |
 | AIHubMix | `http://127.0.0.1:8792/aihubmix/v1` |
 
 Configure these URLs in the client control plane. For example:
@@ -145,17 +145,17 @@ path. Automation should use `--json` where the command supports it.
 Every request is projected to a provider-portable Responses grammar before it
 leaves the loopback listener.
 
-| Concern | Behavior |
-| --- | --- |
-| Storage | Sends `store=false`; continuity comes from replayed dialogue and complete tool relationships |
-| Provider IDs | Removes response, conversation, cache, stored-item, and provider-issued item bindings |
-| Encrypted replay | Removes unverifiable encrypted content without claiming decryption |
-| Tool replay | Keeps complete function/custom-tool call pairs; rejects unsafe structure locally |
-| Empty upstream response | Returns a retryable local `503` instead of committing false success |
-| DMXAPI `477 empty_response` | Retries the already-projected bytes once |
-| Upstream `429` | Relays the first response and applies a provider-scoped bounded cooldown |
-| `response_failed` | Uses strictly shrinking, pair-safe recovery; one final dialogue-only attempt is bounded |
-| Invalid `input` union | Uses one smaller current-dialogue fallback, then stops |
+| Concern                     | Behavior                                                                                     |
+| --------------------------- | -------------------------------------------------------------------------------------------- |
+| Storage                     | Sends `store=false`; continuity comes from replayed dialogue and complete tool relationships |
+| Provider IDs                | Removes response, conversation, cache, stored-item, and provider-issued item bindings        |
+| Encrypted replay            | Removes unverifiable encrypted content without claiming decryption                           |
+| Tool replay                 | Keeps complete function/custom-tool call pairs; rejects unsafe structure locally             |
+| Empty upstream response     | Returns a retryable local `503` instead of committing false success                          |
+| DMXAPI `477 empty_response` | Retries the already-projected bytes once                                                     |
+| Upstream `429`              | Relays the first response and applies a provider-scoped bounded cooldown                     |
+| `response_failed`           | Uses strictly shrinking, pair-safe recovery; one final dialogue-only attempt is bounded      |
+| Invalid `input` union       | Uses one smaller current-dialogue fallback, then stops                                       |
 
 The proxy never rewrites conversation storage to obtain portability.
 
@@ -187,13 +187,13 @@ or conversation content.
 
 ## Troubleshooting
 
-| Symptom | First action | Interpretation |
-| --- | --- | --- |
-| Replay or encrypted-item rejection | `codex-responses-proxy doctor` | Confirm local payload and listener integrity before changing the client route |
-| Error after provider switch | Check the client control plane | A direct provider URL bypasses proxy portability |
-| Local `503` | `codex-responses-proxy status --json` | Distinguish empty/truncated upstream output from local lifecycle failure |
-| Local or upstream `429` | Inspect `Retry-After` and provider state | Cooldown is provider-scoped; the proxy does not impose a global request queue |
-| Route change not observed | Reload the client through its normal lifecycle | The proxy does not restart or mutate clients |
+| Symptom                            | First action                                   | Interpretation                                                                |
+| ---------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| Replay or encrypted-item rejection | `codex-responses-proxy doctor`                 | Confirm local payload and listener integrity before changing the client route |
+| Error after provider switch        | Check the client control plane                 | A direct provider URL bypasses proxy portability                              |
+| Local `503`                        | `codex-responses-proxy status --json`          | Distinguish empty/truncated upstream output from local lifecycle failure      |
+| Local or upstream `429`            | Inspect `Retry-After` and provider state       | Cooldown is provider-scoped; the proxy does not impose a global request queue |
+| Route change not observed          | Reload the client through its normal lifecycle | The proxy does not restart or mutate clients                                  |
 
 ## Development
 
@@ -214,15 +214,15 @@ See [CONTRIBUTING](CONTRIBUTING.md) for source verification and release work.
 
 ## Documentation
 
-| Need | Source of truth |
-| --- | --- |
-| Product and first use | This README |
-| Development workflow | [CONTRIBUTING](CONTRIBUTING.md) |
-| Runtime architecture | [Architecture](docs/architecture/authority-and-runtime-boundary.md) |
-| Release governance | [Release policy](docs/governance/release-and-change-policy.md) |
-| Forge publication | [Forge operations](docs/operations/forge-operations.md) |
-| Decision register | [Decision Records](docs/decisions/decision-register.md) |
+| Need                     | Source of truth                                                        |
+| ------------------------ | ---------------------------------------------------------------------- |
+| Product and first use    | This README                                                            |
+| Development workflow     | [CONTRIBUTING](CONTRIBUTING.md)                                        |
+| Runtime architecture     | [Architecture](docs/architecture/authority-and-runtime-boundary.md)    |
+| Release governance       | [Release policy](docs/governance/release-and-change-policy.md)         |
+| Forge publication        | [Forge operations](docs/operations/forge-operations.md)                |
+| Decision register        | [Decision Records](docs/decisions/decision-register.md)                |
 | Durable product boundary | [DR-0001](docs/decisions/dr-0001-control-plane-data-plane-boundary.md) |
-| Release history | [CHANGELOG](CHANGELOG.md) |
+| Release history          | [CHANGELOG](CHANGELOG.md)                                              |
 
 Licensed under the [MIT License](LICENSE).

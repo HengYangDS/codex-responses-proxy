@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import sys
 from types import ModuleType
-from typing import Protocol, cast
+from typing import Protocol
+from typing import cast
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import runtime_spec
@@ -15,20 +16,29 @@ class NativeServiceAdapter(Protocol):
 
     __name__: str
 
-    def install(self, ctx: runtime_spec.NativeServiceContext) -> None: ...
+    def install(self, ctx: runtime_spec.NativeServiceContext) -> None:
+        """Install or replace the host-native service definition."""
+        ...
 
-    def configured_executable(self, ctx: runtime_spec.NativeServiceContext) -> str | None: ...
+    def configured_executable(self, ctx: runtime_spec.NativeServiceContext) -> str | None:
+        """Return the executable configured by the host-native service."""
+        ...
 
-    def uninstall(self, ctx: runtime_spec.NativeServiceContext) -> None: ...
+    def uninstall(self, ctx: runtime_spec.NativeServiceContext) -> None:
+        """Remove the exact host-native service owned by this installation."""
+        ...
 
-    def status(self, ctx: runtime_spec.NativeServiceContext) -> str: ...
+    def status(self, ctx: runtime_spec.NativeServiceContext) -> str:
+        """Return the host-native service state for this installation."""
+        ...
 
 
 def _platform_adapters() -> tuple[tuple[str, ModuleType], ...]:
     """Load every supported adapter through imports visible to bundlers."""
-
     try:
-        from codex_responses_proxy.lifecycle.supervision import linux, macos, windows
+        from codex_responses_proxy.lifecycle.supervision import linux
+        from codex_responses_proxy.lifecycle.supervision import macos
+        from codex_responses_proxy.lifecycle.supervision import windows
     except ImportError as error:
         raise errors.ProductAssemblyError(
             "product installation is incomplete; reinstall the verified release"
@@ -38,7 +48,6 @@ def _platform_adapters() -> tuple[tuple[str, ModuleType], ...]:
 
 def adapter() -> NativeServiceAdapter:
     """Return the statically bundled supervision module for the current platform."""
-
     for prefix, implementation in _platform_adapters():
         if sys.platform.startswith(prefix):
             return cast("NativeServiceAdapter", implementation)

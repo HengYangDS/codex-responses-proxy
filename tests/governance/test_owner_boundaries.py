@@ -16,8 +16,13 @@ import pytest
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle.supervision import native_service
 from codex_responses_proxy.protocol import request as replay_request
-from codex_responses_proxy.relay import responses, sse
-from codex_responses_proxy.service import control, digest, identity, inventory, server
+from codex_responses_proxy.relay import responses
+from codex_responses_proxy.relay import sse
+from codex_responses_proxy.service import control
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import inventory
+from codex_responses_proxy.service import server
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "src" / "codex_responses_proxy"

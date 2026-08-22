@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol
+from typing import cast
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import command, projection, state
+from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.lifecycle import state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle.supervision.native_service import adapter
 from codex_responses_proxy.runtime import config as runtime_config
@@ -17,14 +20,17 @@ from codex_responses_proxy.service import runtime as service_runtime
 class ServiceAdapter(Protocol):
     """Native supervision operations required by uninstall."""
 
-    def uninstall(self, ctx: runtime_context.RuntimeContext) -> None: ...
+    def uninstall(self, ctx: runtime_context.RuntimeContext) -> None:
+        """Remove the exact native service owned by this runtime context."""
+        ...
 
-    def status(self, ctx: runtime_context.RuntimeContext) -> str: ...
+    def status(self, ctx: runtime_context.RuntimeContext) -> str:
+        """Return the native service state for this runtime context."""
+        ...
 
 
 def _stop_proxy(ctx: runtime_context.RuntimeContext) -> int:
     """Terminate and prove exit of each listener owned by this installation."""
-
     pids = process.verified_proxy_listener_pids(ctx)
     for pid in pids:
         if not process.terminate_executable(
@@ -40,7 +46,6 @@ def _stop_proxy(ctx: runtime_context.RuntimeContext) -> int:
 
 def _remove_service(service: ServiceAdapter, ctx: runtime_context.RuntimeContext) -> None:
     """Deregister supervision and require its read-only status to prove absence."""
-
     service.uninstall(ctx)
     if (state := service.status(ctx)) != "absent":
         raise errors.InstallError(f"watchdog service remains {state}")
@@ -50,7 +55,6 @@ def uninstall_product(
     *, port: int = runtime_config.DEFAULT_PORT, purge: bool = False
 ) -> dict[str, object]:
     """Remove owned supervision and optionally purge the verified payload."""
-
     ctx = runtime_context.create(port=port)
     service = cast(ServiceAdapter, adapter())
 

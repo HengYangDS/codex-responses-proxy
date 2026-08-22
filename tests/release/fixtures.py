@@ -9,15 +9,19 @@ import re
 import subprocess
 import sys
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle.supervision import native_service, process
+from codex_responses_proxy.lifecycle.supervision import native_service
+from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import inventory
 from tools.release import assets as release_assembly
-from tools.release import product_assets, signing
+from tools.release import product_assets
+from tools.release import signing
 
 ROOT = Path(__file__).resolve().parents[2]
 COMMAND_TIMEOUT_SECONDS = 180
@@ -39,14 +43,17 @@ def _macos_service_projection() -> tuple[
         for line in completed.stdout.splitlines()[1:]
         if len(fields := line.split("\t")) >= 3 and fields[2].startswith(runtime_context.SERVICE_ID)
     )
+    getuid: object = getattr(os, "getuid", None)
+    if not callable(getuid):
+        raise RuntimeError("macOS user identity is unavailable")
     disabled = subprocess.run(
-        ["/bin/launchctl", "print-disabled", f"gui/{os.getuid()}"],
+        ["/bin/launchctl", "print-disabled", f"gui/{cast(Callable[[], int], getuid)()}"],
         capture_output=True,
         check=True,
         text=True,
     )
-    overrides = frozenset(
-        (match.group("label"), match.group("state"))
+    overrides: frozenset[tuple[str, str]] = frozenset(
+        (str(match.group("label")), str(match.group("state")))
         for match in re.finditer(
             rf'"(?P<label>{re.escape(runtime_context.SERVICE_ID)}(?:\.[0-9a-f]{{12}})?)"'
             r"\s*=>\s*(?P<state>enabled|disabled)",
@@ -93,9 +100,10 @@ def run_command(
     assert "Traceback" not in result.stderr
     assert "Warning" not in result.stderr
     output = result.stdout or result.stderr
-    value = json.loads(output)
+    value: object = json.loads(output)
     assert isinstance(value, dict)
-    return value
+    assert all(isinstance(key, str) for key in value)
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def signed_asset(
@@ -155,7 +163,9 @@ def post_response(port: int, *, stream: bool = False, timeout: float = 15) -> by
     )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     with opener.open(request, timeout=timeout) as response:
-        return response.read()
+        content: object = response.read()
+        assert isinstance(content, bytes)
+        return content
 
 
 def runtime_context_for(

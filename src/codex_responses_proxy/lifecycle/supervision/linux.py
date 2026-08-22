@@ -11,18 +11,19 @@ from pathlib import Path
 import platformdirs
 
 from codex_responses_proxy import errors
+from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import runtime as service_runtime
 
-UNIT_TEMPLATE = """[Unit]
-Description=Codex Responses Proxy watchdog
+UNIT_TEMPLATE = f"""[Unit]
+Description={product_identity.DISPLAY_NAME} watchdog
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart={executable} {watchdog_mode}
+ExecStart={{executable}} {{watchdog_mode}}
 Restart=always
 RestartSec=3
 
@@ -46,7 +47,6 @@ def _has_user_systemd() -> bool:
 
 def _unit_path(ctx: runtime_spec.NativeServiceContext) -> str:
     """Return the systemd user-unit carrier owned by this service identity."""
-
     return str(platformdirs.user_config_path() / "systemd" / "user" / f"{ctx.service_id}.service")
 
 
@@ -60,7 +60,6 @@ def render_unit(ctx: runtime_spec.NativeServiceContext) -> str:
 
 def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
     """Return the executable from one unambiguous product systemd unit."""
-
     try:
         lines = Path(_unit_path(ctx)).read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeError):
@@ -80,8 +79,7 @@ def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
 def _install_systemd(ctx: runtime_spec.NativeServiceContext) -> None:
     unit = _unit_path(ctx)
     os.makedirs(os.path.dirname(unit), exist_ok=True)
-    with open(unit, "w", encoding="utf-8") as fh:
-        fh.write(render_unit(ctx))
+    Path(unit).write_text(render_unit(ctx), encoding="utf-8")
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
     r = subprocess.run(
         ["systemctl", "--user", "enable", f"{ctx.service_id}.service"],

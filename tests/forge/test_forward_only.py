@@ -11,7 +11,8 @@ from typing import TypedDict
 
 import pytest
 
-from tools.forge.project import ProjectionError, project
+from tools.forge.project import ProjectionError
+from tools.forge.project import project
 from tools.git_environment import isolated_config_environment
 
 

@@ -10,12 +10,14 @@ import re
 import tarfile
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 
+from codex_responses_proxy import product_identity
 from tools.release import identity
 
-ARCHIVE_NAME = "codex-responses-proxy-{version}-{platform}.tar.gz"
-MANIFEST_NAME = "codex-responses-proxy-{platform}.manifest.json"
+ARCHIVE_NAME = f"{product_identity.PRODUCT_SLUG}-{{version}}-{{platform}}.tar.gz"
+MANIFEST_NAME = f"{product_identity.PRODUCT_SLUG}-{{platform}}.manifest.json"
 CHECKSUM_NAME = "SHA256SUMS"
 SIGNATURE_NAME = "SHA256SUMS.sig"
 RELEASE_PLATFORMS = ("linux-x86_64", "macos-arm64", "windows-x86_64")
@@ -37,23 +39,20 @@ class ArchiveFile:
 
 def archive_name(version: str, platform: str) -> str:
     """Return the canonical archive name for one native platform."""
-
     _validate_identity(version, platform)
     return ARCHIVE_NAME.format(version=version, platform=platform)
 
 
 def manifest_name(platform: str) -> str:
     """Return the canonical machine-manifest name for one native platform."""
-
     _validate_identity("0.0.0", platform)
     return MANIFEST_NAME.format(platform=platform)
 
 
 def archive_bytes(files: Mapping[str, bytes | ArchiveFile], version: str, platform: str) -> bytes:
     """Build one reproducible native archive from exact named payload bytes."""
-
     _validate_identity(version, platform)
-    prefix = f"codex-responses-proxy-{version}-{platform}"
+    prefix = f"{product_identity.PRODUCT_SLUG}-{version}-{platform}"
     output = io.BytesIO()
     with (
         gzip.GzipFile(fileobj=output, mode="wb", compresslevel=9, mtime=0) as compressed,
@@ -94,7 +93,6 @@ def asset_manifest(
     files: Mapping[str, bytes | ArchiveFile],
 ) -> bytes:
     """Bind one native archive to its platform and complete internal inventory."""
-
     expected_archive = globals()["archive_name"](version, platform)
     if archive_name != expected_archive or not files:
         raise AssetError("release asset identity is invalid")
@@ -109,7 +107,7 @@ def asset_manifest(
         raise AssetError("release asset path escapes the archive root")
     document = {
         "schema_version": 1,
-        "product": "codex-responses-proxy",
+        "product": product_identity.PRODUCT_SLUG,
         "version": version,
         "platform": platform,
         "archive": archive_name,
@@ -121,12 +119,11 @@ def asset_manifest(
 
 def verify_platform_archive(archive: bytes, manifest: bytes) -> dict[str, object]:
     """Verify archive bytes and every member against one machine manifest."""
-
     try:
-        document = json.loads(manifest)
+        decoded: object = json.loads(manifest)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise AssetError("release asset manifest is malformed") from error
-    if not isinstance(document, dict) or set(document) != {
+    if not isinstance(decoded, dict) or set(decoded) != {
         "schema_version",
         "product",
         "version",
@@ -136,6 +133,11 @@ def verify_platform_archive(archive: bytes, manifest: bytes) -> dict[str, object
         "files",
     }:
         raise AssetError("release asset manifest is malformed")
+    document: dict[str, object] = {}
+    for key, value in decoded.items():
+        if not isinstance(key, str):
+            raise AssetError("release asset manifest is malformed")
+        document[key] = value
     version, platform = document.get("version"), document.get("platform")
     if not isinstance(version, str) or not isinstance(platform, str):
         raise AssetError("release asset manifest is malformed")
@@ -143,7 +145,7 @@ def verify_platform_archive(archive: bytes, manifest: bytes) -> dict[str, object
     files = document.get("files")
     if (
         document.get("schema_version") != 1
-        or document.get("product") != "codex-responses-proxy"
+        or document.get("product") != product_identity.PRODUCT_SLUG
         or document.get("archive") != expected_archive
         or document.get("archive_sha256") != hashlib.sha256(archive).hexdigest()
         or not isinstance(files, dict)
@@ -160,7 +162,7 @@ def verify_platform_archive(archive: bytes, manifest: bytes) -> dict[str, object
     try:
         with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as bundle:
             members = bundle.getmembers()
-            prefix = f"codex-responses-proxy-{version}-{platform}/"
+            prefix = f"{product_identity.PRODUCT_SLUG}-{version}-{platform}/"
             actual: dict[str, str] = {}
             for member in members:
                 if not member.isfile() or not member.name.startswith(prefix):
@@ -172,8 +174,8 @@ def verify_platform_archive(archive: bytes, manifest: bytes) -> dict[str, object
                     0o755
                     if relative
                     in {
-                        "bin/codex-responses-proxy",
-                        "bin/codex-responses-proxy.exe",
+                        f"bin/{product_identity.executable_name(windows=False)}",
+                        f"bin/{product_identity.executable_name(windows=True)}",
                     }
                     else 0o644
                 )
@@ -192,7 +194,6 @@ def verify_platform_archive(archive: bytes, manifest: bytes) -> dict[str, object
 
 def checksums(assets: Mapping[str, bytes]) -> bytes:
     """Return a stable GNU-style SHA-256 manifest for named assets."""
-
     if not assets:
         raise AssetError("release asset set must not be empty")
     return "".join(
@@ -203,7 +204,6 @@ def checksums(assets: Mapping[str, bytes]) -> bytes:
 
 def parse_checksums(content: bytes) -> dict[str, str]:
     """Parse a strict checksum manifest without permitting duplicate names."""
-
     parsed: dict[str, str] = {}
     try:
         lines = content.decode("ascii").splitlines()
@@ -224,7 +224,6 @@ def parse_checksums(content: bytes) -> dict[str, str]:
 
 def verify(assets: Mapping[str, bytes], manifest: bytes) -> dict[str, str]:
     """Require a manifest to name every non-manifest asset with its exact digest."""
-
     expected = parse_checksums(manifest)
     actual = {name: hashlib.sha256(content).hexdigest() for name, content in assets.items()}
     if expected != actual:
@@ -240,7 +239,6 @@ def release_digests(
     require_signature: bool = True,
 ) -> dict[str, str]:
     """Verify and identify the complete native multi-platform release asset set."""
-
     if not platforms or len(set(platforms)) != len(platforms):
         raise AssetError("release platforms must be unique and nonempty")
     archive_names = {archive_name(version, platform) for platform in platforms}
@@ -263,7 +261,6 @@ def release_asset_names(
     version: str, platforms: tuple[str, ...], *, require_signature: bool = True
 ) -> set[str]:
     """Return the exact public asset-name contract for selected platforms."""
-
     if not platforms or len(set(platforms)) != len(platforms):
         raise AssetError("release platforms must be unique and nonempty")
     names = {
@@ -278,8 +275,7 @@ def release_asset_names(
 
 def release_platforms(names: set[str], version: str) -> tuple[str, ...]:
     """Return the exact nonempty platform inventory encoded by asset names."""
-
-    prefix = f"codex-responses-proxy-{version}-"
+    prefix = f"{product_identity.PRODUCT_SLUG}-{version}-"
     suffix = ".tar.gz"
     platforms = tuple(
         sorted(

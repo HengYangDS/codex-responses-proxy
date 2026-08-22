@@ -7,8 +7,11 @@ import json
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from types import MappingProxyType
-from typing import Any, TypeGuard
+from typing import TypeGuard
+
+from codex_responses_proxy.json_value import FrozenJsonObject
+from codex_responses_proxy.json_value import freeze_object
+from codex_responses_proxy.json_value import is_json_object
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -17,30 +20,22 @@ class PayloadDigestError(ValueError):
     """Report an invalid path-to-SHA-256 aggregate input."""
 
 
-def canonical_json(value: Mapping[str, Any]) -> bytes:
+def canonical_json(value: object) -> bytes:
     """Encode one mapping in the canonical compact JSON form used by release state."""
-
+    if not is_json_object(value):
+        raise PayloadDigestError("canonical JSON requires a finite object with string keys")
     return (
         json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
     ).encode("utf-8")
 
 
-def freeze_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
+def freeze_mapping(value: object) -> FrozenJsonObject:
     """Recursively freeze one JSON-like mapping for immutable release evidence."""
-
-    def freeze(item: Any) -> Any:
-        if isinstance(item, Mapping):
-            return MappingProxyType({str(key): freeze(child) for key, child in item.items()})
-        if isinstance(item, list | tuple):
-            return tuple(freeze(child) for child in item)
-        return item
-
-    return MappingProxyType({str(key): freeze(item) for key, item in value.items()})
+    return freeze_object(value)
 
 
 def aggregate_file_digests_sha256(file_digests: Mapping[str, str]) -> str:
     """Hash sorted length-delimited UTF-8 paths and raw SHA-256 digest bytes."""
-
     aggregate = hashlib.sha256()
     for relative in sorted(file_digests):
         digest = file_digests[relative]
@@ -57,7 +52,6 @@ def aggregate_file_digests_sha256(file_digests: Mapping[str, str]) -> str:
 
 def sha256_file(path: Path) -> str:
     """Return the SHA-256 digest of one regular file."""
-
     value = hashlib.sha256()
     with path.open("rb") as stream:
         while block := stream.read(1024 * 1024):
@@ -67,5 +61,4 @@ def sha256_file(path: Path) -> str:
 
 def is_sha256(value: object) -> TypeGuard[str]:
     """Return whether a value is one lowercase SHA-256 digest."""
-
     return isinstance(value, str) and _SHA256.fullmatch(value) is not None

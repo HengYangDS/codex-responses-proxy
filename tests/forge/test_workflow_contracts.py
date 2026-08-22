@@ -5,7 +5,6 @@ import re
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, cast
 
 import pytest
 import yaml
@@ -17,7 +16,7 @@ GITLAB_LOCKED_PYTHON = "uv run --locked --no-sync --python python --no-python-do
 CI_MODEL = ROOT / ".config" / "ci" / "pipeline.cue"
 
 
-def _load_yaml(path: Path) -> dict[str, Any]:
+def _load_yaml(path: Path) -> dict[str, object]:
     """Load one workflow while preserving GitHub's literal ``on`` key."""
 
     class WorkflowLoader(yaml.SafeLoader):
@@ -29,14 +28,35 @@ def _load_yaml(path: Path) -> dict[str, Any]:
         ]
     data = yaml.load(path.read_text(encoding="utf-8"), Loader=WorkflowLoader)
     assert isinstance(data, dict)
-    return cast(dict[str, Any], data)
+    assert all(isinstance(key, str) for key in data)
+    return {str(key): value for key, value in data.items()}
 
 
-def _mapping(value: object) -> Mapping[str, Any]:
+def _mapping(value: object) -> Mapping[str, object]:
     """Narrow one parsed workflow mapping for typed contract assertions."""
 
     assert isinstance(value, Mapping)
-    return cast(Mapping[str, Any], value)
+    assert all(isinstance(key, str) for key in value)
+    return {str(key): item for key, item in value.items()}
+
+
+def _sequence(value: object) -> list[object]:
+    """Narrow one parsed workflow sequence."""
+    assert isinstance(value, list)
+    return list(value)
+
+
+def _strings(value: object) -> list[str]:
+    """Narrow one parsed workflow string sequence."""
+    values = _sequence(value)
+    assert all(isinstance(item, str) for item in values)
+    return [item for item in values if isinstance(item, str)]
+
+
+def _string(value: object) -> str:
+    """Narrow one parsed workflow scalar to a string."""
+    assert isinstance(value, str)
+    return value
 
 
 @pytest.mark.repository_toolchain
@@ -89,7 +109,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     ):
         checkout = next(
             _mapping(step)
-            for step in _mapping(github_jobs[job_id])["steps"]
+            for step in _sequence(_mapping(github_jobs[job_id])["steps"])
             if str(_mapping(step).get("uses", "")).startswith("actions/checkout@")
         )
         assert _mapping(checkout["with"])["ref"] == product_sha
@@ -101,14 +121,14 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
         "github.head_ref == 'dev'"
     )
     assert _mapping(github_jobs["tag-metadata"])["if"] == "github.ref_type == 'tag'"
-    tag_steps = _mapping(github_jobs["tag-metadata"])["steps"]
+    tag_steps = _sequence(_mapping(github_jobs["tag-metadata"])["steps"])
     assert any(
         _mapping(step).get("uses") == "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
         for step in tag_steps
     )
 
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
-    rules = _mapping(gitlab["workflow"])["rules"]
+    rules = _sequence(_mapping(gitlab["workflow"])["rules"])
     assert {"if": '$CI_PIPELINE_SOURCE == "merge_request_event"'} in rules
     assert {"if": '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"'} in rules
     assert {
@@ -125,10 +145,12 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
             {"if": '$CI_COMMIT_BRANCH == "dev"'},
         ]
     python = _mapping(gitlab["verify-python"])
-    matrix = _mapping(_mapping(python["parallel"])["matrix"][0])
+    matrix_values = _sequence(_mapping(python["parallel"])["matrix"])
+    matrix = _mapping(matrix_values[0])
     assert matrix["PYTHON_VERSION"] == ["3.12", "3.13", "3.14"]
-    assert "nox -s full" not in "\n".join(python["script"])
-    assert any('nox -s "tests-$PYTHON_VERSION"' in command for command in python["script"])
+    python_script = _strings(python["script"])
+    assert "nox -s full" not in "\n".join(python_script)
+    assert any('nox -s "tests-$PYTHON_VERSION"' in command for command in python_script)
     assert "verify-accepted-source" in gitlab
     promotion = _mapping(gitlab["verify-promotion"])
     assert promotion["rules"] == [
@@ -141,10 +163,12 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     tag = _mapping(gitlab["verify-release-tag"])
     assert tag["rules"] == [{"if": "$CI_COMMIT_TAG"}]
     assert _mapping(tag["variables"])["GIT_DEPTH"] == "0"
-    assert "git fetch --tags --force --prune --prune-tags origin" in tag["before_script"]
-    assert 'test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"' in tag["before_script"]
-    assert any("tools.release.metadata --tag" in command for command in tag["script"])
-    assert any("tools.forge.tag_signature" in command for command in tag["script"])
+    tag_before_script = _strings(tag["before_script"])
+    tag_script = _strings(tag["script"])
+    assert "git fetch --tags --force --prune --prune-tags origin" in tag_before_script
+    assert 'test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"' in tag_before_script
+    assert any("tools.release.metadata --tag" in command for command in tag_script)
+    assert any("tools.forge.tag_signature" in command for command in tag_script)
 
 
 def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> None:
@@ -156,6 +180,7 @@ def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> 
     release = tmp_path / ".python-release"
     release.write_text("3.14.7\n", encoding="ascii")
     metadata.write_text(
+        '[project]\nname = "codex-responses-proxy"\n'
         '[tool.codex-responses-proxy]\nlinux-release-image = "python:3.14.7-bookworm@sha256:'
         + "a" * 64
         + '"\n',
@@ -192,6 +217,7 @@ def test_python_matrix_rejects_invalid_or_mismatched_release_runtime(
     versions.write_text("3.12\n3.13\n3.14\n", encoding="ascii")
     release.write_text(f"{release_value}\n", encoding="ascii")
     metadata.write_text(
+        '[project]\nname = "codex-responses-proxy"\n'
         '[tool.codex-responses-proxy]\nlinux-release-image = "python:'
         f"{image_version}-bookworm@sha256:{'a' * 64}"
         '"\n',
@@ -271,9 +297,11 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     }
     assert "python -m pip install" not in text
     assert "uv sync --locked --group quality --no-install-project" in text
-    assert "apt-get install -qq -y --no-install-recommends binutils" in quality["before_script"]
+    assert "apt-get install -qq -y --no-install-recommends binutils" in _strings(
+        quality["before_script"]
+    )
     python = _mapping(gitlab["verify-python"])
-    assert "uv python install --no-bin $PYTHON_VERSION" in python["before_script"]
+    assert "uv python install --no-bin $PYTHON_VERSION" in _strings(python["before_script"])
 
 
 def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
@@ -292,8 +320,8 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
     assert _mapping(source["variables"]) == {
         "GIT_DEPTH": "0",
         "MISE_ENABLE_TOOLS": (
-            "python,uv,node,cue,npm:@fission-ai/openspec,github:gitleaks/gitleaks,"
-            "github:rhysd/actionlint,github:lycheeverse/lychee"
+            "python,uv,node,cue,aqua:tamasfe/taplo,npm:@fission-ai/openspec,npm:prettier,"
+            "github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
         ),
     }
     assert source["before_script"] == [
@@ -310,7 +338,7 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
             "--no-python-downloads python -m tools.quality.governance --online-links"
         )
     ]
-    assert _mapping(source["variables"])["MISE_ENABLE_TOOLS"].startswith("python,uv,")
+    assert _string(_mapping(source["variables"])["MISE_ENABLE_TOOLS"]).startswith("python,uv,")
 
 
 def test_github_python_quality_installs_its_declared_projection_toolchain() -> None:
@@ -318,7 +346,7 @@ def test_github_python_quality_installs_its_declared_projection_toolchain() -> N
 
     jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
     quality = _mapping(jobs["python-quality"])
-    steps = tuple(_mapping(step) for step in quality["steps"])
+    steps = tuple(_mapping(step) for step in _sequence(quality["steps"]))
     mise = next(step for step in steps if str(step.get("uses", "")).startswith("jdx/mise-action@"))
 
     assert mise["uses"] == "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
@@ -454,9 +482,10 @@ def _assert_github_platform_contract(text: str) -> None:
         "release-assets",
     )
     for job_id in host_native_jobs:
-        steps = _mapping(jobs[job_id])["steps"]
+        steps = _sequence(_mapping(jobs[job_id])["steps"])
         assert any(
-            _mapping(step).get("uses", "").startswith("actions/setup-python@") for step in steps
+            _string(_mapping(step).get("uses", "")).startswith("actions/setup-python@")
+            for step in steps
         ), f"{job_id} must use pinned setup-python"
     if windows_block.count("actions/setup-python@") != 1:
         raise AssertionError("Windows verification must use exactly one pinned setup-python action")

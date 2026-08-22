@@ -7,19 +7,22 @@ import json
 import ssl
 import urllib.request
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol
+from typing import cast
 
 from codex_responses_proxy.protocol import request as rewrite
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.relay import admission, cooldown, responses, sse, telemetry
+from codex_responses_proxy.relay import admission
+from codex_responses_proxy.relay import cooldown
 from codex_responses_proxy.relay import exchange as upstream_exchange
 from codex_responses_proxy.relay import relay as downstream
-from tests.relay.exchange_fixture import (
-    DirectResponse,
-    InputTransportFixture,
-    MemoryHandler,
-    http_error,
-)
+from codex_responses_proxy.relay import responses
+from codex_responses_proxy.relay import sse
+from codex_responses_proxy.relay import telemetry
+from tests.relay.exchange_fixture import DirectResponse
+from tests.relay.exchange_fixture import InputTransportFixture
+from tests.relay.exchange_fixture import MemoryHandler
+from tests.relay.exchange_fixture import http_error
 
 ROOT = Path(__file__).resolve().parents[2]
 PROVIDERS = provider_registry.load()

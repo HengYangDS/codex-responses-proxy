@@ -13,12 +13,10 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import projection as payload_projection
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import inventory
-from tests.lifecycle.fixtures import (
-    install_context,
-    install_payload,
-    released_artifact,
-    runtime_files,
-)
+from tests.lifecycle.fixtures import install_context
+from tests.lifecycle.fixtures import install_payload
+from tests.lifecycle.fixtures import released_artifact
+from tests.lifecycle.fixtures import runtime_files
 
 ROOT = Path(__file__).resolve().parents[2]
 

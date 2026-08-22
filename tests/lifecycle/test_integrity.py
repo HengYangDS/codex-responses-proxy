@@ -7,26 +7,26 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
+from typing import cast
 
 import pytest
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import artifact, owned_files
+from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import candidate as payload_candidate
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.lifecycle import projection as payload_projection
 from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import inventory
-from tests.lifecycle.fixtures import (
-    begin_transaction,
-    executable_relative,
-    install_context,
-    released_artifact,
-    runtime_files,
-)
+from tests.lifecycle.fixtures import begin_transaction
+from tests.lifecycle.fixtures import executable_relative
+from tests.lifecycle.fixtures import install_context
+from tests.lifecycle.fixtures import released_artifact
+from tests.lifecycle.fixtures import runtime_files
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -277,7 +277,14 @@ class TestPayloadValidation:
             transaction.commit_projection()
             transaction.finalize({"pid": 1})
             path = Path(payload_projection.payload_manifest_path(ctx))
-            return ctx, path, json.loads(path.read_text())
+            decoded: object = json.loads(path.read_text())
+            assert isinstance(decoded, dict)
+            assert all(isinstance(key, str) for key in decoded)
+            manifest: dict[str, object] = {}
+            for key, value in decoded.items():
+                assert isinstance(key, str)
+                manifest[key] = value
+            return ctx, path, manifest
 
         ctx = install_context(Path(tempfile.mkdtemp()))
         ok, detail = payload_projection.verify_payload_manifest(ctx)

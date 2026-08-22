@@ -23,7 +23,9 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
-from codex_responses_proxy.service import digest, identity, inventory
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import inventory
 
 HANDOFF_PROTOCOL_VERSION = 2
 _MAX_BODY_BYTES = 64 * 1024
@@ -34,10 +36,11 @@ _RUNTIME_DIGEST_FIELDS = [
     "payload_manifest_sha256",
 ]
 
-RuntimeReader = Callable[[runtime_context.RuntimeContext], dict | None]
+RuntimeSnapshot = dict[str, object]
+RuntimeReader = Callable[[runtime_context.RuntimeContext], RuntimeSnapshot | None]
 
 
-def _fields_match(actual: dict, expected: dict[str, object]) -> bool:
+def _fields_match(actual: RuntimeSnapshot, expected: dict[str, object]) -> bool:
     return all(actual.get(field) == value for field, value in expected.items())
 
 
@@ -53,9 +56,8 @@ def _available_transaction(state: object, transaction_id: object) -> bool:
     return isinstance(transaction_id, str) and bool(transaction_id)
 
 
-def runtime_supports_handoff(runtime: dict | None) -> bool:
+def runtime_supports_handoff(runtime: RuntimeSnapshot | None) -> bool:
     """Return whether a live health snapshot proves protocol-v2 readiness."""
-
     if not isinstance(runtime, dict):
         return False
     digests_valid = all(digest.is_sha256(runtime.get(field)) for field in _RUNTIME_DIGEST_FIELDS)
@@ -81,13 +83,15 @@ def runtime_supports_handoff(runtime: dict | None) -> bool:
     )
 
 
-def expected_metadata(root: str) -> dict:
+def expected_metadata(root: str) -> RuntimeSnapshot:
     """Read release, aggregate payload, receipt, and manifest identity."""
-
     try:
         manifest_path = os.path.join(root, inventory.MANIFEST_FILENAME)
         with open(manifest_path, encoding="utf-8") as handle:
-            manifest = json.load(handle)
+            loaded: object = json.load(handle)
+        if not isinstance(loaded, dict) or not all(isinstance(key, str) for key in loaded):
+            raise TypeError("payload manifest must be an object with string keys")
+        manifest = {key: value for key, value in loaded.items() if isinstance(key, str)}
         release = manifest["release"]
         serving_payload_sha256 = manifest["serving_payload_sha256"]
         release_receipt_sha256 = manifest["release_receipt_sha256"]
@@ -113,13 +117,12 @@ def expected_metadata(root: str) -> dict:
 
 def post_ready(
     ctx: runtime_context.RuntimeContext,
-    expected: dict,
+    expected: RuntimeSnapshot,
     *,
     lease_seconds: float | None = None,
     timeout_seconds: float = 5.0,
-) -> dict:
+) -> RuntimeSnapshot:
     """POST the loopback handoff endpoint and require a protocol-v2 READY ack."""
-
     body = {
         "transaction_id": expected["transaction_id"],
         "release": expected["release"],
@@ -147,7 +150,7 @@ def post_ready(
             raw = response.read(_MAX_BODY_BYTES + 1)
             if len(raw) > _MAX_BODY_BYTES:
                 raise errors.InstallError("handoff control response is too large")
-            response_payload = json.loads(raw)
+            loaded_response: object = json.loads(raw)
     except errors.InstallError:
         raise
     except urllib.error.HTTPError as exc:
@@ -156,8 +159,14 @@ def post_ready(
         raise errors.InstallError(f"handoff control returned HTTP {code}") from exc
     except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
         raise errors.InstallError("handoff control is unavailable") from exc
-    if not isinstance(response_payload, dict):
+    if not isinstance(loaded_response, dict) or not all(
+        isinstance(key, str) for key in loaded_response
+    ):
         raise errors.InstallError("handoff control returned an invalid response")
+    response_payload: RuntimeSnapshot = {}
+    for key, value in loaded_response.items():
+        assert isinstance(key, str)
+        response_payload[key] = value
     if not _fields_match(
         response_payload,
         {"ok": True, "state": "ready", "protocol_version": HANDOFF_PROTOCOL_VERSION},
@@ -175,19 +184,18 @@ def post_ready(
 
 def request(
     ctx: runtime_context.RuntimeContext,
-    expected: dict,
+    expected: RuntimeSnapshot,
     *,
     runtime_reader: RuntimeReader,
     timeout_seconds: float = 30.0,
     lease_seconds: float = 30.0,
     source_listener: process.OwnedProcess | None = None,
-) -> dict:
+) -> RuntimeSnapshot:
     """Ask one verified listener to hand off and prove the finalized successor.
 
     ``expected`` must bind the transaction identifier, release, aggregate
     serving-payload digest, release-receipt digest, and manifest digest.
     """
-
     listeners = _listener_pids(ctx, source_listener)
     if len(listeners) != 1:
         raise errors.InstallError(
@@ -201,6 +209,8 @@ def request(
         timeout_seconds=timeout_seconds,
     )
     child_pid = ready["child_pid"]
+    if not _positive_int(child_pid):
+        raise errors.InstallError("handoff control response lost its verified child pid")
     convergence_seconds = timeout_seconds * 3 + max(1.0, lease_seconds) + 5.0
     deadline = time.monotonic() + convergence_seconds
     while time.monotonic() < deadline:
@@ -224,13 +234,12 @@ def request(
 
 def wait_for_rollback(
     ctx: runtime_context.RuntimeContext,
-    old_runtime: dict,
+    old_runtime: RuntimeSnapshot,
     *,
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
-) -> dict:
+) -> RuntimeSnapshot:
     """Confirm the exact old process resumed normal admission after ABORT."""
-
     old_pid = old_runtime["pid"]
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
@@ -247,16 +256,15 @@ def wait_for_rollback(
 
 def resolve_after_controller_failure(
     ctx: runtime_context.RuntimeContext,
-    old_runtime: dict,
-    expected: dict,
+    old_runtime: RuntimeSnapshot,
+    expected: RuntimeSnapshot,
     *,
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
     lease_seconds: float,
     source_listener: process.OwnedProcess | None = None,
-) -> tuple[str, dict | None]:
+) -> tuple[str, RuntimeSnapshot | None]:
     """Resolve caller failure without racing listener-owned finalization."""
-
     old_pid = old_runtime["pid"]
     deadline = time.monotonic() + timeout_seconds + max(1.0, lease_seconds) + 5.0
     while time.monotonic() < deadline:
@@ -293,9 +301,12 @@ def _listener_pids(
     return []
 
 
-def _runtime_matches(runtime: dict | None, expected: dict, child_pid: int) -> bool:
+def _runtime_matches(
+    runtime: RuntimeSnapshot | None,
+    expected: RuntimeSnapshot,
+    child_pid: int,
+) -> bool:
     """Require the transaction-complete successor identity."""
-
     if not isinstance(runtime, dict):
         return False
     return identity.runtime_payload_matches(runtime, expected) and _fields_match(
@@ -311,7 +322,10 @@ def _runtime_matches(runtime: dict | None, expected: dict, child_pid: int) -> bo
     )
 
 
-def _old_runtime_resumed(runtime: dict | None, old_runtime: dict) -> bool:
+def _old_runtime_resumed(
+    runtime: RuntimeSnapshot | None,
+    old_runtime: RuntimeSnapshot,
+) -> bool:
     if not isinstance(runtime, dict):
         return False
     return _fields_match(

@@ -5,32 +5,36 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import sys
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
+from typing import Literal
+from typing import TypedDict
+from typing import overload
 
-from cyclopts import App, Parameter
+from cyclopts import App
+from cyclopts import Parameter
 from cyclopts.exceptions import CycloptsError
 from cyclopts.validators import Number
 from rich.console import Console
 
 from codex_responses_proxy import errors
+from codex_responses_proxy import product_identity
 from codex_responses_proxy.cli import presentation
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import (
-    control,
-    install,
-    runtime_spec,
-    transaction,
-    uninstall,
-)
+from codex_responses_proxy.lifecycle import control
+from codex_responses_proxy.lifecycle import install
+from codex_responses_proxy.lifecycle import runtime_spec
+from codex_responses_proxy.lifecycle import transaction
+from codex_responses_proxy.lifecycle import uninstall
 from codex_responses_proxy.service import runtime as service_runtime
 
 PUBLIC_COMMANDS = frozenset(
     {"install", "status", "doctor", "recover", "reload", "uninstall", "version"}
 )
 _FAILURE_STATUS = "failed"
-_RECOVERY_NEXT = "codex-responses-proxy reload"
+_RECOVERY_NEXT = product_identity.command("reload")
 _JSON = Annotated[
     bool,
     Parameter(
@@ -66,17 +70,35 @@ _PURGE = Annotated[
 ]
 
 
+class DoctorCheck(TypedDict):
+    """One named diagnostic check."""
+
+    status: str
+    detail: object
+
+
+class DoctorReport(TypedDict):
+    """Stable doctor result consumed by humans and automation."""
+
+    ok: bool
+    state: object
+    next: str | None
+    checks: dict[str, DoctorCheck]
+
+
+type CommandResult = str | Mapping[str, object] | None
+
+
 def _release_version() -> str:
     if bundle_root := getattr(sys, "_MEIPASS", None):
         return (Path(bundle_root) / "VERSION").read_text(encoding="utf-8").strip()
     if source_version := _source_version():
         return source_version
-    return importlib.metadata.version("codex-responses-proxy")
+    return importlib.metadata.version(product_identity.PACKAGE_NAME)
 
 
 def _source_version() -> str | None:
     """Read repository metadata only when this module is actually under its ``src`` root."""
-
     source_root = Path(__file__).resolve().parents[2]
     repository = source_root.parent
     if source_root.name != "src" or not (repository / "pyproject.toml").is_file():
@@ -84,21 +106,69 @@ def _source_version() -> str | None:
     return (repository / "VERSION").read_text(encoding="utf-8").strip()
 
 
-def dispatch(command: str, **arguments: Any) -> Any:
-    """Execute one parsed command through its semantic owner."""
+def _path_argument(arguments: Mapping[str, object], name: str) -> Path:
+    value = arguments.get(name)
+    if not isinstance(value, Path):
+        raise TypeError(f"{name} must be a path")
+    return value
 
+
+def _port_argument(arguments: Mapping[str, object]) -> int:
+    value = arguments.get("port")
+    if type(value) is not int:
+        raise TypeError("port must be an integer")
+    return value
+
+
+def _timeout_argument(arguments: Mapping[str, object]) -> float:
+    value = arguments.get("timeout_seconds", 30.0)
+    if not isinstance(value, int | float) or isinstance(value, bool):
+        raise TypeError("timeout_seconds must be numeric")
+    return float(value)
+
+
+def _purge_argument(arguments: Mapping[str, object]) -> bool:
+    value = arguments.get("purge")
+    if not isinstance(value, bool):
+        raise TypeError("purge must be a boolean")
+    return value
+
+
+@overload
+def dispatch(command: Literal["version"], **arguments: object) -> str: ...
+
+
+@overload
+def dispatch(
+    command: Literal["install", "status", "recover", "reload", "uninstall"],
+    **arguments: object,
+) -> dict[str, object]: ...
+
+
+@overload
+def dispatch(command: Literal["doctor"], **arguments: object) -> DoctorReport: ...
+
+
+@overload
+def dispatch(command: str, **arguments: object) -> CommandResult: ...
+
+
+def dispatch(command: str, **arguments: object) -> CommandResult:
+    """Execute one parsed command through its semantic owner."""
     if command == "version":
         return _release_version()
     if command == "install":
         return install.install_asset(
-            arguments["asset"],
-            trust_anchor=arguments["trust_anchor"],
-            port=arguments["port"],
-            timeout_seconds=arguments.get("timeout_seconds", 30.0),
+            _path_argument(arguments, "asset"),
+            trust_anchor=_path_argument(arguments, "trust_anchor"),
+            port=_port_argument(arguments),
+            timeout_seconds=_timeout_argument(arguments),
         )
     if command == "uninstall":
-        return uninstall.uninstall_product(port=arguments["port"], purge=arguments["purge"])
-    context = runtime_context.create(port=arguments["port"])
+        return uninstall.uninstall_product(
+            port=_port_argument(arguments), purge=_purge_argument(arguments)
+        )
+    context = runtime_context.create(port=_port_argument(arguments))
     if command == "status":
         return control.status(context)
     if command == "doctor":
@@ -106,19 +176,18 @@ def dispatch(command: str, **arguments: Any) -> Any:
     if command == "recover":
         return transaction.recover(context, runtime=control.read_runtime(context))
     if command == "reload":
-        return control.reload(context, timeout_seconds=arguments["timeout_seconds"])
+        return control.reload(context, timeout_seconds=_timeout_argument(arguments))
     raise ValueError(f"{command} is not implemented")
 
 
-def _doctor(evidence: dict[str, Any]) -> dict[str, Any]:
+def _doctor(evidence: Mapping[str, object]) -> DoctorReport:
     """Classify installed state without introducing another observation path."""
-
     state = evidence.get("state")
     if state == "not_installed":
         return {
             "ok": False,
             "state": "not_installed",
-            "next": "codex-responses-proxy install --help",
+            "next": product_identity.command("install", "--help"),
             "checks": {
                 "installation": {
                     "status": _FAILURE_STATUS,
@@ -143,7 +212,7 @@ def _doctor(evidence: dict[str, Any]) -> dict[str, Any]:
     command_ok = isinstance(command, dict) and command.get("state") == "owned"
     transaction_state = evidence.get("payload_transaction")
     transaction_ok = transaction_state is None
-    checks = {
+    checks: dict[str, DoctorCheck] = {
         "payload": {
             "status": "passed" if integrity_ok else _FAILURE_STATUS,
             "detail": integrity.get("detail", "unavailable")
@@ -174,11 +243,11 @@ def _doctor(evidence: dict[str, Any]) -> dict[str, Any]:
         },
     }
     next_command = (
-        "codex-responses-proxy status --json"
+        product_identity.command("status", "--json")
         if state == "invalid"
-        else "codex-responses-proxy recover"
+        else product_identity.command("recover")
         if state == "recovery_required"
-        else "codex-responses-proxy install --help"
+        else product_identity.command("install", "--help")
         if not integrity_ok or not command_ok
         else _RECOVERY_NEXT
         if service != "running" or not listener_ok
@@ -196,7 +265,7 @@ def _doctor(evidence: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _render(command: str, result: Any, *, as_json: bool) -> None:
+def _render(command: str, result: CommandResult, *, as_json: bool) -> None:
     if as_json:
         payload = {"version": result} if command == "version" else result
         print(json.dumps(payload, sort_keys=True))
@@ -206,9 +275,8 @@ def _render(command: str, result: Any, *, as_json: bool) -> None:
         print(rendered)
 
 
-def _result_code(command: str, result: Any) -> int:
+def _result_code(command: str, result: CommandResult) -> int:
     """Return a stable nonzero diagnostic status without treating it as an exception."""
-
     return 1 if command == "doctor" and isinstance(result, dict) and not result.get("ok") else 0
 
 
@@ -216,7 +284,7 @@ def _error(
     message: str,
     *,
     as_json: bool,
-    next_command: str = "codex-responses-proxy doctor",
+    next_command: str = product_identity.command("doctor"),
     code: str = "usage_error",
 ) -> None:
     if as_json:
@@ -234,7 +302,7 @@ def _error(
         )
 
 
-def _execute(command: str, *, as_json: bool = False, **arguments: Any) -> int:
+def _execute(command: str, *, as_json: bool = False, **arguments: object) -> int:
     try:
         result = dispatch(command, **arguments)
     except errors.ProductError as error:
@@ -251,7 +319,7 @@ def _execute(command: str, *, as_json: bool = False, **arguments: Any) -> int:
 
 def _app() -> App:
     app = App(
-        name="codex-responses-proxy",
+        name=product_identity.COMMAND_NAME,
         help=__doc__,
         version_flags=[],
         print_error=False,
@@ -281,7 +349,6 @@ def _app() -> App:
         timeout_seconds: _TIMEOUT = 30.0,
     ) -> int:
         """Install or upgrade the native user service."""
-
         return _execute(
             "install",
             asset=asset,
@@ -296,19 +363,16 @@ def _app() -> App:
         *, json_output: _JSON = False, port: _PORT = runtime_context.DEFAULT_PORT
     ) -> int:
         """Show installed state and listener health."""
-
         return _execute("status", as_json=json_output, port=port)
 
     @app.command(name="doctor")
     def doctor(*, json_output: _JSON = False, port: _PORT = runtime_context.DEFAULT_PORT) -> int:
         """Diagnose the installed product without mutation."""
-
         return _execute("doctor", as_json=json_output, port=port)
 
     @app.command(name="recover")
     def recover(*, json_output: _JSON = False, port: _PORT = runtime_context.DEFAULT_PORT) -> int:
         """Resolve an interrupted installation transaction."""
-
         return _execute("recover", as_json=json_output, port=port)
 
     @app.command(name="reload")
@@ -319,7 +383,6 @@ def _app() -> App:
         timeout_seconds: _TIMEOUT = 30.0,
     ) -> int:
         """Transactionally reload the installed service."""
-
         return _execute("reload", as_json=json_output, port=port, timeout_seconds=timeout_seconds)
 
     @app.command(name="uninstall")
@@ -330,13 +393,11 @@ def _app() -> App:
         purge: _PURGE = False,
     ) -> int:
         """Remove the native service and optionally its owned state."""
-
         return _execute("uninstall", as_json=json_output, port=port, purge=purge)
 
     @app.command
     def version(*, json_output: _JSON = False) -> int:
         """Print the product version."""
-
         return _execute("version", as_json=json_output)
 
     return app
@@ -344,7 +405,6 @@ def _app() -> App:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run one public command without leaking expected exceptions or warnings."""
-
     arguments = list(sys.argv[1:] if argv is None else argv)
     if arguments and arguments[0].startswith("--internal-"):
         return _run_internal(arguments)
@@ -352,7 +412,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         _error(
             f"unknown command: {arguments[0]}",
             as_json="--json" in arguments,
-            next_command="codex-responses-proxy --help",
+            next_command=product_identity.command("--help"),
         )
         return 2
     try:
@@ -362,9 +422,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         _error(
             str(error),
             as_json="--json" in arguments,
-            next_command=f"codex-responses-proxy {command} --help"
+            next_command=product_identity.command(command, "--help")
             if command
-            else "codex-responses-proxy --help",
+            else product_identity.command("--help"),
         )
         return 2
     return result if isinstance(result, int) else 0
@@ -372,7 +432,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _run_internal(arguments: list[str]) -> int:
     """Dispatch one exact private service role without adding it to public help."""
-
     if len(arguments) != 1:
         _error("internal service mode accepts no additional arguments", as_json=False)
         return 2

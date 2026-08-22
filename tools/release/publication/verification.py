@@ -9,11 +9,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 from codex_responses_proxy.service import digest
 from tools.release import identity
-from tools.release.publication import evaluator, git, github, gitlab
+from tools.release.publication import evaluator
+from tools.release.publication import git
+from tools.release.publication import github
+from tools.release.publication import gitlab
 
 
 class PublicationError(RuntimeError):
@@ -30,9 +32,8 @@ def verify(
     github_repo: str,
     gitlab_anchor: Path,
     github_anchor: Path,
-) -> Mapping[str, Any]:
+) -> Mapping[str, object]:
     """Return immutable evidence for exact signed releases on both Forges."""
-
     if not identity.is_tag(tag):
         raise PublicationError("publication tag must be exact vMAJOR.MINOR.PATCH")
     try:

@@ -7,17 +7,21 @@ import socket
 import tempfile
 import threading
 import urllib.request
-from collections.abc import Callable, Sequence
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from collections.abc import Callable
+from collections.abc import Mapping
+from collections.abc import Sequence
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
+from typing import override
 
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.providers.policies import dmxapi as dmxapi_policy
 from codex_responses_proxy.relay import operational_log
 from codex_responses_proxy.service import entrypoint as proxy
 
-ScriptedResponse = tuple[int, bytes] | dict[str, Any]
+ScriptedResponse = tuple[int, bytes] | Mapping[str, object]
 
 
 def serve_proxy(
@@ -32,7 +36,8 @@ def serve_proxy(
     scripted_lock = threading.Lock()
 
     class UpstreamHandler(BaseHTTPRequestHandler):
-        def log_message(self, *args: Any, **kwargs: Any) -> None:
+        @override
+        def log_message(self, *args: object, **kwargs: object) -> None:
             del args, kwargs
 
         def _receive(self) -> bytes:
@@ -53,18 +58,29 @@ def serve_proxy(
         def _reply(self) -> None:
             with scripted_lock:
                 response = scripted.pop(0)
-            if isinstance(response, dict):
-                status = int(response.get("status", 200))
-                chunks = response.get("chunks", [])
+            if isinstance(response, Mapping):
+                status = response.get("status", 200)
+                assert isinstance(status, int)
+                assert not isinstance(status, bool)
+                payload = response.get("payload")
+                raw_chunks = response.get("chunks", [payload] if isinstance(payload, bytes) else [])
+                assert isinstance(raw_chunks, list)
+                assert all(isinstance(chunk, bytes) for chunk in raw_chunks)
+                chunks = [chunk for chunk in raw_chunks if isinstance(chunk, bytes)]
                 started = response.get("started_event")
                 if started is not None:
+                    assert isinstance(started, threading.Event)
                     started.set()
                 release = response.get("release_event")
                 if release is not None:
+                    assert isinstance(release, threading.Event)
                     release.wait(timeout=5)
                 stall = response.get("stall_event")
+                assert stall is None or isinstance(stall, threading.Event)
+                content_type = response.get("content_type", "text/event-stream")
+                assert isinstance(content_type, str)
                 self.send_response(status)
-                self.send_header("Content-Type", response.get("content_type", "text/event-stream"))
+                self.send_header("Content-Type", content_type)
                 if stall is None:
                     self.send_header("Connection", "close")
                 else:
@@ -82,6 +98,8 @@ def serve_proxy(
                 self.close_connection = True
                 return
             status, payload = response
+            assert isinstance(status, int)
+            assert isinstance(payload, bytes)
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))

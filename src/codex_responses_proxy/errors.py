@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from codex_responses_proxy import product_identity
+
 
 class ProductError(RuntimeError):
     """Report one bounded public product failure with a precise next action."""
@@ -10,7 +12,6 @@ class ProductError(RuntimeError):
 
     def __init__(self, message: str, *, next_command: str) -> None:
         """Bind one public message to one executable next command."""
-
         super().__init__(message)
         self.next_command = next_command
 
@@ -22,8 +23,7 @@ class UnsupportedPlatformError(ProductError):
 
     def __init__(self, message: str) -> None:
         """Describe the unsupported host and direct users to public help."""
-
-        super().__init__(message, next_command="codex-responses-proxy --help")
+        super().__init__(message, next_command=product_identity.command("--help"))
 
 
 class InstallError(ProductError):
@@ -35,10 +35,9 @@ class InstallError(ProductError):
         self,
         message: str,
         *,
-        next_command: str = "codex-responses-proxy doctor",
+        next_command: str = product_identity.command("doctor"),
     ) -> None:
         """Describe one lifecycle failure and its safest next command."""
-
         super().__init__(message, next_command=next_command)
 
 
@@ -49,8 +48,7 @@ class InstallInputError(InstallError):
 
     def __init__(self, message: str) -> None:
         """Direct invalid release inputs to the installation contract."""
-
-        super().__init__(message, next_command="codex-responses-proxy install --help")
+        super().__init__(message, next_command=product_identity.command("install", "--help"))
 
 
 class NotInstalledError(InstallError):
@@ -58,10 +56,9 @@ class NotInstalledError(InstallError):
 
     code = "not_installed"
 
-    def __init__(self, message: str = "Codex Responses Proxy is not installed") -> None:
+    def __init__(self, message: str = f"{product_identity.DISPLAY_NAME} is not installed") -> None:
         """Direct an operation that needs an installation to install help."""
-
-        super().__init__(message, next_command="codex-responses-proxy install --help")
+        super().__init__(message, next_command=product_identity.command("install", "--help"))
 
 
 class RecoveryRequiredError(InstallError):
@@ -71,8 +68,7 @@ class RecoveryRequiredError(InstallError):
 
     def __init__(self, message: str) -> None:
         """Direct a blocked mutation to the exact recovery command."""
-
-        super().__init__(message, next_command="codex-responses-proxy recover")
+        super().__init__(message, next_command=product_identity.command("recover"))
 
 
 class RecoveryStateError(InstallError):
@@ -82,8 +78,7 @@ class RecoveryStateError(InstallError):
 
     def __init__(self, message: str) -> None:
         """Direct unverifiable recovery evidence to read-only status."""
-
-        super().__init__(message, next_command="codex-responses-proxy status --json")
+        super().__init__(message, next_command=product_identity.command("status", "--json"))
 
 
 class ProductAssemblyError(ProductError):
@@ -93,10 +88,9 @@ class ProductAssemblyError(ProductError):
 
     def __init__(self, message: str) -> None:
         """Direct an incomplete executable to verified installation inputs."""
-
         super().__init__(
             message,
-            next_command="codex-responses-proxy install --help",
+            next_command=product_identity.command("install", "--help"),
         )
 
 
@@ -107,5 +101,4 @@ class ManualStartRequiredError(ProductError):
 
     def __init__(self, message: str) -> None:
         """Direct a host without durable supervision to observed status."""
-
-        super().__init__(message, next_command="codex-responses-proxy status")
+        super().__init__(message, next_command=product_identity.command("status"))

@@ -7,12 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from tools.forge.audit import (
-    branches_for_audit,
-    exact_branch_parity,
-    exact_tag_parity,
-    remote_branch_oids,
-)
+from tools.forge.audit import branches_for_audit
+from tools.forge.audit import exact_branch_parity
+from tools.forge.audit import exact_tag_parity
+from tools.forge.audit import remote_branch_oids
 from tools.git_environment import isolated_config_environment
 
 

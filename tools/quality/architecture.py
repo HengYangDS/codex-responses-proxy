@@ -6,10 +6,9 @@ import ast
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-POLICY = ROOT / ".config/checks/architecture/policy.toml"
+POLICY = ROOT / ".config/quality/policy/architecture.toml"
 
 _POLICY_FIELDS = frozenset(
     {
@@ -22,6 +21,7 @@ _POLICY_FIELDS = frozenset(
         "source_roots",
         "test_roots",
         "package_root",
+        "package_root_modules",
         "root_configuration_modules",
         "package_initializers",
         "allowed_package_edges",
@@ -101,7 +101,7 @@ def _package_declaration_gaps(root: Path, package: Path) -> list[str]:
     return gaps
 
 
-def _policy_gaps(policy: Mapping[str, Any]) -> list[str]:
+def _policy_gaps(policy: Mapping[str, object]) -> list[str]:
     gaps = [f"architecture_policy_schema:{field}" for field in sorted(set(policy) ^ _POLICY_FIELDS)]
     for field in (
         "owner",
@@ -124,9 +124,8 @@ def _policy_gaps(policy: Mapping[str, Any]) -> list[str]:
     return gaps
 
 
-def architecture_gaps(root: Path = ROOT, policy: Mapping[str, Any] | None = None) -> list[str]:
+def architecture_gaps(root: Path = ROOT, policy: Mapping[str, object] | None = None) -> list[str]:
     """Enforce the declared semantic package topology."""
-
     policy = tomllib.loads(POLICY.read_text(encoding="utf-8")) if policy is None else policy
     policy_gaps = _policy_gaps(policy)
     if policy_gaps:
@@ -135,11 +134,28 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, Any] | None = None
     package = root / package_root
     package_name = package.name
     package_initializers = str(policy["package_initializers"])
-    root_modules = frozenset(policy.get("root_configuration_modules", ()))
-    allowed_edges = {
-        owner: frozenset(targets)
-        for owner, targets in policy.get("allowed_package_edges", {}).items()
-    }
+    raw_root_modules = policy.get("root_configuration_modules")
+    raw_package_root_modules = policy.get("package_root_modules")
+    raw_allowed_edges = policy.get("allowed_package_edges")
+    root_modules = (
+        frozenset(item for item in raw_root_modules if isinstance(item, str))
+        if isinstance(raw_root_modules, list)
+        else frozenset()
+    )
+    package_root_modules = (
+        frozenset(item for item in raw_package_root_modules if isinstance(item, str))
+        if isinstance(raw_package_root_modules, list)
+        else frozenset()
+    )
+    allowed_edges = (
+        {
+            str(owner): frozenset(target for target in targets if isinstance(target, str))
+            for owner, targets in raw_allowed_edges.items()
+            if isinstance(owner, str) and isinstance(targets, list)
+        }
+        if isinstance(raw_allowed_edges, dict)
+        else {}
+    )
     gaps = [
         f"architecture_root_implementation:{path.name}"
         for path in sorted(root.glob("*.py"))
@@ -147,16 +163,28 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, Any] | None = None
     ]
     if not package.is_dir():
         return sorted([*gaps, f"architecture_package_missing:{package_root}"])
-    actual = {
+    actual_packages = {
         child.name
         for child in package.iterdir()
         if child.is_dir() and not child.name.startswith("__")
     }
+    actual_root_modules = {path.stem for path in package.glob("*.py") if path.name != "__init__.py"}
     gaps.extend(
-        f"architecture_undeclared_package:{name}" for name in sorted(actual - allowed_edges.keys())
+        f"architecture_undeclared_root_module:{name}"
+        for name in sorted(actual_root_modules - package_root_modules)
     )
     gaps.extend(
-        f"architecture_package_missing:{name}" for name in sorted(allowed_edges.keys() - actual)
+        f"architecture_root_module_missing:{name}"
+        for name in sorted(package_root_modules - actual_root_modules)
+    )
+    declared_packages = allowed_edges.keys() - package_root_modules
+    gaps.extend(
+        f"architecture_undeclared_package:{name}"
+        for name in sorted(actual_packages - declared_packages)
+    )
+    gaps.extend(
+        f"architecture_package_missing:{name}"
+        for name in sorted(declared_packages - actual_packages)
     )
     if package_initializers == "declarations-only":
         for path in sorted(package.rglob("__init__.py")):

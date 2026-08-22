@@ -15,22 +15,21 @@ from pathlib import Path
 import pytest
 
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle.supervision import native_service, process
+from codex_responses_proxy.lifecycle.supervision import native_service
+from codex_responses_proxy.lifecycle.supervision import process
 from tests.release.fixtures import preserve_native_host_projection
 from tests.service.handoff import fixtures as handoff_fixtures
-from tests.service.handoff.fixtures import (
-    ScriptedUpstream,
-    child_pid_observer,
-    free_port,
-    http_json,
-    installed_expected_metadata,
-    pid_alive,
-    start_real_proxy,
-    terminate_owned_proxy,
-    terminate_process,
-    wait_until,
-    write_installed_payload,
-)
+from tests.service.handoff.fixtures import ScriptedUpstream
+from tests.service.handoff.fixtures import child_pid_observer
+from tests.service.handoff.fixtures import free_port
+from tests.service.handoff.fixtures import http_json
+from tests.service.handoff.fixtures import installed_expected_metadata
+from tests.service.handoff.fixtures import pid_alive
+from tests.service.handoff.fixtures import start_real_proxy
+from tests.service.handoff.fixtures import terminate_owned_proxy
+from tests.service.handoff.fixtures import terminate_process
+from tests.service.handoff.fixtures import wait_until
+from tests.service.handoff.fixtures import write_installed_payload
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -105,7 +104,7 @@ class TestRealSubprocessHandoffIntegration:
 
     def _cleanup_installed_fixture(
         self,
-        temporary: tempfile.TemporaryDirectory,
+        temporary: tempfile.TemporaryDirectory[str],
         ctx: runtime_context.RuntimeContext,
         owned_processes: dict[int, process.OwnedProcess],
     ) -> None:

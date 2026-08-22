@@ -16,12 +16,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
+from typing import override
 
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import projection, runtime_spec
+from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.relay import admission as runtime_state_module
 from codex_responses_proxy.service import entrypoint as entrypoint_module
@@ -154,7 +157,7 @@ def idle_runtime(**overrides) -> dict[str, object]:
 
 def child_pid_matching_health(
     port: int,
-    expected: dict,
+    expected: dict[str, object],
     *,
     exclude_pid: int | None,
     states: frozenset[str] = frozenset(("serving", "finalized")),
@@ -180,7 +183,7 @@ def child_pid_matching_health(
 
 def child_pid_observer(
     port: int,
-    expected: dict,
+    expected: dict[str, object],
     *,
     exclude_pid: int | None,
     states: frozenset[str] = frozenset(("serving", "finalized")),
@@ -210,7 +213,7 @@ def child_pid_observer(
     return observed, matches
 
 
-def fake_handler(body: dict, *, mocker):
+def fake_handler(body: dict[str, object], *, mocker):
     """Return a loopback control-handler fixture containing one JSON body."""
     payload = json.dumps(body).encode()
     handler = mocker.Mock()
@@ -224,7 +227,10 @@ def free_port() -> int:
     """Return an unused loopback TCP port for an owned test server."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
+        address = probe.getsockname()
+        if not isinstance(address, tuple) or len(address) < 2 or not isinstance(address[1], int):
+            raise RuntimeError("loopback socket did not expose an integer port")
+        return address[1]
 
 
 def wait_until(predicate: Callable[[], object], timeout: float, interval: float = 0.05) -> bool:
@@ -260,7 +266,7 @@ def http_json(port: int, path: str, *, method: str = "GET", body=None, timeout: 
         return response.status, json.loads(response.read())
 
 
-def terminate_process(process: subprocess.Popen, timeout: float = 5) -> None:
+def terminate_process(process: subprocess.Popen[bytes], timeout: float = 5) -> None:
     """Terminate an owned subprocess and bound the kill fallback."""
     if process.poll() is not None:
         return
@@ -303,12 +309,16 @@ type UpstreamBehavior = tuple[int, bytes] | Callable[[BaseHTTPRequestHandler], N
 class _DisconnectAwareHTTPServer(ThreadingHTTPServer):
     """Ignore only peer disconnects that an integration test intentionally causes."""
 
-    def handle_error(self, request: Any, client_address: tuple[str, int]) -> None:
+    @override
+    def handle_error(self, request: object, client_address: object) -> None:
         error = sys.exc_info()[1]
         disconnects = {errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE}
         if isinstance(error, OSError) and error.errno in disconnects:
             return
-        super().handle_error(request, client_address)
+        super().handle_error(
+            cast("socket.socket | tuple[bytes, socket.socket]", request),
+            cast("tuple[str, int] | str", client_address),
+        )
 
 
 class ScriptedUpstream:
@@ -323,7 +333,8 @@ class ScriptedUpstream:
         self._queue: list[UpstreamBehavior] = []
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *args: Any, **kwargs: Any) -> None:
+            @override
+            def log_message(self, *args: object, **kwargs: object) -> None:
                 del args, kwargs
 
             def do_POST(self):
@@ -407,10 +418,15 @@ def write_installed_payload(
     return ctx
 
 
-def installed_expected_metadata(ctx: runtime_context.RuntimeContext, transaction_id: str) -> dict:
+def installed_expected_metadata(
+    ctx: runtime_context.RuntimeContext,
+    transaction_id: str,
+) -> dict[str, object]:
     """Read the exact identity expected from a prepared child runtime."""
     manifest_path = Path(projection.payload_manifest_path(ctx))
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest: object = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise AssertionError("fixture payload manifest must be an object")
     return {
         "transaction_id": transaction_id,
         "release": manifest["release"],
@@ -426,8 +442,8 @@ def start_real_proxy(
     *,
     upstream_url: str,
     log_path: Path,
-    extra_env: dict | None = None,
-) -> subprocess.Popen:
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.Popen[bytes]:
     """Start an installed-like proxy and prove its listener became reachable."""
     parsed_upstream = urllib.parse.urlsplit(upstream_url)
     try:

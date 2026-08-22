@@ -18,7 +18,6 @@ class GitProofError(RuntimeError):
 
 def collect(*, provider: str, remote: str, tag: str, anchor: Path) -> dict[str, object]:
     """Fetch one exact remote tag into isolation and verify its annotated signature."""
-
     if provider not in {"gitlab", "github"}:
         raise GitProofError("unknown publication provider")
     if not identity.is_tag(tag):

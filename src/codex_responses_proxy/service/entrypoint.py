@@ -12,16 +12,18 @@ from dataclasses import dataclass
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+from codex_responses_proxy import product_identity
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.relay import (
-    admission,
-    exchange,
-    operational_log,
-    sse,
-    telemetry,
-)
+from codex_responses_proxy.relay import admission
+from codex_responses_proxy.relay import exchange
+from codex_responses_proxy.relay import operational_log
+from codex_responses_proxy.relay import sse
+from codex_responses_proxy.relay import telemetry
 from codex_responses_proxy.runtime import config as runtime_config
-from codex_responses_proxy.service import control, identity, runtime, server
+from codex_responses_proxy.service import control
+from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import runtime
+from codex_responses_proxy.service import server
 from codex_responses_proxy.service.handoff import transaction as handoff
 
 _SERVER_INSTANCE: ThreadingHTTPServer | None = None
@@ -38,7 +40,6 @@ class Bootstrap:
 
 def bootstrap(executable: Path | None = None) -> Bootstrap:
     """Verify one installed payload, load its routes, then reject identity drift."""
-
     selected = Path(runtime.current_executable()) if executable is None else executable
     loaded = identity.freeze_loaded_payload(selected)
     if loaded is None:
@@ -70,21 +71,18 @@ def release_receipt_sha256() -> str | None:
 
 def payload_manifest_sha256() -> str | None:
     """Return the manifest identity frozen before listener startup."""
-
     payload = _payload()
     return None if payload is None else payload.manifest_sha256
 
 
 def release_version() -> str:
     """Return the release identity frozen with the serving payload."""
-
     payload = _payload()
     return "0+unknown" if payload is None else payload.release
 
 
 def runtime_providers() -> provider_registry.Registry:
     """Return routes frozen from the exact verified installation payload."""
-
     if _BOOTSTRAP is None:
         raise RuntimeError("listener startup has not verified an installed payload")
     return _BOOTSTRAP.providers
@@ -94,14 +92,13 @@ def _server_bindings(
     providers: provider_registry.Registry | None = None,
 ) -> server.Bindings:
     """Compose immutable dependencies for one listener generation."""
-
     return server.Bindings(
         control=control.Bindings(
             runtime_status=runtime_status,
             handoff_context=_handoff_context,
         ),
         providers=runtime_providers() if providers is None else providers,
-        server_version=f"codex-responses-proxy/{release_version()}",
+        server_version=f"{product_identity.PRODUCT_SLUG}/{release_version()}",
     )
 
 
@@ -172,10 +169,10 @@ def run(*, handoff_child: bool = False) -> int:
     except runtime_config.ConfigurationError as exc:
         operational_log.log(f"configuration_error exception={exc.__class__.__name__}")
         return 2
-    if handoff_child or os.environ.get("CODEX_RESPONSES_PROXY_HANDOFF_CHILD") == "1":
+    if handoff_child or os.environ.get(product_identity.environment_name("HANDOFF_CHILD")) == "1":
         return handoff.run_child(_handoff_context())
     operational_log.log(
-        f"starting codex-responses-proxy listener={host}:{port} "
+        f"starting {product_identity.PRODUCT_SLUG} listener={host}:{port} "
         f"upstream_timeout={exchange.UPSTREAM_TIMEOUT} "
         f"read_timeout={sse.UPSTREAM_READ_TIMEOUT} "
         f"log_max_bytes={operational_log.LOG_MAX_BYTES} "

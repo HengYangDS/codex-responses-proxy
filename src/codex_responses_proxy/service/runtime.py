@@ -12,7 +12,6 @@ HANDOFF_CHILD_MODE = "--internal-handoff-child"
 
 def current_executable() -> str:
     """Return the exact product executable used to start this process."""
-
     selected = sys.executable if getattr(sys, "frozen", False) else sys.argv[0]
     try:
         return str(Path(selected).resolve(strict=True))

@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 
 from codex_responses_proxy import errors
+from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.runtime import config
 from codex_responses_proxy.service import inventory
 
-SERVICE_ID = "codex-responses-proxy.watchdog"
+SERVICE_ID = product_identity.SERVICE_ID
 DEFAULT_PORT = config.DEFAULT_PORT
 
 
@@ -22,7 +24,6 @@ def service_id(install_dir: str) -> str:
     alternate root receives a deterministic suffix so isolated validation and
     parallel installations cannot unload or replace the user's live service.
     """
-
     installed = os.path.normcase(os.path.abspath(install_dir))
     canonical = os.path.normcase(os.path.abspath(config.default_data_dir()))
     if installed == canonical:
@@ -55,13 +56,11 @@ class RuntimeContext:
     @property
     def service_id(self) -> str:
         """Return the supervision identity for this installed root."""
-
         return service_id(self.install_dir)
 
 
 def validate_port(port: int) -> int:
     """Accept only a real TCP port before service rendering."""
-
     if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
         raise errors.InstallError("port must be an integer in 1..65535")
     return port
@@ -69,7 +68,6 @@ def validate_port(port: int) -> int:
 
 def validate_log_retention(value: int, *, name: str, minimum: int, maximum: int) -> int:
     """Accept one bounded runtime-log retention setting."""
-
     if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
         raise errors.InstallError(f"{name} must be an integer in {minimum}..{maximum}")
     return value
@@ -85,7 +83,6 @@ def create(
     watchdog_log_backup_count: int = config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
 ) -> RuntimeContext:
     """Validate command inputs and project all product-owned paths once."""
-
     install_dir = config.data_dir()
     return RuntimeContext(
         user_home=config.home_dir(),

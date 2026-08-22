@@ -13,15 +13,18 @@ from typing import cast
 
 import nox
 
+from codex_responses_proxy import product_identity
+
 ROOT = Path(__file__).parent.resolve()
 PYTHONS = tuple((ROOT / ".python-versions").read_text(encoding="utf-8").splitlines())
 MIN_PYTHON, *_, MAX_PYTHON = PYTHONS
 RELEASE_PYTHON = (ROOT / ".python-release").read_text(encoding="utf-8").strip()
 ROOTS = ("src/codex_responses_proxy", "tools", "tests")
-RUFF_CONFIG = ROOT / ".config/checks/ruff/ruff.toml"
-TY_CONFIG = ROOT / ".config/checks/ty/ty.toml"
-COVERAGE_CONFIG = ROOT / ".config/checks/coverage/coverage.ini"
-PERFORMANCE_POLICY = ROOT / ".config/checks/performance/policy.toml"
+RUFF_CONFIG = ROOT / ".config/quality/native/ruff.toml"
+RUFF_DOCSTRING_CONFIG = ROOT / ".config/quality/native/ruff-docstrings.toml"
+TY_CONFIG = ROOT / ".config/quality/native/ty.toml"
+COVERAGE_CONFIG = ROOT / ".config/quality/native/coverage.ini"
+PERFORMANCE_POLICY = ROOT / ".config/quality/policy/performance.toml"
 
 nox.options.default_venv_backend = "uv"
 nox.options.error_on_missing_interpreters = True
@@ -31,7 +34,6 @@ nox.options.reuse_existing_virtualenvs = False
 @nox.session(python=MAX_PYTHON)
 def quick(session: nox.Session) -> None:
     """Run the cheapest deterministic contract and source checks."""
-
     _install_tools(session)
     environment = _environment()
     session.run(
@@ -45,6 +47,17 @@ def quick(session: nox.Session) -> None:
     )
     session.run(
         "ruff",
+        "check",
+        "--config",
+        str(RUFF_DOCSTRING_CONFIG),
+        "--no-cache",
+        "src",
+        "tools",
+        "noxfile.py",
+        env=environment,
+    )
+    session.run(
+        "ruff",
         "format",
         "--config",
         str(RUFF_CONFIG),
@@ -54,6 +67,8 @@ def quick(session: nox.Session) -> None:
         env=environment,
     )
     session.run("python", "tools/quality/text_layout.py", env=environment)
+    session.run("python", "-m", "tools.quality.responsibilities", env=environment)
+    session.run("python", "-m", "tools.quality.hard_coding", env=environment)
     session.run("python", "-m", "tools.quality.repository", env=environment)
     session.run(
         "python",
@@ -68,7 +83,6 @@ def quick(session: nox.Session) -> None:
 @nox.session(python=PYTHONS)
 def tests(session: nox.Session) -> None:
     """Compile and run the complete behavior inventory on one Python."""
-
     _install_tools(session)
     work = Path(session.create_tmp()).resolve()
     wheel = _build_wheel(session, work)
@@ -76,7 +90,7 @@ def tests(session: nox.Session) -> None:
     _assert_installed_product(session, work)
     environment = {
         **_environment(),
-        "CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session)),
+        product_identity.environment_name("EXECUTABLE"): str(_installed_executable(session)),
     }
     session.run(
         "python",
@@ -99,7 +113,6 @@ def tests(session: nox.Session) -> None:
 @nox.session(python=MIN_PYTHON)
 def quality(session: nox.Session) -> None:
     """Run static analysis and branch-aware coverage at the compatibility floor."""
-
     _install_tools(session)
     work = Path(session.create_tmp()).resolve()
     wheel = _build_wheel(session, work)
@@ -107,7 +120,7 @@ def quality(session: nox.Session) -> None:
     _assert_installed_product(session, work)
     environment = {
         **_environment(),
-        "CODEX_RESPONSES_PROXY_EXECUTABLE": str(_installed_executable(session)),
+        product_identity.environment_name("EXECUTABLE"): str(_installed_executable(session)),
     }
     session.run(
         "ruff",
@@ -116,6 +129,17 @@ def quality(session: nox.Session) -> None:
         str(RUFF_CONFIG),
         "--no-cache",
         ".",
+        env=environment,
+    )
+    session.run(
+        "ruff",
+        "check",
+        "--config",
+        str(RUFF_DOCSTRING_CONFIG),
+        "--no-cache",
+        "src",
+        "tools",
+        "noxfile.py",
         env=environment,
     )
     session.run(
@@ -129,6 +153,8 @@ def quality(session: nox.Session) -> None:
         env=environment,
     )
     session.run("python", "tools/quality/text_layout.py", env=environment)
+    session.run("python", "-m", "tools.quality.responsibilities", env=environment)
+    session.run("python", "-m", "tools.quality.hard_coding", env=environment)
     session.run("python", "-m", "tools.quality.repository", env=environment)
     session.run(
         "ty",
@@ -161,7 +187,7 @@ def quality(session: nox.Session) -> None:
         "python",
         "tools/quality/branch_coverage.py",
         "--policy",
-        str(ROOT / ".config/checks/coverage/policy.toml"),
+        str(ROOT / ".config/quality/policy/coverage.toml"),
         env=environment,
     )
 
@@ -169,7 +195,6 @@ def quality(session: nox.Session) -> None:
 @nox.session(python=RELEASE_PYTHON)
 def performance(session: nox.Session) -> None:
     """Measure deterministic product overhead and emit machine-readable evidence."""
-
     _install_tools(session)
     work = Path(session.create_tmp()).resolve()
     wheel = _build_wheel(session, work)
@@ -180,8 +205,8 @@ def performance(session: nox.Session) -> None:
     benchmark_log = output / "benchmark.log"
     environment = {
         **_environment(),
-        "CODEX_RESPONSES_PROXY_HOME": str(output / "payload"),
-        "CODEX_RESPONSES_PROXY_STATE_HOME": str(output / "state"),
+        product_identity.environment_name("HOME"): str(output / "payload"),
+        product_identity.environment_name("STATE_HOME"): str(output / "state"),
     }
     execution = tomllib.loads(PERFORMANCE_POLICY.read_text(encoding="utf-8"))["execution"]
     common = [
@@ -233,7 +258,6 @@ def performance(session: nox.Session) -> None:
 @nox.session(python=False)
 def governance(session: nox.Session) -> None:
     """Run the repository governance graph with the locked external toolchain."""
-
     session.run(
         "mise",
         "exec",
@@ -255,7 +279,6 @@ def governance(session: nox.Session) -> None:
 @nox.session(python=False)
 def full(session: nox.Session) -> None:
     """Run governance, strict quality, and every remaining supported interpreter."""
-
     session.notify("governance")
     session.notify("quality")
     for python in PYTHONS[1:]:
@@ -265,7 +288,6 @@ def full(session: nox.Session) -> None:
 @nox.session(python=RELEASE_PYTHON)
 def release(session: nox.Session) -> None:
     """Build and black-box test this platform's self-contained executable."""
-
     _install_tools(session, "quality", "release")
     _assert_release_runtime(session)
     work = Path(session.create_tmp()).resolve()
@@ -284,8 +306,8 @@ def release(session: nox.Session) -> None:
     bundle, executable = _build_executable(session, work)
     environment = {
         **_environment(),
-        "CODEX_RESPONSES_PROXY_EXECUTABLE": str(executable),
-        "CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE": str(executable),
+        product_identity.environment_name("EXECUTABLE"): str(executable),
+        product_identity.environment_name("NATIVE_EXECUTABLE"): str(executable),
     }
     session.run(
         "python",
@@ -314,15 +336,14 @@ def release(session: nox.Session) -> None:
 @nox.session(python=RELEASE_PYTHON)
 def release_compatibility(session: nox.Session) -> None:
     """Upgrade one verified published predecessor to this native candidate."""
-
     _install_tools(session, "quality", "release")
     _assert_release_runtime(session)
     previous_asset = _required_file(
-        "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET",
+        product_identity.environment_name("PREVIOUS_RELEASE_ASSET"),
         "published predecessor asset",
     )
     previous_trust = _required_file(
-        "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR",
+        product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR"),
         "published predecessor trust anchor",
     )
     work = Path(session.create_tmp()).resolve()
@@ -347,17 +368,16 @@ def release_compatibility(session: nox.Session) -> None:
         "tests/release/test_native_compatibility.py",
         env={
             **_environment(),
-            "CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE": str(executable),
-            "CODEX_RESPONSES_PROXY_NATIVE_BUNDLE": str(bundle),
-            "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET": str(previous_asset),
-            "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR": str(previous_trust),
+            product_identity.environment_name("NATIVE_EXECUTABLE"): str(executable),
+            product_identity.environment_name("NATIVE_BUNDLE"): str(bundle),
+            product_identity.environment_name("PREVIOUS_RELEASE_ASSET"): str(previous_asset),
+            product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR"): str(previous_trust),
         },
     )
 
 
 def _required_file(variable: str, label: str) -> Path:
     """Return one explicit regular file input without guessing a host path."""
-
     value = os.environ.get(variable, "")
     path = Path(value).expanduser() if value else Path()
     if not value or not path.is_file() or path.is_symlink():
@@ -367,7 +387,6 @@ def _required_file(variable: str, label: str) -> Path:
 
 def _install_tools(session: nox.Session, *groups: str) -> None:
     """Install the repository-locked verification tool set into this session."""
-
     requirements = Path(session.create_tmp()) / "requirements.txt"
     python = _session_python(session)
     command = [
@@ -406,10 +425,9 @@ def _install_tools(session: nox.Session, *groups: str) -> None:
 
 def _build_wheel(session: nox.Session, work: Path) -> Path:
     """Build the exact wheel exercised by behavior and quality sessions."""
-
     wheelhouse = work / "wheelhouse"
     wheelhouse.mkdir()
-    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-uv-") as cache:
+    with tempfile.TemporaryDirectory(prefix=f"{product_identity.PRODUCT_SLUG}-uv-") as cache:
         session.run_install(
             "uv",
             "build",
@@ -429,7 +447,6 @@ def _build_wheel(session: nox.Session, work: Path) -> Path:
 
 def _install_wheel(session: nox.Session, wheel: Path) -> None:
     """Install only the built product artifact, never the source checkout."""
-
     session.run_install(
         "uv",
         "pip",
@@ -445,7 +462,6 @@ def _install_wheel(session: nox.Session, wheel: Path) -> None:
 
 def _session_packages(session: nox.Session) -> Path:
     """Return this session interpreter's installed package directory."""
-
     packages = session.run(
         "python",
         "-c",
@@ -460,7 +476,6 @@ def _session_packages(session: nox.Session) -> Path:
 
 def _session_python(session: nox.Session) -> str:
     """Return the concrete interpreter path selected by Nox."""
-
     python = session.python
     if not isinstance(python, (str, os.PathLike)):
         session.error("Nox did not provide one concrete Python interpreter")
@@ -469,7 +484,6 @@ def _session_python(session: nox.Session) -> str:
 
 def _assert_installed_product(session: nox.Session, work: Path) -> None:
     """Prove imports and packaged data resolve outside the source checkout."""
-
     probe = (
         "from pathlib import Path; "
         "import codex_responses_proxy as package; "
@@ -485,8 +499,7 @@ def _assert_installed_product(session: nox.Session, work: Path) -> None:
 
 def _installed_executable(session: nox.Session) -> Path:
     """Return the console executable installed from this session's built wheel."""
-
-    name = "codex-responses-proxy.exe" if os.name == "nt" else "codex-responses-proxy"
+    name = product_identity.executable_name(windows=os.name == "nt")
     executable = Path(session.bin) / name
     if not executable.is_file():
         session.error(f"installed console executable was not produced: {executable}")
@@ -495,8 +508,7 @@ def _installed_executable(session: nox.Session) -> Path:
 
 def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
     """Build one native directory bundle with only release-owned data."""
-
-    name = "codex-responses-proxy.exe" if os.name == "nt" else "codex-responses-proxy"
+    name = product_identity.executable_name(windows=os.name == "nt")
     dist = work / "dist"
     command = (
         "pyinstaller",
@@ -506,7 +518,7 @@ def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
         "ERROR",
         "--onedir",
         "--name",
-        "codex-responses-proxy",
+        product_identity.PRODUCT_SLUG,
         "--distpath",
         str(dist),
         "--workpath",
@@ -525,7 +537,7 @@ def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
         str(ROOT / "src/codex_responses_proxy/cli/__main__.py"),
     )
     session.run(*command, env=_environment())
-    bundle = dist / "codex-responses-proxy"
+    bundle = dist / product_identity.PRODUCT_SLUG
     executable = bundle / name
     if not executable.is_file():
         session.error(f"native executable was not produced: {executable}")
@@ -535,9 +547,8 @@ def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
 
 def _assert_release_runtime(session: nox.Session) -> None:
     """Reject native builds outside the repository-declared runtime."""
-
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    image = metadata["tool"]["codex-responses-proxy"]["linux-release-image"]
+    image = metadata["tool"][product_identity.PRODUCT_SLUG]["linux-release-image"]
     match = re.search(r"python:(\d+\.\d+\.\d+)-", image)
     version = session.run(
         "python",
@@ -557,7 +568,6 @@ def _assert_release_runtime(session: nox.Session) -> None:
 
 def _package_release_asset(session: nox.Session, bundle: Path, work: Path) -> None:
     """Export one manifest-bound native asset set after black-box acceptance."""
-
     output = Path(session.posargs[0]).resolve() if session.posargs else work / "release-assets"
     platform_id = {
         ("Darwin", "arm64"): "macos-arm64",
@@ -590,13 +600,12 @@ def _run_without_python(
     success_codes: tuple[int, ...] = (0,),
 ) -> None:
     """Run a black-box command with no Python executable or package path."""
-
     sandbox = Path(session.create_tmp()) / "black-box"
     empty_path = sandbox / "empty-path"
     empty_path.mkdir(parents=True, exist_ok=True)
     environment = {
-        "CODEX_RESPONSES_PROXY_HOME": str(sandbox / "payload"),
-        "CODEX_RESPONSES_PROXY_STATE_HOME": str(sandbox / "state"),
+        product_identity.environment_name("HOME"): str(sandbox / "payload"),
+        product_identity.environment_name("STATE_HOME"): str(sandbox / "state"),
         "HOME": str(sandbox / "home"),
         "PATH": str(empty_path),
         "PYTHONHOME": "",
@@ -630,7 +639,6 @@ def _run_without_python(
 
 def _environment() -> dict[str, str]:
     """Return the deterministic environment shared by every session."""
-
     return {
         "PYTHONHASHSEED": "0",
         "PYTHONDONTWRITEBYTECODE": "1",
@@ -640,11 +648,11 @@ def _environment() -> dict[str, str]:
         "UV_LINK_MODE": "copy",
         **(
             {
-                "CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE": os.environ[
-                    "CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE"
+                product_identity.environment_name("RELEASE_TAG_REMOTE"): os.environ[
+                    product_identity.environment_name("RELEASE_TAG_REMOTE")
                 ]
             }
-            if "CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE" in os.environ
+            if product_identity.environment_name("RELEASE_TAG_REMOTE") in os.environ
             else {}
         ),
         **({"COVERAGE_FILE": os.environ["COVERAGE_FILE"]} if "COVERAGE_FILE" in os.environ else {}),

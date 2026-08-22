@@ -8,17 +8,20 @@ import json
 import shutil
 import subprocess
 import tarfile
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 import pytest
 from pytest_mock import MockerFixture
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import artifact
-from codex_responses_proxy.service import digest, inventory
-from tests.lifecycle.fixtures import released_artifact, runtime_files
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import inventory
+from tests.lifecycle.fixtures import released_artifact
+from tests.lifecycle.fixtures import runtime_files
 from tools.release import product_assets
 
 VERSION = "1.2.3"
@@ -110,13 +113,14 @@ def _sign_asset_set(paths: Mapping[str, Path]) -> None:
     )
 
 
-def _plain_receipt(candidate: artifact.VerifiedArtifact) -> dict[str, Any]:
+def _plain_receipt(candidate: artifact.VerifiedArtifact) -> dict[str, object]:
     value = artifact.plain_value(candidate.receipt)
     assert isinstance(value, dict)
-    return value
+    assert all(isinstance(key, str) for key in value)
+    return {str(key): item for key, item in value.items()}
 
 
-def _rebind_receipt(candidate: artifact.VerifiedArtifact, receipt: dict[str, Any]) -> None:
+def _rebind_receipt(candidate: artifact.VerifiedArtifact, receipt: dict[str, object]) -> None:
     receipt_sha256 = hashlib.sha256(digest.canonical_json(receipt)).hexdigest()
     sidecar = artifact.plain_value(candidate.sidecar)
     assert isinstance(sidecar, dict)
@@ -169,13 +173,17 @@ def _payload_type_drift(candidate: artifact.VerifiedArtifact) -> None:
 
 def _payload_length_drift(candidate: artifact.VerifiedArtifact) -> None:
     receipt = _plain_receipt(candidate)
-    receipt["payload"] = receipt["payload"][:-1]
+    payload = receipt["payload"]
+    assert isinstance(payload, list)
+    receipt["payload"] = payload[:-1]
     _rebind_receipt(candidate, receipt)
 
 
 def _payload_entry_drift(candidate: artifact.VerifiedArtifact) -> None:
     receipt = _plain_receipt(candidate)
-    receipt["payload"][0] = "invalid"
+    payload = receipt["payload"]
+    assert isinstance(payload, list)
+    payload[0] = "invalid"
     _rebind_receipt(candidate, receipt)
 
 

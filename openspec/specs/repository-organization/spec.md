@@ -1,8 +1,11 @@
 # repository-organization Specification
 
 ## Purpose
+
 TBD - created by archiving change proxy-repository-organization-convergence. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: One release identity
 
 Proxy SHALL use tracked `VERSION` as the sole product release identity for package metadata, artifact names, changelog headings, tags, and installation records.

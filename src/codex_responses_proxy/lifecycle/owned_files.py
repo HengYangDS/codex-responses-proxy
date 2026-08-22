@@ -6,11 +6,15 @@ import json
 import os
 import stat
 import uuid
-from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any
+from pathlib import Path
+from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.service import digest, inventory
+from codex_responses_proxy.json_value import JsonObject
+from codex_responses_proxy.json_value import is_json_object
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import inventory
 
 OWNED_PAYLOAD_METADATA = (
     inventory.MANIFEST_FILENAME,
@@ -20,9 +24,8 @@ OWNED_PAYLOAD_METADATA = (
 )
 
 
-def declared_files(manifest: dict[str, Any]) -> frozenset[str]:
+def declared_files(manifest: JsonObject) -> frozenset[str]:
     """Return the canonical payload inventory declared by one manifest."""
-
     files = manifest.get("files")
     if not isinstance(files, dict) or not files:
         raise errors.InstallError("installed payload manifest file set is invalid")
@@ -31,20 +34,17 @@ def declared_files(manifest: dict[str, Any]) -> frozenset[str]:
 
 def current_inventory(root: Path) -> frozenset[str]:
     """Return current manifest-owned payload and metadata paths."""
-
     manifest = read_json_object(root / inventory.MANIFEST_FILENAME, "installed payload manifest")
     return declared_files(manifest) | frozenset(OWNED_PAYLOAD_METADATA)
 
 
 def path(root: Path, relative: str) -> Path:
     """Return one canonical POSIX payload path beneath ``root``."""
-
     return root.joinpath(*PurePosixPath(relative).parts)
 
 
 def canonical_relative(value: object, label: str) -> str:
     """Validate and return one canonical owned relative path."""
-
     if not isinstance(value, str) or not value:
         raise errors.InstallError(f"{label} path must be a non-empty string")
     relative = PurePosixPath(value)
@@ -63,7 +63,6 @@ def canonical_relative(value: object, label: str) -> str:
 
 def regular_file(root: Path, relative: str, label: str) -> Path:
     """Return one existing owned regular file without following symlinks."""
-
     relative = canonical_relative(relative, label)
     try:
         if root.is_symlink() or not root.is_dir():
@@ -94,7 +93,6 @@ def write_bytes(
     target: Path, content: bytes, *, mode: int = 0o644, root: Path | None = None
 ) -> None:
     """Atomically write one owned regular file through symlink-safe ancestors."""
-
     root = root or target.parent
     _real_parent(target, root)
     if target.is_symlink() or (target.exists() and not target.is_file()):
@@ -114,27 +112,27 @@ def write_bytes(
         temporary.unlink(missing_ok=True)
 
 
-def read_json_object(target: Path, label: str) -> dict[str, Any]:
+def read_json_object(target: Path, label: str) -> JsonObject:
     """Read one JSON object with a bounded installation error."""
-
     try:
         value = json.loads(target.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise errors.InstallError(f"{label} is unavailable or invalid") from exc
-    if not isinstance(value, dict):
-        raise errors.InstallError(f"{label} is not a JSON object")
+    if not is_json_object(value):
+        raise errors.InstallError(
+            f"{label} is not a JSON object with finite values and string keys"
+        )
     return value
 
 
-def read_canonical_json(target: Path, label: str) -> dict[str, Any]:
+def read_canonical_json(target: Path, label: str) -> JsonObject:
     """Read one canonical JSON object with a bounded installation error."""
-
     try:
         content = target.read_bytes()
         value = json.loads(content.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise errors.InstallError(f"{label} is unavailable or invalid") from exc
-    if not isinstance(value, dict) or digest.canonical_json(value) != content:
+    if not is_json_object(value) or digest.canonical_json(value) != content:
         raise errors.InstallError(f"{label} is not canonical JSON")
     return value
 

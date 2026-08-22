@@ -6,11 +6,14 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from collections.abc import Mapping, Sequence
-from typing import Annotated, cast
+from collections.abc import Mapping
+from collections.abc import Sequence
+from typing import Annotated
+from typing import cast
 from urllib.parse import quote
 
-from cyclopts import App, Parameter
+from cyclopts import App
+from cyclopts import Parameter
 
 
 class AdmissionError(RuntimeError):
@@ -67,7 +70,6 @@ def github_ready(
     workflows: Sequence[Mapping[str, object]], permissions: Mapping[str, object]
 ) -> bool:
     """Return whether active Actions workflows may use GitHub-hosted runners."""
-
     paths = {workflow.get("path") for workflow in workflows if workflow.get("state") == "active"}
     return permissions.get("enabled") is True and ".github/workflows/verify.yml" in paths
 
@@ -104,7 +106,6 @@ def _run(
     as_json: Annotated[bool, Parameter(name="--json", negative=False)] = False,
 ) -> None:
     """Verify scheduling readiness without mutating either Forge."""
-
     if provider not in {"gitlab", "github"}:
         raise SystemExit(f"unsupported Forge provider: {provider}")
     try:
@@ -120,7 +121,6 @@ def _run(
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run Forge admission through the repository's single parser stack."""
-
     App(default_command=_run, help=__doc__, result_action="return_value")(
         tuple(sys.argv[1:] if argv is None else argv)
     )

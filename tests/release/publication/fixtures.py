@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from tools.release.publication import verification as publication
 
@@ -64,22 +64,26 @@ def forge_evidence(*, items: list[dict[str, object]] | None = None) -> dict[str,
     }
 
 
-def verified_evidence(evidence: Mapping[str, Any], *, mocker) -> Mapping[str, Any]:
+def verified_evidence(evidence: Mapping[str, object], *, mocker) -> Mapping[str, object]:
     """Run ``publication.verify`` with offline Forge adapters."""
 
     forges = evidence["forges"]
     assert isinstance(forges, Mapping)
+    assert all(isinstance(key, str) for key in forges)
+    forge_map = {str(key): value for key, value in forges.items()}
 
-    def collect_git(*, provider: str, **_: object) -> Mapping[str, Any]:
-        forge = forges[provider]
+    def collect_git(*, provider: str, **_: object) -> Mapping[str, object]:
+        forge = forge_map[provider]
         assert isinstance(forge, Mapping)
-        return forge
+        assert all(isinstance(key, str) for key in forge)
+        return {str(key): value for key, value in forge.items()}
 
-    def collect_hosted(*, repository: str, **_: object) -> Mapping[str, Any]:
+    def collect_hosted(*, repository: str, **_: object) -> Mapping[str, object]:
         provider = "github" if repository == "github/repository" else "gitlab"
-        forge = forges[provider]
+        forge = forge_map[provider]
         assert isinstance(forge, Mapping)
-        return forge
+        assert all(isinstance(key, str) for key in forge)
+        return {str(key): value for key, value in forge.items()}
 
     mocker.patch.object(publication.git, "collect", side_effect=collect_git)
     mocker.patch.object(publication.gitlab, "collect", side_effect=collect_hosted)

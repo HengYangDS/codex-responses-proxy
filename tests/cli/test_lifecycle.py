@@ -316,7 +316,9 @@ class CliLifecycleContracts:
         mocker.patch.object(payload_state, "status", return_value=None)
         adapter.return_value.status.return_value = "running"
         evidence = application.control.status(context)
-        assert evidence["payload_integrity"]["ok"]
+        payload_integrity = evidence["payload_integrity"]
+        assert isinstance(payload_integrity, dict)
+        assert payload_integrity["ok"]
         assert evidence["listener_pids"] == [321]
         pids.assert_called_once_with(context)
 

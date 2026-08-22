@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from typing import Final, cast
+from typing import Final
+from typing import cast
 
-from tools.release import identity, product_assets
+from codex_responses_proxy import product_identity
+from tools.release import identity
+from tools.release import product_assets
 
 _OID: Final = re.compile(r"^[0-9a-f]{40,64}$")
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
@@ -35,7 +38,6 @@ def evaluate(
     github: Mapping[str, object],
 ) -> dict[str, object]:
     """Evaluate complete evidence without minting installation authority."""
-
     reasons: list[str] = []
     normalized: dict[str, dict[str, object]] = {}
     for provider, evidence in (
@@ -102,7 +104,6 @@ def evaluate(
 
 def _common_payloads_equal(normalized: Mapping[str, Mapping[str, object]], tag: str) -> bool:
     """Require one complete, byte-identical release inventory on both Forges."""
-
     del tag
     if not {"gitlab", "github"} <= set(normalized):
         return False
@@ -159,7 +160,7 @@ def _evaluate_forge(
         reasons.append(f"{provider}.release_tag_mismatch")
     if typed_release.get("commit_oid") != commit:
         reasons.append(f"{provider}.release_commit_mismatch")
-    if typed_release.get("name") != f"Codex Responses Proxy {tag}":
+    if typed_release.get("name") != product_identity.release_title(tag):
         reasons.append(f"{provider}.release_name_mismatch")
     if typed_release.get("draft") is not False:
         reasons.append(f"{provider}.release_draft")
@@ -194,7 +195,6 @@ def _evaluate_forge(
 
 def _validated_assets(provider: str, tag: str, assets: object) -> Mapping[str, object] | None:
     """Return the exact complete release inventory declared by the product SSOT."""
-
     del provider
     if not isinstance(assets, Mapping):
         return None

@@ -6,12 +6,10 @@ import threading
 import time
 from pathlib import Path
 
-from tests.service.handoff.fixtures import (
-    HandoffFixture,
-    entrypoint_module,
-    handoff_outcome_ready,
-    runtime_state_module,
-)
+from tests.service.handoff.fixtures import HandoffFixture
+from tests.service.handoff.fixtures import entrypoint_module
+from tests.service.handoff.fixtures import handoff_outcome_ready
+from tests.service.handoff.fixtures import runtime_state_module
 
 ROOT = Path(__file__).resolve().parents[3]
 

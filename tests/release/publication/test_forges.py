@@ -8,7 +8,8 @@ from typing import cast
 import pytest
 
 from tools.release import product_assets as release_assets
-from tools.release.publication import github, gitlab
+from tools.release.publication import github
+from tools.release.publication import gitlab
 
 ROOT = Path(__file__).resolve().parents[3]
 

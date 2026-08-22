@@ -8,8 +8,9 @@ import urllib.request
 from pathlib import Path
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import command, projection
+from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
@@ -20,7 +21,6 @@ from codex_responses_proxy.service import identity
 
 def read_runtime(ctx: runtime_context.RuntimeContext) -> dict[str, object] | None:
     """Read the proxy's secret-free health snapshot from loopback only."""
-
     request = urllib.request.Request(
         runtime_config.loopback_url(ctx.port, "/healthz"),
         headers={"Accept": "application/json"},
@@ -31,15 +31,16 @@ def read_runtime(ctx: runtime_context.RuntimeContext) -> dict[str, object] | Non
         with opener.open(request, timeout=2) as response:
             if response.status != 200:
                 return None
-            payload = json.loads(response.read())
+            payload: object = json.loads(response.read())
     except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError):
         return None
-    return payload if isinstance(payload, dict) else None
+    if not isinstance(payload, dict) or not all(isinstance(key, str) for key in payload):
+        return None
+    return {key: value for key, value in payload.items() if isinstance(key, str)}
 
 
-def status(ctx: runtime_context.RuntimeContext) -> dict:
+def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
     """Return non-secret runtime and transaction evidence without mutation."""
-
     installed_error: str | None = None
     try:
         installed = payload_state.read_installed(ctx)
@@ -143,7 +144,6 @@ def status(ctx: runtime_context.RuntimeContext) -> dict:
 
 def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -> dict[str, object]:
     """Reload the same installed protocol-v2 payload through live handoff."""
-
     installed = payload_state.read_installed(ctx)
     install_root = Path(ctx.install_dir)
     if installed is None and not install_root.exists() and not install_root.is_symlink():

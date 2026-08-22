@@ -36,7 +36,6 @@ class SigningContext:
 
 def load(path: Path) -> PublicationContext:
     """Load the one product identity from an explicit publication context."""
-
     try:
         value = tomllib.loads(path.read_text(encoding="utf-8"))
         record = value["product"]
@@ -58,7 +57,6 @@ def load(path: Path) -> PublicationContext:
 
 def select_signing_key(context: PublicationContext, destination: Path) -> SigningContext:
     """Select the exact public key advertised by the active OpenSSH agent."""
-
     if not os.environ.get("SSH_AUTH_SOCK"):
         raise PublicationContextError("OpenSSH agent is unavailable")
     ssh_add = shutil.which("ssh-add")

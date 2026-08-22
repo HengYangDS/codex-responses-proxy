@@ -13,25 +13,21 @@ import shutil
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import (
-    artifact,
-    command,
-    owned_files,
-    projection,
-    runtime_spec,
-    state,
-)
-from codex_responses_proxy.lifecycle import (
-    candidate as payload_candidate,
-)
+from codex_responses_proxy.json_value import ReadOnlyJsonObject
+from codex_responses_proxy.lifecycle import artifact
+from codex_responses_proxy.lifecycle import candidate as payload_candidate
+from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import (
-    rollback as payload_rollback,
-)
-from codex_responses_proxy.service import digest, identity, inventory
+from codex_responses_proxy.lifecycle import owned_files
+from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.lifecycle import rollback as payload_rollback
+from codex_responses_proxy.lifecycle import runtime_spec
+from codex_responses_proxy.lifecycle import state
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import inventory
 
 
 def recover(
@@ -40,7 +36,6 @@ def recover(
     runtime: Mapping[str, object] | None,
 ) -> dict[str, object]:
     """Close an unmutated transaction or restore one exact retained rollback."""
-
     root = state.transaction_root(ctx)
     if not root.exists() and not root.is_symlink():
         return {"state": "not_required"}
@@ -74,7 +69,6 @@ def _close_prepared(
     ctx: runtime_context.RuntimeContext, journal: Mapping[str, object]
 ) -> dict[str, object]:
     """Remove only a valid journal that proves no payload mutation began."""
-
     root = state.transaction_root(ctx)
     if tuple(root.iterdir()) != (state.journal_path(ctx),):
         raise errors.InstallError("prepared transaction is not empty")
@@ -100,7 +94,6 @@ def _recovery_candidate(
     journal: Mapping[str, object],
 ) -> identity.LoadedPayloadIdentity:
     """Verify one mutated transaction and its exact candidate projection."""
-
     if (
         journal.get("schema_version") != state.TRANSACTION_JOURNAL_SCHEMA
         or journal.get("state") not in {"committed", "recovery_required"}
@@ -126,7 +119,6 @@ def _close_finalized(
     installed: Mapping[str, object],
 ) -> dict[str, object]:
     """Remove transaction residue only after finalized state proves the candidate."""
-
     if not _installed_matches_transaction(
         installed,
         journal=journal,
@@ -151,7 +143,6 @@ def _installed_matches_transaction(
     command_path: str,
 ) -> bool:
     """Return whether finalized state proves this exact candidate transaction."""
-
     return (
         installed.get("transaction_id") == journal["transaction_id"]
         and installed.get("version") == candidate.release
@@ -165,7 +156,6 @@ def _runtime_matches_projection(
     projection: identity.LoadedPayloadIdentity,
 ) -> bool:
     """Return whether one accepting runtime serves the verified projection."""
-
     return (
         runtime is not None
         and identity.runtime_payload_matches(runtime, projection.handoff())
@@ -182,7 +172,6 @@ def _finalize_recovery(
     runtime: Mapping[str, object] | None,
 ) -> dict[str, object]:
     """Finalize an installed candidate after its runtime proves success."""
-
     assert runtime is not None
     installed = {
         "schema_version": state.INSTALLED_RELEASE_STATE_SCHEMA,
@@ -213,7 +202,6 @@ def _rollback_fresh(
     candidate: identity.LoadedPayloadIdentity,
 ) -> dict[str, object]:
     """Restore pre-install absence for one interrupted fresh projection."""
-
     rollback = state.transaction_root(ctx) / "rollback"
     command_snapshot = command.read_snapshot(rollback)
     inventory_snapshot = payload_rollback.load_inventory(rollback)
@@ -238,7 +226,6 @@ def _rollback_upgrade(
     candidate: identity.LoadedPayloadIdentity,
 ) -> dict[str, object]:
     """Restore one exact retained upgrade bound to its prior live runtime."""
-
     rollback = state.transaction_root(ctx) / "rollback"
     command_snapshot = command.read_snapshot(rollback)
     previous_executable = next(
@@ -300,7 +287,7 @@ class PayloadTransaction:
     _blobs: tuple[artifact.ArtifactFile, ...]
     _ctx: runtime_context.RuntimeContext
     _fresh: bool
-    _receipt: Mapping[str, Any]
+    _receipt: ReadOnlyJsonObject
     _receipt_sha256: str
     _state: str
     _transaction_id: str
@@ -313,7 +300,7 @@ class PayloadTransaction:
         blobs: tuple[artifact.ArtifactFile, ...],
         version: str,
         receipt_sha256: str,
-        receipt: Mapping[str, Any],
+        receipt: ReadOnlyJsonObject,
         transaction_id: str,
         fresh: bool,
         _token: object | None = None,
@@ -333,13 +320,11 @@ class PayloadTransaction:
     @property
     def release(self) -> str:
         """Return the candidate strict release version."""
-
         return self._version
 
     @property
     def receipt_sha256(self) -> str:
         """Return the candidate canonical receipt digest."""
-
         return self._receipt_sha256
 
     @property
@@ -356,7 +341,6 @@ class PayloadTransaction:
 
     def commit_projection(self) -> None:
         """Install candidate bytes and pending provenance while retaining rollback."""
-
         if self._state != "prepared":
             raise errors.InstallError("payload transaction is not prepared")
         rollback = state.transaction_root(self._ctx) / "rollback"
@@ -415,7 +399,6 @@ class PayloadTransaction:
 
     def finalize(self, runtime: Mapping[str, object] | None = None) -> None:
         """Record installation success only after the caller proves SERVING."""
-
         if self._state != "committed":
             raise errors.InstallError("payload transaction is not committed")
         installed = {
@@ -436,7 +419,6 @@ class PayloadTransaction:
 
     def rollback(self) -> None:
         """Restore the exact prior payload, receipt, state, or their absence."""
-
         if self._state == "rolled_back":
             return
         rollback = state.transaction_root(self._ctx) / "rollback"
@@ -456,7 +438,6 @@ class PayloadTransaction:
 
     def rollback_if_prepared(self) -> bool:
         """Close the transaction only before any projection mutation begins."""
-
         if self._state != "prepared":
             return False
         self.rollback()
@@ -464,7 +445,6 @@ class PayloadTransaction:
 
     def preserve_for_recovery(self, reason: str) -> None:
         """Keep committed bytes and rollback while marking an unknown outcome."""
-
         if self._state != "committed":
             raise errors.InstallError("only a committed transaction can require recovery")
         self._state = "recovery_required"
@@ -484,7 +464,6 @@ def begin_transaction(
     candidate: artifact.VerifiedArtifact,
 ) -> PayloadTransaction:
     """Claim one admitted release and create its private transaction journal."""
-
     root = state.transaction_root(ctx)
     if root.exists() or root.is_symlink():
         transaction_state = state.status(ctx)

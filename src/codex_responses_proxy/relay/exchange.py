@@ -8,15 +8,20 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler
-from typing import Any
+from typing import TypedDict
+from typing import cast
 
 import certifi
 
-from codex_responses_proxy.protocol import input_variant, response_failed
+from codex_responses_proxy.protocol import input_variant
 from codex_responses_proxy.protocol import response as live_response
+from codex_responses_proxy.protocol import response_failed
 from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.relay import cooldown, operational_log, telemetry
+from codex_responses_proxy.relay import cooldown
+from codex_responses_proxy.relay import operational_log
 from codex_responses_proxy.relay import relay as downstream
+from codex_responses_proxy.relay import telemetry
+from codex_responses_proxy.relay.contracts import UpstreamResponse
 from codex_responses_proxy.runtime import config as runtime_config
 
 _SETTINGS = runtime_config.load()
@@ -35,7 +40,6 @@ def _upstream_tls_context() -> ssl.SSLContext:
     The native bundle ships no OpenSSL default trust directory, so host
     defaults cannot be relied on; certifi is the portable trust anchor.
     """
-
     return ssl.create_default_context(cafile=certifi.where())
 
 
@@ -45,12 +49,12 @@ _DIRECT_OPENER = urllib.request.build_opener(
 )
 
 
-def urlopen_direct(request: urllib.request.Request, timeout: float):
+def urlopen_direct(request: urllib.request.Request, timeout: float) -> UpstreamResponse:
     """Open one upstream request without system or environment HTTP proxies."""
-    return _DIRECT_OPENER.open(request, timeout=timeout)
+    return cast(UpstreamResponse, _DIRECT_OPENER.open(request, timeout=timeout))
 
 
-def open_readonly(url: str, method: str, headers: dict[str, str]):
+def open_readonly(url: str, method: str, headers: dict[str, str]) -> UpstreamResponse:
     """Open one non-Responses request exactly once without recovery policy."""
     request = urllib.request.Request(url, method=method)
     for name, value in headers.items():
@@ -67,7 +71,7 @@ def _request(url: str, body: bytes, method: str, headers: dict[str, str]) -> url
 
 def _input_variant_recovery(
     raw: bytes,
-) -> tuple[bytes | None, dict[str, object] | None]:
+) -> tuple[bytes | None, InputVariantMetrics | None]:
     recovery, metrics = input_variant.build_recovery(raw, RESPONSE_FAILED_COMPACTION_BUDGET)
     if metrics is None:
         return recovery, None
@@ -78,6 +82,16 @@ def _input_variant_recovery(
         "dropped_input_items": metrics.dropped_input_items,
         "prompt_cache_key_removed": metrics.prompt_cache_key_removed,
     }
+
+
+class InputVariantMetrics(TypedDict):
+    """Metrics emitted by the final input-variant recovery."""
+
+    original_bytes: int
+    recovery_bytes: int
+    retained_messages: int
+    dropped_input_items: int
+    prompt_cache_key_removed: bool
 
 
 @dataclass(slots=True)
@@ -95,14 +109,15 @@ class Exchange:
     profile: provider_registry.Profile
     response_failed_stages: int = 0
     used_response_failed_compaction: bool = False
-    compact_metrics: dict[str, Any] | None = None
+    compact_metrics: response_failed.RecoveryMetrics | None = None
     used_response_failed_dialogue: bool = False
-    dialogue_metrics: dict[str, Any] | None = None
+    dialogue_metrics: response_failed.RecoveryMetrics | None = None
     used_input_variant_dialogue: bool = False
-    input_variant_metrics: dict[str, object] | None = None
-    response: Any = None
+    input_variant_metrics: InputVariantMetrics | None = None
+    response: UpstreamResponse | None = None
 
-    def upstream(self, body: bytes | None = None):
+    def upstream(self, body: bytes | None = None) -> UpstreamResponse:
+        """Open one upstream attempt using the current or replacement body."""
         return urlopen_direct(
             _request(
                 self.url,
@@ -114,12 +129,14 @@ class Exchange:
         )
 
     def log(self, event: str, detail: str = "") -> None:
+        """Record one request-scoped operational event without sensitive payloads."""
         path = operational_log.safe_request_path(self.handler.path)
         operational_log.log(
             f"req={self.request_id} event={event} provider={self.profile.name} {detail}path={path}"
         )
 
     def accepted_recovery(self) -> None:
+        """Record the response-failure recovery strategy accepted upstream."""
         if (
             not self.used_input_variant_dialogue
             and self.used_response_failed_dialogue
@@ -144,6 +161,7 @@ class Exchange:
             )
 
     def input_variant_accepted(self) -> None:
+        """Record an input-variant dialogue recovery accepted upstream."""
         if not (self.used_input_variant_dialogue and self.input_variant_metrics):
             return
         telemetry.record_counter("input_variant_dialogue_recovery_accepted")
@@ -156,6 +174,7 @@ class Exchange:
         )
 
     def input_variant_exhausted(self, detail: str) -> None:
+        """Record exhausted input-variant recovery with bounded diagnostic detail."""
         telemetry.record_counter("input_variant_dialogue_recovery_exhausted")
         telemetry.record_failure("input_variant_dialogue_recovery_exhausted")
         self.log("input_variant_dialogue_recovery_exhausted", detail)
@@ -419,7 +438,7 @@ def _transport_error(exchange: Exchange, error: Exception, attempt: int) -> str:
     return "terminal"
 
 
-def open_upstream(exchange: Exchange):
+def open_upstream(exchange: Exchange) -> UpstreamResponse | None:
     """Open an upstream response or emit the bounded terminal error."""
     stages = RESPONSE_FAILED_MAX_STAGES if exchange.is_responses else 0
     dialogue_slots = RESPONSE_FAILED_DIALOGUE_SLOTS if exchange.is_responses else 0

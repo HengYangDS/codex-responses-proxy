@@ -5,11 +5,15 @@ from __future__ import annotations
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
+from collections.abc import Sequence
 from pathlib import Path
 
+from codex_responses_proxy import product_identity
 from tools.forge import tag_signature
-from tools.release import assemble_assets, identity, signing
+from tools.release import assemble_assets
+from tools.release import identity
+from tools.release import signing
 from tools.release.publication import hosted
 
 
@@ -21,7 +25,6 @@ def select_release(
     releases: Sequence[Mapping[str, object]], tag: str
 ) -> Mapping[str, object] | None:
     """Return the exact immutable release record, or ``None`` before creation."""
-
     matches = [release for release in releases if release.get("tag_name") == tag]
     if not matches:
         return None
@@ -31,7 +34,7 @@ def select_release(
     if not all(
         (
             isinstance(release.get("id"), int) and not isinstance(release.get("id"), bool),
-            release.get("name") == f"Codex Responses Proxy {tag}",
+            release.get("name") == product_identity.release_title(tag),
             release.get("draft") is False,
             release.get("prerelease") is False,
             isinstance(release.get("published_at"), str) and bool(release.get("published_at")),
@@ -50,7 +53,6 @@ def verify_remote_tag(
     commit_oid: str,
 ) -> None:
     """Bind GitHub's annotated tag API identity to local immutable Git objects."""
-
     reference = ref.get("object")
     target = tag_object.get("object")
     if (
@@ -77,7 +79,6 @@ def publish(
     workspace: Path,
 ) -> str:
     """Verify source, publish one exact release, and prove downloaded byte parity."""
-
     if (
         not repository
         or not identity.is_tag(tag)
@@ -109,7 +110,6 @@ def publish(
 
 def prepare_checkout(checkout: Path, tag: str, commit_oid: str) -> tuple[str, str]:
     """Fetch, validate, and detach one exact annotated release tag."""
-
     git = hosted.executable("git", GitHubPublishError)
     _run(
         (
@@ -138,7 +138,9 @@ def prepare_checkout(checkout: Path, tag: str, commit_oid: str) -> tuple[str, st
 
 
 def _verify_source(checkout: Path, tag: str, trust: str) -> None:
-    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-github-tag-trust-") as name:
+    with tempfile.TemporaryDirectory(
+        prefix=f"{product_identity.PRODUCT_SLUG}-github-tag-trust-"
+    ) as name:
         anchor = Path(name) / "allowed-signers"
         anchor.write_text(trust.rstrip("\n") + "\n", encoding="utf-8")
         try:
@@ -220,7 +222,7 @@ def _create_release(repository: str, tag: str, assets: Path) -> None:
             repository,
             "--verify-tag",
             "--title",
-            f"Codex Responses Proxy {tag}",
+            product_identity.release_title(tag),
             "--generate-notes",
             *(str(path) for path in names),
         ),
@@ -242,7 +244,7 @@ def _download_release_assets(repository: str, tag: str, target: Path) -> Path:
             "--dir",
             str(target),
             "--pattern",
-            "codex-responses-proxy-*",
+            f"{product_identity.PRODUCT_SLUG}-*",
             "--pattern",
             "SHA256SUMS*",
         ),
@@ -263,7 +265,9 @@ def _api_mapping(command: Sequence[str]) -> Mapping[str, object]:
     )
     if not isinstance(value, Mapping):
         raise GitHubPublishError("GitHub release identity is malformed")
-    return value
+    if not all(isinstance(key, str) for key in value):
+        raise GitHubPublishError("GitHub release identity is malformed")
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def _run(command: Sequence[str], unavailable: str, *, cwd: Path | None = None) -> None:

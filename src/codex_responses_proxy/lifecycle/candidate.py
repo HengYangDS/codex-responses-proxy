@@ -5,15 +5,21 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
-from pathlib import Path, PurePosixPath
-from typing import Any
+from pathlib import Path
+from pathlib import PurePosixPath
 
 from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import artifact, owned_files, projection
+from codex_responses_proxy.json_value import JsonObject
+from codex_responses_proxy.json_value import ReadOnlyJsonObject
+from codex_responses_proxy.json_value import thaw_value
+from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.service import digest, inventory
+from codex_responses_proxy.lifecycle import owned_files
+from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import inventory
 
 _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
@@ -22,10 +28,9 @@ def validate(
     blobs: tuple[artifact.ArtifactFile, ...],
     version: str,
     receipt_sha256: str,
-    receipt: Mapping[str, Any],
+    receipt: ReadOnlyJsonObject,
 ) -> None:
     """Reject an admitted candidate whose payload contract is inconsistent."""
-
     if _STRICT_VERSION.fullmatch(version) is None:
         raise errors.InstallError("released payload version is invalid")
     if not isinstance(receipt_sha256, str) or len(receipt_sha256) != 64:
@@ -47,7 +52,13 @@ def validate(
         if hashlib.sha256(blob.content).hexdigest() != blob.sha256:
             raise errors.InstallError(f"released payload digest mismatch: {blob.path}")
     manifest = manifest_for(version, blobs, receipt_sha256)
-    if tuple(receipt.get("serving_files", ())) != actual_paths:
+    serving_files = receipt.get("serving_files")
+    if (
+        not isinstance(serving_files, Sequence)
+        or isinstance(serving_files, str)
+        or not all(isinstance(path, str) for path in serving_files)
+        or tuple(serving_files) != actual_paths
+    ):
         raise errors.InstallError("released payload serving file set mismatch")
     if receipt.get("serving_payload_sha256") != manifest["serving_payload_sha256"]:
         raise errors.InstallError("released payload serving identity mismatch")
@@ -57,9 +68,8 @@ def manifest_for(
     version: str,
     blobs: tuple[artifact.ArtifactFile, ...],
     receipt_sha256: str,
-) -> dict[str, Any]:
+) -> JsonObject:
     """Build the installed manifest for one validated candidate."""
-
     digests = {blob.path: blob.sha256 for blob in blobs}
     return projection.manifest_for_digests(version, digests, receipt_sha256)
 
@@ -70,7 +80,6 @@ def reject_unowned_collisions(
     candidate_paths: AbstractSet[str],
 ) -> None:
     """Refuse to overwrite a candidate path not owned by the prior projection."""
-
     install = Path(ctx.install_dir)
     for relative in candidate_paths | set(owned_files.OWNED_PAYLOAD_METADATA):
         path = owned_files.path(install, relative)
@@ -82,11 +91,10 @@ def write_projection(
     ctx: runtime_context.RuntimeContext,
     blobs: tuple[artifact.ArtifactFile, ...],
     version: str,
-    receipt: Mapping[str, Any],
+    receipt: ReadOnlyJsonObject,
     receipt_sha256: str,
 ) -> None:
     """Write candidate bytes, manifest, and receipt into the install root."""
-
     install = Path(ctx.install_dir)
     for blob in blobs:
         target = install.joinpath(*PurePosixPath(blob.path).parts)
@@ -105,7 +113,7 @@ def write_projection(
     )
     owned_files.write_bytes(
         install / inventory.RELEASE_RECEIPT_FILENAME,
-        digest.canonical_json(_json_value(receipt)),
+        digest.canonical_json(thaw_value(receipt)),
         mode=0o600,
         root=install,
     )
@@ -117,7 +125,6 @@ def retire_previous_projection(
     candidate_paths: AbstractSet[str],
 ) -> None:
     """Delete files owned only by the verified previous projection."""
-
     install = Path(ctx.install_dir)
     retired = set(previous_owned) - set(candidate_paths) - set(owned_files.OWNED_PAYLOAD_METADATA)
     for relative in retired:
@@ -131,7 +138,6 @@ def retire_previous_projection(
 
 def remove_projection(ctx: runtime_context.RuntimeContext, paths: AbstractSet[str]) -> None:
     """Remove only files owned by an uncommitted fresh candidate."""
-
     install = Path(ctx.install_dir)
     for relative in paths | set(owned_files.OWNED_PAYLOAD_METADATA):
         owned_files.path(install, relative).unlink(missing_ok=True)
@@ -150,7 +156,6 @@ def remove_projection(ctx: runtime_context.RuntimeContext, paths: AbstractSet[st
 
 def prewarm(executable: Path) -> None:
     """Start the exact installed native executable before listener handoff."""
-
     import subprocess
 
     environment = os.environ.copy()
@@ -170,11 +175,3 @@ def prewarm(executable: Path) -> None:
         raise errors.InstallError("native bundle prewarm failed") from exc
     if completed.returncode:
         raise errors.InstallError("native bundle prewarm failed")
-
-
-def _json_value(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(key): _json_value(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_json_value(item) for item in value]
-    return value

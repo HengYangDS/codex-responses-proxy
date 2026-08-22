@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
-from cyclopts import App, Parameter
+from cyclopts import App
+from cyclopts import Parameter
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL = ROOT / ".config/ci/pipeline.cue"
@@ -32,7 +33,6 @@ PROJECTIONS = (
 
 def render(expression: str) -> bytes:
     """Render one expression through the repository-locked CUE executable."""
-
     result = subprocess.run(
         (
             "mise",
@@ -57,7 +57,6 @@ def render(expression: str) -> bytes:
 
 def reconcile(*, write: bool) -> tuple[str, ...]:
     """Write projections or return paths whose tracked bytes have drifted."""
-
     drift: list[str] = []
     for projection in PROJECTIONS:
         expected = render(projection.expression)
@@ -74,7 +73,6 @@ def _command(
     write: Annotated[bool, Parameter(name="--write", negative=False)] = False,
 ) -> None:
     """Project Forge files or verify that tracked projections are current."""
-
     drift = reconcile(write=write)
     if drift:
         raise SystemExit("projection drift: " + ", ".join(drift))
@@ -82,7 +80,6 @@ def _command(
 
 def main(argv: tuple[str, ...] | None = None) -> None:
     """Run projection reconciliation through the repository parser stack."""
-
     App(default_command=_command, help=__doc__, result_action="return_value")(
         tuple(sys.argv[1:] if argv is None else argv)
     )
