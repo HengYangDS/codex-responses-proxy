@@ -1,0 +1,29 @@
+owner = "product-performance"
+risk_model = "unmeasured request and lifecycle overhead can degrade interactive use while functional behavior remains correct"
+measurement = "pyperf process-isolated measurements of provider resolution, Responses projection, lifecycle readiness, loopback forwarding, and peak memory without third-party network latency"
+false_positive_cost = "host noise can move absolute latency, so review uses machine-readable distributions and explicit historical comparison rather than single-sample wall-clock assertions"
+remediation = "reproduce the regressed metric, profile its semantic owner, and remove the measured bottleneck without weakening correctness or portability"
+review_condition = "reassess workloads and budgets when production traces identify a new dominant path or three valid changes exceed the same reviewed budget"
+
+[execution]
+processes = 6
+values = 8
+warmups = 3
+minimum_time_seconds = 0.03
+minimum_latency_samples = 48
+minimum_memory_samples = 6
+percentile = 95
+
+[budgets.maximum_seconds]
+provider-route-resolution = 0.000050
+responses-projection-4kib = 0.001000
+startup-to-ready = 0.750000
+handoff-control-round-trip = 0.000100
+health-status = 0.050000
+non-streaming-request = 0.050000
+streaming-first-event = 0.050000
+forwarding-1mib = 0.100000
+
+[budgets.maximum_bytes]
+large-request-projection-1mib = 67108864
+large-response-forwarding-1mib = 67108864

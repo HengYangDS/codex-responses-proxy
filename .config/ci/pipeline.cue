@@ -133,6 +133,20 @@ gitlab: {
 			"uv run --locked --no-sync --python python --no-python-downloads nox -s quality",
 		]
 	}
+	"verify-performance": {
+		stage: "verify"
+		rules: #productRules
+		variables: GIT_DEPTH: "0"
+		before_script: #systemBootstrap
+		script: [
+			"uv sync --locked --group quality --no-install-project --python python --no-python-downloads",
+			"uv run --locked --no-sync --python python --no-python-downloads nox -s performance -- \"$CI_PROJECT_DIR/.performance\"",
+		]
+		artifacts: {
+			when: "always"
+			paths: [".performance/latency.json", ".performance/memory.json"]
+		}
+	}
 	"verify-accepted-source": {
 		stage: "verify"
 		rules: [{if: "$CI_COMMIT_BRANCH == \"dev\" || $CI_COMMIT_BRANCH == \"main\""}]
@@ -418,6 +432,37 @@ githubVerify: {
 			}, {
 				name: "Verify lint, format, types, structure, docstrings, and product branch coverage"
 				run:  "uv run --locked --group quality nox -s quality"
+			}]
+		}
+		performance: {
+			name:              "Performance"
+			if:                #Conditions.productProof
+			needs:             "python-matrix"
+			"runs-on":         "ubuntu-24.04"
+			"timeout-minutes": 10
+			steps: [{
+				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+				with: {
+					"fetch-depth": 0
+					"fetch-tags":  true
+					ref:           #Conditions.productSHA
+				}
+			}, {
+				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+				with: "python-version": "${{ needs.python-matrix.outputs.release }}"
+			}, {
+				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d"
+			}, {
+				name: "Measure deterministic product overhead"
+				run:  "uv run --locked --group quality nox -s performance -- \"$RUNNER_TEMP/performance\""
+			}, {
+				uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+				with: {
+					name:                "performance"
+					path:                "${{ runner.temp }}/performance/*.json"
+					"if-no-files-found": "error"
+					"retention-days":    7
+				}
 			}]
 		}
 		"native-assets": {

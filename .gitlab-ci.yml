@@ -109,6 +109,35 @@ verify-python-quality:
   script:
     - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
     - uv run --locked --no-sync --python python --no-python-downloads nox -s quality
+verify-performance:
+  stage: verify
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+    - if: $CI_COMMIT_BRANCH == "dev"
+  variables:
+    GIT_DEPTH: "0"
+  before_script:
+    - |-
+      UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
+      UV_VERSION="$(uv --version)"
+      UV_VERSION="${UV_VERSION#uv }"
+      ACTUAL_UV_VERSION="${UV_VERSION%% *}"
+      EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"
+      if [ "$ACTUAL_UV_VERSION" != "$EXPECTED_UV_VERSION" ]; then
+        printf 'uv version mismatch: expected %s, actual %s
+      ' "$EXPECTED_UV_VERSION" "$ACTUAL_UV_VERSION" >&2
+        exit 1
+      fi
+    - apt-get update -qq
+    - apt-get install -qq -y --no-install-recommends git openssh-client
+  script:
+    - uv sync --locked --group quality --no-install-project --python python --no-python-downloads
+    - uv run --locked --no-sync --python python --no-python-downloads nox -s performance -- "$CI_PROJECT_DIR/.performance"
+  artifacts:
+    when: always
+    paths:
+      - .performance/latency.json
+      - .performance/memory.json
 verify-accepted-source:
   stage: verify
   rules:

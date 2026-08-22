@@ -353,6 +353,7 @@ class TestVerificationContracts:
             "deptry",
             "hatchling",
             "nox",
+            "pyperf",
             "pytest",
             "pytest-mock",
             "pytest-subtests",
@@ -573,3 +574,29 @@ class TestVerificationContracts:
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         assert "uv sync --locked --group quality --no-install-project" in gitlab
         assert "uv sync --locked --all-groups" in github
+
+    def test_performance_is_an_independent_locked_proof_surface(self) -> None:
+        """Performance must be measured explicitly, not inferred from functional tests."""
+
+        metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        quality = metadata["dependency-groups"]["quality"]
+        assert "pyperf==2.10.0" in quality
+        assert (ROOT / ".config/checks/performance/policy.toml").is_file()
+        assert (ROOT / "tools/performance/benchmark.py").is_file()
+        assert (ROOT / "tools/performance/memory.py").is_file()
+
+        nox_source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+        assert "def performance(session: nox.Session)" in nox_source
+        assert '"tools.performance.benchmark"' in nox_source
+        assert '"tools.performance.memory"' in nox_source
+        assert '"tools.performance.verify"' in nox_source
+
+        github = _load_yaml(ROOT / ".github/workflows/verify.yml")
+        gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+        github_jobs = github["jobs"]
+        assert "performance" in github_jobs
+        assert "uv run --locked --group quality nox -s performance" in str(
+            github_jobs["performance"]
+        )
+        assert "verify-performance" in gitlab
+        assert "nox -s performance" in str(gitlab["verify-performance"])

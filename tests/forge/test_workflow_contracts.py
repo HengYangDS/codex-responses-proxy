@@ -71,6 +71,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
         "python",
         "python-windows",
         "python-quality",
+        "performance",
     ):
         assert _mapping(github_jobs[job_id])["if"] == product_proof
     native_proof = product_proof + " || github.ref_type == 'tag'"
@@ -82,6 +83,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
         "python",
         "python-windows",
         "python-quality",
+        "performance",
         "native-assets",
         "native-linux",
     ):
@@ -108,7 +110,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
         "if": "$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS",
         "when": "never",
     } in rules
-    for job_id in ("verify-python", "verify-python-quality"):
+    for job_id in ("verify-python", "verify-python-quality", "verify-performance"):
         job = _mapping(gitlab[job_id])
         assert job["rules"] == [
             {

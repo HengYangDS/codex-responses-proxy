@@ -21,6 +21,7 @@ ROOTS = ("src/codex_responses_proxy", "tools", "tests")
 RUFF_CONFIG = ROOT / ".config/checks/ruff/ruff.toml"
 TY_CONFIG = ROOT / ".config/checks/ty/ty.toml"
 COVERAGE_CONFIG = ROOT / ".config/checks/coverage/coverage.ini"
+PERFORMANCE_POLICY = ROOT / ".config/checks/performance/policy.toml"
 
 nox.options.default_venv_backend = "uv"
 nox.options.error_on_missing_interpreters = True
@@ -161,6 +162,70 @@ def quality(session: nox.Session) -> None:
         "tools/quality/branch_coverage.py",
         "--policy",
         str(ROOT / ".config/checks/coverage/policy.toml"),
+        env=environment,
+    )
+
+
+@nox.session(python=RELEASE_PYTHON)
+def performance(session: nox.Session) -> None:
+    """Measure deterministic product overhead and emit machine-readable evidence."""
+
+    _install_tools(session)
+    work = Path(session.create_tmp()).resolve()
+    wheel = _build_wheel(session, work)
+    _install_wheel(session, wheel)
+    _assert_installed_product(session, work)
+    output = Path(session.posargs[0] if session.posargs else session.create_tmp()).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    benchmark_log = output / "benchmark.log"
+    environment = {
+        **_environment(),
+        "CODEX_RESPONSES_PROXY_HOME": str(output / "payload"),
+        "CODEX_RESPONSES_PROXY_STATE_HOME": str(output / "state"),
+    }
+    execution = tomllib.loads(PERFORMANCE_POLICY.read_text(encoding="utf-8"))["execution"]
+    common = [
+        "--quiet",
+        "--processes",
+        str(execution["processes"]),
+        "--values",
+        str(execution["values"]),
+        "--warmups",
+        str(execution["warmups"]),
+        "--min-time",
+        str(execution["minimum_time_seconds"]),
+        "--output",
+    ]
+    with benchmark_log.open("w", encoding="utf-8") as log:
+        session.run(
+            "python",
+            "-m",
+            "tools.performance.benchmark",
+            *common,
+            str(output / "latency.json"),
+            env=environment,
+            stderr=log,
+        )
+        session.run(
+            "python",
+            "-m",
+            "tools.performance.memory",
+            "--track-memory",
+            *common,
+            str(output / "memory.json"),
+            env=environment,
+            stderr=log,
+        )
+    session.run(
+        "python",
+        "-m",
+        "tools.performance.verify",
+        "--policy",
+        str(PERFORMANCE_POLICY),
+        "--latency",
+        str(output / "latency.json"),
+        "--memory",
+        str(output / "memory.json"),
         env=environment,
     )
 
