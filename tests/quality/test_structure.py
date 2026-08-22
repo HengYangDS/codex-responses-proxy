@@ -188,7 +188,7 @@ class TestStructuralQualityContracts:
 
     def test_git_subprocess_isolation_has_one_semantic_owner(self) -> None:
         owner = ROOT / "tools/git_environment.py"
-        consumers = (
+        isolated_config_consumers = (
             ROOT / "tools/forge/audit.py",
             ROOT / "tools/forge/project.py",
             ROOT / "tools/quality/repository_state.py",
@@ -198,12 +198,18 @@ class TestStructuralQualityContracts:
             ROOT / "tests/forge/test_tagging.py",
             ROOT / "tests/quality/fixtures.py",
         )
+        immutable_proof_consumers = (ROOT / "tools/release/publication/git.py",)
 
         assert owner.is_file()
         assert owner.read_text(encoding="utf-8").count("GIT_CONFIG_NOSYSTEM") == 1
-        for consumer in consumers:
+        for consumer in isolated_config_consumers:
             source = consumer.read_text(encoding="utf-8")
             assert "from tools.git_environment import isolated_config_environment" in source
+            assert "GIT_CONFIG_NOSYSTEM" not in source
+            assert "GIT_CONFIG_GLOBAL" not in source
+        for consumer in immutable_proof_consumers:
+            source = consumer.read_text(encoding="utf-8")
+            assert "from tools.git_environment import immutable_remote_proof_environment" in source
             assert "GIT_CONFIG_NOSYSTEM" not in source
             assert "GIT_CONFIG_GLOBAL" not in source
 

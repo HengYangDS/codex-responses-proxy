@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
+from tools.git_environment import immutable_remote_proof_environment
 
 _TAG = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
@@ -34,7 +35,7 @@ def collect(*, provider: str, remote: str, tag: str, anchor: Path) -> dict[str, 
     if not git:
         raise GitProofError("git is unavailable")
     git = str(Path(git).resolve())
-    environment = _git_environment()
+    environment = immutable_remote_proof_environment()
     try:
         with tempfile.TemporaryDirectory(prefix=f"publication-proof-{provider}-") as workspace_name:
             repository = Path(workspace_name) / "repository"
@@ -119,24 +120,6 @@ def collect(*, provider: str, remote: str, tag: str, anchor: Path) -> dict[str, 
         raise
     except (OSError, subprocess.CalledProcessError) as error:
         raise GitProofError("provider tag fetch, verification, or cleanup failed") from error
-
-
-def _git_environment() -> dict[str, str]:
-    environment = os.environ.copy()
-    for key in tuple(environment):
-        if key.startswith("GIT_"):
-            environment.pop(key)
-    environment.update(
-        {
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_CONFIG_SYSTEM": os.devnull,
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_TERMINAL_PROMPT": "0",
-            "GIT_OPTIONAL_LOCKS": "0",
-            "GIT_NO_REPLACE_OBJECTS": "1",
-        }
-    )
-    return environment
 
 
 def _run(

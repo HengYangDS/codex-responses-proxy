@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import cast
 
 import pytest
 
+from tools.git_environment import immutable_remote_proof_environment
 from tools.release.publication import git
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -155,11 +157,11 @@ class GitPublicationContracts:
 
     def test_environment_error_translation_and_ascii_boundary(self, *, mocker) -> None:
         mocker.patch.dict(
-            git.os.environ,
+            os.environ,
             {"GIT_DIR": "foreign", "GIT_TERMINAL_PROMPT": "9"},
             clear=True,
         )
-        environment = git._git_environment()
+        environment = immutable_remote_proof_environment()
         assert "GIT_DIR" not in environment
         assert environment["GIT_TERMINAL_PROMPT"] == "0"
 
