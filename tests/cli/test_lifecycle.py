@@ -667,6 +667,12 @@ class CliLifecycleContracts:
         watchdog.assert_called_once_with()
         mocker.stop(watchdog)
 
+        assert application.main([application.service_runtime.PREWARM_MODE]) == 0
+        code, stdout, stderr = self.invoke("--help")
+        assert code == 0
+        assert application.service_runtime.PREWARM_MODE not in stdout
+        assert stderr == ""
+
         assert activate.call_count == 3
         assert activate.call_args_list == [
             mocker.call("/opt/proxy/bin/codex-responses-proxy"),

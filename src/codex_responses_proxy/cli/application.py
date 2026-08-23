@@ -259,8 +259,7 @@ def _doctor(evidence: Mapping[str, object]) -> DoctorReport:
 
 def _render(command: str, result: CommandResult, *, as_json: bool) -> None:
     if as_json:
-        payload = {"version": result} if command == "version" else result
-        print(json.dumps(payload, sort_keys=True))
+        print(json.dumps(result, sort_keys=True))
         return
     rendered = presentation.render(command, result)
     if rendered:
@@ -423,6 +422,8 @@ def _run_internal(arguments: list[str]) -> int:
         _error("internal service mode accepts no additional arguments", as_json=False)
         return 2
     mode = arguments[0]
+    if mode == service_runtime.PREWARM_MODE:
+        return 0
     runtime_spec.activate(service_runtime.current_executable())
     if mode == service_runtime.LISTENER_MODE:
         from codex_responses_proxy.service import entrypoint

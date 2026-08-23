@@ -7,6 +7,16 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-08-23
+
+### Fixed
+
+- Decouple native payload prewarm from public CLI syntax through one private,
+  version-neutral executable role, preventing future command cleanup from
+  breaking transactional upgrades.
+- Document the one-time verified-successor bootstrap required when upgrading
+  directly from a 2.x installer that predates the stable private protocol.
+
 ## [3.0.0] - 2026-08-23
 
 ### Changed

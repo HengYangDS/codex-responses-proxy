@@ -211,6 +211,7 @@ def cleanup_runtime(ctx: runtime_context.RuntimeContext, wrapper: Path | None = 
             "--internal-listener",
             "--internal-handoff-child",
             "--internal-watchdog",
+            "--internal-prewarm",
         }
         for pid in process.pids_naming_executable(ctx.executable, roles=roles):
             process.terminate_executable(pid, ctx.executable, roles=roles)

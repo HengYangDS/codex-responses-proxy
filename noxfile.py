@@ -14,6 +14,7 @@ from typing import cast
 import nox
 
 from codex_responses_proxy import product_identity
+from codex_responses_proxy.service import runtime as service_runtime
 
 ROOT = Path(__file__).parent.resolve()
 PYTHONS = tuple((ROOT / ".python-versions").read_text(encoding="utf-8").splitlines())
@@ -542,6 +543,7 @@ def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
     if not executable.is_file():
         session.error(f"native executable was not produced: {executable}")
     _run_without_python(session, executable, "--version")
+    _run_without_python(session, executable, service_runtime.PREWARM_MODE)
     return bundle, executable
 
 

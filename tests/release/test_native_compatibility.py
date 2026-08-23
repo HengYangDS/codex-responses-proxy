@@ -67,6 +67,24 @@ def _materialize_native_bundle(candidate: artifact.VerifiedArtifact, output: Pat
     return output
 
 
+def _supports_stable_prewarm(executable: Path) -> bool:
+    """Return whether one native release implements the stable private probe."""
+
+    environment = os.environ.copy()
+    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    environment.pop("PYTHONHOME", None)
+    environment.pop("PYTHONPATH", None)
+    completed = subprocess.run(
+        [str(executable), "--internal-prewarm"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=False,
+        env=environment,
+        timeout=120,
+    )
+    return completed.returncode == 0
+
+
 class TestPublishedPredecessorCompatibility:
     """Prove one authentic published predecessor upgrades without traffic loss."""
 
@@ -282,9 +300,7 @@ class TestPublishedPredecessorCompatibility:
             normal_started.wait(timeout=20)
             cleanups.callback(release.set)
 
-            upgraded = run_command(
-                previous_executable,
-                environment,
+            upgrade_arguments = (
                 "install",
                 "--asset",
                 str(current_fixture),
@@ -295,6 +311,50 @@ class TestPublishedPredecessorCompatibility:
                 "--timeout-seconds",
                 "60",
                 "--json",
+            )
+            if _supports_stable_prewarm(previous_executable):
+                upgrade_driver = previous_executable
+            else:
+                rejected = run_command(
+                    previous_executable,
+                    environment,
+                    *upgrade_arguments,
+                    expected=2,
+                )
+                assert rejected == {
+                    "error": {
+                        "code": "lifecycle_error",
+                        "message": "native bundle prewarm failed",
+                        "next": "codex-responses-proxy doctor",
+                    }
+                }
+                assert not payload_state.transaction_root(ctx).exists()
+                retained = run_command(
+                    previous_executable,
+                    environment,
+                    "status",
+                    "--port",
+                    str(port),
+                    "--json",
+                )
+                assert retained["release"] == previous_version
+                assert (
+                    run_command(
+                        previous_executable,
+                        environment,
+                        "doctor",
+                        "--port",
+                        str(port),
+                        "--json",
+                    )["ok"]
+                    is True
+                )
+                upgrade_driver = current_executable
+
+            upgraded = run_command(
+                upgrade_driver,
+                environment,
+                *upgrade_arguments,
             )
             release.set()
             stream_holder.join(timeout=60)

@@ -20,6 +20,7 @@ from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import inventory
+from codex_responses_proxy.service import runtime as service_runtime
 
 _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
@@ -164,7 +165,7 @@ def prewarm(executable: Path) -> None:
     environment.pop("PYTHONPATH", None)
     try:
         completed = subprocess.run(
-            [str(executable), "--version"],
+            [str(executable), service_runtime.PREWARM_MODE],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             check=False,

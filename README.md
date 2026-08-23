@@ -76,6 +76,16 @@ exact path so status, rollback, and uninstall do not depend on a later shell's
 environment. Installation never downloads dependencies or reads provider
 credentials.
 
+### Upgrade from 2.x
+
+Release 2.0.58 coupled candidate prewarm to the retired public `version`
+subcommand and therefore cannot drive an in-place upgrade to 3.x. For that one
+historical boundary, extract the verified 3.x archive and invoke its bundled
+`bin/codex-responses-proxy install` command with the same `--asset` and
+`--trust-anchor` arguments. The candidate then owns the normal transactional
+upgrade. Releases after 3.0.0 use a private, version-neutral prewarm protocol;
+future public CLI changes do not alter it.
+
 ## Configure a client route
 
 The listener exposes one provider-scoped namespace per admitted provider:

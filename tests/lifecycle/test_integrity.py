@@ -158,14 +158,14 @@ class TestPayloadValidation:
         completed = mocker.patch.object(
             subprocess,
             "run",
-            return_value=subprocess.CompletedProcess(("proxy", "version"), 0),
+            return_value=subprocess.CompletedProcess(("proxy", "--internal-prewarm"), 0),
         )
         executable = tmp_path / "proxy"
         executable.write_bytes(b"native")
         payload_candidate.prewarm(executable)
         arguments = completed.call_args.args[0]
         assert arguments[0] == str(executable)
-        assert arguments[1:] == ["--version"]
+        assert arguments[1:] == [payload_candidate.service_runtime.PREWARM_MODE]
         environment = completed.call_args.kwargs["env"]
         assert environment["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
         assert "PYTHONHOME" not in environment
@@ -173,9 +173,9 @@ class TestPayloadValidation:
         assert completed.call_args.kwargs["timeout"] == 120
 
         for effect in (
-            subprocess.CompletedProcess(("proxy", "version"), 2),
+            subprocess.CompletedProcess(("proxy", "--internal-prewarm"), 2),
             OSError("cannot execute"),
-            subprocess.TimeoutExpired(("proxy", "version"), 120),
+            subprocess.TimeoutExpired(("proxy", "--internal-prewarm"), 120),
         ):
             with subtests.test(effect=type(effect).__name__):
                 mocker.patch.object(

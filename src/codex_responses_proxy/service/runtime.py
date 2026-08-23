@@ -8,6 +8,7 @@ from pathlib import Path
 LISTENER_MODE = "--internal-listener"
 WATCHDOG_MODE = "--internal-watchdog"
 HANDOFF_CHILD_MODE = "--internal-handoff-child"
+PREWARM_MODE = "--internal-prewarm"
 
 
 def current_executable() -> str:

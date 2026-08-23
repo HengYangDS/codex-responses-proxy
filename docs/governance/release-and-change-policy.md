@@ -153,6 +153,12 @@ The installer must:
 6. prove one accepting native listener through transactional handoff;
 7. finalize or retain an explicit recovery-required state.
 
+Prewarm uses one private executable role owned by the product runtime. Public
+CLI commands and options are not an installer-to-successor protocol. A
+historical installer that predates this role is crossed once by invoking the
+verified successor executable; it does not justify a public compatibility
+alias or a second installer.
+
 ## Runtime operations
 
 | Command             | Mutation              | Proof boundary                          |
