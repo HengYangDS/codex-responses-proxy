@@ -61,7 +61,8 @@ class ReleaseAssetContracts:
         host_path = os.pathsep.join(("host-tools", "system-tools"))
         with pytest.MonkeyPatch.context() as patch:
             patch.setenv("PATH", host_path)
-            patch.setenv("SystemRoot", "host-system-root")
+            patch.setenv("HOST_EXECUTION_CONTEXT", "preserved")
+            patch.setenv("CODEX_RESPONSES_PROXY_STALE", "retired")
             environment = native_environment(
                 tmp_path / "home",
                 tmp_path / "payload",
@@ -69,7 +70,8 @@ class ReleaseAssetContracts:
             )
 
         assert environment["PATH"] == host_path
-        assert environment["SystemRoot"] == "host-system-root"
+        assert environment["HOST_EXECUTION_CONTEXT"] == "preserved"
+        assert "CODEX_RESPONSES_PROXY_STALE" not in environment
 
     def test_native_environment_preserves_the_linux_user_bus(self, tmp_path: Path) -> None:
         """Let isolated native commands reach only the current user's systemd bus."""

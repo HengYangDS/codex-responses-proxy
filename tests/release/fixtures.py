@@ -212,19 +212,23 @@ def native_service_projection(ctx: runtime_context.RuntimeContext) -> dict[str, 
 
 
 def native_environment(home: Path, install: Path, state: Path) -> dict[str, str]:
-    """Return a minimal isolated environment for one native installation."""
+    """Isolate product state without deleting the host execution substrate."""
 
     environment = {
-        "CODEX_RESPONSES_PROXY_HOME": str(install),
-        "CODEX_RESPONSES_PROXY_STATE_HOME": str(state),
-        "HOME": str(home),
-        "PATH": os.environ.get("PATH", os.defpath),
-        "PYTHONNOUSERSITE": "1",
-        "USERPROFILE": str(home),
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("CODEX_RESPONSES_PROXY_")
     }
-    for name in ("DBUS_SESSION_BUS_ADDRESS", "SystemRoot", "WINDIR", "XDG_RUNTIME_DIR"):
-        if value := os.environ.get(name):
-            environment[name] = value
+    environment.update(
+        {
+            "CODEX_RESPONSES_PROXY_HOME": str(install),
+            "CODEX_RESPONSES_PROXY_STATE_HOME": str(state),
+            "HOME": str(home),
+            "PYTHONNOUSERSITE": "1",
+            "USERPROFILE": str(home),
+        }
+    )
+    environment.setdefault("PATH", os.defpath)
     return environment
 
 
