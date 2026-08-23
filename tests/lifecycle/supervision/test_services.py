@@ -55,8 +55,9 @@ class TestServiceDefinitions:
         assert "multi-user.target" not in unit
 
     def test_windows_task(self):
-        xml = windows.render_task_xml(WINDOWS_CONTEXT)
-        minidom.parseString(xml)
+        rendered = windows.render_task_xml(WINDOWS_CONTEXT)
+        minidom.parseString(rendered)
+        xml = rendered.decode("utf-16")
         _assert_fragments(xml, WINDOWS_TASK_CONTAINS)
         _assert_fragments(xml.lower(), exclude=("cmd.exe", "comspec", "run-watchdog.cmd"))
 
@@ -65,7 +66,7 @@ class TestServiceDefinitions:
         definitions = (
             macos.render_plist(ctx),
             linux.render_unit(ctx),
-            windows.render_task_xml(ctx),
+            windows.render_task_xml(ctx).decode("utf-16"),
         )
         for definition in definitions:
             with subtests.test(definition=definition[:40]):
@@ -76,7 +77,7 @@ class TestServiceDefinitions:
         definitions = (
             macos.render_plist(POSIX_CONTEXT),
             linux.render_unit(POSIX_CONTEXT),
-            windows.render_task_xml(WINDOWS_CONTEXT),
+            windows.render_task_xml(WINDOWS_CONTEXT).decode("utf-16"),
         )
         for definition in definitions:
             with subtests.test(definition=definition[:40]):
