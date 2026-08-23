@@ -73,6 +73,22 @@ class ReleaseAssetContracts:
         assert environment["HOST_EXECUTION_CONTEXT"] == "preserved"
         assert "CODEX_RESPONSES_PROXY_STALE" not in environment
 
+    def test_native_environment_isolates_user_command_roots(self, tmp_path: Path) -> None:
+        """Keep command projection inside the isolated test user home."""
+
+        home = tmp_path / "home"
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setenv("LOCALAPPDATA", str(tmp_path / "real-local-app-data"))
+            patch.setenv("XDG_BIN_HOME", str(tmp_path / "real-bin"))
+            environment = native_environment(
+                home,
+                tmp_path / "payload",
+                tmp_path / "state",
+            )
+
+        assert environment["LOCALAPPDATA"] == str(home / "AppData" / "Local")
+        assert environment["XDG_BIN_HOME"] == str(home / ".local" / "bin")
+
     def test_native_environment_preserves_the_linux_user_bus(self, tmp_path: Path) -> None:
         """Let isolated native commands reach only the current user's systemd bus."""
 

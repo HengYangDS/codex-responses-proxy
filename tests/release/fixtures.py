@@ -224,8 +224,10 @@ def native_environment(home: Path, install: Path, state: Path) -> dict[str, str]
             "CODEX_RESPONSES_PROXY_HOME": str(install),
             "CODEX_RESPONSES_PROXY_STATE_HOME": str(state),
             "HOME": str(home),
+            "LOCALAPPDATA": str(home / "AppData" / "Local"),
             "PYTHONNOUSERSITE": "1",
             "USERPROFILE": str(home),
+            "XDG_BIN_HOME": str(home / ".local" / "bin"),
         }
     )
     environment.setdefault("PATH", os.defpath)
