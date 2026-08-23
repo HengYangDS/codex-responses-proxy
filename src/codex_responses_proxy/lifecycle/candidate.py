@@ -164,7 +164,7 @@ def prewarm(executable: Path) -> None:
     environment.pop("PYTHONPATH", None)
     try:
         completed = subprocess.run(
-            [str(executable), "version"],
+            [str(executable), "--version"],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             check=False,

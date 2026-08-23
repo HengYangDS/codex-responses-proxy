@@ -47,6 +47,13 @@ class ProductInterfaceContracts:
             assert "Usage: codex-responses-proxy" in stdout
             assert stderr == ""
 
+    def test_top_level_version_flag_is_the_only_version_surface(self) -> None:
+        code, stdout, stderr = self.invoke("--version")
+
+        assert code == 0
+        assert stdout.strip() == application._release_version()
+        assert stderr == ""
+
     def test_every_public_command_offers_the_same_machine_output_switch(self) -> None:
         for command in application.PUBLIC_COMMANDS:
             code, stdout, stderr = self.invoke(command, "--help")
@@ -65,7 +72,6 @@ class ProductInterfaceContracts:
             ("recover", "--port", "invalid"),
             ("reload", "--timeout-seconds", "invalid"),
             ("uninstall", "--port", "invalid"),
-            ("version", "unexpected"),
         )
         for arguments in cases:
             code, stdout, stderr = self.invoke(*arguments)
@@ -83,7 +89,6 @@ class ProductInterfaceContracts:
             "recover": {"state": "closed", "version": "2.0.48"},
             "reload": {"old_pid": 41, "new_pid": 42},
             "uninstall": {"state": "uninstalled", "stopped": 1, "command_removed": True},
-            "version": "2.0.48",
         }
         arguments = {
             "install": (
@@ -97,15 +102,13 @@ class ProductInterfaceContracts:
             "recover": (),
             "reload": (),
             "uninstall": (),
-            "version": (),
         }
         dispatch = mocker.patch.object(application, "dispatch")
         for command in application.PUBLIC_COMMANDS:
             dispatch.return_value = results[command]
             code, stdout, stderr = self.invoke(command, *arguments[command], "--json")
             assert code == 0
-            expected = {"version": results[command]} if command == "version" else results[command]
-            assert json.loads(stdout) == expected
+            assert json.loads(stdout) == results[command]
             assert stderr == ""
 
     def test_parse_failures_are_bounded_in_text_and_json(self) -> None:
@@ -238,18 +241,12 @@ class ProductInterfaceContracts:
             runpy.run_module("codex_responses_proxy.cli.__main__", run_name="__main__")
         main.assert_called_once_with()
 
-    def test_version_uses_release_owner_without_traceback_or_warning(self) -> None:
-        code, stdout, stderr = self.invoke("version")
-        assert code == 0
-        assert stdout.strip() == application._release_version()
-        assert stderr == ""
-
-    def test_version_uses_installed_distribution_metadata_without_a_checkout_file(
+    def test_version_flag_uses_installed_distribution_metadata_without_a_checkout_file(
         self, *, mocker
     ) -> None:
         expected = importlib.metadata.version("codex-responses-proxy")
         mocker.patch.object(application, "_source_version", return_value=None)
-        code, stdout, stderr = self.invoke("version")
+        code, stdout, stderr = self.invoke("--version")
         assert code == 0
         assert stdout.strip() == expected
         assert stderr == ""
@@ -351,7 +348,7 @@ class ProductInterfaceContracts:
             pytest.skip("native executable supplied by release session")
         with tempfile.TemporaryDirectory() as empty_path:
             result = subprocess.run(
-                [executable, "version"],
+                [executable, "--version"],
                 cwd=empty_path,
                 env={"PATH": empty_path, "HOME": os.environ.get("HOME", "")},
                 text=True,
@@ -398,7 +395,6 @@ class ProductInterfaceContracts:
                     "recover": (0, ("--port", port)),
                     "reload": (2, ("--port", port)),
                     "uninstall": (0, ("--port", port)),
-                    "version": (0, ()),
                 }
                 for command, (expected_code, arguments) in cases.items():
                     result = subprocess.run(

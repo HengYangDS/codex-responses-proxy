@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-08-23
+
+### Changed
+
+- Expose release identity through the conventional top-level `--version`
+  option and remove the redundant `version` subcommand.
+
 ## [2.0.58] - 2026-08-22
 
 ### Fixed

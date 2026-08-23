@@ -30,9 +30,7 @@ from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle import uninstall
 from codex_responses_proxy.service import runtime as service_runtime
 
-PUBLIC_COMMANDS = frozenset(
-    {"install", "status", "doctor", "recover", "reload", "uninstall", "version"}
-)
+PUBLIC_COMMANDS = frozenset({"install", "status", "doctor", "recover", "reload", "uninstall"})
 _FAILURE_STATUS = "failed"
 _RECOVERY_NEXT = product_identity.command("reload")
 _JSON = Annotated[
@@ -86,7 +84,7 @@ class DoctorReport(TypedDict):
     checks: dict[str, DoctorCheck]
 
 
-type CommandResult = str | Mapping[str, object] | None
+type CommandResult = Mapping[str, object] | None
 
 
 def _release_version() -> str:
@@ -135,10 +133,6 @@ def _purge_argument(arguments: Mapping[str, object]) -> bool:
 
 
 @overload
-def dispatch(command: Literal["version"], **arguments: object) -> str: ...
-
-
-@overload
 def dispatch(
     command: Literal["install", "status", "recover", "reload", "uninstall"],
     **arguments: object,
@@ -155,8 +149,6 @@ def dispatch(command: str, **arguments: object) -> CommandResult: ...
 
 def dispatch(command: str, **arguments: object) -> CommandResult:
     """Execute one parsed command through its semantic owner."""
-    if command == "version":
-        return _release_version()
     if command == "install":
         return install.install_asset(
             _path_argument(arguments, "asset"),
@@ -321,7 +313,7 @@ def _app() -> App:
     app = App(
         name=product_identity.COMMAND_NAME,
         help=__doc__,
-        version_flags=[],
+        version=_release_version,
         print_error=False,
         exit_on_error=False,
         result_action="return_value",
@@ -394,11 +386,6 @@ def _app() -> App:
     ) -> int:
         """Remove the native service and optionally its owned state."""
         return _execute("uninstall", as_json=json_output, port=port, purge=purge)
-
-    @app.command
-    def version(*, json_output: _JSON = False) -> int:
-        """Print the product version."""
-        return _execute("version", as_json=json_output)
 
     return app
 

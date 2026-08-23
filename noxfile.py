@@ -320,7 +320,7 @@ def release(session: nox.Session) -> None:
         env=environment,
     )
     _run_without_python(session, executable, "--help")
-    _run_without_python(session, executable, "version")
+    _run_without_python(session, executable, "--version")
     _run_without_python(
         session,
         executable,
@@ -541,7 +541,7 @@ def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
     executable = bundle / name
     if not executable.is_file():
         session.error(f"native executable was not produced: {executable}")
-    _run_without_python(session, executable, "version")
+    _run_without_python(session, executable, "--version")
     return bundle, executable
 
 

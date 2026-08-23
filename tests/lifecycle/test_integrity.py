@@ -165,7 +165,7 @@ class TestPayloadValidation:
         payload_candidate.prewarm(executable)
         arguments = completed.call_args.args[0]
         assert arguments[0] == str(executable)
-        assert arguments[1:] == ["version"]
+        assert arguments[1:] == ["--version"]
         environment = completed.call_args.kwargs["env"]
         assert environment["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
         assert "PYTHONHOME" not in environment

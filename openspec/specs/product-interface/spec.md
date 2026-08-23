@@ -33,7 +33,7 @@ not a wrapper, alias, shell-profile edit, or second copy.
 
 #### Scenario: A user invokes a released product
 
-- **WHEN** the user runs help, `version`, or `status` from a pristine directory
+- **WHEN** the user runs help, `--version`, or `status` from a pristine directory
   with Python absent from `PATH`
 - **THEN** the executable completes its documented behavior from the verified
   bundle
@@ -59,8 +59,9 @@ not a wrapper, alias, shell-profile edit, or second copy.
 ### Requirement: Small public lifecycle grammar
 
 The public command grammar SHALL contain only `install`, `status`, `doctor`,
-`reload`, `recover`, `uninstall`, and `version`. Private service execution MUST
-NOT appear as public commands or aliases.
+`reload`, `recover`, and `uninstall`. The executable SHALL expose release
+identity through the conventional top-level `--version` option. Private service
+execution MUST NOT appear as public commands or aliases.
 
 #### Scenario: Public help is rendered
 

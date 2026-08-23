@@ -592,20 +592,28 @@ class CliLifecycleContracts:
             }
         }
 
-    def test_install_and_version_dispatch_to_their_single_owners(self, *, mocker) -> None:
+    def test_install_dispatches_to_its_single_owner(self, *, mocker) -> None:
         asset = Path("release.tar.gz")
         anchor = Path("allowed-signers")
         install = mocker.patch.object(
             application.install, "install_asset", return_value={"ok": True}
         )
-        version = mocker.patch.object(application, "_release_version", return_value="2.0.8")
-
         assert application.dispatch("install", asset=asset, trust_anchor=anchor, port=8801) == {
             "ok": True
         }
-        assert application.dispatch("version") == "2.0.8"
         install.assert_called_once_with(asset, trust_anchor=anchor, port=8801, timeout_seconds=30.0)
-        version.assert_called_once_with()
+
+    def test_internal_dispatch_argument_contracts_fail_closed(self) -> None:
+        cases = (
+            ("install", {"asset": "release.tar.gz", "trust_anchor": Path("trust"), "port": 8792}),
+            ("status", {"port": True}),
+            ("reload", {"port": 8792, "timeout_seconds": True}),
+            ("uninstall", {"port": 8792, "purge": "yes"}),
+        )
+
+        for command, arguments in cases:
+            with pytest.raises(TypeError):
+                application.dispatch(command, **arguments)
 
     def test_subcommand_help_and_parse_errors_are_bounded(self) -> None:
         for arguments in (("status", "--help"), ("install", "--help")):

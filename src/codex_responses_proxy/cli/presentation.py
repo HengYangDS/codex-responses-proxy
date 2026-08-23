@@ -34,10 +34,8 @@ def _page(
     return "\n".join(lines)
 
 
-def render(command: str, result: str | Mapping[str, object] | None) -> str:
+def render(command: str, result: Mapping[str, object] | None) -> str:
     """Render one successful public command without exposing serialized internals."""
-    if command == "version" or isinstance(result, str):
-        return str(result)
     if not isinstance(result, Mapping):
         return ""
     if command == "status":
