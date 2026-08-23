@@ -218,7 +218,7 @@ def native_environment(home: Path, install: Path, state: Path) -> dict[str, str]
         "CODEX_RESPONSES_PROXY_HOME": str(install),
         "CODEX_RESPONSES_PROXY_STATE_HOME": str(state),
         "HOME": str(home),
-        "PATH": os.pathsep.join(("/usr/bin", "/bin", "/usr/sbin", "/sbin")),
+        "PATH": os.environ.get("PATH", os.defpath),
         "PYTHONNOUSERSITE": "1",
         "USERPROFILE": str(home),
     }
