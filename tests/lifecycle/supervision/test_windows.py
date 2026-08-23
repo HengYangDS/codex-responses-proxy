@@ -20,16 +20,37 @@ class TestWindowsLifecycle:
     def test_task_executes_the_installed_binary_in_private_watchdog_mode(self):
         ctx = platform_context(windows=True)
         rendered = windows.render_task_xml(ctx)
-        assert f"<Command>{ctx.executable}</Command>" in rendered
-        assert "<Arguments>--internal-watchdog</Arguments>" in rendered
-        assert "python" not in rendered.lower()
-        assert ".py" not in rendered
+        decoded = rendered.decode("utf-16")
+        assert f"<Command>{ctx.executable}</Command>" in decoded
+        assert "<Arguments>--internal-watchdog</Arguments>" in decoded
+        assert "python" not in decoded.lower()
+        assert ".py" not in decoded
+
+    def test_task_xml_bytes_use_the_declared_utf16_encoding(self, *, mocker):
+        ctx = platform_context(windows=True)
+        rendered = windows.render_task_xml(ctx)
+
+        assert rendered.startswith((b"\xff\xfe", b"\xfe\xff"))
+        assert "encoding='utf-16'" in rendered.decode("utf-16").splitlines()[0]
+        assert windows.ET.fromstring(rendered).tag == f"{{{windows._TASK_NAMESPACE}}}Task"
+
+        imported = []
+
+        def run(arguments, **_kwargs):
+            if arguments[:2] == ["schtasks", "/create"]:
+                imported.append(Path(arguments[-1]).read_bytes())
+            return _completed()
+
+        mocker.patch.object(windows.subprocess, "run", side_effect=run)
+        windows.install(ctx)
+
+        assert imported == [rendered]
 
     def test_configured_executable_reads_only_the_registered_task(self, *, mocker):
         ctx = platform_context(windows=True)
         for completed, expected in (
             (_completed(returncode=1), None),
-            (_completed(stdout=windows.render_task_xml(ctx)), ctx.executable),
+            (_completed(stdout=windows.render_task_xml(ctx).decode("utf-16")), ctx.executable),
             (_completed(stdout="not xml"), None),
         ):
             invoked = mocker.patch.object(windows.subprocess, "run", return_value=completed)

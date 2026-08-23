@@ -35,8 +35,8 @@ def _current_user() -> str:
     return f"{domain}\\{user}" if domain else user
 
 
-def render_task_xml(ctx: runtime_spec.NativeServiceContext) -> str:
-    """Serialize the minimal Task Scheduler projection for one runtime."""
+def render_task_xml(ctx: runtime_spec.NativeServiceContext) -> bytes:
+    """Serialize one Task Scheduler projection as self-declared UTF-16 bytes."""
     root = ET.Element(f"{{{_TASK_NAMESPACE}}}Task", {"version": "1.2"})
     registration = _element(root, "RegistrationInfo")
     _element(registration, "Description", f"{product_identity.DISPLAY_NAME} watchdog")
@@ -73,7 +73,7 @@ def render_task_xml(ctx: runtime_spec.NativeServiceContext) -> str:
     _element(execute, "Arguments", service_runtime.WATCHDOG_MODE)
     _element(execute, "WorkingDirectory", ctx.install_dir)
     ET.indent(root, space="  ")
-    return ET.tostring(root, encoding="unicode", xml_declaration=True) + "\n"
+    return ET.tostring(root, encoding="utf-16", xml_declaration=True)
 
 
 def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
@@ -107,7 +107,7 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
     """Install and start the Windows scheduled watchdog task."""
     with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as stream:
         xml_path = stream.name
-        stream.write(render_task_xml(ctx).encode("utf-16"))
+        stream.write(render_task_xml(ctx))
     try:
         subprocess.run(
             ["schtasks", "/delete", "/tn", ctx.service_id, "/f"],
