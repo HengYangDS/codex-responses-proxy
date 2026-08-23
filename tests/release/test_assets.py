@@ -53,12 +53,15 @@ def _installed_distribution(root: Path, provenance: str) -> Path:
 class ReleaseAssetContracts:
     """Keep published bytes portable, reproducible, and exactly enumerable."""
 
-    def test_native_environment_preserves_the_host_tool_path(self, tmp_path: Path) -> None:
-        """Let the installed binary reach platform-native verification tools."""
+    def test_native_environment_preserves_the_host_execution_substrate(
+        self, tmp_path: Path
+    ) -> None:
+        """Let the installed binary execute platform-native verification tools."""
 
         host_path = os.pathsep.join(("host-tools", "system-tools"))
         with pytest.MonkeyPatch.context() as patch:
             patch.setenv("PATH", host_path)
+            patch.setenv("SystemRoot", "host-system-root")
             environment = native_environment(
                 tmp_path / "home",
                 tmp_path / "payload",
@@ -66,6 +69,7 @@ class ReleaseAssetContracts:
             )
 
         assert environment["PATH"] == host_path
+        assert environment["SystemRoot"] == "host-system-root"
 
     def test_native_environment_preserves_the_linux_user_bus(self, tmp_path: Path) -> None:
         """Let isolated native commands reach only the current user's systemd bus."""

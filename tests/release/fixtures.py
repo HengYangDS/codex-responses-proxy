@@ -222,7 +222,7 @@ def native_environment(home: Path, install: Path, state: Path) -> dict[str, str]
         "PYTHONNOUSERSITE": "1",
         "USERPROFILE": str(home),
     }
-    for name in ("DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"):
+    for name in ("DBUS_SESSION_BUS_ADDRESS", "SystemRoot", "WINDIR", "XDG_RUNTIME_DIR"):
         if value := os.environ.get(name):
             environment[name] = value
     return environment
