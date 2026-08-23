@@ -23,7 +23,7 @@ codex-responses-proxy.watchdog
 LINUX_CONTAINS = f"""Restart=always
 RestartSec=3
 WantedBy=default.target
-ExecStart={EXECUTABLE} --internal-watchdog""".splitlines()
+ExecStart="{EXECUTABLE}" --internal-watchdog""".splitlines()
 WINDOWS_TASK_CONTAINS = f"""<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
 <LogonTrigger>
 <RestartOnFailure>

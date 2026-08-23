@@ -10,6 +10,12 @@ ENVIRONMENT_PREFIX = PRODUCT_SLUG.replace("-", "_").upper()
 SERVICE_ID = f"{PRODUCT_SLUG}.watchdog"
 RELEASE_NAMESPACE = f"{PRODUCT_SLUG}-release"
 RELEASE_PRINCIPAL = RELEASE_NAMESPACE
+RELEASE_PLATFORMS = ("linux-x86_64", "macos-arm64", "windows-x86_64")
+_NATIVE_RELEASE_PLATFORMS = {
+    ("Darwin", "arm64"): "macos-arm64",
+    ("Linux", "x86_64"): "linux-x86_64",
+    ("Windows", "AMD64"): "windows-x86_64",
+}
 
 
 def environment_name(suffix: str) -> str:
@@ -20,6 +26,18 @@ def environment_name(suffix: str) -> str:
 def executable_name(*, windows: bool) -> str:
     """Return the public executable name for one platform family."""
     return f"{COMMAND_NAME}.exe" if windows else COMMAND_NAME
+
+
+def native_release_platform(system: str, machine: str) -> str:
+    """Return the released platform identity for one native host."""
+    try:
+        platform_id = _NATIVE_RELEASE_PLATFORMS[system, machine]
+    except KeyError:
+        message = f"unsupported native release platform: {system}-{machine}"
+        raise ValueError(message) from None
+    if platform_id not in RELEASE_PLATFORMS:
+        raise ValueError("native release platform is absent from the release inventory")
+    return platform_id
 
 
 def release_title(tag: str) -> str:

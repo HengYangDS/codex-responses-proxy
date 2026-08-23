@@ -36,7 +36,7 @@ def _mapping(value: object) -> dict[str, object]:
 def _required_uv_version() -> str:
     metadata: object = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     if not isinstance(metadata, dict):
-        raise AssertionError("project metadata must be a table")
+        raise TypeError("project metadata must be a table")
     tool = metadata.get("tool")
     uv = tool.get("uv") if isinstance(tool, dict) else None
     requirement: object = uv.get("required-version") if isinstance(uv, dict) else None
@@ -317,7 +317,22 @@ class TestVerificationContracts:
                 for node in ast.walk(function)
             )
         }
-        assert native_build_owners == {"release", "release_compatibility"}
+        assert native_build_owners == {"_build_native_candidate"}
+
+    def test_linux_asset_construction_defers_service_acceptance_to_the_native_host(
+        self,
+    ) -> None:
+        """Keep containerized construction independent of a host service manager."""
+
+        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        asset_source = ast.get_source_segment(source, functions["release_asset"]) or ""
+
+        assert '"tests/cli/test_interface.py"' in asset_source
+        assert '"tests/service/handoff/test_subprocess.py"' in asset_source
+        assert '"tests/release/test_native_lifecycle.py"' not in asset_source
+        assert "_package_release_asset" in asset_source
 
     def test_release_compatibility_uses_one_verified_published_predecessor(
         self,
@@ -358,6 +373,21 @@ class TestVerificationContracts:
         )
         assert isinstance(pytestmark.value, ast.List)
         markers = {ast.unparse(element) for element in pytestmark.value.elts}
+
+        lifecycle = (ROOT / "tests/release/test_native_lifecycle.py").read_text(encoding="utf-8")
+        lifecycle_tree = ast.parse(lifecycle)
+        lifecycle_marks = next(
+            node
+            for node in lifecycle_tree.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "pytestmark"
+                for target in node.targets
+            )
+        )
+        assert isinstance(lifecycle_marks.value, ast.List)
+        assert not any("skipif" in ast.unparse(element) for element in lifecycle_marks.value.elts)
+        assert "pytest.skip" not in lifecycle
         assert "pytest.mark.native_distribution" in markers
         assert "pytest.mark.usefixtures(preserve_native_host_projection.__name__)" in markers
 
@@ -524,13 +554,13 @@ class TestVerificationContracts:
         assert '"HOME": str(sandbox / "home")' in owner_source
         assert '"USERPROFILE": str(sandbox / "home")' in owner_source
         assert '"HOME": str(Path.home())' not in owner_source
-        release = next(
+        acceptance = next(
             node
             for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "release"
+            if isinstance(node, ast.FunctionDef) and node.name == "_accept_native_executable"
         )
-        release_source = ast.get_source_segment(source, release) or ""
-        assert "isolated_listener=True" in release_source
+        acceptance_source = ast.get_source_segment(source, acceptance) or ""
+        assert "isolated_listener=True" in acceptance_source
 
     def test_release_collects_ctypes_as_source_outside_the_pyz_archive(self) -> None:
         """Avoid marshal identity drift in the Python 3.14 ``ctypes`` code object."""

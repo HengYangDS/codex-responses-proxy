@@ -7,6 +7,19 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-08-23
+
+### Fixed
+
+- Prove the installed native service lifecycle on macOS, Linux, and Windows,
+  including exact teardown after interrupted validation without touching the
+  canonical service.
+- Build Linux release bytes in the pinned container and validate the resulting
+  executable against a real user systemd manager on a native Linux runner.
+- Derive the supported release-platform inventory from one product identity
+  authority and remove the redundant runtime dependency used only for home
+  directory discovery.
+
 ## [3.0.1] - 2026-08-23
 
 ### Fixed

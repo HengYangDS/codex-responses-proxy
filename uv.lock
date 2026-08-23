@@ -60,7 +60,6 @@ source = { editable = "." }
 dependencies = [
     { name = "certifi" },
     { name = "cyclopts" },
-    { name = "platformdirs" },
     { name = "psutil" },
     { name = "rich" },
 ]
@@ -88,7 +87,6 @@ release = [
 requires-dist = [
     { name = "certifi", specifier = "==2026.7.22" },
     { name = "cyclopts", specifier = "==4.23.1" },
-    { name = "platformdirs", specifier = "==4.11.3" },
     { name = "psutil", specifier = "==7.2.2" },
     { name = "rich", specifier = "==15.0.0" },
 ]

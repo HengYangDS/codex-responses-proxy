@@ -1,0 +1,72 @@
+schema_version = 2
+id = "change:cross-platform-terminal-acceptance"
+intent = "Prove one portable Proxy lifecycle on macOS, Linux, and Windows while repairing exact recovery, service ownership, and repository governance boundaries."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  ".config/ci/**",
+  ".config/quality/**",
+  ".ethos/commitment.toml",
+  ".github/workflows/**",
+  ".gitlab-ci.yml",
+  "CHANGELOG.md",
+  "CONTRIBUTING.md",
+  "README.md",
+  "VERSION",
+  "docs/**",
+  "mise.lock",
+  "mise.toml",
+  "noxfile.py",
+  "openspec/changes/cross-platform-terminal-acceptance/**",
+  "openspec/changes/archive/*-cross-platform-terminal-acceptance/**",
+  "openspec/specs/product-interface/**",
+  "openspec/specs/runtime-upgrade/**",
+  "pyproject.toml",
+  "src/codex_responses_proxy/cli/**",
+  "src/codex_responses_proxy/lifecycle/**",
+  "src/codex_responses_proxy/runtime/**",
+  "src/codex_responses_proxy/service/**",
+  "tests/cli/**",
+  "tests/lifecycle/**",
+  "tests/providers/**",
+  "tests/relay/**",
+  "tests/release/**",
+  "tests/service/**",
+  "tools/ci/**",
+  "tools/quality/**",
+  "tools/release/**",
+  "uv.lock",
+]
+invariants = [
+  "proxy_owns_responses_data_plane_only",
+  "one_lifecycle_state_machine_projects_to_native_service_managers",
+  "native_acceptance_is_not_inferred_from_cross_compilation_or_mocks",
+  "recovery_never_guesses_or_deletes_unverifiable_state",
+  "test_lifecycle_has_zero_net_host_residue",
+  "formal_runtime_is_untouched_until_signed_release_acceptance",
+]
+acceptance = [
+  "repository_commitment_is_current_and_strict",
+  "focused_lifecycle_and_provider_regressions_pass",
+  "python_3_12_3_13_3_14_quality_and_release_gates_pass",
+  "macos_linux_and_windows_native_lifecycle_evidence_exists",
+  "one_signed_sha_is_green_and_published_on_both_forges",
+  "formal_runtime_upgrade_and_residue_cleanup_pass",
+]
+risks = [
+  "native_test_teardown_could_leak_host_service_state",
+  "hosted_runner_unavailability_could_be_confused_with_product_failure",
+  "formal_runtime_upgrade_could_interrupt_active_requests",
+]
+authority_refs = [
+  "AGENTS.md",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "docs/governance/release-and-change-policy.md",
+  "openspec/specs/product-interface/spec.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+]
+predecessors = ["change:cross-major-upgrade-prewarm"]
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []

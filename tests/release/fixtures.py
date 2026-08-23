@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -15,16 +16,26 @@ from typing import cast
 
 import pytest
 
+from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import native_service
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import inventory
+from codex_responses_proxy.service import runtime as service_runtime
 from tools.release import assets as release_assembly
 from tools.release import product_assets
 from tools.release import signing
 
 ROOT = Path(__file__).resolve().parents[2]
 COMMAND_TIMEOUT_SECONDS = 180
+_SERVICE_ROLES = frozenset(
+    {
+        service_runtime.LISTENER_MODE,
+        service_runtime.HANDOFF_CHILD_MODE,
+        service_runtime.WATCHDOG_MODE,
+        service_runtime.PREWARM_MODE,
+    }
+)
 
 
 def _macos_service_projection() -> tuple[
@@ -45,9 +56,13 @@ def _macos_service_projection() -> tuple[
     )
     getuid: object = getattr(os, "getuid", None)
     if not callable(getuid):
-        raise RuntimeError("macOS user identity is unavailable")
+        raise TypeError("macOS user identity is unavailable")
     disabled = subprocess.run(
-        ["/bin/launchctl", "print-disabled", f"gui/{cast(Callable[[], int], getuid)()}"],
+        [
+            "/bin/launchctl",
+            "print-disabled",
+            f"gui/{cast(Callable[[], int], getuid)()}",
+        ],
         capture_output=True,
         check=True,
         text=True,
@@ -117,10 +132,11 @@ def signed_asset(
 ) -> Path:
     """Build one route-controlled asset from exact native bundle bytes."""
 
-    platform_id = "macos-arm64"
-    executable = bundle / "codex-responses-proxy"
+    platform_id = product_identity.native_release_platform(platform.system(), platform.machine())
+    executable_name = product_identity.executable_name(windows=platform_id.startswith("windows-"))
+    executable = bundle / executable_name
     files: dict[str, bytes | product_assets.ArchiveFile] = {
-        "bin/codex-responses-proxy": product_assets.ArchiveFile(executable.read_bytes(), 0o755),
+        f"bin/{executable_name}": product_assets.ArchiveFile(executable.read_bytes(), 0o755),
         "providers.toml": (
             f'version = 1\n\n[providers.dmxapi]\nbase_url = "{upstream_url}"\npolicy = "dmxapi"\n'
         ).encode(),
@@ -183,10 +199,22 @@ def runtime_context_for(
     )
 
 
+def native_service_projection(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
+    """Return the exact native-service and process state owned by one context."""
+
+    service = native_service.adapter()
+    return {
+        "service_id": ctx.service_id,
+        "status": service.status(ctx),
+        "configured_executable": service.configured_executable(ctx),
+        "processes": process.pids_naming_executable(ctx.executable, roles=_SERVICE_ROLES),
+    }
+
+
 def native_environment(home: Path, install: Path, state: Path) -> dict[str, str]:
     """Return a minimal isolated environment for one native installation."""
 
-    return {
+    environment = {
         "CODEX_RESPONSES_PROXY_HOME": str(install),
         "CODEX_RESPONSES_PROXY_STATE_HOME": str(state),
         "HOME": str(home),
@@ -194,6 +222,10 @@ def native_environment(home: Path, install: Path, state: Path) -> dict[str, str]
         "PYTHONNOUSERSITE": "1",
         "USERPROFILE": str(home),
     }
+    for name in ("DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"):
+        if value := os.environ.get(name):
+            environment[name] = value
+    return environment
 
 
 def cleanup_runtime(ctx: runtime_context.RuntimeContext, wrapper: Path | None = None) -> None:
@@ -207,11 +239,8 @@ def cleanup_runtime(ctx: runtime_context.RuntimeContext, wrapper: Path | None = 
         if wrapper is not None:
             for pid in process.pids_naming_path(str(wrapper)):
                 process.terminate_pid(pid, expected_path=str(wrapper))
-        roles = {
-            "--internal-listener",
-            "--internal-handoff-child",
-            "--internal-watchdog",
-            "--internal-prewarm",
-        }
-        for pid in process.pids_naming_executable(ctx.executable, roles=roles):
-            process.terminate_executable(pid, ctx.executable, roles=roles)
+        for pid in process.pids_naming_executable(ctx.executable, roles=_SERVICE_ROLES):
+            process.terminate_executable(pid, ctx.executable, roles=_SERVICE_ROLES)
+    assert service.status(ctx) == "absent"
+    assert service.configured_executable(ctx) is None
+    assert process.pids_naming_executable(ctx.executable, roles=_SERVICE_ROLES) == []

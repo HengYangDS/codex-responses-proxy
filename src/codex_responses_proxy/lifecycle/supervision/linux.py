@@ -8,8 +8,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-import platformdirs
-
 from codex_responses_proxy import errors
 from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import runtime_spec
@@ -47,13 +45,20 @@ def _has_user_systemd() -> bool:
 
 def _unit_path(ctx: runtime_spec.NativeServiceContext) -> str:
     """Return the systemd user-unit carrier owned by this service identity."""
-    return str(platformdirs.user_config_path() / "systemd" / "user" / f"{ctx.service_id}.service")
+    return str(Path(ctx.user_home, ".config", "systemd", "user", f"{ctx.service_id}.service"))
+
+
+def _unit_value(value: str) -> str:
+    """Quote one literal systemd unit value without enabling specifier expansion."""
+    if any(character in value for character in ("\0", "\n", "\r")):
+        raise errors.InstallError("systemd service value contains a control character")
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")
 
 
 def render_unit(ctx: runtime_spec.NativeServiceContext) -> str:
     """Render the user-level systemd watchdog unit for this installation."""
     return UNIT_TEMPLATE.format(
-        executable=ctx.executable,
+        executable=f'"{_unit_value(ctx.executable)}"',
         watchdog_mode=service_runtime.WATCHDOG_MODE,
     )
 
@@ -73,31 +78,22 @@ def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
         return None
     if len(arguments) != 2 or arguments[1] != service_runtime.WATCHDOG_MODE:
         return None
-    return arguments[0]
+    return arguments[0].replace("%%", "%")
 
 
 def _install_systemd(ctx: runtime_spec.NativeServiceContext) -> None:
-    unit = _unit_path(ctx)
-    os.makedirs(os.path.dirname(unit), exist_ok=True)
-    Path(unit).write_text(render_unit(ctx), encoding="utf-8")
+    unit = Path(_unit_path(ctx))
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    unit.write_text(render_unit(ctx), encoding="utf-8")
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
     r = subprocess.run(
-        ["systemctl", "--user", "enable", f"{ctx.service_id}.service"],
+        ["systemctl", "--user", "enable", "--now", str(unit)],
         capture_output=True,
         check=False,
         text=True,
     )
     if r.returncode != 0:
         raise errors.InstallError(f"systemctl enable failed: {r.stderr.strip()}")
-    restarted = subprocess.run(
-        ["systemctl", "--user", "restart", f"{ctx.service_id}.service"],
-        capture_output=True,
-        check=False,
-        text=True,
-    )
-    if restarted.returncode != 0:
-        detail = restarted.stderr.strip() or restarted.stdout.strip()
-        raise errors.InstallError(f"systemctl restart failed: {detail}")
     # Survive logout / start at boot. Best-effort: on hardened hosts this may need
     # an admin once; we don't fail the install if it can't self-authorize.
     subprocess.run(
@@ -121,20 +117,22 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
 
 def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
     """Stop and remove only this installation's Linux watchdog service."""
-    unit = _unit_path(ctx)
-    if os.path.exists(unit):
+    unit = Path(_unit_path(ctx))
+    service = f"{ctx.service_id}.service"
+    registered = status(ctx) != "absent"
+    if registered or unit.exists():
         if not shutil.which("systemctl"):
             raise errors.InstallError("systemctl is unavailable; service removal is unproven")
         disabled = subprocess.run(
-            ["systemctl", "--user", "disable", "--now", f"{ctx.service_id}.service"],
+            ["systemctl", "--user", "disable", "--now", service],
             capture_output=True,
             check=False,
             text=True,
         )
-        if disabled.returncode:
+        if disabled.returncode and registered:
             detail = disabled.stderr.strip() or disabled.stdout.strip()
             raise errors.InstallError(f"systemctl disable failed: {detail}")
-        os.remove(unit)
+        unit.unlink(missing_ok=True)
         reloaded = subprocess.run(
             ["systemctl", "--user", "daemon-reload"],
             capture_output=True,
@@ -161,13 +159,24 @@ def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
 
 def status(ctx: runtime_spec.NativeServiceContext) -> str:
     """Return the Linux service manager's read-only status classification."""
-    unit = _unit_path(ctx)
-    if os.path.exists(unit):
-        r = subprocess.run(
-            ["systemctl", "--user", "is-active", f"{ctx.service_id}.service"],
+    unit = Path(_unit_path(ctx))
+    if shutil.which("systemctl"):
+        observed = subprocess.run(
+            [
+                "systemctl",
+                "--user",
+                "show",
+                f"{ctx.service_id}.service",
+                "--property=LoadState",
+                "--property=ActiveState",
+            ],
             capture_output=True,
             check=False,
             text=True,
         )
-        return "running" if r.stdout.strip() == "active" else "installed"
-    return "absent"
+        properties = dict(
+            line.split("=", 1) for line in observed.stdout.splitlines() if "=" in line
+        )
+        if properties.get("LoadState") not in {None, "not-found"}:
+            return "running" if properties.get("ActiveState") == "active" else "installed"
+    return "installed" if unit.exists() else "absent"

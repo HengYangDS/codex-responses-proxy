@@ -20,7 +20,7 @@ ARCHIVE_NAME = f"{product_identity.PRODUCT_SLUG}-{{version}}-{{platform}}.tar.gz
 MANIFEST_NAME = f"{product_identity.PRODUCT_SLUG}-{{platform}}.manifest.json"
 CHECKSUM_NAME = "SHA256SUMS"
 SIGNATURE_NAME = "SHA256SUMS.sig"
-RELEASE_PLATFORMS = ("linux-x86_64", "macos-arm64", "windows-x86_64")
+RELEASE_PLATFORMS = product_identity.RELEASE_PLATFORMS
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _PLATFORM = re.compile(r"^[a-z0-9]+(?:-[a-z0-9_]+)+$")
 

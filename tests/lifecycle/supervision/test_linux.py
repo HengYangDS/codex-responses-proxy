@@ -18,6 +18,15 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class TestLinuxLifecycle:
+    def test_service_carrier_uses_the_context_user_home(self, tmp_path) -> None:
+        owned_home = tmp_path / "owned-home"
+        ctx = platform_context()
+        ctx.user_home = str(owned_home)
+
+        assert linux._unit_path(ctx) == str(
+            owned_home / ".config" / "systemd" / "user" / f"{ctx.service_id}.service"
+        )
+
     def test_probe_and_install_dispatch(self, *, mocker):
         for executable, output, expected in (
             (None, None, False),
@@ -46,9 +55,35 @@ class TestLinuxLifecycle:
     def test_native_service_contract_never_persists_python_or_source_paths(self):
         ctx = platform_context()
         unit = linux.render_unit(ctx)
-        assert f"ExecStart={ctx.executable} --internal-watchdog" in unit
+        assert f'ExecStart="{ctx.executable}" --internal-watchdog' in unit
         assert "python" not in unit.lower()
         assert ".py" not in unit
+
+    def test_systemd_unit_quotes_path_values_and_specifier_tokens(self):
+        ctx = platform_context()
+        ctx.install_dir = '/tmp/product path/%i/"payload"'
+        ctx.executable = f"{ctx.install_dir}/bin/codex-responses-proxy"
+        ctx.log_dir = '/tmp/state path/%h/"logs"'
+        ctx.user_home = '/tmp/home path/%u/"user"'
+
+        unit = linux.render_unit(ctx)
+
+        assert (
+            'ExecStart="/tmp/product path/%%i/\\"payload\\"/bin/codex-responses-proxy" '
+            "--internal-watchdog"
+        ) in unit
+
+        with _temporary_context("log_dir") as temporary:
+            temporary.executable = ctx.executable
+            _set_file(linux._unit_path(temporary), unit)
+            assert linux.configured_executable(temporary) == ctx.executable
+
+    def test_systemd_unit_rejects_control_characters(self):
+        ctx = platform_context()
+        ctx.executable = "/tmp/bin/codex-responses-proxy\nother"
+
+        with pytest.raises(errors.InstallError, match="control character"):
+            linux.render_unit(ctx)
 
     def test_configured_executable_reads_only_one_valid_exec_start(self):
         with _temporary_context("log_dir") as ctx:
@@ -59,6 +94,18 @@ class TestLinuxLifecycle:
             _set_file(unit, "[Service]\nExecStart=/one\nExecStart=/two\n")
             assert linux.configured_executable(ctx) is None
 
+    def test_status_observes_registered_service_without_a_unit_file(self, *, mocker):
+        ctx = platform_context()
+        mocker.patch.object(linux.shutil, "which", return_value="/usr/bin/systemctl")
+        mocker.patch.object(linux, "_has_user_systemd", return_value=True)
+        mocker.patch.object(
+            linux.subprocess,
+            "run",
+            return_value=_completed(stdout="LoadState=loaded\nActiveState=active\n"),
+        )
+
+        assert linux.status(ctx) == "running"
+
     def test_systemd_install_success_and_failure(self, *, mocker):
         with _temporary_context("log_dir") as ctx:
             unit = Path(linux._unit_path(ctx))
@@ -66,7 +113,7 @@ class TestLinuxLifecycle:
             invoked = mocker.patch.object(
                 linux.subprocess,
                 "run",
-                side_effect=[_completed(), _completed(), _completed(), _completed()],
+                side_effect=[_completed(), _completed(), _completed()],
             )
             linux._install_systemd(ctx)
             assert unit.read_text(encoding="utf-8") == linux.render_unit(ctx)
@@ -74,13 +121,8 @@ class TestLinuxLifecycle:
                 "systemctl",
                 "--user",
                 "enable",
-                f"{ctx.service_id}.service",
-            ]
-            assert invoked.call_args_list[2].args[0] == [
-                "systemctl",
-                "--user",
-                "restart",
-                f"{ctx.service_id}.service",
+                "--now",
+                str(unit),
             ]
             assert invoked.call_args_list[-1].args[0][0] == "loginctl"
             mocker.patch.object(
@@ -101,9 +143,10 @@ class TestLinuxLifecycle:
                 linux.subprocess,
                 "run",
                 side_effect=[
+                    _completed(stdout="LoadState=loaded\nActiveState=inactive\n"),
                     _completed(),
                     _completed(),
-                    _completed(stdout="inactive"),
+                    _completed(stdout="LoadState=not-found\nActiveState=inactive\n"),
                 ],
             )
             mocker.patch.object(linux.process, "pids_naming_executable", return_value=[])
@@ -115,8 +158,18 @@ class TestLinuxLifecycle:
             linux.uninstall(ctx)
             invoked.assert_not_called()
             for systemd, executable, output, expected in (
-                (True, "systemctl", "active\n", "running"),
-                (True, "systemctl", "inactive\n", "installed"),
+                (
+                    True,
+                    "systemctl",
+                    "LoadState=loaded\nActiveState=active\n",
+                    "running",
+                ),
+                (
+                    True,
+                    "systemctl",
+                    "LoadState=loaded\nActiveState=inactive\n",
+                    "installed",
+                ),
                 (False, None, "", "absent"),
             ):
                 _set_file(unit, "unit" if systemd else None)
@@ -141,6 +194,7 @@ class TestLinuxLifecycle:
                 linux.subprocess,
                 "run",
                 side_effect=[
+                    _completed(stdout="LoadState=loaded\nActiveState=inactive\n"),
                     _completed(returncode=1, stderr="denied"),
                 ],
             )
@@ -153,7 +207,11 @@ class TestLinuxLifecycle:
             mocker.patch.object(
                 linux.subprocess,
                 "run",
-                side_effect=[_completed(), _completed(returncode=1)],
+                side_effect=[
+                    _completed(stdout="LoadState=loaded\nActiveState=inactive\n"),
+                    _completed(),
+                    _completed(returncode=1),
+                ],
             )
             with pytest.raises(errors.InstallError, match="daemon-reload failed"):
                 linux.uninstall(ctx)

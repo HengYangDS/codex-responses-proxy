@@ -534,7 +534,6 @@ class TestQualityPolicyContracts:
         assert {requirement.partition("==")[0] for requirement in dependencies} == {
             "certifi",
             "cyclopts",
-            "platformdirs",
             "psutil",
             "rich",
         }

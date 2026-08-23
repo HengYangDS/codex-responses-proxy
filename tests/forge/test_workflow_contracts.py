@@ -95,7 +95,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     ):
         assert _mapping(github_jobs[job_id])["if"] == product_proof
     native_proof = product_proof + " || github.ref_type == 'tag'"
-    for job_id in ("native-assets", "native-linux"):
+    for job_id in ("native-assets", "native-linux", "native-linux-lifecycle"):
         assert _mapping(github_jobs[job_id])["if"] == native_proof
     product_sha = "${{ github.event.pull_request.head.sha || github.sha }}"
     for job_id in (
@@ -106,6 +106,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
         "performance",
         "native-assets",
         "native-linux",
+        "native-linux-lifecycle",
     ):
         checkout = next(
             _mapping(step)
@@ -181,6 +182,7 @@ def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:
             "cd /workspace && uv sync --locked --group quality "
             "--python python --no-python-downloads"
         ),
+        "native-linux-lifecycle": "uv sync --locked --group quality",
     }
     for job_id, command in expected.items():
         steps = _sequence(_mapping(jobs[job_id])["steps"])
@@ -190,6 +192,55 @@ def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:
             if _mapping(step).get("name") == "Install the locked release tool environment"
         )
         assert install["run"] == command
+
+    linux_steps = _sequence(_mapping(jobs["native-linux"])["steps"])
+    linux_build = next(
+        _mapping(step)
+        for step in linux_steps
+        if _mapping(step).get("name") == "Build the native release asset"
+    )
+    assert "nox -s release_asset" in _string(linux_build["run"])
+    assert "nox -s release --" not in _string(linux_build["run"])
+
+
+def test_linux_asset_build_and_native_lifecycle_have_distinct_execution_hosts() -> None:
+    """Keep reproducible Linux construction separate from real systemd acceptance."""
+
+    jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
+    build = _mapping(jobs["native-linux"])
+    lifecycle = _mapping(jobs["native-linux-lifecycle"])
+
+    assert build["container"] == "${{ needs.python-matrix.outputs.linux-release-image }}"
+    assert "container" not in lifecycle
+    assert lifecycle["runs-on"] == "ubuntu-24.04"
+    assert lifecycle["needs"] == ["python-matrix", "native-linux"]
+    lifecycle_steps = _sequence(lifecycle["steps"])
+    assert any(
+        _mapping(step).get("name") == "Prove the native Linux service lifecycle"
+        and _mapping(step).get("run")
+        == ("uv run --locked --no-sync python -m pytest -q tests/release/test_native_lifecycle.py")
+        for step in lifecycle_steps
+    )
+    assert any(
+        str(_mapping(step).get("uses", ""))
+        == "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+        and _mapping(_mapping(step)["with"])["name"] == "native-linux-x86_64"
+        for step in lifecycle_steps
+    )
+    assert any(
+        _mapping(step).get("name") == "Materialize the Linux executable" for step in lifecycle_steps
+    )
+    lifecycle_command = next(
+        _mapping(step)
+        for step in lifecycle_steps
+        if _mapping(step).get("name") == "Prove the native Linux service lifecycle"
+    )
+    assert _mapping(lifecycle_command["env"])["CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE"] == (
+        "${{ runner.temp }}/native-linux/runtime/bin/codex-responses-proxy"
+    )
+    assert _mapping(lifecycle_command["env"])["CODEX_RESPONSES_PROXY_NATIVE_BUNDLE"] == (
+        "${{ runner.temp }}/native-linux/runtime/bin"
+    )
 
 
 def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> None:

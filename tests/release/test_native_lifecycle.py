@@ -1,21 +1,22 @@
-"""Signed macOS lifecycle acceptance against one isolated native installation."""
+"""Signed native lifecycle acceptance against one isolated installation."""
 
 from __future__ import annotations
 
 import json
 import os
 import subprocess
-import sys
 from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
 
+from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
 from tests.release.fixtures import cleanup_runtime
 from tests.release.fixtures import native_environment
+from tests.release.fixtures import native_service_projection
 from tests.release.fixtures import post_response
 from tests.release.fixtures import preserve_native_host_projection
 from tests.release.fixtures import run_command
@@ -29,9 +30,6 @@ ROOT = Path(__file__).resolve().parents[2]
 pytestmark = [
     pytest.mark.usefixtures(preserve_native_host_projection.__name__),
     pytest.mark.native_distribution,
-    pytest.mark.skipif(
-        sys.platform != "darwin", reason="native lifecycle acceptance is macOS-only"
-    ),
 ]
 
 
@@ -40,8 +38,7 @@ class TestSignedNativeLifecycle:
 
     def test_signed_fresh_lifecycle_is_transactional(self, tmp_path: Path) -> None:
         executable_value = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
-        if executable_value is None:
-            pytest.skip("native executable supplied by release session")
+        assert executable_value is not None, "native executable must be supplied by release session"
         executable = Path(executable_value).resolve(strict=True)
         bundle = executable.parent
         home, install, state = (
@@ -53,6 +50,16 @@ class TestSignedNativeLifecycle:
         port = free_port()
         ctx = runtime_context_for(home, install, state, port)
         environment = native_environment(home, install, state)
+        assert ctx.service_id != runtime_context.SERVICE_ID
+        isolated_before = native_service_projection(ctx)
+        assert isolated_before == {
+            "service_id": ctx.service_id,
+            "status": "absent",
+            "configured_executable": None,
+            "processes": [],
+        }
+        canonical_ctx = runtime_context.create()
+        canonical_service_before = native_service_projection(canonical_ctx)
         canonical_before = process.listener_pids(runtime_config.DEFAULT_PORT)
 
         key = tmp_path / "release-key"
@@ -152,4 +159,73 @@ class TestSignedNativeLifecycle:
                 "version": current_version,
             }
             assert not transaction_root.exists()
-            assert process.listener_pids(runtime_config.DEFAULT_PORT) == canonical_before
+        assert native_service_projection(ctx) == isolated_before
+        assert native_service_projection(canonical_ctx) == canonical_service_before
+        assert process.listener_pids(runtime_config.DEFAULT_PORT) == canonical_before
+
+    @pytest.mark.parametrize("interruption", [AssertionError, TimeoutError, KeyboardInterrupt])
+    def test_native_teardown_survives_test_control_flow_failures(
+        self,
+        tmp_path: Path,
+        interruption: type[BaseException],
+    ) -> None:
+        """Leave no native service behind when a test aborts after installation."""
+
+        executable_value = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
+        assert executable_value is not None, "native executable must be supplied by release session"
+        executable = Path(executable_value).resolve(strict=True)
+        home, install, state = (
+            tmp_path / "home",
+            tmp_path / "payload",
+            tmp_path / "state",
+        )
+        home.mkdir()
+        port = free_port()
+        ctx = runtime_context_for(home, install, state, port)
+        environment = native_environment(home, install, state)
+        isolated_before = native_service_projection(ctx)
+        canonical_ctx = runtime_context.create()
+        canonical_before = native_service_projection(canonical_ctx)
+
+        key = tmp_path / "release-key"
+        subprocess.run(
+            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)],
+            check=True,
+        )
+        public_key = key.with_suffix(".pub").read_text(encoding="ascii").strip()
+        trust = f'{signing.PRINCIPAL} namespaces="{signing.NAMESPACE}" {public_key}'
+        anchor = tmp_path / "allowed-signers"
+        anchor.write_text(trust + "\n", encoding="ascii")
+        current_version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
+        current_asset = signed_asset(
+            executable.parent,
+            tmp_path / "current-assets",
+            version=current_version,
+            upstream_url="http://127.0.0.1:1",
+            key=key,
+            trust=trust,
+        )
+
+        def interrupt_installed_lifecycle() -> None:
+            with ExitStack() as cleanups:
+                cleanups.callback(cleanup_runtime, ctx)
+                installed = run_command(
+                    executable,
+                    environment,
+                    "install",
+                    "--asset",
+                    str(current_asset),
+                    "--trust-anchor",
+                    str(anchor),
+                    "--port",
+                    str(port),
+                    "--json",
+                )
+                assert installed["state"] == "installed"
+                raise interruption("simulated test control-flow failure")
+
+        with pytest.raises(interruption):
+            interrupt_installed_lifecycle()
+
+        assert native_service_projection(ctx) == isolated_before
+        assert native_service_projection(canonical_ctx) == canonical_before

@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from codex_responses_proxy import product_identity
+from tests.release.fixtures import native_environment
 from tools.release import assemble_assets
 from tools.release import assets as asset_command
 from tools.release import product_assets as assets
@@ -50,6 +52,48 @@ def _installed_distribution(root: Path, provenance: str) -> Path:
 
 class ReleaseAssetContracts:
     """Keep published bytes portable, reproducible, and exactly enumerable."""
+
+    def test_native_environment_preserves_the_linux_user_bus(self, tmp_path: Path) -> None:
+        """Let isolated native commands reach only the current user's systemd bus."""
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setenv("XDG_RUNTIME_DIR", "/run/user/1000")
+            patch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")
+            environment = native_environment(
+                tmp_path / "home",
+                tmp_path / "payload",
+                tmp_path / "state",
+            )
+
+        assert environment["XDG_RUNTIME_DIR"] == "/run/user/1000"
+        assert environment["DBUS_SESSION_BUS_ADDRESS"] == "unix:path=/run/user/1000/bus"
+
+    @pytest.mark.parametrize(
+        ("system", "machine", "expected"),
+        [
+            ("Darwin", "arm64", "macos-arm64"),
+            ("Linux", "x86_64", "linux-x86_64"),
+            ("Windows", "AMD64", "windows-x86_64"),
+        ],
+    )
+    def test_native_platform_identity_has_one_release_owner(
+        self, system: str, machine: str, expected: str
+    ) -> None:
+        """Map native hosts through the release platform inventory once."""
+
+        assert product_identity.native_release_platform(system, machine) == expected
+
+    @pytest.mark.parametrize(
+        ("system", "machine"),
+        [("Darwin", "x86_64"), ("Linux", "riscv64"), ("Plan9", "x86_64")],
+    )
+    def test_native_platform_identity_rejects_unreleased_hosts(
+        self, system: str, machine: str
+    ) -> None:
+        """Reject host identities absent from the release inventory."""
+
+        with pytest.raises(ValueError, match="unsupported native release platform"):
+            product_identity.native_release_platform(system, machine)
 
     def test_bundle_rejects_installer_provenance(self, tmp_path: Path) -> None:
         """Exclude checkout paths and installer timestamps from release payloads."""

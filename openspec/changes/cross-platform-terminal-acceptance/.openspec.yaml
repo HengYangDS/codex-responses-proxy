@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-23
+goal: Prove one portable Proxy product lifecycle on macOS, Linux, and Windows
+  with exact service ownership, deterministic recovery, and no host residue.

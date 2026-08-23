@@ -287,24 +287,31 @@ def full(session: nox.Session) -> None:
 
 
 @nox.session(python=RELEASE_PYTHON)
-def release(session: nox.Session) -> None:
-    """Build and black-box test this platform's self-contained executable."""
-    _install_tools(session, "quality", "release")
-    _assert_release_runtime(session)
-    work = Path(session.create_tmp()).resolve()
-    wheel = _build_wheel(session, work)
-    _install_wheel(session, wheel)
+def release_asset(session: nox.Session) -> None:
+    """Build and accept a native asset without requiring a host service manager."""
+    work, bundle, executable = _build_native_candidate(session)
+    environment = {
+        **_environment(),
+        product_identity.environment_name("EXECUTABLE"): str(executable),
+        product_identity.environment_name("NATIVE_EXECUTABLE"): str(executable),
+    }
     session.run(
         "python",
         "-m",
-        "tools.release.assets",
-        "normalize",
-        "--packages",
-        str(_session_packages(session)),
-        env=_environment(),
+        "pytest",
+        "-q",
+        "tests/cli/test_interface.py",
+        "tests/service/handoff/test_subprocess.py",
+        env=environment,
     )
-    _assert_installed_product(session, work)
-    bundle, executable = _build_executable(session, work)
+    _accept_native_executable(session, executable)
+    _package_release_asset(session, bundle, work)
+
+
+@nox.session(python=RELEASE_PYTHON)
+def release(session: nox.Session) -> None:
+    """Build and accept this platform's asset and native service lifecycle."""
+    work, bundle, executable = _build_native_candidate(session)
     environment = {
         **_environment(),
         product_identity.environment_name("EXECUTABLE"): str(executable),
@@ -320,33 +327,14 @@ def release(session: nox.Session) -> None:
         "tests/service/handoff/test_subprocess.py",
         env=environment,
     )
-    _run_without_python(session, executable, "--help")
-    _run_without_python(session, executable, "--version")
-    _run_without_python(
-        session,
-        executable,
-        "status",
-        "--json",
-        isolated_listener=True,
-        success_codes=(0, 2),
-    )
+    _accept_native_executable(session, executable)
     _package_release_asset(session, bundle, work)
-    session.log(f"native executable accepted: {executable.name}")
 
 
-@nox.session(python=RELEASE_PYTHON)
-def release_compatibility(session: nox.Session) -> None:
-    """Upgrade one verified published predecessor to this native candidate."""
+def _build_native_candidate(session: nox.Session) -> tuple[Path, Path, Path]:
+    """Build one source-independent native candidate from the locked repository."""
     _install_tools(session, "quality", "release")
     _assert_release_runtime(session)
-    previous_asset = _required_file(
-        product_identity.environment_name("PREVIOUS_RELEASE_ASSET"),
-        "published predecessor asset",
-    )
-    previous_trust = _required_file(
-        product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR"),
-        "published predecessor trust anchor",
-    )
     work = Path(session.create_tmp()).resolve()
     wheel = _build_wheel(session, work)
     _install_wheel(session, wheel)
@@ -361,6 +349,36 @@ def release_compatibility(session: nox.Session) -> None:
     )
     _assert_installed_product(session, work)
     bundle, executable = _build_executable(session, work)
+    return work, bundle, executable
+
+
+def _accept_native_executable(session: nox.Session, executable: Path) -> None:
+    """Prove the native executable starts without a Python runtime on PATH."""
+    _run_without_python(session, executable, "--help")
+    _run_without_python(session, executable, "--version")
+    _run_without_python(
+        session,
+        executable,
+        "status",
+        "--json",
+        isolated_listener=True,
+        success_codes=(0, 2),
+    )
+    session.log(f"native executable accepted: {executable.name}")
+
+
+@nox.session(python=RELEASE_PYTHON)
+def release_compatibility(session: nox.Session) -> None:
+    """Upgrade one verified published predecessor to this native candidate."""
+    previous_asset = _required_file(
+        product_identity.environment_name("PREVIOUS_RELEASE_ASSET"),
+        "published predecessor asset",
+    )
+    previous_trust = _required_file(
+        product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR"),
+        "published predecessor trust anchor",
+    )
+    _work, bundle, executable = _build_native_candidate(session)
     session.run(
         "python",
         "-m",
@@ -531,8 +549,10 @@ def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
         "--add-data",
         f"{ROOT / 'VERSION'}{os.pathsep}.",
         "--add-data",
-        f"{ROOT / 'src/codex_responses_proxy/providers/manifest.toml'}"
-        f"{os.pathsep}codex_responses_proxy/providers",
+        (
+            f"{ROOT / 'src/codex_responses_proxy/providers/manifest.toml'}"
+            f"{os.pathsep}codex_responses_proxy/providers"
+        ),
         "--collect-submodules",
         "codex_responses_proxy.providers.policies",
         str(ROOT / "src/codex_responses_proxy/cli/__main__.py"),
@@ -571,15 +591,12 @@ def _assert_release_runtime(session: nox.Session) -> None:
 def _package_release_asset(session: nox.Session, bundle: Path, work: Path) -> None:
     """Export one manifest-bound native asset set after black-box acceptance."""
     output = Path(session.posargs[0]).resolve() if session.posargs else work / "release-assets"
-    platform_id = {
-        ("Darwin", "arm64"): "macos-arm64",
-        ("Linux", "x86_64"): "linux-x86_64",
-        ("Windows", "AMD64"): "windows-x86_64",
-    }.get((platform.system(), platform.machine()))
-    if platform_id is None:
-        session.error(
-            f"unsupported native release platform: {platform.system()}-{platform.machine()}"
+    try:
+        platform_id = product_identity.native_release_platform(
+            platform.system(), platform.machine()
         )
+    except ValueError as error:
+        session.error(str(error))
     session.run(
         "python",
         "-m",

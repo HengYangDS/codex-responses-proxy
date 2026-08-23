@@ -538,8 +538,8 @@ githubVerify: {
 				name: "Install the locked release tool environment"
 				run:  "cd /workspace && uv sync --locked --group quality --python python --no-python-downloads"
 			}, {
-				name: "Build and accept the native release asset"
-				run:  "cd /workspace && uv run --locked --no-sync --python python --no-python-downloads nox -s release -- \"$GITHUB_WORKSPACE/.release-assets/linux-x86_64\""
+				name: "Build the native release asset"
+				run:  "cd /workspace && uv run --locked --no-sync --python python --no-python-downloads nox -s release_asset -- \"$GITHUB_WORKSPACE/.release-assets/linux-x86_64\""
 			}, {
 				uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a" // v7.0.1
 				with: {
@@ -548,6 +548,57 @@ githubVerify: {
 					"if-no-files-found": "error"
 					"retention-days":    7
 				}
+			}]
+		}
+		"native-linux-lifecycle": {
+			name: "Native lifecycle (linux-x86_64)"
+			if:   #Conditions.nativeProof
+			needs: ["python-matrix", "native-linux"]
+			"runs-on":         "ubuntu-24.04"
+			"timeout-minutes": 10
+			steps: [{
+				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				with: {
+					"fetch-depth": 0
+					"fetch-tags":  true
+					ref:           #Conditions.productSHA
+				}
+			}, {
+				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
+				with: "python-version": "${{ needs.python-matrix.outputs.release }}"
+			}, {
+				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+			}, {
+				uses: "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" // v8.0.1
+				with: {
+					name: "native-linux-x86_64"
+					path: "${{ runner.temp }}/native-linux"
+				}
+			}, {
+				name: "Materialize the Linux executable"
+				run:  "install -d \"$RUNNER_TEMP/native-linux/runtime\" && tar -xzf \"$RUNNER_TEMP/native-linux/codex-responses-proxy-$(cat VERSION)-linux-x86_64.tar.gz\" --strip-components=1 -C \"$RUNNER_TEMP/native-linux/runtime\""
+			}, {
+				name: "Install the locked release tool environment"
+				run:  "uv sync --locked --group quality"
+			}, {
+				name: "Start the runner user systemd manager"
+				run: """
+					user_id=$(id -u)
+					runtime_dir="/run/user/$user_id"
+					sudo systemctl start "user@$user_id.service"
+					{
+					  echo "XDG_RUNTIME_DIR=$runtime_dir"
+					  echo "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime_dir/bus"
+					} >> "$GITHUB_ENV"
+
+					"""
+			}, {
+				name: "Prove the native Linux service lifecycle"
+				env: {
+					CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE: "${{ runner.temp }}/native-linux/runtime/bin/codex-responses-proxy"
+					CODEX_RESPONSES_PROXY_NATIVE_BUNDLE:     "${{ runner.temp }}/native-linux/runtime/bin"
+				}
+				run: "uv run --locked --no-sync python -m pytest -q tests/release/test_native_lifecycle.py"
 			}]
 		}
 		"release-assets": {
