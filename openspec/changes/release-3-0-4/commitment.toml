@@ -1,0 +1,24 @@
+schema_version = 2
+id = "change:release-3-0-4"
+intent = "Publish the accepted publication-proof correction as release 3.0.4 without changing product behavior."
+subjects = [
+  "repository:codex-responses-proxy",
+]
+scope = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/archive/*-release-3-0-4/**",
+  "openspec/changes/release-3-0-4/**",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+predecessors = [
+  "e7630ce179dc2fb3cb525a3b7c0d17b8f44dd0497eecaa95318e0cc8524ae51e",
+]
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []
