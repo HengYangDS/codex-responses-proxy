@@ -53,17 +53,39 @@ be reported as equivalent native product evidence.
 - **THEN** that platform's product evidence remains unavailable
 - **AND** successful evidence from another platform is not relabeled as proof for the unavailable platform
 
-### Requirement: Superseded payload retirement is complete and ownership-bounded
+### Requirement: Rollback owns only current product files
 
-An upgrade SHALL remove every file owned only by the verified predecessor and
-every empty directory left below those retired paths. It SHALL preserve any
-unowned file or symbolic link and SHALL NOT claim an unknown directory merely
-because its name resembles product or package metadata.
+Rollback SHALL snapshot the complete current owned inventory or its complete
+absence. Unknown install content SHALL be preserved and SHALL never become
+implicitly owned. Candidate paths that collide with unknown content SHALL block
+mutation. When an upgrade fails after projecting candidate bytes, rollback
+SHALL restore every retained prior byte and remove every verified candidate
+file that was absent from the prior snapshot.
 
-#### Scenario: A predecessor-owned file has empty descendant directories
+#### Scenario: Current payload upgrade fails
 
-- **WHEN** the candidate no longer contains a predecessor-owned file
-- **AND** empty directories remain below that file's retired parent
-- **THEN** the upgrade removes the retired file and the resulting empty directory tree
-- **AND** rollback restores the predecessor-owned file without inventing empty historical directories
-- **AND** unowned files and symbolic links remain unchanged.
+- **WHEN** candidate commit or successor proof fails
+- **THEN** every prior owned bundle byte and mode is restored
+- **AND** unknown content remains unchanged.
+
+#### Scenario: Candidate adds a new frozen-runtime member
+
+- **WHEN** an upgrade projects a verified candidate-only file below `bin/`
+- **AND** handoff fails and rollback runs
+- **THEN** the candidate-only file is removed
+- **AND** every prior owned byte and mode is restored exactly
+- **AND** content outside prior-owned and candidate inventories is unchanged.
+
+#### Scenario: Candidate collides with unknown content
+
+- **WHEN** a candidate path already contains content outside the current owned inventory
+- **THEN** the upgrade blocks before payload mutation
+- **AND** rollback never claims ownership of that content.
+
+#### Scenario: Retired payload paths leave empty descendants
+
+- **WHEN** an upgrade removes files owned only by the verified predecessor
+- **THEN** it also removes empty directories below those retired file parents
+- **AND** it preserves every unowned file and symbolic link
+- **AND** rollback restores predecessor-owned bytes without recreating
+  semantically empty directory residue.

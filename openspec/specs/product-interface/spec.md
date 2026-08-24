@@ -204,7 +204,10 @@ from the verified installed-state record and command discoverability without
 consulting repository files or a second state authority. Runtime evidence SHALL
 be returned only when its PID is the sole listener owned by the selected
 installation. An installed command path SHALL be interpreted using the native
-absolute-path and link semantics of the host that recorded it.
+absolute-path and link semantics of the host that recorded it. Recovery SHALL
+identify the exact retained carrier that is missing, malformed, or
+unverifiable; it MUST preserve those bytes and MUST distinguish that evidence
+failure from the health of an independently serving runtime.
 
 #### Scenario: An operator inspects the installed service
 
@@ -248,6 +251,15 @@ absolute-path and link semantics of the host that recorded it.
 - **THEN** status omits untrusted runtime evidence
 - **AND** doctor reports an identity mismatch without treating that listener as
   this product.
+
+#### Scenario: Retained recovery evidence is invalid
+
+- **WHEN** a transaction root exists but its canonical journal is missing,
+  malformed, or unverifiable
+- **THEN** recovery returns the exact invalid carrier classification and one
+  state-appropriate action
+- **AND** it does not describe an independently serving runtime as unavailable
+- **AND** it does not mutate or delete the retained bytes.
 
 ### Requirement: Native lifecycle inspection is self-contained
 
