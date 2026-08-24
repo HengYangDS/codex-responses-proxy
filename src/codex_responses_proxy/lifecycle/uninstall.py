@@ -30,17 +30,18 @@ class ServiceAdapter(Protocol):
 
 
 def _stop_proxy(ctx: runtime_context.RuntimeContext) -> int:
-    """Terminate and prove exit of each listener owned by this installation."""
-    pids = process.verified_proxy_listener_pids(ctx)
+    """Terminate and prove exit of every runtime process owned by this installation."""
+    roles = {service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE}
+    pids = process.pids_naming_executable(ctx.executable, roles=roles)
     for pid in pids:
         if not process.terminate_executable(
             pid,
             ctx.executable,
-            roles={service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE},
+            roles=roles,
         ):
-            raise errors.InstallError(f"verified proxy listener {pid} did not exit")
-    if remaining := process.verified_proxy_listener_pids(ctx):
-        raise errors.InstallError(f"verified proxy listeners remain: {remaining}")
+            raise errors.InstallError(f"verified proxy runtime process {pid} did not exit")
+    if remaining := process.pids_naming_executable(ctx.executable, roles=roles):
+        raise errors.InstallError(f"verified proxy runtime processes remain: {remaining}")
     return len(pids)
 
 

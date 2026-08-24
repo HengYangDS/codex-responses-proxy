@@ -254,7 +254,7 @@ class TestControllerLifecycle:
         ctx = install_context(Path(tempfile.mkdtemp()))
         mocker.patch.object(
             uninstall.process,
-            "verified_proxy_listener_pids",
+            "pids_naming_executable",
             side_effect=[[7], []],
         )
         mocker.patch.object(uninstall.process, "terminate_executable", return_value=False)
@@ -263,19 +263,34 @@ class TestControllerLifecycle:
             uninstall._stop_proxy(ctx)
         mocker.patch.object(
             uninstall.process,
-            "verified_proxy_listener_pids",
+            "pids_naming_executable",
             side_effect=[[], [8]],
         )
-        with pytest.raises(errors.InstallError, match="listeners remain"):
+        with pytest.raises(errors.InstallError, match="runtime processes remain"):
             uninstall._stop_proxy(ctx)
 
         mocker.patch.object(
             uninstall.process,
-            "verified_proxy_listener_pids",
+            "pids_naming_executable",
             side_effect=[[7, 8], []],
         )
         mocker.patch.object(uninstall.process, "terminate_executable", return_value=True)
         assert uninstall._stop_proxy(ctx) == 2
+
+    def test_process_teardown_includes_a_replaced_non_listener_generation(self, *, mocker):
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        runtime_processes = mocker.patch.object(
+            uninstall.process,
+            "pids_naming_executable",
+            side_effect=[[7, 8], []],
+        )
+        terminate = mocker.patch.object(
+            uninstall.process, "terminate_executable", return_value=True
+        )
+
+        assert uninstall._stop_proxy(ctx) == 2
+        assert [call.args[0] for call in terminate.call_args_list] == [7, 8]
+        assert runtime_processes.call_count == 2
 
     def test_uninstall_product_covers_success_and_fail_closed_boundaries(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
