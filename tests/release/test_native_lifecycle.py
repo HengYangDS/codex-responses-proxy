@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 from contextlib import ExitStack
@@ -14,6 +13,7 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
+from codex_responses_proxy.service import digest as payload_digest
 from tests.release.fixtures import cleanup_runtime
 from tests.release.fixtures import native_environment
 from tests.release.fixtures import native_service_projection
@@ -134,8 +134,8 @@ class TestSignedNativeLifecycle:
 
             transaction_root = payload_state.transaction_root(ctx)
             transaction_root.mkdir()
-            (transaction_root / payload_state.TRANSACTION_JOURNAL_FILENAME).write_text(
-                json.dumps(
+            (transaction_root / payload_state.TRANSACTION_JOURNAL_FILENAME).write_bytes(
+                payload_digest.canonical_json(
                     {
                         "fresh": True,
                         "receipt_sha256": "0" * 64,
@@ -143,12 +143,8 @@ class TestSignedNativeLifecycle:
                         "state": "prepared",
                         "transaction_id": "fixture-prepared",
                         "version": current_version,
-                    },
-                    separators=(",", ":"),
-                    sort_keys=True,
+                    }
                 )
-                + "\n",
-                encoding="utf-8",
             )
             recovered = run_command(
                 executable, environment, "recover", "--port", str(port), "--json"
