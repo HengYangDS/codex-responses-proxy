@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.0.3] - 2026-08-24
+
+### Fixed
+
+- Remove empty directory residue nested below files retired from the verified
+  predecessor payload while preserving every unowned file and symlink.
+
 ## [3.0.2] - 2026-08-23
 
 ### Fixed

@@ -177,6 +177,14 @@ file that was absent from the prior snapshot.
 - **THEN** the upgrade blocks before payload mutation
 - **AND** rollback never claims ownership of that content.
 
+#### Scenario: Retired payload paths leave empty descendants
+
+- **WHEN** an upgrade removes files owned only by the verified predecessor
+- **THEN** it also removes empty directories below those retired file parents
+- **AND** it preserves every unowned file and symbolic link
+- **AND** rollback restores predecessor-owned bytes without recreating
+  semantically empty directory residue.
+
 ### Requirement: Payload primitives have one semantic owner
 
 Canonical paths and safe file I/O SHALL belong to `owned_files`; candidate

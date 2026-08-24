@@ -85,7 +85,7 @@ def manifest_bytes(manifest: ReadOnlyJsonObject) -> bytes:
 
 
 def remove_empty_owned_directories(install: Path, owned: set[str]) -> None:
-    """Remove empty directories implied by one owned file inventory."""
+    """Remove empty directory residue beneath one owned file inventory."""
     directories = {
         parent
         for relative in owned
@@ -100,6 +100,15 @@ def remove_empty_owned_directories(install: Path, owned: set[str]) -> None:
             raise errors.InstallError(
                 f"installed payload directory changed type: {relative.as_posix()}"
             )
+        for current, children, _files in directory.walk(top_down=False):
+            for child_name in children:
+                child = current / child_name
+                if child.is_symlink():
+                    continue
+                try:
+                    child.rmdir()
+                except OSError:
+                    pass
         try:
             directory.rmdir()
         except OSError:

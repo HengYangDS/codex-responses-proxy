@@ -52,3 +52,18 @@ be reported as equivalent native product evidence.
 - **WHEN** one hosted platform cannot schedule a native acceptance job
 - **THEN** that platform's product evidence remains unavailable
 - **AND** successful evidence from another platform is not relabeled as proof for the unavailable platform
+
+### Requirement: Superseded payload retirement is complete and ownership-bounded
+
+An upgrade SHALL remove every file owned only by the verified predecessor and
+every empty directory left below those retired paths. It SHALL preserve any
+unowned file or symbolic link and SHALL NOT claim an unknown directory merely
+because its name resembles product or package metadata.
+
+#### Scenario: A predecessor-owned file has empty descendant directories
+
+- **WHEN** the candidate no longer contains a predecessor-owned file
+- **AND** empty directories remain below that file's retired parent
+- **THEN** the upgrade removes the retired file and the resulting empty directory tree
+- **AND** rollback restores the predecessor-owned file without inventing empty historical directories
+- **AND** unowned files and symbolic links remain unchanged.

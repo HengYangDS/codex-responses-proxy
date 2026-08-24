@@ -115,6 +115,9 @@ def test_upgrade_retires_previous_only_owned_files_and_rollback_restores_them(
     previous_only = Path(ctx.install_dir, "bin/_internal/legacy.dist-info/METADATA")
     previous_only.parent.mkdir(parents=True)
     previous_only.write_bytes(b"legacy release metadata\n")
+    obsolete_empty_directory = previous_only.parent / "licenses"
+    nested_obsolete_empty_directory = obsolete_empty_directory / "metadata"
+    nested_obsolete_empty_directory.mkdir(parents=True)
     manifest_path = Path(ctx.install_dir, inventory.MANIFEST_FILENAME)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     previous_digest = hashlib.sha256(previous_only.read_bytes()).hexdigest()
@@ -132,11 +135,14 @@ def test_upgrade_retires_previous_only_owned_files_and_rollback_restores_them(
 
     assert not previous_only.exists()
     assert not previous_only.parent.exists()
+    assert not obsolete_empty_directory.exists()
+    assert not nested_obsolete_empty_directory.exists()
     assert unknown.read_bytes() == b"preserve me\n"
 
     transaction.rollback()
 
     assert previous_only.read_bytes() == b"legacy release metadata\n"
+    assert not obsolete_empty_directory.exists()
     assert unknown.read_bytes() == b"preserve me\n"
 
 
