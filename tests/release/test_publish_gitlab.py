@@ -19,6 +19,7 @@ class _PublicationArguments(TypedDict):
     project_id: int
     tag: str
     token: str
+    credential_kind: publish_gitlab.CredentialKind
     source: Path
     trust: str
 
@@ -61,7 +62,14 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
     store: dict[str, bytes] = {}
     release: dict[str, object] = {}
 
-    def request(url: str, _token: str, *, data: bytes | None = None, method: str = "GET") -> bytes:
+    def request(
+        url: str,
+        _token: str,
+        _credential_kind: publish_gitlab.CredentialKind,
+        *,
+        data: bytes | None = None,
+        method: str = "GET",
+    ) -> bytes:
         name = url.rsplit("/", 1)[-1]
         if "/packages/generic/" in url:
             if method == "PUT":
@@ -83,6 +91,7 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
         "project_id": 453,
         "tag": "v1.2.3",
         "token": "redacted",
+        "credential_kind": publish_gitlab.CredentialKind.JOB_TOKEN,
         "source": assets,
         "trust": trust,
     }
@@ -101,6 +110,7 @@ def test_publication_rejects_invalid_boundary_inputs(tmp_path: Path) -> None:
             project_id=0,
             tag="latest",
             token="redacted",
+            credential_kind=publish_gitlab.CredentialKind.JOB_TOKEN,
             source=tmp_path,
             trust="",
         )
@@ -117,6 +127,20 @@ def test_publication_rejects_unsigned_or_incomplete_bundle(tmp_path: Path) -> No
             project_id=453,
             tag="v1.2.3",
             token="redacted",
+            credential_kind=publish_gitlab.CredentialKind.JOB_TOKEN,
             source=assets,
             trust="missing trust",
         )
+
+
+@pytest.mark.parametrize(
+    ("kind", "header"),
+    [
+        (publish_gitlab.CredentialKind.JOB_TOKEN, "JOB-TOKEN"),
+        (publish_gitlab.CredentialKind.PRIVATE_TOKEN, "PRIVATE-TOKEN"),
+    ],
+)
+def test_credential_kind_selects_one_exact_gitlab_header(
+    kind: publish_gitlab.CredentialKind, header: str
+) -> None:
+    assert publish_gitlab._authentication_header(kind) == header

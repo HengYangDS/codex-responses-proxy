@@ -141,20 +141,18 @@ uv run --locked --no-sync python -m tools.release.publish both \
   --tag "v$VERSION" \
   --commit-oid "$RELEASE_COMMIT_OID" \
   --assets "$RELEASE_BUNDLE" \
-  --workspace "$RELEASE_WORKSPACE"
+  --workspace "$RELEASE_WORKSPACE" \
+  --gitlab-credential-kind job-token
 ```
 
-`CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST`, `RELEASE_ASSET_TRUST`, and
-`CI_JOB_TOKEN` are protected execution inputs. The command attempts both peers,
+`CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST` and `RELEASE_ASSET_TRUST` are protected
+execution inputs. `--gitlab-credential-kind job-token` reads `CI_JOB_TOKEN` and
+sends `JOB-TOKEN`; `--gitlab-credential-kind private-token` reads
+`CODEX_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN` and sends `PRIVATE-TOKEN`. The
+selected kind never falls through to the other variable or header. The command attempts both peers,
 reports every failure, and returns nonzero unless both provider-local
 publications complete. The provider-specific subcommands support an explicitly
 one-sided topology; neither result alone is dual-Forge parity.
-
-The current GitLab publisher accepts only `CI_JOB_TOKEN` and sends it as
-`JOB-TOKEN`. Maintainer or workstation publication with a personal/project
-access token is not yet an admitted path: do not relabel a PAT as
-`CI_JOB_TOKEN` or send it with job-token semantics. Until the publisher models
-credential kind explicitly, that path must fail closed.
 
 ## Historical macOS override records
 

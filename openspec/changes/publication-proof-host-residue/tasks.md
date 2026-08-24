@@ -5,6 +5,8 @@
 - [x] 1.2 Normalize hosted evidence at the composition boundary without
   weakening the evaluator's closed schema.
 - [x] 1.3 Re-run live `v3.0.3` verification and retain a verified receipt.
+- [x] 1.4 Model GitLab publication credential kind explicitly and prove exact
+  environment-variable and header selection for CI and maintainer paths.
 
 ## 2. macOS host projection
 
@@ -17,7 +19,7 @@
 
 ## 3. Acceptance
 
-- [ ] 3.1 Run focused publication and supervision tests.
+- [x] 3.1 Run focused publication and supervision tests.
 - [ ] 3.2 Run strict OpenSpec, quality, and Python 3.12/3.13/3.14 gates.
 - [ ] 3.3 Archive the Change, land the accepted source, publish the patch release,
   upgrade the formal runtime transactionally, and verify status, doctor,
@@ -28,4 +30,5 @@
 | Requirement | Task | Proof |
 | --- | --- | --- |
 | `release-governance:Hosted evidence has one composition boundary` | `1.1` | `tests/release/publication/test_cli.py; live dual-Forge verification receipt` |
+| `release-governance:GitLab publication preserves credential semantics` | `1.4` | `tests/release/test_publish.py; tests/release/test_publish_gitlab.py` |
 | `runtime-upgrade:macOS lifecycle leaves no new persistent service projections` | `2.1` | `tests/release/test_native_lifecycle.py; native exact-label lifecycle receipt` |

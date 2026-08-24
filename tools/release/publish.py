@@ -41,19 +41,32 @@ def _github(
     print(f"GitHub release {state}: {tag}")
 
 
-def _gitlab(*, api_base: str, project_id: int, tag: str, assets: Path) -> None:
+def _gitlab(
+    *,
+    api_base: str,
+    project_id: int,
+    tag: str,
+    assets: Path,
+    credential_kind: publish_gitlab.CredentialKind,
+) -> None:
     """Publish or verify one exact GitLab release."""
-    token = os.environ.get("CI_JOB_TOKEN", "")
+    token_variable = (
+        "CI_JOB_TOKEN"
+        if credential_kind is publish_gitlab.CredentialKind.JOB_TOKEN
+        else product_identity.environment_name("GITLAB_PRIVATE_TOKEN")
+    )
+    token = os.environ.get(token_variable, "")
     trust = os.environ.get("RELEASE_ASSET_TRUST", "")
     if not token or not trust:
         raise publish_gitlab.GitLabPublishError(
-            "GitLab publication credentials or release trust are unavailable"
+            f"GitLab {credential_kind.value} credential or release trust is unavailable"
         )
     state = publish_gitlab.publish(
         api_base=api_base,
         project_id=project_id,
         tag=tag,
         token=token,
+        credential_kind=credential_kind,
         source=assets,
         trust=trust,
     )
@@ -69,6 +82,7 @@ def _both(
     commit_oid: str,
     assets: Path,
     workspace: Path,
+    gitlab_credential_kind: publish_gitlab.CredentialKind,
     checkout: Path | None = None,
 ) -> None:
     """Publish the same immutable bundle through both independent adapters."""
@@ -90,6 +104,7 @@ def _both(
             project_id=gitlab_project_id,
             tag=tag,
             assets=assets,
+            credential_kind=gitlab_credential_kind,
         )
     except publish_gitlab.GitLabPublishError as error:
         failures.append(f"gitlab: {error}")

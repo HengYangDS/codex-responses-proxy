@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import urllib.error
 import urllib.request
+from enum import StrEnum
 from pathlib import Path
 
 from codex_responses_proxy import product_identity
@@ -19,9 +20,32 @@ class GitLabPublishError(RuntimeError):
     """GitLab publication failed or conflicts with immutable identity."""
 
 
-def _request(url: str, token: str, *, data: bytes | None = None, method: str = "GET") -> bytes:
+class CredentialKind(StrEnum):
+    """GitLab credential semantics admitted by the publication adapter."""
+
+    JOB_TOKEN = "job-token"
+    PRIVATE_TOKEN = "private-token"
+
+
+def _authentication_header(kind: CredentialKind) -> str:
+    """Return the GitLab header owned by one declared credential kind."""
+    match kind:
+        case CredentialKind.JOB_TOKEN:
+            return "JOB-TOKEN"
+        case CredentialKind.PRIVATE_TOKEN:
+            return "PRIVATE-TOKEN"
+
+
+def _request(
+    url: str,
+    token: str,
+    credential_kind: CredentialKind,
+    *,
+    data: bytes | None = None,
+    method: str = "GET",
+) -> bytes:
     request = urllib.request.Request(url, data=data, method=method)
-    request.add_header("JOB-TOKEN", token)
+    request.add_header(_authentication_header(credential_kind), token)
     if data is not None and method == "POST":
         request.add_header("Content-Type", "application/json")
     try:
@@ -49,7 +73,14 @@ def _verify(assets: Path, trust: str) -> list[str]:
 
 
 def publish(
-    *, api_base: str, project_id: int, tag: str, token: str, source: Path, trust: str
+    *,
+    api_base: str,
+    project_id: int,
+    tag: str,
+    token: str,
+    credential_kind: CredentialKind,
+    source: Path,
+    trust: str,
 ) -> str:
     """Upload, re-download, verify, then create or validate one GitLab Release."""
     if not api_base.startswith(("http://", "https://")) or not identity.is_tag(tag):
@@ -70,10 +101,16 @@ def publish(
         for asset_name in names:
             payload = (root / asset_name).read_bytes()
             try:
-                _request(f"{asset_base}/{asset_name}", token, data=payload, method="PUT")
+                _request(
+                    f"{asset_base}/{asset_name}",
+                    token,
+                    credential_kind,
+                    data=payload,
+                    method="PUT",
+                )
             except FileExistsError:
                 pass
-            received = _request(f"{asset_base}/{asset_name}", token)
+            received = _request(f"{asset_base}/{asset_name}", token, credential_kind)
             (downloaded / asset_name).write_bytes(received)
             if received != payload:
                 raise GitLabPublishError(f"GitLab release asset differs after upload: {asset_name}")
@@ -96,10 +133,16 @@ def publish(
         }
         endpoint = f"{api_base.rstrip('/')}/projects/{project_id}/releases"
         try:
-            _request(endpoint, token, data=json.dumps(release).encode(), method="POST")
+            _request(
+                endpoint,
+                token,
+                credential_kind,
+                data=json.dumps(release).encode(),
+                method="POST",
+            )
             return "created"
         except FileExistsError:
-            existing = json.loads(_request(f"{endpoint}/{tag}", token))
+            existing = json.loads(_request(f"{endpoint}/{tag}", token, credential_kind))
             links = sorted(link.get("name") for link in existing.get("assets", {}).get("links", []))
             if (
                 existing.get("tag_name") != tag

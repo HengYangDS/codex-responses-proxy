@@ -52,11 +52,29 @@ def test_github_command_dispatches_verified_inputs_without_secret_arguments(
     )
 
 
-def test_gitlab_command_reads_credentials_from_environment(tmp_path: Path, mocker) -> None:
+@pytest.mark.parametrize(
+    ("kind", "variable", "token"),
+    [
+        (publish.publish_gitlab.CredentialKind.JOB_TOKEN, "CI_JOB_TOKEN", "job token"),
+        (
+            publish.publish_gitlab.CredentialKind.PRIVATE_TOKEN,
+            "CODEX_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN",
+            "private token",
+        ),
+    ],
+)
+def test_gitlab_command_reads_only_the_declared_credential(
+    tmp_path: Path, mocker, kind: publish.publish_gitlab.CredentialKind, variable: str, token: str
+) -> None:
     adapter = mocker.patch.object(publish.publish_gitlab, "publish", return_value="matched")
     mocker.patch.dict(
         publish.os.environ,
-        {"CI_JOB_TOKEN": "job token", "RELEASE_ASSET_TRUST": "asset trust"},
+        {
+            "CI_JOB_TOKEN": "unused job token",
+            "CODEX_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN": "unused private token",
+            variable: token,
+            "RELEASE_ASSET_TRUST": "asset trust",
+        },
         clear=True,
     )
 
@@ -71,6 +89,8 @@ def test_gitlab_command_reads_credentials_from_environment(tmp_path: Path, mocke
             "v1.2.3",
             "--assets",
             str(tmp_path / "assets"),
+            "--credential-kind",
+            kind.value,
         )
     )
 
@@ -78,7 +98,8 @@ def test_gitlab_command_reads_credentials_from_environment(tmp_path: Path, mocke
         api_base="https://gitlab.example/api/v4",
         project_id=453,
         tag="v1.2.3",
-        token="job token",
+        token=token,
+        credential_kind=kind,
         source=tmp_path / "assets",
         trust="asset trust",
     )
@@ -99,6 +120,8 @@ def test_command_fails_closed_without_provider_credentials(tmp_path: Path, mocke
                 "v1.2.3",
                 "--assets",
                 str(tmp_path),
+                "--credential-kind",
+                "job-token",
             )
         )
 
@@ -126,6 +149,7 @@ def test_dual_command_projects_the_same_bundle_to_both_peers(tmp_path: Path, moc
         commit_oid="a" * 40,
         assets=assets,
         workspace=workspace,
+        gitlab_credential_kind=publish.publish_gitlab.CredentialKind.JOB_TOKEN,
         checkout=tmp_path,
     )
 
@@ -142,6 +166,7 @@ def test_dual_command_projects_the_same_bundle_to_both_peers(tmp_path: Path, moc
         project_id=453,
         tag="v1.2.3",
         assets=assets,
+        credential_kind=publish.publish_gitlab.CredentialKind.JOB_TOKEN,
     )
 
 
@@ -162,6 +187,7 @@ def test_dual_command_attempts_both_peers_before_reporting_failure(tmp_path: Pat
             commit_oid="a" * 40,
             assets=tmp_path / "assets",
             workspace=tmp_path / "workspace",
+            gitlab_credential_kind=publish.publish_gitlab.CredentialKind.JOB_TOKEN,
         )
 
     gitlab.assert_called_once()
