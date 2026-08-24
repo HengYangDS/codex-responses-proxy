@@ -10,10 +10,21 @@ scope = [
   "openspec/changes/archive/*-release-3-0-4/**",
   "openspec/changes/release-3-0-4/**",
 ]
-invariants = []
-acceptance = []
-risks = []
-authority_refs = []
+invariants = [
+  "release_metadata_changes_do_not_modify_product_behavior",
+  "version_and_changelog_remain_the_release_identity_authorities",
+]
+acceptance = [
+  "exact_head_repository_proof_passes",
+  "release_metadata_validates_for_version_3_0_4",
+]
+risks = [
+  "release_metadata_could_claim_unpublished_external_effects",
+]
+authority_refs = [
+  "CONTRIBUTING.md",
+  "docs/governance/release-and-change-policy.md",
+]
 predecessors = [
   "e7630ce179dc2fb3cb525a3b7c0d17b8f44dd0497eecaa95318e0cc8524ae51e",
 ]

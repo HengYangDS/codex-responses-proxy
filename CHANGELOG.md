@@ -7,6 +7,19 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.0.4] - 2026-08-24
+
+### Fixed
+
+- Preserve each GitLab publication credential kind exactly, using the matching
+  environment variable and HTTP header without guessing or fallback.
+- Compose validated GitHub and GitLab job evidence through one provider-neutral
+  publication schema so byte-identical releases can be proved without parallel
+  evaluator shapes.
+- Prove native macOS lifecycle tests leave no new product-owned launchd
+  registration, override, process, or plist residue while preserving the
+  installed service.
+
 ## [3.0.3] - 2026-08-24
 
 ### Fixed
