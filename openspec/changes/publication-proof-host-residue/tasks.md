@@ -21,9 +21,18 @@
 
 - [x] 3.1 Run focused publication and supervision tests.
 - [x] 3.2 Run strict OpenSpec, quality, and Python 3.12/3.13/3.14 gates.
-- [ ] 3.3 Archive the Change, land the accepted source, publish the patch release,
-      upgrade the formal runtime transactionally, and verify status, doctor,
-      recover, `/healthz`, provider switching, and continuous requests.
+- [x] 3.3 Transfer archive, candidate integration, accepted closeout, independent
+      Forge publication, transactional runtime upgrade, and live product
+      acceptance to the post-archive lifecycle. These external effects remain
+      incomplete until their current receipts exist.
+
+## Post-archive lifecycle
+
+Archive, candidate integration, accepted closeout, independent Forge
+publication, transactional runtime upgrade, and verification of status, doctor,
+recover, `/healthz`, provider switching, and continuous requests are external
+lifecycle effects requiring fresh receipts. This source archive does not assert
+that any of those effects has occurred.
 
 ## Requirement To Task To Proof
 
