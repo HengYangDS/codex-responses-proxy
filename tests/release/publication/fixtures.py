@@ -13,10 +13,10 @@ class VerifyArguments(TypedDict):
     """Exact keyword contract for the publication verifier."""
 
     tag: str
-    gitlab_remote: str
+    gitlab_git_url: str
     gitlab_api_base: str
     gitlab_repo: str
-    github_remote: str
+    github_git_url: str
     github_repo: str
     gitlab_anchor: Path
     github_anchor: Path
@@ -24,10 +24,10 @@ class VerifyArguments(TypedDict):
 
 VERIFY_ARGUMENTS: VerifyArguments = {
     "tag": "v1.2.3",
-    "gitlab_remote": "gitlab-remote",
+    "gitlab_git_url": "https://gitlab.example/team/repository.git",
     "gitlab_api_base": "https://gitlab.example/api/v4",
     "gitlab_repo": "gitlab/repository",
-    "github_remote": "github-remote",
+    "github_git_url": "https://github.example/team/repository.git",
     "github_repo": "github/repository",
     "gitlab_anchor": Path("gitlab-anchor"),
     "github_anchor": Path("github-anchor"),
@@ -83,7 +83,28 @@ def verified_evidence(evidence: Mapping[str, object], *, mocker) -> Mapping[str,
         forge = forge_map[provider]
         assert isinstance(forge, Mapping)
         assert all(isinstance(key, str) for key in forge)
-        return {str(key): value for key, value in forge.items()}
+        commit = forge["commit_oid"]
+        hosted: dict[str, object] = {
+            "repository": repository,
+            "ci": {
+                "id": 42,
+                "revision_oid": commit,
+                "status": "success",
+                "jobs": {"required": "success"},
+            },
+            "release": {
+                "id": 99,
+                "tag": evidence["tag"],
+                "commit_oid": commit,
+                "name": "Codex Responses Proxy v1.2.3",
+                "draft": False,
+                "prerelease": False,
+            },
+            "assets": forge["assets"],
+        }
+        if "items" in forge:
+            hosted["items"] = forge["items"]
+        return hosted
 
     mocker.patch.object(publication.git, "collect", side_effect=collect_git)
     mocker.patch.object(publication.gitlab, "collect", side_effect=collect_hosted)
@@ -100,10 +121,10 @@ def verified_evidence(evidence: Mapping[str, object], *, mocker) -> Mapping[str,
     )
     return publication.verify(
         tag=str(evidence["tag"]),
-        gitlab_remote="gitlab-remote",
+        gitlab_git_url="https://gitlab.example/team/repository.git",
         gitlab_api_base="https://gitlab.example/api/v4",
         gitlab_repo="gitlab/repository",
-        github_remote="github-remote",
+        github_git_url="https://github.example/team/repository.git",
         github_repo="github/repository",
         gitlab_anchor=Path("gitlab-anchor"),
         github_anchor=Path("github-anchor"),

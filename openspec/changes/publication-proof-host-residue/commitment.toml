@@ -12,8 +12,10 @@ scope = [
   "src/codex_responses_proxy/lifecycle/supervision/macos.py",
   "tests/lifecycle/supervision/**",
   "tests/release/publication/**",
+  "tests/release/test_publish.py",
   "tests/release/test_publish_gitlab.py",
   "tools/release/publication/**",
+  "tools/release/publish.py",
   "tools/release/publish_gitlab.py",
   "tools/release/verify.py",
 ]

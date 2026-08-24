@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
@@ -19,10 +20,10 @@ class VerificationRequest:
     """Explicit dual-Forge verification inputs."""
 
     tag: str
-    gitlab_remote: str
+    gitlab_git_url: str
     gitlab_api_base: str
     gitlab_repo: str
-    github_remote: str
+    github_git_url: str
     github_repo: str
     gitlab_anchor: Path
     github_anchor: Path
@@ -32,10 +33,10 @@ def verify(request: VerificationRequest) -> dict[str, object]:
     """Run live verification and copy only displayable evidence."""
     evidence = publication.verify(
         tag=request.tag,
-        gitlab_remote=request.gitlab_remote,
+        gitlab_git_url=request.gitlab_git_url,
         gitlab_api_base=request.gitlab_api_base,
         gitlab_repo=request.gitlab_repo,
-        github_remote=request.github_remote,
+        github_git_url=request.github_git_url,
         github_repo=request.github_repo,
         gitlab_anchor=request.gitlab_anchor,
         github_anchor=request.github_anchor,
@@ -47,7 +48,7 @@ def verify(request: VerificationRequest) -> dict[str, object]:
 
 
 def _plain(value: object) -> object:
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {str(key): _plain(item) for key, item in value.items()}
     if isinstance(value, tuple):
         return [_plain(item) for item in value]
@@ -57,10 +58,10 @@ def _plain(value: object) -> object:
 def _command(
     *,
     tag: str,
-    gitlab_remote: str,
+    gitlab_git_url: str,
     gitlab_api_base: str,
     gitlab_repo: str,
-    github_remote: str,
+    github_git_url: str,
     github_repo: str,
     gitlab_anchor: Path,
     github_anchor: Path,
@@ -69,10 +70,10 @@ def _command(
     """Verify one published tag without mutating either Forge."""
     request = VerificationRequest(
         tag,
-        gitlab_remote,
+        gitlab_git_url,
         gitlab_api_base,
         gitlab_repo,
-        github_remote,
+        github_git_url,
         github_repo,
         gitlab_anchor,
         github_anchor,
@@ -85,7 +86,7 @@ def _command(
             "tag": tag,
             "verified": False,
             "tree_equal": False,
-            "reasons": [type(error).__name__],
+            "reasons": list(error.reasons),
             "forges": {},
         }
     if as_json:

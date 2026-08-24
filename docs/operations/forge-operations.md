@@ -105,6 +105,32 @@ Publication is a separate product operation, not a second provider-specific
 workflow. A publisher accepts only the complete pre-signed bundle and cannot
 build assets or regenerate its checksum inventory or signature.
 
+The read-only dual-Forge verifier accepts explicit `--gitlab-git-url` and
+`--github-git-url` values. These are fetchable Git URLs, not checkout-local
+remote names: verification runs in an isolated bare repository that deliberately
+does not inherit the caller's remote configuration. Both peers must be verified
+against the same product trust anchor bytes; provider-specific account email or
+transport credentials do not create different release identities.
+
+Example:
+
+```bash
+uv run --locked --no-sync python -m tools.release.verify \
+  --tag "v$VERSION" \
+  --gitlab-git-url "$GITLAB_GIT_URL" \
+  --gitlab-api-base "$GITLAB_API_BASE" \
+  --gitlab-repo "$GITLAB_REPOSITORY" \
+  --github-git-url "$GITHUB_GIT_URL" \
+  --github-repo "$GITHUB_REPOSITORY" \
+  --gitlab-anchor "$PRODUCT_TAG_ALLOWED_SIGNERS" \
+  --github-anchor "$PRODUCT_TAG_ALLOWED_SIGNERS" \
+  --json
+```
+
+The command emits stable provider-scoped reasons such as
+`gitlab.remote_git_evidence_invalid` and `github.hosted_evidence_invalid`
+without exposing a credential or transport error body.
+
 Publish the same bundle to both peers with the single composition root:
 
 ```bash
@@ -123,6 +149,30 @@ uv run --locked --no-sync python -m tools.release.publish both \
 reports every failure, and returns nonzero unless both provider-local
 publications complete. The provider-specific subcommands support an explicitly
 one-sided topology; neither result alone is dual-Forge parity.
+
+The current GitLab publisher accepts only `CI_JOB_TOKEN` and sends it as
+`JOB-TOKEN`. Maintainer or workstation publication with a personal/project
+access token is not yet an admitted path: do not relabel a PAT as
+`CI_JOB_TOKEN` or send it with job-token semantics. Until the publisher models
+credential kind explicitly, that path must fail closed.
+
+## Historical macOS override records
+
+Current native lifecycle acceptance snapshots the exact registered labels,
+launchd override entries, and plist hashes before and after successful and
+interrupted isolated installations. Equality proves that current lifecycle code
+does not add host residue and that the canonical service remains unchanged.
+
+Older versions may have left enabled override records for already-absent,
+suffix-qualified test services. `launchctl` exposes only the domain-wide
+`reset-disabled` operation for removing persisted override entries; that scope
+is too broad for product automation. Ordinary uninstall therefore does not
+guess, prefix-match, edit launchd's private database, or reset the user domain.
+A host migration may remove historical records only when an administrator can
+provide an explicit reviewed label list, prove each label has no registration,
+plist, or owned process, preserve the canonical label, and verify the full
+before/after projection. The migration is host maintenance, not compatibility
+logic retained in the product.
 
 ## Read-only parity audit
 
