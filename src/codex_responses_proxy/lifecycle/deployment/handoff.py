@@ -217,17 +217,22 @@ def request(
     convergence_seconds = timeout_seconds * 3 + max(1.0, lease_seconds) + 5.0
     deadline = time.monotonic() + convergence_seconds
     while time.monotonic() < deadline:
-        if process.verified_proxy_listener_pids(ctx) == [child_pid]:
-            runtime = runtime_reader(ctx)
-            if _runtime_matches(runtime, expected, child_pid):
-                return {
-                    "old_pid": old_pid,
-                    "new_pid": child_pid,
-                    "child_pid": child_pid,
-                    "transaction_id": expected["transaction_id"],
-                    "release": expected["release"],
-                    "runtime": runtime,
-                }
+        runtime = runtime_reader(ctx)
+        if _successor_owns_listener(
+            ctx,
+            runtime=runtime,
+            expected=expected,
+            old_pid=old_pid,
+            child_pid=child_pid,
+        ):
+            return {
+                "old_pid": old_pid,
+                "new_pid": child_pid,
+                "child_pid": child_pid,
+                "transaction_id": expected["transaction_id"],
+                "release": expected["release"],
+                "runtime": runtime,
+            }
         time.sleep(0.1)
     raise errors.InstallError(
         f"handoff did not converge on finalized listener {child_pid} "
@@ -269,6 +274,8 @@ def resolve_after_controller_failure(
 ) -> tuple[str, RuntimeSnapshot | None]:
     """Resolve caller failure without racing listener-owned finalization."""
     old_pid = old_runtime["pid"]
+    if not _positive_int(old_pid):
+        return "unknown", None
     deadline = time.monotonic() + timeout_seconds + max(1.0, lease_seconds) + 5.0
     while time.monotonic() < deadline:
         listeners = process.verified_proxy_listener_pids(ctx)
@@ -281,7 +288,11 @@ def resolve_after_controller_failure(
             if (
                 _positive_int(pid)
                 and pid != old_pid
-                and listeners == [pid]
+                and _listener_ownership_matches(
+                    listeners,
+                    old_pid=old_pid,
+                    child_pid=pid,
+                )
                 and _runtime_matches(runtime, expected, pid)
             ):
                 return "finalized", runtime
@@ -289,6 +300,33 @@ def resolve_after_controller_failure(
                 return "rolled_back", runtime
         time.sleep(0.1)
     return "unknown", None
+
+
+def _successor_owns_listener(
+    ctx: runtime_context.RuntimeContext,
+    *,
+    runtime: RuntimeSnapshot | None,
+    expected: RuntimeSnapshot,
+    old_pid: int,
+    child_pid: int,
+) -> bool:
+    """Prove the exact successor while a shared Windows socket still names its parent."""
+    return _listener_ownership_matches(
+        process.verified_proxy_listener_pids(ctx),
+        old_pid=old_pid,
+        child_pid=child_pid,
+    ) and _runtime_matches(runtime, expected, child_pid)
+
+
+def _listener_ownership_matches(
+    listeners: list[int],
+    *,
+    old_pid: int,
+    child_pid: int,
+) -> bool:
+    """Require one successor, plus its shared-socket parent only on Windows."""
+    owners = set(listeners)
+    return owners == {child_pid} or (os.name == "nt" and owners == {old_pid, child_pid})
 
 
 def _listener_pids(

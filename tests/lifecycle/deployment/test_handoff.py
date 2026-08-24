@@ -116,6 +116,30 @@ class TestControllerHandoffWiring:
         assert result["runtime"] == finalized
         assert runtime_reader.call_count == 2
 
+    def test_request_handoff_accepts_exact_successor_when_windows_retains_socket_ownership(
+        self, *, mocker
+    ):
+        """Use protocol identity instead of non-portable shared-socket attribution."""
+        ctx = install_context(Path(self.tempdir.name))
+        expected = expected_metadata()
+        listeners = mocker.patch.object(
+            process,
+            "verified_proxy_listener_pids",
+            side_effect=([999], [999, 1000]),
+        )
+        mocker.patch.object(handoff, "post_ready", return_value=ready_ack(expected))
+        mocker.patch.object(handoff.os, "name", "nt")
+
+        result = handoff.request(
+            ctx,
+            expected,
+            runtime_reader=lambda _ctx: matching_health(1000, expected, handoff_state="finalized"),
+            timeout_seconds=1,
+        )
+
+        assert result["child_pid"] == 1000
+        assert listeners.call_count == 2
+
     def test_request_handoff_allows_ready_until_the_configured_deadline(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
@@ -429,8 +453,7 @@ class TestControllerHandoffWiring:
                     == expected_result
                 )
         mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[999, 1000])
-        mocker.patch.object(handoff.time, "monotonic", side_effect=[0.0, 1.0, 8.0])
-        mocker.patch.object(handoff.time, "sleep")
+        mocker.patch.object(handoff.os, "name", "nt")
         assert handoff.resolve_after_controller_failure(
             ctx,
             old,
@@ -438,7 +461,7 @@ class TestControllerHandoffWiring:
             runtime_reader=lambda _ctx: finalized,
             timeout_seconds=1,
             lease_seconds=1,
-        ) == ("unknown", None)
+        ) == ("finalized", finalized)
 
     def test_failure_resolver_ignores_non_mapping_and_non_integer_runtime_pids(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
