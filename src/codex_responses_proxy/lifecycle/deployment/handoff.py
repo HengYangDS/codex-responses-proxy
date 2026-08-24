@@ -27,6 +27,7 @@ from codex_responses_proxy.runtime import loopback
 from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import inventory
+from codex_responses_proxy.service import runtime as service_runtime
 
 HANDOFF_PROTOCOL_VERSION = 2
 _MAX_BODY_BYTES = 64 * 1024
@@ -214,15 +215,22 @@ def request(
     child_pid = ready["child_pid"]
     if not _positive_int(child_pid):
         raise errors.InstallError("handoff control response lost its verified child pid")
+    successor = process.wait_for_executable(
+        child_pid,
+        ctx.executable,
+        roles={service_runtime.HANDOFF_CHILD_MODE},
+        timeout_seconds=timeout_seconds,
+    )
+    if successor is None:
+        raise errors.InstallError("handoff control response names an unverified successor process")
     convergence_seconds = timeout_seconds * 3 + max(1.0, lease_seconds) + 5.0
     deadline = time.monotonic() + convergence_seconds
     while time.monotonic() < deadline:
         runtime = runtime_reader(ctx)
-        if _successor_owns_listener(
-            ctx,
+        if _successor_is_finalized(
+            successor,
             runtime=runtime,
             expected=expected,
-            old_pid=old_pid,
             child_pid=child_pid,
         ):
             return {
@@ -288,12 +296,20 @@ def resolve_after_controller_failure(
             if (
                 _positive_int(pid)
                 and pid != old_pid
-                and _listener_ownership_matches(
-                    listeners,
-                    old_pid=old_pid,
+                and (
+                    successor := process.capture_executable(
+                        pid,
+                        ctx.executable,
+                        roles={service_runtime.HANDOFF_CHILD_MODE},
+                    )
+                )
+                is not None
+                and _successor_is_finalized(
+                    successor,
+                    runtime=runtime,
+                    expected=expected,
                     child_pid=pid,
                 )
-                and _runtime_matches(runtime, expected, pid)
             ):
                 return "finalized", runtime
             if source_listeners == [old_pid] and _old_runtime_resumed(runtime, old_runtime):
@@ -302,31 +318,15 @@ def resolve_after_controller_failure(
     return "unknown", None
 
 
-def _successor_owns_listener(
-    ctx: runtime_context.RuntimeContext,
+def _successor_is_finalized(
+    successor: process.OwnedProcess,
     *,
     runtime: RuntimeSnapshot | None,
     expected: RuntimeSnapshot,
-    old_pid: int,
     child_pid: int,
 ) -> bool:
-    """Prove the exact successor while a shared Windows socket still names its parent."""
-    return _listener_ownership_matches(
-        process.verified_proxy_listener_pids(ctx),
-        old_pid=old_pid,
-        child_pid=child_pid,
-    ) and _runtime_matches(runtime, expected, child_pid)
-
-
-def _listener_ownership_matches(
-    listeners: list[int],
-    *,
-    old_pid: int,
-    child_pid: int,
-) -> bool:
-    """Require one successor, plus its shared-socket parent only on Windows."""
-    owners = set(listeners)
-    return owners == {child_pid} or (os.name == "nt" and owners == {old_pid, child_pid})
+    """Prove one captured successor generation through its finalized health identity."""
+    return process.owned_process_alive(successor) and _runtime_matches(runtime, expected, child_pid)
 
 
 def _listener_pids(

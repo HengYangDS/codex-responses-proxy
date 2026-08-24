@@ -19,6 +19,7 @@ from codex_responses_proxy.lifecycle import projection as payload_projection
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import inventory
+from codex_responses_proxy.service import runtime as service_runtime
 from tests.lifecycle.fixtures import install_context
 from tests.service.handoff.fixtures import Response
 from tests.service.handoff.fixtures import expected_metadata
@@ -27,6 +28,14 @@ from tests.service.handoff.fixtures import matching_health
 from tests.service.handoff.fixtures import ready_ack
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+def admit_successor(mocker, ctx, *, pid: int = 1000) -> process.OwnedProcess:
+    """Admit one exact handoff-child generation for controller tests."""
+    owned = process.OwnedProcess(pid, ctx.executable, 1.0)
+    mocker.patch.object(process, "wait_for_executable", return_value=owned)
+    mocker.patch.object(process, "owned_process_alive", return_value=True)
+    return owned
 
 
 class TestControllerHandoffWiring:
@@ -72,6 +81,7 @@ class TestControllerHandoffWiring:
     ):
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
+        admit_successor(mocker, ctx)
         for name, listeners in (
             ("direct", [[999], [1000]]),
             ("transient dual listener", [[999], [999, 1000], [999, 1000], [1000]]),
@@ -95,6 +105,7 @@ class TestControllerHandoffWiring:
     def test_request_handoff_waits_for_finalized_successor_identity(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
+        admit_successor(mocker, ctx)
         serving = matching_health(1000, expected)
         finalized = matching_health(1000, expected, handoff_state="finalized")
         mocker.patch.object(
@@ -116,19 +127,23 @@ class TestControllerHandoffWiring:
         assert result["runtime"] == finalized
         assert runtime_reader.call_count == 2
 
-    def test_request_handoff_accepts_exact_successor_when_windows_retains_socket_ownership(
+    def test_request_handoff_uses_process_and_protocol_identity_not_tcp_owner_projection(
         self, *, mocker
     ):
-        """Use protocol identity instead of non-portable shared-socket attribution."""
+        """Treat the OS TCP-owner table as observation, not handoff authority."""
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
+        owned = process.OwnedProcess(1000, ctx.executable, 1.0)
         listeners = mocker.patch.object(
             process,
             "verified_proxy_listener_pids",
-            side_effect=([999], [999, 1000]),
+            side_effect=([999], [999]),
         )
+        capture = mocker.patch.object(process, "wait_for_executable", return_value=owned)
+        alive = mocker.patch.object(process, "owned_process_alive", return_value=True)
         mocker.patch.object(handoff, "post_ready", return_value=ready_ack(expected))
-        mocker.patch.object(handoff.os, "name", "nt")
+        mocker.patch.object(handoff.time, "monotonic", side_effect=[0.0, 1.0, 10.0])
+        mocker.patch.object(handoff.time, "sleep")
 
         result = handoff.request(
             ctx,
@@ -138,11 +153,19 @@ class TestControllerHandoffWiring:
         )
 
         assert result["child_pid"] == 1000
-        assert listeners.call_count == 2
+        assert listeners.call_count == 1
+        capture.assert_called_once_with(
+            1000,
+            ctx.executable,
+            roles={service_runtime.HANDOFF_CHILD_MODE},
+            timeout_seconds=1,
+        )
+        alive.assert_called_once_with(owned)
 
     def test_request_handoff_allows_ready_until_the_configured_deadline(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
+        admit_successor(mocker, ctx)
         mocker.patch.object(process, "verified_proxy_listener_pids", side_effect=[[999], [1000]])
         ready = mocker.patch.object(handoff, "post_ready", return_value=ready_ack(expected))
 
@@ -306,6 +329,7 @@ class TestControllerHandoffWiring:
     def test_request_handoff_rejects_a_wrong_child_pid_in_the_health_snapshot(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
+        admit_successor(mocker, ctx)
         mocker.patch.object(process, "verified_proxy_listener_pids", side_effect=[[999], [1000]])
         mocker.patch.object(
             handoff,
@@ -325,6 +349,7 @@ class TestControllerHandoffWiring:
     def test_request_handoff_rejects_each_runtime_field_mismatch(self, subtests, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
+        admit_successor(mocker, ctx)
         mocker.patch.object(process, "verified_proxy_listener_pids", side_effect=[[999], [1000]])
         mocker.patch.object(handoff, "post_ready", return_value={"child_pid": 1000})
         mocker.patch.object(handoff.time, "monotonic", side_effect=[0.0, 0.0, 100.0])
@@ -370,6 +395,7 @@ class TestControllerHandoffWiring:
     def test_request_handoff_times_out_before_the_child_listener_converges(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
+        admit_successor(mocker, ctx)
         mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[999])
         mocker.patch.object(
             handoff,
@@ -441,6 +467,13 @@ class TestControllerHandoffWiring:
         for name, listeners, runtime, expected_result in cases:
             with subtests.test(name=name):
                 mocker.patch.object(process, "verified_proxy_listener_pids", return_value=listeners)
+                successor = process.OwnedProcess(1000, ctx.executable, 1.0)
+                mocker.patch.object(
+                    process,
+                    "capture_executable",
+                    return_value=successor if name == "finalized" else None,
+                )
+                mocker.patch.object(process, "owned_process_alive", return_value=True)
                 assert (
                     handoff.resolve_after_controller_failure(
                         ctx,
@@ -452,8 +485,10 @@ class TestControllerHandoffWiring:
                     )
                     == expected_result
                 )
-        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[999, 1000])
-        mocker.patch.object(handoff.os, "name", "nt")
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[999])
+        successor = process.OwnedProcess(1000, ctx.executable, 1.0)
+        mocker.patch.object(process, "capture_executable", return_value=successor)
+        mocker.patch.object(process, "owned_process_alive", return_value=True)
         assert handoff.resolve_after_controller_failure(
             ctx,
             old,
@@ -480,6 +515,9 @@ class TestControllerHandoffWiring:
             "verified_proxy_listener_pids",
             side_effect=[[999, 1000], [999, 1000], [1000]],
         )
+        successor = process.OwnedProcess(1000, ctx.executable, 1.0)
+        mocker.patch.object(process, "capture_executable", return_value=successor)
+        mocker.patch.object(process, "owned_process_alive", return_value=True)
         mocker.patch.object(handoff.time, "monotonic", side_effect=[0.0, 1.0, 2.0, 3.0])
         mocker.patch.object(handoff.time, "sleep")
         assert (
