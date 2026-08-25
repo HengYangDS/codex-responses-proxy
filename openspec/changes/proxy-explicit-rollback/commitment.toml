@@ -1,0 +1,47 @@
+schema_version = 2
+id = "change:proxy-explicit-rollback"
+intent = "Expose one explicit transactional rollback command over the existing payload transaction authority, with precise invalid-journal diagnostics and no parallel lifecycle state."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "CHANGELOG.md",
+  "README.md",
+  "docs/**",
+  "openspec/changes/archive/*-proxy-explicit-rollback/**",
+  "openspec/changes/proxy-explicit-rollback/**",
+  "openspec/specs/product-interface/**",
+  "openspec/specs/runtime-upgrade/**",
+  "src/codex_responses_proxy/cli/**",
+  "src/codex_responses_proxy/lifecycle/**",
+  "tests/cli/**",
+  "tests/lifecycle/**",
+  "tests/release/**",
+]
+invariants = [
+  "formal_runtime_and_port_8792_remain_unchanged_until_release_acceptance",
+  "one_result_model_drives_human_and_json_output",
+  "rollback_never_guesses_or_mutates_unverifiable_state",
+  "rollback_reuses_the_existing_payload_transaction_authority",
+]
+acceptance = [
+  "focused_lifecycle_and_cli_tests_pass_without_warnings",
+  "full_quality_and_python_matrix_pass",
+  "invalid_journal_paths_fail_closed_with_actionable_diagnostics",
+  "rollback_command_is_discoverable_and_machine_stable",
+  "rollback_restores_only_the_exact_verified_predecessor",
+]
+risks = [
+  "rollback_could_be_confused_with_recovery",
+  "rollback_could_interrupt_a_healthy_runtime_without_a_retained_predecessor",
+]
+authority_refs = [
+  "AGENTS.md",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "openspec/specs/product-interface/spec.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+]
+predecessors = []
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []
