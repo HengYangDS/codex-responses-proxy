@@ -108,8 +108,10 @@ transaction. No transaction SHALL be an idempotent successful no-op. A prepared
 transaction SHALL be closed only when its canonical journal is the sole
 transaction-root entry. Recovery of a mutated projection SHALL require one
 canonical journal, a fully verified current candidate bundle, a fully verified
-current rollback bundle, and matching accepting runtime identity. Any existing
-but unverifiable transaction carrier SHALL fail closed without mutation.
+current rollback bundle, and matching accepting runtime identity. Any existing but unverifiable transaction carrier SHALL fail closed without
+mutation and identify whether the transaction root or journal is missing, a
+symbolic link, the wrong filesystem type, malformed JSON, non-canonical JSON,
+an unsupported schema, or invalid under the current schema.
 
 The public recovery result SHALL be exactly one of `not_required`, `closed`,
 `finalized`, or `rolled_back`. `finalized` requires the accepting runtime to
@@ -147,6 +149,16 @@ neither outcome may be inferred from process presence alone.
 - **WHEN** a required byte, path, mode, digest, PID, state, or journal field
   differs
 - **THEN** recovery fails closed without changing the payload or journal.
+
+#### Scenario: The transaction carrier is invalid
+
+- **WHEN** recovery observes a symbolic-link or non-directory transaction root,
+  a missing or symbolic-link journal, malformed or non-canonical JSON, an
+  unsupported schema, or invalid current-schema fields
+- **THEN** recovery fails before any lifecycle mutation
+- **AND** identifies the exact failed invariant
+- **AND** leaves all retained files and the independently serving runtime
+  unchanged.
 
 ### Requirement: Rollback owns only current product files
 
@@ -219,10 +231,11 @@ optional process utility, source path, user identity, or workstation-specific
 coordinate. The default installation SHALL retain the public service identity;
 every alternate installation root SHALL use a deterministic identity derived
 from that root. Signal paths SHALL revalidate exact process identity
-immediately before mutation. Native acceptance on each supported operating
-system MUST exercise install, status, recovery, and uninstall through that
-platform's built artifact; source tests, mocks, and cross-compilation MUST NOT
-be reported as equivalent native product evidence.
+immediately before mutation. Creation, observation, and teardown of one
+native service SHALL consume the same exact runtime context. Native acceptance
+on each supported operating system MUST exercise install, status, recovery,
+and uninstall through that platform's built artifact; source tests, mocks, and
+cross-compilation MUST NOT be reported as equivalent native product evidence.
 
 #### Scenario: A supported host lacks development tools
 
@@ -263,6 +276,14 @@ be reported as equivalent native product evidence.
 - **WHEN** one hosted platform cannot schedule a native acceptance job
 - **THEN** that platform's product evidence remains unavailable
 - **AND** successful evidence from another platform is not relabeled as proof for the unavailable platform
+
+#### Scenario: Isolated native verification ends
+
+- **WHEN** an isolated macOS, Linux, or Windows lifecycle completes or aborts
+- **THEN** teardown addresses only its exact service identity and carrier
+- **AND** proves its owned watchdog, listener, and handoff processes have exited
+- **AND** leaves the canonical service and listener unchanged
+- **AND** leaves no net host service residue.
 
 ### Requirement: Uninstall removes only proved product ownership
 

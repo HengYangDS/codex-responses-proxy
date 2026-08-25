@@ -204,10 +204,12 @@ from the verified installed-state record and command discoverability without
 consulting repository files or a second state authority. Runtime evidence SHALL
 be returned only when its PID is the sole listener owned by the selected
 installation. An installed command path SHALL be interpreted using the native
-absolute-path and link semantics of the host that recorded it. Recovery SHALL
-identify the exact retained carrier that is missing, malformed, or
-unverifiable; it MUST preserve those bytes and MUST distinguish that evidence
-failure from the health of an independently serving runtime.
+absolute-path and link semantics of the host that recorded it. Recovery SHALL identify the exact failed carrier invariant when the
+transaction root or journal is missing, a symbolic link, the wrong filesystem
+type, malformed JSON, non-canonical JSON, an unsupported schema, or invalid
+under the current schema. It MUST preserve those bytes, retain one stable
+\`recovery_state_invalid\` error code and read-only next action, and distinguish
+that evidence failure from the health of an independently serving runtime.
 
 #### Scenario: An operator inspects the installed service
 
@@ -254,10 +256,11 @@ failure from the health of an independently serving runtime.
 
 #### Scenario: Retained recovery evidence is invalid
 
-- **WHEN** a transaction root exists but its canonical journal is missing,
-  malformed, or unverifiable
-- **THEN** recovery returns the exact invalid carrier classification and one
-  state-appropriate action
+- **WHEN** a transaction root exists but its canonical journal is missing, a
+  symbolic link, the wrong filesystem type, malformed JSON, non-canonical JSON,
+  an unsupported schema, or invalid under the current schema
+- **THEN** recovery returns the exact invalid carrier classification
+- **AND** returns \`recovery_state_invalid\` with \`status --json\` as its next action
 - **AND** it does not describe an independently serving runtime as unavailable
 - **AND** it does not mutate or delete the retained bytes.
 
