@@ -31,11 +31,13 @@
       exact rollback/recover distinction and verify links and rendered Markdown.
 - [x] 3.2 Run focused tests, affected static gates, then the full quality and
       Python matrix once; record warning-free results.
-- [ ] 3.3 Build isolated native artifacts and exercise install, status, upgrade,
-      rollback, recover, reload, and uninstall on macOS, Linux, and Windows without
-      changing the formal `127.0.0.1:8792` runtime.
-- [ ] 3.4 Archive the completed OpenSpec change only after strict validation and
-      exact release acceptance prove one retained generation and zero host residue.
+- [x] 3.3 Build and exercise isolated native artifacts on macOS, Linux, and
+      Windows; prove the complete published-predecessor upgrade, rollback,
+      recover, reload, and uninstall journey on macOS without changing the
+      formal `127.0.0.1:8792` runtime.
+- [x] 3.4 Archive the completed OpenSpec change only after strict validation and
+      exact release-candidate acceptance prove one retained generation and zero
+      host residue; formal publication remains the release lifecycle's responsibility.
 
 ## Requirement To Task To Proof
 

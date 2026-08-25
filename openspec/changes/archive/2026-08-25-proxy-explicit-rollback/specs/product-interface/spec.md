@@ -26,6 +26,8 @@ publication SHALL remain outside the installed command grammar.
 - **THEN** the command reports state `unavailable` without mutation
 - **AND** Human and JSON output explain that no verified predecessor exists.
 
+## ADDED Requirements
+
 ### Requirement: Explicit rollback has one public result model
 
 The installed executable SHALL project one semantic rollback result to concise
