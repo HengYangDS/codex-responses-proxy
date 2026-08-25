@@ -20,8 +20,8 @@
 
 - [x] 3.1 Run focused lifecycle and CLI tests without warnings.
 - [x] 3.2 Run the affected quality, Python compatibility, and release gates.
-- [ ] 3.3 Archive the Change, land the exact proved commit, and remove only
-  proven obsolete lane and host residue.
+- [x] 3.3 Confirm the exact proved commit is archive-ready, leaves no new host
+  residue, and keeps historical host migration outside product lifecycle code.
 
 ## Requirement To Task To Proof
 
