@@ -15,6 +15,7 @@ from codex_responses_proxy.cli import application
 from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
+from tests.lifecycle.fixtures import install_context
 
 
 class CliLifecycleContracts:
@@ -514,6 +515,43 @@ class CliLifecycleContracts:
         assert json.loads(stdout) == {"state": "rolled_back", "version": "2.0.13"}
         context.assert_called_once_with(port=8801)
         recover.assert_called_once_with("context", runtime=runtime)
+
+    @pytest.mark.parametrize("json_output", [False, True])
+    def test_recover_projects_one_precise_invalid_state_contract(
+        self,
+        tmp_path: Path,
+        json_output: bool,
+        *,
+        mocker,
+    ) -> None:
+        ctx = install_context(tmp_path)
+        transaction_root = Path(payload_state.transaction_root(ctx))
+        transaction_root.mkdir(parents=True)
+        journal = Path(payload_state.journal_path(ctx))
+        journal.write_bytes(b"{not-json\n")
+        before = journal.read_bytes()
+        mocker.patch.object(application.runtime_context, "create", return_value=ctx)
+        mocker.patch.object(application.control, "read_runtime", return_value={"pid": 321})
+
+        arguments = ("recover", "--json") if json_output else ("recover",)
+        code, stdout, stderr = self.invoke(*arguments)
+
+        assert code == 2
+        assert stdout == ""
+        assert "Traceback" not in stderr
+        assert "warning" not in stderr.casefold()
+        if json_output:
+            assert json.loads(stderr) == {
+                "error": {
+                    "code": "recovery_state_invalid",
+                    "message": "payload transaction journal is malformed JSON",
+                    "next": "codex-responses-proxy status --json",
+                }
+            }
+        else:
+            assert "payload transaction journal is malformed JSON" in stderr
+            assert "codex-responses-proxy status --json" in stderr
+        assert journal.read_bytes() == before
 
     def test_uninstall_removes_only_the_owned_service_unless_purge_is_requested(
         self, *, mocker

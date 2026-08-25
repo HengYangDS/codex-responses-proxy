@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.json_value import JsonObject
 from codex_responses_proxy.json_value import ReadOnlyJsonObject
+from codex_responses_proxy.json_value import is_json_object
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.service import digest
@@ -50,23 +52,61 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object] | None:
 def read_journal(ctx: runtime_context.RuntimeContext) -> JsonObject:
     """Read one existing transaction through its strict current schema."""
     root = transaction_root(ctx)
-    if root.is_symlink() or not root.is_dir():
-        raise errors.InstallError("payload transaction root is invalid")
+    if root.is_symlink():
+        raise errors.InstallError("payload transaction root is a symbolic link")
+    if not root.is_dir():
+        raise errors.InstallError("payload transaction root is not a directory")
     path = journal_path(ctx)
     if path.is_symlink():
-        raise errors.InstallError("payload transaction journal is invalid")
-    if not path.is_file():
+        raise errors.InstallError("payload transaction journal is a symbolic link")
+    if not path.exists():
         raise errors.InstallError("payload transaction journal is missing")
-    journal = owned_files.read_canonical_json(path, "payload transaction journal")
+    if not path.is_file():
+        raise errors.InstallError("payload transaction journal is not a regular file")
+    try:
+        content = path.read_bytes()
+    except OSError as exc:
+        raise errors.InstallError("payload transaction journal could not be read") from exc
+    try:
+        journal = json.loads(content.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise errors.InstallError("payload transaction journal is malformed JSON") from exc
+    if not is_json_object(journal):
+        raise errors.InstallError("payload transaction journal fields are invalid")
+    if digest.canonical_json(journal) != content:
+        raise errors.InstallError("payload transaction journal is not canonical JSON")
+    if journal.get("schema_version") != TRANSACTION_JOURNAL_SCHEMA:
+        raise errors.InstallError("payload transaction journal schema is unsupported")
+    required = {
+        "schema_version",
+        "state",
+        "transaction_id",
+        "version",
+        "receipt_sha256",
+        "fresh",
+    }
+    allowed = required | {"reason"}
+    transaction_id = journal.get("transaction_id")
+    version = journal.get("version")
+    receipt_sha256 = journal.get("receipt_sha256")
+    fresh = journal.get("fresh")
+    reason = journal.get("reason")
     if (
-        journal.get("schema_version") != TRANSACTION_JOURNAL_SCHEMA
+        not required.issubset(journal)
+        or set(journal) - allowed
         or journal.get("state") not in {"prepared", "committed", "recovery_required"}
-        or not isinstance(journal.get("transaction_id"), str)
-        or not isinstance(journal.get("version"), str)
-        or not isinstance(journal.get("receipt_sha256"), str)
-        or not isinstance(journal.get("fresh"), bool)
+        or not isinstance(transaction_id, str)
+        or not transaction_id
+        or not isinstance(version, str)
+        or _STRICT_VERSION.fullmatch(version) is None
+        or not isinstance(receipt_sha256, str)
+        or len(receipt_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in receipt_sha256)
+        or type(fresh) is not bool
+        or (reason is not None and (not isinstance(reason, str) or not reason))
+        or (journal.get("state") == "recovery_required") != (reason is not None)
     ):
-        raise errors.InstallError("payload transaction journal is invalid")
+        raise errors.InstallError("payload transaction journal fields are invalid")
     return journal
 
 

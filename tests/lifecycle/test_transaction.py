@@ -45,6 +45,25 @@ def recovery_runtime(
     }
 
 
+def _retained_carrier_snapshot(root: Path, external_target: Path) -> tuple[object, ...]:
+    """Capture exact test-owned carrier shape and bytes without following links."""
+    if root.is_symlink():
+        return ("root-link", os.readlink(root), (external_target / "evidence").read_bytes())
+    if root.is_file():
+        return ("root-file", root.read_bytes())
+    entries: list[tuple[object, ...]] = []
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            entries.append((relative, "link", os.readlink(path)))
+        elif path.is_dir():
+            entries.append((relative, "directory"))
+        else:
+            entries.append((relative, "file", path.read_bytes()))
+    target = external_target.read_bytes() if external_target.is_file() else None
+    return ("root-directory", tuple(entries), target)
+
+
 def test_commit_prewarms_the_exact_installed_executable(tmp_path: Path, *, mocker) -> None:
     ctx = install_context(tmp_path)
     candidate = released_artifact()
@@ -207,6 +226,104 @@ class TestPayloadTransaction:
         }
         with pytest.raises(errors.InstallError, match="journal is missing"):
             payload_transaction.recover(ctx, runtime=None)
+
+    @pytest.mark.parametrize(
+        ("carrier", "expected"),
+        [
+            ("root_symlink", "payload transaction root is a symbolic link"),
+            ("root_regular_file", "payload transaction root is not a directory"),
+            ("journal_missing", "payload transaction journal is missing"),
+            ("journal_symlink", "payload transaction journal is a symbolic link"),
+            ("journal_directory", "payload transaction journal is not a regular file"),
+            ("journal_unreadable", "payload transaction journal could not be read"),
+            ("journal_invalid_utf8", "payload transaction journal is malformed JSON"),
+            ("journal_malformed", "payload transaction journal is malformed JSON"),
+            ("journal_noncanonical", "payload transaction journal is not canonical JSON"),
+            ("journal_unsupported_schema", "payload transaction journal schema is unsupported"),
+            ("journal_invalid_fields", "payload transaction journal fields are invalid"),
+        ],
+    )
+    def test_recovery_classifies_invalid_carriers_without_mutation(
+        self,
+        tmp_path: Path,
+        carrier: str,
+        expected: str,
+        *,
+        mocker,
+    ) -> None:
+        ctx = install_context(tmp_path)
+        root = Path(payload_state.transaction_root(ctx))
+        journal = Path(payload_state.journal_path(ctx))
+        target = tmp_path / "retained-target"
+        root.parent.mkdir(parents=True, exist_ok=True)
+        if carrier == "root_symlink":
+            target.mkdir()
+            (target / "evidence").write_bytes(b"retained\n")
+            root.symlink_to(target, target_is_directory=True)
+        elif carrier == "root_regular_file":
+            root.write_bytes(b"retained root\n")
+        else:
+            root.mkdir(parents=True)
+            if carrier == "journal_symlink":
+                target.write_bytes(b"retained journal\n")
+                journal.symlink_to(target)
+            elif carrier == "journal_directory":
+                journal.mkdir()
+                (journal / "evidence").write_bytes(b"retained\n")
+            elif carrier == "journal_unreadable":
+                journal.write_bytes(b"retained unreadable journal\n")
+            elif carrier == "journal_invalid_utf8":
+                journal.write_bytes(b"\xff\xfe\x00")
+            elif carrier == "journal_malformed":
+                journal.write_bytes(b"{not-json\n")
+            elif carrier == "journal_noncanonical":
+                journal.write_bytes(
+                    b'{"schema_version": 1, "state": "prepared", "transaction_id": "tx", '
+                    b'"version": "1.2.3", "receipt_sha256": "' + b"0" * 64 + b'", "fresh": true}\n'
+                )
+            elif carrier == "journal_unsupported_schema":
+                journal.write_bytes(
+                    payload_digest.canonical_json(
+                        {
+                            "schema_version": 2,
+                            "state": "prepared",
+                            "transaction_id": "tx",
+                            "version": "1.2.3",
+                            "receipt_sha256": "0" * 64,
+                            "fresh": True,
+                        }
+                    )
+                )
+            elif carrier == "journal_invalid_fields":
+                journal.write_bytes(
+                    payload_digest.canonical_json(
+                        {
+                            "schema_version": payload_state.TRANSACTION_JOURNAL_SCHEMA,
+                            "state": "prepared",
+                            "transaction_id": "",
+                            "version": "1.2",
+                            "receipt_sha256": "not-a-digest",
+                            "fresh": True,
+                        }
+                    )
+                )
+
+        before = _retained_carrier_snapshot(root, target)
+
+        if carrier == "journal_unreadable":
+            read_bytes = mocker.patch.object(
+                Path,
+                "read_bytes",
+                side_effect=PermissionError("denied"),
+            )
+            with pytest.raises(errors.RecoveryStateError, match=expected):
+                payload_transaction.recover(ctx, runtime=None)
+            mocker.stop(read_bytes)
+        else:
+            with pytest.raises(errors.RecoveryStateError, match=expected):
+                payload_transaction.recover(ctx, runtime=None)
+
+        assert _retained_carrier_snapshot(root, target) == before
 
     def test_installed_state_rejects_a_symlink_even_when_its_target_is_absent(
         self, tmp_path: Path
@@ -402,7 +519,7 @@ class TestPayloadTransaction:
         assert Path(payload_state.transaction_root(ctx), "rollback").is_dir()
 
     def test_recovery_rollback_restores_previous_projection_and_removes_hold(
-        self, subtests, *, mocker
+        self, *, mocker
     ) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install_payload(ctx, "1.2.2", mocker=mocker)
@@ -422,46 +539,6 @@ class TestPayloadTransaction:
         assert result["state"] == "rolled_back"
         assert Path(ctx.executable).read_bytes() == previous
         assert not Path(payload_state.transaction_root(ctx)).exists()
-
-        invalid = (
-            {},
-            {
-                "schema_version": 0,
-                "state": "recovery_required",
-                "transaction_id": "x",
-                "version": "1.2.3",
-            },
-            {
-                "schema_version": 1,
-                "state": "committed",
-                "transaction_id": "x",
-                "version": "1.2.3",
-            },
-            {
-                "schema_version": 1,
-                "state": "recovery_required",
-                "transaction_id": 1,
-                "version": "1.2.3",
-            },
-            {
-                "schema_version": 1,
-                "state": "recovery_required",
-                "transaction_id": "x",
-                "version": 1,
-            },
-        )
-        for journal in invalid:
-            with subtests.test(journal=journal):
-                root = Path(payload_state.transaction_root(ctx))
-                root.mkdir()
-                Path(payload_state.journal_path(ctx)).write_bytes(
-                    payload_digest.canonical_json(journal)
-                )
-                with pytest.raises(errors.InstallError, match="invalid"):
-                    payload_transaction.recover(ctx, runtime=runtime)
-                for path in sorted(root.rglob("*"), reverse=True):
-                    path.unlink() if path.is_file() else path.rmdir()
-                root.rmdir()
 
         candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         candidate.commit_projection()
@@ -610,11 +687,8 @@ class TestPayloadTransaction:
         evidence = payload_state.status(ctx)
 
         assert evidence == {
-            "transaction_id": journal["transaction_id"],
-            "version": "1.2.3",
-            "receipt_sha256": transaction.receipt_sha256,
-            "state": "recovery_required",
-            "fresh": False,
+            "state": "invalid",
+            "detail": "payload transaction journal fields are invalid",
         }
         serialized = json.dumps(evidence, sort_keys=True)
         for forbidden in ("secret-token", "private request", "/private/release-stage"):

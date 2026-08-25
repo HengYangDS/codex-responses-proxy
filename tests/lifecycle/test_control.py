@@ -599,7 +599,10 @@ class TestControllerLifecycle:
             evidence = application.dispatch("status", port=ctx.port)
             transaction_evidence = evidence["payload_transaction"]
             assert isinstance(transaction_evidence, dict)
-            assert transaction_evidence["state"] == "recovery_required"
+            assert transaction_evidence == {
+                "state": "invalid",
+                "detail": "payload transaction journal fields are invalid",
+            }
             assert "reason" not in transaction_evidence
             rendered = json.dumps(evidence)
             for forbidden in (
