@@ -120,6 +120,21 @@ def render(command: str, result: Mapping[str, object] | None) -> str:
             ),
             next_command=product_identity.command("status"),
         )
+    if command == "rollback":
+        if result.get("state") == "unavailable":
+            return _page(
+                "Rollback unavailable",
+                (("State", "No verified predecessor"),),
+                next_command=product_identity.command("status"),
+            )
+        return _page(
+            "Rolled back",
+            (
+                ("From", result.get("from_release", "Unknown")),
+                ("To", result.get("to_release", "Unknown")),
+            ),
+            next_command=product_identity.command("status"),
+        )
     if command == "recover":
         if result.get("state") == "not_required":
             return _page("No recovery required", (("State", "No pending transaction"),))

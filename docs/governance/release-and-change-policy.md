@@ -167,6 +167,8 @@ alias or a second installer.
 | `doctor`            | None                  | Classified local lifecycle checks       |
 | `reload`            | Same-payload handoff  | Exact successor identity                |
 | `install`           | Payload replacement   | Verified asset and successor            |
+| `rollback`          | Predecessor restore   | Selected retained generation            |
+| `recover`           | Transaction resume    | Active transaction and runtime evidence |
 | `uninstall`         | Service removal       | Exact owned process exit                |
 | `uninstall --purge` | Owned payload removal | Valid manifest inventory                |
 

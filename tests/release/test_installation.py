@@ -12,9 +12,12 @@ import pytest
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import control
 from codex_responses_proxy.lifecycle import install
+from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import apply
 from codex_responses_proxy.lifecycle.supervision import process
+from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import runtime as service_runtime
 from tests.lifecycle.fixtures import install_context
 
 
@@ -47,6 +50,17 @@ class FakeTransaction:
 
 def as_transaction(value: FakeTransaction) -> transaction.PayloadTransaction:
     return cast("transaction.PayloadTransaction", value)
+
+
+def retained_identity(release: str) -> identity.LoadedPayloadIdentity:
+    """Build the identity surface needed by reverse deployment tests."""
+    return identity.LoadedPayloadIdentity(
+        release=release,
+        serving_payload_sha256="a" * 64,
+        release_receipt_sha256="b" * 64,
+        manifest_sha256="c" * 64,
+        root=Path("/retained") / release,
+    )
 
 
 class FakeServiceAdapter:
@@ -156,6 +170,106 @@ class TestReleasedDeployment:
         request.assert_called_once()
         service.install_mock.assert_called_once_with(self.ctx)
 
+    def test_finalized_legacy_runtime_uses_one_bounded_native_generation_replacement(
+        self, *, mocker
+    ) -> None:
+        payload = FakeTransaction()
+        current = self.current_runtime(
+            handoff_state="finalized",
+            handoff_transaction_id="txn-previous",
+        )
+        runtime = self.successor()
+        service = FakeServiceAdapter(mocker=mocker)
+        source = process.OwnedProcess(111, self.ctx.executable, 1.0)
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
+        capture = mocker.patch.object(process, "capture_executable", return_value=source)
+        terminate = mocker.patch.object(process, "terminate_owned_process", return_value=True)
+        wait = mocker.patch.object(apply, "wait_for_serving_runtime", return_value=runtime)
+        request = mocker.patch.object(apply, "request_handoff")
+
+        result = self.deploy(payload, current, adapter=service, mocker=mocker)
+
+        assert result == {"state": "upgraded", "runtime": runtime}
+        assert payload.events == ["commit", ("finalize", runtime)]
+        capture.assert_called_once_with(
+            111,
+            self.ctx.executable,
+            roles={service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE},
+        )
+        terminate.assert_called_once_with(source, timeout_seconds=30)
+        wait.assert_called_once_with(
+            self.ctx,
+            payload.expected,
+            runtime_reader=mocker.ANY,
+            timeout_seconds=30,
+            old_pid=111,
+        )
+        request.assert_not_called()
+        service.install_mock.assert_called_once_with(self.ctx)
+
+    def test_generation_replacement_requires_exact_source_identity_before_write(
+        self, *, mocker
+    ) -> None:
+        payload = FakeTransaction()
+        current = self.current_runtime(
+            handoff_state="finalized",
+            handoff_transaction_id="txn-previous",
+        )
+        service = FakeServiceAdapter(mocker=mocker)
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
+        mocker.patch.object(process, "capture_executable", return_value=None)
+
+        with pytest.raises(errors.InstallError, match="process generation"):
+            self.deploy(payload, current, adapter=service, mocker=mocker)
+
+        assert payload.events == []
+        service.install_mock.assert_not_called()
+
+    def test_generation_replacement_preserves_an_unconfirmed_source_exit(self, *, mocker) -> None:
+        payload = FakeTransaction()
+        current = self.current_runtime(
+            handoff_state="finalized",
+            handoff_transaction_id="txn-previous",
+        )
+        service = FakeServiceAdapter(mocker=mocker)
+        source = process.OwnedProcess(111, self.ctx.executable, 1.0)
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
+        mocker.patch.object(process, "capture_executable", return_value=source)
+        mocker.patch.object(process, "terminate_owned_process", return_value=False)
+
+        with pytest.raises(apply.UnknownDeploymentOutcome, match="generation replacement"):
+            self.deploy(payload, current, adapter=service, mocker=mocker)
+
+        assert payload.events == [
+            "commit",
+            ("preserve", "native generation replacement outcome is unconfirmed"),
+        ]
+
+    def test_generation_replacement_restores_predecessor_when_successor_never_serves(
+        self, *, mocker
+    ) -> None:
+        payload = FakeTransaction()
+        current = self.current_runtime(
+            handoff_state="finalized",
+            handoff_transaction_id="txn-previous",
+        )
+        service = FakeServiceAdapter(mocker=mocker)
+        source = process.OwnedProcess(111, self.ctx.executable, 1.0)
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
+        mocker.patch.object(process, "capture_executable", return_value=source)
+        mocker.patch.object(process, "terminate_owned_process", return_value=True)
+        mocker.patch.object(
+            apply,
+            "wait_for_serving_runtime",
+            side_effect=errors.InstallError("successor unavailable"),
+        )
+
+        with pytest.raises(errors.InstallError, match="successor unavailable"):
+            self.deploy(payload, current, adapter=service, mocker=mocker)
+
+        assert payload.events == ["commit", "rollback"]
+        assert service.install_mock.call_count == 2
+
     def test_current_upgrade_accepts_an_equivalent_supervisor_path(self, *, mocker) -> None:
         payload = FakeTransaction()
         current = self.current_runtime()
@@ -213,6 +327,15 @@ class TestReleasedDeployment:
     ) -> None:
         for current, listeners, message in (
             (cast("dict[str, object]", {"pid": 111}), [111], "incompatible"),
+            (
+                self.current_runtime(
+                    handoff_state="finalized",
+                    handoff_transaction_id="txn-previous",
+                    serving_payload_sha256=None,
+                ),
+                [111],
+                "incompatible",
+            ),
             (self.current_runtime(), [], "identity"),
             (self.current_runtime(pid=True), [True], "identity"),
         ):
@@ -259,6 +382,71 @@ class TestReleasedDeployment:
             self.deploy(unknown, current, adapter=preserved_service, mocker=mocker)
         assert unknown.events == ["commit", ("preserve", "outcome unknown")]
         preserved_service.install_mock.assert_called_once_with(self.ctx)
+
+    def test_explicit_rollback_reuses_upgrade_and_projects_precise_releases(
+        self, *, mocker
+    ) -> None:
+        retained = payload_rollback.RetainedRollback(
+            root=Path("/retained/1.2.2"),
+            predecessor=retained_identity("1.2.2"),
+            successor=retained_identity("1.2.3"),
+        )
+        payload = FakeTransaction()
+        mocker.patch.object(transaction, "begin_rollback_transaction", return_value=payload)
+        install = mocker.patch.object(
+            apply,
+            "install",
+            return_value={"state": "upgraded", "runtime": {"pid": 654}},
+        )
+        service = FakeServiceAdapter(mocker=mocker)
+
+        def runtime_reader(_ctx):
+            return None
+
+        result = apply.rollback(
+            self.ctx,
+            retained,
+            adapter=service,
+            runtime_reader=runtime_reader,
+            timeout_seconds=12.5,
+        )
+
+        assert result == {
+            "state": "rolled_back",
+            "from_release": "1.2.3",
+            "to_release": "1.2.2",
+            "runtime": {"pid": 654},
+        }
+        install.assert_called_once_with(
+            self.ctx,
+            payload,
+            adapter=service,
+            runtime_reader=runtime_reader,
+            timeout_seconds=12.5,
+        )
+
+    def test_explicit_rollback_requires_an_upgrade_result(self, *, mocker) -> None:
+        retained = payload_rollback.RetainedRollback(
+            root=Path("/retained/1.2.2"),
+            predecessor=retained_identity("1.2.2"),
+            successor=retained_identity("1.2.3"),
+        )
+        mocker.patch.object(
+            transaction, "begin_rollback_transaction", return_value=FakeTransaction()
+        )
+        mocker.patch.object(
+            apply,
+            "install",
+            return_value={"state": "installed", "runtime": {"pid": 654}},
+        )
+
+        with pytest.raises(errors.InstallError, match="verified running successor"):
+            apply.rollback(
+                self.ctx,
+                retained,
+                adapter=FakeServiceAdapter(mocker=mocker),
+                runtime_reader=lambda _ctx: None,
+            )
 
     def test_request_handoff_resolves_finalized_rolled_back_and_unknown(
         self, subtests, *, mocker

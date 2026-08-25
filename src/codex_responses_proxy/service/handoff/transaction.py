@@ -48,6 +48,7 @@ class PreparedHandoff(TypedDict):
 
 HANDOFF_READY_TIMEOUT_SECONDS = 30.0
 HANDOFF_DEFAULT_LEASE_SECONDS = 30.0
+REPEATABLE_HANDOFF_CAPABILITY = "repeatable"
 
 _IDENTITY_FIELDS = (
     "transaction_id",
@@ -143,6 +144,7 @@ def runtime_identity(context: Context) -> dict[str, object]:
         return {
             "pid": os.getpid(),
             "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
+            "handoff_capabilities": [REPEATABLE_HANDOFF_CAPABILITY],
             "handoff_transaction_id": _HANDOFF_SESSION.get("transaction_id"),
             "handoff_state": state,
             "payload_manifest_sha256": context.payload_manifest_sha256(),
@@ -168,6 +170,22 @@ def _control_message(
             manifest_sha256=expected["manifest_sha256"],
         )
     return message
+
+
+def _expected_serving_health(expected: ReadOnlyJsonObject) -> JsonObject:
+    """Return the exact network-visible identity required before finalization."""
+    return {
+        "pid": expected["pid"],
+        "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
+        "handoff_transaction_id": expected["transaction_id"],
+        "release": expected["release"],
+        "serving_payload_sha256": expected["serving_payload_sha256"],
+        "release_receipt_sha256": expected["release_receipt_sha256"],
+        "payload_manifest_sha256": expected["manifest_sha256"],
+        "handoff_state": "serving",
+        "accepting": True,
+        "draining": False,
+    }
 
 
 def _expect_child_phase(
@@ -308,30 +326,6 @@ def commit(server: ThreadingHTTPServer, prepared: PreparedHandoff, context: Cont
         child.send_message({"type": "commit"})
         _expect_child_phase(child, child_expected, "serving", timeout_seconds)
         _transition("serving")
-        address: object = getattr(server, "server_address", None)
-        if not isinstance(address, (tuple, list)) or len(address) <= 1:
-            raise HandoffError("handoff server has no probeable listener address")
-        health_port = address[1]
-        if not isinstance(health_port, int) or not 1 <= health_port <= 65535:
-            raise HandoffError("handoff server has no valid listener port")
-        phase = "health"
-        expected_health = {
-            "pid": child_expected["pid"],
-            "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
-            "handoff_transaction_id": child_expected["transaction_id"],
-            "release": child_expected["release"],
-            "serving_payload_sha256": child_expected["serving_payload_sha256"],
-            "release_receipt_sha256": child_expected["release_receipt_sha256"],
-            "payload_manifest_sha256": child_expected["manifest_sha256"],
-            "handoff_state": "serving",
-            "accepting": True,
-            "draining": False,
-        }
-        probe_health(
-            health_port,
-            timeout_seconds=timeout_seconds,
-            expected=expected_health,
-        )
         phase = "finalize"
         _transition("finalizing")
         child.send_message({"type": "finalize"})
@@ -472,7 +466,21 @@ def run_child(context: Context) -> int:
             name="responses-proxy-handoff-serving",
         )
         serving_thread.start()
-        _write_control_message(output_stream, _control_message("serving", child_expected))
+        address: object = getattr(server, "server_address", None)
+        if not isinstance(address, (tuple, list)) or len(address) <= 1:
+            raise HandoffError("handoff server has no probeable listener address")
+        health_port = address[1]
+        if not isinstance(health_port, int) or not 1 <= health_port <= 65535:
+            raise HandoffError("handoff server has no valid listener port")
+        probe_health(
+            health_port,
+            timeout_seconds=HANDOFF_READY_TIMEOUT_SECONDS,
+            expected=_expected_serving_health(child_expected),
+        )
+        _write_control_message(
+            output_stream,
+            _control_message("serving", child_expected),
+        )
         command = _read_control_message(input_stream)
         if command == {"type": "abort"}:
             raise HandoffError("handoff parent aborted before FINALIZE")

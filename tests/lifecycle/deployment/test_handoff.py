@@ -56,6 +56,7 @@ class TestControllerHandoffWiring:
                 idle_runtime(
                     handoff_state="finalized",
                     handoff_transaction_id="txn-previous-finalized",
+                    handoff_capabilities=["repeatable"],
                 ),
                 True,
             ),
@@ -70,11 +71,35 @@ class TestControllerHandoffWiring:
             {},
             None,
             {"release": "1.0.24"},
+            idle_runtime(
+                handoff_state="finalized",
+                handoff_transaction_id="txn-legacy-finalized",
+                handoff_capabilities=None,
+            ),
         ]
         cases.extend((runtime, False) for runtime in unsupported)
         for runtime, supported in cases:
             with subtests.test(runtime=runtime, supported=supported):
                 assert handoff.runtime_supports_handoff(runtime) is supported
+
+    def test_deployment_strategy_requires_complete_identity_and_explicit_repeatability(
+        self, subtests
+    ) -> None:
+        finalized = idle_runtime(
+            handoff_state="finalized",
+            handoff_transaction_id="txn-previous-finalized",
+        )
+        cases = (
+            (idle_runtime(), "handoff"),
+            ({**finalized, "handoff_capabilities": ["repeatable"]}, "handoff"),
+            ({**finalized, "handoff_capabilities": None}, "native_generation"),
+            ({**finalized, "serving_payload_sha256": None}, "unsupported"),
+            ({**finalized, "accepting": False}, "unsupported"),
+        )
+
+        for runtime, expected in cases:
+            with subtests.test(runtime=runtime):
+                assert handoff.deployment_strategy(runtime) == expected
 
     def test_request_handoff_converges_without_terminating_the_old_listener(
         self, subtests, *, mocker

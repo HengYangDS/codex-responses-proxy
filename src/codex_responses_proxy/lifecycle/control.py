@@ -11,7 +11,9 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import state as payload_state
+from codex_responses_proxy.lifecycle.deployment import apply
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle.supervision.native_service import adapter
@@ -75,6 +77,14 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
     )
     command_state = command.status(installed_command, Path(ctx.executable))
     payload_transaction = payload_state.status(ctx)
+    rollback_status = (
+        payload_rollback.RetainedRollbackStatus(
+            state="deferred",
+            detail="payload transaction owns rollback finalization",
+        )
+        if payload_transaction is not None
+        else payload_rollback.status(ctx)
+    )
     install_root = Path(ctx.install_dir)
     absent = (
         installed is None
@@ -96,6 +106,9 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         assert isinstance(payload_transaction, dict)
         lifecycle_state = "invalid"
         detail = str(payload_transaction["detail"])
+    elif rollback_status.state == "invalid":
+        lifecycle_state = "invalid"
+        detail = rollback_status.detail or "retained rollback generation is invalid"
     elif absent:
         lifecycle_state = "not_installed"
         integrity_detail = "not installed"
@@ -139,6 +152,16 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         "listener_pids": listeners,
         "runtime": runtime,
         "payload_transaction": payload_transaction,
+        "rollback": {
+            key: value
+            for key, value in {
+                "state": rollback_status.state,
+                "from_release": rollback_status.from_release,
+                "to_release": rollback_status.to_release,
+                "detail": rollback_status.detail,
+            }.items()
+            if value is not None
+        },
     }
 
 
@@ -204,3 +227,24 @@ def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -
         "old_pid": result["old_pid"],
         "new_pid": result["child_pid"],
     }
+
+
+def rollback(
+    ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0
+) -> dict[str, object]:
+    """Restore the one retained predecessor through the native lifecycle."""
+    if payload_state.status(ctx) is not None:
+        raise errors.RecoveryRequiredError("complete payload recovery before rollback")
+    try:
+        retained = payload_rollback.load_retained_or_none(ctx)
+    except errors.InstallError as exc:
+        raise errors.RollbackStateError(str(exc)) from exc
+    if retained is None:
+        return {"state": "unavailable", "detail": "no verified predecessor is retained"}
+    return apply.rollback(
+        ctx,
+        retained,
+        adapter=adapter(),
+        runtime_reader=read_runtime,
+        timeout_seconds=timeout_seconds,
+    )

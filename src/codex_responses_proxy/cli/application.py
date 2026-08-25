@@ -30,7 +30,9 @@ from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle import uninstall
 from codex_responses_proxy.service import runtime as service_runtime
 
-PUBLIC_COMMANDS = frozenset({"install", "status", "doctor", "recover", "reload", "uninstall"})
+PUBLIC_COMMANDS = frozenset(
+    {"install", "status", "doctor", "recover", "reload", "rollback", "uninstall"}
+)
 _FAILURE_STATUS = "failed"
 _RECOVERY_NEXT = product_identity.command("reload")
 _JSON = Annotated[
@@ -134,7 +136,7 @@ def _purge_argument(arguments: Mapping[str, object]) -> bool:
 
 @overload
 def dispatch(
-    command: Literal["install", "status", "recover", "reload", "uninstall"],
+    command: Literal["install", "status", "recover", "reload", "rollback", "uninstall"],
     **arguments: object,
 ) -> dict[str, object]: ...
 
@@ -169,6 +171,8 @@ def dispatch(command: str, **arguments: object) -> CommandResult:
         return transaction.recover(context, runtime=control.read_runtime(context))
     if command == "reload":
         return control.reload(context, timeout_seconds=_timeout_argument(arguments))
+    if command == "rollback":
+        return control.rollback(context, timeout_seconds=_timeout_argument(arguments))
     raise ValueError(f"{command} is not implemented")
 
 
@@ -204,6 +208,8 @@ def _doctor(evidence: Mapping[str, object]) -> DoctorReport:
     command_ok = isinstance(command, dict) and command.get("state") == "owned"
     transaction_state = evidence.get("payload_transaction")
     transaction_ok = transaction_state is None
+    rollback = evidence.get("rollback")
+    rollback_ok = not isinstance(rollback, dict) or rollback.get("state") != "invalid"
     checks: dict[str, DoctorCheck] = {
         "payload": {
             "status": "passed" if integrity_ok else _FAILURE_STATUS,
@@ -232,6 +238,12 @@ def _doctor(evidence: Mapping[str, object]) -> DoctorReport:
             else str(transaction_state.get("state", "invalid"))
             if isinstance(transaction_state, dict)
             else "invalid",
+        },
+        "rollback": {
+            "status": "passed" if rollback_ok else _FAILURE_STATUS,
+            "detail": str(rollback.get("detail") or rollback.get("state", "unavailable"))
+            if isinstance(rollback, dict)
+            else "unavailable",
         },
     }
     next_command = (
@@ -375,6 +387,21 @@ def _app() -> App:
     ) -> int:
         """Transactionally reload the installed service."""
         return _execute("reload", as_json=json_output, port=port, timeout_seconds=timeout_seconds)
+
+    @app.command(name="rollback")
+    def rollback_command(
+        *,
+        json_output: _JSON = False,
+        port: _PORT = runtime_context.DEFAULT_PORT,
+        timeout_seconds: _TIMEOUT = 30.0,
+    ) -> int:
+        """Restore the one verified predecessor release."""
+        return _execute(
+            "rollback",
+            as_json=json_output,
+            port=port,
+            timeout_seconds=timeout_seconds,
+        )
 
     @app.command(name="uninstall")
     def uninstall_command(

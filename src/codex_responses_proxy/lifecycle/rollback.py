@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.json_value import ReadOnlyJsonObject
+from codex_responses_proxy.lifecycle import artifact
+from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.lifecycle import state
 from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import inventory
 
 
@@ -22,6 +28,29 @@ class RollbackInventory:
 
     present: Mapping[str, tuple[str, int]]
     owned: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
+class RetainedRollback:
+    """One verified predecessor bound to the installed successor generation."""
+
+    root: Path
+    predecessor: identity.LoadedPayloadIdentity
+    successor: identity.LoadedPayloadIdentity
+
+
+@dataclass(frozen=True, slots=True)
+class RetainedRollbackStatus:
+    """Secret-free availability of the one retained predecessor."""
+
+    state: str
+    from_release: str | None = None
+    to_release: str | None = None
+    detail: str | None = None
+
+
+RETAINED_BINDING_FILENAME = "generation.json"
+RETAINED_BINDING_SCHEMA = 1
 
 
 def write_snapshot(ctx: runtime_context.RuntimeContext, root: Path) -> RollbackInventory:
@@ -54,6 +83,274 @@ def load_inventory(root: Path) -> RollbackInventory:
     return read_inventory(
         owned_files.read_canonical_json(root / "snapshot.json", "payload rollback snapshot")
     )
+
+
+def promote(
+    ctx: runtime_context.RuntimeContext,
+    source: Path,
+    *,
+    transaction_id: str,
+    successor: Mapping[str, object],
+) -> None:
+    """Idempotently promote one transaction snapshot to retained authority."""
+    current = _require_successor(ctx, successor, transaction_id)
+    root = state.retained_rollback_root(ctx)
+    generations = root / "generations"
+    if root.is_symlink() or generations.is_symlink():
+        raise errors.InstallError("retained rollback root is a symbolic link")
+    generations.mkdir(parents=True, exist_ok=True, mode=0o700)
+    generation = generations / transaction_id
+    _materialize_generation(source, generation, transaction_id, current)
+    _load_generation(ctx, generation, transaction_id)
+    _select_generation(ctx, transaction_id)
+    _remove_superseded_generations(ctx, generation)
+    _require_selected_generation(ctx, generation)
+
+
+def _require_successor(
+    ctx: runtime_context.RuntimeContext,
+    expected: Mapping[str, object],
+    transaction_id: str,
+) -> identity.LoadedPayloadIdentity:
+    """Return the live successor bound to this exact finalization transaction."""
+    current = identity.committed_payload(Path(ctx.executable))
+    installed = state.read_installed(ctx)
+    if (
+        current is None
+        or installed is None
+        or installed.get("transaction_id") != transaction_id
+        or any(expected.get(field) != value for field, value in current.handoff().items())
+    ):
+        raise errors.InstallError("retained rollback successor identity is invalid")
+    return current
+
+
+def _materialize_generation(
+    source: Path,
+    generation: Path,
+    generation_name: str,
+    successor: identity.LoadedPayloadIdentity,
+) -> None:
+    """Move a verified transaction snapshot once, or accept its exact moved form."""
+    source_present = source.is_dir() and not source.is_symlink()
+    generation_present = generation.is_dir() and not generation.is_symlink()
+    if source_present == generation_present:
+        raise errors.InstallError("retained rollback generation source is ambiguous")
+    if not source_present:
+        if (
+            source.exists()
+            or source.is_symlink()
+            or (generation.exists() and not generation_present)
+        ):
+            raise errors.InstallError("retained rollback generation source is invalid")
+        return
+    predecessor = _snapshot_identity(source)
+    command.read_snapshot(source)
+    load_inventory(source)
+    binding = {
+        "schema_version": RETAINED_BINDING_SCHEMA,
+        "generation": generation_name,
+        "predecessor": predecessor.handoff(),
+        "successor": successor.handoff(),
+    }
+    owned_files.write_bytes(
+        source / RETAINED_BINDING_FILENAME,
+        digest.canonical_json(binding),
+        mode=0o600,
+        root=source,
+    )
+    try:
+        os.replace(source, generation)
+    except OSError as exc:
+        raise errors.InstallError("retained rollback generation move failed") from exc
+
+
+def _select_generation(ctx: runtime_context.RuntimeContext, generation_name: str) -> None:
+    """Atomically select the fully verified retained generation."""
+    root = state.retained_rollback_root(ctx)
+    owned_files.write_bytes(
+        state.retained_rollback_pointer(ctx),
+        digest.canonical_json(
+            {"schema_version": RETAINED_BINDING_SCHEMA, "generation": generation_name}
+        ),
+        mode=0o600,
+        root=root,
+    )
+
+
+def _remove_superseded_generations(ctx: runtime_context.RuntimeContext, selected: Path) -> None:
+    """Remove only generations superseded by the durable selector."""
+    try:
+        for generation in state.retained_generations(ctx):
+            if generation != selected:
+                if generation.is_symlink() or not generation.is_dir():
+                    raise errors.InstallError("retained rollback generation set is invalid")
+                shutil.rmtree(generation)
+    except errors.InstallError:
+        raise
+    except OSError as exc:
+        raise errors.InstallError("retained rollback generation cleanup failed") from exc
+
+
+def _require_selected_generation(ctx: runtime_context.RuntimeContext, selected: Path) -> None:
+    """Prove the retained store converged to one selected generation."""
+    if (
+        selected.is_symlink()
+        or not selected.is_dir()
+        or state.retained_generations(ctx) != (selected,)
+    ):
+        raise errors.InstallError("retained rollback generation cleanup is incomplete")
+    retained = load_retained(ctx)
+    if retained.root != selected:
+        raise errors.InstallError("retained rollback generation selection is incomplete")
+
+
+def remove_retained(ctx: runtime_context.RuntimeContext) -> None:
+    """Remove the product-owned retained store when no predecessor can exist."""
+    root = state.retained_rollback_root(ctx)
+    if root.is_symlink():
+        raise errors.InstallError("retained rollback root is a symbolic link")
+    if root.exists():
+        shutil.rmtree(root)
+
+
+def load_retained(ctx: runtime_context.RuntimeContext) -> RetainedRollback:
+    """Load and verify the sole predecessor bound to the live successor."""
+    root = state.retained_rollback_root(ctx)
+    if root.is_symlink() or not root.is_dir():
+        raise errors.InstallError("retained rollback root is unavailable or invalid")
+    pointer_path = state.retained_rollback_pointer(ctx)
+    if pointer_path.is_symlink() or not pointer_path.is_file():
+        raise errors.InstallError("retained rollback pointer is unavailable or invalid")
+    pointer = owned_files.read_canonical_json(pointer_path, "retained rollback pointer")
+    generation_name = pointer.get("generation")
+    if (
+        pointer.get("schema_version") != RETAINED_BINDING_SCHEMA
+        or not isinstance(generation_name, str)
+        or not generation_name
+        or any(character not in "0123456789abcdef" for character in generation_name)
+    ):
+        raise errors.InstallError("retained rollback pointer is invalid")
+    generation = root / "generations" / generation_name
+    if generation.is_symlink() or not generation.is_dir():
+        raise errors.InstallError("retained rollback generation is unavailable or invalid")
+    if state.retained_generations(ctx) != (generation,):
+        raise errors.InstallError("retained rollback generation set is invalid")
+    return _load_generation(ctx, generation, generation_name)
+
+
+def _load_generation(
+    ctx: runtime_context.RuntimeContext,
+    generation: Path,
+    generation_name: str,
+) -> RetainedRollback:
+    """Verify one exact retained generation independent of pointer cleanup."""
+    if generation.is_symlink() or not generation.is_dir():
+        raise errors.InstallError("retained rollback generation is unavailable or invalid")
+    binding = owned_files.read_canonical_json(
+        generation / RETAINED_BINDING_FILENAME, "retained rollback generation"
+    )
+    predecessor = _snapshot_identity(generation)
+    successor = identity.committed_payload(Path(ctx.executable))
+    installed = state.read_installed(ctx)
+    if successor is None or installed is None:
+        raise errors.InstallError("retained rollback successor is unavailable")
+    if (
+        binding.get("schema_version") != RETAINED_BINDING_SCHEMA
+        or binding.get("generation") != generation_name
+        or binding.get("predecessor") != predecessor.handoff()
+        or binding.get("successor") != successor.handoff()
+        or installed.get("transaction_id") != generation_name
+        or installed.get("version") != successor.release
+        or installed.get("receipt_sha256") != successor.release_receipt_sha256
+        or installed.get("command") != ctx.command
+    ):
+        raise errors.InstallError("retained rollback generation binding is invalid")
+    command.read_snapshot(generation)
+    load_inventory(generation)
+    return RetainedRollback(generation, predecessor, successor)
+
+
+def load_retained_or_none(
+    ctx: runtime_context.RuntimeContext,
+) -> RetainedRollback | None:
+    """Return the retained predecessor, distinguishing clean absence from corruption."""
+    root = state.retained_rollback_root(ctx)
+    if not root.exists() and not root.is_symlink():
+        return None
+    return load_retained(ctx)
+
+
+def status(ctx: runtime_context.RuntimeContext) -> RetainedRollbackStatus:
+    """Inspect retained rollback availability without exposing carrier paths."""
+    try:
+        retained = load_retained_or_none(ctx)
+    except errors.InstallError as exc:
+        return RetainedRollbackStatus(state="invalid", detail=str(exc))
+    if retained is None:
+        return RetainedRollbackStatus(state="unavailable")
+    return RetainedRollbackStatus(
+        state="available",
+        from_release=retained.successor.release,
+        to_release=retained.predecessor.release,
+    )
+
+
+def candidate(retained: RetainedRollback) -> artifact.VerifiedArtifact:
+    """Mint one process-local artifact capability from a verified predecessor."""
+    receipt = owned_files.read_canonical_json(
+        retained.root / inventory.RELEASE_RECEIPT_FILENAME,
+        "retained rollback release receipt",
+    )
+    entries = receipt.get("payload")
+    if not isinstance(entries, list):
+        raise errors.InstallError("retained rollback release receipt is invalid")
+    blobs: list[artifact.ArtifactFile] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise errors.InstallError("retained rollback release receipt is invalid")
+        relative = entry.get("path")
+        mode = entry.get("mode")
+        blob_oid = entry.get("blob_oid")
+        sha256 = entry.get("sha256")
+        if (
+            not isinstance(relative, str)
+            or mode not in {"100644", "100755"}
+            or not isinstance(blob_oid, str)
+            or not isinstance(sha256, str)
+        ):
+            raise errors.InstallError("retained rollback release receipt is invalid")
+        source = owned_files.regular_file(retained.root, relative, "retained rollback")
+        content = source.read_bytes()
+        if hashlib.sha256(content).hexdigest() != sha256:
+            raise errors.InstallError(f"retained rollback digest mismatch: {relative}")
+        blobs.append(artifact.ArtifactFile(relative, mode, blob_oid, sha256, content))
+    receipt_sha256 = hashlib.sha256(digest.canonical_json(receipt)).hexdigest()
+    return artifact.mint(
+        tuple(blobs),
+        receipt,
+        {
+            "schema_version": artifact.RECEIPT_SCHEMA,
+            "algorithm": "sha256",
+            "receipt_sha256": receipt_sha256,
+            "serving_payload_sha256": receipt.get("serving_payload_sha256"),
+        },
+    )
+
+
+def _snapshot_identity(root: Path) -> identity.LoadedPayloadIdentity:
+    executable = next(
+        (
+            root / relative
+            for relative in (inventory.EXECUTABLE, inventory.WINDOWS_EXECUTABLE)
+            if (root / relative).is_file() and not (root / relative).is_symlink()
+        ),
+        None,
+    )
+    loaded = identity.committed_payload(executable) if executable is not None else None
+    if loaded is None:
+        raise errors.InstallError("retained rollback predecessor identity is invalid")
+    return loaded
 
 
 def read_inventory(snapshot: ReadOnlyJsonObject) -> RollbackInventory:

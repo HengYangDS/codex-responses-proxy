@@ -17,6 +17,7 @@ import urllib.request
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 from typing import TypeGuard
 
 from codex_responses_proxy import errors
@@ -28,6 +29,7 @@ from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import inventory
 from codex_responses_proxy.service import runtime as service_runtime
+from codex_responses_proxy.service.handoff import transaction as handoff_transaction
 
 HANDOFF_PROTOCOL_VERSION = 2
 _MAX_BODY_BYTES = 64 * 1024
@@ -40,6 +42,7 @@ _RUNTIME_DIGEST_FIELDS = [
 
 RuntimeSnapshot = dict[str, object]
 RuntimeReader = Callable[[runtime_context.RuntimeContext], RuntimeSnapshot | None]
+type DeploymentStrategy = Literal["handoff", "native_generation", "unsupported"]
 
 
 def _fields_match(actual: RuntimeSnapshot, expected: dict[str, object]) -> bool:
@@ -58,21 +61,30 @@ def _available_transaction(state: object, transaction_id: object) -> bool:
     return isinstance(transaction_id, str) and bool(transaction_id)
 
 
-def runtime_supports_handoff(runtime: RuntimeSnapshot | None) -> bool:
-    """Return whether a live health snapshot proves protocol-v2 readiness."""
+def runtime_supports_repeatable_handoff(runtime: RuntimeSnapshot | None) -> bool:
+    """Return whether a runtime explicitly promises another finalized handoff."""
     if not isinstance(runtime, dict):
         return False
+    capabilities = runtime.get("handoff_capabilities")
+    return (
+        isinstance(capabilities, list)
+        and all(isinstance(capability, str) for capability in capabilities)
+        and handoff_transaction.REPEATABLE_HANDOFF_CAPABILITY in capabilities
+    )
+
+
+def deployment_strategy(runtime: RuntimeSnapshot | None) -> DeploymentStrategy:
+    """Select the safe deployment transition proved by runtime capabilities."""
+    if not isinstance(runtime, dict):
+        return "unsupported"
     digests_valid = all(digest.is_sha256(runtime.get(field)) for field in _RUNTIME_DIGEST_FIELDS)
     pid = runtime.get("pid")
     release = runtime.get("release")
-    return all(
+    base_identity = all(
         (
             _positive_int(pid),
             isinstance(release, str) and bool(release),
             digests_valid,
-            _available_transaction(
-                runtime.get("handoff_state"), runtime.get("handoff_transaction_id")
-            ),
             _fields_match(
                 runtime,
                 {
@@ -83,6 +95,20 @@ def runtime_supports_handoff(runtime: RuntimeSnapshot | None) -> bool:
             ),
         )
     )
+    if not base_identity:
+        return "unsupported"
+    state = runtime.get("handoff_state")
+    transaction_id = runtime.get("handoff_transaction_id")
+    if not _available_transaction(state, transaction_id):
+        return "unsupported"
+    if state == "idle" or runtime_supports_repeatable_handoff(runtime):
+        return "handoff"
+    return "native_generation"
+
+
+def runtime_supports_handoff(runtime: RuntimeSnapshot | None) -> bool:
+    """Return whether a live runtime explicitly supports the next hot handoff."""
+    return deployment_strategy(runtime) == "handoff"
 
 
 def expected_metadata(root: str) -> RuntimeSnapshot:

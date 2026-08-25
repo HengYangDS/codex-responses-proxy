@@ -5,16 +5,20 @@ subjects = ["repository:codex-responses-proxy"]
 scope = [
   "CHANGELOG.md",
   "README.md",
+  "VERSION",
   "docs/**",
   "openspec/changes/archive/*-proxy-explicit-rollback/**",
   "openspec/changes/proxy-explicit-rollback/**",
   "openspec/specs/product-interface/**",
   "openspec/specs/runtime-upgrade/**",
   "src/codex_responses_proxy/cli/**",
+  "src/codex_responses_proxy/errors.py",
   "src/codex_responses_proxy/lifecycle/**",
+  "src/codex_responses_proxy/service/handoff/**",
   "tests/cli/**",
   "tests/lifecycle/**",
   "tests/release/**",
+  "tests/service/handoff/**",
 ]
 invariants = [
   "formal_runtime_and_port_8792_remain_unchanged_until_release_acceptance",

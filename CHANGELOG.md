@@ -7,6 +7,22 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-08-25
+
+### Added
+
+- Add explicit one-step rollback to the sole verified predecessor retained by
+  the last successful upgrade, using the existing transaction, native-service,
+  handoff, and runtime-identity owners.
+
+### Changed
+
+- Make retained-generation promotion one idempotent finalization transition:
+  verify, materialize, atomically select, clean superseded generations, and
+  resume safely after interruption at either filesystem boundary.
+- Keep rollback and recovery semantically distinct, and project retained state
+  as transaction-owned while an installation transaction is active.
+
 ## [3.0.5] - 2026-08-25
 
 ### Fixed

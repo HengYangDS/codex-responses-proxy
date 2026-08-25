@@ -16,6 +16,7 @@ from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import inventory
 
 TRANSACTION_JOURNAL_FILENAME = "transaction.json"
+RETAINED_ROLLBACK_POINTER_FILENAME = "current.json"
 INSTALLED_RELEASE_STATE_SCHEMA = 1
 TRANSACTION_JOURNAL_SCHEMA = 1
 _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
@@ -24,6 +25,25 @@ _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*
 def transaction_root(ctx: runtime_context.RuntimeContext) -> Path:
     """Return the sibling directory used for payload transactions."""
     return Path(f"{ctx.install_dir}.transaction")
+
+
+def retained_rollback_root(ctx: runtime_context.RuntimeContext) -> Path:
+    """Return the sibling store for the one retained predecessor generation."""
+    return Path(f"{ctx.install_dir}.rollback")
+
+
+def retained_rollback_pointer(ctx: runtime_context.RuntimeContext) -> Path:
+    """Return the atomic selector for the current retained generation."""
+    return retained_rollback_root(ctx) / RETAINED_ROLLBACK_POINTER_FILENAME
+
+
+def retained_generations(ctx: runtime_context.RuntimeContext) -> tuple[Path, ...]:
+    """Return every direct retained-generation entry without following links."""
+    root = retained_rollback_root(ctx)
+    generations = root / "generations"
+    if root.is_symlink() or generations.is_symlink() or not generations.is_dir():
+        return ()
+    return tuple(sorted(generations.iterdir()))
 
 
 def installed_path(ctx: runtime_context.RuntimeContext) -> Path:

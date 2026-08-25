@@ -36,11 +36,7 @@ class TestParentHandoffStateMachine(HandoffFixture):
         ]
         mocker.patch.object(self.p, "spawn_child", return_value=child)
         prepared = self.p.prepare(server, expected, self.context, **kwargs)
-        mocker.patch.object(
-            self.p,
-            "probe_health",
-            return_value=matching_health(child, expected) if health is None else health,
-        )
+        del health
         outcome = self.p.commit(server, prepared, self.context)
         return outcome, server, child, expected
 
@@ -111,15 +107,12 @@ class TestParentHandoffStateMachine(HandoffFixture):
         observing_context = entrypoint_module._handoff_context()
         object.__setattr__(observing_context, "set_draining", observing_set_draining)
         mocker.patch.object(self.p, "spawn_child", return_value=child)
-        probe = mocker.patch.object(
-            self.p, "probe_health", return_value=matching_health(child, expected)
-        )
         prepared = self.p.prepare(server, expected, observing_context, timeout_seconds=5)
         self.p.commit(server, prepared, observing_context)
         assert "draining:True" in order
         assert order.index("draining:True") < order.index("shutdown")
         assert order.index("shutdown") < order.index("send:commit")
-        assert probe.call_args.kwargs["expected"]["pid"] == child.runtime_pid
+        assert child.recv_message.call_args_list[1].args == (5,)
 
     def test_simultaneous_handoff_is_rejected(self, *, mocker):
         server = fake_server(mocker=mocker)
@@ -349,31 +342,27 @@ class TestParentHandoffStateMachine(HandoffFixture):
                 assert self.p._HANDOFF_SESSION.get("outcome") == "rolled_back"
                 assert handoff_outcome_ready().is_set()
 
-    def test_commit_failure_logs_only_the_failed_phase_and_exception_class(self, *, mocker):
+    def test_finalize_failure_logs_only_the_failed_phase_and_exception_class(self, *, mocker):
         child = fake_child(mocker=mocker)
         expected = expected_metadata()
         child.recv_message.side_effect = [
             child_message("ready", child, expected),
             child_message("serving", child, expected),
+            OSError("Authorization=Bearer do-not-log"),
         ]
         mocker.patch.object(self.p, "spawn_child", return_value=child)
         server = fake_server(mocker=mocker)
         prepared = self.p.prepare(server, expected, self.context, timeout_seconds=1)
-        mocker.patch.object(
-            self.p,
-            "probe_health",
-            side_effect=OSError("Authorization=Bearer do-not-log"),
-        )
         log = mocker.Mock()
         context = entrypoint_module._handoff_context()
         object.__setattr__(context, "log", log)
 
         assert self.p.commit(server, prepared, context) == "rolled_back"
 
-        log.assert_called_once_with("event=handoff_commit_failed phase=health exception=OSError")
+        log.assert_called_once_with("event=handoff_commit_failed phase=finalize exception=OSError")
         assert "do-not-log" not in log.call_args.args[0]
 
-    def test_identity_matrices_reject_ready_serving_health_and_finalized_mismatches(
+    def test_identity_matrices_reject_ready_serving_and_finalized_mismatches(
         self, subtests, *, mocker
     ):
         expected = expected_metadata()
@@ -389,17 +378,6 @@ class TestParentHandoffStateMachine(HandoffFixture):
                 "manifest_sha256": "d" * 64,
             },
             "serving": {"pid": 1, "transaction_id": "wrong-txn"},
-            "health": {
-                "pid": 1,
-                "handoff_protocol_version": 1,
-                "handoff_transaction_id": "txn-wrong",
-                "release": "1.0.24",
-                "serving_payload_sha256": "c" * 64,
-                "release_receipt_sha256": "e" * 64,
-                "payload_manifest_sha256": "d" * 64,
-                "handoff_state": "idle",
-                "accepting": False,
-            },
             "finalized": {"pid": 1, "transaction_id": "wrong-txn"},
         }
         for stage, overrides in fields.items():
@@ -408,7 +386,7 @@ class TestParentHandoffStateMachine(HandoffFixture):
                     handoff_module.reset_session_to_idle()
                     child = fake_child(mocker=mocker)
                     message = {
-                        **child_message(stage if stage != "health" else "serving", child, expected),
+                        **child_message(stage, child, expected),
                         field: bad_value,
                     }
                     if stage == "ready":
@@ -424,14 +402,11 @@ class TestParentHandoffStateMachine(HandoffFixture):
                         child.terminate_bounded.assert_called_once()
                         continue
                     after_ready = [child_message("serving", child, expected)]
-                    health = matching_health(child, expected)
                     after_ready = [message] if stage == "serving" else after_ready
-                    health = {**health, field: bad_value} if stage == "health" else health
                     after_ready += [message] * (stage == "finalized")
                     outcome, _, child, _ = self.committed(
                         *after_ready,
                         child=child,
-                        health=health,
                         timeout_seconds=1,
                         mocker=mocker,
                     )

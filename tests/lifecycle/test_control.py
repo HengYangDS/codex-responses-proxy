@@ -18,6 +18,7 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.cli import application
 from codex_responses_proxy.lifecycle import control
 from codex_responses_proxy.lifecycle import install
+from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle import uninstall
 from codex_responses_proxy.lifecycle.supervision import process
@@ -26,6 +27,7 @@ from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import identity
 from tests.lifecycle.fixtures import begin_transaction
 from tests.lifecycle.fixtures import install_context
+from tests.lifecycle.fixtures import install_payload
 from tests.lifecycle.fixtures import released_artifact
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -249,6 +251,191 @@ class TestControllerLifecycle:
         assert result["state"] == "invalid"
         assert result["release"] is None
         assert result["detail"] == "installed release state is unavailable or invalid"
+
+    def test_status_distinguishes_absence_from_command_and_transaction_degradation(
+        self, tmp_path: Path, *, mocker, subtests
+    ) -> None:
+        ctx = install_context(tmp_path)
+        service = mocker.patch.object(control, "adapter").return_value
+        service.status.return_value = "absent"
+        mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
+        mocker.patch.object(control, "read_runtime", return_value=None)
+        command_status = mocker.patch.object(
+            control.command,
+            "status",
+            return_value={"path": ctx.command, "state": "absent", "kind": None},
+        )
+        mocker.patch.object(
+            control.projection,
+            "verify_payload_manifest",
+            return_value=(False, "installed payload manifest is unavailable"),
+        )
+
+        absent = control.status(ctx)
+        assert absent["state"] == "not_installed"
+        assert absent["detail"] == "not installed"
+
+        mocker.stopall()
+        installed_ctx = install_context(tmp_path / "installed")
+        install_payload(installed_ctx, "1.2.2", mocker=mocker)
+        self._healthy_status_dependencies(installed_ctx, mocker=mocker)
+        mocker.patch.object(
+            control.projection,
+            "verify_payload_manifest",
+            return_value=(True, "ok"),
+        )
+        command_status = mocker.patch.object(
+            control.command,
+            "status",
+            return_value={"path": installed_ctx.command, "state": "foreign", "kind": "file"},
+        )
+        with subtests.test(state="command ownership unavailable"):
+            degraded = control.status(installed_ctx)
+            assert degraded["state"] == "degraded"
+            assert degraded["detail"] == "native command ownership is unavailable"
+
+        command_status.return_value = {
+            "path": installed_ctx.command,
+            "state": "owned",
+            "kind": "symlink",
+        }
+        mocker.patch.object(payload_state, "status", return_value={"state": "future"})
+        with subtests.test(state="unrecognized transaction"):
+            degraded = control.status(installed_ctx)
+            assert degraded["state"] == "degraded"
+            assert degraded["detail"] == "installation is degraded"
+
+    def test_reload_requires_installation_and_resolved_transaction_state(
+        self, tmp_path: Path, *, mocker, subtests
+    ) -> None:
+        ctx = install_context(tmp_path)
+
+        with subtests.test(state="absent"), pytest.raises(errors.NotInstalledError):
+            control.reload(ctx)
+
+        Path(ctx.install_dir).mkdir(parents=True)
+        for transaction_state, expected in (
+            ({"state": "invalid"}, errors.RecoveryStateError),
+            ({"state": "prepared"}, errors.RecoveryRequiredError),
+        ):
+            mocker.patch.object(payload_state, "status", return_value=transaction_state)
+            with subtests.test(state=transaction_state["state"]), pytest.raises(expected):
+                control.reload(ctx)
+
+    def test_rollback_requires_idle_and_verified_retained_authority(
+        self, tmp_path: Path, *, mocker, subtests
+    ) -> None:
+        ctx = install_context(tmp_path)
+        transaction_status = mocker.patch.object(
+            payload_state, "status", return_value={"state": "prepared"}
+        )
+
+        with subtests.test(state="active transaction"), pytest.raises(errors.RecoveryRequiredError):
+            control.rollback(ctx)
+
+        transaction_status.return_value = None
+        retained = mocker.patch.object(payload_rollback, "load_retained_or_none")
+        retained.return_value = None
+        assert control.rollback(ctx) == {
+            "state": "unavailable",
+            "detail": "no verified predecessor is retained",
+        }
+
+        retained.side_effect = errors.InstallError("retained authority is corrupt")
+        with (
+            subtests.test(state="invalid retained authority"),
+            pytest.raises(errors.RollbackStateError, match="retained authority is corrupt"),
+        ):
+            control.rollback(ctx)
+
+    def test_status_reports_retained_rollback_availability_and_corruption(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.finalize({"pid": 2})
+        retained = payload_rollback.load_retained(ctx)
+        self._healthy_status_dependencies(ctx, mocker=mocker)
+
+        available = control.status(ctx)
+
+        assert available["rollback"] == {
+            "state": "available",
+            "from_release": "1.2.3",
+            "to_release": "1.2.2",
+        }
+
+        (retained.root / payload_rollback.RETAINED_BINDING_FILENAME).write_bytes(b"invalid")
+
+        invalid = control.status(ctx)
+
+        assert invalid["state"] == "invalid"
+        assert invalid["rollback"] == {
+            "state": "invalid",
+            "detail": "retained rollback generation is unavailable or invalid",
+        }
+
+    def test_status_defers_retained_authority_to_an_active_transaction(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        middle = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        middle.commit_projection()
+        middle.finalize({"pid": 2})
+        retained = payload_rollback.load_retained(ctx)
+        latest = begin_transaction(ctx, released_artifact("1.2.4"), mocker=mocker)
+        latest.commit_projection()
+        (retained.root / payload_rollback.RETAINED_BINDING_FILENAME).write_bytes(b"stale")
+        self._healthy_status_dependencies(ctx, mocker=mocker)
+
+        result = control.status(ctx)
+
+        assert result["state"] == "recovery_required"
+        assert result["rollback"] == {
+            "state": "deferred",
+            "detail": "payload transaction owns rollback finalization",
+        }
+
+    def test_purge_removes_the_verified_retained_generation(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.finalize({"pid": 2})
+        retained_root = payload_state.retained_rollback_root(ctx)
+        assert retained_root.is_dir()
+        service = mocker.Mock()
+        service.status.return_value = "absent"
+        mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
+        mocker.patch.object(uninstall, "adapter", return_value=service)
+        mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
+
+        result = uninstall.uninstall_product(purge=True)
+
+        assert result["state"] == "purged"
+        assert not retained_root.exists()
+
+    @staticmethod
+    def _healthy_status_dependencies(ctx, *, mocker) -> None:
+        runtime = identity.committed_payload(Path(ctx.executable))
+        assert runtime is not None
+        runtime_evidence = {
+            "pid": 321,
+            "release": runtime.release,
+            "serving_payload_sha256": runtime.serving_payload_sha256,
+            "release_receipt_sha256": runtime.release_receipt_sha256,
+            "payload_manifest_sha256": runtime.manifest_sha256,
+            "accepting": True,
+            "draining": False,
+        }
+        mocker.patch.object(control, "adapter").return_value.status.return_value = "running"
+        mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[321])
+        mocker.patch.object(control, "read_runtime", return_value=runtime_evidence)
 
     def test_process_teardown_fails_closed_when_exit_is_unproved(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))

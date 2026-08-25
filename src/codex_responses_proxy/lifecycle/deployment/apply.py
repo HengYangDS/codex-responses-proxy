@@ -10,10 +10,12 @@ from typing import Protocol
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import runtime as service_runtime
 
 RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | None]
 
@@ -31,7 +33,7 @@ class ServiceAdapter(Protocol):
 
 
 class UnknownDeploymentOutcome(errors.InstallError):
-    """The handoff controller cannot prove whether the successor committed."""
+    """The deployment controller cannot prove whether the successor committed."""
 
 
 def install(
@@ -52,25 +54,65 @@ def install(
             runtime_reader=runtime_reader,
             timeout_seconds=timeout_seconds,
         )
-    if current is None or type(current.get("pid")) is not int:
+    if current is None:
         raise errors.InstallError("installed runtime identity is not verified")
-    if not handoff.runtime_supports_handoff(current):
+    pid = current.get("pid")
+    if type(pid) is not int:
+        raise errors.InstallError("installed runtime identity is not verified")
+    strategy = handoff.deployment_strategy(current)
+    if strategy == "unsupported":
         raise errors.InstallError(
             "installed runtime is incompatible; remove it before installing this release"
         )
-    pid = current["pid"]
     if process.verified_proxy_listener_pids(ctx) != [pid]:
         raise errors.InstallError("installed runtime identity is not verified")
     if not _same_executable(adapter.configured_executable(ctx), ctx.executable):
         raise errors.InstallError("native supervisor is not bound to the canonical executable")
+    source_listener = None
+    if strategy == "native_generation":
+        source_listener = process.capture_executable(
+            pid,
+            ctx.executable,
+            roles={service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE},
+        )
+        if source_listener is None:
+            raise errors.InstallError("installed listener process generation is not verified")
     return _upgrade(
         ctx,
         payload,
         adapter=adapter,
         current=current,
+        source_listener=source_listener,
         runtime_reader=runtime_reader,
         timeout_seconds=timeout_seconds,
     )
+
+
+def rollback(
+    ctx: runtime_context.RuntimeContext,
+    retained: payload_rollback.RetainedRollback,
+    *,
+    adapter: ServiceAdapter,
+    runtime_reader: RuntimeReader,
+    timeout_seconds: float = 30.0,
+) -> dict[str, object]:
+    """Apply one retained predecessor through the ordinary upgrade machinery."""
+    payload = transaction.begin_rollback_transaction(ctx, retained)
+    result = install(
+        ctx,
+        payload,
+        adapter=adapter,
+        runtime_reader=runtime_reader,
+        timeout_seconds=timeout_seconds,
+    )
+    if result.get("state") != "upgraded":
+        raise errors.InstallError("rollback requires a verified running successor")
+    return {
+        "state": "rolled_back",
+        "from_release": retained.successor.release,
+        "to_release": retained.predecessor.release,
+        "runtime": result["runtime"],
+    }
 
 
 def _fresh_install(
@@ -103,6 +145,7 @@ def _upgrade(
     *,
     adapter: ServiceAdapter,
     current: dict[str, object],
+    source_listener: process.OwnedProcess | None = None,
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
 ) -> dict[str, object]:
@@ -113,12 +156,22 @@ def _upgrade(
             raise errors.InstallError(
                 "native supervisor did not bind the committed successor executable"
             )
-        runtime = request_handoff(
-            ctx,
-            payload.expected,
-            current=current,
-            runtime_reader=runtime_reader,
-            timeout_seconds=timeout_seconds,
+        runtime = (
+            _replace_native_generation(
+                ctx,
+                payload.expected,
+                source_listener=source_listener,
+                runtime_reader=runtime_reader,
+                timeout_seconds=timeout_seconds,
+            )
+            if source_listener is not None
+            else request_handoff(
+                ctx,
+                payload.expected,
+                current=current,
+                runtime_reader=runtime_reader,
+                timeout_seconds=timeout_seconds,
+            )
         )
     except UnknownDeploymentOutcome as exc:
         payload.preserve_for_recovery(str(exc))
@@ -129,6 +182,26 @@ def _upgrade(
         raise
     payload.finalize(runtime)
     return {"state": "upgraded", "runtime": runtime}
+
+
+def _replace_native_generation(
+    ctx: runtime_context.RuntimeContext,
+    expected: Mapping[str, object],
+    *,
+    source_listener: process.OwnedProcess,
+    runtime_reader: RuntimeReader,
+    timeout_seconds: float,
+) -> dict[str, object]:
+    """Replace one legacy listener after crossing an exact process barrier."""
+    if not process.terminate_owned_process(source_listener, timeout_seconds=timeout_seconds):
+        raise UnknownDeploymentOutcome("native generation replacement outcome is unconfirmed")
+    return wait_for_serving_runtime(
+        ctx,
+        expected,
+        runtime_reader=runtime_reader,
+        timeout_seconds=timeout_seconds,
+        old_pid=source_listener.pid,
+    )
 
 
 def request_handoff(
@@ -162,7 +235,7 @@ def request_handoff(
                 timeout_seconds=timeout_seconds,
                 lease_seconds=max(1.0, timeout_seconds),
             )
-        except BaseException:
+        except (OSError, errors.InstallError):
             resolution, runtime = "unknown", None
         if (
             resolution == "finalized"

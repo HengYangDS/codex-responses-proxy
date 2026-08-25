@@ -48,6 +48,7 @@ class TestProtocolContract:
             "handoff_protocol_version",
             "handoff_transaction_id",
             "handoff_state",
+            "handoff_capabilities",
             "release",
             "serving_payload_sha256",
             "release_receipt_sha256",
@@ -57,6 +58,7 @@ class TestProtocolContract:
         )
         assert set(required).difference(status) == set()
         assert status["handoff_protocol_version"] == 2
+        assert status["handoff_capabilities"] == ["repeatable"]
         assert status["pid"] == os.getpid()
 
     def test_runtime_status_reports_an_accepting_idle_state(self):
@@ -105,6 +107,7 @@ class TestProtocolContract:
                 "handoff_protocol_version",
                 "handoff_transaction_id",
                 "handoff_state",
+                "handoff_capabilities",
                 "payload_manifest_sha256",
                 "accepting",
             )
@@ -447,14 +450,39 @@ class TestHandoffPlatformHelpers:
             fake_stdin = mocker.Mock(buffer=io.BytesIO(raw))
             fake_stdout = mocker.Mock(buffer=io.BytesIO())
             fake_server = server or mocker.Mock()
+            fake_server.server_address = ("127.0.0.1", 8792)
             object.__setattr__(context, "server_factory", lambda _listener: fake_server)
             mocker.patch.object(sys, "stdin", fake_stdin)
             mocker.patch.object(sys, "stdout", fake_stdout)
             mocker.patch.object(handoff_module, "listener_from_prepare", return_value=mocker.Mock())
             mocker.patch.object(handoff_module, "serve_with_resume")
+            probe = mocker.patch.object(
+                handoff_module,
+                "probe_health",
+                return_value={"pid": os.getpid()},
+            )
             thread_cls = mocker.patch("threading.Thread")
             result = handoff_module.run_child(context)
             assert thread_cls.return_value.start.call_count == int({"type": "commit"} in commands)
+            if {"type": "commit"} in commands:
+                probe.assert_called_once_with(
+                    8792,
+                    timeout_seconds=handoff_module.HANDOFF_READY_TIMEOUT_SECONDS,
+                    expected={
+                        "pid": os.getpid(),
+                        "handoff_protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
+                        "handoff_transaction_id": prepare["transaction_id"],
+                        "release": prepare["release"],
+                        "serving_payload_sha256": prepare["serving_payload_sha256"],
+                        "release_receipt_sha256": prepare["release_receipt_sha256"],
+                        "payload_manifest_sha256": prepare["manifest_sha256"],
+                        "handoff_state": "serving",
+                        "accepting": True,
+                        "draining": False,
+                    },
+                )
+            else:
+                probe.assert_not_called()
             return (
                 result,
                 fake_server,

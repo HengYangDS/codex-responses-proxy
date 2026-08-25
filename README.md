@@ -86,6 +86,16 @@ historical boundary, extract the verified 3.x archive and invoke its bundled
 upgrade. Releases after 3.0.0 use a private, version-neutral prewarm protocol;
 future public CLI changes do not alter it.
 
+### Upgrade to 3.1.0
+
+Release 3.1.0 introduces the retained-generation finalization required by the
+new `rollback` command. An older installer cannot retroactively execute that
+new finalization step. To establish the carrier once, extract the verified
+3.1.0 archive and invoke its bundled `bin/codex-responses-proxy install`
+command with the usual `--asset` and `--trust-anchor` arguments. After that
+transition, the installed release again owns ordinary adjacent upgrades. No
+legacy carrier is synthesized and no compatibility reader is retained.
+
 ## Configure a client route
 
 The listener exposes one provider-scoped namespace per admitted provider:
@@ -127,6 +137,9 @@ codex-responses-proxy doctor
 # Transactional same-payload handoff
 codex-responses-proxy reload
 
+# Restore the one verified predecessor retained by the last successful upgrade
+codex-responses-proxy rollback
+
 # Resolve an interrupted install or upgrade; idle recovery is a successful no-op
 codex-responses-proxy recover
 
@@ -137,7 +150,9 @@ codex-responses-proxy uninstall
 codex-responses-proxy uninstall --purge
 ```
 
-Lifecycle JSON uses one explicit `state` discriminator. `recover` returns
+Lifecycle JSON uses one explicit `state` discriminator. `rollback` returns
+`unavailable` when no verified predecessor exists and `rolled_back` only after
+the predecessor is the proven accepting installation. `recover` returns
 `not_required` when no transaction exists, `closed` when an unmutated prepared
 transaction is discarded, `finalized` when the committed candidate is already
 the proven live installation, and `rolled_back` when the exact prior state is
@@ -145,6 +160,13 @@ restored. `uninstall` and `uninstall --purge` return `not_installed` with exit
 status zero only when no owned service, listener, command, payload, or
 transaction exists. Existing but unverifiable state is never treated as
 absence and remains unchanged for diagnosis.
+
+A successful upgrade retains exactly one predecessor. Finalization is
+idempotent across interruption: the transaction owns generation verification,
+selection, cleanup, and recovery until the new retained generation is the sole
+selected authority. `status` therefore reports rollback as `deferred` while an
+installation transaction is active instead of interpreting a valid
+intermediate generation as independent corruption.
 
 Expected failures are concise and actionable. Human mode does not emit a
 traceback, warning dump, serialized object, credential, request body, or private

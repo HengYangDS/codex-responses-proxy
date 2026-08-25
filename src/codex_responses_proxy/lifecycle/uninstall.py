@@ -10,6 +10,7 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle.supervision.native_service import adapter
@@ -99,6 +100,7 @@ def uninstall_product(
                 "manifest-owned payload was removed, but unknown install content remains: "
                 + ", ".join(remaining)
             )
+        payload_rollback.remove_retained(ctx)
     return {
         "state": "purged" if purge else "uninstalled",
         "stopped": stopped,

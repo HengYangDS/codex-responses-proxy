@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import os
+import platform
 import subprocess
-import sys
 import threading
+from collections.abc import Mapping
 from contextlib import ExitStack
 from pathlib import Path
 from pathlib import PurePosixPath
 
 import pytest
 
+from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
@@ -24,13 +26,13 @@ from tests.release.fixtures import runtime_context_for
 from tests.release.fixtures import signed_asset
 from tests.service.handoff.fixtures import ScriptedUpstream
 from tests.service.handoff.fixtures import free_port
+from tests.service.handoff.fixtures import wait_until
 from tools.release import signing
 
 ROOT = Path(__file__).resolve().parents[2]
 
 pytestmark = [
     pytest.mark.native_distribution,
-    pytest.mark.skipif(sys.platform != "darwin", reason="native upgrade acceptance is macOS-only"),
 ]
 
 
@@ -49,6 +51,16 @@ def _version(value: str) -> tuple[int, int, int]:
     return int(major), int(minor), int(patch)
 
 
+def _runtime_pid(result: Mapping[str, object]) -> int:
+    """Return the exact runtime process identity from one lifecycle result."""
+
+    runtime = result.get("runtime")
+    assert isinstance(runtime, dict), result
+    pid = runtime.get("pid")
+    assert type(pid) is int, result
+    return pid
+
+
 def _materialize_native_bundle(candidate: artifact.VerifiedArtifact, output: Path) -> Path:
     """Materialize exact admitted native executable bytes without its provider manifest."""
 
@@ -62,7 +74,10 @@ def _materialize_native_bundle(candidate: artifact.VerifiedArtifact, output: Pat
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(blob.content)
         target.chmod(0o755 if blob.mode == "100755" else 0o644)
-    executable = output / "codex-responses-proxy"
+    platform_id = product_identity.native_release_platform(platform.system(), platform.machine())
+    executable = output / product_identity.executable_name(
+        windows=platform_id.startswith("windows-")
+    )
     assert executable.is_file()
     return output
 
@@ -76,6 +91,24 @@ def _supports_stable_prewarm(executable: Path) -> bool:
     environment.pop("PYTHONPATH", None)
     completed = subprocess.run(
         [str(executable), "--internal-prewarm"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=False,
+        env=environment,
+        timeout=120,
+    )
+    return completed.returncode == 0
+
+
+def _supports_explicit_rollback(executable: Path) -> bool:
+    """Return whether one installed release owns retained-generation finalization."""
+
+    environment = os.environ.copy()
+    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    environment.pop("PYTHONHOME", None)
+    environment.pop("PYTHONPATH", None)
+    completed = subprocess.run(
+        [str(executable), "rollback", "--help"],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         check=False,
@@ -350,6 +383,8 @@ class TestPublishedPredecessorCompatibility:
                     is True
                 )
                 upgrade_driver = current_executable
+            if not _supports_explicit_rollback(previous_executable):
+                upgrade_driver = current_executable
 
             upgraded = run_command(
                 upgrade_driver,
@@ -370,6 +405,7 @@ class TestPublishedPredecessorCompatibility:
                 b'{"id":"held","status":"completed"}'
             }
             assert upgraded["state"] == "upgraded"
+            assert wait_until(lambda: process.listener_pids(port) == [_runtime_pid(upgraded)], 20)
 
             after = run_command(
                 current_executable,
@@ -382,7 +418,7 @@ class TestPublishedPredecessorCompatibility:
             assert after["release"] == current_version
             assert after["payload_transaction"] is None
             after_runtime = after.get("runtime")
-            assert isinstance(after_runtime, dict)
+            assert isinstance(after_runtime, dict), after
             assert after_runtime.get("pid") != previous_pid
             assert (
                 run_command(
@@ -399,6 +435,71 @@ class TestPublishedPredecessorCompatibility:
                 assert not install.joinpath(*PurePosixPath(relative).parts).exists()
             upstream.push((200, b'{"id":"after","status":"completed"}'))
             assert post_response(port) == b'{"id":"after","status":"completed"}'
+
+            rolled_back = run_command(
+                current_executable,
+                environment,
+                "rollback",
+                "--port",
+                str(port),
+                "--timeout-seconds",
+                "60",
+                "--json",
+            )
+            assert rolled_back["state"] == "rolled_back"
+            assert rolled_back["from_release"] == current_version
+            assert rolled_back["to_release"] == previous_version
+            assert wait_until(
+                lambda: process.listener_pids(port) == [_runtime_pid(rolled_back)], 20
+            )
+            after_rollback = run_command(
+                current_executable,
+                environment,
+                "status",
+                "--port",
+                str(port),
+                "--json",
+            )
+            assert after_rollback["release"] == previous_version
+            assert after_rollback["payload_transaction"] is None
+            assert after_rollback["rollback"] == {
+                "state": "available",
+                "from_release": previous_version,
+                "to_release": current_version,
+            }
+            assert run_command(
+                current_executable,
+                environment,
+                "recover",
+                "--port",
+                str(port),
+                "--json",
+            ) == {"state": "not_required"}
+
+            restored = run_command(
+                current_executable,
+                environment,
+                "rollback",
+                "--port",
+                str(port),
+                "--timeout-seconds",
+                "60",
+                "--json",
+            )
+            assert restored["state"] == "rolled_back"
+            assert restored["from_release"] == previous_version
+            assert restored["to_release"] == current_version
+            assert wait_until(lambda: process.listener_pids(port) == [_runtime_pid(restored)], 20)
+            restored_status = run_command(
+                current_executable,
+                environment,
+                "status",
+                "--port",
+                str(port),
+                "--json",
+            )
+            assert restored_status["release"] == current_version
+            assert restored_status["payload_transaction"] is None
 
             reloaded = run_command(
                 current_executable,

@@ -55,7 +55,12 @@ def recover(
     ):
         return _close_finalized(ctx, journal=journal, candidate=candidate, installed=installed)
     if _runtime_matches_projection(runtime, candidate):
-        return _finalize_recovery(ctx, journal=journal, runtime=runtime)
+        return _finalize_recovery(
+            ctx,
+            journal=journal,
+            runtime=runtime,
+            candidate=candidate,
+        )
     if journal["fresh"] is True:
         if runtime is not None:
             raise errors.InstallError(
@@ -126,6 +131,7 @@ def _close_finalized(
         command_path=ctx.command,
     ):
         raise errors.RecoveryStateError("installed release state does not match the transaction")
+    _complete_retention(ctx, journal=journal, candidate=candidate)
     result = {
         "transaction_id": journal["transaction_id"],
         "version": journal["version"],
@@ -170,6 +176,7 @@ def _finalize_recovery(
     *,
     journal: Mapping[str, object],
     runtime: Mapping[str, object] | None,
+    candidate: identity.LoadedPayloadIdentity,
 ) -> dict[str, object]:
     """Finalize an installed candidate after its runtime proves success."""
     assert runtime is not None
@@ -186,6 +193,7 @@ def _finalize_recovery(
         digest.canonical_json(installed),
         mode=0o600,
     )
+    _complete_retention(ctx, journal=journal, candidate=candidate)
     result = {
         "transaction_id": journal["transaction_id"],
         "version": journal["version"],
@@ -193,6 +201,37 @@ def _finalize_recovery(
     }
     _remove_transaction_root(ctx)
     return result
+
+
+def _complete_retention(
+    ctx: runtime_context.RuntimeContext,
+    *,
+    journal: Mapping[str, object],
+    candidate: identity.LoadedPayloadIdentity,
+) -> None:
+    """Complete or confirm the rollback-retention side of finalization."""
+    rollback = state.transaction_root(ctx) / "rollback"
+    try:
+        if journal["fresh"] is True:
+            payload_rollback.remove_retained(ctx)
+        else:
+            payload_rollback.promote(
+                ctx,
+                rollback,
+                transaction_id=str(journal["transaction_id"]),
+                successor=candidate.handoff(),
+            )
+    except errors.InstallError as exc:
+        state.write_journal(
+            ctx,
+            transaction_id=str(journal["transaction_id"]),
+            version=str(journal["version"]),
+            receipt_sha256=str(journal["receipt_sha256"]),
+            state="recovery_required",
+            fresh=bool(journal["fresh"]),
+            reason=f"finalization failed: {exc}",
+        )
+        raise
 
 
 def _rollback_fresh(
@@ -414,6 +453,20 @@ class PayloadTransaction:
             digest.canonical_json(installed),
             mode=0o600,
         )
+        rollback = state.transaction_root(self._ctx) / "rollback"
+        try:
+            if self._fresh:
+                payload_rollback.remove_retained(self._ctx)
+            else:
+                payload_rollback.promote(
+                    self._ctx,
+                    rollback,
+                    transaction_id=self._transaction_id,
+                    successor=self.expected,
+                )
+        except errors.InstallError as exc:
+            self.preserve_for_recovery(f"finalization failed: {exc}")
+            raise
         self._state = "finalized"
         _remove_transaction_root(self._ctx)
 
@@ -464,6 +517,30 @@ def begin_transaction(
     candidate: artifact.VerifiedArtifact,
 ) -> PayloadTransaction:
     """Claim one admitted release and create its private transaction journal."""
+    return _begin_transaction(ctx, candidate, allow_downgrade=False)
+
+
+def begin_rollback_transaction(
+    ctx: runtime_context.RuntimeContext,
+    retained: payload_rollback.RetainedRollback,
+) -> PayloadTransaction:
+    """Begin one reverse transition from a verified retained predecessor."""
+    previous = state.read_installed(ctx)
+    if previous is None or state.require_version(previous) != retained.successor.release:
+        raise errors.InstallError("retained rollback successor changed before transition")
+    candidate = payload_rollback.candidate(retained)
+    if candidate.version != retained.predecessor.release:
+        raise errors.InstallError("retained rollback predecessor changed before transition")
+    return _begin_transaction(ctx, candidate, allow_downgrade=True)
+
+
+def _begin_transaction(
+    ctx: runtime_context.RuntimeContext,
+    candidate: artifact.VerifiedArtifact,
+    *,
+    allow_downgrade: bool,
+) -> PayloadTransaction:
+    """Claim one admitted payload for a forward or retained reverse transition."""
     root = state.transaction_root(ctx)
     if root.exists() or root.is_symlink():
         transaction_state = state.status(ctx)
@@ -480,7 +557,7 @@ def begin_transaction(
     previous = state.read_installed(ctx)
     if previous is not None:
         comparison = state.compare_versions(version, state.require_version(previous))
-        if comparison < 0:
+        if comparison < 0 and not allow_downgrade:
             raise errors.InstallError("released payload downgrade is refused")
         if comparison == 0:
             raise errors.InstallError("released payload replay is refused")

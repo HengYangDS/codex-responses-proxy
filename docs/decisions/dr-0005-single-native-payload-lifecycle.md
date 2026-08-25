@@ -23,9 +23,17 @@ incompatible installation or foreign command target fails before mutation and
 must be removed explicitly.
 
 Rollback and recovery use exact current manifests, receipts, preimages, command
-link ownership, and runtime identities. Source-level compatibility shims,
-forwarding facades, wrappers, shell-profile mutation, retired layout readers,
-and automatic migration from unsupported payloads are not product surfaces.
+link ownership, and runtime identities. Finalization owns one idempotent
+generation-promotion transition: verify, materialize, atomically select, retire
+superseded generations, and prove the singleton terminal state. The active
+transaction remains the recovery authority throughout every intermediate
+state; the retained store never becomes a parallel state machine. The first
+release that adds retained-generation finalization is a bounded bootstrap
+exception: its verified executable drives that one upgrade because the older
+installed executable cannot own semantics it never shipped. Source-level
+compatibility shims, forwarding facades, wrappers, shell-profile mutation,
+retired layout readers, and automatic migration from unsupported payloads are
+not product surfaces.
 
 ## Consequences
 

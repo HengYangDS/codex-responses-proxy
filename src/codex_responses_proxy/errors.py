@@ -81,6 +81,16 @@ class RecoveryStateError(InstallError):
         super().__init__(message, next_command=product_identity.command("status", "--json"))
 
 
+class RollbackStateError(InstallError):
+    """Report retained predecessor evidence that cannot be applied safely."""
+
+    code = "rollback_state_invalid"
+
+    def __init__(self, message: str) -> None:
+        """Direct unverifiable rollback evidence to read-only status."""
+        super().__init__(message, next_command=product_identity.command("status", "--json"))
+
+
 class ProductAssemblyError(ProductError):
     """Report that a released executable is missing an internal product component."""
 

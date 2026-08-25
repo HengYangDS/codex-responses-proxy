@@ -410,6 +410,25 @@ class CliLifecycleContracts:
         assert invalid["next"] == "codex-responses-proxy status --json"
         assert all("next" not in check for check in recovery["checks"].values())
 
+        invalid_rollback = application._doctor(
+            {
+                "state": "invalid",
+                "release": "2.0.58",
+                "payload_integrity": {"ok": True, "detail": "verified"},
+                "service": "running",
+                "listener_pids": [321],
+                "runtime": {"pid": 321, "accepting": True},
+                "payload_transaction": None,
+                "rollback": {"state": "invalid", "detail": "binding mismatch"},
+                "command": {"state": "owned", "kind": "symlink"},
+            }
+        )
+
+        assert invalid_rollback["checks"]["rollback"] == {
+            "status": "failed",
+            "detail": "binding mismatch",
+        }
+
     def test_doctor_requires_integrity_service_and_exact_listener_identity(self, subtests) -> None:
         healthy = {
             "release": "2.0.8",
@@ -516,6 +535,45 @@ class CliLifecycleContracts:
         context.assert_called_once_with(port=8801)
         recover.assert_called_once_with("context", runtime=runtime)
 
+    def test_rollback_is_discoverable_and_delegates_to_the_installed_lifecycle(
+        self, *, mocker
+    ) -> None:
+        result = {
+            "state": "rolled_back",
+            "from_release": "3.0.6",
+            "to_release": "3.0.5",
+        }
+        context = mocker.patch.object(application.runtime_context, "create", return_value="context")
+        rollback = mocker.patch.object(application.control, "rollback", return_value=result)
+
+        code, stdout, stderr = self.invoke(
+            "rollback", "--json", "--port", "8801", "--timeout-seconds", "12.5"
+        )
+
+        assert code == 0
+        assert stderr == ""
+        assert json.loads(stdout) == result
+        context.assert_called_once_with(port=8801)
+        rollback.assert_called_once_with("context", timeout_seconds=12.5)
+
+    def test_rollback_without_a_predecessor_has_matching_human_and_json_semantics(
+        self, *, mocker
+    ) -> None:
+        unavailable = {
+            "state": "unavailable",
+            "detail": "no verified predecessor is retained",
+        }
+        mocker.patch.object(application.runtime_context, "create", return_value="context")
+        mocker.patch.object(application.control, "rollback", return_value=unavailable)
+
+        json_code, json_stdout, json_stderr = self.invoke("rollback", "--json")
+        human_code, human_stdout, human_stderr = self.invoke("rollback")
+
+        assert json_code == human_code == 0
+        assert json.loads(json_stdout) == unavailable
+        assert "No verified predecessor" in human_stdout
+        assert json_stderr == human_stderr == ""
+
     @pytest.mark.parametrize("json_output", [False, True])
     def test_recover_projects_one_precise_invalid_state_contract(
         self,
@@ -559,7 +617,11 @@ class CliLifecycleContracts:
         uninstall = mocker.patch.object(
             application.uninstall,
             "uninstall_product",
-            return_value={"state": "uninstalled", "stopped": 1, "command_removed": True},
+            return_value={
+                "state": "uninstalled",
+                "stopped": 1,
+                "command_removed": True,
+            },
         )
         code, stdout, stderr = self.invoke("uninstall", "--port", "8801")
         assert code == 0
@@ -643,7 +705,14 @@ class CliLifecycleContracts:
 
     def test_internal_dispatch_argument_contracts_fail_closed(self) -> None:
         cases = (
-            ("install", {"asset": "release.tar.gz", "trust_anchor": Path("trust"), "port": 8792}),
+            (
+                "install",
+                {
+                    "asset": "release.tar.gz",
+                    "trust_anchor": Path("trust"),
+                    "port": 8792,
+                },
+            ),
             ("status", {"port": True}),
             ("reload", {"port": 8792, "timeout_seconds": True}),
             ("uninstall", {"port": 8792, "purge": "yes"}),

@@ -168,9 +168,17 @@ stateDiagram-v2
     Admitted --> Prepared
     Prepared --> Committed
     Committed --> Serving: exact successor proof
-    Committed --> RecoveryRequired: outcome unconfirmed
+    Serving --> GenerationMaterialized: verify predecessor
+    GenerationMaterialized --> GenerationSelected: atomic selector
+    GenerationSelected --> Finalized: retire superseded generation
+    Committed --> RecoveryRequired: runtime outcome unconfirmed
+    GenerationMaterialized --> RecoveryRequired: interrupted
+    GenerationSelected --> RecoveryRequired: cleanup interrupted
+    RecoveryRequired --> GenerationMaterialized: resume
+    RecoveryRequired --> GenerationSelected: resume
+    RecoveryRequired --> Finalized: converge
     Prepared --> RolledBack: pre-commit failure
-    Serving --> [*]
+    Finalized --> [*]
 ```
 
 Artifact admission verifies the release asset, complete bundle inventory, and
@@ -185,10 +193,27 @@ ownership from a later shell environment. Installation finalizes only after one
 listener proves the expected release, payload digest, manifest digest, receipt
 digest, PID, and accepting state.
 
-Reload is same-payload handoff. Upgrade is install. Uninstall removes native
-supervision first, proves owned listener exit, removes only the recorded command
-link while it still targets the installed executable, then optionally removes
-only manifest-owned payload files.
+Finalization then performs one idempotent generation-promotion transition. It
+verifies and materializes the displaced predecessor, atomically selects it,
+removes only superseded generations, and proves the resulting singleton. The
+selector is committed before old-generation cleanup, so every interruption
+retains either the old authority or a recoverable new authority. Until the
+transaction closes, it owns rollback status and recovery; the retained store is
+not a parallel state machine.
+
+The release that first introduces this transition must drive its own one-time
+upgrade from an older installed release: the predecessor cannot execute
+finalization semantics that did not yet exist. This is an explicit bootstrap
+at the installer boundary, not a second carrier schema or a runtime migration
+path. Once established, the installed release owns adjacent upgrades normally.
+
+Reload is same-payload handoff. Upgrade is install. Rollback is a new reverse
+transaction from the current successor to its sole retained predecessor.
+Recover resumes or resolves an already active transaction; it is not a synonym
+for rollback. Uninstall removes native supervision first, proves owned listener
+exit, removes only the recorded command link while it still targets the
+installed executable, then optionally removes only manifest-owned payload
+files.
 
 ## Human and machine surfaces
 
