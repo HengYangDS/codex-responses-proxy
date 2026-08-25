@@ -7,6 +7,18 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.0.5] - 2026-08-25
+
+### Fixed
+
+- Distinguish missing, malformed, and incomplete payload transaction journals,
+  so `recover` reports the exact unavailable recovery authority instead of one
+  ambiguous failure.
+- Preserve rollback and recovery authority across native lifecycle transitions.
+- Make native lifecycle teardown own the exact temporary service, process set,
+  and macOS launch-agent path, preventing test services from leaking into the
+  host while preserving the installed service.
+
 ## [3.0.4] - 2026-08-24
 
 ### Fixed

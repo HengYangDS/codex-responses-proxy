@@ -1,0 +1,35 @@
+schema_version = 2
+id = "change:release-3-0-5"
+intent = "Publish the accepted recovery and native lifecycle corrections as the unique 3.0.5 release."
+subjects = [
+  "repository:codex-responses-proxy",
+]
+scope = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/archive/*-release-3-0-5/**",
+  "openspec/changes/release-3-0-5/**",
+]
+invariants = [
+  "release_commit_adds_no_product_behavior",
+  "version_and_changelog_remain_the_release_identity_authorities",
+  "release_identity_is_not_reused_for_different_source_or_artifact_bytes",
+]
+acceptance = [
+  "exact_head_repository_proof_passes",
+  "release_metadata_validates_for_version_3_0_5",
+  "release_assets_are_byte_identical_across_forges",
+]
+risks = [
+  "release_metadata_could_claim_unpublished_external_effects",
+]
+authority_refs = [
+  "CONTRIBUTING.md",
+  "docs/governance/release-and-change-policy.md",
+]
+predecessors = []
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []
