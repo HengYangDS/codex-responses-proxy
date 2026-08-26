@@ -3,6 +3,8 @@ id = "change:windows-handoff-convergence"
 intent = "Make native reload completion portable by proving the product generation without relying on platform-specific TCP owner projection."
 subjects = ["repository:codex-responses-proxy"]
 scope = [
+  ".config/ci/pipeline.cue",
+  ".github/workflows/verify.yml",
   "CHANGELOG.md",
   "VERSION",
   "openspec/changes/archive/*-windows-handoff-convergence/**",
@@ -13,6 +15,7 @@ scope = [
   "src/codex_responses_proxy/lifecycle/deployment/handoff.py",
   "tests/lifecycle/deployment/test_handoff.py",
   "tests/lifecycle/test_control.py",
+  "tests/forge/test_workflow_contracts.py",
   "tests/release/test_installation.py",
   "tests/release/test_native_compatibility.py",
   "tests/release/test_native_lifecycle.py",
