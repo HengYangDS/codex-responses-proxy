@@ -303,9 +303,12 @@ def _api_pages(endpoint: str) -> list[object]:
     return list(value)
 
 
-def _predecessor(*, repository: str, candidate_version: str) -> None:
+def _predecessor(*, repository: str, candidate_version: str, github_environment: Path) -> None:
     """Print the exact published predecessor for one candidate version."""
-    print(published_predecessor(repository=repository, version=candidate_version))
+    tag = published_predecessor(repository=repository, version=candidate_version)
+    with github_environment.open("a", encoding="utf-8", newline="\n") as environment:
+        environment.write(f"{product_identity.environment_name('PREVIOUS_RELEASE_TAG')}={tag}\n")
+    print(tag)
 
 
 def main(argv: tuple[str, ...] | None = None) -> None:

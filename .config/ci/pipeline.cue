@@ -639,10 +639,7 @@ githubVerify: {
 			}, {
 				name: "Resolve the exact published predecessor"
 				env: GH_TOKEN: "${{ github.token }}"
-				run: """
-					PREVIOUS_TAG="$(uv run --locked --no-sync python -m tools.release.publication.github predecessor --repository "$GITHUB_REPOSITORY" --candidate-version "$(cat VERSION)")"
-					echo "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG=$PREVIOUS_TAG" >> "$GITHUB_ENV"
-					"""
+				run: "uv run --locked --no-sync python -m tools.release.publication.github predecessor --repository \"${{ github.repository }}\" --candidate-version \"$(cat VERSION)\" --github-environment \"${{ github.env }}\""
 			}, {
 				name: "Download the published predecessor release"
 				env: GH_TOKEN: "${{ github.token }}"

@@ -243,12 +243,13 @@ class ForgeAdapterContracts:
             ):
                 github.published_predecessor(repository="owner/repo", version="3.1.2")
 
-    def test_github_predecessor_cli_avoids_the_parser_version_option(
-        self, *, mocker, capsys
+    def test_github_predecessor_cli_projects_the_exact_tag_to_github_environment(
+        self, *, mocker, capsys, tmp_path
     ) -> None:
-        """Keep the candidate identity distinct from Cyclopts' own version option."""
+        """Project the exact tag without depending on the runner's command shell."""
 
         resolve = mocker.patch.object(github, "published_predecessor", return_value="v3.1.0")
+        environment = tmp_path / "github-environment"
 
         github.main(
             (
@@ -257,11 +258,16 @@ class ForgeAdapterContracts:
                 "owner/repo",
                 "--candidate-version",
                 "3.1.2",
+                "--github-environment",
+                str(environment),
             )
         )
 
         resolve.assert_called_once_with(repository="owner/repo", version="3.1.2")
         assert capsys.readouterr().out == "v3.1.0\n"
+        assert environment.read_text(encoding="utf-8") == (
+            "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG=v3.1.0\n"
+        )
 
     def test_gitlab_requires_exact_tag_pipeline_jobs_and_release(self) -> None:
         commit = "a" * 40
