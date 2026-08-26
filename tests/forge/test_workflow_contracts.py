@@ -273,8 +273,21 @@ def test_release_compatibility_runs_real_published_upgrade_on_each_platform() ->
         step for step in steps if step.get("name") == "Download the published predecessor release"
     )
     assert _mapping(download["env"])["GH_TOKEN"] == "${{ github.token }}"
-    assert "gh release download --pattern" in _string(download["run"])
+    assert 'gh release download "$CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG"' in _string(
+        download["run"]
+    )
+    assert "--pattern" in _string(download["run"])
     assert "--repo" not in _string(download["run"])
+    predecessor = next(
+        step for step in steps if step.get("name") == "Resolve the exact published predecessor"
+    )
+    assert _mapping(predecessor["env"])["GH_TOKEN"] == "${{ github.token }}"
+    assert predecessor["run"] == (
+        'PREVIOUS_TAG="$(uv run --locked --no-sync python -m '
+        'tools.release.publication.github predecessor --repository "$GITHUB_REPOSITORY" '
+        '--candidate-version "$(cat VERSION)")"\n'
+        'echo "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG=$PREVIOUS_TAG" >> "$GITHUB_ENV"'
+    )
     trust = next(
         step for step in steps if step.get("name") == "Materialize the release trust anchor"
     )
