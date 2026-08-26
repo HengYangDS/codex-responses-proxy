@@ -637,9 +637,16 @@ githubVerify: {
 				name: "Install the locked release tool environment"
 				run:  "uv sync --locked --group quality"
 			}, {
+				name: "Resolve the exact published predecessor"
+				env: GH_TOKEN: "${{ github.token }}"
+				run: """
+					PREVIOUS_TAG="$(uv run --locked --no-sync python -m tools.release.publication.github predecessor --repository "$GITHUB_REPOSITORY" --candidate-version "$(cat VERSION)")"
+					echo "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG=$PREVIOUS_TAG" >> "$GITHUB_ENV"
+					"""
+			}, {
 				name: "Download the published predecessor release"
 				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh release download --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
+				run: "gh release download \"$CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
 			}, {
 				name: "Materialize the release trust anchor"
 				env: RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
@@ -650,7 +657,7 @@ githubVerify: {
 			}, {
 				name: "Start the runner user systemd manager"
 				if:   "matrix.platform == 'linux-x86_64'"
-				run:  "user_id=$(id -u); runtime_dir=/run/user/$user_id; sudo systemctl start user@$user_id.service; echo XDG_RUNTIME_DIR=$runtime_dir >> $GITHUB_ENV; echo DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime_dir/bus >> $GITHUB_ENV"
+				run:  "user_id=$(id -u); runtime_dir=\"/run/user/${user_id}\"; sudo systemctl start \"user@${user_id}.service\"; printf '%s\\n' \"XDG_RUNTIME_DIR=${runtime_dir}\" \"DBUS_SESSION_BUS_ADDRESS=unix:path=${runtime_dir}/bus\" >> \"${GITHUB_ENV}\""
 			}, {
 				name: "Prove published predecessor upgrade and rollback"
 				env: CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: "${{ runner.temp }}/release-asset-trust"

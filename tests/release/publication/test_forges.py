@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import cast
 
@@ -183,6 +184,84 @@ class ForgeAdapterContracts:
         runs[0]["head_sha"] = "b" * 40
         with pytest.raises(github.GitHubProofError):
             self._normalize_github(commit, (runs, jobs, release, assets))
+
+    def test_github_selects_the_newest_published_ancestor_before_the_candidate(
+        self, *, mocker
+    ) -> None:
+        """Resolve one immutable predecessor instead of inheriting GitHub's latest pointer."""
+
+        releases = [
+            {"tag_name": "v3.1.1", "draft": False, "prerelease": False},
+            {"tag_name": "v3.1.0", "draft": False, "prerelease": False},
+            {"tag_name": "v3.0.5", "draft": False, "prerelease": False},
+            {"tag_name": "v4.0.0", "draft": True, "prerelease": False},
+        ]
+        mocker.patch.object(github, "_api_pages", return_value=[releases])
+        merge_base = mocker.patch.object(
+            subprocess,
+            "run",
+            side_effect=(
+                subprocess.CompletedProcess((), 1, "", ""),
+                subprocess.CompletedProcess((), 0, "", ""),
+            ),
+        )
+
+        assert github.published_predecessor(repository="owner/repo", version="3.1.2") == "v3.1.0"
+        assert [call.args[0][-2] for call in merge_base.call_args_list] == [
+            "refs/tags/v3.1.1^{commit}",
+            "refs/tags/v3.1.0^{commit}",
+        ]
+
+    def test_github_predecessor_selection_rejects_ambiguous_or_missing_history(
+        self, *, mocker, subtests
+    ) -> None:
+        """Fail closed when hosted release records cannot name one local ancestor."""
+
+        cases = (
+            (
+                [
+                    {"tag_name": "v3.1.0", "draft": False, "prerelease": False},
+                    {"tag_name": "v3.1.0", "draft": False, "prerelease": False},
+                ],
+                (0, 0),
+                "ambiguous",
+            ),
+            ([{"tag_name": "v4.0.0", "draft": False, "prerelease": False}], (), "unavailable"),
+        )
+        for releases, statuses, message in cases:
+            mocker.patch.object(github, "_api_pages", return_value=[releases])
+            mocker.patch.object(
+                subprocess,
+                "run",
+                side_effect=[
+                    subprocess.CompletedProcess((), status, "", "") for status in statuses
+                ],
+            )
+            with (
+                subtests.test(message=message),
+                pytest.raises(github.GitHubProofError, match=message),
+            ):
+                github.published_predecessor(repository="owner/repo", version="3.1.2")
+
+    def test_github_predecessor_cli_avoids_the_parser_version_option(
+        self, *, mocker, capsys
+    ) -> None:
+        """Keep the candidate identity distinct from Cyclopts' own version option."""
+
+        resolve = mocker.patch.object(github, "published_predecessor", return_value="v3.1.0")
+
+        github.main(
+            (
+                "predecessor",
+                "--repository",
+                "owner/repo",
+                "--candidate-version",
+                "3.1.2",
+            )
+        )
+
+        resolve.assert_called_once_with(repository="owner/repo", version="3.1.2")
+        assert capsys.readouterr().out == "v3.1.0\n"
 
     def test_gitlab_requires_exact_tag_pipeline_jobs_and_release(self) -> None:
         commit = "a" * 40

@@ -19,6 +19,8 @@ scope = [
   "tests/release/test_installation.py",
   "tests/release/test_native_compatibility.py",
   "tests/release/test_native_lifecycle.py",
+  "tests/release/publication/test_forges.py",
+  "tools/release/publication/github.py",
 ]
 invariants = [
   "completion_uses_portable_product_generation_identity",
