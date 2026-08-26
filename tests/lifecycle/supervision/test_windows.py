@@ -23,6 +23,7 @@ class TestWindowsLifecycle:
         decoded = rendered.decode("utf-16")
         assert f"<Command>{ctx.executable}</Command>" in decoded
         assert "<Arguments>--internal-watchdog</Arguments>" in decoded
+        assert f"<WorkingDirectory>{ctx.payload_dir}</WorkingDirectory>" in decoded
         assert "python" not in decoded.lower()
         assert ".py" not in decoded
 

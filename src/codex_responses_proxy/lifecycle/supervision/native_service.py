@@ -9,6 +9,10 @@ from typing import cast
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import runtime_spec
+from codex_responses_proxy.lifecycle.supervision import process
+from codex_responses_proxy.service import runtime as service_runtime
+
+_RUNTIME_ROLES = {service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE}
 
 
 class NativeServiceAdapter(Protocol):
@@ -32,6 +36,57 @@ class NativeServiceAdapter(Protocol):
         """Return the host-native service state for this installation."""
         ...
 
+    def terminate_runtime(
+        self,
+        ctx: runtime_spec.NativeServiceContext,
+        *,
+        timeout_seconds: float,
+    ) -> int:
+        """Terminate and prove exit of this generation's runtime processes."""
+        ...
+
+
+class _NativeRuntime:
+    """Expose one native service and its exact product-process ownership."""
+
+    def __init__(self, implementation: ModuleType) -> None:
+        self._implementation = implementation
+        self.__name__ = implementation.__name__
+
+    def install(self, ctx: runtime_spec.NativeServiceContext) -> None:
+        self._implementation.install(ctx)
+
+    def configured_executable(self, ctx: runtime_spec.NativeServiceContext) -> str | None:
+        return cast(str | None, self._implementation.configured_executable(ctx))
+
+    def uninstall(self, ctx: runtime_spec.NativeServiceContext) -> None:
+        self._implementation.uninstall(ctx)
+
+    def status(self, ctx: runtime_spec.NativeServiceContext) -> str:
+        return cast(str, self._implementation.status(ctx))
+
+    def _runtime_pids(self, ctx: runtime_spec.NativeServiceContext) -> list[int]:
+        return process.pids_naming_executable(ctx.executable, roles=_RUNTIME_ROLES)
+
+    def terminate_runtime(
+        self,
+        ctx: runtime_spec.NativeServiceContext,
+        *,
+        timeout_seconds: float,
+    ) -> int:
+        pids = self._runtime_pids(ctx)
+        for pid in pids:
+            if not process.terminate_executable(
+                pid,
+                ctx.executable,
+                roles=_RUNTIME_ROLES,
+                timeout_seconds=timeout_seconds,
+            ):
+                raise errors.InstallError(f"verified runtime process {pid} did not exit")
+        if remaining := self._runtime_pids(ctx):
+            raise errors.InstallError(f"verified runtime processes remain: {remaining}")
+        return len(pids)
+
 
 def _platform_adapters() -> tuple[tuple[str, ModuleType], ...]:
     """Load every supported adapter through imports visible to bundlers."""
@@ -50,7 +105,7 @@ def adapter() -> NativeServiceAdapter:
     """Return the statically bundled supervision module for the current platform."""
     for prefix, implementation in _platform_adapters():
         if sys.platform.startswith(prefix):
-            return cast("NativeServiceAdapter", implementation)
+            return _NativeRuntime(implementation)
     if sys.platform == "cygwin":
         try:
             from codex_responses_proxy.lifecycle.supervision import windows
@@ -58,5 +113,5 @@ def adapter() -> NativeServiceAdapter:
             raise errors.ProductAssemblyError(
                 "product installation is incomplete; reinstall the verified release"
             ) from error
-        return cast("NativeServiceAdapter", windows)
+        return _NativeRuntime(windows)
     raise errors.UnsupportedPlatformError(f"unsupported platform: {sys.platform}")

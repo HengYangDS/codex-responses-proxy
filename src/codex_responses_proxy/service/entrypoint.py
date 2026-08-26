@@ -112,11 +112,14 @@ def _handoff_context() -> handoff.Context:
     executable = Path(runtime.current_executable()) if _BOOTSTRAP is None else _BOOTSTRAP.executable
     return handoff.Context(
         executable=executable,
+        successor_executable=lambda: identity.selected_payload_executable(executable),
         release_version=release_version,
         serving_payload_sha256=loaded_serving_payload_sha256,
         release_receipt_sha256=release_receipt_sha256,
         payload_manifest_sha256=payload_manifest_sha256,
-        committed_payload=lambda: identity.committed_payload(executable),
+        committed_payload=lambda: identity.committed_payload(
+            identity.selected_payload_executable(executable)
+        ),
         response_gate_lock=admission.response_gate_lock(),
         draining=admission.is_draining,
         active_responses=admission.active_responses,

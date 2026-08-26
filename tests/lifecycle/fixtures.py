@@ -83,12 +83,16 @@ def assert_private_log_mode(mode: int) -> None:
         assert mode == 384
 
 
-def released_artifact(version: str = "1.2.3") -> artifact.VerifiedArtifact:
+def released_artifact(
+    version: str = "1.2.3",
+    *,
+    executable_content: bytes = b"native-executable-fixture",
+) -> artifact.VerifiedArtifact:
     """Build an admitted release artifact for lifecycle behavior tests."""
 
     def blob(relative: str) -> artifact.ArtifactFile:
         content = (
-            b"native-executable-fixture"
+            executable_content
             if relative in {inventory.EXECUTABLE, inventory.WINDOWS_EXECUTABLE}
             else (ROOT / "src/codex_responses_proxy/providers/manifest.toml").read_bytes()
         )
@@ -153,5 +157,7 @@ def install_payload(
 
     transaction = begin_transaction(ctx, released_artifact(version), mocker=mocker)
     transaction.commit_projection()
+    transaction.activate()
     transaction.finalize({"pid": 1})
+    ctx.executable = transaction.context.executable
     return transaction

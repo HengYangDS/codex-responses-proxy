@@ -10,10 +10,11 @@ from pathlib import Path
 import pytest
 
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
-from codex_responses_proxy.service import digest as payload_digest
+from tests.release import fixtures as release_fixtures
 from tests.release.fixtures import cleanup_runtime
 from tests.release.fixtures import native_environment
 from tests.release.fixtures import native_service_projection
@@ -132,29 +133,24 @@ class TestSignedNativeLifecycle:
             )
             assert not install.exists()
 
-            transaction_root = payload_state.transaction_root(ctx)
-            transaction_root.mkdir()
-            (transaction_root / payload_state.TRANSACTION_JOURNAL_FILENAME).write_bytes(
-                payload_digest.canonical_json(
-                    {
-                        "fresh": True,
-                        "receipt_sha256": "0" * 64,
-                        "schema_version": payload_state.TRANSACTION_JOURNAL_SCHEMA,
-                        "state": "prepared",
-                        "transaction_id": "fixture-prepared",
-                        "version": current_version,
-                    }
-                )
+            transaction_id = "a" * 32
+            payload_state.write_journal(
+                ctx,
+                fresh=True,
+                receipt_sha256="0" * 64,
+                state="prepared",
+                transaction_id=transaction_id,
+                version=current_version,
             )
             recovered = run_command(
                 executable, environment, "recover", "--port", str(port), "--json"
             )
             assert recovered == {
                 "state": "closed",
-                "transaction_id": "fixture-prepared",
+                "transaction_id": transaction_id,
                 "version": current_version,
             }
-            assert not transaction_root.exists()
+            assert not payload_state.transaction_root(ctx).exists()
         assert native_service_projection(ctx) == isolated_before
         assert native_service_projection(canonical_ctx) == canonical_service_before
         assert process.listener_pids(runtime_config.DEFAULT_PORT) == canonical_before
@@ -225,3 +221,21 @@ class TestSignedNativeLifecycle:
 
         assert native_service_projection(ctx) == isolated_before
         assert native_service_projection(canonical_ctx) == canonical_before
+
+
+def test_native_cleanup_uninstalls_the_configured_generation(tmp_path: Path, *, mocker) -> None:
+    """Teardown derives service ownership from its exact configured executable."""
+    ctx = runtime_context_for(tmp_path / "home", tmp_path / "payload", tmp_path / "state", 43210)
+    first = generation.context(ctx, "1" * 32)
+    second = generation.context(ctx, "2" * 32)
+    for owned in (first, second):
+        Path(owned.payload_dir).mkdir(parents=True)
+    service = mocker.Mock()
+    service.status.return_value = "absent"
+    service.configured_executable.side_effect = [second.executable, None]
+    mocker.patch.object(release_fixtures.native_service, "adapter", return_value=service)
+    mocker.patch.object(release_fixtures.process, "pids_naming_executable", return_value=[])
+
+    cleanup_runtime(ctx)
+
+    service.uninstall.assert_called_once_with(second)

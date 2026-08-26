@@ -9,12 +9,17 @@ protocol has finalized and the predecessor process has exited.
 
 ## What Changes
 
+- Store each admitted payload in an immutable generation below one stable
+  control root. Select the active generation and its sole predecessor through
+  one atomic selector instead of overwriting a running payload in place.
 - Prove handoff convergence with the exact captured predecessor generation,
   exact captured successor generation, and finalized runtime identity.
 - Require the predecessor generation to exit before success, without treating
   platform-specific TCP attribution as lifecycle authority.
-- Apply the same completion proof to ordinary reload, upgrade, rollback, and
-  controller-failure recovery.
+- Make upgrade, reload, rollback, recovery, uninstall, command projection, and
+  native supervision resolve the same selected-generation model.
+- Use a transaction-owned snapshot only to migrate a verified legacy
+  single-directory installation; it is not a retained rollback authority.
 - Retain listener discovery as the admission proof before handoff begins.
 
 ## Capabilities
@@ -30,6 +35,9 @@ None.
 
 ## Impact
 
-The change is confined to native handoff proof and its tests. It adds no state
-machine, dependency, compatibility path, provider behavior, client projection,
-or formal-runtime mutation during source verification.
+The change replaces in-place native payload mutation with immutable generation
+selection across the lifecycle implementation, tests, documentation, and
+runtime-upgrade specification. It adds no dependency, provider behavior,
+client projection, or formal-runtime mutation during source verification. The
+legacy migration boundary is deliberately one-way; the terminal product model
+contains no second rollback store or compatibility state machine.

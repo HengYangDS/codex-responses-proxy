@@ -46,6 +46,7 @@ link-mode = "copy"
 
 [tool.deptry]
 known_first_party = ["codex_responses_proxy"]
+package_module_name_map = { pyinstaller = ["PyInstaller"] }
 
 [tool.hatch.version]
 path = "VERSION"

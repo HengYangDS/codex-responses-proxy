@@ -9,13 +9,12 @@ from typing import cast
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import projection
-from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle.supervision.native_service import adapter
 from codex_responses_proxy.runtime import config as runtime_config
-from codex_responses_proxy.service import runtime as service_runtime
 
 
 class ServiceAdapter(Protocol):
@@ -29,21 +28,24 @@ class ServiceAdapter(Protocol):
         """Return the native service state for this runtime context."""
         ...
 
+    def terminate_runtime(
+        self,
+        ctx: runtime_context.RuntimeContext,
+        *,
+        timeout_seconds: float,
+    ) -> int:
+        """Terminate and prove exit of this generation's runtime processes."""
+        ...
 
-def _stop_proxy(ctx: runtime_context.RuntimeContext) -> int:
+
+def _stop_proxy(service: ServiceAdapter, ctx: runtime_context.RuntimeContext) -> int:
     """Terminate and prove exit of every runtime process owned by this installation."""
-    roles = {service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE}
-    pids = process.pids_naming_executable(ctx.executable, roles=roles)
-    for pid in pids:
-        if not process.terminate_executable(
-            pid,
-            ctx.executable,
-            roles=roles,
-        ):
-            raise errors.InstallError(f"verified proxy runtime process {pid} did not exit")
-    if remaining := process.pids_naming_executable(ctx.executable, roles=roles):
-        raise errors.InstallError(f"verified proxy runtime processes remain: {remaining}")
-    return len(pids)
+    contexts = (*generation.owned_contexts(ctx), ctx)
+    unique = {selected.executable: selected for selected in contexts}
+    stopped = 0
+    for selected_ctx in unique.values():
+        stopped += service.terminate_runtime(selected_ctx, timeout_seconds=5.0)
+    return stopped
 
 
 def _remove_service(service: ServiceAdapter, ctx: runtime_context.RuntimeContext) -> None:
@@ -90,17 +92,27 @@ def uninstall_product(
         }
 
     _remove_service(service, ctx)
-    stopped = _stop_proxy(ctx)
+    stopped = _stop_proxy(service, ctx)
     command_removed = command.remove(command_path, Path(ctx.executable))
 
     if purge:
-        remaining = projection.purge_installed_projection(ctx)
-        if remaining:
-            raise errors.InstallError(
-                "manifest-owned payload was removed, but unknown install content remains: "
-                + ", ".join(remaining)
-            )
-        payload_rollback.remove_retained(ctx)
+        owned_generations = generation.owned_contexts(ctx)
+        selection = generation.read(ctx)
+        payload_contexts = owned_generations or (ctx,)
+        for owned_ctx in payload_contexts:
+            remaining = projection.purge_installed_projection(owned_ctx)
+            if remaining:
+                raise errors.InstallError(
+                    "manifest-owned payload was removed, but unknown install content remains: "
+                    + ", ".join(remaining)
+                )
+        if selection is not None:
+            generation.clear(ctx)
+        for owned_ctx in owned_generations:
+            generation.remove(ctx, Path(owned_ctx.payload_dir).name)
+        Path(state.installed_path(ctx)).unlink(missing_ok=True)
+        if install_root.is_dir() and not any(install_root.iterdir()):
+            install_root.rmdir()
     return {
         "state": "purged" if purge else "uninstalled",
         "stopped": stopped,

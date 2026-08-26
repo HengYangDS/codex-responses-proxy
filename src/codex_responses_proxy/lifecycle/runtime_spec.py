@@ -14,6 +14,7 @@ from codex_responses_proxy.json_value import JsonObject
 from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.runtime import config
 from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import inventory
 
 if TYPE_CHECKING:
@@ -58,6 +59,11 @@ class NativeServiceContext(Protocol):
         ...
 
     @property
+    def payload_dir(self) -> str:
+        """Return the immutable payload generation selected for supervision."""
+        ...
+
+    @property
     def log_dir(self) -> str:
         """Return the product-owned runtime log directory."""
         ...
@@ -70,7 +76,7 @@ class NativeServiceContext(Protocol):
 
 def path(ctx: RuntimeContext) -> Path:
     """Return the product-owned configuration carrier for ``ctx``."""
-    return Path(ctx.install_dir, FILENAME)
+    return Path(ctx.payload_dir, FILENAME)
 
 
 def write(ctx: RuntimeContext) -> Path:
@@ -82,7 +88,7 @@ def write(ctx: RuntimeContext) -> Path:
         target,
         digest.canonical_json(payload),
         mode=0o600,
-        root=Path(ctx.install_dir),
+        root=Path(ctx.payload_dir),
     )
     return target
 
@@ -149,9 +155,10 @@ def _read(target: Path) -> JsonObject:
         raise errors.InstallError("native runtime configuration install_dir is invalid")
     if not isinstance(log_dir, str) or not _absolute(log_dir):
         raise errors.InstallError("native runtime configuration log_dir is invalid")
-    expected = Path(install_dir, FILENAME)
-    if _normalized(target) != _normalized(expected):
-        raise errors.InstallError("native runtime configuration is outside its payload")
+    if not _owned_carrier_location(target, install_dir):
+        raise errors.InstallError(
+            "native runtime configuration is outside the installed payload layout"
+        )
     try:
         config.load(_project(value))
     except config.ConfigurationError as exc:
@@ -161,6 +168,14 @@ def _read(target: Path) -> JsonObject:
 
 def _absolute(value: str) -> bool:
     return PurePosixPath(value).is_absolute() or PureWindowsPath(value).is_absolute()
+
+
+def _owned_carrier_location(target: Path, install_dir: str) -> bool:
+    stable = Path(install_dir, FILENAME)
+    generations = Path(install_dir, identity.PAYLOAD_GENERATIONS_DIRNAME)
+    return _normalized(target) == _normalized(stable) or (
+        target.name == FILENAME and _normalized(target.parent.parent) == _normalized(generations)
+    )
 
 
 def _normalized(value: str | os.PathLike[str]) -> str:

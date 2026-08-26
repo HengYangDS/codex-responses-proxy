@@ -14,6 +14,7 @@ from types import ModuleType
 import pytest
 
 from codex_responses_proxy import errors
+from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle.supervision import native_service
 from codex_responses_proxy.protocol import request as replay_request
 from codex_responses_proxy.relay import responses
@@ -26,6 +27,22 @@ from codex_responses_proxy.service import server
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "src" / "codex_responses_proxy"
+
+
+class _NativeModuleFixture(ModuleType):
+    """Minimal platform-module fixture for shared native ownership tests."""
+
+    def install(self, _ctx: runtime_spec.NativeServiceContext) -> None:
+        pass
+
+    def configured_executable(self, ctx: runtime_spec.NativeServiceContext) -> str:
+        return ctx.executable
+
+    def uninstall(self, _ctx: runtime_spec.NativeServiceContext) -> None:
+        pass
+
+    def status(self, _ctx: runtime_spec.NativeServiceContext) -> str:
+        return "running"
 
 
 class ProxyOwnerBoundaryContracts:
@@ -173,7 +190,7 @@ class ProxyOwnerBoundaryContracts:
             "transaction.py": "PayloadTransaction",
             "candidate.py": "write_projection",
             "state.py": "write_journal",
-            "rollback.py": "write_snapshot",
+            "rollback.py": "write_legacy_snapshot",
         }
         for module, symbol in owners.items():
             tree = ast.parse((PACKAGE / "lifecycle" / module).read_text(encoding="utf-8"))
@@ -401,6 +418,40 @@ class ProxyOwnerBoundaryContracts:
         mocker.patch("builtins.__import__", side_effect=missing_windows)
         with pytest.raises(errors.ProductAssemblyError, match="installation is incomplete"):
             native_service.adapter()
+
+    def test_native_runtime_owns_exact_private_product_processes(self, subtests, *, mocker) -> None:
+        ctx = mocker.Mock(executable="/installed/codex-responses-proxy")
+        implementation = _NativeModuleFixture("fixture.native")
+        runtime = native_service._NativeRuntime(implementation)
+        mocker.patch.object(
+            native_service.process,
+            "pids_naming_executable",
+            return_value=[41, 73],
+        )
+
+        for terminated, inventories, expected, message in (
+            (True, [[41, 73], []], 2, None),
+            (False, [[41]], None, "did not exit"),
+            (True, [[41], [73]], None, "processes remain"),
+        ):
+            with subtests.test(message=message or "success"):
+                mocker.patch.object(
+                    native_service.process,
+                    "pids_naming_executable",
+                    side_effect=inventories,
+                )
+                terminate = mocker.patch.object(
+                    native_service.process,
+                    "terminate_executable",
+                    return_value=terminated,
+                )
+                if message is None:
+                    assert runtime.terminate_runtime(ctx, timeout_seconds=2.5) == expected
+                    assert terminate.call_count == 2
+                else:
+                    with pytest.raises(errors.InstallError, match=message):
+                        runtime.terminate_runtime(ctx, timeout_seconds=2.5)
+                mocker.stopall()
 
 
 def _write_manifest(root: Path, manifest: object) -> None:

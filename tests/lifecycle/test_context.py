@@ -55,6 +55,26 @@ class TestRuntimeContext:
         )
         assert projected.port == 8808
 
+    def test_payload_root_follows_executable_platform_syntax(self, subtests) -> None:
+        for executable, expected in (
+            (
+                "/opt/proxy/generations/abc/bin/codex-responses-proxy",
+                "/opt/proxy/generations/abc",
+            ),
+            (
+                r"C:\proxy\generations\abc\bin\codex-responses-proxy.exe",
+                r"C:\proxy\generations\abc",
+            ),
+        ):
+            with subtests.test(executable=executable):
+                projected = context.RuntimeContext(
+                    install_dir="/unused/control-root",
+                    executable=executable,
+                    command="/unused/command",
+                    log_dir="/unused/logs",
+                )
+                assert projected.payload_dir == expected
+
     def test_context_is_the_single_deployed_runtime_projection(self, *, mocker):
         mocker.patch.object(config, "home_dir", return_value="/portable/home")
         mocker.patch.object(config, "data_dir", return_value="/portable/payload")
@@ -89,6 +109,23 @@ class TestRuntimeContext:
         assert "CODEX_RESPONSES_PROXY_EXECUTABLE" not in environment
         assert environment[config.PROXY_LOG_ENV] == str(tmp_path / "state" / "proxy.log")
         assert environment[config.UPSTREAM_TIMEOUT_ENV] == "45.0"
+
+    def test_runtime_spec_accepts_an_immutable_generation_carrier(self, tmp_path) -> None:
+        install_dir = tmp_path / "payload"
+        generation_dir = install_dir / "generations" / "release-identity"
+        projected = context.RuntimeContext(
+            install_dir=str(install_dir),
+            executable=str(generation_dir / "bin" / "codex-responses-proxy"),
+            command=str(tmp_path / "bin" / "codex-responses-proxy"),
+            log_dir=str(tmp_path / "state"),
+            port=8808,
+        )
+
+        environment = runtime_spec.environment(runtime_spec.write(projected))
+
+        assert runtime_spec.path(projected) == generation_dir / runtime_spec.FILENAME
+        assert environment[config.HOME_ENV] == str(install_dir)
+        assert environment[config.PROXY_PORT_ENV] == "8808"
 
     def test_runtime_spec_accepts_the_stable_carrier_written_by_the_previous_release(
         self, tmp_path
@@ -177,7 +214,10 @@ class TestRuntimeContext:
         valid = json.loads(target.read_text(encoding="utf-8"))
         invalid = (
             ({**valid, "parallel_setting": True}, "schema is unsupported"),
-            ({**valid, "install_dir": str(tmp_path / "other")}, "outside its payload"),
+            (
+                {**valid, "install_dir": str(tmp_path / "other")},
+                "outside the installed payload layout",
+            ),
             ({**valid, "port": 0}, "must be an integer in 1..65535"),
         )
 

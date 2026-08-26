@@ -27,6 +27,19 @@ class ServiceAdapter(Protocol):
         """Install or replace the native service for this runtime context."""
         ...
 
+    def uninstall(self, ctx: runtime_context.RuntimeContext) -> None:
+        """Remove the exact native service owned by this runtime context."""
+        ...
+
+    def terminate_runtime(
+        self,
+        ctx: runtime_context.RuntimeContext,
+        *,
+        timeout_seconds: float,
+    ) -> int:
+        """Terminate and prove exit of this generation's native runtime processes."""
+        ...
+
     def configured_executable(self, ctx: runtime_context.RuntimeContext) -> str | None:
         """Return the executable configured in the native service definition."""
         ...
@@ -48,7 +61,6 @@ def install(
     current = runtime_reader(ctx)
     if current is None and not process.listener_pids(ctx.port):
         return _fresh_install(
-            ctx,
             payload,
             adapter=adapter,
             runtime_reader=runtime_reader,
@@ -68,21 +80,20 @@ def install(
         raise errors.InstallError("installed runtime identity is not verified")
     if not _same_executable(adapter.configured_executable(ctx), ctx.executable):
         raise errors.InstallError("native supervisor is not bound to the canonical executable")
-    source_listener = None
-    if strategy == "native_generation":
-        source_listener = process.capture_executable(
-            pid,
-            ctx.executable,
-            roles={service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE},
-        )
-        if source_listener is None:
-            raise errors.InstallError("installed listener process generation is not verified")
+    source_listener = process.capture_executable(
+        pid,
+        ctx.executable,
+        roles={service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE},
+    )
+    if source_listener is None:
+        raise errors.InstallError("installed listener process generation is not verified")
     return _upgrade(
         ctx,
         payload,
         adapter=adapter,
         current=current,
         source_listener=source_listener,
+        native_generation=strategy == "native_generation",
         runtime_reader=runtime_reader,
         timeout_seconds=timeout_seconds,
     )
@@ -116,7 +127,6 @@ def rollback(
 
 
 def _fresh_install(
-    ctx: runtime_context.RuntimeContext,
     payload: transaction.PayloadTransaction,
     *,
     adapter: ServiceAdapter,
@@ -124,15 +134,26 @@ def _fresh_install(
     timeout_seconds: float,
 ) -> dict[str, object]:
     payload.commit_projection()
+    candidate = payload.context
     try:
-        adapter.install(ctx)
+        adapter.install(candidate)
+        payload.activate()
         runtime = wait_for_serving_runtime(
-            ctx,
+            candidate,
             payload.expected,
             runtime_reader=runtime_reader,
             timeout_seconds=timeout_seconds,
         )
     except BaseException:
+        try:
+            _remove_candidate_runtime(
+                candidate,
+                adapter=adapter,
+                timeout_seconds=timeout_seconds,
+            )
+        except UnknownDeploymentOutcome as cleanup_error:
+            payload.preserve_for_recovery(str(cleanup_error))
+            raise
         payload.rollback()
         raise
     payload.finalize(runtime)
@@ -145,30 +166,37 @@ def _upgrade(
     *,
     adapter: ServiceAdapter,
     current: dict[str, object],
-    source_listener: process.OwnedProcess | None = None,
+    source_listener: process.OwnedProcess,
+    native_generation: bool,
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
 ) -> dict[str, object]:
     payload.commit_projection()
+    candidate = payload.context
+    supervisor_replaced = False
     try:
-        adapter.install(ctx)
-        if not _same_executable(adapter.configured_executable(ctx), ctx.executable):
-            raise errors.InstallError(
-                "native supervisor did not bind the committed successor executable"
-            )
+        _replace_supervisor(
+            adapter,
+            ctx,
+            candidate,
+            timeout_seconds=timeout_seconds,
+        )
+        supervisor_replaced = True
+        payload.activate()
         runtime = (
             _replace_native_generation(
-                ctx,
+                candidate,
                 payload.expected,
                 source_listener=source_listener,
                 runtime_reader=runtime_reader,
                 timeout_seconds=timeout_seconds,
             )
-            if source_listener is not None
+            if native_generation
             else request_handoff(
-                ctx,
+                candidate,
                 payload.expected,
                 current=current,
+                source_listener=source_listener,
                 runtime_reader=runtime_reader,
                 timeout_seconds=timeout_seconds,
             )
@@ -177,11 +205,123 @@ def _upgrade(
         payload.preserve_for_recovery(str(exc))
         raise
     except BaseException:
+        if supervisor_replaced:
+            try:
+                _restore_predecessor(
+                    adapter,
+                    current=ctx,
+                    candidate=candidate,
+                    timeout_seconds=timeout_seconds,
+                )
+                if native_generation and not process.owned_process_alive(source_listener):
+                    wait_for_serving_runtime(
+                        ctx,
+                        current,
+                        runtime_reader=runtime_reader,
+                        timeout_seconds=timeout_seconds,
+                        old_pid=source_listener.pid,
+                    )
+                elif not handoff.resume_responses(ctx, source_listener=source_listener):
+                    raise errors.InstallError(
+                        "predecessor listener no longer owns Responses admission"
+                    )
+            except UnknownDeploymentOutcome as restore_error:
+                payload.preserve_for_recovery(str(restore_error))
+                raise
+            except BaseException as restore_error:
+                unknown = UnknownDeploymentOutcome(
+                    "native supervisor rollback could not restore predecessor admission"
+                )
+                payload.preserve_for_recovery(str(unknown))
+                raise unknown from restore_error
         payload.rollback()
-        adapter.install(ctx)
         raise
     payload.finalize(runtime)
     return {"state": "upgraded", "runtime": runtime}
+
+
+def _replace_supervisor(
+    adapter: ServiceAdapter,
+    current: runtime_context.RuntimeContext,
+    candidate: runtime_context.RuntimeContext,
+    *,
+    timeout_seconds: float,
+) -> None:
+    """Replace one proved native supervisor and restore it if binding fails."""
+    try:
+        adapter.uninstall(current)
+    except BaseException:
+        try:
+            _install_supervisor(adapter, current, role="predecessor")
+        except BaseException as restore_error:
+            raise UnknownDeploymentOutcome(
+                "native supervisor removal could not restore the predecessor"
+            ) from restore_error
+        raise
+    try:
+        _install_supervisor(adapter, candidate, role="successor")
+    except BaseException:
+        try:
+            _remove_candidate_runtime(
+                candidate,
+                adapter=adapter,
+                timeout_seconds=timeout_seconds,
+            )
+            _install_supervisor(adapter, current, role="predecessor")
+        except BaseException as restore_error:
+            raise UnknownDeploymentOutcome(
+                "native supervisor replacement could not restore the predecessor"
+            ) from restore_error
+        raise
+
+
+def _restore_predecessor(
+    adapter: ServiceAdapter,
+    *,
+    current: runtime_context.RuntimeContext,
+    candidate: runtime_context.RuntimeContext,
+    timeout_seconds: float,
+) -> None:
+    """Stop every candidate-owned process before restoring old supervision."""
+    try:
+        _remove_candidate_runtime(
+            candidate,
+            adapter=adapter,
+            timeout_seconds=timeout_seconds,
+        )
+        _install_supervisor(adapter, current, role="predecessor")
+    except BaseException as restore_error:
+        raise UnknownDeploymentOutcome(
+            "native supervisor rollback could not restore the predecessor"
+        ) from restore_error
+
+
+def _install_supervisor(
+    adapter: ServiceAdapter,
+    ctx: runtime_context.RuntimeContext,
+    *,
+    role: str,
+) -> None:
+    """Install and prove one native supervisor binding."""
+    adapter.install(ctx)
+    if not _same_executable(adapter.configured_executable(ctx), ctx.executable):
+        raise errors.InstallError(f"native supervisor did not bind the committed {role} executable")
+
+
+def _remove_candidate_runtime(
+    candidate: runtime_context.RuntimeContext,
+    *,
+    adapter: ServiceAdapter,
+    timeout_seconds: float,
+) -> None:
+    """Remove candidate supervision and processes before payload rollback."""
+    try:
+        adapter.uninstall(candidate)
+        adapter.terminate_runtime(candidate, timeout_seconds=timeout_seconds)
+    except BaseException as cleanup_error:
+        raise UnknownDeploymentOutcome(
+            "candidate runtime cleanup is unconfirmed; transaction preserved for recovery"
+        ) from cleanup_error
 
 
 def _replace_native_generation(
@@ -193,6 +333,12 @@ def _replace_native_generation(
     timeout_seconds: float,
 ) -> dict[str, object]:
     """Replace one legacy listener after crossing an exact process barrier."""
+    handoff.drain_responses(
+        ctx,
+        source_listener=source_listener,
+        runtime_reader=runtime_reader,
+        timeout_seconds=timeout_seconds,
+    )
     if not process.terminate_owned_process(source_listener, timeout_seconds=timeout_seconds):
         raise UnknownDeploymentOutcome("native generation replacement outcome is unconfirmed")
     return wait_for_serving_runtime(
@@ -209,11 +355,11 @@ def request_handoff(
     expected: Mapping[str, object],
     *,
     current: dict[str, object],
+    source_listener: process.OwnedProcess,
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
 ) -> dict[str, object]:
     """Request handoff and resolve controller failure from runtime evidence."""
-    source_listener = handoff.capture_source_listener(ctx, current)
     try:
         result = handoff.request(
             ctx,

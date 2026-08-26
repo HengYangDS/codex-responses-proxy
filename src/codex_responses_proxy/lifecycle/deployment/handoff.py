@@ -10,6 +10,7 @@ transaction commits a different admitted transaction.
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 import urllib.error
@@ -62,15 +63,17 @@ def _available_transaction(state: object, transaction_id: object) -> bool:
     return isinstance(transaction_id, str) and bool(transaction_id)
 
 
-def runtime_supports_repeatable_handoff(runtime: RuntimeSnapshot | None) -> bool:
-    """Return whether a runtime explicitly promises another finalized handoff."""
+def runtime_supports_selected_generation_handoff(
+    runtime: RuntimeSnapshot | None,
+) -> bool:
+    """Return whether a runtime can launch the selected payload generation."""
     if not isinstance(runtime, dict):
         return False
     capabilities = runtime.get("handoff_capabilities")
     return (
         isinstance(capabilities, list)
         and all(isinstance(capability, str) for capability in capabilities)
-        and handoff_transaction.REPEATABLE_HANDOFF_CAPABILITY in capabilities
+        and handoff_transaction.SELECTED_GENERATION_HANDOFF_CAPABILITY in capabilities
     )
 
 
@@ -102,7 +105,7 @@ def deployment_strategy(runtime: RuntimeSnapshot | None) -> DeploymentStrategy:
     transaction_id = runtime.get("handoff_transaction_id")
     if not _available_transaction(state, transaction_id):
         return "unsupported"
-    if state == "idle" or runtime_supports_repeatable_handoff(runtime):
+    if runtime_supports_selected_generation_handoff(runtime):
         return "handoff"
     return "native_generation"
 
@@ -225,6 +228,105 @@ def post_ready(
     if not _positive_int(child_pid):
         raise errors.InstallError("handoff control response is missing a valid child pid")
     return response_payload
+
+
+def drain_responses(
+    ctx: runtime_context.RuntimeContext,
+    *,
+    source_listener: process.OwnedProcess,
+    runtime_reader: RuntimeReader,
+    timeout_seconds: float,
+) -> None:
+    """Close predecessor admission and wait for its accepted Responses to finish."""
+    if not _source_listener_is_admitted(ctx, source_listener):
+        raise errors.InstallError(
+            f"expected captured proxy listener {source_listener.pid} to own port {ctx.port}"
+        )
+    request = urllib.request.Request(
+        runtime_config.loopback_url(ctx.port, "/control/drain"),
+        headers={
+            "Accept": "application/json",
+            "X-Codex-Responses-Proxy-Drain-Lease-Seconds": str(
+                max(1, math.ceil(timeout_seconds + _TRANSPORT_MARGIN_SECONDS))
+            ),
+        },
+        method="POST",
+    )
+    try:
+        with loopback.open_request(
+            request,
+            timeout_seconds=min(timeout_seconds, 5.0) + _TRANSPORT_MARGIN_SECONDS,
+        ) as response:
+            if response.status != 200:
+                raise errors.InstallError(f"drain control returned HTTP {response.status}")
+            raw = response.read(_MAX_BODY_BYTES + 1)
+            if len(raw) > _MAX_BODY_BYTES:
+                raise errors.InstallError("drain control response is too large")
+            acknowledged: object = json.loads(raw)
+    except errors.InstallError:
+        raise
+    except urllib.error.HTTPError as exc:
+        code = exc.code
+        exc.close()
+        raise errors.InstallError(f"drain control returned HTTP {code}") from exc
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
+        raise errors.InstallError("drain control is unavailable") from exc
+    if not isinstance(acknowledged, dict) or acknowledged.get("draining") is not True:
+        raise errors.InstallError("drain control did not close Responses admission")
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if not _source_listener_is_admitted(ctx, source_listener):
+            raise errors.InstallError("predecessor changed while draining active Responses")
+        runtime = runtime_reader(ctx)
+        if (
+            isinstance(runtime, dict)
+            and runtime.get("pid") == source_listener.pid
+            and runtime.get("draining") is True
+            and runtime.get("accepting") is False
+            and runtime.get("active_responses") == 0
+        ):
+            return
+        time.sleep(0.1)
+    raise errors.InstallError(
+        f"predecessor did not drain active Responses within {timeout_seconds:g}s"
+    )
+
+
+def resume_responses(
+    ctx: runtime_context.RuntimeContext,
+    *,
+    source_listener: process.OwnedProcess,
+) -> bool:
+    """Reopen admission on the exact predecessor that survived a failed replacement."""
+    if not _source_listener_is_admitted(ctx, source_listener):
+        return False
+    request = urllib.request.Request(
+        runtime_config.loopback_url(ctx.port, "/control/drain"),
+        headers={"Accept": "application/json"},
+        method="DELETE",
+    )
+    try:
+        with loopback.open_request(
+            request,
+            timeout_seconds=_TRANSPORT_MARGIN_SECONDS,
+        ) as response:
+            if response.status != 200:
+                raise errors.InstallError(f"drain release returned HTTP {response.status}")
+            raw = response.read(_MAX_BODY_BYTES + 1)
+            if len(raw) > _MAX_BODY_BYTES:
+                raise errors.InstallError("drain release response is too large")
+            resumed: object = json.loads(raw)
+    except errors.InstallError:
+        raise
+    except urllib.error.HTTPError as exc:
+        code = exc.code
+        exc.close()
+        raise errors.InstallError(f"drain release returned HTTP {code}") from exc
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
+        raise errors.InstallError("drain release is unavailable") from exc
+    if not isinstance(resumed, dict) or resumed.get("draining") is not False:
+        raise errors.InstallError("drain release did not reopen Responses admission")
+    return True
 
 
 def request(
@@ -377,11 +479,9 @@ def _source_listener_is_admitted(
     ctx: runtime_context.RuntimeContext,
     source_listener: process.OwnedProcess,
 ) -> bool:
-    if process.owned_process_alive(source_listener) and process.listener_pids(ctx.port) == [
+    return process.owned_process_alive(source_listener) and process.listener_pids(ctx.port) == [
         source_listener.pid
-    ]:
-        return True
-    return False
+    ]
 
 
 def _runtime_matches(

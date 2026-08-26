@@ -17,6 +17,10 @@ _RUNTIME_PAYLOAD_FIELDS = {
     "release_receipt_sha256": "release_receipt_sha256",
     "payload_manifest_sha256": "manifest_sha256",
 }
+PAYLOAD_SELECTOR_FILENAME = "payload-selection.json"
+PAYLOAD_SELECTOR_SCHEMA = 1
+PAYLOAD_GENERATIONS_DIRNAME = "generations"
+_PAYLOAD_SELECTOR_FIELDS = frozenset({"schema_version", "active", "predecessor"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +41,14 @@ class LoadedPayloadIdentity:
             "release_receipt_sha256": self.release_receipt_sha256,
             "manifest_sha256": self.manifest_sha256,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class PayloadSelection:
+    """The sole active payload generation and optional retained predecessor."""
+
+    active: str
+    predecessor: str | None
 
 
 def runtime_payload_matches(runtime: Mapping[str, object], expected: Mapping[str, object]) -> bool:
@@ -65,6 +77,66 @@ def freeze_loaded_payload(executable: Path) -> LoadedPayloadIdentity | None:
         digest.PayloadDigestError,
     ):
         return None
+
+
+def selected_payload_executable(executable: Path) -> Path:
+    """Resolve the selector-bound generation executable from one loaded payload."""
+    loaded = freeze_loaded_payload(executable)
+    if loaded is None:
+        raise ValueError("loaded payload identity is unavailable")
+    control_root = (
+        loaded.root.parent.parent
+        if loaded.root.parent.name == PAYLOAD_GENERATIONS_DIRNAME
+        else loaded.root
+    )
+    selected = read_payload_selection(control_root / PAYLOAD_SELECTOR_FILENAME)
+    candidate = (
+        control_root / PAYLOAD_GENERATIONS_DIRNAME / selected.active / "bin" / executable.name
+    )
+    if not candidate.is_file() or candidate.is_symlink():
+        raise ValueError("selected payload executable is unavailable")
+    resolved = candidate.resolve(strict=True)
+    selected_identity = committed_payload(resolved)
+    if selected_identity is None or selected_identity.root != candidate.parents[1]:
+        raise ValueError("selected payload identity is invalid")
+    return resolved
+
+
+def read_payload_selection(selector: Path) -> PayloadSelection:
+    """Read the one canonical selector schema shared by runtime and lifecycle code."""
+    if selector.is_symlink() or not selector.is_file():
+        raise ValueError("payload generation selector is invalid")
+    try:
+        content = selector.read_bytes()
+        value: object = json.loads(content.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("payload generation selector is invalid") from exc
+    if (
+        not isinstance(value, dict)
+        or set(value) != _PAYLOAD_SELECTOR_FIELDS
+        or value.get("schema_version") != PAYLOAD_SELECTOR_SCHEMA
+        or digest.canonical_json(value) != content
+    ):
+        raise ValueError("payload generation selector is invalid")
+    active = require_payload_generation_name(value.get("active"))
+    predecessor_value = value.get("predecessor")
+    predecessor = (
+        None if predecessor_value is None else require_payload_generation_name(predecessor_value)
+    )
+    if predecessor == active:
+        raise ValueError("payload generation selector is invalid")
+    return PayloadSelection(active, predecessor)
+
+
+def require_payload_generation_name(value: object) -> str:
+    """Return one canonical immutable-generation identifier."""
+    if (
+        not isinstance(value, str)
+        or len(value) != 32
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError("payload generation identity is invalid")
+    return value
 
 
 def committed_payload(executable: Path) -> LoadedPayloadIdentity | None:

@@ -81,7 +81,7 @@ def reject_unowned_collisions(
     candidate_paths: AbstractSet[str],
 ) -> None:
     """Refuse to overwrite a candidate path not owned by the prior projection."""
-    install = Path(ctx.install_dir)
+    install = Path(ctx.payload_dir)
     for relative in candidate_paths | set(owned_files.OWNED_PAYLOAD_METADATA):
         path = owned_files.path(install, relative)
         if relative not in previous_owned and (path.exists() or path.is_symlink()):
@@ -96,7 +96,7 @@ def write_projection(
     receipt_sha256: str,
 ) -> None:
     """Write candidate bytes, manifest, and receipt into the install root."""
-    install = Path(ctx.install_dir)
+    install = Path(ctx.payload_dir)
     for blob in blobs:
         target = install.joinpath(*PurePosixPath(blob.path).parts)
         owned_files.write_bytes(
@@ -118,41 +118,6 @@ def write_projection(
         mode=0o600,
         root=install,
     )
-
-
-def retire_previous_projection(
-    ctx: runtime_context.RuntimeContext,
-    previous_owned: AbstractSet[str],
-    candidate_paths: AbstractSet[str],
-) -> None:
-    """Delete files owned only by the verified previous projection."""
-    install = Path(ctx.install_dir)
-    retired = set(previous_owned) - set(candidate_paths) - set(owned_files.OWNED_PAYLOAD_METADATA)
-    for relative in retired:
-        target = owned_files.regular_file(install, relative, "previous owned payload")
-        try:
-            target.unlink()
-        except OSError as exc:
-            raise errors.InstallError(f"previous owned payload removal failed: {relative}") from exc
-    projection.remove_empty_owned_directories(install, retired)
-
-
-def remove_projection(ctx: runtime_context.RuntimeContext, paths: AbstractSet[str]) -> None:
-    """Remove only files owned by an uncommitted fresh candidate."""
-    install = Path(ctx.install_dir)
-    for relative in paths | set(owned_files.OWNED_PAYLOAD_METADATA):
-        owned_files.path(install, relative).unlink(missing_ok=True)
-    projection.remove_empty_owned_directories(
-        install,
-        set(paths) | set(owned_files.OWNED_PAYLOAD_METADATA),
-    )
-    try:
-        install.rmdir()
-    except FileNotFoundError:
-        pass
-    except OSError:
-        if not any(install.iterdir()):
-            raise
 
 
 def prewarm(executable: Path) -> None:

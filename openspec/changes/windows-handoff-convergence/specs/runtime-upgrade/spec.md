@@ -41,3 +41,28 @@ diagnostic rather than authoritative.
   and the same successor-finalization predicate
 - **AND** it reports an unknown outcome rather than reconstructing ownership
   from a PID or TCP table alone.
+
+#### Scenario: Published predecessor predates selected-generation handoff
+
+- **WHEN** a verified published predecessor advertises protocol-v2 handoff but
+  does not declare `selected-generation-handoff`
+- **THEN** deployment does not ask that predecessor to launch a payload outside
+  its executable root
+- **AND** uses the bounded native process-generation replacement after the
+  candidate and supervisor projection are committed.
+
+#### Scenario: Native replacement falls back to its predecessor
+
+- **WHEN** the predecessor has closed Responses admission and successor proof
+  fails before a successor becomes authoritative
+- **THEN** deployment restores predecessor supervision
+- **AND** reopens admission only through the exact still-owned predecessor
+- **AND** reports an unknown recoverable outcome if reopening cannot be proved.
+
+#### Scenario: Runtime and lifecycle read one selector authority
+
+- **WHEN** either the running service or lifecycle controller resolves the
+  immutable payload selector
+- **THEN** both enforce the same canonical schema, exact field set, generation
+  names, and selected payload identity
+- **AND** neither accepts a selector that the other rejects.

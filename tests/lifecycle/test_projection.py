@@ -36,12 +36,12 @@ class TestPayloadProjection:
             "serving_payload_sha256"
         ] == payload_projection.manifest_serving_payload_sha256(manifest["serving_files"])
         assert Path(ctx.executable).is_file()
-        assert (Path(ctx.install_dir) / inventory.PROVIDER_MANIFEST).is_file()
+        assert (Path(ctx.payload_dir) / inventory.PROVIDER_MANIFEST).is_file()
 
     def test_fixture_manifest_can_omit_receipt_identity(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         for blob in released_artifact().peek_blobs():
-            target = Path(ctx.install_dir, blob.path)
+            target = Path(ctx.payload_dir, blob.path)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(blob.content)
         path = payload_projection._write_payload_manifest_for_fixture(ctx)
@@ -72,13 +72,13 @@ class TestPayloadProjection:
     ) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install_payload(ctx, mocker=mocker)
-        install = Path(ctx.install_dir)
-        unknown = install / "operator-note.txt"
+        install = Path(ctx.payload_dir)
+        unknown = Path(ctx.install_dir) / "operator-note.txt"
         unknown.write_text("keep\n", encoding="utf-8")
 
         remaining = payload_projection.purge_installed_projection(ctx)
 
-        assert remaining == ("operator-note.txt",)
+        assert remaining == ()
         assert unknown.read_text(encoding="utf-8") == "keep\n"
         assert not Path(payload_projection.payload_manifest_path(ctx)).exists()
         for relative in runtime_files():
@@ -88,7 +88,7 @@ class TestPayloadProjection:
         self,
     ) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
-        install = Path(ctx.install_dir)
+        install = Path(ctx.payload_dir)
         claimed = {
             "VERSION": b"1.0.8\n",
             "operator-note.txt": b"keep\n",
@@ -116,14 +116,14 @@ class TestPayloadProjection:
             (lambda _ctx: None, "manifest is required"),
             (
                 lambda ctx: Path(payload_projection.payload_manifest_path(ctx)).symlink_to(
-                    Path(ctx.install_dir, "VERSION")
+                    Path(ctx.payload_dir, "VERSION")
                 ),
                 "manifest is a symlink",
             ),
         ):
             with subtests.test(message=message):
                 ctx = install_context(Path(tempfile.mkdtemp()))
-                marker = Path(ctx.install_dir, "VERSION")
+                marker = Path(ctx.payload_dir, "VERSION")
                 marker.parent.mkdir(parents=True)
                 marker.write_text("1.2.3\n", encoding="utf-8")
                 mutate(ctx)
@@ -193,7 +193,7 @@ class TestPayloadProjection:
 
         ctx = install_context(Path(tempfile.mkdtemp()))
         for blob in released_artifact().peek_blobs():
-            target = Path(ctx.install_dir, blob.path)
+            target = Path(ctx.payload_dir, blob.path)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(blob.content)
         manifest = payload_projection._write_payload_manifest_for_fixture(

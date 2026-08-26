@@ -94,6 +94,34 @@ class TestListenerEntrypoint:
         )
         assert entrypoint.runtime_providers() is providers
 
+    def test_handoff_context_launches_the_selected_generation(self, *, mocker) -> None:
+        """A running predecessor resolves the candidate selected by the installer."""
+        self._admit_run(mocker)
+        entrypoint._BOOTSTRAP = entrypoint.bootstrap()
+        selected = Path(
+            "/installed/generations/11111111111111111111111111111111/bin/codex-responses-proxy"
+        )
+        resolve = mocker.patch.object(
+            entrypoint.identity,
+            "selected_payload_executable",
+            return_value=selected,
+        )
+        committed = mocker.patch.object(
+            entrypoint.identity,
+            "committed_payload",
+            return_value=mocker.sentinel.selected_identity,
+        )
+
+        context = entrypoint._handoff_context()
+
+        assert context.successor_executable() == selected
+        assert context.committed_payload() is mocker.sentinel.selected_identity
+        assert resolve.call_args_list == [
+            mocker.call(entrypoint._BOOTSTRAP.executable),
+            mocker.call(entrypoint._BOOTSTRAP.executable),
+        ]
+        committed.assert_called_once_with(selected)
+
     def test_main_delegates_handoff_child(self, *, mocker) -> None:
         self._admit_run(mocker)
         context = mocker.sentinel.handoff_context

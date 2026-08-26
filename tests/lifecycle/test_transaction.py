@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -13,6 +14,8 @@ import pytest
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import artifact
+from codex_responses_proxy.lifecycle import generation as payload_generation
+from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.lifecycle import projection as payload_projection
 from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import state as payload_state
@@ -30,16 +33,16 @@ from tests.lifecycle.fixtures import runtime_files
 
 def recovery_runtime(
     runtime_identity: listener_identity.LoadedPayloadIdentity,
-    candidate_identity: listener_identity.LoadedPayloadIdentity,
+    candidate_identity: listener_identity.LoadedPayloadIdentity | None = None,
 ) -> dict[str, object]:
-    """Project one accepting runtime against the committed candidate manifest."""
+    """Project one accepting runtime for one exact committed payload."""
 
     return {
         "pid": 321,
         "release": runtime_identity.release,
         "serving_payload_sha256": runtime_identity.serving_payload_sha256,
         "release_receipt_sha256": runtime_identity.release_receipt_sha256,
-        "payload_manifest_sha256": candidate_identity.manifest_sha256,
+        "payload_manifest_sha256": (candidate_identity or runtime_identity).manifest_sha256,
         "accepting": True,
         "draining": False,
         "handoff_state": "idle",
@@ -69,7 +72,21 @@ def _retained_carrier_snapshot(root: Path, external_target: Path) -> tuple[objec
     return ("root-directory", tuple(entries), target)
 
 
-def test_commit_prewarms_the_exact_installed_executable(tmp_path: Path, *, mocker) -> None:
+def _project_as_legacy_flat_install(ctx, installed) -> None:
+    """Recreate the released flat layout accepted by the one-time migrator."""
+    generation_root = Path(installed.context.payload_dir)
+    install_root = Path(ctx.install_dir)
+    for child in tuple(generation_root.iterdir()):
+        child.rename(install_root / child.name)
+    payload_generation.clear(ctx)
+    generation_root.rmdir()
+    ctx.executable = str(install_root / executable_relative())
+    command_path = Path(ctx.command)
+    command_path.unlink()
+    command_path.symlink_to(ctx.executable)
+
+
+def test_commit_prewarms_the_exact_candidate_executable(tmp_path: Path, *, mocker) -> None:
     ctx = install_context(tmp_path)
     candidate = released_artifact()
     prewarm = mocker.patch.object(payload_transaction.payload_candidate, "prewarm")
@@ -79,7 +96,7 @@ def test_commit_prewarms_the_exact_installed_executable(tmp_path: Path, *, mocke
 
     transaction.commit_projection()
 
-    prewarm.assert_called_once_with(Path(ctx.executable))
+    prewarm.assert_called_once_with(Path(transaction.context.executable))
     transaction.rollback()
 
 
@@ -125,79 +142,10 @@ def test_upgrade_rollback_removes_candidate_only_runtime_members(tmp_path: Path,
     )
     transaction = begin_transaction(ctx, candidate, mocker=mocker)
     transaction.commit_projection()
-    introduced = Path(ctx.install_dir, extra.path)
+    introduced = Path(transaction.context.payload_dir, extra.path)
     assert introduced.read_bytes() == content
     transaction.rollback()
     assert not introduced.exists()
-
-
-def test_upgrade_retires_previous_only_owned_files_and_rollback_restores_them(
-    tmp_path: Path, *, mocker
-) -> None:
-    ctx = install_context(tmp_path)
-    install_payload(ctx, "1.2.2", mocker=mocker)
-    previous_only = Path(ctx.install_dir, "bin/_internal/legacy.dist-info/METADATA")
-    previous_only.parent.mkdir(parents=True)
-    previous_only.write_bytes(b"legacy release metadata\n")
-    obsolete_empty_directory = previous_only.parent / "licenses"
-    nested_obsolete_empty_directory = obsolete_empty_directory / "metadata"
-    nested_obsolete_empty_directory.mkdir(parents=True)
-    manifest_path = Path(ctx.install_dir, inventory.MANIFEST_FILENAME)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    previous_digest = hashlib.sha256(previous_only.read_bytes()).hexdigest()
-    manifest["files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
-    manifest["serving_files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
-    manifest["serving_payload_sha256"] = payload_projection.manifest_serving_payload_sha256(
-        manifest["serving_files"]
-    )
-    manifest_path.write_bytes(payload_projection.manifest_bytes(manifest))
-    unknown = Path(ctx.install_dir, "operator-notes.txt")
-    unknown.write_bytes(b"preserve me\n")
-
-    transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-    transaction.commit_projection()
-
-    assert not previous_only.exists()
-    assert not previous_only.parent.exists()
-    assert not obsolete_empty_directory.exists()
-    assert not nested_obsolete_empty_directory.exists()
-    assert unknown.read_bytes() == b"preserve me\n"
-
-    transaction.rollback()
-
-    assert previous_only.read_bytes() == b"legacy release metadata\n"
-    assert not obsolete_empty_directory.exists()
-    assert unknown.read_bytes() == b"preserve me\n"
-
-
-def test_finalized_upgrade_purge_leaves_only_unknown_content(tmp_path: Path, *, mocker) -> None:
-    ctx = install_context(tmp_path)
-    install_payload(ctx, "1.2.2", mocker=mocker)
-    previous_only = Path(ctx.install_dir, "bin/_internal/legacy.dist-info/METADATA")
-    previous_only.parent.mkdir(parents=True)
-    previous_only.write_bytes(b"legacy release metadata\n")
-    manifest_path = Path(ctx.install_dir, inventory.MANIFEST_FILENAME)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    previous_digest = hashlib.sha256(previous_only.read_bytes()).hexdigest()
-    manifest["files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
-    manifest["serving_files"]["bin/_internal/legacy.dist-info/METADATA"] = previous_digest
-    manifest["serving_payload_sha256"] = payload_projection.manifest_serving_payload_sha256(
-        manifest["serving_files"]
-    )
-    manifest_path.write_bytes(payload_projection.manifest_bytes(manifest))
-    unknown = Path(ctx.install_dir, "operator-notes.txt")
-    unknown.write_bytes(b"preserve me\n")
-
-    transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-    transaction.commit_projection()
-    transaction.finalize({"pid": 2})
-
-    remaining = payload_projection.purge_installed_projection(ctx)
-
-    assert remaining == ("operator-notes.txt",)
-    assert unknown.read_bytes() == b"preserve me\n"
-    assert not previous_only.exists()
-    assert not Path(ctx.install_dir, inventory.RUNTIME_CONFIG_FILENAME).exists()
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -220,12 +168,17 @@ class TestPayloadTransaction:
 
         assert payload_transaction.recover(ctx, runtime=None) == {"state": "not_required"}
 
-    def test_finalize_retains_no_generation_for_a_fresh_install(self, *, mocker) -> None:
+    def test_finalize_selects_no_predecessor_for_a_fresh_install(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
 
         install_payload(ctx, "1.2.2", mocker=mocker)
 
-        assert not payload_state.retained_rollback_root(ctx).exists()
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        assert selection.predecessor is None
+        assert tuple(payload_generation.root(ctx).iterdir()) == (
+            payload_generation.path(ctx, selection.active),
+        )
 
     def test_finalize_retains_exactly_the_displaced_predecessor(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -233,469 +186,377 @@ class TestPayloadTransaction:
         successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
 
         successor.commit_projection()
+        successor.activate()
         successor.finalize({"pid": 2})
 
         retained = payload_rollback.load_retained(ctx)
         assert retained.predecessor.release == "1.2.2"
         assert retained.successor.release == "1.2.3"
-        assert tuple(payload_state.retained_generations(ctx)) == (retained.root,)
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        assert selection.predecessor is not None
+        assert retained.root == payload_generation.path(ctx, selection.predecessor)
 
     def test_a_later_finalize_replaces_the_retained_predecessor(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install_payload(ctx, "1.2.2", mocker=mocker)
         middle = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         middle.commit_projection()
+        middle.activate()
         middle.finalize({"pid": 2})
         first = payload_rollback.load_retained(ctx)
         latest = begin_transaction(ctx, released_artifact("1.2.4"), mocker=mocker)
 
         latest.commit_projection()
+        latest.activate()
         latest.finalize({"pid": 3})
 
         retained = payload_rollback.load_retained(ctx)
         assert retained.predecessor.release == "1.2.3"
         assert retained.successor.release == "1.2.4"
         assert retained.root != first.root
-        assert tuple(payload_state.retained_generations(ctx)) == (retained.root,)
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        assert selection.predecessor is not None
+        assert retained.root == payload_generation.path(ctx, selection.predecessor)
 
-    def test_finalize_preserves_recoverable_state_when_retention_promotion_fails(
+    def test_recovery_finalization_selects_the_displaced_predecessor(
         self, tmp_path: Path, *, mocker
     ) -> None:
         ctx = install_context(tmp_path)
         install_payload(ctx, "1.2.2", mocker=mocker)
         successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         successor.commit_projection()
-        mocker.patch.object(
-            payload_transaction.payload_rollback,
-            "promote",
-            side_effect=errors.InstallError("retention failed"),
+        projected = listener_identity.committed_payload(Path(successor.context.executable))
+        assert projected is not None
+
+        result = payload_transaction.recover(
+            ctx,
+            runtime=recovery_runtime(projected, projected),
         )
 
-        with pytest.raises(errors.InstallError, match="retention failed"):
+        assert result["state"] == "finalized"
+        retained = payload_rollback.load_retained(ctx)
+        assert retained.predecessor.release == "1.2.2"
+        assert retained.successor.release == "1.2.3"
+
+    def test_legacy_migration_failure_preserves_snapshot_for_recovery(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """A failed legacy migration must leave one complete retry source."""
+        ctx = install_context(tmp_path)
+        legacy = begin_transaction(ctx, released_artifact("1.2.2"), mocker=mocker)
+        legacy.commit_projection()
+        legacy.activate()
+        legacy.finalize({"pid": 1})
+        _project_as_legacy_flat_install(ctx, legacy)
+
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.activate()
+        snapshot = Path(payload_state.transaction_root(ctx), "rollback")
+        before = {
+            relative: Path(snapshot, relative).read_bytes()
+            for relative in (*runtime_files(), inventory.MANIFEST_FILENAME)
+        }
+        original_copy = payload_generation.shutil.copyfile
+        attempts = 0
+
+        def interrupt_second_file(source: Path, target: Path, **kwargs) -> None:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 2:
+                raise OSError("migration interrupted")
+            original_copy(source, target, **kwargs)
+
+        copy = mocker.patch.object(
+            payload_generation.shutil,
+            "copyfile",
+            side_effect=interrupt_second_file,
+        )
+
+        with pytest.raises(errors.InstallError, match="legacy payload migration failed"):
             successor.finalize({"pid": 2})
 
-        journal = payload_state.status(ctx)
-        assert journal is not None
-        assert journal["state"] == "recovery_required"
-        assert payload_state.read_journal(ctx)["reason"] == "finalization failed: retention failed"
-        assert Path(payload_state.transaction_root(ctx), "rollback").is_dir()
+        mocker.stop(copy)
+        assert {
+            relative: Path(snapshot, relative).read_bytes()
+            for relative in (*runtime_files(), inventory.MANIFEST_FILENAME)
+        } == before
+        assert not payload_generation.path(ctx, str(legacy.expected["transaction_id"])).exists()
 
-    def test_recovery_finalization_promotes_the_retained_predecessor(
-        self, tmp_path: Path, *, mocker
-    ) -> None:
-        ctx = install_context(tmp_path)
-        install_payload(ctx, "1.2.2", mocker=mocker)
-        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-        successor.commit_projection()
-        projected = listener_identity.committed_payload(Path(ctx.executable))
-        assert projected is not None
-
+        candidate = listener_identity.committed_payload(Path(successor.context.executable))
+        assert candidate is not None
         result = payload_transaction.recover(
             ctx,
-            runtime=recovery_runtime(projected, projected),
+            runtime=recovery_runtime(candidate, candidate),
         )
 
         assert result["state"] == "finalized"
         retained = payload_rollback.load_retained(ctx)
         assert retained.predecessor.release == "1.2.2"
-        assert retained.successor.release == "1.2.3"
 
-    def test_recovery_finalization_failure_remains_recoverable(
+    def test_legacy_migration_retires_flat_payload_without_unknown_content(
         self, tmp_path: Path, *, mocker
     ) -> None:
+        """Successful migration leaves only selected generations as payload authority."""
         ctx = install_context(tmp_path)
-        install_payload(ctx, "1.2.2", mocker=mocker)
+        legacy = begin_transaction(ctx, released_artifact("1.2.2"), mocker=mocker)
+        legacy.commit_projection()
+        legacy.activate()
+        legacy.finalize({"pid": 1})
+        _project_as_legacy_flat_install(ctx, legacy)
+        unknown = Path(ctx.install_dir, "operator-notes.txt")
+        unknown.write_text("preserve\n", encoding="utf-8")
+
         successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         successor.commit_projection()
-        projected = listener_identity.committed_payload(Path(ctx.executable))
-        assert projected is not None
-        mocker.patch.object(
-            payload_transaction.payload_rollback,
-            "promote",
-            side_effect=errors.InstallError("retention failed"),
-        )
+        successor.activate()
+        successor.finalize({"pid": 2})
 
-        with pytest.raises(errors.InstallError, match="retention failed"):
-            payload_transaction.recover(
-                ctx,
-                runtime=recovery_runtime(projected, projected),
-            )
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        assert selection.predecessor == str(legacy.expected["transaction_id"])
+        for relative in (*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA):
+            assert not Path(ctx.install_dir, relative).exists()
+        assert unknown.read_text(encoding="utf-8") == "preserve\n"
 
-        journal = payload_state.read_journal(ctx)
-        assert journal["state"] == "recovery_required"
-        assert journal["reason"] == "finalization failed: retention failed"
-
-    def test_recovery_retries_retention_after_installed_state_was_written(
+    def test_legacy_retirement_resumes_after_partial_deletion(
         self, tmp_path: Path, *, mocker
     ) -> None:
+        """Recovery completes the exact retirement plan after interruption."""
         ctx = install_context(tmp_path)
-        install_payload(ctx, "1.2.2", mocker=mocker)
+        legacy = begin_transaction(ctx, released_artifact("1.2.2"), mocker=mocker)
+        legacy.commit_projection()
+        legacy.activate()
+        legacy.finalize({"pid": 1})
+        _project_as_legacy_flat_install(ctx, legacy)
+        unknown = Path(ctx.install_dir, "operator-notes.txt")
+        unknown.write_text("preserve\n", encoding="utf-8")
+
         successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         successor.commit_projection()
-        projected = listener_identity.committed_payload(Path(ctx.executable))
-        assert projected is not None
-        original_promote = payload_transaction.payload_rollback.promote
-        promote = mocker.patch.object(
-            payload_transaction.payload_rollback,
-            "promote",
-            side_effect=[errors.InstallError("retention failed"), None],
-        )
-        with pytest.raises(errors.InstallError, match="retention failed"):
-            successor.finalize(recovery_runtime(projected, projected))
-        promote.side_effect = original_promote
+        successor.activate()
+        original_unlink = Path.unlink
+        deleted: list[Path] = []
 
+        def interrupt_second_owned_file(target: Path, *args, **kwargs) -> None:
+            if target.is_relative_to(ctx.install_dir) and "generations" not in target.parts:
+                deleted.append(target)
+                if len(deleted) == 2:
+                    raise OSError("retirement interrupted")
+            original_unlink(target, *args, **kwargs)
+
+        unlink = mocker.patch.object(
+            Path,
+            "unlink",
+            autospec=True,
+            side_effect=interrupt_second_owned_file,
+        )
+        with pytest.raises(errors.InstallError, match="legacy payload retirement failed"):
+            successor.finalize({"pid": 2})
+        mocker.stop(unlink)
+        assert deleted[0].exists() is False
+
+        candidate = listener_identity.committed_payload(Path(successor.context.executable))
+        assert candidate is not None
         result = payload_transaction.recover(
             ctx,
-            runtime=recovery_runtime(projected, projected),
+            runtime=recovery_runtime(candidate, candidate),
         )
 
         assert result["state"] == "finalized"
-        retained = payload_rollback.load_retained(ctx)
-        assert retained.predecessor.release == "1.2.2"
-        assert retained.successor.release == "1.2.3"
+        for relative in (*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA):
+            assert not Path(ctx.install_dir, relative).exists()
+        assert unknown.read_text(encoding="utf-8") == "preserve\n"
 
-    def test_recovery_resumes_after_generation_move_before_selection(
+    def test_activated_legacy_upgrade_recovers_the_flat_predecessor(
         self, tmp_path: Path, *, mocker
     ) -> None:
+        """Rollback restores the sole legacy authority and retires the candidate generation."""
         ctx = install_context(tmp_path)
-        install_payload(ctx, "1.2.2", mocker=mocker)
+        legacy = install_payload(ctx, "1.2.2", mocker=mocker)
+        _project_as_legacy_flat_install(ctx, legacy)
+        predecessor = listener_identity.committed_payload(Path(ctx.executable))
+        assert predecessor is not None
         successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         successor.commit_projection()
-        projected = listener_identity.committed_payload(Path(ctx.executable))
-        assert projected is not None
-        pointer = payload_state.retained_rollback_pointer(ctx)
-        original_write = payload_rollback.owned_files.write_bytes
+        successor.activate()
+        successor.preserve_for_recovery("controller outcome unknown")
 
-        def interrupt_selection(target, content, **kwargs):
-            if target == pointer:
-                raise errors.InstallError("selection interrupted")
-            return original_write(target, content, **kwargs)
+        result = payload_transaction.recover(ctx, runtime=recovery_runtime(predecessor))
 
-        write_bytes = mocker.patch.object(
-            payload_rollback.owned_files,
-            "write_bytes",
-            side_effect=interrupt_selection,
-        )
+        assert result["state"] == "rolled_back"
+        restored = listener_identity.committed_payload(Path(ctx.executable))
+        assert restored is not None
+        assert restored.release == "1.2.2"
+        assert payload_generation.read(ctx) is None
+        assert not Path(successor.context.payload_dir).exists()
+        assert Path(ctx.command).samefile(ctx.executable)
 
-        with pytest.raises(errors.InstallError, match="selection interrupted"):
-            successor.finalize(recovery_runtime(projected, projected))
-
-        transaction_root = payload_state.transaction_root(ctx)
-        generation = (
-            payload_state.retained_rollback_root(ctx)
-            / "generations"
-            / str(successor.expected["transaction_id"])
-        )
-        assert not (transaction_root / "rollback").exists()
-        assert generation.is_dir()
-        assert not pointer.exists()
-        assert payload_state.read_journal(ctx)["state"] == "recovery_required"
-        write_bytes.side_effect = original_write
-
-        result = payload_transaction.recover(
-            ctx,
-            runtime=recovery_runtime(projected, projected),
-        )
-
-        assert result["state"] == "finalized"
-        assert payload_rollback.load_retained(ctx).root == generation
-        assert not transaction_root.exists()
-
-    def test_recovery_resumes_after_selection_before_obsolete_cleanup(
+    def test_activated_legacy_upgrade_rejects_an_unproved_predecessor_runtime(
         self, tmp_path: Path, *, mocker
     ) -> None:
+        """Legacy rollback preserves all evidence until its live predecessor is proven."""
         ctx = install_context(tmp_path)
-        install_payload(ctx, "1.2.2", mocker=mocker)
-        middle = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-        middle.commit_projection()
-        middle.finalize({"pid": 2})
-        old_generation = payload_rollback.load_retained(ctx).root
-        latest = begin_transaction(ctx, released_artifact("1.2.4"), mocker=mocker)
-        latest.commit_projection()
-        projected = listener_identity.committed_payload(Path(ctx.executable))
-        assert projected is not None
-        original_remove = payload_rollback.shutil.rmtree
+        legacy = install_payload(ctx, "1.2.2", mocker=mocker)
+        _project_as_legacy_flat_install(ctx, legacy)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.activate()
+        successor.preserve_for_recovery("controller outcome unknown")
+        candidate = listener_identity.committed_payload(Path(successor.context.executable))
+        assert candidate is not None
+        wrong_runtime = recovery_runtime(candidate)
+        wrong_runtime["release"] = "9.9.9"
 
-        def interrupt_cleanup(path):
-            if path == old_generation:
-                raise OSError("cleanup interrupted")
-            return original_remove(path)
+        with pytest.raises(errors.RecoveryStateError, match="rollback projection"):
+            payload_transaction.recover(ctx, runtime=wrong_runtime)
 
-        remove = mocker.patch.object(
-            payload_rollback.shutil,
-            "rmtree",
-            side_effect=interrupt_cleanup,
-        )
+        assert Path(payload_state.transaction_root(ctx)).is_dir()
+        assert Path(successor.context.payload_dir).is_dir()
 
-        with pytest.raises(errors.InstallError, match="generation cleanup failed"):
-            latest.finalize(recovery_runtime(projected, projected))
-
-        pointer = payload_state.retained_rollback_pointer(ctx)
-        selected = payload_digest.canonical_json(
-            {
-                "schema_version": payload_rollback.RETAINED_BINDING_SCHEMA,
-                "generation": latest.expected["transaction_id"],
-            }
-        )
-        assert pointer.read_bytes() == selected
-        assert old_generation.is_dir()
-        assert payload_state.read_journal(ctx)["state"] == "recovery_required"
-        remove.side_effect = original_remove
-
-        result = payload_transaction.recover(
-            ctx,
-            runtime=recovery_runtime(projected, projected),
-        )
-
-        retained = payload_rollback.load_retained(ctx)
-        assert result["state"] == "finalized"
-        assert retained.predecessor.release == "1.2.3"
-        assert retained.successor.release == "1.2.4"
-        assert not old_generation.exists()
-        assert tuple(payload_state.retained_generations(ctx)) == (retained.root,)
-
-    def test_retained_predecessor_mints_an_exact_reverse_transaction(self, *, mocker) -> None:
+    def test_retained_predecessor_reuses_an_exact_reverse_transaction(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         mocker.patch.object(payload_transaction.payload_candidate, "prewarm")
         first = payload_transaction.begin_transaction(ctx, released_artifact("1.2.2"))
         first.commit_projection()
+        first.activate()
         first.finalize({"pid": 1})
         successor = payload_transaction.begin_transaction(ctx, released_artifact("1.2.3"))
         successor.commit_projection()
+        successor.activate()
         successor.finalize({"pid": 2})
         retained = payload_rollback.load_retained(ctx)
 
         reverse = payload_transaction.begin_rollback_transaction(ctx, retained)
         reverse.commit_projection()
 
-        restored = listener_identity.committed_payload(Path(ctx.executable))
+        restored = listener_identity.committed_payload(Path(reverse.context.executable))
         assert restored is not None
         assert restored.release == "1.2.2"
+        reverse.activate()
         reverse.rollback()
-        current = listener_identity.committed_payload(Path(ctx.executable))
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        current = listener_identity.committed_payload(
+            Path(payload_generation.context(ctx, selection.active).executable)
+        )
         assert current is not None
         assert current.release == "1.2.3"
+
+    def test_interrupted_reverse_transition_recovers_the_original_successor(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Recovery reverses an activated rollback without inventing another payload copy."""
+        ctx = install_context(tmp_path)
+        _first = install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.activate()
+        successor.finalize({"pid": 2})
+        original_selection = payload_generation.read(ctx)
+        assert original_selection is not None
+        retained = payload_rollback.load_retained(ctx)
+        reverse = payload_transaction.begin_rollback_transaction(ctx, retained)
+        assert reverse.expected["release"] == "1.2.2"
+        reverse.commit_projection()
+        reverse.activate()
+        reverse.preserve_for_recovery("rollback controller outcome unknown")
+        original_successor = listener_identity.committed_payload(
+            Path(payload_generation.context(ctx, original_selection.active).executable)
+        )
+        assert original_successor is not None
+
+        result = payload_transaction.recover(ctx, runtime=recovery_runtime(original_successor))
+
+        assert result["state"] == "rolled_back"
+        assert payload_generation.read(ctx) == original_selection
+
+    def test_interrupted_reverse_transition_rejects_the_wrong_runtime(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Reverse recovery cannot select a successor not proven by the live runtime."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.activate()
+        successor.finalize({"pid": 2})
+        retained = payload_rollback.load_retained(ctx)
+        reverse = payload_transaction.begin_rollback_transaction(ctx, retained)
+        reverse.commit_projection()
+        reverse.activate()
+        reverse.preserve_for_recovery("rollback controller outcome unknown")
+
+        wrong_runtime = recovery_runtime(retained.successor)
+        wrong_runtime["release"] = "9.9.9"
+        with pytest.raises(errors.RecoveryStateError, match="prior selected generation"):
+            payload_transaction.recover(ctx, runtime=wrong_runtime)
+
+    @pytest.mark.parametrize("drift", ["installed", "selection", "root"])
+    def test_reverse_transition_rejects_stale_authority(
+        self, tmp_path: Path, drift: str, *, mocker
+    ) -> None:
+        """Rollback admission rechecks installed state, selection, and predecessor root."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.activate()
+        successor.finalize({"pid": 2})
+        retained = payload_rollback.load_retained(ctx)
+        if drift == "installed":
+            installed_path = Path(payload_state.installed_path(ctx))
+            installed = json.loads(installed_path.read_text(encoding="utf-8"))
+            installed["version"] = "1.2.4"
+            installed_path.write_bytes(payload_digest.canonical_json(installed))
+            expected = "successor changed"
+        elif drift == "selection":
+            selection = payload_generation.read(ctx)
+            assert selection is not None
+            payload_generation.select(ctx, active=selection.active, predecessor=None)
+            expected = "selection changed"
+        else:
+            retained = replace(retained, root=tmp_path / "unrelated-generation")
+            expected = "predecessor changed"
+
+        with pytest.raises(errors.InstallError, match=expected):
+            payload_transaction.begin_rollback_transaction(ctx, retained)
+
+    def test_reverse_transition_rechecks_predecessor_before_materialization(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """An admitted rollback still fails if the retained generation later changes."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.activate()
+        successor.finalize({"pid": 2})
+        retained = payload_rollback.load_retained(ctx)
+        reverse = payload_transaction.begin_rollback_transaction(ctx, retained)
+        Path(reverse.context.executable).write_bytes(b"corrupt")
+
+        with pytest.raises(errors.InstallError, match="changed before materialization"):
+            reverse.commit_projection()
 
     def test_retained_predecessor_rejects_corruption_before_mutation(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install_payload(ctx, "1.2.2", mocker=mocker)
         successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         successor.commit_projection()
+        successor.activate()
         successor.finalize({"pid": 2})
         retained = payload_rollback.load_retained(ctx)
         executable = retained.root / executable_relative()
         executable.write_bytes(b"corrupt")
         before = Path(ctx.executable).read_bytes()
 
-        with pytest.raises(errors.InstallError, match="predecessor identity"):
+        with pytest.raises(errors.InstallError, match="predecessor generation identity"):
             payload_rollback.load_retained(ctx)
 
         assert Path(ctx.executable).read_bytes() == before
-
-    @pytest.mark.parametrize(
-        "mutation",
-        [
-            "pointer_symlink",
-            "pointer_generation_path",
-            "extra_generation",
-            "extra_generation_file",
-            "extra_generation_symlink",
-            "binding_successor",
-        ],
-    )
-    def test_retained_predecessor_rejects_ambiguous_carrier_shape(
-        self, tmp_path: Path, mutation: str, *, mocker
-    ) -> None:
-        ctx = install_context(tmp_path)
-        install_payload(ctx, "1.2.2", mocker=mocker)
-        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-        successor.commit_projection()
-        successor.finalize({"pid": 2})
-        retained = payload_rollback.load_retained(ctx)
-        pointer = payload_state.retained_rollback_pointer(ctx)
-        external = tmp_path / "external.json"
-
-        if mutation == "pointer_symlink":
-            external.write_bytes(pointer.read_bytes())
-            pointer.unlink()
-            pointer.symlink_to(external)
-        elif mutation == "pointer_generation_path":
-            pointer.write_bytes(
-                payload_digest.canonical_json({"schema_version": 1, "generation": "../outside"})
-            )
-        elif mutation == "extra_generation":
-            (retained.root.parent / ("f" * 32)).mkdir()
-        elif mutation == "extra_generation_file":
-            (retained.root.parent / "unexpected").write_text("residue\n", encoding="utf-8")
-        elif mutation == "extra_generation_symlink":
-            target = tmp_path / "external-generation"
-            target.mkdir()
-            (retained.root.parent / "unexpected").symlink_to(target, target_is_directory=True)
-        else:
-            binding_path = retained.root / payload_rollback.RETAINED_BINDING_FILENAME
-            binding = json.loads(binding_path.read_text(encoding="utf-8"))
-            binding["successor"]["release"] = "9.9.9"
-            binding_path.write_bytes(payload_digest.canonical_json(binding))
-
-        with pytest.raises(errors.InstallError, match="retained rollback"):
-            payload_rollback.load_retained(ctx)
-
-    @pytest.mark.parametrize(
-        ("mutation", "expected"),
-        [
-            ("root_file", "root is unavailable or invalid"),
-            ("generation_missing", "generation is unavailable or invalid"),
-            ("successor_missing", "successor is unavailable"),
-        ],
-    )
-    def test_retained_predecessor_rejects_missing_authority_surfaces(
-        self, tmp_path: Path, mutation: str, expected: str, *, mocker
-    ) -> None:
-        ctx = install_context(tmp_path)
-        install_payload(ctx, "1.2.2", mocker=mocker)
-        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-        successor.commit_projection()
-        successor.finalize({"pid": 2})
-        retained = payload_rollback.load_retained(ctx)
-        retained_root = payload_state.retained_rollback_root(ctx)
-
-        if mutation == "root_file":
-            external = tmp_path / "retained-copy"
-            retained_root.rename(external)
-            retained_root.write_text("not a retained store\n", encoding="utf-8")
-        elif mutation == "generation_missing":
-            retained.root.rename(tmp_path / "removed-generation")
-        else:
-            Path(ctx.executable).unlink()
-
-        with pytest.raises(errors.InstallError, match=expected):
-            payload_rollback.load_retained(ctx)
-
-    def test_retained_promotion_rejects_ambiguous_and_unmovable_sources(
-        self, tmp_path: Path, *, mocker
-    ) -> None:
-        ctx = install_context(tmp_path)
-        install_payload(ctx, "1.2.2", mocker=mocker)
-        successor = listener_identity.committed_payload(Path(ctx.executable))
-        assert successor is not None
-        source = tmp_path / "source"
-        generation = tmp_path / "generation"
-        source.mkdir()
-        generation.mkdir()
-
-        with pytest.raises(errors.InstallError, match="source is ambiguous"):
-            payload_rollback._materialize_generation(source, generation, "a" * 32, successor)
-
-        generation.rmdir()
-        source.rmdir()
-        source.write_text("not a directory\n", encoding="utf-8")
-        generation.mkdir()
-        with pytest.raises(errors.InstallError, match="source is invalid"):
-            payload_rollback._materialize_generation(source, generation, "b" * 32, successor)
-
-        source.unlink()
-        generation.rmdir()
-        source.mkdir()
-        payload_rollback.write_snapshot(ctx, source)
-        payload_rollback.command.write_snapshot(
-            source,
-            payload_rollback.command.snapshot(Path(ctx.command), Path(ctx.executable)),
-        )
-        original_replace = payload_rollback.os.replace
-
-        def reject_generation_move(source_path: Path, target_path: Path) -> None:
-            if source_path == source and target_path == generation:
-                raise OSError("offline")
-            original_replace(source_path, target_path)
-
-        mocker.patch.object(payload_rollback.os, "replace", side_effect=reject_generation_move)
-        with pytest.raises(errors.InstallError, match="generation move failed"):
-            payload_rollback._materialize_generation(source, generation, "c" * 32, successor)
-
-    def test_retained_promotion_and_removal_reject_symlinked_store(
-        self, tmp_path: Path, *, mocker
-    ) -> None:
-        ctx = install_context(tmp_path)
-        install_payload(ctx, "1.2.2", mocker=mocker)
-        successor = listener_identity.committed_payload(Path(ctx.executable))
-        assert successor is not None
-        installed = payload_state.read_installed(ctx)
-        assert installed is not None
-        transaction_id = str(installed["transaction_id"])
-        retained_root = payload_state.retained_rollback_root(ctx)
-        external = tmp_path / "external-retained"
-        external.mkdir()
-        retained_root.symlink_to(external, target_is_directory=True)
-
-        with pytest.raises(errors.InstallError, match="root is a symbolic link"):
-            payload_rollback.promote(
-                ctx,
-                tmp_path / "snapshot",
-                transaction_id=transaction_id,
-                successor=successor.handoff(),
-            )
-        with pytest.raises(errors.InstallError, match="root is a symbolic link"):
-            payload_rollback.remove_retained(ctx)
-        assert external.is_dir()
-
-    @pytest.mark.parametrize(
-        "payload",
-        [
-            {},
-            {"payload": ["not-an-entry"]},
-            {"payload": [{"path": "proxy", "mode": "invalid"}]},
-        ],
-    )
-    def test_retained_candidate_rejects_malformed_release_receipts(
-        self, tmp_path: Path, payload: dict[str, object]
-    ) -> None:
-        root = tmp_path / "retained"
-        root.mkdir()
-        (root / inventory.RELEASE_RECEIPT_FILENAME).write_bytes(
-            payload_digest.canonical_json(payload)
-        )
-        identity = listener_identity.LoadedPayloadIdentity(
-            release="1.2.2",
-            serving_payload_sha256="a" * 64,
-            release_receipt_sha256="b" * 64,
-            manifest_sha256="c" * 64,
-            root=root,
-        )
-        retained = payload_rollback.RetainedRollback(root, identity, identity)
-
-        with pytest.raises(errors.InstallError, match="release receipt is invalid"):
-            payload_rollback.candidate(retained)
-
-    def test_retained_candidate_rejects_payload_digest_drift(self, tmp_path: Path) -> None:
-        root = tmp_path / "retained"
-        root.mkdir()
-        relative = inventory.PROVIDER_MANIFEST
-        target = root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(b"changed\n")
-        receipt = {
-            "payload": [
-                {
-                    "path": relative,
-                    "mode": "100644",
-                    "blob_oid": "a" * 40,
-                    "sha256": hashlib.sha256(b"expected\n").hexdigest(),
-                }
-            ]
-        }
-        (root / inventory.RELEASE_RECEIPT_FILENAME).write_bytes(
-            payload_digest.canonical_json(receipt)
-        )
-        identity = listener_identity.LoadedPayloadIdentity(
-            release="1.2.2",
-            serving_payload_sha256="a" * 64,
-            release_receipt_sha256="b" * 64,
-            manifest_sha256="c" * 64,
-            root=root,
-        )
-
-        with pytest.raises(errors.InstallError, match="digest mismatch"):
-            payload_rollback.candidate(payload_rollback.RetainedRollback(root, identity, identity))
 
     def test_transaction_status_classifies_an_existing_invalid_carrier(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -816,6 +677,62 @@ class TestPayloadTransaction:
 
         assert _retained_carrier_snapshot(root, target) == before
 
+    @pytest.mark.parametrize("corruption", ["identity", "release", "receipt"])
+    def test_recovery_rejects_candidate_identity_drift(
+        self, tmp_path: Path, corruption: str, *, mocker
+    ) -> None:
+        """Recovery binds the candidate generation to the durable transaction journal."""
+        ctx = install_context(tmp_path)
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        journal_path = Path(payload_state.journal_path(ctx))
+        if corruption == "identity":
+            Path(candidate.context.executable).write_bytes(b"corrupt")
+            expected = "candidate projection identity is invalid"
+        else:
+            journal = json.loads(journal_path.read_text(encoding="utf-8"))
+            if corruption == "release":
+                journal["version"] = "1.2.4"
+            else:
+                journal["receipt_sha256"] = "f" * 64
+            journal_path.write_bytes(payload_digest.canonical_json(journal))
+            expected = "candidate does not match the transaction"
+
+        with pytest.raises(errors.RecoveryStateError, match=expected):
+            payload_transaction.recover(ctx, runtime=None)
+
+    def test_materialized_recovery_rejects_selection_drift(self, tmp_path: Path, *, mocker) -> None:
+        """An unselected candidate may be discarded only from its exact prior selection."""
+        ctx = install_context(tmp_path)
+        predecessor = install_payload(ctx, "1.2.2", mocker=mocker)
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        payload_generation.select(
+            ctx,
+            active=str(candidate.expected["transaction_id"]),
+            predecessor=str(predecessor.expected["transaction_id"]),
+        )
+
+        with pytest.raises(errors.RecoveryStateError, match="selection changed"):
+            payload_transaction.recover(ctx, runtime=None)
+
+    def test_fresh_recovery_rejects_an_unrelated_live_runtime(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """A fresh interrupted projection cannot erase an unrelated accepting runtime."""
+        ctx = install_context(tmp_path)
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        candidate.activate()
+        candidate.preserve_for_recovery("runtime identity is unresolved")
+        projected = listener_identity.committed_payload(Path(candidate.context.executable))
+        assert projected is not None
+        unrelated = recovery_runtime(projected)
+        unrelated["release"] = "9.9.9"
+
+        with pytest.raises(errors.InstallError, match="does not match the candidate"):
+            payload_transaction.recover(ctx, runtime=unrelated)
+
     def test_installed_state_rejects_a_symlink_even_when_its_target_is_absent(
         self, tmp_path: Path
     ) -> None:
@@ -863,12 +780,13 @@ class TestPayloadTransaction:
 
         transaction.commit_projection()
 
-        assert Path(ctx.install_dir, "payload-manifest.json").is_file()
-        assert Path(ctx.install_dir, inventory.RELEASE_RECEIPT_FILENAME).is_file()
+        assert Path(transaction.context.payload_dir, "payload-manifest.json").is_file()
+        assert Path(transaction.context.payload_dir, inventory.RELEASE_RECEIPT_FILENAME).is_file()
         journal = json.loads(Path(payload_state.journal_path(ctx)).read_text(encoding="utf-8"))
-        assert journal["state"] == "committed"
+        assert journal["state"] == "materialized"
         assert not Path(payload_state.installed_path(ctx)).exists()
 
+        transaction.activate()
         transaction.finalize({"pid": 123, "accepting": True})
 
         state = json.loads(Path(payload_state.installed_path(ctx)).read_text(encoding="utf-8"))
@@ -877,6 +795,208 @@ class TestPayloadTransaction:
         assert state["command"] == ctx.command
         assert not Path(payload_state.transaction_root(ctx)).exists()
 
+    def test_upgrade_materializes_an_immutable_candidate_generation(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        predecessor_bytes = b"predecessor-native-executable"
+        successor_bytes = b"successor-native-executable"
+        predecessor = begin_transaction(
+            ctx,
+            released_artifact("1.2.2", executable_content=predecessor_bytes),
+            mocker=mocker,
+        )
+        predecessor.commit_projection()
+        predecessor.activate()
+        predecessor.finalize({"pid": 1})
+        predecessor_executable = Path(predecessor.context.executable)
+
+        successor = begin_transaction(
+            ctx,
+            released_artifact("1.2.3", executable_content=successor_bytes),
+            mocker=mocker,
+        )
+        successor.commit_projection()
+
+        assert predecessor_executable.read_bytes() == predecessor_bytes
+        assert Path(successor.context.executable).read_bytes() == successor_bytes
+        assert Path(successor.context.executable) != predecessor_executable
+        assert Path(ctx.executable) != Path(successor.context.executable)
+
+    def test_generation_upgrade_does_not_copy_a_payload_snapshot(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Selected generations remain the recovery authority during upgrade."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+
+        successor.commit_projection()
+
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
+        assert (rollback / "command.json").is_file()
+        assert not payload_rollback.legacy_snapshot_path(rollback).exists()
+        successor.rollback()
+
+    def test_activated_generation_recovery_restores_the_exact_prior_selection(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Forward recovery reverses to the prior active and predecessor generations."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        middle = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        middle.commit_projection()
+        middle.activate()
+        middle.finalize({"pid": 2})
+        before = payload_generation.read(ctx)
+        assert before is not None
+        candidate = begin_transaction(ctx, released_artifact("1.2.4"), mocker=mocker)
+        candidate.commit_projection()
+        candidate.activate()
+        candidate.preserve_for_recovery("controller outcome unknown")
+        previous = listener_identity.committed_payload(
+            Path(payload_generation.context(ctx, before.active).executable)
+        )
+        assert previous is not None
+
+        result = payload_transaction.recover(ctx, runtime=recovery_runtime(previous))
+
+        assert result["state"] == "rolled_back"
+        assert payload_generation.read(ctx) == before
+        assert not Path(candidate.context.payload_dir).exists()
+        assert Path(ctx.command).samefile(payload_generation.context(ctx, before.active).executable)
+
+    def test_activation_selects_candidate_and_retains_only_the_predecessor(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        predecessor = begin_transaction(
+            ctx,
+            released_artifact("1.2.2", executable_content=b"predecessor"),
+            mocker=mocker,
+        )
+        predecessor.commit_projection()
+        predecessor.activate()
+        predecessor.finalize({"pid": 1})
+        ctx.executable = predecessor.context.executable
+        successor = begin_transaction(
+            ctx,
+            released_artifact("1.2.3", executable_content=b"successor"),
+            mocker=mocker,
+        )
+        successor.commit_projection()
+
+        successor.activate()
+
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        assert selection.active == Path(successor.context.payload_dir).name
+        assert selection.predecessor == Path(predecessor.context.payload_dir).name
+        assert Path(ctx.command).samefile(successor.context.executable)
+
+    def test_recovery_finishes_activation_when_selection_precedes_command_projection(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Recover the durable selected generation when command projection is interrupted."""
+        ctx = install_context(tmp_path)
+        predecessor = install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        old_target = Path(predecessor.context.executable)
+        expected_target = Path(successor.context.executable)
+        interrupted = mocker.patch.object(
+            payload_transaction.command,
+            "project",
+            side_effect=errors.InstallError("command projection interrupted"),
+        )
+        with pytest.raises(errors.InstallError, match="command projection interrupted"):
+            successor.activate()
+        mocker.stop(interrupted)
+
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        assert selection.active == str(successor.expected["transaction_id"])
+        assert Path(ctx.command).samefile(old_target)
+
+        candidate = listener_identity.committed_payload(Path(successor.context.executable))
+        assert candidate is not None
+        result = payload_transaction.recover(
+            ctx,
+            runtime=recovery_runtime(candidate, candidate),
+        )
+
+        assert result["state"] == "finalized"
+        assert Path(ctx.command).samefile(expected_target)
+
+    def test_recovery_finishes_activation_when_command_precedes_phase_journal(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Recognize durable selector and command state even if the phase journal lags."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        expected_target = Path(successor.context.executable).resolve()
+        original_write = payload_transaction.state.write_journal
+
+        def interrupt_activated_journal(*args, **kwargs):
+            if kwargs.get("state") == "activated":
+                raise errors.InstallError("activation journal interrupted")
+            return original_write(*args, **kwargs)
+
+        mocker.patch.object(
+            payload_transaction.state,
+            "write_journal",
+            side_effect=interrupt_activated_journal,
+        )
+        with pytest.raises(errors.InstallError, match="activation journal interrupted"):
+            successor.activate()
+
+        assert Path(ctx.command).samefile(expected_target)
+        assert payload_state.read_journal(ctx)["state"] == "materialized"
+
+        candidate = listener_identity.committed_payload(Path(successor.context.executable))
+        assert candidate is not None
+        result = payload_transaction.recover(
+            ctx,
+            runtime=recovery_runtime(candidate, candidate),
+        )
+
+        assert result["state"] == "finalized"
+        assert Path(ctx.command).samefile(expected_target)
+
+    def test_recovery_finishes_activation_when_selector_precedes_command_and_phase(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Reconcile a selector-only activation after process interruption."""
+        ctx = install_context(tmp_path)
+        predecessor = install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        old_target = Path(predecessor.context.executable).resolve()
+        expected_target = Path(successor.context.executable).resolve()
+        interrupted = mocker.patch.object(
+            payload_transaction.command,
+            "project",
+            side_effect=errors.InstallError("command projection interrupted"),
+        )
+        with pytest.raises(errors.InstallError, match="command projection interrupted"):
+            successor.activate()
+        mocker.stop(interrupted)
+
+        assert Path(ctx.command).samefile(old_target)
+        assert payload_state.read_journal(ctx)["state"] == "materialized"
+
+        candidate = listener_identity.committed_payload(Path(successor.context.executable))
+        assert candidate is not None
+        result = payload_transaction.recover(
+            ctx,
+            runtime=recovery_runtime(candidate, candidate),
+        )
+
+        assert result["state"] == "finalized"
+        assert Path(ctx.command).samefile(expected_target)
+
     def test_fresh_transaction_projects_and_rolls_back_the_user_command(
         self, tmp_path: Path, *, mocker
     ) -> None:
@@ -884,10 +1004,11 @@ class TestPayloadTransaction:
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
 
         transaction.commit_projection()
+        transaction.activate()
 
         command_path = Path(ctx.command)
-        runtime_config = Path(ctx.install_dir, inventory.RUNTIME_CONFIG_FILENAME)
-        assert os.path.samefile(command_path, ctx.executable)
+        runtime_config = Path(transaction.context.payload_dir, inventory.RUNTIME_CONFIG_FILENAME)
+        assert os.path.samefile(command_path, transaction.context.executable)
         assert command_path.is_symlink() is (os.name != "nt")
         assert runtime_config.is_file()
 
@@ -907,6 +1028,7 @@ class TestPayloadTransaction:
 
         transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         transaction.commit_projection()
+        transaction.activate()
         transaction.rollback()
 
         assert os.path.samefile(command_path, prior_target)
@@ -932,8 +1054,11 @@ class TestPayloadTransaction:
     ) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install_payload(ctx, "1.2.2", mocker=mocker)
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        active = payload_generation.context(ctx, selection.active)
         before = {
-            relative: Path(ctx.install_dir, relative).read_bytes()
+            relative: Path(active.payload_dir, relative).read_bytes()
             for relative in (
                 *runtime_files(),
                 inventory.MANIFEST_FILENAME,
@@ -946,8 +1071,10 @@ class TestPayloadTransaction:
         second.commit_projection()
         second.rollback()
 
+        restored = payload_generation.read(ctx)
+        assert restored == selection
         for relative, content in before.items():
-            assert Path(ctx.install_dir, relative).read_bytes() == content
+            assert Path(active.payload_dir, relative).read_bytes() == content
         assert Path(payload_state.installed_path(ctx)).read_bytes() == before_state
         assert not Path(payload_state.transaction_root(ctx)).exists()
 
@@ -960,6 +1087,7 @@ class TestPayloadTransaction:
 
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
         transaction.commit_projection()
+        transaction.activate()
         assert unknown.read_bytes() == b"local content\n"
         transaction.rollback()
 
@@ -1018,12 +1146,15 @@ class TestPayloadTransaction:
         candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         candidate.commit_projection()
         candidate.preserve_for_recovery("handoff outcome unknown")
-        rollback = Path(payload_state.transaction_root(ctx), "rollback")
-        previous_identity = listener_identity.committed_payload(rollback / executable_relative())
-        candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        previous_identity = listener_identity.committed_payload(
+            Path(payload_generation.context(ctx, selection.active).executable)
+        )
+        candidate_identity = listener_identity.committed_payload(Path(candidate.context.executable))
         assert previous_identity is not None
         assert candidate_identity is not None
-        runtime = recovery_runtime(previous_identity, candidate_identity)
+        runtime = recovery_runtime(previous_identity)
 
         result = payload_transaction.recover(ctx, runtime=runtime)
 
@@ -1031,49 +1162,18 @@ class TestPayloadTransaction:
         assert Path(ctx.executable).read_bytes() == previous
         assert not Path(payload_state.transaction_root(ctx)).exists()
 
-        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-        candidate.commit_projection()
-        candidate.preserve_for_recovery("handoff outcome unknown")
-        root = Path(payload_state.transaction_root(ctx))
-        rollback = root / "rollback"
-        previous_identity = listener_identity.committed_payload(rollback / executable_relative())
-        candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
-        assert previous_identity is not None
-        assert candidate_identity is not None
-        runtime = recovery_runtime(previous_identity, candidate_identity)
-        with pytest.raises(errors.InstallError, match="does not match"):
-            payload_transaction.recover(
-                ctx,
-                runtime={**runtime, "release": "wrong"},
-            )
-        journal_path = Path(payload_state.journal_path(ctx))
-        journal = json.loads(journal_path.read_text())
-        journal["receipt_sha256"] = "0" * 64
-        journal_path.write_bytes(payload_digest.canonical_json(journal))
-        with pytest.raises(errors.InstallError, match="candidate does not match"):
-            payload_transaction.recover(ctx, runtime=runtime)
-        journal["receipt_sha256"] = candidate.receipt_sha256
-        journal_path.write_bytes(payload_digest.canonical_json(journal))
-        candidate_executable = Path(ctx.executable)
-        candidate_bytes = candidate_executable.read_bytes()
-        candidate_executable.write_bytes(b"tampered\n")
-        with pytest.raises(errors.InstallError, match="candidate projection identity"):
-            payload_transaction.recover(ctx, runtime=runtime)
-        candidate_executable.write_bytes(candidate_bytes)
-        (root / "rollback" / executable_relative()).write_bytes(b"tampered\n")
-        with pytest.raises(errors.InstallError, match="runtime identity is invalid"):
-            payload_transaction.recover(ctx, runtime=runtime)
-        assert root.exists()
-
     def test_recovery_rolls_back_an_interrupted_committed_upgrade(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install_payload(ctx, "1.2.2", mocker=mocker)
         previous = Path(ctx.executable).read_bytes()
         candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         candidate.commit_projection()
-        rollback = Path(payload_state.transaction_root(ctx), "rollback")
-        previous_identity = listener_identity.committed_payload(rollback / executable_relative())
-        candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        previous_identity = listener_identity.committed_payload(
+            Path(payload_generation.context(ctx, selection.active).executable)
+        )
+        candidate_identity = listener_identity.committed_payload(Path(candidate.context.executable))
         assert previous_identity is not None
         assert candidate_identity is not None
         runtime = recovery_runtime(previous_identity, candidate_identity)
@@ -1090,7 +1190,7 @@ class TestPayloadTransaction:
         candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         candidate.commit_projection()
         candidate.preserve_for_recovery("controller outcome unknown")
-        candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
+        candidate_identity = listener_identity.committed_payload(Path(candidate.context.executable))
         assert candidate_identity is not None
         runtime = recovery_runtime(candidate_identity, candidate_identity)
 
@@ -1108,12 +1208,33 @@ class TestPayloadTransaction:
         assert installed["runtime"] == runtime
         assert not Path(payload_state.transaction_root(ctx)).exists()
 
+    def test_recovery_finalizes_an_activated_fresh_candidate(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """An activated first install can finish after its runtime proves the candidate."""
+        ctx = install_context(tmp_path)
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        candidate.activate()
+        candidate.preserve_for_recovery("controller outcome unknown")
+        candidate_identity = listener_identity.committed_payload(Path(candidate.context.executable))
+        assert candidate_identity is not None
+
+        result = payload_transaction.recover(ctx, runtime=recovery_runtime(candidate_identity))
+
+        assert result["state"] == "finalized"
+        assert payload_generation.read(ctx) == payload_generation.Selection(
+            str(candidate.expected["transaction_id"]),
+            None,
+        )
+        assert Path(ctx.command).samefile(candidate.context.executable)
+
     def test_recovery_cleans_a_finalized_transaction_without_rolling_back(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install_payload(ctx, "1.2.2", mocker=mocker)
         candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         candidate.commit_projection()
-        candidate_identity = listener_identity.committed_payload(Path(ctx.executable))
+        candidate_identity = listener_identity.committed_payload(Path(candidate.context.executable))
         assert candidate_identity is not None
         runtime = recovery_runtime(candidate_identity, candidate_identity)
         installed = {
@@ -1150,6 +1271,20 @@ class TestPayloadTransaction:
         assert not Path(ctx.install_dir).exists()
         assert not Path(ctx.command).exists()
         assert not Path(payload_state.transaction_root(ctx)).exists()
+
+    def test_empty_control_root_remains_a_fresh_install(self, tmp_path: Path, *, mocker) -> None:
+        """An empty pre-created control directory does not invent a predecessor."""
+        ctx = install_context(tmp_path)
+        Path(ctx.install_dir).mkdir(parents=True)
+
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        journal = payload_state.read_journal(ctx)
+
+        assert journal["fresh"] is True
+        assert "previous_generation" not in journal
+        candidate.commit_projection()
+        candidate.rollback()
+        assert not Path(ctx.install_dir).exists()
 
     def test_transaction_status_projects_only_the_read_only_recovery_contract(
         self, *, mocker
@@ -1192,6 +1327,7 @@ class TestPayloadTransaction:
         ctx = install_context(Path(tempfile.mkdtemp()))
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
         transaction.commit_projection()
+        transaction.activate()
         mocker.patch.object(
             payload_transaction.shutil, "rmtree", side_effect=OSError("cleanup blocked")
         )
@@ -1209,9 +1345,9 @@ class TestPayloadTransaction:
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
         assert transaction.release == "1.2.3"
         assert transaction.expected["release"] == "1.2.3"
-        with pytest.raises(errors.InstallError, match="not committed"):
+        with pytest.raises(errors.InstallError, match="not activated"):
             transaction.finalize()
-        with pytest.raises(errors.InstallError, match="only a committed"):
+        with pytest.raises(errors.InstallError, match="only a materialized"):
             transaction.preserve_for_recovery("not committed")
         transaction.commit_projection()
         with pytest.raises(errors.InstallError, match="not prepared"):
@@ -1227,6 +1363,7 @@ class TestPayloadTransaction:
                 receipt={},
                 transaction_id="test",
                 fresh=True,
+                previous_generation=None,
             )
 
         fresh = begin_transaction(

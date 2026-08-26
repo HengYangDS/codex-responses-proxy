@@ -7,7 +7,11 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
+from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import executable_relative
@@ -51,9 +55,7 @@ class TestServiceIdentity:
         assert committed.release == "1.2.3"
         assert (
             committed.handoff()["manifest_sha256"]
-            == hashlib.sha256(
-                Path(ctx.install_dir, inventory.MANIFEST_FILENAME).read_bytes()
-            ).hexdigest()
+            == hashlib.sha256(Path(projection.payload_manifest_path(ctx)).read_bytes()).hexdigest()
         )
 
         executable = Path(ctx.executable)
@@ -62,7 +64,7 @@ class TestServiceIdentity:
         assert identity.committed_payload(executable) is None
 
         executable.write_bytes(original)
-        manifest_path = Path(ctx.install_dir, inventory.MANIFEST_FILENAME)
+        manifest_path = Path(projection.payload_manifest_path(ctx))
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         mutations = (
             lambda value: value.__setitem__("schema_version", 1),
@@ -97,11 +99,95 @@ class TestServiceIdentity:
         assert loaded.serving_payload_sha256 == manifest["serving_payload_sha256"]
         assert loaded.release_receipt_sha256 == manifest["release_receipt_sha256"]
 
+    def test_selected_payload_executable_follows_one_verified_selector(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        transaction = install_payload(ctx, mocker=mocker)
+        candidate = transaction.context
+
+        assert identity.selected_payload_executable(Path(candidate.executable)) == Path(
+            candidate.executable
+        ).resolve(strict=True)
+
+    @pytest.mark.parametrize(
+        ("mutation", "message"),
+        [
+            ("loaded-payload", "loaded payload identity is unavailable"),
+            ("missing-selector", "selector is invalid"),
+            ("selector-symlink", "selector is invalid"),
+            ("selector-schema", "selector is invalid"),
+            ("selector-noncanonical", "selector is invalid"),
+            ("selector-extra-field", "selector is invalid"),
+            ("active-generation", "generation identity is invalid"),
+            ("missing-executable", "selected payload executable is unavailable"),
+            ("invalid-generation", "selected payload identity is invalid"),
+        ],
+    )
+    def test_selected_payload_executable_rejects_unproved_authority(
+        self, mutation: str, message: str, tmp_path: Path, *, mocker
+    ) -> None:
+        """Selector resolution fails closed at every authority boundary."""
+        ctx = install_context(tmp_path)
+        transaction = install_payload(ctx, mocker=mocker)
+        executable = Path(transaction.context.executable)
+        selector = generation.selector_path(ctx)
+
+        if mutation == "loaded-payload":
+            executable.write_bytes(b"corrupt")
+        elif mutation == "missing-selector":
+            selector.unlink()
+        elif mutation == "selector-symlink":
+            selector.unlink()
+            target = tmp_path / "selector-target"
+            target.write_bytes(b"{}")
+            selector.symlink_to(target)
+        elif mutation == "selector-schema":
+            selector.write_bytes(
+                digest.canonical_json(
+                    {"schema_version": 2, "active": "a" * 32, "predecessor": None}
+                )
+            )
+        elif mutation == "selector-noncanonical":
+            selector.write_text(
+                json.dumps(
+                    {"schema_version": 1, "active": "a" * 32, "predecessor": None},
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        elif mutation == "selector-extra-field":
+            selector.write_bytes(
+                digest.canonical_json(
+                    {
+                        "schema_version": 1,
+                        "active": "a" * 32,
+                        "predecessor": None,
+                        "parallel_authority": True,
+                    }
+                )
+            )
+        elif mutation == "active-generation":
+            selector.write_bytes(
+                digest.canonical_json(
+                    {"schema_version": 1, "active": "invalid", "predecessor": None}
+                )
+            )
+        elif mutation == "missing-executable":
+            selector.write_bytes(
+                digest.canonical_json(
+                    {"schema_version": 1, "active": "a" * 32, "predecessor": None}
+                )
+            )
+        else:
+            mocker.patch.object(identity, "committed_payload", return_value=None)
+
+        with pytest.raises(ValueError, match=message):
+            identity.selected_payload_executable(executable)
+
     def test_loaded_identity_rejects_a_manifest_for_the_other_platform(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install_payload(ctx, mocker=mocker)
-        root = Path(ctx.install_dir)
-        manifest_path = root / inventory.MANIFEST_FILENAME
+        root = Path(ctx.payload_dir)
+        manifest_path = Path(projection.payload_manifest_path(ctx))
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         windows_executable = root / inventory.WINDOWS_EXECUTABLE
         windows_executable.write_bytes(Path(ctx.executable).read_bytes())

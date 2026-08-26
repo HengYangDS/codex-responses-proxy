@@ -18,6 +18,7 @@ import pytest
 
 from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle.supervision import native_service
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import inventory
@@ -211,6 +212,25 @@ def native_service_projection(ctx: runtime_context.RuntimeContext) -> dict[str, 
     }
 
 
+def owned_runtime_contexts(
+    ctx: runtime_context.RuntimeContext,
+) -> tuple[runtime_context.RuntimeContext, ...]:
+    """Return every payload context still owned by one stable installation root."""
+    return generation.owned_contexts(ctx) or (ctx,)
+
+
+def _process_contexts(
+    ctx: runtime_context.RuntimeContext,
+) -> tuple[runtime_context.RuntimeContext, ...]:
+    """Include selected, unselected, and legacy executable identities for teardown."""
+
+    contexts = (*owned_runtime_contexts(ctx), ctx)
+    unique: dict[str, runtime_context.RuntimeContext] = {}
+    for owned_ctx in contexts:
+        unique.setdefault(owned_ctx.executable, owned_ctx)
+    return tuple(unique.values())
+
+
 def native_environment(home: Path, install: Path, state: Path) -> dict[str, str]:
     """Isolate product state without deleting the host execution substrate."""
 
@@ -238,15 +258,31 @@ def cleanup_runtime(ctx: runtime_context.RuntimeContext, wrapper: Path | None = 
     """Stop only processes and launch configuration owned by an isolated test."""
 
     service = native_service.adapter()
+    owned_contexts = _process_contexts(ctx)
+    configured = service.configured_executable(ctx)
+    service_context = ctx
+    if configured is not None:
+        matches = tuple(
+            owned_ctx
+            for owned_ctx in owned_contexts
+            if os.path.normcase(os.path.abspath(owned_ctx.executable))
+            == os.path.normcase(os.path.abspath(configured))
+        )
+        assert len(matches) == 1, "native service executable is outside the owned installation"
+        service_context = matches[0]
     try:
-        service.uninstall(ctx)
+        service.uninstall(service_context)
         assert service.status(ctx) == "absent"
     finally:
         if wrapper is not None:
             for pid in process.pids_naming_path(str(wrapper)):
                 process.terminate_pid(pid, expected_path=str(wrapper))
-        for pid in process.pids_naming_executable(ctx.executable, roles=_SERVICE_ROLES):
-            process.terminate_executable(pid, ctx.executable, roles=_SERVICE_ROLES)
+        for owned_ctx in owned_contexts:
+            for pid in process.pids_naming_executable(owned_ctx.executable, roles=_SERVICE_ROLES):
+                process.terminate_executable(pid, owned_ctx.executable, roles=_SERVICE_ROLES)
     assert service.status(ctx) == "absent"
     assert service.configured_executable(ctx) is None
-    assert process.pids_naming_executable(ctx.executable, roles=_SERVICE_ROLES) == []
+    assert all(
+        process.pids_naming_executable(owned_ctx.executable, roles=_SERVICE_ROLES) == []
+        for owned_ctx in owned_contexts
+    )

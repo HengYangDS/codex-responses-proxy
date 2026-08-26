@@ -98,7 +98,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     for job_id in ("native-assets", "native-linux", "native-linux-lifecycle"):
         assert _mapping(github_jobs[job_id])["if"] == native_proof
     compatibility = _mapping(github_jobs["release-compatibility"])
-    assert compatibility["if"] == ("github.event_name == 'push' && github.ref == 'refs/heads/dev'")
+    assert compatibility["if"] == product_proof
     product_sha = "${{ github.event.pull_request.head.sha || github.sha }}"
     for job_id in (
         "source-and-governance",
