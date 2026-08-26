@@ -15,12 +15,21 @@
 - [x] 2.3 Reuse the same predicate and captured generation in controller-failure
       resolution, upgrade, rollback, and reload.
 
-## 3. Verification and release
+## 3. Source acceptance
 
 - [x] 3.1 Pass focused handoff, control, process, and lifecycle tests.
 - [x] 3.2 Pass strict OpenSpec, full quality, Python 3.12–3.14, and release gates
       without warnings.
-- [ ] 3.3 Publish a new SemVer patch only after macOS, Linux, and Windows native
-      lifecycle acceptance and both Forge projections are green.
-- [ ] 3.4 Verify the formal 8792 installation remains unchanged until release
-      acceptance, then complete installed-runtime and residue proof.
+- [x] 3.3 Pass macOS, Linux, and Windows native acceptance for the exact source
+      tree, with both Forge projections green.
+- [x] 3.4 Verify that the formal 8792 installation remains unchanged before the
+      successor release is accepted.
+
+## Post-archive lifecycle
+
+Prepare the next SemVer patch from the accepted source, create and verify one
+signed tag object, publish the same complete native asset set independently to
+GitLab and GitHub, then upgrade the formal runtime transactionally. Complete
+installed-runtime, real-request, rollback, recovery, uninstall, and residue
+proof from the released assets. These external effects remain incomplete until
+their current receipts exist.
