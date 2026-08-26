@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-08-26
+
+### Fixed
+
+- Require rollback to prove that the finalized predecessor PID is the sole
+  verified product listener before reporting success, eliminating the
+  transient false-success interval while the displaced generation drains.
+
 ## [3.1.0] - 2026-08-25
 
 ### Added

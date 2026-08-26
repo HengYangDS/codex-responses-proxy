@@ -252,9 +252,11 @@ def request(
     convergence_seconds = timeout_seconds * 3 + max(1.0, lease_seconds) + 5.0
     deadline = time.monotonic() + convergence_seconds
     while time.monotonic() < deadline:
+        listeners = process.verified_proxy_listener_pids(ctx)
         runtime = runtime_reader(ctx)
         if _successor_is_finalized(
             successor,
+            listeners=listeners,
             runtime=runtime,
             expected=expected,
             child_pid=child_pid,
@@ -332,6 +334,7 @@ def resolve_after_controller_failure(
                 is not None
                 and _successor_is_finalized(
                     successor,
+                    listeners=listeners,
                     runtime=runtime,
                     expected=expected,
                     child_pid=pid,
@@ -347,12 +350,17 @@ def resolve_after_controller_failure(
 def _successor_is_finalized(
     successor: process.OwnedProcess,
     *,
+    listeners: list[int],
     runtime: RuntimeSnapshot | None,
     expected: RuntimeSnapshot,
     child_pid: int,
 ) -> bool:
-    """Prove one captured successor generation through its finalized health identity."""
-    return process.owned_process_alive(successor) and _runtime_matches(runtime, expected, child_pid)
+    """Prove one captured successor as the sole finalized product listener."""
+    return (
+        listeners == [child_pid]
+        and process.owned_process_alive(successor)
+        and _runtime_matches(runtime, expected, child_pid)
+    )
 
 
 def _listener_pids(

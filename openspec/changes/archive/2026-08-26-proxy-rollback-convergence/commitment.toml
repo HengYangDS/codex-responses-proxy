@@ -1,0 +1,37 @@
+schema_version = 2
+id = "change:proxy-rollback-convergence"
+intent = "Require rollback completion to prove one sole finalized successor listener before reporting success."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/proxy-rollback-convergence/**",
+  "openspec/changes/archive/*-proxy-rollback-convergence/**",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "src/codex_responses_proxy/lifecycle/deployment/handoff.py",
+  "tests/lifecycle/deployment/test_handoff.py",
+  "tests/release/test_native_compatibility.py",
+]
+invariants = [
+  "one_handoff_authority_owns_forward_and_reverse_completion",
+  "success_requires_one_exact_verified_listener",
+  "formal_runtime_remains_unchanged_until_release_acceptance",
+]
+acceptance = [
+  "strict_openspec_validation_passes",
+  "focused_and_full_repository_gates_pass_without_warnings",
+  "rollback_returns_only_after_listener_convergence",
+  "real_lifecycle_journey_finishes_with_one_listener_and_no_transaction",
+]
+risks = ["listener_retirement_can_exceed_the_existing_bounded_deadline"]
+authority_refs = [
+  "AGENTS.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "docs/architecture/authority-and-runtime-boundary.md",
+]
+predecessors = []
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []

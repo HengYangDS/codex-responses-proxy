@@ -449,9 +449,7 @@ class TestPublishedPredecessorCompatibility:
             assert rolled_back["state"] == "rolled_back"
             assert rolled_back["from_release"] == current_version
             assert rolled_back["to_release"] == previous_version
-            assert wait_until(
-                lambda: process.listener_pids(port) == [_runtime_pid(rolled_back)], 20
-            )
+            assert process.listener_pids(port) == [_runtime_pid(rolled_back)]
             after_rollback = run_command(
                 current_executable,
                 environment,
@@ -489,7 +487,7 @@ class TestPublishedPredecessorCompatibility:
             assert restored["state"] == "rolled_back"
             assert restored["from_release"] == previous_version
             assert restored["to_release"] == current_version
-            assert wait_until(lambda: process.listener_pids(port) == [_runtime_pid(restored)], 20)
+            assert process.listener_pids(port) == [_runtime_pid(restored)]
             restored_status = run_command(
                 current_executable,
                 environment,

@@ -1,0 +1,11 @@
+schema_version = 1
+paths = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/proxy-rollback-convergence/**",
+  "openspec/changes/archive/*-proxy-rollback-convergence/**",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "src/codex_responses_proxy/lifecycle/deployment/handoff.py",
+  "tests/lifecycle/deployment/test_handoff.py",
+  "tests/release/test_native_compatibility.py",
+]

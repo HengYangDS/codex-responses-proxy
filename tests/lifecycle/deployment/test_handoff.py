@@ -101,21 +101,22 @@ class TestControllerHandoffWiring:
             with subtests.test(runtime=runtime):
                 assert handoff.deployment_strategy(runtime) == expected
 
-    def test_request_handoff_converges_without_terminating_the_old_listener(
-        self, subtests, *, mocker
-    ):
+    def test_request_handoff_waits_for_one_finalized_successor_listener(self, subtests, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
         admit_successor(mocker, ctx)
-        for name, listeners in (
+        for name, listener_states in (
             ("direct", [[999], [1000]]),
             ("transient dual listener", [[999], [999, 1000], [999, 1000], [1000]]),
         ):
             with subtests.test(case=name):
-                mocker.patch.object(process, "verified_proxy_listener_pids", side_effect=listeners)
+                listeners = mocker.patch.object(
+                    process,
+                    "verified_proxy_listener_pids",
+                    side_effect=listener_states,
+                )
                 mocker.patch.object(handoff, "post_ready", return_value=ready_ack(expected))
                 mocker.patch.object(handoff.time, "sleep")
-                terminate = mocker.patch.object(process, "terminate_pid")
                 result = handoff.request(
                     ctx,
                     expected,
@@ -125,7 +126,7 @@ class TestControllerHandoffWiring:
                     timeout_seconds=5,
                 )
                 assert (result["old_pid"], result["child_pid"]) == (999, 1000)
-                terminate.assert_not_called()
+                assert listeners.call_count == len(listener_states)
 
     def test_request_handoff_waits_for_finalized_successor_identity(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
@@ -152,40 +153,39 @@ class TestControllerHandoffWiring:
         assert result["runtime"] == finalized
         assert runtime_reader.call_count == 2
 
-    def test_request_handoff_uses_process_and_protocol_identity_not_tcp_owner_projection(
-        self, *, mocker
-    ):
-        """Treat the OS TCP-owner table as observation, not handoff authority."""
+    def test_request_handoff_rejects_finalized_health_without_listener_convergence(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
         owned = process.OwnedProcess(1000, ctx.executable, 1.0)
         listeners = mocker.patch.object(
             process,
             "verified_proxy_listener_pids",
-            side_effect=([999], [999]),
+            return_value=[999],
         )
         capture = mocker.patch.object(process, "wait_for_executable", return_value=owned)
         alive = mocker.patch.object(process, "owned_process_alive", return_value=True)
         mocker.patch.object(handoff, "post_ready", return_value=ready_ack(expected))
-        mocker.patch.object(handoff.time, "monotonic", side_effect=[0.0, 1.0, 10.0])
+        mocker.patch.object(handoff.time, "monotonic", side_effect=[0.0, 1.0, 100.0])
         mocker.patch.object(handoff.time, "sleep")
 
-        result = handoff.request(
-            ctx,
-            expected,
-            runtime_reader=lambda _ctx: matching_health(1000, expected, handoff_state="finalized"),
-            timeout_seconds=1,
-        )
+        with pytest.raises(errors.InstallError, match="did not converge"):
+            handoff.request(
+                ctx,
+                expected,
+                runtime_reader=lambda _ctx: matching_health(
+                    1000, expected, handoff_state="finalized"
+                ),
+                timeout_seconds=1,
+            )
 
-        assert result["child_pid"] == 1000
-        assert listeners.call_count == 1
+        assert listeners.call_count >= 2
         capture.assert_called_once_with(
             1000,
             ctx.executable,
             roles={service_runtime.HANDOFF_CHILD_MODE},
             timeout_seconds=1,
         )
-        alive.assert_called_once_with(owned)
+        alive.assert_not_called()
 
     def test_request_handoff_allows_ready_until_the_configured_deadline(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
@@ -521,7 +521,7 @@ class TestControllerHandoffWiring:
             runtime_reader=lambda _ctx: finalized,
             timeout_seconds=1,
             lease_seconds=1,
-        ) == ("finalized", finalized)
+        ) == ("unknown", None)
 
     def test_failure_resolver_ignores_non_mapping_and_non_integer_runtime_pids(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))

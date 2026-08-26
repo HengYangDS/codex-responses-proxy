@@ -651,13 +651,16 @@ Explicit rollback SHALL restore only the retained predecessor bound to the
 current finalized successor. It SHALL verify current payload and installed
 state, retained payload and command snapshots, and their generation binding
 before mutation. It SHALL rebind the native service and complete a bounded
-listener handoff to the predecessor identity before reporting success.
+listener handoff to the predecessor identity before reporting success. The
+returned predecessor PID SHALL be the only verified product listener when
+success is reported; finalized health alone SHALL NOT establish completion.
 
 #### Scenario: Exact predecessor rollback succeeds
 
 - **WHEN** the current successor and retained predecessor both verify and the
-  predecessor proves accepting listener identity
-- **THEN** rollback reports state `rolled_back`
+  predecessor proves accepting, finalized runtime identity
+- **THEN** rollback reports state `rolled_back` only after the predecessor PID
+  is the sole verified product listener
 - **AND** payload, installed state, command projection, service definition, and
   listener all identify the predecessor
 - **AND** the displaced successor becomes the one retained predecessor for a
@@ -675,6 +678,14 @@ listener handoff to the predecessor identity before reporting success.
   installed identity, service identity, or listener identity cannot be proved
 - **THEN** rollback fails closed before mutation
 - **AND** preserves current and retained generations for inspection.
+
+#### Scenario: Finalized health precedes listener convergence
+
+- **WHEN** the predecessor reports finalized health while the displaced
+  successor remains a verified listener
+- **THEN** rollback continues bounded convergence and does not report success
+- **AND** reports an indeterminate outcome if one sole predecessor listener
+  cannot be proved within the bound.
 
 #### Scenario: Reverse handoff has a proved failure
 
