@@ -454,6 +454,12 @@ class TestReleasedDeployment:
         current = self.current_runtime()
         expected = FakeTransaction().expected
         successor = self.successor()
+        source_listener = process.OwnedProcess(111, self.ctx.executable, 1.0)
+        capture = mocker.patch.object(
+            apply.handoff,
+            "capture_source_listener",
+            return_value=source_listener,
+        )
         for response, resolution, expected_result in (
             ({"runtime": successor}, None, successor),
             ({"runtime": None}, ("finalized", successor), successor),
@@ -505,6 +511,9 @@ class TestReleasedDeployment:
                 runtime_reader=lambda _ctx: current,
                 timeout_seconds=1,
             )
+
+        assert capture.call_count == 4
+        capture.assert_called_with(self.ctx, current)
 
     def test_wait_for_serving_runtime_requires_exact_identity(self, *, mocker) -> None:
         expected = FakeTransaction().expected

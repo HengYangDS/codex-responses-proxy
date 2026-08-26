@@ -103,6 +103,11 @@ class TestControllerLifecycle:
             control.projection, "verify_payload_manifest", return_value=(True, "ok")
         )
         mocker.patch.object(control.handoff, "expected_metadata", return_value=expected)
+        mocker.patch.object(
+            control.handoff,
+            "capture_source_listener",
+            return_value=control.process.OwnedProcess(7, ctx.executable, 1.0),
+        )
         mocker.patch.object(control.handoff, "request", side_effect=OSError("lost response"))
         mocker.patch.object(
             control.handoff,
@@ -183,6 +188,11 @@ class TestControllerLifecycle:
         )
         mocker.patch.object(
             control.handoff, "expected_metadata", return_value={"transaction_id": "tx"}
+        )
+        mocker.patch.object(
+            control.handoff,
+            "capture_source_listener",
+            return_value=control.process.OwnedProcess(7, ctx.executable, 1.0),
         )
         mocker.patch.object(control.handoff, "request", side_effect=OSError("lost response"))
         mocker.patch.object(
