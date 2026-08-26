@@ -7,6 +7,16 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.2] - 2026-08-26
+
+### Fixed
+
+- Complete native handoff by proving the exact predecessor process generation
+  has exited and the finalized successor generation remains healthy, rather
+  than waiting for platform-specific TCP-owner attribution to move.
+- Use the same portable completion proof for reload, upgrade, rollback, and
+  controller-failure resolution.
+
 ## [3.1.1] - 2026-08-26
 
 ### Fixed

@@ -10,9 +10,10 @@ import "list"
 }
 
 #Conditions: {
-	productProof: "(github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')"
-	nativeProof:  #Conditions.productProof + " || github.ref_type == 'tag'"
-	productSHA:   "${{ github.event.pull_request.head.sha || github.sha }}"
+	releaseCompatibility: "github.event_name == 'push' && github.ref == 'refs/heads/dev'"
+	productProof:         "(github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')"
+	nativeProof:          #Conditions.productProof + " || github.ref_type == 'tag'"
+	productSHA:           "${{ github.event.pull_request.head.sha || github.sha }}"
 }
 
 #Toolchains: {
@@ -599,6 +600,61 @@ githubVerify: {
 					CODEX_RESPONSES_PROXY_NATIVE_BUNDLE:     "${{ runner.temp }}/native-linux/runtime/bin"
 				}
 				run: "uv run --locked --no-sync python -m pytest -q tests/release/test_native_lifecycle.py"
+			}]
+		}
+		"release-compatibility": {
+			name:              "Published release compatibility (${{ matrix.platform }})"
+			if:                #Conditions.releaseCompatibility
+			needs:             "python-matrix"
+			"runs-on":         "${{ matrix.runner }}"
+			"timeout-minutes": 30
+			strategy: {
+				"fail-fast": false
+				matrix: include: [{
+					platform: "macos-arm64"
+					runner:   "macos-26"
+				}, {
+					platform: "windows-x86_64"
+					runner:   "windows-2025"
+				}, {
+					platform: "linux-x86_64"
+					runner:   "ubuntu-24.04"
+				}]
+			}
+			steps: [{
+				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				with: {
+					"fetch-depth": 0
+					"fetch-tags":  true
+					ref:           #Conditions.productSHA
+				}
+			}, {
+				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
+				with: "python-version": "${{ needs.python-matrix.outputs.release }}"
+			}, {
+				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+			}, {
+				name: "Install the locked release tool environment"
+				run:  "uv sync --locked --group quality"
+			}, {
+				name: "Download the published predecessor release"
+				env: GH_TOKEN: "${{ github.token }}"
+				run: "gh release download --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
+			}, {
+				name: "Materialize the release trust anchor"
+				env: RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
+				run: "python -c \"import os; from pathlib import Path; Path(r'${{ runner.temp }}/release-asset-trust').write_text(os.environ['RELEASE_ASSET_TRUST'].rstrip() + '\\n', encoding='ascii')\""
+			}, {
+				name: "Bind the exact predecessor asset"
+				run:  "python -c \"import glob, os; matches = glob.glob(r'${{ runner.temp }}/previous-release/codex-responses-proxy-*-${{ matrix.platform }}.tar.gz'); assert len(matches) == 1, matches; open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8').write('CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET=' + matches[0] + '\\n')\""
+			}, {
+				name: "Start the runner user systemd manager"
+				if:   "matrix.platform == 'linux-x86_64'"
+				run:  "user_id=$(id -u); runtime_dir=/run/user/$user_id; sudo systemctl start user@$user_id.service; echo XDG_RUNTIME_DIR=$runtime_dir >> $GITHUB_ENV; echo DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime_dir/bus >> $GITHUB_ENV"
+			}, {
+				name: "Prove published predecessor upgrade and rollback"
+				env: CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: "${{ runner.temp }}/release-asset-trust"
+				run: "uv run --locked --no-sync nox -s release_compatibility"
 			}]
 		}
 		"release-assets": {
