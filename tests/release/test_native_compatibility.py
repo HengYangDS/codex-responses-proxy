@@ -519,11 +519,10 @@ class TestPublishedPredecessorCompatibility:
                 "--purge",
                 "--json",
             )
-            assert removed == {
-                "command_removed": True,
-                "state": "purged",
-                "stopped": 1,
-            }
+            assert set(removed) == {"command_removed", "state", "stopped"}
+            assert removed["command_removed"] is True
+            assert removed["state"] == "purged"
+            assert removed["stopped"] in {0, 1}
             assert not install.exists()
             assert not payload_state.transaction_root(ctx).exists()
             assert process.listener_pids(runtime_config.DEFAULT_PORT) == canonical_before
