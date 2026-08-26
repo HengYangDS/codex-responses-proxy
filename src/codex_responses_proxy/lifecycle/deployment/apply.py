@@ -213,6 +213,7 @@ def request_handoff(
     timeout_seconds: float,
 ) -> dict[str, object]:
     """Request handoff and resolve controller failure from runtime evidence."""
+    source_listener = handoff.capture_source_listener(ctx, current)
     try:
         result = handoff.request(
             ctx,
@@ -220,6 +221,7 @@ def request_handoff(
             runtime_reader=runtime_reader,
             timeout_seconds=timeout_seconds,
             lease_seconds=max(1.0, timeout_seconds),
+            source_listener=source_listener,
         )
         runtime = result.get("runtime")
         if not isinstance(runtime, dict) or not all(isinstance(key, str) for key in runtime):
@@ -234,6 +236,7 @@ def request_handoff(
                 runtime_reader=runtime_reader,
                 timeout_seconds=timeout_seconds,
                 lease_seconds=max(1.0, timeout_seconds),
+                source_listener=source_listener,
             )
         except (OSError, errors.InstallError):
             resolution, runtime = "unknown", None
