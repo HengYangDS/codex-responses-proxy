@@ -43,6 +43,7 @@ _RUNTIME_DIGEST_FIELDS = [
 RuntimeSnapshot = dict[str, object]
 RuntimeReader = Callable[[runtime_context.RuntimeContext], RuntimeSnapshot | None]
 type DeploymentStrategy = Literal["handoff", "native_generation", "unsupported"]
+_LISTENER_ROLES = {service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE}
 
 
 def _fields_match(actual: RuntimeSnapshot, expected: dict[str, object]) -> bool:
@@ -109,6 +110,20 @@ def deployment_strategy(runtime: RuntimeSnapshot | None) -> DeploymentStrategy:
 def runtime_supports_handoff(runtime: RuntimeSnapshot | None) -> bool:
     """Return whether a live runtime explicitly supports the next hot handoff."""
     return deployment_strategy(runtime) == "handoff"
+
+
+def capture_source_listener(
+    ctx: runtime_context.RuntimeContext,
+    runtime: RuntimeSnapshot,
+) -> process.OwnedProcess:
+    """Capture the sole admitted listener as one exact process generation."""
+    pid = runtime.get("pid")
+    if not _positive_int(pid) or process.verified_proxy_listener_pids(ctx) != [pid]:
+        raise errors.InstallError("installed runtime identity is not verified")
+    owned = process.capture_executable(pid, ctx.executable, roles=_LISTENER_ROLES)
+    if owned is None:
+        raise errors.InstallError("installed listener process generation is not verified")
+    return owned
 
 
 def expected_metadata(root: str) -> RuntimeSnapshot:
@@ -216,22 +231,21 @@ def request(
     ctx: runtime_context.RuntimeContext,
     expected: RuntimeSnapshot,
     *,
+    source_listener: process.OwnedProcess,
     runtime_reader: RuntimeReader,
     timeout_seconds: float = 30.0,
     lease_seconds: float = 30.0,
-    source_listener: process.OwnedProcess | None = None,
 ) -> RuntimeSnapshot:
     """Ask one verified listener to hand off and prove the finalized successor.
 
     ``expected`` must bind the transaction identifier, release, aggregate
     serving-payload digest, release-receipt digest, and manifest digest.
     """
-    listeners = _listener_pids(ctx, source_listener)
-    if len(listeners) != 1:
+    if not _source_listener_is_admitted(ctx, source_listener):
         raise errors.InstallError(
-            f"expected exactly one verified proxy listener on {ctx.port}; found {listeners}"
+            f"expected captured proxy listener {source_listener.pid} to own port {ctx.port}"
         )
-    old_pid = listeners[0]
+    old_pid = source_listener.pid
     ready = post_ready(
         ctx,
         expected,
@@ -252,11 +266,10 @@ def request(
     convergence_seconds = timeout_seconds * 3 + max(1.0, lease_seconds) + 5.0
     deadline = time.monotonic() + convergence_seconds
     while time.monotonic() < deadline:
-        listeners = process.verified_proxy_listener_pids(ctx)
         runtime = runtime_reader(ctx)
         if _successor_is_finalized(
+            source_listener,
             successor,
-            listeners=listeners,
             runtime=runtime,
             expected=expected,
             child_pid=child_pid,
@@ -303,10 +316,10 @@ def resolve_after_controller_failure(
     old_runtime: RuntimeSnapshot,
     expected: RuntimeSnapshot,
     *,
+    source_listener: process.OwnedProcess,
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
     lease_seconds: float,
-    source_listener: process.OwnedProcess | None = None,
 ) -> tuple[str, RuntimeSnapshot | None]:
     """Resolve caller failure without racing listener-owned finalization."""
     old_pid = old_runtime["pid"]
@@ -314,10 +327,7 @@ def resolve_after_controller_failure(
         return "unknown", None
     deadline = time.monotonic() + timeout_seconds + max(1.0, lease_seconds) + 5.0
     while time.monotonic() < deadline:
-        listeners = process.verified_proxy_listener_pids(ctx)
-        source_listeners = (
-            listeners if source_listener is None else _listener_pids(ctx, source_listener)
-        )
+        source_listener_admitted = _source_listener_is_admitted(ctx, source_listener)
         runtime = runtime_reader(ctx)
         if isinstance(runtime, dict):
             pid = runtime.get("pid")
@@ -333,47 +343,45 @@ def resolve_after_controller_failure(
                 )
                 is not None
                 and _successor_is_finalized(
+                    source_listener,
                     successor,
-                    listeners=listeners,
                     runtime=runtime,
                     expected=expected,
                     child_pid=pid,
                 )
             ):
                 return "finalized", runtime
-            if source_listeners == [old_pid] and _old_runtime_resumed(runtime, old_runtime):
+            if source_listener_admitted and _old_runtime_resumed(runtime, old_runtime):
                 return "rolled_back", runtime
         time.sleep(0.1)
     return "unknown", None
 
 
 def _successor_is_finalized(
+    predecessor: process.OwnedProcess,
     successor: process.OwnedProcess,
     *,
-    listeners: list[int],
     runtime: RuntimeSnapshot | None,
     expected: RuntimeSnapshot,
     child_pid: int,
 ) -> bool:
-    """Prove one captured successor as the sole finalized product listener."""
+    """Prove predecessor exit and one live finalized successor generation."""
     return (
-        listeners == [child_pid]
+        not process.owned_process_alive(predecessor)
         and process.owned_process_alive(successor)
         and _runtime_matches(runtime, expected, child_pid)
     )
 
 
-def _listener_pids(
+def _source_listener_is_admitted(
     ctx: runtime_context.RuntimeContext,
-    source_listener: process.OwnedProcess | None,
-) -> list[int]:
-    if source_listener is None:
-        return process.verified_proxy_listener_pids(ctx)
+    source_listener: process.OwnedProcess,
+) -> bool:
     if process.owned_process_alive(source_listener) and process.listener_pids(ctx.port) == [
         source_listener.pid
     ]:
-        return [source_listener.pid]
-    return []
+        return True
+    return False
 
 
 def _runtime_matches(
