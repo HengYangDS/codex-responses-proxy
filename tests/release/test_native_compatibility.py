@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import queue
 import subprocess
 import threading
 from collections.abc import Mapping
@@ -15,6 +16,8 @@ import pytest
 
 from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import artifact
+from codex_responses_proxy.lifecycle import control as lifecycle_control
+from codex_responses_proxy.lifecycle import generation as payload_generation
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
@@ -80,42 +83,6 @@ def _materialize_native_bundle(candidate: artifact.VerifiedArtifact, output: Pat
     )
     assert executable.is_file()
     return output
-
-
-def _supports_stable_prewarm(executable: Path) -> bool:
-    """Return whether one native release implements the stable private probe."""
-
-    environment = os.environ.copy()
-    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-    environment.pop("PYTHONHOME", None)
-    environment.pop("PYTHONPATH", None)
-    completed = subprocess.run(
-        [str(executable), "--internal-prewarm"],
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        check=False,
-        env=environment,
-        timeout=120,
-    )
-    return completed.returncode == 0
-
-
-def _supports_explicit_rollback(executable: Path) -> bool:
-    """Return whether one installed release owns retained-generation finalization."""
-
-    environment = os.environ.copy()
-    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-    environment.pop("PYTHONHOME", None)
-    environment.pop("PYTHONPATH", None)
-    completed = subprocess.run(
-        [str(executable), "rollback", "--help"],
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        check=False,
-        env=environment,
-        timeout=120,
-    )
-    return completed.returncode == 0
 
 
 class TestPublishedPredecessorCompatibility:
@@ -345,56 +312,41 @@ class TestPublishedPredecessorCompatibility:
                 "60",
                 "--json",
             )
-            if _supports_stable_prewarm(previous_executable):
-                upgrade_driver = previous_executable
-            else:
-                rejected = run_command(
-                    previous_executable,
-                    environment,
-                    *upgrade_arguments,
-                    expected=2,
-                )
-                assert rejected == {
-                    "error": {
-                        "code": "lifecycle_error",
-                        "message": "native bundle prewarm failed",
-                        "next": "codex-responses-proxy doctor",
-                    }
-                }
-                assert not payload_state.transaction_root(ctx).exists()
-                retained = run_command(
-                    previous_executable,
-                    environment,
-                    "status",
-                    "--port",
-                    str(port),
-                    "--json",
-                )
-                assert retained["release"] == previous_version
-                assert (
-                    run_command(
-                        previous_executable,
-                        environment,
-                        "doctor",
-                        "--port",
-                        str(port),
-                        "--json",
-                    )["ok"]
-                    is True
-                )
-                upgrade_driver = current_executable
-            if not _supports_explicit_rollback(previous_executable):
-                upgrade_driver = current_executable
+            upgrade_driver = (
+                previous_executable
+                if payload_generation.read(ctx) is not None
+                else current_executable
+            )
 
-            upgraded = run_command(
-                upgrade_driver,
-                environment,
-                *upgrade_arguments,
+            upgrade_result: dict[str, object] = {}
+            upgrade_failure: queue.SimpleQueue[Exception] = queue.SimpleQueue()
+
+            def upgrade() -> None:
+                try:
+                    upgrade_result.update(
+                        run_command(upgrade_driver, environment, *upgrade_arguments)
+                    )
+                except Exception as exc:
+                    upgrade_failure.put(exc)
+
+            upgrade_thread = threading.Thread(target=upgrade, daemon=True)
+            upgrade_thread.start()
+            assert wait_until(
+                lambda: (
+                    isinstance(runtime := lifecycle_control.read_runtime(ctx), dict)
+                    and runtime.get("draining") is True
+                ),
+                20,
             )
             release.set()
+            upgrade_thread.join(timeout=90)
             stream_holder.join(timeout=60)
             for holder in holders:
                 holder.join(timeout=60)
+            assert not upgrade_thread.is_alive()
+            if not upgrade_failure.empty():
+                raise upgrade_failure.get()
+            upgraded = upgrade_result
             assert not stream_holder.is_alive()
             assert all(not holder.is_alive() for holder in holders)
             assert held.get("stream") == (
@@ -525,4 +477,5 @@ class TestPublishedPredecessorCompatibility:
             assert removed["stopped"] in {0, 1}
             assert not install.exists()
             assert not payload_state.transaction_root(ctx).exists()
+            assert process.listener_pids(port) == []
             assert process.listener_pids(runtime_config.DEFAULT_PORT) == canonical_before

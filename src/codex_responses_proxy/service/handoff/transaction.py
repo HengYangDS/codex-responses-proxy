@@ -15,6 +15,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from dataclasses import replace
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import TypedDict
@@ -48,7 +49,7 @@ class PreparedHandoff(TypedDict):
 
 HANDOFF_READY_TIMEOUT_SECONDS = 30.0
 HANDOFF_DEFAULT_LEASE_SECONDS = 30.0
-REPEATABLE_HANDOFF_CAPABILITY = "repeatable"
+SELECTED_GENERATION_HANDOFF_CAPABILITY = "selected-generation-handoff"
 
 _IDENTITY_FIELDS = (
     "transaction_id",
@@ -68,6 +69,7 @@ class Context:
     """Proxy-owned primitives needed by the handoff transaction."""
 
     executable: Path
+    successor_executable: Callable[[], Path]
     release_version: Callable[[], str]
     serving_payload_sha256: Callable[[], str | None]
     release_receipt_sha256: Callable[[], str | None]
@@ -144,7 +146,7 @@ def runtime_identity(context: Context) -> dict[str, object]:
         return {
             "pid": os.getpid(),
             "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
-            "handoff_capabilities": [REPEATABLE_HANDOFF_CAPABILITY],
+            "handoff_capabilities": [SELECTED_GENERATION_HANDOFF_CAPABILITY],
             "handoff_transaction_id": _HANDOFF_SESSION.get("transaction_id"),
             "handoff_state": state,
             "payload_manifest_sha256": context.payload_manifest_sha256(),
@@ -271,10 +273,11 @@ def prepare(
         )
     child = None
     try:
+        child_context = replace(context, executable=context.successor_executable())
         child = spawn_child(
             server.socket,
             expected,
-            context,
+            child_context,
             startup_timeout_seconds=timeout_seconds,
         )
         child_expected = {**expected, "pid": child.runtime_pid}

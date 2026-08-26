@@ -19,7 +19,6 @@ from codex_responses_proxy.service import inventory
 OWNED_PAYLOAD_METADATA = (
     inventory.MANIFEST_FILENAME,
     inventory.RELEASE_RECEIPT_FILENAME,
-    inventory.INSTALLED_RELEASE_STATE_FILENAME,
     inventory.RUNTIME_CONFIG_FILENAME,
 )
 

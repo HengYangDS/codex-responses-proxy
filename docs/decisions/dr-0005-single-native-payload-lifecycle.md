@@ -22,13 +22,15 @@ link, and records that exact path in the existing installed-state record. An
 incompatible installation or foreign command target fails before mutation and
 must be removed explicitly.
 
-Rollback and recovery use exact current manifests, receipts, preimages, command
-link ownership, and runtime identities. Finalization owns one idempotent
-generation-promotion transition: verify, materialize, atomically select, retire
-superseded generations, and prove the singleton terminal state. The active
-transaction remains the recovery authority throughout every intermediate
-state; the retained store never becomes a parallel state machine. The first
-release that adds retained-generation finalization is a bounded bootstrap
+Rollback and recovery use exact manifests, receipts, command-link ownership,
+runtime identities, and one selector under the stable control root. The
+selector alone names the active immutable generation and its optional sole
+predecessor; installed state and the command projection stay outside both.
+Finalization atomically advances that selector, retires superseded generations,
+and proves the closed terminal state. The active transaction remains the
+recovery authority throughout every intermediate state. Its payload snapshot
+is temporary bootstrap or recovery evidence, never a second retained store.
+The first release that introduces immutable generations is a bounded bootstrap
 exception: its verified executable drives that one upgrade because the older
 installed executable cannot own semantics it never shipped. Source-level
 compatibility shims, forwarding facades, wrappers, shell-profile mutation,

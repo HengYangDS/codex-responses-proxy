@@ -10,6 +10,7 @@ from pathlib import Path
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import state as payload_state
@@ -43,6 +44,7 @@ def read_runtime(ctx: runtime_context.RuntimeContext) -> dict[str, object] | Non
 
 def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
     """Return non-secret runtime and transaction evidence without mutation."""
+    active = generation.selected_context(ctx)
     installed_error: str | None = None
     try:
         installed = payload_state.read_installed(ctx)
@@ -50,17 +52,17 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         installed = None
         installed_error = str(exc)
     try:
-        integrity_ok, integrity_detail = projection.verify_payload_manifest(ctx)
+        integrity_ok, integrity_detail = projection.verify_payload_manifest(active)
     except errors.InstallError as exc:
         integrity_ok, integrity_detail = False, str(exc)
     try:
-        service = adapter().status(ctx)
+        service = adapter().status(active)
     except (OSError, errors.InstallError, errors.UnsupportedPlatformError):
         service = "unknown"
-    listeners = process.verified_proxy_listener_pids(ctx)
-    runtime = read_runtime(ctx)
+    listeners = process.verified_proxy_listener_pids(active)
+    runtime = read_runtime(active)
     pid = runtime.get("pid") if isinstance(runtime, dict) else None
-    committed = identity.committed_payload(Path(ctx.executable)) if integrity_ok else None
+    committed = identity.committed_payload(Path(active.executable)) if integrity_ok else None
     runtime_matches_payload = (
         isinstance(runtime, dict)
         and committed is not None
@@ -73,9 +75,9 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
     installed_command = (
         Path(payload_state.require_command(installed))
         if installed is not None
-        else Path(ctx.command)
+        else Path(active.command)
     )
-    command_state = command.status(installed_command, Path(ctx.executable))
+    command_state = command.status(installed_command, Path(active.executable))
     payload_transaction = payload_state.status(ctx)
     rollback_status = (
         payload_rollback.RetainedRollbackStatus(
@@ -108,7 +110,7 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         detail = str(payload_transaction["detail"])
     elif rollback_status.state == "invalid":
         lifecycle_state = "invalid"
-        detail = rollback_status.detail or "retained rollback generation is invalid"
+        detail = rollback_status.detail or "selected rollback predecessor is invalid"
     elif absent:
         lifecycle_state = "not_installed"
         integrity_detail = "not installed"
@@ -125,7 +127,8 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         detail = "healthy"
     elif isinstance(payload_transaction, dict) and payload_transaction.get("state") in {
         "prepared",
-        "committed",
+        "materialized",
+        "activated",
         "recovery_required",
     }:
         lifecycle_state = "recovery_required"
@@ -187,7 +190,7 @@ def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -
         raise errors.InstallError(
             f"payload integrity check failed before handoff reload: {integrity_detail}"
         )
-    expected = handoff.expected_metadata(ctx.install_dir)
+    expected = handoff.expected_metadata(ctx.payload_dir)
     lease_seconds = max(1.0, timeout_seconds)
     source_listener = handoff.capture_source_listener(ctx, runtime)
     try:

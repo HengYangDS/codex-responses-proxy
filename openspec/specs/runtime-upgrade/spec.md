@@ -608,22 +608,25 @@ host migration.
 ### Requirement: Successful upgrade retains one exact predecessor
 
 A successful upgrade SHALL retain exactly one verified predecessor generation
-after the successor has proved accepting runtime identity. The retained
-generation SHALL contain the complete predecessor payload, installed state,
-command projection, and the exact successor identity for which that
-predecessor is valid. A subsequent successful upgrade SHALL atomically replace
-the older retained predecessor. Fresh installation SHALL retain none.
+after the successor has proved accepting runtime identity. One atomic selector
+under the stable control root SHALL be the sole authority naming the active
+immutable generation and its optional predecessor. Installed state and command
+projection SHALL remain stable control surfaces outside both generations. A
+transaction snapshot MAY exist only as temporary bootstrap or recovery
+evidence and SHALL NOT become another retained product store. A subsequent
+successful upgrade SHALL replace the older predecessor in the selector. Fresh
+installation SHALL select no predecessor.
 
 #### Scenario: Upgrade finalizes successfully
 
 - **WHEN** the successor payload, command, native supervisor, and listener have
   proved the committed successor identity
-- **THEN** finalization promotes the transaction's verified predecessor into
-  the sole retained rollback generation
-- **AND** removes the active transaction without copying live successor bytes
-  into that generation.
+- **THEN** finalization atomically selects the successor as active and the
+  displaced active generation as its sole predecessor
+- **AND** removes the active transaction without copying either selected
+  generation into a parallel rollback store.
 
-#### Scenario: Finalization is interrupted between promotion phases
+#### Scenario: Finalization is interrupted around selection
 
 - **WHEN** finalization stops after the predecessor generation is materialized
   or after its selector is committed
@@ -642,15 +645,17 @@ the older retained predecessor. Fresh installation SHALL retain none.
 
 - **WHEN** the published predecessor predates retained-generation finalization
 - **THEN** the verified successor executable drives that one upgrade
+- **AND** preserves the predecessor payload bytes while deterministically
+  projecting its secret-free runtime carrier to the immutable generation root
 - **AND** establishes the current carrier without synthesizing historical state
 - **AND** later adjacent upgrades return to installed-release ownership.
 
 ### Requirement: Explicit rollback is one reverse lifecycle transaction
 
-Explicit rollback SHALL restore only the retained predecessor bound to the
-current finalized successor. It SHALL verify current payload and installed
-state, retained payload and command snapshots, and their generation binding
-before mutation. It SHALL rebind the native service and complete a bounded
+Explicit rollback SHALL select only the immutable predecessor bound to the
+current finalized successor. It SHALL verify both selected payload identities,
+current installed state, command ownership, and their selector binding before
+mutation. It SHALL rebind the native service and complete a bounded
 listener handoff to the predecessor identity before reporting success. The
 returned predecessor PID SHALL be the only verified product listener when
 success is reported; finalized health alone SHALL NOT establish completion.
@@ -677,7 +682,8 @@ success is reported; finalized health alone SHALL NOT establish completion.
 - **WHEN** any carrier shape, byte, mode, digest, generation binding, current
   installed identity, service identity, or listener identity cannot be proved
 - **THEN** rollback fails closed before mutation
-- **AND** preserves current and retained generations for inspection.
+- **AND** preserves the selected active and predecessor generations for
+  inspection.
 
 #### Scenario: Finalized health precedes listener convergence
 
@@ -705,23 +711,25 @@ success is reported; finalized health alone SHALL NOT establish completion.
 ### Requirement: Repeated lifecycle transitions use declared runtime capability
 
 The deployment controller SHALL select one strategy from verified runtime
-identity and explicit handoff capability. An idle runtime or a finalized
-runtime declaring `repeatable` MAY use shared-listener handoff. A complete,
-verified finalized runtime without that capability SHALL use a bounded native
-process-generation replacement. An incomplete or inconsistent runtime SHALL be
-unsupported and SHALL NOT be mutated.
+identity and explicit handoff capability. Only a runtime declaring
+`selected-generation-handoff` MAY use shared-listener handoff because that
+capability proves the predecessor resolves and launches the selector-bound
+candidate payload rather than its own executable root. A complete, verified
+runtime without that capability SHALL use a bounded native process-generation
+replacement. An incomplete or inconsistent runtime SHALL be unsupported and
+SHALL NOT be mutated.
 
-#### Scenario: Runtime declares repeatable handoff
+#### Scenario: Runtime declares selected-generation handoff
 
-- **WHEN** a finalized runtime projects the `repeatable` handoff capability
+- **WHEN** a runtime projects the `selected-generation-handoff` capability
 - **THEN** the next upgrade or rollback may use the shared-listener handoff
 - **AND** successor acceptance still requires the exact payload and process
   identity.
 
-#### Scenario: Verified predecessor lacks repeatable handoff
+#### Scenario: Verified predecessor lacks selected-generation handoff
 
-- **WHEN** a finalized published predecessor has complete identity but does not
-  declare the `repeatable` capability
+- **WHEN** a published predecessor has complete identity but does not declare
+  the `selected-generation-handoff` capability
 - **THEN** deployment captures its exact listener process generation before
   writing candidate state
 - **AND** rebinds native supervision, retires only that generation, and proves

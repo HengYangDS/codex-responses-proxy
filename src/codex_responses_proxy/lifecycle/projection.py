@@ -20,12 +20,12 @@ PAYLOAD_MANIFEST_SCHEMA_VERSION = 2
 
 def payload_manifest_path(ctx: runtime_context.RuntimeContext) -> Path:
     """Return the installed payload manifest path."""
-    return Path(ctx.install_dir, inventory.MANIFEST_FILENAME)
+    return Path(ctx.payload_dir, inventory.MANIFEST_FILENAME)
 
 
 def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str, ...]:
     """Delete only bytes proven by the current installed manifest."""
-    install = Path(ctx.install_dir)
+    install = Path(ctx.payload_dir)
     manifest_path = payload_manifest_path(ctx)
     if manifest_path.is_symlink():
         raise errors.InstallError("installed payload manifest is a symlink")
@@ -140,10 +140,10 @@ def _write_payload_manifest_for_fixture(
     release_receipt_sha256: str | None = None,
 ) -> Path:
     """Write the production manifest shape for a current test payload."""
-    install = Path(ctx.install_dir)
+    install = Path(ctx.payload_dir)
     windows = (install / inventory.WINDOWS_EXECUTABLE).is_file()
     paths = sorted(inventory.required_runtime_files(windows=windows))
-    digests = {relative: digest.sha256_file(Path(ctx.install_dir, relative)) for relative in paths}
+    digests = {relative: digest.sha256_file(Path(ctx.payload_dir, relative)) for relative in paths}
     manifest: JsonObject = {
         "schema_version": PAYLOAD_MANIFEST_SCHEMA_VERSION,
         "release": "0.0.0",
@@ -206,7 +206,7 @@ def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, 
         if not isinstance(relative, str) or not isinstance(expected, str) or len(expected) != 64:
             return False, f"invalid digest: {relative}"
         try:
-            actual = digest.sha256_file(Path(ctx.install_dir, *relative.split("/")))
+            actual = digest.sha256_file(Path(ctx.payload_dir, *relative.split("/")))
         except OSError:
             return False, f"installed payload file is unavailable: {relative}"
         if actual != expected:
@@ -225,7 +225,7 @@ def verify_payload_manifest(ctx: runtime_context.RuntimeContext) -> tuple[bool, 
             return False, "release receipt digest is invalid"
         try:
             actual_receipt = digest.sha256_file(
-                Path(ctx.install_dir, inventory.RELEASE_RECEIPT_FILENAME)
+                Path(ctx.payload_dir, inventory.RELEASE_RECEIPT_FILENAME)
             )
         except OSError:
             return False, "installed release receipt is unavailable"

@@ -327,7 +327,7 @@ jobs:
         run: uv run --locked --no-sync python -m pytest -q tests/release/test_native_lifecycle.py
   release-compatibility:
     name: Published release compatibility (${{ matrix.platform }})
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
     needs: python-matrix
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30

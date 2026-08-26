@@ -193,13 +193,15 @@ ownership from a later shell environment. Installation finalizes only after one
 listener proves the expected release, payload digest, manifest digest, receipt
 digest, PID, and accepting state.
 
-Finalization then performs one idempotent generation-promotion transition. It
-verifies and materializes the displaced predecessor, atomically selects it,
-removes only superseded generations, and proves the resulting singleton. The
-selector is committed before old-generation cleanup, so every interruption
-retains either the old authority or a recoverable new authority. Until the
-transaction closes, it owns rollback status and recovery; the retained store is
-not a parallel state machine.
+Finalization performs one idempotent selector transition. The stable control
+root contains one atomic selector naming the active immutable generation and,
+after an upgrade, its sole predecessor. Installed state and the user-command
+projection remain stable control surfaces; they are not copied into a second
+rollback store. A transaction may carry a temporary snapshot only to bootstrap
+an older single-directory installation or recover an interrupted transition.
+The selector is committed before obsolete-generation cleanup, so interruption
+leaves either the prior selection or a recoverable new selection. Until the
+transaction closes, it alone owns recovery and rollback status.
 
 The release that first introduces this transition must drive its own one-time
 upgrade from an older installed release: the predecessor cannot execute

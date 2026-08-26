@@ -16,34 +16,14 @@ from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import inventory
 
 TRANSACTION_JOURNAL_FILENAME = "transaction.json"
-RETAINED_ROLLBACK_POINTER_FILENAME = "current.json"
 INSTALLED_RELEASE_STATE_SCHEMA = 1
-TRANSACTION_JOURNAL_SCHEMA = 1
+TRANSACTION_JOURNAL_SCHEMA = 3
 _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
 
 def transaction_root(ctx: runtime_context.RuntimeContext) -> Path:
     """Return the sibling directory used for payload transactions."""
     return Path(f"{ctx.install_dir}.transaction")
-
-
-def retained_rollback_root(ctx: runtime_context.RuntimeContext) -> Path:
-    """Return the sibling store for the one retained predecessor generation."""
-    return Path(f"{ctx.install_dir}.rollback")
-
-
-def retained_rollback_pointer(ctx: runtime_context.RuntimeContext) -> Path:
-    """Return the atomic selector for the current retained generation."""
-    return retained_rollback_root(ctx) / RETAINED_ROLLBACK_POINTER_FILENAME
-
-
-def retained_generations(ctx: runtime_context.RuntimeContext) -> tuple[Path, ...]:
-    """Return every direct retained-generation entry without following links."""
-    root = retained_rollback_root(ctx)
-    generations = root / "generations"
-    if root.is_symlink() or generations.is_symlink() or not generations.is_dir():
-        return ()
-    return tuple(sorted(generations.iterdir()))
 
 
 def installed_path(ctx: runtime_context.RuntimeContext) -> Path:
@@ -65,7 +45,16 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object] | None:
         journal = read_journal(ctx)
     except errors.InstallError as exc:
         return {"state": "invalid", "detail": str(exc)}
-    allowed = ("transaction_id", "version", "receipt_sha256", "state", "fresh")
+    allowed = (
+        "transaction_id",
+        "version",
+        "receipt_sha256",
+        "state",
+        "fresh",
+        "previous_generation",
+        "previous_predecessor",
+        "phase",
+    )
     return {key: journal[key] for key in allowed if key in journal}
 
 
@@ -105,26 +94,53 @@ def read_journal(ctx: runtime_context.RuntimeContext) -> JsonObject:
         "receipt_sha256",
         "fresh",
     }
-    allowed = required | {"reason"}
+    allowed = required | {"previous_generation", "previous_predecessor", "phase", "reason"}
     transaction_id = journal.get("transaction_id")
     version = journal.get("version")
     receipt_sha256 = journal.get("receipt_sha256")
     fresh = journal.get("fresh")
     reason = journal.get("reason")
+    previous_generation = journal.get("previous_generation")
+    previous_predecessor = journal.get("previous_predecessor")
+    phase = journal.get("phase")
     if (
         not required.issubset(journal)
         or set(journal) - allowed
-        or journal.get("state") not in {"prepared", "committed", "recovery_required"}
+        or journal.get("state")
+        not in {"prepared", "materialized", "activated", "recovery_required"}
         or not isinstance(transaction_id, str)
-        or not transaction_id
+        or len(transaction_id) != 32
+        or any(character not in "0123456789abcdef" for character in transaction_id)
         or not isinstance(version, str)
         or _STRICT_VERSION.fullmatch(version) is None
         or not isinstance(receipt_sha256, str)
         or len(receipt_sha256) != 64
         or any(character not in "0123456789abcdef" for character in receipt_sha256)
         or type(fresh) is not bool
+        or (
+            previous_generation is not None
+            and (
+                not isinstance(previous_generation, str)
+                or len(previous_generation) != 32
+                or any(character not in "0123456789abcdef" for character in previous_generation)
+            )
+        )
+        or (
+            previous_predecessor is not None
+            and (
+                not isinstance(previous_predecessor, str)
+                or len(previous_predecessor) != 32
+                or any(character not in "0123456789abcdef" for character in previous_predecessor)
+            )
+        )
+        or (previous_predecessor is not None and previous_generation is None)
         or (reason is not None and (not isinstance(reason, str) or not reason))
         or (journal.get("state") == "recovery_required") != (reason is not None)
+        or (
+            (journal.get("state") == "recovery_required")
+            != (phase in {"materialized", "activated"})
+        )
+        or (journal.get("state") != "recovery_required" and phase is not None)
     ):
         raise errors.InstallError("payload transaction journal fields are invalid")
     return journal
@@ -138,6 +154,9 @@ def write_journal(
     receipt_sha256: str,
     state: str,
     fresh: bool,
+    previous_generation: str | None = None,
+    previous_predecessor: str | None = None,
+    phase: str | None = None,
     reason: str | None = None,
 ) -> None:
     """Write one canonical secret-free transaction journal."""
@@ -151,6 +170,12 @@ def write_journal(
     }
     if reason is not None:
         journal["reason"] = reason
+    if previous_generation is not None:
+        journal["previous_generation"] = previous_generation
+    if previous_predecessor is not None:
+        journal["previous_predecessor"] = previous_predecessor
+    if phase is not None:
+        journal["phase"] = phase
     owned_files.write_bytes(journal_path(ctx), digest.canonical_json(journal), mode=0o600)
 
 

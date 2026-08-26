@@ -23,6 +23,7 @@ from typing import cast
 from typing import override
 
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle.supervision import process
@@ -74,7 +75,7 @@ def matching_health(child_or_pid, expected: dict[str, object], **overrides) -> d
     health = {
         "pid": pid,
         "handoff_protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
-        "handoff_capabilities": ["repeatable"],
+        "handoff_capabilities": ["selected-generation-handoff"],
         "handoff_transaction_id": expected["transaction_id"],
         "release": expected["release"],
         "serving_payload_sha256": expected["serving_payload_sha256"],
@@ -143,7 +144,7 @@ def idle_runtime(**overrides) -> dict[str, object]:
     runtime: dict[str, object] = {
         "pid": 999,
         "handoff_protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
-        "handoff_capabilities": ["repeatable"],
+        "handoff_capabilities": ["selected-generation-handoff"],
         "handoff_transaction_id": None,
         "handoff_state": "idle",
         "release": "1.0.24",
@@ -386,9 +387,10 @@ class ScriptedUpstream:
 def write_installed_payload(
     root: Path, *, release: str, port: int, upstream_url: str
 ) -> runtime_context.RuntimeContext:
-    """Build an installed-like temporary payload without touching the source tree."""
-    ctx = install_context(root)
-    install_dir = Path(ctx.install_dir)
+    """Build one selector-bound temporary generation without touching source."""
+    control = install_context(root)
+    ctx = generation.context(control, "0" * 32)
+    install_dir = Path(ctx.payload_dir)
     source = Path(os.environ["CODEX_RESPONSES_PROXY_EXECUTABLE"])
     target = Path(ctx.executable)
     # Preserve executable modes, not host-local extended metadata. On macOS,
@@ -410,6 +412,7 @@ def write_installed_payload(
         release_receipt_sha256=hashlib.sha256(receipt.read_bytes()).hexdigest(),
     )
     runtime_spec.write(ctx)
+    generation.select(control, active="0" * 32, predecessor=None)
     # Exercise the same installed-candidate admission as the product. A copied
     # frozen macOS payload can incur its one-time trust-cache startup before
     # any application log exists; paying that bounded cost here keeps the
@@ -464,7 +467,7 @@ def start_real_proxy(
     ):
         raise ValueError("real proxy tests require an owned loopback HTTP upstream")
 
-    provider_manifest = Path(ctx.install_dir) / inventory.PROVIDER_MANIFEST
+    provider_manifest = Path(ctx.payload_dir) / inventory.PROVIDER_MANIFEST
     expected_manifest = (
         f'version = 1\n\n[providers.dmxapi]\nbase_url = "{upstream_url}"\npolicy = "dmxapi"\n'
     )
@@ -527,4 +530,9 @@ class HandoffFixture:
         runtime_state_module.reset_for_test()
         self.p.reset_session_to_idle()
         self.context = entrypoint_module._handoff_context()
+        object.__setattr__(
+            self.context,
+            "successor_executable",
+            lambda: self.context.executable,
+        )
         self.installation = runtime_state_module

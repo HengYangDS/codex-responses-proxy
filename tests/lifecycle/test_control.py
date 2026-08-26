@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import ssl
 import tempfile
 import threading
@@ -17,6 +18,7 @@ import pytest
 from codex_responses_proxy import errors
 from codex_responses_proxy.cli import application
 from codex_responses_proxy.lifecycle import control
+from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import install
 from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import state as payload_state
@@ -152,6 +154,40 @@ class TestControllerLifecycle:
             )
             with subtests.test(resolution=resolution), pytest.raises(expected_error):
                 control.reload(ctx)
+
+    def test_reload_reads_handoff_identity_from_selected_generation(self, tmp_path, *, mocker):
+        stable = install_context(tmp_path)
+        Path(stable.install_dir).mkdir(parents=True)
+        ctx = generation.context(stable, "a" * 32)
+        runtime = {"pid": 7}
+        expected = {"transaction_id": "tx"}
+        mocker.patch.object(control.payload_state, "read_installed", return_value={})
+        mocker.patch.object(control.payload_state, "status", return_value=None)
+        mocker.patch.object(control, "read_runtime", return_value=runtime)
+        mocker.patch.object(control.handoff, "runtime_supports_handoff", return_value=True)
+        mocker.patch.object(
+            control.projection,
+            "verify_payload_manifest",
+            return_value=(True, "ok"),
+        )
+        expected_metadata = mocker.patch.object(
+            control.handoff,
+            "expected_metadata",
+            return_value=expected,
+        )
+        mocker.patch.object(
+            control.handoff,
+            "capture_source_listener",
+            return_value=control.process.OwnedProcess(7, ctx.executable, 1.0),
+        )
+        mocker.patch.object(
+            control.handoff,
+            "request",
+            return_value={"old_pid": 7, "child_pid": 8},
+        )
+
+        assert control.reload(ctx)["new_pid"] == 8
+        expected_metadata.assert_called_once_with(ctx.payload_dir)
 
     def test_status_and_reload_bound_unobservable_failures(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -365,6 +401,7 @@ class TestControllerLifecycle:
         install_payload(ctx, "1.2.2", mocker=mocker)
         successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         successor.commit_projection()
+        successor.activate()
         successor.finalize({"pid": 2})
         retained = payload_rollback.load_retained(ctx)
         self._healthy_status_dependencies(ctx, mocker=mocker)
@@ -377,14 +414,14 @@ class TestControllerLifecycle:
             "to_release": "1.2.2",
         }
 
-        (retained.root / payload_rollback.RETAINED_BINDING_FILENAME).write_bytes(b"invalid")
+        Path(retained.root, "bin", "codex-responses-proxy").write_bytes(b"invalid")
 
         invalid = control.status(ctx)
 
         assert invalid["state"] == "invalid"
         assert invalid["rollback"] == {
             "state": "invalid",
-            "detail": "retained rollback generation is unavailable or invalid",
+            "detail": "retained rollback predecessor generation identity is invalid",
         }
 
     def test_status_defers_retained_authority_to_an_active_transaction(
@@ -394,11 +431,10 @@ class TestControllerLifecycle:
         install_payload(ctx, "1.2.2", mocker=mocker)
         middle = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         middle.commit_projection()
+        middle.activate()
         middle.finalize({"pid": 2})
-        retained = payload_rollback.load_retained(ctx)
         latest = begin_transaction(ctx, released_artifact("1.2.4"), mocker=mocker)
         latest.commit_projection()
-        (retained.root / payload_rollback.RETAINED_BINDING_FILENAME).write_bytes(b"stale")
         self._healthy_status_dependencies(ctx, mocker=mocker)
 
         result = control.status(ctx)
@@ -416,23 +452,64 @@ class TestControllerLifecycle:
         install_payload(ctx, "1.2.2", mocker=mocker)
         successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         successor.commit_projection()
+        successor.activate()
         successor.finalize({"pid": 2})
-        retained_root = payload_state.retained_rollback_root(ctx)
+        selected = generation.read(ctx)
+        assert selected is not None
+        assert selected.predecessor is not None
+        retained_root = generation.path(ctx, selected.predecessor)
         assert retained_root.is_dir()
+        active = generation.selected_context(ctx)
         service = mocker.Mock()
         service.status.return_value = "absent"
-        mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
+        service.terminate_runtime.side_effect = [1, 1]
+        mocker.patch.object(uninstall.runtime_context, "create", return_value=active)
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
 
         result = uninstall.uninstall_product(purge=True)
 
         assert result["state"] == "purged"
+        assert result["stopped"] == 2
+        assert {
+            Path(call.args[0].payload_dir).name for call in service.terminate_runtime.call_args_list
+        } == {selected.active, selected.predecessor}
         assert not retained_root.exists()
+        assert not Path(ctx.install_dir).exists()
+
+    def test_purge_stops_and_removes_every_owned_generation(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Purge closes orphan generation processes and bytes before reporting success."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.activate()
+        successor.finalize({"pid": 2})
+        orphan = "f" * 32
+        orphan_root = generation.path(ctx, orphan)
+        active = generation.selected_context(ctx)
+        shutil.copytree(active.payload_dir, orphan_root)
+        service = mocker.Mock()
+        service.status.return_value = "absent"
+        service.terminate_runtime.return_value = 1
+        mocker.patch.object(uninstall.runtime_context, "create", return_value=active)
+        mocker.patch.object(uninstall, "adapter", return_value=service)
+        mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
+
+        result = uninstall.uninstall_product(purge=True)
+
+        assert result["state"] == "purged"
+        stopped = {
+            Path(call.args[0].payload_dir).name for call in service.terminate_runtime.call_args_list
+        }
+        assert orphan in stopped
+        assert not Path(ctx.install_dir).exists()
 
     @staticmethod
     def _healthy_status_dependencies(ctx, *, mocker) -> None:
-        runtime = identity.committed_payload(Path(ctx.executable))
+        runtime = identity.committed_payload(Path(generation.selected_context(ctx).executable))
         assert runtime is not None
         runtime_evidence = {
             "pid": 321,
@@ -449,51 +526,45 @@ class TestControllerLifecycle:
 
     def test_process_teardown_fails_closed_when_exit_is_unproved(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
-        mocker.patch.object(
-            uninstall.process,
-            "pids_naming_executable",
-            side_effect=[[7], []],
+        service = mocker.Mock()
+        service.terminate_runtime.side_effect = errors.InstallError(
+            "verified runtime process 7 did not exit"
         )
-        mocker.patch.object(uninstall.process, "terminate_executable", return_value=False)
 
         with pytest.raises(errors.InstallError, match="did not exit"):
-            uninstall._stop_proxy(ctx)
-        mocker.patch.object(
-            uninstall.process,
-            "pids_naming_executable",
-            side_effect=[[], [8]],
-        )
-        with pytest.raises(errors.InstallError, match="runtime processes remain"):
-            uninstall._stop_proxy(ctx)
-
-        mocker.patch.object(
-            uninstall.process,
-            "pids_naming_executable",
-            side_effect=[[7, 8], []],
-        )
-        mocker.patch.object(uninstall.process, "terminate_executable", return_value=True)
-        assert uninstall._stop_proxy(ctx) == 2
+            uninstall._stop_proxy(service, ctx)
+        service.terminate_runtime.side_effect = None
+        service.terminate_runtime.return_value = 0
+        service.terminate_runtime.return_value = 2
+        assert uninstall._stop_proxy(service, ctx) == 2
 
     def test_process_teardown_includes_a_replaced_non_listener_generation(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
-        runtime_processes = mocker.patch.object(
-            uninstall.process,
-            "pids_naming_executable",
-            side_effect=[[7, 8], []],
-        )
-        terminate = mocker.patch.object(
-            uninstall.process, "terminate_executable", return_value=True
-        )
+        service = mocker.Mock()
+        service.terminate_runtime.return_value = 2
 
-        assert uninstall._stop_proxy(ctx) == 2
-        assert [call.args[0] for call in terminate.call_args_list] == [7, 8]
-        assert runtime_processes.call_count == 2
+        assert uninstall._stop_proxy(service, ctx) == 2
+        service.terminate_runtime.assert_called_once_with(ctx, timeout_seconds=5.0)
+
+    def test_process_teardown_visits_one_active_generation_once(self, tmp_path: Path, *, mocker):
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        selected = generation.read(ctx)
+        assert selected is not None
+        assert selected.predecessor is None
+        active = generation.selected_context(ctx)
+        service = mocker.Mock()
+        service.terminate_runtime.return_value = 1
+
+        assert uninstall._stop_proxy(service, active) == 1
+        service.terminate_runtime.assert_called_once_with(active, timeout_seconds=5.0)
 
     def test_uninstall_product_covers_success_and_fail_closed_boundaries(self, *, mocker):
         ctx = install_context(Path(tempfile.mkdtemp()))
         Path(ctx.install_dir).mkdir(parents=True)
         service = mocker.Mock()
         service.status.return_value = "absent"
+        service.terminate_runtime.return_value = 0
         mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
@@ -512,6 +583,7 @@ class TestControllerLifecycle:
             uninstall._remove_service(service, ctx)
 
         service.status.return_value = "absent"
+        Path(ctx.install_dir).mkdir(parents=True)
         mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
@@ -605,6 +677,7 @@ class TestControllerLifecycle:
         mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
         service = mocker.patch.object(uninstall, "adapter").return_value
         service.status.return_value = "absent"
+        service.terminate_runtime.return_value = 0
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
         remove = mocker.patch.object(uninstall.command, "remove", return_value=True)
 
@@ -659,8 +732,11 @@ class TestControllerLifecycle:
             ctx = install_context(root)
             transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
             transaction.commit_projection()
+            transaction.activate()
             transaction.finalize({"pid": 1})
-            committed = identity.committed_payload(Path(ctx.executable))
+            committed = identity.committed_payload(
+                Path(generation.selected_context(ctx).executable)
+            )
             assert committed is not None
             runtime = {
                 "pid": 1,
@@ -689,6 +765,7 @@ class TestControllerLifecycle:
         ctx = install_context(tmp_path)
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
         transaction.commit_projection()
+        transaction.activate()
         transaction.finalize({"pid": 1})
         foreign = {
             "pid": 1,
@@ -718,8 +795,9 @@ class TestControllerLifecycle:
         ctx = install_context(tmp_path)
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
         transaction.commit_projection()
+        transaction.activate()
         transaction.finalize({"pid": 1})
-        committed = identity.committed_payload(Path(ctx.executable))
+        committed = identity.committed_payload(Path(generation.selected_context(ctx).executable))
         assert committed is not None
         healthy = {
             "pid": 1,
@@ -747,6 +825,7 @@ class TestControllerLifecycle:
         ctx = install_context(tmp_path)
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
         transaction.commit_projection()
+        transaction.activate()
         transaction.finalize({"pid": 1})
         foreign = {
             "pid": 76541,
@@ -770,6 +849,7 @@ class TestControllerLifecycle:
             ctx = install_context(root)
             initial = begin_transaction(ctx, released_artifact("1.2.2"), mocker=mocker)
             initial.commit_projection()
+            initial.activate()
             initial.finalize({"pid": 1})
             transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
             transaction.commit_projection()

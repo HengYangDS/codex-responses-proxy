@@ -10,10 +10,9 @@ import "list"
 }
 
 #Conditions: {
-	releaseCompatibility: "github.event_name == 'push' && github.ref == 'refs/heads/dev'"
-	productProof:         "(github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')"
-	nativeProof:          #Conditions.productProof + " || github.ref_type == 'tag'"
-	productSHA:           "${{ github.event.pull_request.head.sha || github.sha }}"
+	productProof: "(github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')"
+	nativeProof:  #Conditions.productProof + " || github.ref_type == 'tag'"
+	productSHA:   "${{ github.event.pull_request.head.sha || github.sha }}"
 }
 
 #Toolchains: {
@@ -604,7 +603,7 @@ githubVerify: {
 		}
 		"release-compatibility": {
 			name:              "Published release compatibility (${{ matrix.platform }})"
-			if:                #Conditions.releaseCompatibility
+			if:                #Conditions.productProof
 			needs:             "python-matrix"
 			"runs-on":         "${{ matrix.runner }}"
 			"timeout-minutes": 30

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import ntpath
 import os
+import posixpath
 from dataclasses import dataclass
 from dataclasses import field
+from pathlib import PureWindowsPath
 
 from codex_responses_proxy import errors
 from codex_responses_proxy import product_identity
@@ -58,6 +61,12 @@ class RuntimeContext:
         """Return the supervision identity for this installed root."""
         return service_id(self.install_dir)
 
+    @property
+    def payload_dir(self) -> str:
+        """Return the payload root that owns this context's executable."""
+        path = ntpath if PureWindowsPath(self.executable).drive else posixpath
+        return path.dirname(path.dirname(self.executable))
+
 
 def validate_port(port: int) -> int:
     """Accept only a real TCP port before service rendering."""
@@ -84,7 +93,7 @@ def create(
 ) -> RuntimeContext:
     """Validate command inputs and project all product-owned paths once."""
     install_dir = config.data_dir()
-    return RuntimeContext(
+    projected = RuntimeContext(
         user_home=config.home_dir(),
         install_dir=install_dir,
         executable=executable
@@ -119,3 +128,6 @@ def create(
             maximum=10,
         ),
     )
+    from codex_responses_proxy.lifecycle import generation
+
+    return generation.selected_context(projected)

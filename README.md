@@ -161,12 +161,15 @@ status zero only when no owned service, listener, command, payload, or
 transaction exists. Existing but unverifiable state is never treated as
 absence and remains unchanged for diagnosis.
 
-A successful upgrade retains exactly one predecessor. Finalization is
-idempotent across interruption: the transaction owns generation verification,
-selection, cleanup, and recovery until the new retained generation is the sole
-selected authority. `status` therefore reports rollback as `deferred` while an
-installation transaction is active instead of interpreting a valid
-intermediate generation as independent corruption.
+A successful upgrade retains exactly one predecessor in the immutable
+generation store. One atomic selector under the stable control root is the
+sole authority for both the active generation and that predecessor; installed
+state and the user command remain stable control surfaces outside either
+generation. Finalization is idempotent across interruption, and the
+transaction owns temporary bootstrap evidence, selector reconciliation,
+cleanup, and recovery until it closes. `status` therefore reports rollback as
+`deferred` while a transaction is active instead of treating its intermediate
+state as an independent rollback authority.
 
 Expected failures are concise and actionable. Human mode does not emit a
 traceback, warning dump, serialized object, credential, request body, or private

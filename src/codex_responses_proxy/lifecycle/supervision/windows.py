@@ -71,7 +71,7 @@ def render_task_xml(ctx: runtime_spec.NativeServiceContext) -> bytes:
     execute = _element(actions, "Exec")
     _element(execute, "Command", ctx.executable)
     _element(execute, "Arguments", service_runtime.WATCHDOG_MODE)
-    _element(execute, "WorkingDirectory", ctx.install_dir)
+    _element(execute, "WorkingDirectory", ctx.payload_dir)
     ET.indent(root, space="  ")
     rendered = ET.tostring(root, encoding="utf-16", xml_declaration=True)
     assert isinstance(rendered, bytes)

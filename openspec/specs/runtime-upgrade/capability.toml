@@ -6,7 +6,7 @@ boundary_rules = [
   "Installation consumes one signed release source and never depends on Forge publication evidence.",
   "The old listener validates committed successor bytes before preparing a child.",
   "The child independently freezes and echoes the same successor identity.",
-  "Recovery restores only an exact retained rollback snapshot before a new release transaction begins.",
+  "Recovery uses only the selector-bound immutable generations and temporary evidence owned by the active transaction.",
   "An interrupted handoff requires exact prior-runtime, candidate, and rollback proof.",
 ]
 aliases = []

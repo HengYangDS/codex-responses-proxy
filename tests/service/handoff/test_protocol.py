@@ -58,7 +58,7 @@ class TestProtocolContract:
         )
         assert set(required).difference(status) == set()
         assert status["handoff_protocol_version"] == 2
-        assert status["handoff_capabilities"] == ["repeatable"]
+        assert status["handoff_capabilities"] == ["selected-generation-handoff"]
         assert status["pid"] == os.getpid()
 
     def test_runtime_status_reports_an_accepting_idle_state(self):

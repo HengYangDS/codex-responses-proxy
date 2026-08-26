@@ -262,7 +262,10 @@ class TestQualityPolicyContracts:
         dependency = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
             "deptry"
         ]
-        assert dependency == {"known_first_party": ["codex_responses_proxy"]}
+        assert dependency == {
+            "known_first_party": ["codex_responses_proxy"],
+            "package_module_name_map": {"pyinstaller": ["PyInstaller"]},
+        }
 
         dead_code = tomllib.loads(
             (ROOT / ".config/quality/native/vulture.toml").read_text(encoding="utf-8")

@@ -125,10 +125,10 @@ class TestPayloadValidation:
             payload_projection.manifest_serving_payload_sha256(invalid)
 
         ctx = install_context(Path(tempfile.mkdtemp()))
-        collision = Path(ctx.install_dir, inventory.PROVIDER_MANIFEST)
+        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+        collision = Path(transaction.context.payload_dir, inventory.PROVIDER_MANIFEST)
         collision.parent.mkdir(parents=True, exist_ok=True)
         collision.write_text("unowned", encoding="utf-8")
-        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
         with pytest.raises(errors.InstallError, match="candidate unowned collision"):
             transaction.commit_projection()
 
@@ -202,9 +202,11 @@ class TestPayloadValidation:
             "present": {inventory.PROVIDER_MANIFEST: {"sha256": "0" * 64, "mode": 0o644}},
             "owned": sorted({*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA}),
         }
-        (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
+        payload_rollback.legacy_snapshot_path(rollback).write_bytes(
+            payload_digest.canonical_json(snapshot)
+        )
         with pytest.raises(errors.InstallError, match=r"rollback.*unavailable"):
-            payload_rollback.restore_snapshot(ctx, rollback)
+            payload_rollback.restore_legacy_projection(ctx, rollback)
 
     def test_rollback_reports_symlink_and_read_failures(self, *, mocker, tmp_path: Path) -> None:
         ctx = install_context(tmp_path / "install-root")
@@ -212,7 +214,7 @@ class TestPayloadValidation:
         manifest.parent.mkdir(parents=True)
         manifest.symlink_to(tmp_path / "missing")
         with pytest.raises(errors.InstallError, match="manifest is a symlink"):
-            payload_rollback.write_snapshot(ctx, tmp_path / "snapshot")
+            payload_rollback.write_legacy_snapshot(ctx, tmp_path / "snapshot")
 
         source = tmp_path / "source"
         source.write_bytes(b"payload")
@@ -235,15 +237,17 @@ class TestPayloadValidation:
             },
             "owned": sorted({*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA}),
         }
-        (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
+        payload_rollback.legacy_snapshot_path(rollback).write_bytes(
+            payload_digest.canonical_json(snapshot)
+        )
         retained = rollback / inventory.PROVIDER_MANIFEST
         retained.parent.mkdir(parents=True, exist_ok=True)
         retained.write_bytes(content)
 
         mocker.patch.object(
             payload_rollback,
-            "load_inventory",
-            return_value=payload_rollback.RollbackInventory(
+            "load_legacy_snapshot",
+            return_value=payload_rollback.LegacyProjectionSnapshot(
                 present={
                     inventory.PROVIDER_MANIFEST: (
                         hashlib.sha256(content).hexdigest(),
@@ -257,26 +261,27 @@ class TestPayloadValidation:
             retained.__class__, "read_bytes", side_effect=OSError("blocked")
         )
         with pytest.raises(errors.InstallError, match="rollback is unreadable"):
-            payload_rollback.restore_snapshot(ctx, rollback)
+            payload_rollback.restore_legacy_projection(ctx, rollback)
         mocker.stop(unreadable)
         mocker.stopall()
 
         retained.write_bytes(b"tampered")
         with pytest.raises(errors.InstallError, match="rollback digest mismatch"):
-            payload_rollback.restore_snapshot(ctx, rollback)
+            payload_rollback.restore_legacy_projection(ctx, rollback)
 
         retained.write_bytes(content)
         mocker.patch.object(payload_digest, "sha256_file", return_value="0" * 64)
         with pytest.raises(errors.InstallError, match="restored payload digest mismatch"):
-            payload_rollback.restore_snapshot(ctx, rollback)
+            payload_rollback.restore_legacy_projection(ctx, rollback)
 
     def test_manifest_verifier_reports_each_metadata_boundary(self, subtests, *, mocker) -> None:
         def installed() -> tuple[runtime_context.RuntimeContext, Path, dict[str, object]]:
             ctx = install_context(Path(tempfile.mkdtemp()))
             transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
             transaction.commit_projection()
+            transaction.activate()
             transaction.finalize({"pid": 1})
-            path = Path(payload_projection.payload_manifest_path(ctx))
+            path = Path(payload_projection.payload_manifest_path(transaction.context))
             decoded: object = json.loads(path.read_text())
             assert isinstance(decoded, dict)
             assert all(isinstance(key, str) for key in decoded)
@@ -284,7 +289,7 @@ class TestPayloadValidation:
             for key, value in decoded.items():
                 assert isinstance(key, str)
                 manifest[key] = value
-            return ctx, path, manifest
+            return transaction.context, path, manifest
 
         ctx = install_context(Path(tempfile.mkdtemp()))
         ok, detail = payload_projection.verify_payload_manifest(ctx)
@@ -368,7 +373,7 @@ class TestPayloadValidation:
         mocker.stop(unavailable_digest)
 
         ctx, _, _ = installed()
-        receipt = Path(ctx.install_dir, inventory.RELEASE_RECEIPT_FILENAME)
+        receipt = Path(ctx.payload_dir, inventory.RELEASE_RECEIPT_FILENAME)
         receipt.unlink()
         ok, detail = payload_projection.verify_payload_manifest(ctx)
         assert not ok
@@ -420,14 +425,16 @@ class TestPayloadValidation:
                     "present": {},
                     "owned": [inventory.PROVIDER_MANIFEST],
                 },
-                "owned inventory is invalid",
+                "migration inventory is invalid",
             ),
         )
         for snapshot, message in cases:
             with subtests.test(message=message):
-                (rollback / "snapshot.json").write_bytes(payload_digest.canonical_json(snapshot))
+                payload_rollback.legacy_snapshot_path(rollback).write_bytes(
+                    payload_digest.canonical_json(snapshot)
+                )
                 with pytest.raises(errors.InstallError, match=message):
-                    payload_rollback.restore_snapshot(ctx, rollback)
+                    payload_rollback.restore_legacy_projection(ctx, rollback)
 
     def test_owned_file_boundaries_reject_invalid_types_and_path_races(
         self, tmp_path: Path, *, mocker

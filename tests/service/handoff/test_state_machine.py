@@ -105,6 +105,11 @@ class TestParentHandoffStateMachine(HandoffFixture):
             return real_set_draining(enabled, **kwargs)
 
         observing_context = entrypoint_module._handoff_context()
+        object.__setattr__(
+            observing_context,
+            "successor_executable",
+            lambda: observing_context.executable,
+        )
         object.__setattr__(observing_context, "set_draining", observing_set_draining)
         mocker.patch.object(self.p, "spawn_child", return_value=child)
         prepared = self.p.prepare(server, expected, observing_context, timeout_seconds=5)
