@@ -1,0 +1,38 @@
+schema_version = 2
+id = "change:windows-handoff-convergence"
+intent = "Make native reload completion portable by proving the product generation without relying on platform-specific TCP owner projection."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/20260826-windows-handoff-convergence/**",
+  "openspec/changes/archive/*-20260826-windows-handoff-convergence/**",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "src/codex_responses_proxy/lifecycle/**",
+  "tests/lifecycle/**",
+  "tests/release/test_native_compatibility.py",
+  "tests/release/test_native_lifecycle.py",
+]
+invariants = [
+  "completion_uses_portable_product_generation_identity",
+  "formal_runtime_remains_unchanged_until_release_acceptance",
+  "one_handoff_authority_owns_forward_and_reverse_completion",
+]
+acceptance = [
+  "focused_and_full_repository_gates_pass_without_warnings",
+  "macos_linux_and_windows_native_lifecycle_gates_pass",
+  "strict_openspec_validation_passes",
+  "windows_reload_returns_after_one_finalized_successor_generation",
+]
+risks = ["platform_process_observation_can_lag_product_protocol_state"]
+authority_refs = [
+  "AGENTS.md",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+]
+predecessors = []
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []
