@@ -106,6 +106,8 @@ def project(command_path: Path, target: Path, previous: Snapshot | None = None) 
     if target.is_symlink() or not target.is_file():
         raise errors.InstallError("installed command target is not a regular file")
     state, _kind = _classify(command_path, target)
+    if state == "owned":
+        return
     if state == "foreign" and not _matches_snapshot(command_path, previous):
         raise errors.InstallError(f"command path is occupied by another owner: {command_path}")
     command_path.parent.mkdir(parents=True, exist_ok=True)

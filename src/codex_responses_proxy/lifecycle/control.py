@@ -91,7 +91,11 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         if installed is not None
         else Path(active.command)
     )
-    command_state = command.status(installed_command, Path(active.executable))
+    try:
+        control_executable = generation.control_context(ctx).executable
+    except errors.InstallError:
+        control_executable = active.executable
+    command_state = command.status(installed_command, Path(control_executable))
     payload_transaction = payload_state.status(ctx)
     rollback_status = (
         payload_rollback.RetainedRollbackStatus(

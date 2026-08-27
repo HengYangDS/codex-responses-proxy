@@ -428,6 +428,8 @@ class TestPayloadTransaction:
         successor.activate()
         successor.finalize({"pid": 2})
         retained = payload_rollback.load_retained(ctx)
+        control_executable = Path(ctx.command).resolve(strict=True)
+        assert control_executable.samefile(successor.context.executable)
 
         reverse = payload_transaction.begin_rollback_transaction(ctx, retained)
         reverse.commit_projection()
@@ -436,6 +438,7 @@ class TestPayloadTransaction:
         assert restored is not None
         assert restored.release == "1.2.2"
         reverse.activate()
+        assert Path(ctx.command).resolve(strict=True).samefile(control_executable)
         reverse.rollback()
         selection = payload_generation.read(ctx)
         assert selection is not None
@@ -444,6 +447,35 @@ class TestPayloadTransaction:
         )
         assert current is not None
         assert current.release == "1.2.3"
+
+    def test_finalized_reverse_transition_keeps_newest_control_upgrade_floor(
+        self, *, mocker
+    ) -> None:
+        """Serving rollback cannot make an older release the install authority."""
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        mocker.patch.object(payload_transaction.payload_candidate, "prewarm")
+        first = payload_transaction.begin_transaction(ctx, released_artifact("1.2.2"))
+        first.commit_projection()
+        first.activate()
+        first.finalize({"pid": 1})
+        successor = payload_transaction.begin_transaction(ctx, released_artifact("1.2.3"))
+        successor.commit_projection()
+        successor.activate()
+        successor.finalize({"pid": 2})
+        control_executable = Path(ctx.command).resolve(strict=True)
+        reverse = payload_transaction.begin_rollback_transaction(
+            ctx, payload_rollback.load_retained(ctx)
+        )
+        reverse.commit_projection()
+        reverse.activate()
+        reverse.finalize({"pid": 3})
+
+        assert Path(ctx.command).resolve(strict=True).samefile(control_executable)
+        with pytest.raises(errors.InstallError, match="replay"):
+            payload_transaction.begin_transaction(ctx, released_artifact("1.2.3"))
+
+        forward = payload_transaction.begin_transaction(ctx, released_artifact("1.2.4"))
+        forward.rollback()
 
     def test_interrupted_reverse_transition_recovers_the_original_successor(
         self, tmp_path: Path, *, mocker

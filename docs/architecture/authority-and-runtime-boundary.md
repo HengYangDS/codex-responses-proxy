@@ -197,8 +197,13 @@ Finalization performs one idempotent selector transition. The stable control
 root contains one atomic selector naming the active immutable generation and,
 after an upgrade, its sole predecessor. Installed state and the user-command
 projection remain stable control surfaces; they are not copied into a second
-rollback store. A transaction may carry a temporary snapshot only to bootstrap
-an older single-directory installation or recover an interrupted transition.
+rollback store. The selector's active generation owns serving and native
+supervision. The user command deterministically resolves to the newer verified
+release among the two selected generations, preserving current lifecycle
+control when serving rolls back. Future installation admission uses that same
+control release as its replay and downgrade floor. A transaction may carry a
+temporary snapshot only to bootstrap an older single-directory installation or
+recover an interrupted transition.
 The selector is committed before obsolete-generation cleanup, so interruption
 leaves either the prior selection or a recoverable new selection. Until the
 transaction closes, it alone owns recovery and rollback status.

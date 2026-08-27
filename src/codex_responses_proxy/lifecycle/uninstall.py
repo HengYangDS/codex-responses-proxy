@@ -73,7 +73,8 @@ def uninstall_product(
     command_path = (
         Path(state.require_command(installed)) if installed is not None else Path(ctx.command)
     )
-    command_state = command.status(command_path, Path(ctx.executable))
+    control_ctx = generation.control_context(ctx)
+    command_state = command.status(command_path, Path(control_ctx.executable))
     service_state = service.status(ctx)
     listeners = process.verified_proxy_listener_pids(ctx)
     install_root = Path(ctx.install_dir)
@@ -93,7 +94,7 @@ def uninstall_product(
 
     _remove_service(service, ctx)
     stopped = _stop_proxy(service, ctx)
-    command_removed = command.remove(command_path, Path(ctx.executable))
+    command_removed = command.remove(command_path, Path(control_ctx.executable))
 
     if purge:
         owned_generations = generation.owned_contexts(ctx)

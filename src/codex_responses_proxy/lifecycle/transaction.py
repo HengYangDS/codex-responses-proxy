@@ -73,7 +73,7 @@ def recover(
             )
             command.project(
                 Path(ctx.command),
-                Path(generation.context(ctx, str(journal["transaction_id"])).executable),
+                Path(generation.control_context(ctx).executable),
                 previous=command.read_snapshot(rollback),
             )
         return _finalize_recovery(
@@ -301,7 +301,7 @@ def _rollback_materialized(
             )
             command.restore(
                 Path(ctx.command),
-                Path(generation.context(ctx, expected_before.active).executable),
+                Path(generation.control_context(ctx).executable),
                 command_snapshot,
             )
     if not _reuses_retained_generation(journal):
@@ -350,7 +350,7 @@ def _rollback_upgrade(
         generation.select(ctx, active=selection.active, predecessor=selection.predecessor)
         command.restore(
             Path(ctx.command),
-            Path(previous_ctx.executable),
+            Path(generation.control_context(ctx).executable),
             command_snapshot,
         )
         result = {
@@ -388,7 +388,11 @@ def _rollback_upgrade(
             command_snapshot,
         )
         generation.select(ctx, active=restored.active, predecessor=restored.predecessor)
-        command.restore(Path(ctx.command), Path(previous_ctx.executable), command_snapshot)
+        command.restore(
+            Path(ctx.command),
+            Path(generation.control_context(ctx).executable),
+            command_snapshot,
+        )
         generation.remove(ctx, str(journal["transaction_id"]))
         result = {
             "transaction_id": journal["transaction_id"],
@@ -550,21 +554,23 @@ class PayloadTransaction:
         rollback.mkdir(mode=0o700)
         mutated = False
         try:
-            previous_ctx = (
-                generation.context(self._ctx, self._previous_selection.active)
-                if self._previous_selection is not None
-                else self._ctx
-            )
-            command_snapshot = command.snapshot(
-                Path(self._ctx.command), Path(previous_ctx.executable)
-            )
-            command.write_snapshot(rollback, command_snapshot)
             if self._reuse_generation:
                 candidate = identity.committed_payload(Path(self._candidate_ctx.executable))
                 if candidate != self._retained_identity:
                     raise errors.InstallError(
                         "retained rollback predecessor changed before materialization"
                     )
+            previous_ctx = (
+                generation.context(self._ctx, self._previous_selection.active)
+                if self._previous_selection is not None
+                else self._ctx
+            )
+            control_ctx = generation.control_context(self._ctx)
+            command_snapshot = command.snapshot(
+                Path(self._ctx.command), Path(control_ctx.executable)
+            )
+            command.write_snapshot(rollback, command_snapshot)
+            if self._reuse_generation:
                 payload_candidate.prewarm(Path(self._candidate_ctx.executable))
                 self._state = "materialized"
                 self._write_journal()
@@ -619,9 +625,10 @@ class PayloadTransaction:
             active=self._transaction_id,
             predecessor=predecessor,
         )
+        control_ctx = generation.control_context(self._ctx)
         command.project(
             Path(self._ctx.command),
-            Path(self._candidate_ctx.executable),
+            Path(control_ctx.executable),
             previous=command_snapshot,
         )
         self._state = "activated"
@@ -730,9 +737,7 @@ class PayloadTransaction:
                     active=self._previous_selection.active,
                     predecessor=self._previous_selection.predecessor,
                 )
-                previous_executable = generation.context(
-                    self._ctx, self._previous_selection.active
-                ).executable
+                previous_executable = generation.control_context(self._ctx).executable
                 command.restore(
                     Path(self._ctx.command),
                     Path(previous_executable),
@@ -847,7 +852,12 @@ def _begin_transaction(
     payload_candidate.validate(blobs, version, receipt_sha256, receipt)
     previous = state.read_installed(ctx)
     if previous is not None:
-        comparison = state.compare_versions(version, state.require_version(previous))
+        control_identity = identity.committed_payload(
+            Path(generation.control_context(ctx).executable)
+        )
+        if control_identity is None:
+            raise errors.InstallError("installed control-plane identity is invalid")
+        comparison = state.compare_versions(version, control_identity.release)
         if comparison < 0:
             raise errors.InstallError("released payload downgrade is refused")
         if comparison == 0:

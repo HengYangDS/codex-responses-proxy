@@ -1,0 +1,52 @@
+schema_version = 2
+id = "change:stable-control-plane-rollback"
+intent = "Keep lifecycle control on the newest verified selected release while rollback switches only the serving payload."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "CHANGELOG.md",
+  "README.md",
+  "VERSION",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "docs/decisions/dr-0005-single-native-payload-lifecycle.md",
+  "openspec/changes/archive/*-stable-control-plane-rollback/**",
+  "openspec/changes/stable-control-plane-rollback/**",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "src/codex_responses_proxy/lifecycle/command.py",
+  "src/codex_responses_proxy/lifecycle/control.py",
+  "src/codex_responses_proxy/lifecycle/generation.py",
+  "src/codex_responses_proxy/lifecycle/state.py",
+  "src/codex_responses_proxy/lifecycle/transaction.py",
+  "src/codex_responses_proxy/lifecycle/uninstall.py",
+  "tests/lifecycle/test_command.py",
+  "tests/lifecycle/test_rollback_generation.py",
+  "tests/lifecycle/test_transaction.py",
+  "tests/release/test_native_compatibility.py",
+]
+invariants = [
+  "one_selector_owns_serving_and_retained_payload_authority",
+  "newest_selected_release_owns_installed_lifecycle_control",
+  "native_supervision_remains_bound_to_the_serving_generation",
+  "formal_runtime_remains_unchanged_until_release_acceptance",
+]
+acceptance = [
+  "focused_and_full_repository_gates_pass_without_warnings",
+  "post_rollback_path_command_status_doctor_recover_and_reversal_pass",
+  "macos_linux_and_windows_native_lifecycle_gates_pass",
+  "strict_openspec_validation_passes",
+]
+risks = [
+  "serving_and_control_release_differ_after_explicit_rollback",
+  "corrupt_selected_identity_could_make_control_derivation_unavailable",
+]
+authority_refs = [
+  "AGENTS.md",
+  "docs/architecture/authority-and-runtime-boundary.md",
+  "docs/decisions/dr-0005-single-native-payload-lifecycle.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+]
+predecessors = []
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []

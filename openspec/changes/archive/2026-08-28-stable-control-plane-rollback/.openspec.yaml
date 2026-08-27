@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-27
+goal: Make rollback preserve a current PATH command that can operate and recover
+  the selected predecessor.

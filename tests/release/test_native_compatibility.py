@@ -89,17 +89,25 @@ def _assert_same_runtime_identity(
     assert observed_runtime.get("accepting") is True
 
 
-def _wait_for_upgrade_drain(
+def _wait_for_successor_admission(
     future: Future[dict[str, object]],
     ctx: runtime_context.RuntimeContext,
     *,
+    expected_release: str,
     timeout_seconds: float,
 ) -> bool:
-    """Observe drain readiness without hiding an already failed upgrade command."""
+    """Observe the accepting successor without relying on transient old health."""
 
     def ready_or_finished() -> bool:
         runtime = lifecycle_control.read_runtime(ctx)
-        return (isinstance(runtime, dict) and runtime.get("draining") is True) or future.done()
+        successor_ready = (
+            isinstance(runtime, dict)
+            and runtime.get("release") == expected_release
+            and runtime.get("accepting") is True
+            and runtime.get("draining") is False
+            and runtime.get("handoff_state") in {"serving", "finalized"}
+        )
+        return successor_ready or future.done()
 
     reached = wait_until(ready_or_finished, timeout_seconds)
     if future.done():
@@ -371,7 +379,12 @@ class TestPublishedPredecessorCompatibility:
                 environment,
                 *upgrade_arguments,
             )
-            assert _wait_for_upgrade_drain(upgrade_future, ctx, timeout_seconds=20)
+            assert _wait_for_successor_admission(
+                upgrade_future,
+                ctx,
+                expected_release=current_version,
+                timeout_seconds=20,
+            )
             release.set()
             stream_holder.join(timeout=60)
             for holder in holders:
@@ -399,6 +412,8 @@ class TestPublishedPredecessorCompatibility:
             )
             assert after["release"] == current_version
             assert after["payload_transaction"] is None
+            installed_command = Path(ctx.command)
+            control_executable = installed_command.resolve(strict=True)
             after_runtime = after.get("runtime")
             assert isinstance(after_runtime, dict), after
             assert after_runtime.get("pid") != previous_pid
@@ -431,8 +446,9 @@ class TestPublishedPredecessorCompatibility:
             assert rolled_back["state"] == "rolled_back"
             assert rolled_back["from_release"] == current_version
             assert rolled_back["to_release"] == previous_version
+            assert installed_command.resolve(strict=True) == control_executable
             after_rollback = run_command(
-                current_executable,
+                installed_command,
                 environment,
                 "status",
                 "--port",
@@ -448,7 +464,7 @@ class TestPublishedPredecessorCompatibility:
                 "to_release": current_version,
             }
             assert run_command(
-                current_executable,
+                installed_command,
                 environment,
                 "recover",
                 "--port",
@@ -457,7 +473,7 @@ class TestPublishedPredecessorCompatibility:
             ) == {"state": "not_required"}
 
             restored = run_command(
-                current_executable,
+                installed_command,
                 environment,
                 "rollback",
                 "--port",
@@ -470,7 +486,7 @@ class TestPublishedPredecessorCompatibility:
             assert restored["from_release"] == previous_version
             assert restored["to_release"] == current_version
             restored_status = run_command(
-                current_executable,
+                installed_command,
                 environment,
                 "status",
                 "--port",
