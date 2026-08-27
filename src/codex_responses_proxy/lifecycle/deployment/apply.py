@@ -15,7 +15,6 @@ from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import identity
-from codex_responses_proxy.service import runtime as service_runtime
 
 RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | None]
 
@@ -76,17 +75,13 @@ def install(
         raise errors.InstallError(
             "installed runtime is incompatible; remove it before installing this release"
         )
-    if process.verified_proxy_listener_pids(ctx) != [pid]:
-        raise errors.InstallError("installed runtime identity is not verified")
+    source_listener = handoff.capture_source_listener(
+        ctx,
+        current,
+        timeout_seconds=timeout_seconds,
+    )
     if not _same_executable(adapter.configured_executable(ctx), ctx.executable):
         raise errors.InstallError("native supervisor is not bound to the canonical executable")
-    source_listener = process.capture_executable(
-        pid,
-        ctx.executable,
-        roles={service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE},
-    )
-    if source_listener is None:
-        raise errors.InstallError("installed listener process generation is not verified")
     return _upgrade(
         ctx,
         payload,
