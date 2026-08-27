@@ -27,6 +27,7 @@ from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import loopback
 from codex_responses_proxy.service import digest as payload_digest
 from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import runtime as service_runtime
 from tests.lifecycle.fixtures import begin_transaction
 from tests.lifecycle.fixtures import install_context
 from tests.lifecycle.fixtures import install_payload
@@ -758,6 +759,48 @@ class TestControllerLifecycle:
             evidence = control.status(ctx)
             assert evidence["runtime"] == runtime
             assert "authorization" not in json.dumps(evidence).lower()
+
+    def test_status_uses_verified_runtime_identity_when_tcp_owner_projection_lags(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """A loopback runtime proof is authoritative after portable handoff."""
+        ctx = install_context(tmp_path)
+        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+        transaction.commit_projection()
+        transaction.activate()
+        transaction.finalize({"pid": 1})
+        active = generation.selected_context(ctx)
+        committed = identity.committed_payload(Path(active.executable))
+        assert committed is not None
+        runtime = {
+            "pid": 76541,
+            **committed.handoff(),
+            "payload_manifest_sha256": committed.manifest_sha256,
+            "handoff_protocol_version": 2,
+            "handoff_state": "finalized",
+            "handoff_transaction_id": None,
+            "accepting": True,
+            "draining": False,
+        }
+        owned = process.OwnedProcess(76541, active.executable, 1.0)
+        mocker.patch.object(control, "read_runtime", return_value=runtime)
+        mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[])
+        capture = mocker.patch.object(control.process, "capture_executable", return_value=owned)
+        mocker.patch.object(control, "adapter").return_value.status.return_value = "running"
+
+        evidence = control.status(ctx)
+
+        assert evidence["state"] == "running"
+        assert evidence["listener_pids"] == []
+        assert evidence["runtime"] == runtime
+        capture.assert_called_once_with(
+            76541,
+            active.executable,
+            roles={
+                service_runtime.HANDOFF_CHILD_MODE,
+                service_runtime.LISTENER_MODE,
+            },
+        )
 
     def test_status_rejects_a_listener_serving_a_different_payload(
         self, tmp_path: Path, *, mocker
