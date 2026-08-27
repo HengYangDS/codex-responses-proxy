@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from pathlib import Path
 from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 
 import pytest
 
@@ -79,30 +80,87 @@ def _assert_same_runtime_identity(
     assert observed_runtime.get("accepting") is True
 
 
-def _wait_for_successor_admission(
+def _wait_for_upgrade_release_point(
     future: Future[dict[str, object]],
     ctx: runtime_context.RuntimeContext,
     *,
-    expected_release: str,
+    predecessor_pid: int,
+    predecessor_release: str,
+    successor_release: str,
     timeout_seconds: float,
 ) -> bool:
-    """Observe the accepting successor without relying on transient old health."""
+    """Observe a state where held requests may complete the upgrade."""
 
-    def ready_or_finished() -> bool:
+    def releasable_or_finished() -> bool:
         runtime = lifecycle_control.read_runtime(ctx)
+        predecessor_draining = (
+            isinstance(runtime, dict)
+            and runtime.get("pid") == predecessor_pid
+            and runtime.get("release") == predecessor_release
+            and runtime.get("accepting") is False
+            and runtime.get("draining") is True
+        )
         successor_ready = (
             isinstance(runtime, dict)
-            and runtime.get("release") == expected_release
+            and runtime.get("release") == successor_release
             and runtime.get("accepting") is True
             and runtime.get("draining") is False
             and runtime.get("handoff_state") in {"serving", "finalized"}
         )
-        return successor_ready or future.done()
+        return predecessor_draining or successor_ready or future.done()
 
-    reached = wait_until(ready_or_finished, timeout_seconds)
+    reached = wait_until(releasable_or_finished, timeout_seconds)
     if future.done():
         future.result()
     return reached
+
+
+def test_upgrade_release_point_includes_a_draining_predecessor(tmp_path: Path, *, mocker) -> None:
+    """Release held requests once native replacement has closed admission."""
+
+    ctx = runtime_context_for(
+        tmp_path / "home",
+        tmp_path / "payload",
+        tmp_path / "state",
+        43210,
+    )
+    future: Future[dict[str, object]] = Future()
+    mocker.patch.object(
+        lifecycle_control,
+        "read_runtime",
+        return_value={
+            "pid": 1234,
+            "release": "3.1.2",
+            "accepting": False,
+            "draining": True,
+            "handoff_state": "finalized",
+        },
+    )
+
+    assert _wait_for_upgrade_release_point(
+        future,
+        ctx,
+        predecessor_pid=1234,
+        predecessor_release="3.1.2",
+        successor_release="3.1.3",
+        timeout_seconds=0.01,
+    )
+
+
+def test_runtime_context_uses_the_native_command_projection(tmp_path: Path, *, mocker) -> None:
+    """Build release-test paths through the same owner as production."""
+
+    mocker.patch("tests.release.fixtures.platform.system", return_value="Windows")
+    home = tmp_path / "home"
+    install = tmp_path / "payload"
+    ctx = runtime_context_for(home, install, tmp_path / "state", 43210)
+
+    assert PureWindowsPath(ctx.executable) == PureWindowsPath(
+        install / "bin" / "codex-responses-proxy.exe"
+    )
+    assert PureWindowsPath(ctx.command) == PureWindowsPath(
+        home / "AppData" / "Local" / "Microsoft" / "WindowsApps" / "codex-responses-proxy.exe"
+    )
 
 
 def _materialize_native_bundle(candidate: artifact.VerifiedArtifact, output: Path) -> Path:
@@ -369,10 +427,12 @@ class TestPublishedPredecessorCompatibility:
                 environment,
                 *upgrade_arguments,
             )
-            assert _wait_for_successor_admission(
+            assert _wait_for_upgrade_release_point(
                 upgrade_future,
                 ctx,
-                expected_release=current_version,
+                predecessor_pid=previous_pid,
+                predecessor_release=previous_version,
+                successor_release=current_version,
                 timeout_seconds=20,
             )
             release.set()

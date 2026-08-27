@@ -1,0 +1,36 @@
+schema_version = 2
+id = "change:portable-release-compatibility"
+intent = "Make published-release compatibility consume native path authority and release held traffic at a lifecycle-valid convergence point."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "openspec/changes/portable-release-compatibility/**",
+  "openspec/changes/archive/*-portable-release-compatibility/**",
+  "tests/release/fixtures.py",
+  "tests/release/test_native_compatibility.py",
+]
+invariants = [
+  "production_owns_native_path_projection",
+  "held_requests_overlap_a_proven_upgrade_transition",
+  "final_runtime_identity_and_zero_residue_remain_required",
+  "production_lifecycle_behavior_remains_unchanged",
+]
+acceptance = [
+  "focused_portable_regressions_pass",
+  "repository_quick_gate_passes_without_warnings",
+  "linux_and_windows_published_compatibility_pass",
+  "dual_forge_proposal_checks_pass",
+]
+risks = [
+  "test_fixture_platform_semantics_diverge_from_product_ownership",
+  "held_request_release_order_deadlocks_native_generation_replacement",
+]
+authority_refs = [
+  "AGENTS.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+]
+predecessors = ["change:portable-successor-observation"]
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []
