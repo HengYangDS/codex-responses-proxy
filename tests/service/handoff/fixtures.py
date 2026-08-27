@@ -298,12 +298,7 @@ def terminate_owned_proxy(pid: int | None, proxy_script: str) -> None:
 
 def pid_alive(pid: int | None) -> bool:
     """Return whether an owned handoff child still has a process command."""
-    if pid is None:
-        return False
-    try:
-        return bool(process.process_command(pid))
-    except Exception:
-        return False
+    return pid is not None and bool(process.process_command(pid))
 
 
 type UpstreamBehavior = tuple[int, bytes] | Callable[[BaseHTTPRequestHandler], None]
@@ -388,7 +383,7 @@ def write_installed_payload(
     root: Path, *, release: str, port: int, upstream_url: str
 ) -> runtime_context.RuntimeContext:
     """Build one selector-bound temporary generation without touching source."""
-    control = install_context(root)
+    control = install_context(root, windows=os.name == "nt")
     ctx = generation.context(control, "0" * 32)
     install_dir = Path(ctx.payload_dir)
     source = Path(os.environ["CODEX_RESPONSES_PROXY_EXECUTABLE"])
@@ -430,8 +425,7 @@ def installed_expected_metadata(
     """Read the exact identity expected from a prepared child runtime."""
     manifest_path = Path(projection.payload_manifest_path(ctx))
     manifest: object = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, dict):
-        raise AssertionError("fixture payload manifest must be an object")
+    assert isinstance(manifest, dict), "fixture payload manifest must be an object"
     return {
         "transaction_id": transaction_id,
         "release": manifest["release"],

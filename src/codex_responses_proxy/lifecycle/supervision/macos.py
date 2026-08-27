@@ -222,9 +222,13 @@ def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
     current = _service(ctx)
     generation = None
     if current.pid is not None:
-        generation = process.capture_executable(
+        executable = configured_executable(ctx)
+        if executable is None:
+            msg = "registered launchd watchdog executable is unproved"
+            raise errors.InstallError(msg)
+        generation = process.wait_for_executable(
             current.pid,
-            ctx.executable,
+            executable,
             roles={service_runtime.WATCHDOG_MODE},
         )
         if generation is None:

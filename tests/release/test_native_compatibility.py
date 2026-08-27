@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import os
 import platform
-import queue
 import subprocess
 import threading
 from collections.abc import Mapping
+from concurrent.futures import Future
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from pathlib import Path
 from pathlib import PurePosixPath
@@ -16,6 +17,7 @@ import pytest
 
 from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import artifact
+from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import control as lifecycle_control
 from codex_responses_proxy.lifecycle import generation as payload_generation
 from codex_responses_proxy.lifecycle import state as payload_state
@@ -64,6 +66,24 @@ def _runtime_pid(result: Mapping[str, object]) -> int:
     return pid
 
 
+def _wait_for_upgrade_drain(
+    future: Future[dict[str, object]],
+    ctx: runtime_context.RuntimeContext,
+    *,
+    timeout_seconds: float,
+) -> bool:
+    """Observe drain readiness without hiding an already failed upgrade command."""
+
+    def ready_or_finished() -> bool:
+        runtime = lifecycle_control.read_runtime(ctx)
+        return (isinstance(runtime, dict) and runtime.get("draining") is True) or future.done()
+
+    reached = wait_until(ready_or_finished, timeout_seconds)
+    if future.done():
+        future.result()
+    return reached
+
+
 def _materialize_native_bundle(candidate: artifact.VerifiedArtifact, output: Path) -> Path:
     """Materialize exact admitted native executable bytes without its provider manifest."""
 
@@ -105,7 +125,9 @@ class TestPublishedPredecessorCompatibility:
             published_predecessor,
             tmp_path / "published-predecessor-bundle",
         )
-        previous_executable = previous_bundle / "codex-responses-proxy"
+        previous_executable = previous_bundle / product_identity.executable_name(
+            windows=platform.system() == "Windows"
+        )
 
         published_home = tmp_path / "published-home"
         published_install = tmp_path / "published-payload"
@@ -298,6 +320,8 @@ class TestPublishedPredecessorCompatibility:
                 holders.append(holder)
                 holder.start()
             normal_started.wait(timeout=20)
+            executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="upgrade-command")
+            cleanups.callback(executor.shutdown, wait=True, cancel_futures=True)
             cleanups.callback(release.set)
 
             upgrade_arguments = (
@@ -318,35 +342,18 @@ class TestPublishedPredecessorCompatibility:
                 else current_executable
             )
 
-            upgrade_result: dict[str, object] = {}
-            upgrade_failure: queue.SimpleQueue[Exception] = queue.SimpleQueue()
-
-            def upgrade() -> None:
-                try:
-                    upgrade_result.update(
-                        run_command(upgrade_driver, environment, *upgrade_arguments)
-                    )
-                except Exception as exc:
-                    upgrade_failure.put(exc)
-
-            upgrade_thread = threading.Thread(target=upgrade, daemon=True)
-            upgrade_thread.start()
-            assert wait_until(
-                lambda: (
-                    isinstance(runtime := lifecycle_control.read_runtime(ctx), dict)
-                    and runtime.get("draining") is True
-                ),
-                20,
+            upgrade_future = executor.submit(
+                run_command,
+                upgrade_driver,
+                environment,
+                *upgrade_arguments,
             )
+            assert _wait_for_upgrade_drain(upgrade_future, ctx, timeout_seconds=20)
             release.set()
-            upgrade_thread.join(timeout=90)
             stream_holder.join(timeout=60)
             for holder in holders:
                 holder.join(timeout=60)
-            assert not upgrade_thread.is_alive()
-            if not upgrade_failure.empty():
-                raise upgrade_failure.get()
-            upgraded = upgrade_result
+            upgraded = upgrade_future.result(timeout=90)
             assert not stream_holder.is_alive()
             assert all(not holder.is_alive() for holder in holders)
             assert held.get("stream") == (

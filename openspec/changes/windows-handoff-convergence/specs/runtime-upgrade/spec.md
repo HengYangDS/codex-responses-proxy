@@ -66,3 +66,12 @@ diagnostic rather than authoritative.
 - **THEN** both enforce the same canonical schema, exact field set, generation
   names, and selected payload identity
 - **AND** neither accepts a selector that the other rejects.
+
+#### Scenario: Native service teardown follows its registered carrier
+
+- **WHEN** the active selector has moved after a native service was registered
+- **THEN** teardown resolves the exact service identity and executable from the
+  platform carrier
+- **AND** proves that exact process generation exits before removing the
+  carrier
+- **AND** does not infer service ownership from the current selector.

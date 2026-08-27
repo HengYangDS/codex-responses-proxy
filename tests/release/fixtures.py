@@ -11,6 +11,7 @@ import subprocess
 import sys
 import urllib.request
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -260,29 +261,31 @@ def cleanup_runtime(ctx: runtime_context.RuntimeContext, wrapper: Path | None = 
     service = native_service.adapter()
     owned_contexts = _process_contexts(ctx)
     configured = service.configured_executable(ctx)
-    service_context = ctx
-    if configured is not None:
-        matches = tuple(
-            owned_ctx
-            for owned_ctx in owned_contexts
-            if os.path.normcase(os.path.abspath(owned_ctx.executable))
-            == os.path.normcase(os.path.abspath(configured))
-        )
-        assert len(matches) == 1, "native service executable is outside the owned installation"
-        service_context = matches[0]
+    process_contexts = owned_contexts
+    if configured is not None and all(
+        os.path.normcase(os.path.abspath(owned_ctx.executable))
+        != os.path.normcase(os.path.abspath(configured))
+        for owned_ctx in process_contexts
+    ):
+        configured_path = Path(configured).resolve()
+        install_root = Path(ctx.install_dir).resolve()
+        assert configured_path.is_relative_to(
+            install_root
+        ), "native service executable is outside the owned installation"
+        process_contexts = (*process_contexts, replace(ctx, executable=configured))
     try:
-        service.uninstall(service_context)
+        service.uninstall(ctx)
         assert service.status(ctx) == "absent"
     finally:
         if wrapper is not None:
             for pid in process.pids_naming_path(str(wrapper)):
                 process.terminate_pid(pid, expected_path=str(wrapper))
-        for owned_ctx in owned_contexts:
+        for owned_ctx in process_contexts:
             for pid in process.pids_naming_executable(owned_ctx.executable, roles=_SERVICE_ROLES):
                 process.terminate_executable(pid, owned_ctx.executable, roles=_SERVICE_ROLES)
     assert service.status(ctx) == "absent"
     assert service.configured_executable(ctx) is None
     assert all(
         process.pids_naming_executable(owned_ctx.executable, roles=_SERVICE_ROLES) == []
-        for owned_ctx in owned_contexts
+        for owned_ctx in process_contexts
     )
