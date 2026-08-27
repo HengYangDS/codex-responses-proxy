@@ -259,11 +259,19 @@ class TestMacosLifecycle:
 
     def test_uninstall_keeps_plist_when_launchd_removal_is_unproven(self, *, mocker):
         with _temporary_context("log_dir") as ctx:
-            plist = _set_file(macos._plist_path(ctx), "plist")
-            mocker.patch.object(
+            configured = f"{ctx.install_dir}/generations/{'a' * 32}/bin/codex-responses-proxy"
+            configured_context = SimpleNamespace(
+                executable=configured,
+                install_dir=ctx.install_dir,
+                log_dir=ctx.log_dir,
+                service_id=ctx.service_id,
+                user_home=ctx.user_home,
+            )
+            plist = _set_file(macos._plist_path(ctx), macos.render_plist(configured_context))
+            wait_for_executable = mocker.patch.object(
                 macos.process,
-                "capture_executable",
-                return_value=macos.process.OwnedProcess(73, ctx.executable, 1.0),
+                "wait_for_executable",
+                return_value=macos.process.OwnedProcess(73, configured, 1.0),
             )
             mocker.patch.object(
                 macos.subprocess,
@@ -276,6 +284,11 @@ class TestMacosLifecycle:
             with pytest.raises(errors.InstallError, match="launchctl bootout failed"):
                 macos.uninstall(ctx)
             assert plist.exists()
+            wait_for_executable.assert_called_once_with(
+                73,
+                configured,
+                roles={macos.service_runtime.WATCHDOG_MODE},
+            )
 
     def test_uninstall_boots_out_registered_service_when_plist_is_missing(self, *, mocker):
         with _temporary_context("log_dir") as ctx:

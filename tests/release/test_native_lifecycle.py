@@ -223,8 +223,10 @@ class TestSignedNativeLifecycle:
         assert native_service_projection(canonical_ctx) == canonical_before
 
 
-def test_native_cleanup_uninstalls_the_configured_generation(tmp_path: Path, *, mocker) -> None:
-    """Teardown derives service ownership from its exact configured executable."""
+def test_native_cleanup_separates_registration_and_process_ownership(
+    tmp_path: Path, *, mocker
+) -> None:
+    """Teardown removes the stable service after its generation leaves the selector."""
     ctx = runtime_context_for(tmp_path / "home", tmp_path / "payload", tmp_path / "state", 43210)
     first = generation.context(ctx, "1" * 32)
     second = generation.context(ctx, "2" * 32)
@@ -238,4 +240,4 @@ def test_native_cleanup_uninstalls_the_configured_generation(tmp_path: Path, *, 
 
     cleanup_runtime(ctx)
 
-    service.uninstall.assert_called_once_with(second)
+    service.uninstall.assert_called_once_with(ctx)

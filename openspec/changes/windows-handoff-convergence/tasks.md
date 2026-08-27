@@ -20,6 +20,8 @@
 - [x] 2.6 Prove the transaction snapshot is confined to one-way migration from
       the verified legacy flat layout and remove any redundant inventory or
       recovery semantics.
+- [x] 2.7 Bind native-service teardown to the exact registered carrier and its
+      configured generation, so selector movement cannot leak host services.
 
 ## 3. Source acceptance
 
