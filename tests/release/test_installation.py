@@ -1061,6 +1061,27 @@ class TestReleasedDeployment:
                 timeout_seconds=0.15,
             )
 
+    def test_wait_for_serving_runtime_accepts_exact_process_when_tcp_inventory_lags(
+        self, *, mocker
+    ) -> None:
+        """Loopback identity and exact process ownership outlive stale TCP inventory."""
+
+        expected = FakeTransaction(self.ctx).expected
+        match = self.successor()
+        owned = process.OwnedProcess(222, self.ctx.executable, 1.0)
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[])
+        mocker.patch.object(process, "capture_executable", return_value=owned)
+
+        assert (
+            apply.wait_for_serving_runtime(
+                self.ctx,
+                expected,
+                runtime_reader=lambda _ctx: match,
+                timeout_seconds=0.2,
+            )
+            == match
+        )
+
     def test_read_runtime_accepts_only_http_200_json_objects(self, *, mocker) -> None:
         class Response:
             def __init__(self, status: int, payload: bytes) -> None:
