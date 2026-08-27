@@ -66,6 +66,29 @@ def _runtime_pid(result: Mapping[str, object]) -> int:
     return pid
 
 
+def _assert_same_runtime_identity(
+    command_result: Mapping[str, object],
+    observed_status: Mapping[str, object],
+) -> None:
+    """Prove two observations identify one process serving one payload."""
+
+    command_runtime = command_result.get("runtime")
+    observed_runtime = observed_status.get("runtime")
+    assert isinstance(command_runtime, dict), command_result
+    assert isinstance(observed_runtime, dict), observed_status
+    identity_fields = (
+        "pid",
+        "release",
+        "serving_payload_sha256",
+        "release_receipt_sha256",
+        "payload_manifest_sha256",
+    )
+    assert {field: command_runtime.get(field) for field in identity_fields} == {
+        field: observed_runtime.get(field) for field in identity_fields
+    }
+    assert observed_runtime.get("accepting") is True
+
+
 def _wait_for_upgrade_drain(
     future: Future[dict[str, object]],
     ctx: runtime_context.RuntimeContext,
@@ -418,7 +441,7 @@ class TestPublishedPredecessorCompatibility:
             )
             assert after_rollback["release"] == previous_version
             assert after_rollback["payload_transaction"] is None
-            assert after_rollback.get("runtime") == rolled_back.get("runtime")
+            _assert_same_runtime_identity(rolled_back, after_rollback)
             assert after_rollback["rollback"] == {
                 "state": "available",
                 "from_release": previous_version,
@@ -456,7 +479,7 @@ class TestPublishedPredecessorCompatibility:
             )
             assert restored_status["release"] == current_version
             assert restored_status["payload_transaction"] is None
-            assert restored_status.get("runtime") == restored.get("runtime")
+            _assert_same_runtime_identity(restored, restored_status)
 
             reloaded = run_command(
                 current_executable,
