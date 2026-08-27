@@ -269,9 +269,9 @@ def cleanup_runtime(ctx: runtime_context.RuntimeContext, wrapper: Path | None = 
     ):
         configured_path = Path(configured).resolve()
         install_root = Path(ctx.install_dir).resolve()
-        assert configured_path.is_relative_to(
-            install_root
-        ), "native service executable is outside the owned installation"
+        assert configured_path.is_relative_to(install_root), (
+            "native service executable is outside the owned installation"
+        )
         process_contexts = (*process_contexts, replace(ctx, executable=configured))
     try:
         service.uninstall(ctx)
