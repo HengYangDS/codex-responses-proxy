@@ -59,6 +59,12 @@ class TestLinuxLifecycle:
         assert "python" not in unit.lower()
         assert ".py" not in unit
 
+    def test_systemd_supervisor_never_signals_detached_runtime_generations(self):
+        """Replacing the watchdog must not kill a listener-owned handoff child."""
+        unit = linux.render_unit(platform_context())
+
+        assert "KillMode=process" in unit
+
     def test_systemd_unit_quotes_path_values_and_specifier_tokens(self):
         ctx = platform_context()
         ctx.install_dir = '/tmp/product path/%i/"payload"'
