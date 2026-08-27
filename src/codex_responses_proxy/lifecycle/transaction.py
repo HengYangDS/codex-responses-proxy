@@ -261,16 +261,48 @@ def _rollback_materialized(
     journal: Mapping[str, object],
     candidate: identity.LoadedPayloadIdentity,
 ) -> dict[str, object]:
-    """Discard an immutable candidate that was never selected."""
+    """Discard a candidate that never became the proven serving runtime."""
     previous_generation = journal.get("previous_generation")
     selection = generation.read(ctx)
-    if previous_generation is None:
-        if selection is not None:
-            raise errors.RecoveryStateError("materialized recovery selection changed")
-    elif selection is not None and selection.active != previous_generation:
+    candidate_generation = str(journal["transaction_id"])
+    expected_before = (
+        generation.Selection(
+            str(previous_generation),
+            (
+                str(journal["previous_predecessor"])
+                if journal.get("previous_predecessor") is not None
+                else None
+            ),
+        )
+        if previous_generation is not None
+        else None
+    )
+    selected_candidate = generation.Selection(candidate_generation, previous_generation)
+    if selection not in {expected_before, selected_candidate}:
         raise errors.RecoveryStateError("materialized recovery selection changed")
+    rollback = state.transaction_root(ctx) / "rollback"
+    command_snapshot = command.read_snapshot(rollback)
+    if selection == selected_candidate:
+        command.detach(
+            Path(ctx.command),
+            Path(generation.context(ctx, candidate_generation).executable),
+            command_snapshot,
+        )
+        if expected_before is None:
+            generation.clear(ctx)
+        else:
+            generation.select(
+                ctx,
+                active=expected_before.active,
+                predecessor=expected_before.predecessor,
+            )
+            command.restore(
+                Path(ctx.command),
+                Path(generation.context(ctx, expected_before.active).executable),
+                command_snapshot,
+            )
     if not _reuses_retained_generation(journal):
-        generation.remove(ctx, str(journal["transaction_id"]))
+        generation.remove(ctx, candidate_generation)
     generations = generation.root(ctx)
     if generations.is_dir() and not any(generations.iterdir()):
         generations.rmdir()

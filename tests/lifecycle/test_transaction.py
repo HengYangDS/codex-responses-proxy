@@ -704,13 +704,13 @@ class TestPayloadTransaction:
     def test_materialized_recovery_rejects_selection_drift(self, tmp_path: Path, *, mocker) -> None:
         """An unselected candidate may be discarded only from its exact prior selection."""
         ctx = install_context(tmp_path)
-        predecessor = install_payload(ctx, "1.2.2", mocker=mocker)
+        install_payload(ctx, "1.2.2", mocker=mocker)
         candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         candidate.commit_projection()
         payload_generation.select(
             ctx,
             active=str(candidate.expected["transaction_id"]),
-            predecessor=str(predecessor.expected["transaction_id"]),
+            predecessor=None,
         )
 
         with pytest.raises(errors.RecoveryStateError, match="selection changed"):
@@ -927,6 +927,57 @@ class TestPayloadTransaction:
 
         assert result["state"] == "finalized"
         assert Path(ctx.command).samefile(expected_target)
+
+    def test_recovery_rolls_back_when_selection_precedes_the_candidate_runtime(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """A selected candidate is reversible while the predecessor still serves."""
+        ctx = install_context(tmp_path)
+        predecessor = install_payload(ctx, "1.2.2", mocker=mocker)
+        before = payload_generation.read(ctx)
+        assert before is not None
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        interrupted = mocker.patch.object(
+            payload_transaction.command,
+            "project",
+            side_effect=errors.InstallError("command projection interrupted"),
+        )
+        with pytest.raises(errors.InstallError, match="command projection interrupted"):
+            successor.activate()
+        mocker.stop(interrupted)
+        previous = listener_identity.committed_payload(Path(predecessor.context.executable))
+        assert previous is not None
+
+        result = payload_transaction.recover(ctx, runtime=recovery_runtime(previous))
+
+        assert result["state"] == "rolled_back"
+        assert payload_generation.read(ctx) == before
+        assert Path(ctx.command).samefile(predecessor.context.executable)
+        assert not Path(successor.context.payload_dir).exists()
+
+    def test_fresh_recovery_rolls_back_a_selected_candidate_without_a_runtime(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """A first-install selector alone does not prove an installed runtime."""
+        ctx = install_context(tmp_path)
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        interrupted = mocker.patch.object(
+            payload_transaction.command,
+            "project",
+            side_effect=errors.InstallError("command projection interrupted"),
+        )
+        with pytest.raises(errors.InstallError, match="command projection interrupted"):
+            candidate.activate()
+        mocker.stop(interrupted)
+
+        result = payload_transaction.recover(ctx, runtime=None)
+
+        assert result["state"] == "rolled_back"
+        assert payload_generation.read(ctx) is None
+        assert not Path(ctx.install_dir).exists()
+        assert not Path(ctx.command).exists()
 
     def test_recovery_finishes_activation_when_command_precedes_phase_journal(
         self, tmp_path: Path, *, mocker
