@@ -459,7 +459,7 @@ class CliLifecycleContracts:
                 ("passed", "failed", "passed", "passed"),
             ),
             (
-                {**healthy, "listener_pids": [654]},
+                {**healthy, "runtime": None},
                 False,
                 ("passed", "passed", "failed", "passed"),
             ),
@@ -487,6 +487,32 @@ class CliLifecycleContracts:
                     )
                     == statuses
                 )
+
+    def test_doctor_reuses_status_listener_proof_when_process_inventory_lags(self) -> None:
+        """Doctor must not contradict the status owner's verified runtime."""
+
+        evidence = {
+            "state": "running",
+            "release": "3.1.3",
+            "payload_integrity": {"ok": True, "detail": "verified"},
+            "service": "running",
+            "listener_pids": [],
+            "runtime": {"pid": 321, "accepting": True},
+            "payload_transaction": None,
+            "command": {
+                "path": "/commands/codex-responses-proxy",
+                "state": "owned",
+                "kind": "symlink",
+            },
+        }
+
+        report = application._doctor(evidence)
+
+        assert report["ok"] is True
+        assert report["checks"]["listener"] == {
+            "status": "passed",
+            "detail": "accepting",
+        }
 
     def test_reload_delegates_transactionally_with_an_explicit_timeout(self, *, mocker) -> None:
         result = {"old_pid": 321, "new_pid": 654}

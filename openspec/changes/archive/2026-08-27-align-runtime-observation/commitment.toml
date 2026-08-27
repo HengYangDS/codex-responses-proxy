@@ -1,0 +1,38 @@
+schema_version = 2
+id = "change:align-runtime-observation"
+intent = "Make diagnostics and release compatibility consume existing authoritative lifecycle observations instead of reinterpreting transient platform state."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "openspec/changes/align-runtime-observation/**",
+  "openspec/changes/archive/*-align-runtime-observation/**",
+  "src/codex_responses_proxy/cli/application.py",
+  "tests/cli/test_lifecycle.py",
+  "tests/release/test_native_compatibility.py",
+]
+invariants = [
+  "status_owns_runtime_identity_validation",
+  "doctor_does_not_reinterpret_platform_process_inventory",
+  "release_compatibility_waits_for_a_durable_lifecycle_boundary",
+  "terminal_runtime_identity_traffic_rollback_and_residue_proof_remain_required",
+]
+acceptance = [
+  "focused_diagnostic_and_lifecycle_regressions_pass",
+  "native_macos_published_compatibility_passes",
+  "repository_quick_full_and_release_gates_pass_without_warnings",
+  "linux_and_windows_published_compatibility_pass_on_hosted_runners",
+]
+risks = [
+  "transient_platform_inventory_is_misclassified_as_runtime_failure",
+  "fixture_timeout_begins_before_candidate_materialization_finishes",
+]
+authority_refs = [
+  "AGENTS.md",
+  "openspec/specs/product-interface/spec.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+]
+predecessors = ["change:portable-release-compatibility"]
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []

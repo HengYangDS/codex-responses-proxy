@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-27
+goal: Eliminate platform-sensitive duplicate runtime interpretation while
+  preserving exact terminal lifecycle proof.
+skip_specs: true
