@@ -118,15 +118,23 @@ def runtime_supports_handoff(runtime: RuntimeSnapshot | None) -> bool:
 def capture_source_listener(
     ctx: runtime_context.RuntimeContext,
     runtime: RuntimeSnapshot,
+    *,
+    timeout_seconds: float = 5.0,
 ) -> process.OwnedProcess:
-    """Capture the sole admitted listener as one exact process generation."""
+    """Boundedly prove one runtime process owns admission before mutation."""
     pid = runtime.get("pid")
-    if not _positive_int(pid) or process.verified_proxy_listener_pids(ctx) != [pid]:
+    if not _positive_int(pid):
         raise errors.InstallError("installed runtime identity is not verified")
     owned = process.capture_executable(pid, ctx.executable, roles=_LISTENER_ROLES)
     if owned is None:
         raise errors.InstallError("installed listener process generation is not verified")
-    return owned
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if process.verified_proxy_listener_pids(ctx) == [pid]:
+            return owned
+        if time.monotonic() >= deadline:
+            raise errors.InstallError("installed runtime identity is not verified")
+        time.sleep(0.05)
 
 
 def expected_metadata(root: str) -> RuntimeSnapshot:

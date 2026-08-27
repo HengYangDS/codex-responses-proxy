@@ -71,8 +71,8 @@ class TestControllerHandoffWiring:
         ctx = install_context(Path(self.tempdir.name))
         runtime = idle_runtime()
         admitted = process.OwnedProcess(999, ctx.executable, 0.5)
-        listeners = mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[999])
         capture = mocker.patch.object(process, "capture_executable", return_value=admitted)
+        listeners = mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[999])
 
         assert handoff.capture_source_listener(ctx, runtime) == admitted
         capture.assert_called_once_with(
@@ -81,19 +81,34 @@ class TestControllerHandoffWiring:
             roles={service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE},
         )
 
-        for pid, observed, generation in (
-            (True, [999], admitted),
-            (0, [999], admitted),
-            (999, [], admitted),
-            (999, [999, 1000], admitted),
-            (999, [999], None),
+        for pid, generation, observed in (
+            (True, admitted, [999]),
+            (0, admitted, [999]),
+            (999, None, [999]),
+            (999, admitted, []),
+            (999, admitted, [999, 1000]),
         ):
-            with subtests.test(pid=pid, observed=observed, generation=generation):
+            with subtests.test(pid=pid, generation=generation, observed=observed):
                 runtime["pid"] = pid
-                listeners.return_value = observed
                 capture.return_value = generation
+                listeners.return_value = observed
                 with pytest.raises(errors.InstallError, match="not verified"):
-                    handoff.capture_source_listener(ctx, runtime)
+                    handoff.capture_source_listener(ctx, runtime, timeout_seconds=0)
+
+    def test_capture_source_listener_waits_for_platform_tcp_attribution(self, mocker):
+        ctx = install_context(Path(self.tempdir.name))
+        runtime = idle_runtime()
+        admitted = process.OwnedProcess(999, ctx.executable, 0.5)
+        mocker.patch.object(process, "capture_executable", return_value=admitted)
+        listeners = mocker.patch.object(
+            process, "verified_proxy_listener_pids", side_effect=[[], [999]]
+        )
+        sleep = mocker.patch.object(handoff.time, "sleep")
+
+        assert handoff.capture_source_listener(ctx, runtime) == admitted
+
+        assert listeners.call_count == 2
+        sleep.assert_called_once_with(0.05)
 
     def test_runtime_supports_handoff_requires_a_complete_available_identity(self, subtests):
         incomplete = idle_runtime()
