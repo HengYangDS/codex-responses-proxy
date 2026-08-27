@@ -56,16 +56,6 @@ def _version(value: str) -> tuple[int, int, int]:
     return int(major), int(minor), int(patch)
 
 
-def _runtime_pid(result: Mapping[str, object]) -> int:
-    """Return the exact runtime process identity from one lifecycle result."""
-
-    runtime = result.get("runtime")
-    assert isinstance(runtime, dict), result
-    pid = runtime.get("pid")
-    assert type(pid) is int, result
-    return pid
-
-
 def _assert_same_runtime_identity(
     command_result: Mapping[str, object],
     observed_status: Mapping[str, object],
@@ -400,7 +390,6 @@ class TestPublishedPredecessorCompatibility:
                 b'{"id":"held","status":"completed"}'
             }
             assert upgraded["state"] == "upgraded"
-            assert wait_until(lambda: process.listener_pids(port) == [_runtime_pid(upgraded)], 20)
 
             after = run_command(
                 current_executable,
@@ -416,6 +405,7 @@ class TestPublishedPredecessorCompatibility:
             control_executable = installed_command.resolve(strict=True)
             after_runtime = after.get("runtime")
             assert isinstance(after_runtime, dict), after
+            _assert_same_runtime_identity(upgraded, after)
             assert after_runtime.get("pid") != previous_pid
             assert (
                 run_command(
