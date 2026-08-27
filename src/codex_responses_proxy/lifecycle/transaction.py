@@ -262,12 +262,15 @@ def _rollback_materialized(
     candidate: identity.LoadedPayloadIdentity,
 ) -> dict[str, object]:
     """Discard a candidate that never became the proven serving runtime."""
-    previous_generation = journal.get("previous_generation")
+    previous_generation_value = journal.get("previous_generation")
+    previous_generation = (
+        str(previous_generation_value) if previous_generation_value is not None else None
+    )
     selection = generation.read(ctx)
     candidate_generation = str(journal["transaction_id"])
     expected_before = (
         generation.Selection(
-            str(previous_generation),
+            previous_generation,
             (
                 str(journal["previous_predecessor"])
                 if journal.get("previous_predecessor") is not None
