@@ -711,23 +711,24 @@ class TestReleasedDeployment:
     def test_incompatible_or_unverified_runtime_refuses_before_write(
         self, subtests, *, mocker
     ) -> None:
-        for current, listeners, message in (
-            (cast("dict[str, object]", {"pid": 111}), [111], "incompatible"),
+        for current, captured, message in (
+            (cast("dict[str, object]", {"pid": 111}), mocker.sentinel.process, "incompatible"),
             (
                 self.current_runtime(
                     handoff_state="finalized",
                     handoff_transaction_id="txn-previous",
                     serving_payload_sha256=None,
                 ),
-                [111],
+                mocker.sentinel.process,
                 "incompatible",
             ),
-            (self.current_runtime(), [], "identity"),
-            (self.current_runtime(pid=True), [True], "identity"),
+            (self.current_runtime(), None, "generation"),
+            (self.current_runtime(pid=True), mocker.sentinel.process, "identity"),
         ):
             with subtests.test(message=message):
                 payload = FakeTransaction(self.ctx)
-                mocker.patch.object(process, "listener_pids", return_value=listeners)
+                if captured is None:
+                    mocker.patch.object(process, "capture_executable", return_value=None)
                 with pytest.raises(errors.InstallError, match=message):
                     self.deploy(payload, current, mocker=mocker)
                 assert payload.events == []

@@ -75,11 +75,7 @@ def install(
         raise errors.InstallError(
             "installed runtime is incompatible; remove it before installing this release"
         )
-    source_listener = handoff.capture_source_listener(
-        ctx,
-        current,
-        timeout_seconds=timeout_seconds,
-    )
+    source_listener = handoff.capture_source_listener(ctx, current)
     if not _same_executable(adapter.configured_executable(ctx), ctx.executable):
         raise errors.InstallError("native supervisor is not bound to the canonical executable")
     return _upgrade(

@@ -67,12 +67,13 @@ class TestControllerHandoffWiring:
     def teardown_method(self) -> None:
         self._cleanups.close()
 
-    def test_capture_source_listener_requires_one_exact_product_generation(self, subtests, mocker):
+    def test_capture_source_listener_requires_one_live_exact_product_generation(
+        self, subtests, mocker
+    ):
         ctx = install_context(Path(self.tempdir.name))
         runtime = idle_runtime()
         admitted = process.OwnedProcess(999, ctx.executable, 0.5)
         capture = mocker.patch.object(process, "capture_executable", return_value=admitted)
-        listeners = mocker.patch.object(process, "listener_pids", return_value=[999])
         alive = mocker.patch.object(process, "owned_process_alive", return_value=True)
 
         assert handoff.capture_source_listener(ctx, runtime) == admitted
@@ -81,55 +82,38 @@ class TestControllerHandoffWiring:
             ctx.executable,
             roles={service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE},
         )
+        alive.assert_called_once_with(admitted)
 
-        for pid, generation, observed, generation_alive in (
-            (True, admitted, [999], True),
-            (0, admitted, [999], True),
-            (999, None, [999], True),
-            (999, admitted, [], True),
-            (999, admitted, [999, 1000], True),
-            (999, admitted, [999], False),
+        for pid, generation, generation_alive in (
+            (True, admitted, True),
+            (0, admitted, True),
+            (999, None, True),
+            (999, admitted, False),
         ):
             with subtests.test(
                 pid=pid,
                 generation=generation,
-                observed=observed,
                 generation_alive=generation_alive,
             ):
                 runtime["pid"] = pid
                 capture.return_value = generation
-                listeners.return_value = observed
                 alive.return_value = generation_alive
                 with pytest.raises(errors.InstallError, match="not verified"):
-                    handoff.capture_source_listener(ctx, runtime, timeout_seconds=0)
+                    handoff.capture_source_listener(ctx, runtime)
 
-    def test_capture_source_listener_waits_for_platform_tcp_attribution(self, mocker):
+    def test_capture_source_listener_does_not_depend_on_platform_tcp_attribution(self, mocker):
         ctx = install_context(Path(self.tempdir.name))
         runtime = idle_runtime()
         admitted = process.OwnedProcess(999, ctx.executable, 0.5)
         mocker.patch.object(process, "capture_executable", return_value=admitted)
-        listeners = mocker.patch.object(process, "listener_pids", side_effect=[[], [999]])
-        alive = mocker.patch.object(process, "owned_process_alive", return_value=True)
-        sleep = mocker.patch.object(handoff.time, "sleep")
-
-        assert handoff.capture_source_listener(ctx, runtime) == admitted
-
-        assert listeners.call_count == 2
-        alive.assert_called_once_with(admitted)
-        sleep.assert_called_once_with(0.05)
-
-    def test_capture_source_listener_uses_the_captured_generation_for_identity(self, mocker):
-        ctx = install_context(Path(self.tempdir.name))
-        runtime = idle_runtime()
-        admitted = process.OwnedProcess(999, ctx.executable, 0.5)
-        mocker.patch.object(process, "capture_executable", return_value=admitted)
-        mocker.patch.object(process, "listener_pids", return_value=[999])
         mocker.patch.object(process, "owned_process_alive", return_value=True)
+        tcp_attribution = mocker.patch.object(process, "listener_pids", return_value=[])
         stale_identity_read = mocker.patch.object(
             process, "verified_proxy_listener_pids", return_value=[]
         )
 
-        assert handoff.capture_source_listener(ctx, runtime, timeout_seconds=0) == admitted
+        assert handoff.capture_source_listener(ctx, runtime) == admitted
+        tcp_attribution.assert_not_called()
         stale_identity_read.assert_not_called()
 
     def test_runtime_supports_handoff_requires_a_complete_available_identity(self, subtests):

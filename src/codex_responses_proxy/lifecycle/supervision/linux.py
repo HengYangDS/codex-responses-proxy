@@ -22,6 +22,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart={{executable}} {{watchdog_mode}}
+KillMode=process
 Restart=always
 RestartSec=3
 
