@@ -18,6 +18,7 @@ from typing import cast
 import pytest
 
 from codex_responses_proxy import product_identity
+from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle.supervision import native_service
@@ -191,11 +192,14 @@ def runtime_context_for(
 ) -> runtime_context.RuntimeContext:
     """Return one isolated native lifecycle context."""
 
+    environment = native_environment(home, install, state)
+    windows = platform.system() == "Windows"
+
     return runtime_context.RuntimeContext(
         user_home=str(home),
         install_dir=str(install),
-        executable=inventory.installed_executable(str(install)),
-        command=str(home / ".local/bin/codex-responses-proxy"),
+        executable=inventory.installed_executable(str(install), windows=windows),
+        command=str(command.path(str(home), environment, windows=windows)),
         log_dir=str(state),
         port=port,
     )
