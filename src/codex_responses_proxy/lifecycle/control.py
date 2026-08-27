@@ -21,6 +21,7 @@ from codex_responses_proxy.lifecycle.supervision.native_service import adapter
 from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.runtime import loopback
 from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import runtime as service_runtime
 
 
 def read_runtime(ctx: runtime_context.RuntimeContext) -> dict[str, object] | None:
@@ -62,6 +63,15 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
     listeners = process.verified_proxy_listener_pids(active)
     runtime = read_runtime(active)
     pid = runtime.get("pid") if isinstance(runtime, dict) else None
+    runtime_process = (
+        process.capture_executable(
+            pid,
+            active.executable,
+            roles={service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE},
+        )
+        if type(pid) is int
+        else None
+    )
     committed = identity.committed_payload(Path(active.executable)) if integrity_ok else None
     runtime_matches_payload = (
         isinstance(runtime, dict)
@@ -70,7 +80,11 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         and runtime.get("accepting") is True
         and runtime.get("draining") is False
     )
-    if type(pid) is not int or listeners != [pid] or not runtime_matches_payload:
+    if (
+        type(pid) is not int
+        or (listeners != [pid] and runtime_process is None)
+        or not runtime_matches_payload
+    ):
         runtime = None
     installed_command = (
         Path(payload_state.require_command(installed))
