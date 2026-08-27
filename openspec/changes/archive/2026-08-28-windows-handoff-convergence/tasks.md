@@ -28,7 +28,7 @@
 - [x] 3.1 Pass focused handoff, control, process, and lifecycle tests.
 - [x] 3.2 Pass strict OpenSpec, full quality, Python 3.12–3.14, and release gates
       without warnings.
-- [ ] 3.3 Pass macOS, Linux, and Windows native acceptance for the exact source
+- [x] 3.3 Pass macOS, Linux, and Windows native acceptance for the exact source
       tree, with both Forge projections green.
 - [x] 3.4 Verify that the formal 8792 installation remains unchanged before the
       successor release is accepted.
