@@ -712,7 +712,11 @@ class TestReleasedDeployment:
         self, subtests, *, mocker
     ) -> None:
         for current, captured, message in (
-            (cast("dict[str, object]", {"pid": 111}), mocker.sentinel.process, "incompatible"),
+            (
+                cast("dict[str, object]", {"pid": 111}),
+                mocker.sentinel.process,
+                "incompatible",
+            ),
             (
                 self.current_runtime(
                     handoff_state="finalized",
@@ -902,7 +906,47 @@ class TestReleasedDeployment:
             adapter=service,
             runtime_reader=runtime_reader,
             timeout_seconds=12.5,
+            upgrade_strategy="native_generation",
         )
+
+    def test_explicit_rollback_replaces_the_native_generation(self, *, mocker) -> None:
+        """An older retained binary is never asked to join a newer handoff protocol."""
+        retained = payload_rollback.RetainedRollback(
+            root=Path("/retained/1.2.2"),
+            predecessor=retained_identity("1.2.2"),
+            successor=retained_identity("1.2.3"),
+        )
+        payload = FakeTransaction(self.ctx)
+        current = self.current_runtime(release="1.2.3")
+        runtime = self.successor(release="1.2.2")
+        service = FakeServiceAdapter(mocker=mocker)
+        source = process.OwnedProcess(111, self.ctx.executable, 1.0)
+        mocker.patch.object(transaction, "begin_rollback_transaction", return_value=payload)
+        mocker.patch.object(process, "capture_executable", return_value=source)
+        drain = mocker.patch.object(apply.handoff, "drain_responses")
+        replace = mocker.patch.object(
+            apply,
+            "_replace_native_generation",
+            return_value=runtime,
+        )
+        request = mocker.patch.object(apply, "request_handoff")
+
+        result = apply.rollback(
+            self.ctx,
+            retained,
+            adapter=service,
+            runtime_reader=lambda _ctx: current,
+        )
+
+        assert result == {
+            "state": "rolled_back",
+            "from_release": "1.2.3",
+            "to_release": "1.2.2",
+            "runtime": runtime,
+        }
+        drain.assert_called_once()
+        replace.assert_called_once()
+        request.assert_not_called()
 
     def test_explicit_rollback_requires_an_upgrade_result(self, *, mocker) -> None:
         retained = payload_rollback.RetainedRollback(

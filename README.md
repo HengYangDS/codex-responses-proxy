@@ -169,7 +169,10 @@ generation. Finalization is idempotent across interruption, and the
 transaction owns temporary bootstrap evidence, selector reconciliation,
 cleanup, and recovery until it closes. `status` therefore reports rollback as
 `deferred` while a transaction is active instead of treating its intermediate
-state as an independent rollback authority.
+state as an independent rollback authority. Explicit rollback drains the
+current listener and replaces its native process generation before proving the
+retained predecessor; the older release does not need to understand a newer
+hot-handoff capability.
 
 Expected failures are concise and actionable. Human mode does not emit a
 traceback, warning dump, serialized object, credential, request body, or private
