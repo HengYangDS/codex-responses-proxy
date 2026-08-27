@@ -19,11 +19,11 @@ import pytest
 from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import control as lifecycle_control
 from codex_responses_proxy.lifecycle import generation as payload_generation
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
+from tests.release.fixtures import COMMAND_TIMEOUT_SECONDS
 from tests.release.fixtures import cleanup_runtime
 from tests.release.fixtures import native_environment
 from tests.release.fixtures import post_response
@@ -80,43 +80,47 @@ def _assert_same_runtime_identity(
     assert observed_runtime.get("accepting") is True
 
 
-def _wait_for_upgrade_release_point(
+def _wait_for_upgrade_activation(
     future: Future[dict[str, object]],
     ctx: runtime_context.RuntimeContext,
     *,
-    predecessor_pid: int,
-    predecessor_release: str,
-    successor_release: str,
     timeout_seconds: float,
 ) -> bool:
-    """Observe a state where held requests may complete the upgrade."""
+    """Observe the durable activation boundary before releasing held requests."""
 
-    def releasable_or_finished() -> bool:
-        runtime = lifecycle_control.read_runtime(ctx)
-        predecessor_draining = (
-            isinstance(runtime, dict)
-            and runtime.get("pid") == predecessor_pid
-            and runtime.get("release") == predecessor_release
-            and runtime.get("accepting") is False
-            and runtime.get("draining") is True
+    def activated_or_finished() -> bool:
+        transaction = payload_state.status(ctx)
+        return (isinstance(transaction, dict) and transaction.get("state") == "activated") or (
+            future.done()
         )
-        successor_ready = (
-            isinstance(runtime, dict)
-            and runtime.get("release") == successor_release
-            and runtime.get("accepting") is True
-            and runtime.get("draining") is False
-            and runtime.get("handoff_state") in {"serving", "finalized"}
-        )
-        return predecessor_draining or successor_ready or future.done()
 
-    reached = wait_until(releasable_or_finished, timeout_seconds)
+    reached = wait_until(activated_or_finished, timeout_seconds)
     if future.done():
         future.result()
     return reached
 
 
-def test_upgrade_release_point_includes_a_draining_predecessor(tmp_path: Path, *, mocker) -> None:
-    """Release held requests once native replacement has closed admission."""
+def test_upgrade_activation_releases_held_requests(tmp_path: Path, *, mocker) -> None:
+    """Release held requests once the candidate becomes the selected generation."""
+
+    ctx = runtime_context_for(
+        tmp_path / "home",
+        tmp_path / "payload",
+        tmp_path / "state",
+        43210,
+    )
+    future: Future[dict[str, object]] = Future()
+    mocker.patch.object(payload_state, "status", return_value={"state": "activated"})
+
+    assert _wait_for_upgrade_activation(
+        future,
+        ctx,
+        timeout_seconds=0.01,
+    )
+
+
+def test_upgrade_activation_waits_through_materialization(tmp_path: Path, *, mocker) -> None:
+    """A materialized candidate is not yet the active lifecycle generation."""
 
     ctx = runtime_context_for(
         tmp_path / "home",
@@ -126,24 +130,19 @@ def test_upgrade_release_point_includes_a_draining_predecessor(tmp_path: Path, *
     )
     future: Future[dict[str, object]] = Future()
     mocker.patch.object(
-        lifecycle_control,
-        "read_runtime",
-        return_value={
-            "pid": 1234,
-            "release": "3.1.2",
-            "accepting": False,
-            "draining": True,
-            "handoff_state": "finalized",
-        },
+        payload_state,
+        "status",
+        side_effect=[
+            {"state": "prepared"},
+            {"state": "materialized"},
+            {"state": "activated"},
+        ],
     )
 
-    assert _wait_for_upgrade_release_point(
+    assert _wait_for_upgrade_activation(
         future,
         ctx,
-        predecessor_pid=1234,
-        predecessor_release="3.1.2",
-        successor_release="3.1.3",
-        timeout_seconds=0.01,
+        timeout_seconds=0.2,
     )
 
 
@@ -427,13 +426,10 @@ class TestPublishedPredecessorCompatibility:
                 environment,
                 *upgrade_arguments,
             )
-            assert _wait_for_upgrade_release_point(
+            assert _wait_for_upgrade_activation(
                 upgrade_future,
                 ctx,
-                predecessor_pid=previous_pid,
-                predecessor_release=previous_version,
-                successor_release=current_version,
-                timeout_seconds=20,
+                timeout_seconds=COMMAND_TIMEOUT_SECONDS,
             )
             release.set()
             stream_holder.join(timeout=60)
