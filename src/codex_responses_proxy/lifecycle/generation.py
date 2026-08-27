@@ -13,6 +13,7 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle import runtime_spec
+from codex_responses_proxy.lifecycle import state
 from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import identity
@@ -90,6 +91,23 @@ def selected_context(
     """Return the active generation context, or the legacy bootstrap context."""
     selection = read(ctx)
     return context(ctx, selection.active) if selection is not None else ctx
+
+
+def control_context(ctx: runtime_context.RuntimeContext) -> runtime_context.RuntimeContext:
+    """Return the newest selected generation that owns installed lifecycle control."""
+    selection = read(ctx)
+    if selection is None:
+        return ctx
+    identified = []
+    for generation_id in (selection.active, selection.predecessor):
+        if generation_id is None:
+            continue
+        candidate = context(ctx, generation_id)
+        payload = identity.committed_payload(Path(candidate.executable))
+        if payload is None:
+            raise errors.InstallError("selected control-plane generation identity is invalid")
+        identified.append((candidate, state.version_key(payload.release)))
+    return max(identified, key=lambda item: item[1])[0]
 
 
 def owned_contexts(

@@ -183,6 +183,22 @@ def test_rollback_transaction_reuses_the_selected_predecessor_generation(
     assert {path.name for path in generation.root(ctx).iterdir()} == generations_before
 
 
+def test_control_context_remains_on_the_newest_selected_release(tmp_path: Path, *, mocker) -> None:
+    """Serving rollback never downgrades the installed lifecycle command plane."""
+    ctx = install_context(tmp_path)
+    first, second = install_successor(ctx, mocker=mocker)
+
+    assert generation.control_context(ctx).executable == second.context.executable
+
+    generation.select(
+        ctx,
+        active=str(first.expected["transaction_id"]),
+        predecessor=str(second.expected["transaction_id"]),
+    )
+
+    assert generation.control_context(ctx).executable == second.context.executable
+
+
 def test_selector_rejects_invalid_carriers_and_values(tmp_path: Path) -> None:
     """Selector parsing fails closed for every authority-shape violation."""
     active = "a" * 32

@@ -71,6 +71,23 @@ def test_projection_replaces_only_absent_or_exact_owned_link(tmp_path: Path) -> 
     assert command_path.resolve() == foreign.resolve()
 
 
+def test_projection_preserves_an_already_owned_link(tmp_path: Path, *, mocker) -> None:
+    """An unchanged control-plane projection does not churn link identity."""
+    target = tmp_path / "payload" / command.COMMAND_NAME
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"executable")
+    command_path = tmp_path / "commands" / command.COMMAND_NAME
+    command.project(command_path, target)
+    before = command_path.lstat()
+    replace = mocker.patch.object(command.os, "replace")
+
+    command.project(command_path, target)
+
+    replace.assert_not_called()
+    after = command_path.lstat()
+    assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+
+
 def test_restore_and_remove_preserve_a_path_that_changed_ownership(
     tmp_path: Path,
 ) -> None:

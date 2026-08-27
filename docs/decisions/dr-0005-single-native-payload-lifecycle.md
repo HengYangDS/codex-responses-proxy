@@ -26,6 +26,9 @@ Rollback and recovery use exact manifests, receipts, command-link ownership,
 runtime identities, and one selector under the stable control root. The
 selector alone names the active immutable generation and its optional sole
 predecessor; installed state and the command projection stay outside both.
+The active generation owns serving and native supervision, while the command
+resolves to the newer verified selected release. Explicit serving rollback
+therefore cannot downgrade lifecycle control or reopen replay admission.
 Finalization atomically advances that selector, retires superseded generations,
 and proves the closed terminal state. The active transaction remains the
 recovery authority throughout every intermediate state. Its payload snapshot
