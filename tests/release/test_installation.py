@@ -140,6 +140,8 @@ class TestReleasedDeployment:
             "capture_executable",
             return_value=process.OwnedProcess(111, self.ctx.executable, 1.0),
         )
+        mocker.patch.object(process, "listener_pids", return_value=[111])
+        mocker.patch.object(process, "owned_process_alive", return_value=True)
 
     @staticmethod
     def current_runtime(**changes: object) -> dict[str, object]:
@@ -296,7 +298,7 @@ class TestReleasedDeployment:
         mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
         mocker.patch.object(process, "capture_executable", return_value=source)
         mocker.patch.object(process, "terminate_owned_process", return_value=True)
-        mocker.patch.object(process, "owned_process_alive", return_value=False)
+        mocker.patch.object(process, "owned_process_alive", side_effect=[True, False])
         mocker.patch.object(apply.handoff, "drain_responses")
         wait = mocker.patch.object(
             apply,
@@ -725,7 +727,7 @@ class TestReleasedDeployment:
         ):
             with subtests.test(message=message):
                 payload = FakeTransaction(self.ctx)
-                mocker.patch.object(process, "verified_proxy_listener_pids", return_value=listeners)
+                mocker.patch.object(process, "listener_pids", return_value=listeners)
                 with pytest.raises(errors.InstallError, match=message):
                     self.deploy(payload, current, mocker=mocker)
                 assert payload.events == []

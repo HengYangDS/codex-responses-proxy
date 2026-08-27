@@ -130,7 +130,7 @@ def capture_source_listener(
         raise errors.InstallError("installed listener process generation is not verified")
     deadline = time.monotonic() + timeout_seconds
     while True:
-        if process.verified_proxy_listener_pids(ctx) == [pid]:
+        if process.listener_pids(ctx.port) == [pid] and process.owned_process_alive(owned):
             return owned
         if time.monotonic() >= deadline:
             raise errors.InstallError("installed runtime identity is not verified")
