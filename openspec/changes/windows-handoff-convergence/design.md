@@ -68,7 +68,11 @@ selector names the active generation and at most one predecessor.
 Upgrade therefore writes only a new generation while the predecessor may be
 running. Activation switches the selector and command projection; finalization
 then prunes every generation not named by the selector. Rollback reverses the
-same selector rather than manufacturing a second payload copy.
+same selector rather than manufacturing a second payload copy. Because the
+retained predecessor may predate the current handoff capability, explicit
+rollback drains the current listener and performs one bounded native-generation
+replacement; it never asks the older binary to participate in a newer hot
+handoff protocol.
 
 The selector itself has one canonical schema parser shared by the running
 service and lifecycle controller. Non-canonical bytes, undeclared fields,

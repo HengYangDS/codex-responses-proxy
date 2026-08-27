@@ -167,7 +167,20 @@ absence. Unknown install content SHALL be preserved and SHALL never become
 implicitly owned. Candidate paths that collide with unknown content SHALL block
 mutation. When an upgrade fails after projecting candidate bytes, rollback
 SHALL restore every retained prior byte and remove every verified candidate
-file that was absent from the prior snapshot.
+file that was absent from the prior snapshot. Explicit rollback to the selected
+predecessor SHALL drain the current listener and use bounded native-generation
+replacement, because the retained predecessor is not required to implement the
+current release's hot-handoff capability.
+
+#### Scenario: A retained predecessor predates the current handoff capability
+
+- **WHEN** an operator rolls back from the current release to its selected
+  predecessor
+- **THEN** the current listener drains before its exact process generation exits
+- **AND** native supervision starts the retained predecessor generation
+- **AND** rollback succeeds only after that generation proves its exact accepting
+  runtime identity
+- **AND** the predecessor is not asked to consume a newer handoff protocol.
 
 #### Scenario: Current payload upgrade fails
 
