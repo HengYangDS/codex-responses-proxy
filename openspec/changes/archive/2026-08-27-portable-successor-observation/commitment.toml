@@ -1,0 +1,30 @@
+schema_version = 2
+id = "change:portable-successor-observation"
+intent = "Make release compatibility prove the exact portable runtime contract without redundant host socket enumeration."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  "openspec/changes/archive/*-portable-successor-observation/**",
+  "openspec/changes/portable-successor-observation/**",
+  "tests/release/test_native_compatibility.py",
+]
+invariants = [
+  "upgrade_and_status_identify_one_accepting_successor",
+  "cross_platform_acceptance_uses_product_semantics",
+  "production_lifecycle_behavior_remains_unchanged",
+]
+acceptance = [
+  "focused_repository_checks_pass_without_warnings",
+  "windows_published_predecessor_compatibility_passes",
+  "dual_forge_proposal_checks_pass",
+]
+risks = ["host_socket_enumeration_can_lag_product_runtime_truth"]
+authority_refs = [
+  "AGENTS.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+]
+predecessors = ["change:stable-control-plane-rollback"]
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []
