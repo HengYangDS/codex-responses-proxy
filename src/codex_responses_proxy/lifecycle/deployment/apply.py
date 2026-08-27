@@ -15,6 +15,7 @@ from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import runtime as service_runtime
 
 RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | None]
 type UpgradeStrategy = handoff.DeploymentStrategy
@@ -420,10 +421,22 @@ def wait_for_serving_runtime(
         runtime = runtime_reader(ctx)
         if isinstance(runtime, dict):
             pid = runtime.get("pid")
+            runtime_process = (
+                process.capture_executable(
+                    pid,
+                    ctx.executable,
+                    roles={service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE},
+                )
+                if type(pid) is int
+                else None
+            )
             if (
                 type(pid) is int
                 and pid > 0
-                and process.verified_proxy_listener_pids(ctx) == [pid]
+                and (
+                    process.verified_proxy_listener_pids(ctx) == [pid]
+                    or runtime_process is not None
+                )
                 and pid != old_pid
                 and _runtime_matches(runtime, expected)
             ):
