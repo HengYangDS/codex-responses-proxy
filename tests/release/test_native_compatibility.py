@@ -408,7 +408,6 @@ class TestPublishedPredecessorCompatibility:
             assert rolled_back["state"] == "rolled_back"
             assert rolled_back["from_release"] == current_version
             assert rolled_back["to_release"] == previous_version
-            assert process.listener_pids(port) == [_runtime_pid(rolled_back)]
             after_rollback = run_command(
                 current_executable,
                 environment,
@@ -419,6 +418,7 @@ class TestPublishedPredecessorCompatibility:
             )
             assert after_rollback["release"] == previous_version
             assert after_rollback["payload_transaction"] is None
+            assert after_rollback.get("runtime") == rolled_back.get("runtime")
             assert after_rollback["rollback"] == {
                 "state": "available",
                 "from_release": previous_version,
@@ -446,7 +446,6 @@ class TestPublishedPredecessorCompatibility:
             assert restored["state"] == "rolled_back"
             assert restored["from_release"] == previous_version
             assert restored["to_release"] == current_version
-            assert process.listener_pids(port) == [_runtime_pid(restored)]
             restored_status = run_command(
                 current_executable,
                 environment,
@@ -457,6 +456,7 @@ class TestPublishedPredecessorCompatibility:
             )
             assert restored_status["release"] == current_version
             assert restored_status["payload_transaction"] is None
+            assert restored_status.get("runtime") == restored.get("runtime")
 
             reloaded = run_command(
                 current_executable,

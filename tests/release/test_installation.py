@@ -404,10 +404,10 @@ class TestReleasedDeployment:
 
         assert events == [
             "commit",
+            "source-drained",
             "service-uninstall",
             "service-install",
             "activate",
-            "source-drained",
             "source-exit",
             "successor-serving",
             ("finalize", self.successor()),
