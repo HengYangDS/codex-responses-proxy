@@ -313,14 +313,15 @@ class TestControllerHandoffWiring:
     def test_native_replacement_drains_only_the_captured_predecessor(self, *, mocker) -> None:
         ctx = install_context(Path(self.tempdir.name))
         source = process.OwnedProcess(999, ctx.executable, 0.5)
-        responses = iter(
-            (
+        runtime_reader = mocker.Mock(
+            side_effect=(
                 matching_health(
                     999,
                     expected_metadata(),
                     draining=True,
                     accepting=False,
                     active_responses=2,
+                    active_handlers=5,
                 ),
                 matching_health(
                     999,
@@ -328,6 +329,15 @@ class TestControllerHandoffWiring:
                     draining=True,
                     accepting=False,
                     active_responses=0,
+                    active_handlers=2,
+                ),
+                matching_health(
+                    999,
+                    expected_metadata(),
+                    draining=True,
+                    accepting=False,
+                    active_responses=0,
+                    active_handlers=1,
                 ),
             )
         )
@@ -342,7 +352,7 @@ class TestControllerHandoffWiring:
         handoff.drain_responses(
             ctx,
             source_listener=source,
-            runtime_reader=lambda _ctx: next(responses),
+            runtime_reader=runtime_reader,
             timeout_seconds=1,
         )
 
@@ -350,6 +360,7 @@ class TestControllerHandoffWiring:
         assert request.full_url.endswith("/control/drain")
         assert request.method == "POST"
         assert request.headers["X-codex-responses-proxy-drain-lease-seconds"] == "2"
+        assert runtime_reader.call_count == 3
 
     def test_failed_native_replacement_reopens_the_captured_predecessor(self, *, mocker) -> None:
         """A failed replacement must not leave the surviving listener drained."""

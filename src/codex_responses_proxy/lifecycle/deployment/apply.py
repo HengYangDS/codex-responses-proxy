@@ -210,7 +210,7 @@ def _upgrade(
     except UnknownDeploymentOutcome as exc:
         payload.preserve_for_recovery(str(exc))
         raise
-    except BaseException:
+    except BaseException as upgrade_error:
         if supervisor_replaced:
             try:
                 _restore_predecessor(
@@ -224,7 +224,9 @@ def _upgrade(
                 raise
             except BaseException as restore_error:
                 unknown = UnknownDeploymentOutcome(
-                    "native supervisor rollback could not restore the predecessor"
+                    "native supervisor rollback could not restore the predecessor; "
+                    f"upgrade failure: {_public_failure(upgrade_error)}; "
+                    f"supervisor recovery failure: {_public_failure(restore_error)}"
                 )
                 payload.preserve_for_recovery(str(unknown))
                 raise unknown from restore_error
@@ -244,7 +246,9 @@ def _upgrade(
                     )
             except BaseException as restore_error:
                 unknown = UnknownDeploymentOutcome(
-                    "native supervisor rollback could not restore predecessor admission"
+                    "native supervisor rollback could not restore predecessor admission; "
+                    f"upgrade failure: {_public_failure(upgrade_error)}; "
+                    f"admission recovery failure: {_public_failure(restore_error)}"
                 )
                 payload.preserve_for_recovery(str(unknown))
                 raise unknown from restore_error
@@ -460,3 +464,10 @@ def _same_executable(configured: str | None, expected: str) -> bool:
     return os.path.normcase(os.path.abspath(configured)) == os.path.normcase(
         os.path.abspath(expected)
     )
+
+
+def _public_failure(error: BaseException) -> str:
+    """Describe a public product failure without exposing arbitrary exception text."""
+    if isinstance(error, errors.ProductError):
+        return str(error)
+    return error.__class__.__name__

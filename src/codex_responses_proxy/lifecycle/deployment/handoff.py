@@ -286,6 +286,7 @@ def drain_responses(
             and runtime.get("draining") is True
             and runtime.get("accepting") is False
             and runtime.get("active_responses") == 0
+            and runtime.get("active_handlers") == 1
         ):
             return
         time.sleep(0.1)

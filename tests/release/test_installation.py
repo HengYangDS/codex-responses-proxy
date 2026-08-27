@@ -486,15 +486,21 @@ class TestReleasedDeployment:
         with pytest.raises(
             apply.UnknownDeploymentOutcome,
             match="could not restore predecessor admission",
-        ):
+        ) as raised:
             self.deploy(payload, current, adapter=service, mocker=mocker)
 
+        assert str(raised.value) == (
+            "native supervisor rollback could not restore predecessor admission; "
+            "upgrade failure: successor unavailable; "
+            "admission recovery failure: predecessor listener no longer owns "
+            "Responses admission"
+        )
         assert payload.events == [
             "commit",
             "activate",
             (
                 "preserve",
-                "native supervisor rollback could not restore predecessor admission",
+                str(raised.value),
             ),
         ]
         assert service.uninstall_mock.call_args_list == [
@@ -854,15 +860,20 @@ class TestReleasedDeployment:
         with pytest.raises(
             apply.UnknownDeploymentOutcome,
             match="could not restore predecessor admission",
-        ):
+        ) as raised:
             self.deploy(payload, current, adapter=service, mocker=mocker)
 
+        assert str(raised.value) == (
+            "native supervisor rollback could not restore predecessor admission; "
+            "upgrade failure: successor unavailable; "
+            "admission recovery failure: drain release is unavailable"
+        )
         assert payload.events == [
             "commit",
             "activate",
             (
                 "preserve",
-                "native supervisor rollback could not restore predecessor admission",
+                str(raised.value),
             ),
         ]
 
