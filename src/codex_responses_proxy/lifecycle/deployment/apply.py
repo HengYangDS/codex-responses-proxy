@@ -174,7 +174,16 @@ def _upgrade(
     payload.commit_projection()
     candidate = payload.context
     supervisor_replaced = False
+    admission_may_be_closed = False
     try:
+        if native_generation:
+            admission_may_be_closed = True
+            handoff.drain_responses(
+                candidate,
+                source_listener=source_listener,
+                runtime_reader=runtime_reader,
+                timeout_seconds=timeout_seconds,
+            )
         _replace_supervisor(
             adapter,
             ctx,
@@ -183,6 +192,7 @@ def _upgrade(
         )
         supervisor_replaced = True
         payload.activate()
+        admission_may_be_closed = True
         runtime = (
             _replace_native_generation(
                 candidate,
@@ -213,6 +223,17 @@ def _upgrade(
                     candidate=candidate,
                     timeout_seconds=timeout_seconds,
                 )
+            except UnknownDeploymentOutcome as restore_error:
+                payload.preserve_for_recovery(str(restore_error))
+                raise
+            except BaseException as restore_error:
+                unknown = UnknownDeploymentOutcome(
+                    "native supervisor rollback could not restore the predecessor"
+                )
+                payload.preserve_for_recovery(str(unknown))
+                raise unknown from restore_error
+        if admission_may_be_closed:
+            try:
                 if native_generation and not process.owned_process_alive(source_listener):
                     wait_for_serving_runtime(
                         ctx,
@@ -225,9 +246,6 @@ def _upgrade(
                     raise errors.InstallError(
                         "predecessor listener no longer owns Responses admission"
                     )
-            except UnknownDeploymentOutcome as restore_error:
-                payload.preserve_for_recovery(str(restore_error))
-                raise
             except BaseException as restore_error:
                 unknown = UnknownDeploymentOutcome(
                     "native supervisor rollback could not restore predecessor admission"
@@ -332,13 +350,7 @@ def _replace_native_generation(
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
 ) -> dict[str, object]:
-    """Replace one legacy listener after crossing an exact process barrier."""
-    handoff.drain_responses(
-        ctx,
-        source_listener=source_listener,
-        runtime_reader=runtime_reader,
-        timeout_seconds=timeout_seconds,
-    )
+    """Cross the exact predecessor exit barrier and prove its successor."""
     if not process.terminate_owned_process(source_listener, timeout_seconds=timeout_seconds):
         raise UnknownDeploymentOutcome("native generation replacement outcome is unconfirmed")
     return wait_for_serving_runtime(
