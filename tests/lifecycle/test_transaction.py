@@ -1563,6 +1563,21 @@ class TestPayloadTransaction:
         candidate.rollback()
         assert not Path(ctx.install_dir).exists()
 
+    def test_nonempty_control_root_without_installed_authority_is_rejected(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Unowned residue cannot be interpreted as an install predecessor."""
+        ctx = install_context(tmp_path)
+        install_root = Path(ctx.install_dir)
+        install_root.mkdir(parents=True)
+        (install_root / "unknown.txt").write_text("operator data", encoding="utf-8")
+
+        with pytest.raises(errors.InstallError, match="unverified content"):
+            begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+
+        assert (install_root / "unknown.txt").read_text(encoding="utf-8") == "operator data"
+        assert not Path(payload_state.transaction_root(ctx)).exists()
+
     def test_transaction_status_projects_only_the_read_only_recovery_contract(
         self, *, mocker
     ) -> None:
