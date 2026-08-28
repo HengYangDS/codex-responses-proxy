@@ -259,13 +259,13 @@ def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -
 def recover(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
     """Converge one interrupted payload transaction and its native supervisor."""
 
-    def bind_terminal(active: runtime_context.RuntimeContext) -> None:
+    def bind_terminal(control: runtime_context.RuntimeContext) -> None:
         native = adapter()
-        native.install(active)
-        configured = native.configured_executable(active)
+        native.install(control)
+        configured = native.configured_executable(control)
         if configured is None or runtime_spec.normalized_path(
             configured
-        ) != runtime_spec.normalized_path(active.executable):
+        ) != runtime_spec.normalized_path(control.executable):
             raise errors.RecoveryStateError(
                 "payload recovery cannot close before native supervisor identity is proved"
             )
