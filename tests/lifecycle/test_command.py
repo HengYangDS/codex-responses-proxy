@@ -45,10 +45,14 @@ def test_windows_command_path_uses_the_user_application_alias_directory() -> Non
 
 
 def assert_native_projection(command_path: Path, target: Path) -> None:
-    """Assert the host-native link identifies the exact installed executable."""
+    """Assert the selected projection owns the exact installed executable."""
 
-    assert os.path.samefile(command_path, target)
-    assert command_path.is_symlink() is (os.name != "nt")
+    expected_kind = "launcher" if command_path.suffix.casefold() == ".cmd" else "symlink"
+    assert command.status(command_path, target) == {
+        "state": "owned",
+        "kind": expected_kind,
+        "path": str(command_path),
+    }
 
 
 def test_projection_replaces_only_absent_or_exact_owned_link(tmp_path: Path) -> None:
@@ -182,8 +186,7 @@ def test_project_rejects_invalid_target_and_reports_native_failures(
     def fail_projection(_target: Path, _link: Path) -> None:
         raise OSError("projection unavailable")
 
-    primitive = "link" if os.name == "nt" else "symlink"
-    monkeypatch.setattr(command.os, primitive, fail_projection)
+    monkeypatch.setattr(command.os, "symlink", fail_projection)
     with pytest.raises(errors.InstallError, match="native command projection failed"):
         command.project(command_path, target)
     assert not list(command_path.parent.glob(".*.tmp-*"))
@@ -272,8 +275,11 @@ def test_projection_and_restore_reject_changed_snapshot_ownership(
     target.write_text("runtime", encoding="utf-8")
     previous_path = tmp_path / "commands" / f"legacy-{command.COMMAND_NAME}"
     previous_path.parent.mkdir(parents=True)
-    previous_path.write_text("prior owner", encoding="utf-8")
-    previous = command.snapshot(previous_path, previous_path)
+    previous_target = tmp_path / "prior" / command.COMMAND_NAME
+    previous_target.parent.mkdir()
+    previous_target.write_text("prior owner", encoding="utf-8")
+    previous_path.symlink_to(previous_target)
+    previous = command.snapshot(previous_path, previous_target)
     previous_path.unlink()
     previous_path.write_text("changed owner", encoding="utf-8")
 
@@ -313,16 +319,8 @@ def test_detach_handles_absence_snapshot_ownership_and_unlink_failure(
     command.detach(command_path, target, absent)
 
     command_path.parent.mkdir(parents=True)
-    command_path.write_text("prior owner", encoding="utf-8")
-    metadata = command_path.lstat()
-    prior = command.Snapshot(
-        state="owned",
-        path=str(command_path),
-        target=str(target),
-        kind="symlink",
-        device=metadata.st_dev,
-        inode=metadata.st_ino,
-    )
+    command_path.symlink_to(target)
+    prior = command.snapshot(command_path, target)
     command.detach(command_path, target, prior)
     assert not command_path.exists()
 
@@ -394,15 +392,9 @@ def test_classification_and_snapshot_matching_fail_closed(
         )
         is False
     )
-    metadata = command_path.lstat()
-    owned = command.Snapshot(
-        state="owned",
-        path=str(command_path),
-        target=str(target),
-        kind="hardlink",
-        device=metadata.st_dev,
-        inode=metadata.st_ino,
-    )
+    command_path.unlink()
+    command_path.symlink_to(target)
+    owned = command.snapshot(command_path, target)
     assert command._matches_snapshot(command_path, owned) is True
     assert command._matches_snapshot(command_path, replace(owned, inode=owned.inode + 1)) is False
 

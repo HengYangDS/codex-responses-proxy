@@ -37,11 +37,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestControllerLifecycle:
-    def test_recovery_rebinds_supervision_to_the_terminal_generation(self, *, mocker) -> None:
+    def test_recovery_rebinds_supervision_to_the_control_generation(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
-        active = generation.context(ctx, "a" * 32)
+        control_generation = generation.context(ctx, "a" * 32)
         service = mocker.Mock()
-        service.configured_executable.return_value = active.executable
+        service.configured_executable.return_value = control_generation.executable
         mocker.patch.object(control.payload_state, "status", return_value={"state": "activated"})
         mocker.patch.object(control, "read_runtime", return_value={"pid": 7})
         recover = mocker.patch.object(control.transaction, "recover")
@@ -49,7 +49,7 @@ class TestControllerLifecycle:
 
         def recover_and_bind(_ctx, *, runtime, bind_terminal):
             assert runtime == {"pid": 7}
-            bind_terminal(active)
+            bind_terminal(control_generation)
             return {"state": "finalized", "version": "3.1.3"}
 
         recover.side_effect = recover_and_bind
@@ -58,12 +58,12 @@ class TestControllerLifecycle:
 
         recover.assert_called_once()
         assert recover.call_args.kwargs["runtime"] == {"pid": 7}
-        service.install.assert_called_once_with(active)
-        service.configured_executable.assert_called_once_with(active)
+        service.install.assert_called_once_with(control_generation)
+        service.configured_executable.assert_called_once_with(control_generation)
 
     def test_recovery_rejects_an_unproved_terminal_supervisor(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
-        active = generation.context(ctx, "a" * 32)
+        control_generation = generation.context(ctx, "a" * 32)
         service = mocker.Mock()
         service.configured_executable.return_value = None
         mocker.patch.object(control.payload_state, "status", return_value={"state": "activated"})
@@ -73,7 +73,7 @@ class TestControllerLifecycle:
 
         def recover_and_bind(_ctx, *, runtime, bind_terminal):
             assert runtime == {"pid": 7}
-            bind_terminal(active)
+            bind_terminal(control_generation)
 
         recover.side_effect = recover_and_bind
 

@@ -16,6 +16,7 @@ import pytest
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import artifact
+from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import generation as payload_generation
 from codex_responses_proxy.lifecycle import owned_files
@@ -1108,8 +1109,9 @@ class TestPayloadTransaction:
 
         command_path = Path(ctx.command)
         runtime_config = Path(transaction.context.payload_dir, inventory.RUNTIME_CONFIG_FILENAME)
-        assert os.path.samefile(command_path, transaction.context.executable)
-        assert command_path.is_symlink() is (os.name != "nt")
+        assert command.status(command_path, Path(transaction.context.executable))["state"] == (
+            "owned"
+        )
         assert runtime_config.is_file()
 
         transaction.rollback()
@@ -1131,8 +1133,7 @@ class TestPayloadTransaction:
         transaction.activate()
         transaction.rollback()
 
-        assert os.path.samefile(command_path, prior_target)
-        assert command_path.is_symlink() is (os.name != "nt")
+        assert command.status(command_path, prior_target)["state"] == "owned"
 
     def test_failed_commit_rolls_back_before_propagating(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))

@@ -157,7 +157,7 @@ def _close_finalized(
         "version": journal["version"],
         "state": "finalized",
     }
-    bind_terminal(generation.selected_context(ctx))
+    bind_terminal(generation.control_context(ctx))
     generation.prune(ctx, selection)
     _remove_transaction_root(ctx)
     return result
@@ -221,7 +221,7 @@ def _finalize_recovery(
         "version": journal["version"],
         "state": "finalized",
     }
-    bind_terminal(generation.selected_context(ctx))
+    bind_terminal(generation.control_context(ctx))
     generation.prune(ctx, selection)
     _remove_transaction_root(ctx)
     return result
@@ -334,7 +334,7 @@ def _rollback_materialized(
                 command_snapshot,
             )
     if expected_before is not None:
-        bind_terminal(generation.selected_context(ctx))
+        bind_terminal(generation.control_context(ctx))
     if not _reuses_retained_generation(journal):
         generation.remove(ctx, candidate_generation)
     generations = generation.root(ctx)
@@ -390,7 +390,7 @@ def _rollback_upgrade(
             "version": journal["version"],
             "state": "rolled_back",
         }
-        bind_terminal(generation.selected_context(ctx))
+        bind_terminal(generation.control_context(ctx))
         _remove_transaction_root(ctx)
         return result
     previous_generation = journal.get("previous_generation")
@@ -439,7 +439,7 @@ def _rollback_upgrade(
                 Path(generation.control_context(ctx).executable),
                 command_snapshot,
             )
-        bind_terminal(generation.selected_context(ctx))
+        bind_terminal(generation.control_context(ctx))
         generation.remove(ctx, str(journal["transaction_id"]))
         result = {
             "transaction_id": journal["transaction_id"],
@@ -477,7 +477,7 @@ def _rollback_upgrade(
         candidate_paths=owned_files.current_inventory(Path(ctx.install_dir)),
     )
     command.restore(Path(ctx.command), Path(ctx.executable), command_snapshot)
-    bind_terminal(generation.selected_context(ctx))
+    bind_terminal(generation.control_context(ctx))
     generation.remove(ctx, str(journal["transaction_id"]))
     result = {
         "transaction_id": journal["transaction_id"],

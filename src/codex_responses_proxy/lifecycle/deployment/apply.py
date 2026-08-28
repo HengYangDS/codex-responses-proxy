@@ -81,12 +81,14 @@ def install(
         )
     strategy = upgrade_strategy or observed_strategy
     source_listener = handoff.capture_source_listener(ctx, current)
-    active = generation.selected_context(ctx)
-    configured = adapter.configured_executable(active)
+    control = generation.control_context(ctx)
+    configured = adapter.configured_executable(control)
     if configured is None or runtime_spec.normalized_path(
         configured
-    ) != runtime_spec.normalized_path(active.executable):
-        raise errors.InstallError("native supervisor is not bound to the active payload executable")
+    ) != runtime_spec.normalized_path(control.executable):
+        raise errors.InstallError(
+            "native supervisor is not bound to the lifecycle control executable"
+        )
     return _upgrade(
         ctx,
         payload,
@@ -207,9 +209,9 @@ def _upgrade(
             )
         )
         successor_committed = True
-        _bind_successor_supervisor(
+        _bind_control_supervisor(
             adapter,
-            generation.selected_context(ctx),
+            generation.control_context(ctx),
         )
     except UnknownDeploymentOutcome as exc:
         payload.preserve_for_recovery(str(exc))
@@ -263,19 +265,17 @@ def _upgrade(
     return {"state": "upgraded", "runtime": runtime}
 
 
-def _bind_successor_supervisor(
+def _bind_control_supervisor(
     adapter: ServiceAdapter,
-    candidate: runtime_context.RuntimeContext,
+    control: runtime_context.RuntimeContext,
 ) -> None:
-    """Bind durable supervision only after the successor owns admission."""
-    adapter.install(candidate)
-    configured = adapter.configured_executable(candidate)
+    """Bind durable supervision to the newest lifecycle-capable generation."""
+    adapter.install(control)
+    configured = adapter.configured_executable(control)
     if configured is None or runtime_spec.normalized_path(
         configured
-    ) != runtime_spec.normalized_path(candidate.executable):
-        raise errors.InstallError(
-            "native supervisor did not bind the committed successor executable"
-        )
+    ) != runtime_spec.normalized_path(control.executable):
+        raise errors.InstallError("native supervisor did not bind the lifecycle control executable")
 
 
 def _remove_candidate_runtime(

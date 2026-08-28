@@ -272,4 +272,8 @@ def _matches_snapshot(command_path: Path, previous: Snapshot | None) -> bool:
         metadata = command_path.lstat()
     except OSError:
         return False
-    return metadata.st_dev == previous.device and metadata.st_ino == previous.inode
+    return (
+        metadata.st_dev == previous.device
+        and metadata.st_ino == previous.inode
+        and _classify(command_path, Path(previous.target)) == ("owned", previous.kind)
+    )

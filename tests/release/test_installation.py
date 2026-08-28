@@ -186,7 +186,7 @@ class TestReleasedDeployment:
     ) -> dict[str, object]:
         mocker.patch.object(
             generation,
-            "selected_context",
+            "control_context",
             side_effect=[self.ctx, payload.context],
         )
         return apply.install(
@@ -216,7 +216,7 @@ class TestReleasedDeployment:
         ]
         service.install_mock.assert_called_once_with(payload.context)
 
-    def test_current_upgrade_rebinds_supervision_after_successor_handoff(self, *, mocker) -> None:
+    def test_current_upgrade_rebinds_control_after_successor_handoff(self, *, mocker) -> None:
         payload = FakeTransaction(self.ctx)
         current = self.current_runtime()
         runtime = self.successor()
@@ -597,8 +597,8 @@ class TestReleasedDeployment:
                 "preserve",
                 (
                     "successor committed but native supervisor rebind failed; "
-                    "failure: native supervisor did not bind the committed "
-                    "successor executable"
+                    "failure: native supervisor did not bind the lifecycle "
+                    "control executable"
                 ),
             ),
         ]
@@ -632,7 +632,7 @@ class TestReleasedDeployment:
         service.install_mock.assert_called_once_with(payload.context)
         service.uninstall_mock.assert_not_called()
 
-    def test_upgrade_requires_the_active_payload_supervisor_before_payload_mutation(
+    def test_upgrade_requires_the_control_supervisor_before_payload_mutation(
         self, *, mocker
     ) -> None:
         payload = FakeTransaction(self.ctx)
@@ -641,7 +641,7 @@ class TestReleasedDeployment:
         mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
         request = mocker.patch.object(apply, "request_handoff")
 
-        with pytest.raises(errors.InstallError, match="active payload executable"):
+        with pytest.raises(errors.InstallError, match="lifecycle control executable"):
             self.deploy(payload, current, adapter=service, mocker=mocker)
 
         assert payload.events == []
@@ -848,8 +848,8 @@ class TestReleasedDeployment:
             return_value=runtime,
         )
         request = mocker.patch.object(apply, "request_handoff")
-        active = generation.context(self.ctx, "c" * 32)
-        mocker.patch.object(generation, "selected_context", return_value=active)
+        control = generation.context(self.ctx, "c" * 32)
+        mocker.patch.object(generation, "control_context", return_value=control)
 
         result = apply.rollback(
             self.ctx,
@@ -867,7 +867,7 @@ class TestReleasedDeployment:
         drain.assert_called_once()
         replace.assert_called_once()
         request.assert_not_called()
-        service.install_mock.assert_called_once_with(active)
+        service.install_mock.assert_called_once_with(control)
 
     def test_explicit_rollback_requires_an_upgrade_result(self, *, mocker) -> None:
         retained = payload_rollback.RetainedRollback(
