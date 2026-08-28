@@ -80,6 +80,13 @@ successful platform command alone SHALL NOT establish convergence.
 - **AND** leaves the canonical service and listener unchanged
 - **AND** the set of noncanonical host service projections has no net growth.
 
+#### Scenario: Purge encounters residual control-root content
+
+- **WHEN** uninstall removes every verified generation and installed-state carrier
+- **AND** content without current ownership evidence remains in the control root
+- **THEN** purge preserves that content and exits nonzero
+- **AND** a later install rejects the nonempty root before claiming a payload transaction.
+
 ### Requirement: Transactional handoff is the sole generation transition
 
 A running upgrade SHALL bind the health snapshot to exactly one listener owned
