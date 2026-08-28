@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-28
+goal: Remove non-authoritative OpenSpec-adjacent carriers after preserving every
+  current unique invariant in official OpenSpec artifacts or existing canonical
+  documentation.
