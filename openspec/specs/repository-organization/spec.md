@@ -79,10 +79,15 @@ documented locked command graph as a distinct developer surface.
 
 ### Requirement: Semantic documentation architecture
 
-Proxy documentation SHALL use one global entry point and SHALL organize its
-small documentation kernel by semantic domain. Content document filenames
-SHALL state their subjects. Repository checks and release metadata SHALL
-consume those semantic paths directly.
+Proxy SHALL use the resolved official OpenSpec workflow artifacts as the sole
+authority for product change intent and SHALL organize its small canonical
+documentation kernel by semantic domain. An additional tracked carrier SHALL
+exist only when it owns a current invariant that official OpenSpec artifacts
+and existing authorities cannot represent, has one named owner and current
+consumer, replaces rather than parallels another authority, and defines its
+retirement condition. Content document filenames SHALL state their subjects.
+Repository checks and release metadata SHALL consume those semantic paths
+directly.
 
 #### Scenario: Reader enters the documentation
 
@@ -101,6 +106,21 @@ consume those semantic paths directly.
 - **WHEN** quality or release validation reads a canonical document
 - **THEN** it SHALL use the same semantic path exposed to readers
 - **AND** the documentation tree and executable contract SHALL not diverge.
+
+#### Scenario: Official OpenSpec artifacts carry the intent
+
+- **WHEN** proposal, specification, design, tasks, metadata, configuration, or
+  Git history already carry all current meaning for a Change
+- **THEN** the repository SHALL retain no additional summary, scope inventory,
+  capability descriptor, empty index, or equivalent parallel carrier.
+
+#### Scenario: An additional carrier is necessary
+
+- **WHEN** an invariant cannot be represented by official OpenSpec artifacts or
+  an existing authority
+- **THEN** the carrier SHALL identify its unique invariant, owner, current
+  consumer, replaced authority, and retirement condition
+- **AND** validation SHALL reject it if any fact is absent or unverifiable.
 
 ### Requirement: Portable repository quality surface
 
