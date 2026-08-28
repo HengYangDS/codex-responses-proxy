@@ -271,6 +271,7 @@ class TestReleasedDeployment:
         drain.assert_called_once_with(
             payload.context,
             source_listener=source,
+            source_runtime=current,
             runtime_reader=mocker.ANY,
             timeout_seconds=30,
         )
@@ -355,6 +356,7 @@ class TestReleasedDeployment:
         drain.assert_called_once_with(
             payload.context,
             source_listener=source,
+            source_runtime=current,
             runtime_reader=mocker.ANY,
             timeout_seconds=30,
         )
@@ -793,6 +795,8 @@ class TestReleasedDeployment:
         resume.assert_called_once_with(
             self.ctx,
             source_listener=process.OwnedProcess(111, self.ctx.executable, 1.0),
+            source_runtime=current,
+            runtime_reader=mocker.ANY,
         )
         assert rollback_service.install_mock.call_args_list == [
             mocker.call(rolled_back.context),

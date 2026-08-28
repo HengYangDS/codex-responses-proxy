@@ -219,6 +219,7 @@ def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -
             timeout_seconds=timeout_seconds,
             lease_seconds=lease_seconds,
             source_listener=source_listener,
+            source_runtime=runtime,
         )
     except BaseException as handoff_exc:
         try:
