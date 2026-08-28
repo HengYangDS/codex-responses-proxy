@@ -38,7 +38,7 @@
       and watchdog identity.
 - [ ] 4.4 Prove rollback, recover, and a subsequent upgrade on the same clean
       contract, then prove zero owned service, process, and file residue.
-- [x] 4.5 Prove the same published-predecessor upgrade, bidirectional rollback,
+- [ ] 4.5 Prove the same published-predecessor upgrade, bidirectional rollback,
       recover, uninstall, reinstall, and zero-residue contract on macOS without
       changing the formal `3.1.2` service.
 

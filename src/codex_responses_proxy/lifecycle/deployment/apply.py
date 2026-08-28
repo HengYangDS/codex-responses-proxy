@@ -86,7 +86,7 @@ def install(
     if configured is None or runtime_spec.normalized_path(
         configured
     ) != runtime_spec.normalized_path(active.executable):
-        raise errors.InstallError("native supervisor is not bound to the canonical executable")
+        raise errors.InstallError("native supervisor is not bound to the active payload executable")
     return _upgrade(
         ctx,
         payload,
