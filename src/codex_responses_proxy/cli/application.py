@@ -26,7 +26,6 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import control
 from codex_responses_proxy.lifecycle import install
 from codex_responses_proxy.lifecycle import runtime_spec
-from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle import uninstall
 from codex_responses_proxy.service import runtime as service_runtime
 
@@ -168,7 +167,7 @@ def dispatch(command: str, **arguments: object) -> CommandResult:
     if command == "doctor":
         return _doctor(control.status(context))
     if command == "recover":
-        return transaction.recover(context, runtime=control.read_runtime(context))
+        return control.recover(context)
     if command == "reload":
         return control.reload(context, timeout_seconds=_timeout_argument(arguments))
     if command == "rollback":
@@ -195,13 +194,9 @@ def _doctor(evidence: Mapping[str, object]) -> DoctorReport:
     integrity_ok = isinstance(integrity, dict) and integrity.get("ok") is True
     service = evidence.get("service")
     runtime = evidence.get("runtime")
-    listeners = evidence.get("listener_pids")
     listener_ok = (
         isinstance(runtime, dict)
-        and isinstance(listeners, list)
-        and len(listeners) == 1
         and type(runtime.get("pid")) is int
-        and runtime["pid"] == listeners[0]
         and runtime.get("accepting") is not False
     )
     command = evidence.get("command")

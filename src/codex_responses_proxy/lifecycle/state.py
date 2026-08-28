@@ -222,5 +222,13 @@ def require_command(state: ReadOnlyJsonObject) -> str:
 
 def compare_versions(left: str, right: str) -> int:
     """Compare two already validated semantic versions."""
-    versions = tuple(tuple(map(int, version.split("."))) for version in (left, right))
+    versions = tuple(version_key(version) for version in (left, right))
     return (versions[0] > versions[1]) - (versions[0] < versions[1])
+
+
+def version_key(value: str) -> tuple[int, int, int]:
+    """Return one strict release tuple shared by lifecycle ordering decisions."""
+    if _STRICT_VERSION.fullmatch(value) is None:
+        raise errors.InstallError("installed release state version is invalid")
+    major, minor, patch = value.split(".")
+    return int(major), int(minor), int(patch)

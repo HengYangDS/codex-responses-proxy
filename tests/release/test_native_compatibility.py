@@ -12,17 +12,20 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from pathlib import Path
 from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 
 import pytest
 
 from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import artifact
+from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import control as lifecycle_control
-from codex_responses_proxy.lifecycle import generation as payload_generation
+from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
+from tests.release.fixtures import COMMAND_TIMEOUT_SECONDS
 from tests.release.fixtures import cleanup_runtime
 from tests.release.fixtures import native_environment
 from tests.release.fixtures import post_response
@@ -56,16 +59,6 @@ def _version(value: str) -> tuple[int, int, int]:
     return int(major), int(minor), int(patch)
 
 
-def _runtime_pid(result: Mapping[str, object]) -> int:
-    """Return the exact runtime process identity from one lifecycle result."""
-
-    runtime = result.get("runtime")
-    assert isinstance(runtime, dict), result
-    pid = runtime.get("pid")
-    assert type(pid) is int, result
-    return pid
-
-
 def _assert_same_runtime_identity(
     command_result: Mapping[str, object],
     observed_status: Mapping[str, object],
@@ -93,18 +86,110 @@ def _wait_for_upgrade_drain(
     future: Future[dict[str, object]],
     ctx: runtime_context.RuntimeContext,
     *,
+    predecessor_pid: int,
+    predecessor_release: str,
     timeout_seconds: float,
 ) -> bool:
-    """Observe drain readiness without hiding an already failed upgrade command."""
+    """Release held requests after materialization reaches native drain."""
 
-    def ready_or_finished() -> bool:
+    def draining_or_finished() -> bool:
         runtime = lifecycle_control.read_runtime(ctx)
-        return (isinstance(runtime, dict) and runtime.get("draining") is True) or future.done()
+        return (
+            isinstance(runtime, dict)
+            and runtime.get("pid") == predecessor_pid
+            and runtime.get("release") == predecessor_release
+            and runtime.get("accepting") is False
+            and runtime.get("draining") is True
+        ) or future.done()
 
-    reached = wait_until(ready_or_finished, timeout_seconds)
+    reached = wait_until(draining_or_finished, timeout_seconds)
     if future.done():
         future.result()
     return reached
+
+
+def test_upgrade_drain_releases_held_requests(tmp_path: Path, *, mocker) -> None:
+    """Release held requests once native replacement closes admission."""
+
+    ctx = runtime_context_for(
+        tmp_path / "home",
+        tmp_path / "payload",
+        tmp_path / "state",
+        43210,
+    )
+    future: Future[dict[str, object]] = Future()
+    mocker.patch.object(
+        lifecycle_control,
+        "read_runtime",
+        return_value={
+            "pid": 1234,
+            "release": "3.1.2",
+            "accepting": False,
+            "draining": True,
+        },
+    )
+
+    assert _wait_for_upgrade_drain(
+        future,
+        ctx,
+        predecessor_pid=1234,
+        predecessor_release="3.1.2",
+        timeout_seconds=0.01,
+    )
+
+
+def test_upgrade_drain_waits_through_materialization(tmp_path: Path, *, mocker) -> None:
+    """A materialized candidate is not yet at the native drain boundary."""
+
+    ctx = runtime_context_for(
+        tmp_path / "home",
+        tmp_path / "payload",
+        tmp_path / "state",
+        43210,
+    )
+    future: Future[dict[str, object]] = Future()
+    mocker.patch.object(
+        lifecycle_control,
+        "read_runtime",
+        side_effect=[
+            {
+                "pid": 1234,
+                "release": "3.1.2",
+                "accepting": True,
+                "draining": False,
+            },
+            {
+                "pid": 1234,
+                "release": "3.1.2",
+                "accepting": False,
+                "draining": True,
+            },
+        ],
+    )
+
+    assert _wait_for_upgrade_drain(
+        future,
+        ctx,
+        predecessor_pid=1234,
+        predecessor_release="3.1.2",
+        timeout_seconds=0.2,
+    )
+
+
+def test_runtime_context_uses_the_native_command_projection(tmp_path: Path, *, mocker) -> None:
+    """Build release-test paths through the same owner as production."""
+
+    mocker.patch("tests.release.fixtures.platform.system", return_value="Windows")
+    home = tmp_path / "home"
+    install = tmp_path / "payload"
+    ctx = runtime_context_for(home, install, tmp_path / "state", 43210)
+
+    assert PureWindowsPath(ctx.executable) == PureWindowsPath(
+        install / "bin" / "codex-responses-proxy.exe"
+    )
+    assert PureWindowsPath(ctx.command) == PureWindowsPath(
+        home / "AppData" / "Local" / "Microsoft" / "WindowsApps" / "codex-responses-proxy.cmd"
+    )
 
 
 def _materialize_native_bundle(candidate: artifact.VerifiedArtifact, output: Path) -> Path:
@@ -359,19 +444,19 @@ class TestPublishedPredecessorCompatibility:
                 "60",
                 "--json",
             )
-            upgrade_driver = (
-                previous_executable
-                if payload_generation.read(ctx) is not None
-                else current_executable
-            )
-
             upgrade_future = executor.submit(
                 run_command,
-                upgrade_driver,
+                current_executable,
                 environment,
                 *upgrade_arguments,
             )
-            assert _wait_for_upgrade_drain(upgrade_future, ctx, timeout_seconds=20)
+            assert _wait_for_upgrade_drain(
+                upgrade_future,
+                ctx,
+                predecessor_pid=previous_pid,
+                predecessor_release=previous_version,
+                timeout_seconds=COMMAND_TIMEOUT_SECONDS,
+            )
             release.set()
             stream_holder.join(timeout=60)
             for holder in holders:
@@ -387,7 +472,6 @@ class TestPublishedPredecessorCompatibility:
                 b'{"id":"held","status":"completed"}'
             }
             assert upgraded["state"] == "upgraded"
-            assert wait_until(lambda: process.listener_pids(port) == [_runtime_pid(upgraded)], 20)
 
             after = run_command(
                 current_executable,
@@ -399,8 +483,12 @@ class TestPublishedPredecessorCompatibility:
             )
             assert after["release"] == current_version
             assert after["payload_transaction"] is None
+            installed_command = Path(ctx.command)
+            control_executable = Path(generation.control_context(ctx).executable)
+            assert command.status(installed_command, control_executable)["state"] == "owned"
             after_runtime = after.get("runtime")
             assert isinstance(after_runtime, dict), after
+            _assert_same_runtime_identity(upgraded, after)
             assert after_runtime.get("pid") != previous_pid
             assert (
                 run_command(
@@ -431,8 +519,10 @@ class TestPublishedPredecessorCompatibility:
             assert rolled_back["state"] == "rolled_back"
             assert rolled_back["from_release"] == current_version
             assert rolled_back["to_release"] == previous_version
+            assert Path(generation.control_context(ctx).executable) == control_executable
+            assert command.status(installed_command, control_executable)["state"] == "owned"
             after_rollback = run_command(
-                current_executable,
+                installed_command,
                 environment,
                 "status",
                 "--port",
@@ -448,7 +538,7 @@ class TestPublishedPredecessorCompatibility:
                 "to_release": current_version,
             }
             assert run_command(
-                current_executable,
+                installed_command,
                 environment,
                 "recover",
                 "--port",
@@ -457,7 +547,7 @@ class TestPublishedPredecessorCompatibility:
             ) == {"state": "not_required"}
 
             restored = run_command(
-                current_executable,
+                installed_command,
                 environment,
                 "rollback",
                 "--port",
@@ -470,7 +560,7 @@ class TestPublishedPredecessorCompatibility:
             assert restored["from_release"] == previous_version
             assert restored["to_release"] == current_version
             restored_status = run_command(
-                current_executable,
+                installed_command,
                 environment,
                 "status",
                 "--port",

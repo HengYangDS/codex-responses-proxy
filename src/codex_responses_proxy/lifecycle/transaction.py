@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 import uuid
+from collections.abc import Callable
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -35,8 +36,9 @@ def recover(
     ctx: runtime_context.RuntimeContext,
     *,
     runtime: Mapping[str, object] | None,
+    bind_terminal: Callable[[runtime_context.RuntimeContext], None],
 ) -> dict[str, object]:
-    """Close an unmutated transaction or restore one exact retained rollback."""
+    """Recover one transaction and bind its terminal runtime before closing it."""
     root = state.transaction_root(ctx)
     if not root.exists() and not root.is_symlink():
         return {"state": "not_required"}
@@ -49,7 +51,12 @@ def recover(
         return _close_prepared(ctx, journal)
     candidate = _recovery_candidate(ctx, journal)
     if phase == "materialized" and not _runtime_matches_projection(runtime, candidate):
-        return _rollback_materialized(ctx, journal=journal, candidate=candidate)
+        return _rollback_materialized(
+            ctx,
+            journal=journal,
+            candidate=candidate,
+            bind_terminal=bind_terminal,
+        )
     installed = state.read_installed(ctx)
     if installed is not None and _installed_matches_transaction(
         installed,
@@ -57,7 +64,11 @@ def recover(
         candidate=candidate,
         command_path=ctx.command,
     ):
-        return _close_finalized(ctx, journal=journal)
+        return _close_finalized(
+            ctx,
+            journal=journal,
+            bind_terminal=bind_terminal,
+        )
     if _runtime_matches_projection(runtime, candidate):
         if phase == "materialized":
             rollback = state.transaction_root(ctx) / "rollback"
@@ -73,21 +84,32 @@ def recover(
             )
             command.project(
                 Path(ctx.command),
-                Path(generation.context(ctx, str(journal["transaction_id"])).executable),
+                Path(generation.control_context(ctx).executable),
                 previous=command.read_snapshot(rollback),
             )
         return _finalize_recovery(
             ctx,
             journal=journal,
             runtime=runtime,
+            bind_terminal=bind_terminal,
         )
     if journal["fresh"] is True:
         if runtime is not None:
             raise errors.InstallError(
                 "payload recovery runtime does not match the candidate projection"
             )
-        return _rollback_materialized(ctx, journal=journal, candidate=candidate)
-    return _rollback_upgrade(ctx, journal=journal, runtime=runtime)
+        return _rollback_materialized(
+            ctx,
+            journal=journal,
+            candidate=candidate,
+            bind_terminal=bind_terminal,
+        )
+    return _rollback_upgrade(
+        ctx,
+        journal=journal,
+        runtime=runtime,
+        bind_terminal=bind_terminal,
+    )
 
 
 def _close_prepared(
@@ -126,14 +148,17 @@ def _close_finalized(
     ctx: runtime_context.RuntimeContext,
     *,
     journal: Mapping[str, object],
+    bind_terminal: Callable[[runtime_context.RuntimeContext], None],
 ) -> dict[str, object]:
     """Remove transaction residue only after finalized state proves the candidate."""
-    _complete_retention(ctx, journal=journal)
+    selection = _select_retention(ctx, journal=journal)
     result = {
         "transaction_id": journal["transaction_id"],
         "version": journal["version"],
         "state": "finalized",
     }
+    bind_terminal(generation.selected_context(ctx))
+    generation.prune(ctx, selection)
     _remove_transaction_root(ctx)
     return result
 
@@ -173,6 +198,7 @@ def _finalize_recovery(
     *,
     journal: Mapping[str, object],
     runtime: Mapping[str, object] | None,
+    bind_terminal: Callable[[runtime_context.RuntimeContext], None],
 ) -> dict[str, object]:
     """Finalize an installed candidate after its runtime proves success."""
     assert runtime is not None
@@ -189,22 +215,24 @@ def _finalize_recovery(
         digest.canonical_json(installed),
         mode=0o600,
     )
-    _complete_retention(ctx, journal=journal)
+    selection = _select_retention(ctx, journal=journal)
     result = {
         "transaction_id": journal["transaction_id"],
         "version": journal["version"],
         "state": "finalized",
     }
+    bind_terminal(generation.selected_context(ctx))
+    generation.prune(ctx, selection)
     _remove_transaction_root(ctx)
     return result
 
 
-def _complete_retention(
+def _select_retention(
     ctx: runtime_context.RuntimeContext,
     *,
     journal: Mapping[str, object],
-) -> None:
-    """Complete or confirm the rollback-retention side of finalization."""
+) -> generation.Selection:
+    """Select final retained generations without pruning recovery material."""
     try:
         active = str(journal["transaction_id"])
         previous_generation = journal.get("previous_generation")
@@ -230,7 +258,7 @@ def _complete_retention(
                 raise errors.InstallError("predecessor payload generation is unavailable")
             selection = generation.Selection(active, previous)
         generation.select(ctx, active=selection.active, predecessor=selection.predecessor)
-        generation.prune(ctx, selection)
+        return selection
     except errors.InstallError as exc:
         state.write_journal(
             ctx,
@@ -260,6 +288,7 @@ def _rollback_materialized(
     *,
     journal: Mapping[str, object],
     candidate: identity.LoadedPayloadIdentity,
+    bind_terminal: Callable[[runtime_context.RuntimeContext], None],
 ) -> dict[str, object]:
     """Discard a candidate that never became the proven serving runtime."""
     previous_generation_value = journal.get("previous_generation")
@@ -301,9 +330,11 @@ def _rollback_materialized(
             )
             command.restore(
                 Path(ctx.command),
-                Path(generation.context(ctx, expected_before.active).executable),
+                Path(generation.control_context(ctx).executable),
                 command_snapshot,
             )
+    if expected_before is not None:
+        bind_terminal(generation.selected_context(ctx))
     if not _reuses_retained_generation(journal):
         generation.remove(ctx, candidate_generation)
     generations = generation.root(ctx)
@@ -326,6 +357,7 @@ def _rollback_upgrade(
     *,
     journal: Mapping[str, object],
     runtime: Mapping[str, object] | None,
+    bind_terminal: Callable[[runtime_context.RuntimeContext], None],
 ) -> dict[str, object]:
     """Restore one exact retained upgrade bound to its prior live runtime."""
     rollback = state.transaction_root(ctx) / "rollback"
@@ -350,7 +382,7 @@ def _rollback_upgrade(
         generation.select(ctx, active=selection.active, predecessor=selection.predecessor)
         command.restore(
             Path(ctx.command),
-            Path(previous_ctx.executable),
+            Path(generation.control_context(ctx).executable),
             command_snapshot,
         )
         result = {
@@ -358,23 +390,13 @@ def _rollback_upgrade(
             "version": journal["version"],
             "state": "rolled_back",
         }
+        bind_terminal(generation.selected_context(ctx))
         _remove_transaction_root(ctx)
         return result
     previous_generation = journal.get("previous_generation")
     selection = generation.read(ctx)
-    if (
-        previous_generation is not None
-        and selection is not None
-        and selection.active == journal["transaction_id"]
-        and generation.path(ctx, str(previous_generation)).is_dir()
-    ):
-        previous_ctx = generation.context(ctx, str(previous_generation))
-        previous = identity.committed_payload(Path(previous_ctx.executable))
-        if previous is None or not _runtime_matches_projection(runtime, previous):
-            raise errors.RecoveryStateError(
-                "payload recovery runtime does not match the prior selected generation"
-            )
-        restored = generation.Selection(
+    restored = (
+        generation.Selection(
             str(previous_generation),
             (
                 str(journal["previous_predecessor"])
@@ -382,13 +404,42 @@ def _rollback_upgrade(
                 else None
             ),
         )
-        command.detach(
-            Path(ctx.command),
-            Path(generation.context(ctx, str(journal["transaction_id"])).executable),
-            command_snapshot,
-        )
-        generation.select(ctx, active=restored.active, predecessor=restored.predecessor)
-        command.restore(Path(ctx.command), Path(previous_ctx.executable), command_snapshot)
+        if previous_generation is not None
+        else None
+    )
+    if (
+        restored is not None
+        and selection is not None
+        and selection
+        in {
+            generation.Selection(str(journal["transaction_id"]), str(previous_generation)),
+            restored,
+        }
+        and generation.path(ctx, restored.active).is_dir()
+    ):
+        previous_ctx = generation.context(ctx, restored.active)
+        previous = identity.committed_payload(Path(previous_ctx.executable))
+        if previous is None or not _runtime_matches_projection(runtime, previous):
+            raise errors.RecoveryStateError(
+                "payload recovery runtime does not match the prior selected generation"
+            )
+        if selection != restored:
+            command.detach(
+                Path(ctx.command),
+                Path(generation.context(ctx, str(journal["transaction_id"])).executable),
+                command_snapshot,
+            )
+            generation.select(
+                ctx,
+                active=restored.active,
+                predecessor=restored.predecessor,
+            )
+            command.restore(
+                Path(ctx.command),
+                Path(generation.control_context(ctx).executable),
+                command_snapshot,
+            )
+        bind_terminal(generation.selected_context(ctx))
         generation.remove(ctx, str(journal["transaction_id"]))
         result = {
             "transaction_id": journal["transaction_id"],
@@ -426,6 +477,7 @@ def _rollback_upgrade(
         candidate_paths=owned_files.current_inventory(Path(ctx.install_dir)),
     )
     command.restore(Path(ctx.command), Path(ctx.executable), command_snapshot)
+    bind_terminal(generation.selected_context(ctx))
     generation.remove(ctx, str(journal["transaction_id"]))
     result = {
         "transaction_id": journal["transaction_id"],
@@ -550,21 +602,23 @@ class PayloadTransaction:
         rollback.mkdir(mode=0o700)
         mutated = False
         try:
-            previous_ctx = (
-                generation.context(self._ctx, self._previous_selection.active)
-                if self._previous_selection is not None
-                else self._ctx
-            )
-            command_snapshot = command.snapshot(
-                Path(self._ctx.command), Path(previous_ctx.executable)
-            )
-            command.write_snapshot(rollback, command_snapshot)
             if self._reuse_generation:
                 candidate = identity.committed_payload(Path(self._candidate_ctx.executable))
                 if candidate != self._retained_identity:
                     raise errors.InstallError(
                         "retained rollback predecessor changed before materialization"
                     )
+            previous_ctx = (
+                generation.context(self._ctx, self._previous_selection.active)
+                if self._previous_selection is not None
+                else self._ctx
+            )
+            control_ctx = generation.control_context(self._ctx)
+            command_snapshot = command.snapshot(
+                Path(self._ctx.command), Path(control_ctx.executable)
+            )
+            command.write_snapshot(rollback, command_snapshot)
+            if self._reuse_generation:
                 payload_candidate.prewarm(Path(self._candidate_ctx.executable))
                 self._state = "materialized"
                 self._write_journal()
@@ -619,9 +673,10 @@ class PayloadTransaction:
             active=self._transaction_id,
             predecessor=predecessor,
         )
+        control_ctx = generation.control_context(self._ctx)
         command.project(
             Path(self._ctx.command),
-            Path(self._candidate_ctx.executable),
+            Path(control_ctx.executable),
             previous=command_snapshot,
         )
         self._state = "activated"
@@ -730,9 +785,7 @@ class PayloadTransaction:
                     active=self._previous_selection.active,
                     predecessor=self._previous_selection.predecessor,
                 )
-                previous_executable = generation.context(
-                    self._ctx, self._previous_selection.active
-                ).executable
+                previous_executable = generation.control_context(self._ctx).executable
                 command.restore(
                     Path(self._ctx.command),
                     Path(previous_executable),
@@ -847,7 +900,12 @@ def _begin_transaction(
     payload_candidate.validate(blobs, version, receipt_sha256, receipt)
     previous = state.read_installed(ctx)
     if previous is not None:
-        comparison = state.compare_versions(version, state.require_version(previous))
+        control_identity = identity.committed_payload(
+            Path(generation.control_context(ctx).executable)
+        )
+        if control_identity is None:
+            raise errors.InstallError("installed control-plane identity is invalid")
+        comparison = state.compare_versions(version, control_identity.release)
         if comparison < 0:
             raise errors.InstallError("released payload downgrade is refused")
         if comparison == 0:

@@ -173,10 +173,12 @@ def _absolute(value: str) -> bool:
 def _owned_carrier_location(target: Path, install_dir: str) -> bool:
     stable = Path(install_dir, FILENAME)
     generations = Path(install_dir, identity.PAYLOAD_GENERATIONS_DIRNAME)
-    return _normalized(target) == _normalized(stable) or (
-        target.name == FILENAME and _normalized(target.parent.parent) == _normalized(generations)
+    return normalized_path(target) == normalized_path(stable) or (
+        target.name == FILENAME
+        and normalized_path(target.parent.parent) == normalized_path(generations)
     )
 
 
-def _normalized(value: str | os.PathLike[str]) -> str:
+def normalized_path(value: str | os.PathLike[str]) -> str:
+    """Return one host-semantic canonical path identity."""
     return os.path.normcase(os.path.realpath(os.path.abspath(os.fspath(value))))

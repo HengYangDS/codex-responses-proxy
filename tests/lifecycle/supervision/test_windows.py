@@ -40,9 +40,12 @@ class TestWindowsLifecycle:
         def run(arguments, **_kwargs):
             if arguments[:2] == ["schtasks", "/create"]:
                 imported.append(Path(arguments[-1]).read_bytes())
+            if arguments[-1:] == ["/xml"]:
+                return _completed(stdout=rendered.decode("utf-16"))
             return _completed()
 
         mocker.patch.object(windows.subprocess, "run", side_effect=run)
+        mocker.patch.object(windows, "_wait_for_watchdog", return_value=mocker.sentinel.watchdog)
         windows.install(ctx)
 
         assert imported == [rendered]
@@ -51,8 +54,19 @@ class TestWindowsLifecycle:
         ctx = platform_context(windows=True)
         for completed, expected in (
             (_completed(returncode=1), None),
-            (_completed(stdout=windows.render_task_xml(ctx).decode("utf-16")), ctx.executable),
+            (
+                _completed(stdout=windows.render_task_xml(ctx).decode("utf-16")),
+                ctx.executable,
+            ),
             (_completed(stdout="not xml"), None),
+            (
+                _completed(
+                    stdout=windows.render_task_xml(ctx)
+                    .decode("utf-16")
+                    .replace(f"<Command>{ctx.executable}</Command>", "")
+                ),
+                None,
+            ),
         ):
             invoked = mocker.patch.object(windows.subprocess, "run", return_value=completed)
             assert windows.configured_executable(ctx) == expected
@@ -66,19 +80,29 @@ class TestWindowsLifecycle:
 
     def test_install_success_and_failure_messages(self, *, mocker):
         with _temporary_context("install_dir", windows=True) as ctx:
+            task = windows.render_task_xml(ctx).decode("utf-16")
             invoked = mocker.patch.object(
                 windows.subprocess,
                 "run",
-                side_effect=[_completed(), _completed(), _completed()],
+                side_effect=[
+                    _completed(returncode=1),
+                    _completed(),
+                    _completed(),
+                    _completed(),
+                    _completed(stdout=task),
+                ],
+            )
+            mocker.patch.object(
+                windows, "_wait_for_watchdog", return_value=mocker.sentinel.watchdog
             )
             windows.install(ctx)
-            assert invoked.call_args_list[-1].args[0] == [
+            assert invoked.call_args_list[3].args[0] == [
                 "schtasks",
                 "/run",
                 "/tn",
                 ctx.service_id,
             ]
-            imported = Path(invoked.call_args_list[1].args[0][-1])
+            imported = Path(invoked.call_args_list[2].args[0][-1])
             assert not imported.exists()
             for completed, error in (
                 (
@@ -90,10 +114,95 @@ class TestWindowsLifecycle:
                 mocker.patch.object(
                     windows.subprocess,
                     "run",
-                    side_effect=[_completed(), completed],
+                    side_effect=[_completed(returncode=1), _completed(), completed],
                 )
                 with pytest.raises(errors.InstallError, match=error):
                     windows.install(ctx)
+
+    def test_install_replaces_only_a_proved_predecessor_generation(self, *, mocker) -> None:
+        ctx = platform_context(windows=True)
+        previous_executable = "C:/previous/codex-responses-proxy.exe"
+        predecessor = windows.process.OwnedProcess(41, previous_executable, 1.0)
+        mocker.patch.object(windows, "configured_executable", return_value=previous_executable)
+        mocker.patch.object(windows.process, "pids_naming_executable", return_value=[41])
+        capture = mocker.patch.object(
+            windows.process,
+            "capture_executable",
+            return_value=None,
+        )
+
+        with pytest.raises(errors.InstallError, match="process identity is unproved"):
+            windows.install(ctx)
+
+        capture.assert_called_once_with(
+            41,
+            previous_executable,
+            roles={service_runtime.WATCHDOG_MODE},
+        )
+
+        mocker.patch.object(windows.process, "capture_executable", return_value=predecessor)
+        mocker.patch.object(windows.process, "terminate_owned_process", return_value=False)
+        run = mocker.patch.object(
+            windows.subprocess,
+            "run",
+            side_effect=[_completed(), _completed()],
+        )
+
+        with pytest.raises(errors.InstallError, match="predecessor watchdog 41 did not exit"):
+            windows.install(ctx)
+
+        run.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("started", "configured", "successor", "message"),
+        [
+            (
+                _completed(returncode=1, stderr="denied"),
+                "expected",
+                object(),
+                "run failed: denied",
+            ),
+            (_completed(), "other", object(), "task executable is unproved"),
+            (
+                _completed(),
+                "expected",
+                None,
+                "successor watchdog process identity is unproved",
+            ),
+        ],
+    )
+    def test_install_requires_started_task_and_exact_successor(
+        self, *, started, configured, successor, message, mocker
+    ) -> None:
+        ctx = platform_context(windows=True)
+        configured = ctx.executable if configured == "expected" else configured
+        mocker.patch.object(windows, "configured_executable", side_effect=[None, configured])
+        mocker.patch.object(windows, "_wait_for_watchdog", return_value=successor)
+        mocker.patch.object(
+            windows.subprocess,
+            "run",
+            side_effect=[_completed(), _completed(), started],
+        )
+
+        with pytest.raises(errors.InstallError, match=message):
+            windows.install(ctx)
+
+    def test_watchdog_wait_is_bounded_and_requires_one_live_identity(self, *, mocker) -> None:
+        ctx = platform_context(windows=True)
+        mocker.patch.object(windows, "_running_watchdog_pids", return_value=[])
+        mocker.patch.object(windows.time, "monotonic", side_effect=[0.0, 1.0])
+        sleep = mocker.patch.object(windows.time, "sleep")
+
+        assert windows._wait_for_watchdog(ctx, timeout_seconds=0.5) is None
+        sleep.assert_not_called()
+
+        candidate = windows.process.OwnedProcess(41, ctx.executable, 1.0)
+        mocker.patch.object(windows, "_running_watchdog_pids", return_value=[41])
+        mocker.patch.object(windows.process, "capture_executable", return_value=candidate)
+        mocker.patch.object(windows.process, "owned_process_alive", return_value=True)
+        mocker.patch.object(windows.time, "monotonic", return_value=0.0)
+
+        assert windows._wait_for_watchdog(ctx) == candidate
 
     def test_task_xml_serialization_preserves_special_characters(self, *, mocker):
         ctx = platform_context(windows=True)

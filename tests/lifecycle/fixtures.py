@@ -30,7 +30,7 @@ def install_context(root: Path, *, windows: bool = False) -> runtime_context.Run
         command=str(
             root
             / "commands"
-            / ("codex-responses-proxy.exe" if windows else "codex-responses-proxy")
+            / ("codex-responses-proxy.cmd" if windows else "codex-responses-proxy")
         ),
         log_dir=str(root / "state" / "codex-responses-proxy"),
         port=8791,
@@ -53,7 +53,7 @@ def platform_context(port: int = 8791, *, windows: bool = False) -> runtime_cont
         install_dir=str(install_dir),
         executable=inventory.installed_executable(str(install_dir), windows=windows),
         command=str(
-            (home / "AppData" / "Local" / "Microsoft" / "WindowsApps" / "codex-responses-proxy.exe")
+            (home / "AppData" / "Local" / "Microsoft" / "WindowsApps" / "codex-responses-proxy.cmd")
             if windows
             else (home / ".local" / "bin" / "codex-responses-proxy")
         ),

@@ -16,10 +16,13 @@ use the configured bounded installation deadline without an independent,
 shorter startup cap. Installed control SHALL observe, reload, recover, or remove
 the current product but SHALL NOT accept arbitrary release bytes. Forge
 availability SHALL NOT be an installation input. The payload transaction SHALL
-coordinate the installed payload, installed-state record, and native command
-link as one rollback domain. The command link SHALL be a symbolic link on POSIX
-and a hard link on Windows; both forms SHALL be admitted only when they identify
-the exact installed executable.
+coordinate the selected serving payload, installed-state record, and native
+command link as one rollback domain. The selector SHALL determine the active
+serving generation and its sole predecessor. The command SHALL resolve to the
+newest verified release among those selected generations so serving rollback
+cannot downgrade lifecycle control. The command link SHALL be a symbolic link
+on POSIX and a hard link on Windows; both forms SHALL be admitted only when they
+identify that exact control executable.
 
 #### Scenario: An operator installs a release
 
@@ -38,14 +41,14 @@ the exact installed executable.
 #### Scenario: An upgrade handoff fails
 
 - **WHEN** an existing release is upgraded and successor proof fails
-- **THEN** rollback restores the prior payload and prior platform-native command
-  target exactly
+- **THEN** rollback restores the prior serving payload and stable command
+  ownership exactly
 - **AND** foreign content remains unchanged.
 
 #### Scenario: Windows projects the user command
 
 - **WHEN** installation runs on Windows
-- **THEN** the command path is a hard link to the exact installed executable
+- **THEN** the command path is a hard link to the exact control executable
 - **AND** status, rollback, and uninstall classify ownership by file identity
 - **AND** no symbolic-link privilege, copied executable, or wrapper is required.
 
@@ -668,10 +671,12 @@ installation SHALL select no predecessor.
 Explicit rollback SHALL select only the immutable predecessor bound to the
 current finalized successor. It SHALL verify both selected payload identities,
 current installed state, command ownership, and their selector binding before
-mutation. It SHALL rebind the native service and complete a bounded
-listener handoff to the predecessor identity before reporting success. The
-returned predecessor PID SHALL be the only verified product listener when
-success is reported; finalized health alone SHALL NOT establish completion.
+mutation. It SHALL rebind the native service and complete a bounded listener
+handoff to the predecessor identity before reporting success. The returned
+predecessor PID SHALL be the only verified product listener when success is
+reported; finalized health alone SHALL NOT establish completion. Rollback SHALL
+not downgrade the user command or the minimum release admitted by the next
+signed-asset installation.
 
 #### Scenario: Exact predecessor rollback succeeds
 
@@ -679,10 +684,21 @@ success is reported; finalized health alone SHALL NOT establish completion.
   predecessor proves accepting, finalized runtime identity
 - **THEN** rollback reports state `rolled_back` only after the predecessor PID
   is the sole verified product listener
-- **AND** payload, installed state, command projection, service definition, and
-  listener all identify the predecessor
+- **AND** payload, installed state, service definition, and listener identify
+  the predecessor
+- **AND** the command still identifies the newer verified lifecycle control
+  release
 - **AND** the displaced successor becomes the one retained predecessor for a
   possible forward reversal.
+
+#### Scenario: Post-rollback lifecycle control
+
+- **WHEN** the operator invokes `status`, `doctor`, `recover`, or `rollback`
+  through the installed command after a serving rollback
+- **THEN** that command understands the current selector and installed-state
+  schemas
+- **AND** a release not newer than the retained control release is refused as a
+  replay or downgrade.
 
 #### Scenario: Retained evidence is absent
 
@@ -708,10 +724,10 @@ success is reported; finalized health alone SHALL NOT establish completion.
 
 #### Scenario: Reverse handoff has a proved failure
 
-- **WHEN** rollback has projected the predecessor but successor retirement or
+- **WHEN** rollback has selected the predecessor but successor retirement or
   predecessor readiness fails with a proved outcome
-- **THEN** the transaction restores the displaced successor and its command and
-  service projection
+- **THEN** the transaction restores the displaced successor serving projection
+  and stable command ownership
 - **AND** does not report rollback success.
 
 #### Scenario: Reverse handoff outcome is unknown

@@ -459,7 +459,7 @@ class CliLifecycleContracts:
                 ("passed", "failed", "passed", "passed"),
             ),
             (
-                {**healthy, "listener_pids": [654]},
+                {**healthy, "runtime": None},
                 False,
                 ("passed", "passed", "failed", "passed"),
             ),
@@ -487,6 +487,34 @@ class CliLifecycleContracts:
                     )
                     == statuses
                 )
+
+    def test_doctor_reuses_status_listener_proof_when_process_inventory_lags(
+        self,
+    ) -> None:
+        """Doctor must not contradict the status owner's verified runtime."""
+
+        evidence = {
+            "state": "running",
+            "release": "3.1.3",
+            "payload_integrity": {"ok": True, "detail": "verified"},
+            "service": "running",
+            "listener_pids": [],
+            "runtime": {"pid": 321, "accepting": True},
+            "payload_transaction": None,
+            "command": {
+                "path": "/commands/codex-responses-proxy",
+                "state": "owned",
+                "kind": "symlink",
+            },
+        }
+
+        report = application._doctor(evidence)
+
+        assert report["ok"] is True
+        assert report["checks"]["listener"] == {
+            "status": "passed",
+            "detail": "accepting",
+        }
 
     def test_reload_delegates_transactionally_with_an_explicit_timeout(self, *, mocker) -> None:
         result = {"old_pid": 321, "new_pid": 654}
@@ -522,7 +550,7 @@ class CliLifecycleContracts:
         context = mocker.patch.object(application.runtime_context, "create", return_value="context")
         mocker.patch.object(application.control, "read_runtime", return_value=runtime)
         recover = mocker.patch.object(
-            application.transaction,
+            application.control,
             "recover",
             return_value={"version": "2.0.13", "state": "rolled_back"},
         )
@@ -533,7 +561,7 @@ class CliLifecycleContracts:
         assert stderr == ""
         assert json.loads(stdout) == {"state": "rolled_back", "version": "2.0.13"}
         context.assert_called_once_with(port=8801)
-        recover.assert_called_once_with("context", runtime=runtime)
+        recover.assert_called_once_with("context")
 
     def test_rollback_is_discoverable_and_delegates_to_the_installed_lifecycle(
         self, *, mocker
@@ -646,7 +674,7 @@ class CliLifecycleContracts:
         context = mocker.patch.object(application.runtime_context, "create", return_value="context")
         mocker.patch.object(application.control, "read_runtime", return_value=None)
         recover = mocker.patch.object(
-            application.transaction, "recover", return_value={"state": "not_required"}
+            application.control, "recover", return_value={"state": "not_required"}
         )
 
         code, stdout, stderr = self.invoke("recover", "--json")
@@ -655,7 +683,7 @@ class CliLifecycleContracts:
         assert json.loads(stdout) == {"state": "not_required"}
         assert stderr == ""
         context.assert_called_once_with(port=8792)
-        recover.assert_called_once_with("context", runtime=None)
+        recover.assert_called_once_with("context")
 
         uninstall = mocker.patch.object(
             application.uninstall,

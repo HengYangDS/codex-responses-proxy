@@ -1,0 +1,40 @@
+schema_version = 2
+id = "change:proxy-terminal-release-convergence"
+intent = "Converge the proxy into one cross-platform released product whose upgrade, rollback, recovery, supervision, publication, installation, and cleanup paths are proven end to end."
+subjects = [
+  "repository:codex-responses-proxy",
+]
+scope = [
+  "**",
+]
+invariants = [
+  "one_authoritative_listener_generation_exists_at_each_lifecycle_barrier",
+  "native_supervision_and_payload_selection_share_one_transactional_authority",
+  "github_gitlab_and_local_source_project_the_same_commit_and_release_identity",
+  "supported_platforms_use_one_product_semantics_without_compatibility_shims",
+  "obsolete_intermediate_state_has_no_terminal_consumer",
+]
+acceptance = [
+  "published_predecessor_upgrade_preserves_every_admitted_response_on_linux_macos_and_windows",
+  "install_upgrade_rollback_recover_uninstall_purge_and_reinstall_are_verified_from_release_assets",
+  "github_gitlab_dev_main_and_release_tag_converge_to_one_signed_source_identity",
+  "formal_runtime_is_upgraded_only_after_candidate_acceptance",
+  "owned_historical_refs_worktrees_services_and_install_residue_are_retired",
+]
+authority_refs = [
+  ".ethos/profile.toml",
+  "AGENTS.md",
+  "openspec/specs/runtime-upgrade/spec.md",
+  "user_instruction",
+]
+risks = [
+  "supervisor_rebind_failure_after_successor_activation",
+  "platform_bundle_layout_divergence",
+  "dual_forge_projection_drift",
+]
+predecessors = []
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []

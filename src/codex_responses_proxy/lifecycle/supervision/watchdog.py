@@ -1,9 +1,9 @@
-"""Keep one installed proxy listener available without restart storms.
+"""Keep one installed proxy listener available without crossing transactions.
 
-The native user service owns watchdog persistence. This process probes the
-configured loopback port, starts only the absolute installed entrypoint when it
-is unavailable, and backs off after repeated failures. Logs are bounded and
-secret-safe; request payloads never cross this boundary.
+The native user service owns watchdog persistence. This process starts the
+absolute installed entrypoint only while no payload transaction owns the
+runtime. Logs are bounded and secret-safe; request payloads never cross this
+boundary.
 """
 
 from __future__ import annotations
@@ -15,6 +15,9 @@ import sys
 import time
 from pathlib import Path
 
+from codex_responses_proxy import errors
+from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.runtime import bounded_log
 from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.service import runtime as service_runtime
@@ -51,18 +54,18 @@ def is_proxy_up(host: str = HOST, port: int = PORT, timeout: float = 2.0) -> boo
         return False
 
 
-def spawn_proxy() -> subprocess.Popen[bytes] | None:
+def spawn_proxy(executable: str) -> subprocess.Popen[bytes] | None:
     """Start the proxy detached from this watchdog so it outlives us.
 
     Uses the exact installed executable path. Detaches via ``start_new_session``
     on POSIX and ``DETACHED_PROCESS`` on Windows so a watchdog restart never
     signals the proxy.
     """
-    if not os.path.exists(EXECUTABLE):
+    if not os.path.exists(executable):
         _log("ERROR installed proxy executable is unavailable")
         return None
     try:
-        command = [EXECUTABLE, LISTENER_MODE]
+        command = [executable, LISTENER_MODE]
         if os.name == "nt":
             proc = subprocess.Popen(
                 command,
@@ -83,7 +86,7 @@ def spawn_proxy() -> subprocess.Popen[bytes] | None:
             )
         _log(f"spawned proxy pid={proc.pid}")
         return proc
-    except Exception as exc:
+    except OSError as exc:
         _log(f"ERROR failed to spawn proxy: {exc.__class__.__name__}")
         return None
 
@@ -98,24 +101,29 @@ def run(max_iterations: int | None = None) -> None:
     iterations = 0
     children: list[subprocess.Popen[bytes]] = []
     while True:
+        executable = EXECUTABLE
         _reap_children(children)
-        up = is_proxy_up()
         sleep_for = CHECK_INTERVAL
-        if not up:
-            _log(f"proxy down on {HOST}:{PORT} — starting it")
-            if child := spawn_proxy():
+        available = is_proxy_up()
+        if not available:
+            try:
+                ctx = runtime_context.create(executable=EXECUTABLE, port=PORT)
+                executable = ctx.executable
+                transaction = payload_state.status(ctx)
+            except errors.InstallError:
+                transaction = {"state": "invalid"}
+                _log("ERROR installed runtime ownership is invalid; refusing to start")
+            if transaction is not None and transaction.get("state") != "activated":
+                available = True
+                _log("payload transaction owns runtime startup; watchdog is waiting")
+        if not available:
+            _log(f"proxy unavailable on {HOST}:{PORT} — starting it")
+            if child := spawn_proxy(executable):
                 children.append(child)
             consecutive_failures += 1
             settle = min(MAX_BACKOFF, CHECK_INTERVAL * consecutive_failures)
-            time.sleep(min(3.0, settle))
-            up = is_proxy_up()
-            if not up:
-                sleep_for = settle
-                _log(
-                    f"proxy still down after start attempt "
-                    f"#{consecutive_failures}; backing off {sleep_for:.0f}s"
-                )
-        if up:
+            sleep_for = settle
+        else:
             consecutive_failures = 0
 
         iterations += 1

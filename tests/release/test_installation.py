@@ -184,6 +184,11 @@ class TestReleasedDeployment:
         timeout_seconds: float = 30,
         mocker,
     ) -> dict[str, object]:
+        mocker.patch.object(
+            generation,
+            "selected_context",
+            side_effect=[self.ctx, payload.context],
+        )
         return apply.install(
             self.ctx,
             as_transaction(payload),
@@ -193,8 +198,9 @@ class TestReleasedDeployment:
         )
 
     def test_fresh_install_commits_and_finalizes_after_runtime_proof(self, *, mocker) -> None:
-        payload = FakeTransaction(self.ctx)
-        service = FakeServiceAdapter(mocker=mocker)
+        events: list[object] = []
+        payload = FakeTransaction(self.ctx, events=events)
+        service = OrderedServiceAdapter(events, mocker=mocker)
         runtime = self.successor(pid=123)
         mocker.patch.object(process, "listener_pids", return_value=[])
         mocker.patch.object(apply, "wait_for_serving_runtime", return_value=runtime)
@@ -202,10 +208,15 @@ class TestReleasedDeployment:
         result = self.deploy(payload, None, adapter=service, mocker=mocker)
 
         assert result == {"state": "installed", "runtime": runtime}
-        assert payload.events == ["commit", "activate", ("finalize", runtime)]
+        assert payload.events == [
+            "commit",
+            "activate",
+            "service-install",
+            ("finalize", runtime),
+        ]
         service.install_mock.assert_called_once_with(payload.context)
 
-    def test_current_upgrade_rebinds_supervision_before_successor_handoff(self, *, mocker) -> None:
+    def test_current_upgrade_rebinds_supervision_after_successor_handoff(self, *, mocker) -> None:
         payload = FakeTransaction(self.ctx)
         current = self.current_runtime()
         runtime = self.successor()
@@ -236,7 +247,7 @@ class TestReleasedDeployment:
             runtime_reader=mocker.ANY,
             timeout_seconds=30,
         )
-        service.uninstall_mock.assert_called_once_with(self.ctx)
+        service.uninstall_mock.assert_not_called()
         service.install_mock.assert_called_once_with(payload.context)
 
     def test_finalized_legacy_runtime_uses_one_bounded_native_generation_replacement(
@@ -271,6 +282,7 @@ class TestReleasedDeployment:
         drain.assert_called_once_with(
             payload.context,
             source_listener=source,
+            source_runtime=current,
             runtime_reader=mocker.ANY,
             timeout_seconds=30,
         )
@@ -311,10 +323,7 @@ class TestReleasedDeployment:
             self.deploy(payload, current, adapter=service, mocker=mocker)
 
         assert payload.events == ["commit", "activate", "rollback"]
-        assert service.install_mock.call_args_list == [
-            mocker.call(payload.context),
-            mocker.call(self.ctx),
-        ]
+        service.install_mock.assert_not_called()
         assert wait.call_args_list == [
             mocker.call(
                 payload.context,
@@ -355,6 +364,7 @@ class TestReleasedDeployment:
         drain.assert_called_once_with(
             payload.context,
             source_listener=source,
+            source_runtime=current,
             runtime_reader=mocker.ANY,
             timeout_seconds=30,
         )
@@ -407,11 +417,10 @@ class TestReleasedDeployment:
         assert events == [
             "commit",
             "source-drained",
-            "service-uninstall",
-            "service-install",
             "activate",
             "source-exit",
             "successor-serving",
+            "service-install",
             ("finalize", self.successor()),
         ]
 
@@ -486,25 +495,25 @@ class TestReleasedDeployment:
         with pytest.raises(
             apply.UnknownDeploymentOutcome,
             match="could not restore predecessor admission",
-        ):
+        ) as raised:
             self.deploy(payload, current, adapter=service, mocker=mocker)
 
+        assert str(raised.value) == (
+            "native supervisor rollback could not restore predecessor admission; "
+            "upgrade failure: successor unavailable; "
+            "admission recovery failure: predecessor listener no longer owns "
+            "Responses admission"
+        )
         assert payload.events == [
             "commit",
             "activate",
             (
                 "preserve",
-                "native supervisor rollback could not restore predecessor admission",
+                str(raised.value),
             ),
         ]
-        assert service.uninstall_mock.call_args_list == [
-            mocker.call(self.ctx),
-            mocker.call(payload.context),
-        ]
-        assert service.install_mock.call_args_list == [
-            mocker.call(payload.context),
-            mocker.call(self.ctx),
-        ]
+        service.uninstall_mock.assert_not_called()
+        service.install_mock.assert_not_called()
 
     def test_candidate_processes_exit_before_payload_rollback(self, *, mocker) -> None:
         events: list[object] = []
@@ -532,15 +541,12 @@ class TestReleasedDeployment:
 
         assert events == [
             "commit",
-            "service-uninstall",
-            "service-install",
             "activate",
-            "service-uninstall",
-            ("candidate-exit", 222),
-            ("candidate-exit", 333),
-            "service-install",
             "rollback",
         ]
+        service.uninstall_mock.assert_not_called()
+        service.install_mock.assert_not_called()
+        service.terminate_runtime.assert_not_called()
 
     def test_current_upgrade_accepts_an_equivalent_supervisor_path(self, *, mocker) -> None:
         payload = FakeTransaction(self.ctx)
@@ -573,124 +579,58 @@ class TestReleasedDeployment:
         payload = FakeTransaction(self.ctx)
         current = self.current_runtime()
         service = FakeServiceAdapter(mocker=mocker)
-        service.configured_executable = mocker.Mock(
-            side_effect=[self.ctx.executable, None, self.ctx.executable]
-        )
+        service.configured_executable = mocker.Mock(side_effect=[self.ctx.executable, None])
         mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
-        request = mocker.patch.object(apply, "request_handoff")
+        runtime = self.successor()
+        request = mocker.patch.object(apply, "request_handoff", return_value=runtime)
 
-        with pytest.raises(errors.InstallError, match="did not bind"):
-            self.deploy(payload, current, adapter=service, mocker=mocker)
-
-        assert payload.events == ["commit", "rollback"]
-        assert service.install_mock.call_args_list == [
-            mocker.call(payload.context),
-            mocker.call(self.ctx),
-        ]
-        request.assert_not_called()
-
-    def test_supervisor_install_failure_restores_the_predecessor(self, *, mocker) -> None:
-        payload = FakeTransaction(self.ctx)
-        current = self.current_runtime()
-        service = FakeServiceAdapter(mocker=mocker)
-        service.install_mock.side_effect = [errors.InstallError("service failed"), None]
-        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
-
-        with pytest.raises(errors.InstallError, match="service failed"):
-            self.deploy(payload, current, adapter=service, mocker=mocker)
-
-        assert payload.events == ["commit", "rollback"]
-        assert service.uninstall_mock.call_args_list == [
-            mocker.call(self.ctx),
-            mocker.call(payload.context),
-        ]
-        assert service.install_mock.call_args_list == [
-            mocker.call(payload.context),
-            mocker.call(self.ctx),
-        ]
-
-    def test_unproved_supervisor_removal_restores_the_predecessor(self, *, mocker) -> None:
-        payload = FakeTransaction(self.ctx)
-        current = self.current_runtime()
-        service = FakeServiceAdapter(mocker=mocker)
-
-        def fail_after_removal(ctx) -> None:
-            del ctx
-            service.configured = None
-            raise errors.InstallError("service removal is unproved")
-
-        service.uninstall_mock.side_effect = fail_after_removal
-        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
-
-        with pytest.raises(errors.InstallError, match="removal is unproved"):
-            self.deploy(payload, current, adapter=service, mocker=mocker)
-
-        assert payload.events == ["commit", "rollback"]
-        service.install_mock.assert_called_once_with(self.ctx)
-
-    def test_unrestorable_supervisor_removal_preserves_recovery_state(self, *, mocker) -> None:
-        payload = FakeTransaction(self.ctx)
-        current = self.current_runtime()
-        service = FakeServiceAdapter(mocker=mocker)
-        service.uninstall_mock.side_effect = errors.InstallError("service removal is unproved")
-        service.install_mock.side_effect = errors.InstallError("predecessor failed")
-        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
-
-        with pytest.raises(apply.UnknownDeploymentOutcome, match="could not restore"):
+        with pytest.raises(
+            apply.UnknownDeploymentOutcome,
+            match="supervisor rebind failed",
+        ):
             self.deploy(payload, current, adapter=service, mocker=mocker)
 
         assert payload.events == [
             "commit",
+            "activate",
             (
                 "preserve",
-                "native supervisor removal could not restore the predecessor",
+                (
+                    "successor committed but native supervisor rebind failed; "
+                    "failure: native supervisor did not bind the committed "
+                    "successor executable"
+                ),
             ),
         ]
+        service.install_mock.assert_called_once_with(payload.context)
+        service.uninstall_mock.assert_not_called()
+        request.assert_called_once()
 
-    def test_unrestorable_supervisor_replacement_preserves_recovery_state(self, *, mocker) -> None:
+    def test_supervisor_install_failure_preserves_the_committed_successor(self, *, mocker) -> None:
         payload = FakeTransaction(self.ctx)
         current = self.current_runtime()
         service = FakeServiceAdapter(mocker=mocker)
-        service.install_mock.side_effect = [
-            errors.InstallError("candidate failed"),
-            errors.InstallError("predecessor failed"),
-        ]
+        service.install_mock.side_effect = errors.InstallError("service failed")
         mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
+        runtime = self.successor()
+        mocker.patch.object(apply, "request_handoff", return_value=runtime)
 
-        with pytest.raises(apply.UnknownDeploymentOutcome, match="could not restore"):
+        with pytest.raises(
+            apply.UnknownDeploymentOutcome,
+            match="supervisor rebind failed",
+        ):
             self.deploy(payload, current, adapter=service, mocker=mocker)
 
         assert payload.events == [
             "commit",
+            "activate",
             (
                 "preserve",
-                "native supervisor replacement could not restore the predecessor",
+                "successor committed but native supervisor rebind failed; failure: service failed",
             ),
         ]
-
-    def test_unproved_predecessor_binding_preserves_recovery_state(self, *, mocker) -> None:
-        payload = FakeTransaction(self.ctx)
-        current = self.current_runtime()
-        service = FakeServiceAdapter(mocker=mocker)
-        service.install_mock.side_effect = [
-            errors.InstallError("candidate failed"),
-            None,
-        ]
-        service.configured_executable = mocker.Mock(
-            side_effect=[self.ctx.executable, "/other/predecessor"]
-        )
-        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
-
-        with pytest.raises(apply.UnknownDeploymentOutcome, match="could not restore"):
-            self.deploy(payload, current, adapter=service, mocker=mocker)
-
-        assert payload.events == [
-            "commit",
-            (
-                "preserve",
-                "native supervisor replacement could not restore the predecessor",
-            ),
-        ]
+        service.install_mock.assert_called_once_with(payload.context)
+        service.uninstall_mock.assert_not_called()
 
     def test_upgrade_requires_the_canonical_supervisor_before_payload_mutation(
         self, *, mocker
@@ -752,7 +692,7 @@ class TestReleasedDeployment:
         mocker.patch.object(process, "listener_pids", return_value=[])
         with pytest.raises(errors.InstallError, match="service failed"):
             self.deploy(payload, None, adapter=service, mocker=mocker)
-        assert payload.events == ["commit", "rollback"]
+        assert payload.events == ["commit", "activate", "rollback"]
 
     def test_fresh_failure_preserves_unconfirmed_candidate_cleanup(self, *, mocker) -> None:
         payload = FakeTransaction(self.ctx)
@@ -765,6 +705,7 @@ class TestReleasedDeployment:
 
         assert payload.events == [
             "commit",
+            "activate",
             (
                 "preserve",
                 "candidate runtime cleanup is unconfirmed; transaction preserved for recovery",
@@ -787,11 +728,10 @@ class TestReleasedDeployment:
         resume.assert_called_once_with(
             self.ctx,
             source_listener=process.OwnedProcess(111, self.ctx.executable, 1.0),
+            source_runtime=current,
+            runtime_reader=mocker.ANY,
         )
-        assert rollback_service.install_mock.call_args_list == [
-            mocker.call(rolled_back.context),
-            mocker.call(self.ctx),
-        ]
+        rollback_service.install_mock.assert_not_called()
 
         unknown = FakeTransaction(self.ctx)
         preserved_service = FakeServiceAdapter(mocker=mocker)
@@ -805,34 +745,7 @@ class TestReleasedDeployment:
             self.deploy(unknown, current, adapter=preserved_service, mocker=mocker)
         assert unknown.events == ["commit", "activate", ("preserve", "outcome unknown")]
         resume.assert_not_called()
-        preserved_service.install_mock.assert_called_once_with(unknown.context)
-
-    def test_upgrade_preserves_unconfirmed_candidate_cleanup(self, *, mocker) -> None:
-        payload = FakeTransaction(self.ctx)
-        current = self.current_runtime()
-        service = FakeServiceAdapter(mocker=mocker)
-        service.uninstall_mock.side_effect = [
-            None,
-            errors.InstallError("cleanup failed"),
-        ]
-        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
-        mocker.patch.object(
-            apply,
-            "request_handoff",
-            side_effect=errors.InstallError("successor unavailable"),
-        )
-
-        with pytest.raises(apply.UnknownDeploymentOutcome, match="could not restore"):
-            self.deploy(payload, current, adapter=service, mocker=mocker)
-
-        assert payload.events == [
-            "commit",
-            "activate",
-            (
-                "preserve",
-                "native supervisor rollback could not restore the predecessor",
-            ),
-        ]
+        preserved_service.install_mock.assert_not_called()
 
     def test_upgrade_preserves_a_predecessor_that_cannot_reopen_admission(self, *, mocker) -> None:
         """A restored supervisor is not a successful rollback until admission reopens."""
@@ -854,15 +767,20 @@ class TestReleasedDeployment:
         with pytest.raises(
             apply.UnknownDeploymentOutcome,
             match="could not restore predecessor admission",
-        ):
+        ) as raised:
             self.deploy(payload, current, adapter=service, mocker=mocker)
 
+        assert str(raised.value) == (
+            "native supervisor rollback could not restore predecessor admission; "
+            "upgrade failure: successor unavailable; "
+            "admission recovery failure: drain release is unavailable"
+        )
         assert payload.events == [
             "commit",
             "activate",
             (
                 "preserve",
-                "native supervisor rollback could not restore predecessor admission",
+                str(raised.value),
             ),
         ]
 
@@ -930,6 +848,8 @@ class TestReleasedDeployment:
             return_value=runtime,
         )
         request = mocker.patch.object(apply, "request_handoff")
+        active = generation.context(self.ctx, "c" * 32)
+        mocker.patch.object(generation, "selected_context", return_value=active)
 
         result = apply.rollback(
             self.ctx,
@@ -947,6 +867,7 @@ class TestReleasedDeployment:
         drain.assert_called_once()
         replace.assert_called_once()
         request.assert_not_called()
+        service.install_mock.assert_called_once_with(active)
 
     def test_explicit_rollback_requires_an_upgrade_result(self, *, mocker) -> None:
         retained = payload_rollback.RetainedRollback(
@@ -1060,6 +981,27 @@ class TestReleasedDeployment:
                 runtime_reader=lambda _ctx: None,
                 timeout_seconds=0.15,
             )
+
+    def test_wait_for_serving_runtime_accepts_exact_process_when_tcp_inventory_lags(
+        self, *, mocker
+    ) -> None:
+        """Loopback identity and exact process ownership outlive stale TCP inventory."""
+
+        expected = FakeTransaction(self.ctx).expected
+        match = self.successor()
+        owned = process.OwnedProcess(222, self.ctx.executable, 1.0)
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[])
+        mocker.patch.object(process, "capture_executable", return_value=owned)
+
+        assert (
+            apply.wait_for_serving_runtime(
+                self.ctx,
+                expected,
+                runtime_reader=lambda _ctx: match,
+                timeout_seconds=0.2,
+            )
+            == match
+        )
 
     def test_read_runtime_accepts_only_http_200_json_objects(self, *, mocker) -> None:
         class Response:
