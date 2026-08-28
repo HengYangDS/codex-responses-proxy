@@ -20,7 +20,6 @@ from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import control as lifecycle_control
-from codex_responses_proxy.lifecycle import generation as payload_generation
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
@@ -443,15 +442,9 @@ class TestPublishedPredecessorCompatibility:
                 "60",
                 "--json",
             )
-            upgrade_driver = (
-                previous_executable
-                if payload_generation.read(ctx) is not None
-                else current_executable
-            )
-
             upgrade_future = executor.submit(
                 run_command,
-                upgrade_driver,
+                current_executable,
                 environment,
                 *upgrade_arguments,
             )

@@ -40,6 +40,7 @@ _RUNTIME_DIGEST_FIELDS = [
     "release_receipt_sha256",
     "payload_manifest_sha256",
 ]
+_RUNTIME_IDENTITY_FIELDS = ["release", *_RUNTIME_DIGEST_FIELDS]
 
 RuntimeSnapshot = dict[str, object]
 RuntimeReader = Callable[[runtime_context.RuntimeContext], RuntimeSnapshot | None]
@@ -236,13 +237,14 @@ def drain_responses(
     ctx: runtime_context.RuntimeContext,
     *,
     source_listener: process.OwnedProcess,
+    source_runtime: RuntimeSnapshot,
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
 ) -> None:
     """Close predecessor admission and wait for its accepted Responses to finish."""
-    if not _source_listener_is_admitted(ctx, source_listener):
+    if not _runtime_is_captured_source(source_listener, runtime_reader(ctx), source_runtime):
         raise errors.InstallError(
-            f"expected captured proxy listener {source_listener.pid} to own port {ctx.port}"
+            f"captured proxy listener generation {source_listener.pid} is no longer active"
         )
     request = urllib.request.Request(
         runtime_config.loopback_url(ctx.port, "/control/drain"),
@@ -277,13 +279,12 @@ def drain_responses(
         raise errors.InstallError("drain control did not close Responses admission")
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
-        if not _source_listener_is_admitted(ctx, source_listener):
-            raise errors.InstallError("predecessor changed while draining active Responses")
         runtime = runtime_reader(ctx)
+        if not _runtime_is_captured_source(source_listener, runtime, source_runtime):
+            raise errors.InstallError("predecessor changed while draining active Responses")
+        assert runtime is not None
         if (
-            isinstance(runtime, dict)
-            and runtime.get("pid") == source_listener.pid
-            and runtime.get("draining") is True
+            runtime.get("draining") is True
             and runtime.get("accepting") is False
             and runtime.get("active_responses") == 0
             and runtime.get("active_handlers") == 1
@@ -299,9 +300,12 @@ def resume_responses(
     ctx: runtime_context.RuntimeContext,
     *,
     source_listener: process.OwnedProcess,
+    source_runtime: RuntimeSnapshot,
+    runtime_reader: RuntimeReader,
 ) -> bool:
     """Reopen admission on the exact predecessor that survived a failed replacement."""
-    if not _source_listener_is_admitted(ctx, source_listener):
+    runtime = runtime_reader(ctx)
+    if not _runtime_is_captured_source(source_listener, runtime, source_runtime):
         return False
     request = urllib.request.Request(
         runtime_config.loopback_url(ctx.port, "/control/drain"),
@@ -329,7 +333,11 @@ def resume_responses(
         raise errors.InstallError("drain release is unavailable") from exc
     if not isinstance(resumed, dict) or resumed.get("draining") is not False:
         raise errors.InstallError("drain release did not reopen Responses admission")
-    return True
+    runtime = runtime_reader(ctx)
+    if not _runtime_is_captured_source(source_listener, runtime, source_runtime):
+        return False
+    assert runtime is not None
+    return runtime.get("accepting") is True and runtime.get("draining") is False
 
 
 def request(
@@ -337,6 +345,7 @@ def request(
     expected: RuntimeSnapshot,
     *,
     source_listener: process.OwnedProcess,
+    source_runtime: RuntimeSnapshot,
     runtime_reader: RuntimeReader,
     timeout_seconds: float = 30.0,
     lease_seconds: float = 30.0,
@@ -346,9 +355,9 @@ def request(
     ``expected`` must bind the transaction identifier, release, aggregate
     serving-payload digest, release-receipt digest, and manifest digest.
     """
-    if not _source_listener_is_admitted(ctx, source_listener):
+    if not _runtime_is_captured_source(source_listener, runtime_reader(ctx), source_runtime):
         raise errors.InstallError(
-            f"expected captured proxy listener {source_listener.pid} to own port {ctx.port}"
+            f"captured proxy listener generation {source_listener.pid} is no longer active"
         )
     old_pid = source_listener.pid
     ready = post_ready(
@@ -432,7 +441,6 @@ def resolve_after_controller_failure(
         return "unknown", None
     deadline = time.monotonic() + timeout_seconds + max(1.0, lease_seconds) + 5.0
     while time.monotonic() < deadline:
-        source_listener_admitted = _source_listener_is_admitted(ctx, source_listener)
         runtime = runtime_reader(ctx)
         if isinstance(runtime, dict):
             pid = runtime.get("pid")
@@ -456,7 +464,9 @@ def resolve_after_controller_failure(
                 )
             ):
                 return "finalized", runtime
-            if source_listener_admitted and _old_runtime_resumed(runtime, old_runtime):
+            if _runtime_is_captured_source(
+                source_listener, runtime, old_runtime
+            ) and _old_runtime_resumed(runtime, old_runtime):
                 return "rolled_back", runtime
         time.sleep(0.1)
     return "unknown", None
@@ -478,13 +488,24 @@ def _successor_is_finalized(
     )
 
 
-def _source_listener_is_admitted(
-    ctx: runtime_context.RuntimeContext,
+def _runtime_is_captured_source(
     source_listener: process.OwnedProcess,
+    runtime: RuntimeSnapshot | None,
+    source_runtime: RuntimeSnapshot,
 ) -> bool:
-    return process.owned_process_alive(source_listener) and process.listener_pids(ctx.port) == [
-        source_listener.pid
-    ]
+    """Bind loopback admission to one captured predecessor generation and payload."""
+    return (
+        process.owned_process_alive(source_listener)
+        and isinstance(runtime, dict)
+        and source_runtime.get("pid") == source_listener.pid
+        and isinstance(source_runtime.get("release"), str)
+        and bool(source_runtime["release"])
+        and all(digest.is_sha256(source_runtime.get(field)) for field in _RUNTIME_DIGEST_FIELDS)
+        and runtime.get("pid") == source_listener.pid
+        and all(
+            runtime.get(field) == source_runtime.get(field) for field in _RUNTIME_IDENTITY_FIELDS
+        )
+    )
 
 
 def _runtime_matches(

@@ -177,6 +177,7 @@ def _upgrade(
             handoff.drain_responses(
                 candidate,
                 source_listener=source_listener,
+                source_runtime=current,
                 runtime_reader=runtime_reader,
                 timeout_seconds=timeout_seconds,
             )
@@ -240,7 +241,12 @@ def _upgrade(
                         timeout_seconds=timeout_seconds,
                         old_pid=source_listener.pid,
                     )
-                elif not handoff.resume_responses(ctx, source_listener=source_listener):
+                elif not handoff.resume_responses(
+                    ctx,
+                    source_listener=source_listener,
+                    source_runtime=current,
+                    runtime_reader=runtime_reader,
+                ):
                     raise errors.InstallError(
                         "predecessor listener no longer owns Responses admission"
                     )
@@ -380,6 +386,7 @@ def request_handoff(
             timeout_seconds=timeout_seconds,
             lease_seconds=max(1.0, timeout_seconds),
             source_listener=source_listener,
+            source_runtime=current,
         )
         runtime = result.get("runtime")
         if not isinstance(runtime, dict) or not all(isinstance(key, str) for key in runtime):
