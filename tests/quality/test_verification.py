@@ -502,13 +502,9 @@ class TestVerificationContracts:
         assert "needs.python-matrix.outputs.release" in github
         assert "python-version: ${{ needs.python-matrix.outputs.release }}" in github
         pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
-        assert _mapping(pipeline["default"])["image"] == {
-            "name": "$UV_PYTHON_LATEST_IMAGE",
-            "docker": {"platform": "linux/amd64"},
-        }
+        assert _mapping(pipeline["default"])["image"] == {"name": "$UV_PYTHON_LATEST_IMAGE"}
         assert _mapping(pipeline["verify-python-quality"])["image"] == {
-            "name": "$UV_PYTHON_FLOOR_IMAGE",
-            "docker": {"platform": "linux/amd64"},
+            "name": "$UV_PYTHON_FLOOR_IMAGE"
         }
         assert "LINUX_RELEASE_IMAGE" not in gitlab
 

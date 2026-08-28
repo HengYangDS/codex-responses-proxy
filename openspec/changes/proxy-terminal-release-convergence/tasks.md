@@ -17,6 +17,8 @@
       does not replay handoff.
 - [x] 2.3 Make Linux user-systemd replacement reload, enable, restart, observe
       `MainPID`, and prove exact watchdog identity.
+- [x] 2.4 Make purge report residual control-root content and reject a later
+      fresh install before creating an invalid predecessor-free transaction.
 
 ## 3. Local verification
 

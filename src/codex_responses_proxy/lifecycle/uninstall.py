@@ -112,8 +112,14 @@ def uninstall_product(
         for owned_ctx in owned_generations:
             generation.remove(ctx, Path(owned_ctx.payload_dir).name)
         Path(state.installed_path(ctx)).unlink(missing_ok=True)
-        if install_root.is_dir() and not any(install_root.iterdir()):
-            install_root.rmdir()
+        if install_root.is_symlink() or not install_root.is_dir():
+            raise errors.InstallError("installed payload root is unavailable or invalid")
+        remaining = tuple(
+            sorted(path.relative_to(install_root).as_posix() for path in install_root.rglob("*"))
+        )
+        if remaining:
+            raise errors.InstallError("unknown install content remains: " + ", ".join(remaining))
+        install_root.rmdir()
     return {
         "state": "purged" if purge else "uninstalled",
         "stopped": stopped,
