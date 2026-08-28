@@ -30,29 +30,29 @@
 
 ## 4. Native platform acceptance
 
-- [ ] 4.1 Use one clean amd64 Ubuntu user-systemd execution environment; runner
+- [x] 4.1 Use one clean amd64 Ubuntu user-systemd execution environment; runner
       registration is infrastructure maintenance, not product acceptance.
-- [ ] 4.2 Re-verify the published `3.1.2` predecessor signature and build a
+- [x] 4.2 Re-verify the published `3.1.2` predecessor signature and build a
       candidate from this exact source tree with the locked toolchain.
-- [ ] 4.3 Upgrade from `3.1.2` under continuous ordinary and streaming requests;
+- [x] 4.3 Upgrade from `3.1.2` under continuous ordinary and streaming requests;
       prove zero admitted-request loss, successor listener identity, absent
       transaction residue, matching selector, systemd `MainPID`, executable,
       and watchdog identity.
-- [ ] 4.4 Prove rollback, recover, and a subsequent upgrade on the same clean
+- [x] 4.4 Prove rollback, recover, and a subsequent upgrade on the same clean
       contract, then prove zero owned service, process, and file residue.
-- [ ] 4.5 Prove the same published-predecessor upgrade, bidirectional rollback,
+- [x] 4.5 Prove the same published-predecessor upgrade, bidirectional rollback,
       recover, uninstall, reinstall, and zero-residue contract on macOS without
       changing the formal `3.1.2` service.
 
 ## 5. Terminal verification
 
-- [ ] 5.1 Audit macOS and Windows adapters against the same terminal supervisor
+- [x] 5.1 Audit macOS and Windows adapters against the same terminal supervisor
       contract; record and repair only proved semantic gaps.
-- [ ] 5.2 Run the full affected quality, test, build, release, installation, and
+- [x] 5.2 Run the full affected quality, test, build, release, installation, and
       native acceptance gates once all focused regressions are green.
-- [ ] 5.3 Delete obsolete compensation and compatibility paths with no terminal
+- [x] 5.3 Delete obsolete compensation and compatibility paths with no terminal
       consumer, then verify the final diff contains one lifecycle meaning.
-- [ ] 5.4 Archive the Change only after current receipts prove every completed
+- [x] 5.4 Archive the Change only after current receipts prove every completed
       platform and explicitly leave any unproved platform incomplete.
 
 ## Requirement To Task To Proof
