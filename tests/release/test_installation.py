@@ -632,7 +632,7 @@ class TestReleasedDeployment:
         service.install_mock.assert_called_once_with(payload.context)
         service.uninstall_mock.assert_not_called()
 
-    def test_upgrade_requires_the_canonical_supervisor_before_payload_mutation(
+    def test_upgrade_requires_the_active_payload_supervisor_before_payload_mutation(
         self, *, mocker
     ) -> None:
         payload = FakeTransaction(self.ctx)
@@ -641,7 +641,7 @@ class TestReleasedDeployment:
         mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
         request = mocker.patch.object(apply, "request_handoff")
 
-        with pytest.raises(errors.InstallError, match="canonical executable"):
+        with pytest.raises(errors.InstallError, match="active payload executable"):
             self.deploy(payload, current, adapter=service, mocker=mocker)
 
         assert payload.events == []
