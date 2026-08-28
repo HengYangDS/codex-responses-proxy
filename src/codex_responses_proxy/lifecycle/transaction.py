@@ -913,6 +913,11 @@ def _begin_transaction(
     install_root = Path(ctx.install_dir)
     fresh = previous is None and _empty_or_absent_control_root(install_root)
     current_selection = generation.read(ctx)
+    if previous is None and current_selection is None and not fresh:
+        raise errors.InstallError(
+            "installed payload root contains unverified content; remove it explicitly before "
+            "installing"
+        )
     previous_generation = (
         current_selection.active
         if current_selection is not None
