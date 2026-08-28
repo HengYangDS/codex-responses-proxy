@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.4] - 2026-08-28
+
+### Fixed
+
+- Make `uninstall --purge` preserve and report unverified control-root residue
+  instead of claiming complete removal, and reject a later installation before
+  it can create an invalid predecessor-free transaction.
+
 ## [3.1.3] - 2026-08-28
 
 ### Fixed
