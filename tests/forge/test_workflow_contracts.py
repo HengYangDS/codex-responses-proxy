@@ -415,20 +415,14 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     default_image = _mapping(default["image"])
     quality = _mapping(gitlab["verify-python-quality"])
 
-    assert default_image == {
-        "name": "$UV_PYTHON_LATEST_IMAGE",
-        "docker": {"platform": "linux/amd64"},
-    }
+    assert default_image == {"name": "$UV_PYTHON_LATEST_IMAGE"}
     variables = _mapping(gitlab["variables"])
     assert variables["UV_CACHE_DIR"] == "$CI_PROJECT_DIR/.cache/uv"
     assert variables["UV_PYTHON_INSTALL_DIR"] == "$CI_PROJECT_DIR/.cache/uv/python"
-    assert variables["CODEX_RESPONSES_PROXY_CI_TARGET"] == "linux-amd64"
+    assert variables["CODEX_RESPONSES_PROXY_CI_TARGET"] == "linux-arm64"
     assert _mapping(default["cache"])["key"] == "uv-$CODEX_RESPONSES_PROXY_CI_TARGET"
     assert _mapping(default["cache"])["paths"] == [".cache/uv/"]
-    assert _mapping(quality["image"]) == {
-        "name": "$UV_PYTHON_FLOOR_IMAGE",
-        "docker": {"platform": "linux/amd64"},
-    }
+    assert _mapping(quality["image"]) == {"name": "$UV_PYTHON_FLOOR_IMAGE"}
     assert "python -m pip install" not in text
     assert "uv sync --locked --group quality --python python --no-python-downloads" in text
     assert "apt-get install -qq -y --no-install-recommends binutils" in _strings(
