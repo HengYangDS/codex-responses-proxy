@@ -116,10 +116,23 @@ class TestLinuxLifecycle:
         with _temporary_context("log_dir") as ctx:
             unit = Path(linux._unit_path(ctx))
             mocker.patch.dict(linux.os.environ, {"USER": "tester"})
+            watchdog = linux.process.OwnedProcess(417, ctx.executable, 1.0)
+            wait = mocker.patch.object(
+                linux.process,
+                "wait_for_executable",
+                return_value=watchdog,
+            )
+            mocker.patch.object(linux.process, "owned_process_alive", return_value=True)
             invoked = mocker.patch.object(
                 linux.subprocess,
                 "run",
-                side_effect=[_completed(), _completed(), _completed()],
+                side_effect=[
+                    _completed(),
+                    _completed(),
+                    _completed(),
+                    _completed(stdout="417\n"),
+                    _completed(),
+                ],
             )
             linux._install_systemd(ctx)
             assert unit.read_text(encoding="utf-8") == linux.render_unit(ctx)
@@ -127,9 +140,19 @@ class TestLinuxLifecycle:
                 "systemctl",
                 "--user",
                 "enable",
-                "--now",
                 str(unit),
             ]
+            assert invoked.call_args_list[2].args[0] == [
+                "systemctl",
+                "--user",
+                "restart",
+                f"{ctx.service_id}.service",
+            ]
+            wait.assert_called_once_with(
+                417,
+                ctx.executable,
+                roles={service_runtime.WATCHDOG_MODE},
+            )
             assert invoked.call_args_list[-1].args[0][0] == "loginctl"
             mocker.patch.object(
                 linux.subprocess,

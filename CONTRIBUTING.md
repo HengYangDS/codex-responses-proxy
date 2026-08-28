@@ -99,6 +99,19 @@ Tests mirror these semantic packages. New generic buckets, forwarding modules,
 compatibility aliases, and one-caller abstractions require an independently
 proved invariant; otherwise delete them.
 
+Before adding any file, directory, schema, carrier, helper, abstraction, state,
+or compatibility path, establish all three conditions:
+
+1. Official OpenSpec artifacts and existing tool-native configuration cannot
+   express the required behavior.
+2. No existing authority can express it through deletion, reuse, merger, or
+   simplification.
+3. The new entity owns one necessary invariant and enables the replaced entity
+   to be removed.
+
+If any condition is unproved, do not add the entity. Convenience, historical
+existence, and speculative future use are not necessity.
+
 ## Release
 
 `VERSION` is the version source of truth. `CHANGELOG.md` records published

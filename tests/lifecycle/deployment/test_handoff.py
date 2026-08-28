@@ -194,21 +194,37 @@ class TestControllerHandoffWiring:
                 predecessor = process.OwnedProcess(999, ctx.executable, 0.5)
                 successor = process.OwnedProcess(1000, ctx.executable, 1.0)
                 mocker.patch.object(process, "wait_for_executable", return_value=successor)
-                mocker.patch.object(process, "owned_process_alive", side_effect=alive_states)
-                listeners = mocker.patch.object(process, "listener_pids", return_value=[999])
+                alive_by_pid = {
+                    predecessor.pid: iter(alive_states),
+                    successor.pid: iter((True, True)),
+                }
+                mocker.patch.object(
+                    process,
+                    "owned_process_alive",
+                    side_effect=lambda generation, states=alive_by_pid: next(
+                        states[generation.pid]
+                    ),
+                )
+                tcp_attribution = mocker.patch.object(process, "listener_pids", return_value=[999])
                 mocker.patch.object(handoff, "post_ready", return_value=ready_ack(expected))
                 mocker.patch.object(handoff.time, "sleep")
+                source_snapshot = idle_runtime()
+                finalized_snapshot = matching_health(1000, expected, handoff_state="finalized")
+                snapshots = iter((source_snapshot, finalized_snapshot))
                 result = handoff.request(
                     ctx,
                     expected,
                     source_listener=predecessor,
-                    runtime_reader=lambda _ctx: matching_health(
-                        1000, expected, handoff_state="finalized"
+                    source_runtime=source_snapshot,
+                    runtime_reader=mocker.Mock(
+                        side_effect=lambda _ctx, values=snapshots, final=finalized_snapshot: next(
+                            values, final
+                        )
                     ),
                     timeout_seconds=5,
                 )
                 assert (result["old_pid"], result["child_pid"]) == (999, 1000)
-                assert listeners.call_count == 1
+                tcp_attribution.assert_not_called()
 
     def test_request_handoff_waits_for_finalized_successor_identity(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
@@ -217,31 +233,35 @@ class TestControllerHandoffWiring:
         serving = matching_health(1000, expected)
         finalized = matching_health(1000, expected, handoff_state="finalized")
         mocker.patch.object(handoff, "post_ready", return_value=ready_ack(expected))
-        runtime_reader = mocker.Mock(side_effect=[serving, finalized])
+        runtime_reader = mocker.Mock(side_effect=[idle_runtime(), serving, finalized])
         mocker.patch.object(handoff.time, "sleep")
 
         result = handoff.request(
             ctx,
             expected,
             source_listener=predecessor,
+            source_runtime=idle_runtime(),
             runtime_reader=runtime_reader,
             timeout_seconds=5,
         )
 
         assert result["runtime"] == finalized
-        assert runtime_reader.call_count == 2
+        assert runtime_reader.call_count == 3
 
     def test_request_handoff_accepts_a_finalized_successor_when_tcp_ownership_lags(self, *, mocker):
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
         predecessor = process.OwnedProcess(999, ctx.executable, 0.5)
         owned = process.OwnedProcess(1000, ctx.executable, 1.0)
-        listeners = mocker.patch.object(process, "listener_pids", return_value=[999])
+        tcp_attribution = mocker.patch.object(process, "listener_pids", return_value=[999])
         capture = mocker.patch.object(process, "wait_for_executable", return_value=owned)
+        predecessor_alive = iter((True, False))
         alive = mocker.patch.object(
             process,
             "owned_process_alive",
-            side_effect=[True, False, True],
+            side_effect=lambda generation: (
+                True if generation.pid == owned.pid else next(predecessor_alive)
+            ),
         )
         mocker.patch.object(handoff, "post_ready", return_value=ready_ack(expected))
         mocker.patch.object(handoff.time, "monotonic", side_effect=[0.0, 1.0, 100.0])
@@ -251,12 +271,18 @@ class TestControllerHandoffWiring:
             ctx,
             expected,
             source_listener=predecessor,
-            runtime_reader=lambda _ctx: matching_health(1000, expected, handoff_state="finalized"),
+            source_runtime=idle_runtime(),
+            runtime_reader=mocker.Mock(
+                side_effect=(
+                    idle_runtime(),
+                    matching_health(1000, expected, handoff_state="finalized"),
+                )
+            ),
             timeout_seconds=1,
         )
 
         assert result["child_pid"] == owned.pid
-        assert listeners.call_count == 1
+        tcp_attribution.assert_not_called()
         capture.assert_called_once_with(
             1000,
             ctx.executable,
@@ -275,7 +301,13 @@ class TestControllerHandoffWiring:
             ctx,
             expected,
             source_listener=predecessor,
-            runtime_reader=lambda _ctx: matching_health(1000, expected, handoff_state="finalized"),
+            source_runtime=idle_runtime(),
+            runtime_reader=mocker.Mock(
+                side_effect=(
+                    idle_runtime(),
+                    matching_health(1000, expected, handoff_state="finalized"),
+                )
+            ),
             timeout_seconds=30,
         )
 
@@ -287,47 +319,73 @@ class TestControllerHandoffWiring:
         ctx = install_context(Path(self.tempdir.name))
         expected = expected_metadata()
         cases = (
-            ("ambiguous listener", [888, 999], None, "captured proxy listener"),
+            ("missing captured generation", False, None, "no longer active"),
             (
                 "in-progress conflict",
-                [999],
+                True,
                 errors.InstallError("handoff control returned HTTP 409"),
                 "409",
             ),
         )
-        for name, listeners, failure, message in cases:
+        for name, generation_alive, failure, message in cases:
             with subtests.test(case=name):
                 source_listener = process.OwnedProcess(999, ctx.executable, 0.5)
-                mocker.patch.object(process, "listener_pids", return_value=listeners)
-                mocker.patch.object(process, "owned_process_alive", return_value=True)
+                mocker.patch.object(process, "owned_process_alive", return_value=generation_alive)
                 mocker.patch.object(handoff, "post_ready", side_effect=failure)
                 with pytest.raises(errors.InstallError, match=message):
                     handoff.request(
                         ctx,
                         expected,
                         source_listener=source_listener,
-                        runtime_reader=lambda _ctx: None,
+                        source_runtime=idle_runtime(),
+                        runtime_reader=lambda _ctx: idle_runtime(),
                         timeout_seconds=1,
                     )
+
+    def test_request_handoff_rejects_a_loopback_runtime_that_is_not_the_captured_source(
+        self, *, mocker
+    ) -> None:
+        """Control must target the captured process generation and payload identity."""
+        ctx = install_context(Path(self.tempdir.name))
+        source = process.OwnedProcess(999, ctx.executable, 0.5)
+        mocker.patch.object(process, "owned_process_alive", return_value=True)
+        posted = mocker.patch.object(handoff, "post_ready")
+
+        with pytest.raises(errors.InstallError, match="no longer active"):
+            handoff.request(
+                ctx,
+                expected_metadata(),
+                source_listener=source,
+                source_runtime=idle_runtime(),
+                runtime_reader=lambda _ctx: idle_runtime(pid=1000),
+                timeout_seconds=1,
+            )
+
+        posted.assert_not_called()
 
     def test_native_replacement_drains_only_the_captured_predecessor(self, *, mocker) -> None:
         ctx = install_context(Path(self.tempdir.name))
         source = process.OwnedProcess(999, ctx.executable, 0.5)
-        responses = iter(
-            (
-                matching_health(
-                    999,
-                    expected_metadata(),
+        runtime_reader = mocker.Mock(
+            side_effect=(
+                idle_runtime(),
+                idle_runtime(
                     draining=True,
                     accepting=False,
                     active_responses=2,
+                    active_handlers=5,
                 ),
-                matching_health(
-                    999,
-                    expected_metadata(),
+                idle_runtime(
                     draining=True,
                     accepting=False,
                     active_responses=0,
+                    active_handlers=2,
+                ),
+                idle_runtime(
+                    draining=True,
+                    accepting=False,
+                    active_responses=0,
+                    active_handlers=1,
                 ),
             )
         )
@@ -342,7 +400,8 @@ class TestControllerHandoffWiring:
         handoff.drain_responses(
             ctx,
             source_listener=source,
-            runtime_reader=lambda _ctx: next(responses),
+            source_runtime=idle_runtime(),
+            runtime_reader=runtime_reader,
             timeout_seconds=1,
         )
 
@@ -350,6 +409,7 @@ class TestControllerHandoffWiring:
         assert request.full_url.endswith("/control/drain")
         assert request.method == "POST"
         assert request.headers["X-codex-responses-proxy-drain-lease-seconds"] == "2"
+        assert runtime_reader.call_count == 4
 
     def test_failed_native_replacement_reopens_the_captured_predecessor(self, *, mocker) -> None:
         """A failed replacement must not leave the surviving listener drained."""
@@ -360,22 +420,91 @@ class TestControllerHandoffWiring:
             "open_request",
             return_value=Response({"draining": False}, status=200),
         )
-        mocker.patch.object(handoff, "_source_listener_is_admitted", return_value=True)
+        mocker.patch.object(process, "owned_process_alive", return_value=True)
 
-        assert handoff.resume_responses(ctx, source_listener=source)
+        assert handoff.resume_responses(
+            ctx,
+            source_listener=source,
+            source_runtime=idle_runtime(),
+            runtime_reader=mocker.Mock(
+                side_effect=(
+                    idle_runtime(draining=True, accepting=False),
+                    idle_runtime(),
+                )
+            ),
+        )
 
         request = opened.call_args.args[0]
         assert request.full_url.endswith("/control/drain")
         assert request.method == "DELETE"
 
+    @pytest.mark.parametrize(
+        ("response", "message"),
+        [
+            (Response({}, status=500), "HTTP 500"),
+            (
+                Response(b"x" * (handoff._MAX_BODY_BYTES + 1), status=200),
+                "response is too large",
+            ),
+            (Response(b"[]", status=200), "did not reopen Responses admission"),
+            (urllib.error.URLError("offline"), "unavailable"),
+            (ValueError("bad timeout"), "unavailable"),
+        ],
+    )
+    def test_failed_native_replacement_rejects_invalid_resume_control(
+        self, response: object, message: str, *, mocker
+    ) -> None:
+        """Rollback admission must be acknowledged by the captured predecessor."""
+        ctx = install_context(Path(self.tempdir.name))
+        source = process.OwnedProcess(999, ctx.executable, 0.5)
+        mocker.patch.object(process, "owned_process_alive", return_value=True)
+        opened = mocker.patch.object(handoff.loopback, "open_request")
+        if isinstance(response, BaseException):
+            opened.side_effect = response
+        else:
+            opened.return_value = response
+
+        with pytest.raises(errors.InstallError, match=message):
+            handoff.resume_responses(
+                ctx,
+                source_listener=source,
+                source_runtime=idle_runtime(),
+                runtime_reader=lambda _ctx: idle_runtime(),
+            )
+
+    def test_failed_native_replacement_requires_the_same_runtime_after_resume(
+        self, *, mocker
+    ) -> None:
+        """A changed generation after DELETE cannot prove restored admission."""
+        ctx = install_context(Path(self.tempdir.name))
+        source = process.OwnedProcess(999, ctx.executable, 0.5)
+        mocker.patch.object(process, "owned_process_alive", return_value=True)
+        mocker.patch.object(
+            handoff.loopback,
+            "open_request",
+            return_value=Response({"draining": False}, status=200),
+        )
+
+        assert not handoff.resume_responses(
+            ctx,
+            source_listener=source,
+            source_runtime=idle_runtime(),
+            runtime_reader=mocker.Mock(side_effect=(idle_runtime(), None)),
+        )
+
     def test_failed_native_replacement_does_not_reopen_a_replaced_listener(self, *, mocker) -> None:
         """A successor that already owns the port must not receive predecessor control."""
         ctx = install_context(Path(self.tempdir.name))
         source = process.OwnedProcess(999, ctx.executable, 0.5)
-        mocker.patch.object(handoff, "_source_listener_is_admitted", return_value=False)
+        mocker.patch.object(process, "owned_process_alive", return_value=False)
         opened = mocker.patch.object(handoff.loopback, "open_request")
 
-        assert not handoff.resume_responses(ctx, source_listener=source)
+        assert not handoff.resume_responses(
+            ctx,
+            source_listener=source,
+            source_runtime=idle_runtime(),
+            runtime_reader=lambda _ctx: None,
+        )
 
         opened.assert_not_called()
 
@@ -398,7 +527,7 @@ class TestControllerHandoffWiring:
         """Native replacement proceeds only after an exact drain acknowledgement."""
         ctx = install_context(Path(self.tempdir.name))
         source = process.OwnedProcess(999, ctx.executable, 0.5)
-        mocker.patch.object(handoff, "_source_listener_is_admitted", return_value=True)
+        mocker.patch.object(process, "owned_process_alive", return_value=True)
         opened = mocker.patch.object(handoff.loopback, "open_request")
         if isinstance(response, BaseException):
             opened.side_effect = response
@@ -409,7 +538,8 @@ class TestControllerHandoffWiring:
             handoff.drain_responses(
                 ctx,
                 source_listener=source,
-                runtime_reader=lambda _ctx: None,
+                source_runtime=idle_runtime(),
+                runtime_reader=lambda _ctx: idle_runtime(),
                 timeout_seconds=1,
             )
 
@@ -426,36 +556,35 @@ class TestControllerHandoffWiring:
         )
 
         with subtests.test(case="not-admitted"):
-            mocker.patch.object(handoff, "_source_listener_is_admitted", return_value=False)
-            with pytest.raises(errors.InstallError, match="expected captured proxy listener"):
+            mocker.patch.object(process, "owned_process_alive", return_value=False)
+            with pytest.raises(errors.InstallError, match="no longer active"):
                 handoff.drain_responses(
                     ctx,
                     source_listener=source,
+                    source_runtime=idle_runtime(),
                     runtime_reader=lambda _ctx: None,
                     timeout_seconds=1,
                 )
             opened.assert_not_called()
 
         with subtests.test(case="changed-during-drain"):
-            admitted = mocker.patch.object(
-                handoff,
-                "_source_listener_is_admitted",
-                side_effect=[True, False],
-            )
+            mocker.patch.object(process, "owned_process_alive", return_value=True)
+            runtime_reader = mocker.Mock(side_effect=(idle_runtime(), None))
             with pytest.raises(errors.InstallError, match="changed while draining"):
                 handoff.drain_responses(
                     ctx,
                     source_listener=source,
-                    runtime_reader=lambda _ctx: None,
+                    source_runtime=idle_runtime(),
+                    runtime_reader=runtime_reader,
                     timeout_seconds=1,
                 )
-            assert admitted.call_count == 2
+            assert runtime_reader.call_count == 2
 
     def test_native_replacement_drain_timeout_is_bounded(self, *, mocker) -> None:
         """A predecessor that never reaches zero active Responses fails at the bound."""
         ctx = install_context(Path(self.tempdir.name))
         source = process.OwnedProcess(999, ctx.executable, 0.5)
-        mocker.patch.object(handoff, "_source_listener_is_admitted", return_value=True)
+        mocker.patch.object(process, "owned_process_alive", return_value=True)
         mocker.patch.object(
             handoff.loopback,
             "open_request",
@@ -468,9 +597,14 @@ class TestControllerHandoffWiring:
             handoff.drain_responses(
                 ctx,
                 source_listener=source,
+                source_runtime=idle_runtime(),
                 runtime_reader=lambda _ctx: matching_health(
                     999,
-                    expected_metadata(),
+                    {
+                        **expected_metadata(),
+                        "release": "1.0.24",
+                        "release_receipt_sha256": "e" * 64,
+                    },
                     draining=True,
                     accepting=False,
                     active_responses=1,
@@ -616,7 +750,13 @@ class TestControllerHandoffWiring:
                 ctx,
                 expected,
                 source_listener=predecessor,
-                runtime_reader=lambda _ctx: matching_health(1000, expected, pid=4242),
+                source_runtime=idle_runtime(),
+                runtime_reader=mocker.Mock(
+                    side_effect=(
+                        idle_runtime(),
+                        matching_health(1000, expected, pid=4242),
+                    )
+                ),
                 timeout_seconds=1,
             )
 
@@ -631,7 +771,8 @@ class TestControllerHandoffWiring:
                 ctx,
                 expected,
                 source_listener=predecessor,
-                runtime_reader=lambda _ctx: None,
+                source_runtime=idle_runtime(),
+                runtime_reader=mocker.Mock(side_effect=(idle_runtime(), None)),
                 timeout_seconds=1,
             )
         overrides = {
@@ -660,7 +801,8 @@ class TestControllerHandoffWiring:
                         ctx,
                         expected,
                         source_listener=predecessor,
-                        runtime_reader=lambda _ctx, snapshot=runtime: snapshot,
+                        source_runtime=idle_runtime(),
+                        runtime_reader=mocker.Mock(side_effect=(idle_runtime(), runtime)),
                         timeout_seconds=1,
                     )
 
@@ -680,7 +822,8 @@ class TestControllerHandoffWiring:
                 ctx,
                 expected,
                 source_listener=predecessor,
-                runtime_reader=lambda _ctx: None,
+                source_runtime=idle_runtime(),
+                runtime_reader=mocker.Mock(side_effect=(idle_runtime(), None)),
                 timeout_seconds=1,
                 lease_seconds=1,
             )

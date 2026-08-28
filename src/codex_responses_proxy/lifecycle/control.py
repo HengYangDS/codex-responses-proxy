@@ -13,7 +13,9 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle import rollback as payload_rollback
+from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle import state as payload_state
+from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import apply
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
@@ -91,7 +93,11 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         if installed is not None
         else Path(active.command)
     )
-    command_state = command.status(installed_command, Path(active.executable))
+    try:
+        control_executable = generation.control_context(ctx).executable
+    except errors.InstallError:
+        control_executable = active.executable
+    command_state = command.status(installed_command, Path(control_executable))
     payload_transaction = payload_state.status(ctx)
     rollback_status = (
         payload_rollback.RetainedRollbackStatus(
@@ -215,6 +221,7 @@ def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -
             timeout_seconds=timeout_seconds,
             lease_seconds=lease_seconds,
             source_listener=source_listener,
+            source_runtime=runtime,
         )
     except BaseException as handoff_exc:
         try:
@@ -247,6 +254,27 @@ def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -
         "old_pid": result["old_pid"],
         "new_pid": result["child_pid"],
     }
+
+
+def recover(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
+    """Converge one interrupted payload transaction and its native supervisor."""
+
+    def bind_terminal(active: runtime_context.RuntimeContext) -> None:
+        native = adapter()
+        native.install(active)
+        configured = native.configured_executable(active)
+        if configured is None or runtime_spec.normalized_path(
+            configured
+        ) != runtime_spec.normalized_path(active.executable):
+            raise errors.RecoveryStateError(
+                "payload recovery cannot close before native supervisor identity is proved"
+            )
+
+    return transaction.recover(
+        ctx,
+        runtime=read_runtime(ctx),
+        bind_terminal=bind_terminal,
+    )
 
 
 def rollback(

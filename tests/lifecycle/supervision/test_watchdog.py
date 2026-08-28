@@ -72,7 +72,7 @@ class TestWatchdogLogging:
             popen = mocker.patch.object(watchdog.subprocess, "Popen")
             mocker.patch.object(watchdog, "_log")
             popen.return_value.pid = 42
-            assert watchdog.spawn_proxy() is popen.return_value
+            assert watchdog.spawn_proxy(str(executable)) is popen.return_value
             assert popen.call_args.args[0] == [str(executable), watchdog.LISTENER_MODE]
             assert popen.call_args.kwargs["start_new_session"]
             mocker.patch.object(
@@ -81,18 +81,18 @@ class TestWatchdogLogging:
                 str(executable.with_name("missing-native-executable")),
             )
             mocker.patch.object(watchdog, "_log")
-            assert watchdog.spawn_proxy() is None
+            assert watchdog.spawn_proxy(watchdog.EXECUTABLE) is None
             mocker.patch.object(watchdog, "EXECUTABLE", str(executable))
             mocker.patch.object(watchdog.os, "name", "nt")
             popen = mocker.patch.object(watchdog.subprocess, "Popen")
             mocker.patch.object(watchdog, "_log")
             popen.return_value.pid = 43
-            watchdog.spawn_proxy()
+            watchdog.spawn_proxy(str(executable))
             assert popen.call_args.kwargs["creationflags"] == watchdog._WINDOWS_DETACH_FLAGS
             mocker.patch.object(watchdog, "EXECUTABLE", str(executable))
             mocker.patch.object(watchdog.subprocess, "Popen", side_effect=OSError("denied"))
             logged = mocker.patch.object(watchdog, "_log")
-            assert watchdog.spawn_proxy() is None
+            assert watchdog.spawn_proxy(str(executable)) is None
             assert "OSError" in logged.call_args.args[0]
 
     def test_watchdog_reaps_exited_listener_children(self, *, mocker):
@@ -111,21 +111,39 @@ class TestWatchdogLogging:
 
     def test_watchdog_loop_is_bounded(self, *, mocker):
         watchdog = load_watchdog()
-        mocker.patch.object(watchdog, "is_proxy_up", side_effect=[False, False])
+        current = mocker.Mock(executable="/installed/current")
+        mocker.patch.object(watchdog.runtime_context, "create", return_value=current)
+        transaction = mocker.patch.object(watchdog.payload_state, "status", return_value=None)
+        mocker.patch.object(watchdog, "is_proxy_up", return_value=False)
         spawn = mocker.patch.object(watchdog, "spawn_proxy")
         sleep = mocker.patch.object(watchdog.time, "sleep")
         mocker.patch.object(watchdog, "_log")
         watchdog.run(max_iterations=1)
-        spawn.assert_called_once_with()
-        sleep.assert_called_once()
-        mocker.patch.object(watchdog, "is_proxy_up", side_effect=[False, True])
-        mocker.patch.object(watchdog, "spawn_proxy")
-        sleep = mocker.patch.object(watchdog.time, "sleep")
-        mocker.patch.object(watchdog, "_log")
+        spawn.assert_called_once_with(current.executable)
+        sleep.assert_not_called()
+
+        transaction.return_value = {"state": "activated", "fresh": False}
+        spawn.reset_mock()
         watchdog.run(max_iterations=1)
-        sleep.assert_called_once()
-        mocker.patch.object(watchdog, "is_proxy_up", return_value=True)
-        sleep = mocker.patch.object(watchdog.time, "sleep")
+        spawn.assert_called_once_with(current.executable)
+
+        transaction.return_value = {"state": "activated", "fresh": True}
+        spawn.reset_mock()
+        watchdog.run(max_iterations=1)
+        spawn.assert_called_once_with(current.executable)
+
+    def test_watchdog_never_crosses_invalid_transaction_evidence(self, *, mocker):
+        watchdog = load_watchdog()
+        mocker.patch.object(watchdog, "is_proxy_up", return_value=False)
+        mocker.patch.object(watchdog.runtime_context, "create")
+        mocker.patch.object(
+            watchdog.payload_state,
+            "status",
+            return_value={"state": "invalid", "detail": "journal is malformed"},
+        )
+        spawn = mocker.patch.object(watchdog, "spawn_proxy")
         mocker.patch.object(watchdog, "_log")
-        watchdog.run(max_iterations=2)
-        sleep.assert_called_once_with(watchdog.CHECK_INTERVAL)
+
+        watchdog.run(max_iterations=1)
+
+        spawn.assert_not_called()

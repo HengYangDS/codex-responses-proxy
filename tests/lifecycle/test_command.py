@@ -6,7 +6,6 @@ import os
 from dataclasses import replace
 from pathlib import Path
 from pathlib import PureWindowsPath
-from types import SimpleNamespace
 
 import pytest
 
@@ -41,7 +40,7 @@ def test_windows_command_path_uses_the_user_application_alias_directory() -> Non
     )
 
     assert PureWindowsPath(projected) == (
-        home / "AppData" / "Local" / "Microsoft" / "WindowsApps" / "codex-responses-proxy.exe"
+        home / "AppData" / "Local" / "Microsoft" / "WindowsApps" / "codex-responses-proxy.cmd"
     )
 
 
@@ -69,6 +68,23 @@ def test_projection_replaces_only_absent_or_exact_owned_link(tmp_path: Path) -> 
     with pytest.raises(errors.InstallError, match="occupied by another owner"):
         command.project(command_path, target)
     assert command_path.resolve() == foreign.resolve()
+
+
+def test_projection_preserves_an_already_owned_link(tmp_path: Path, *, mocker) -> None:
+    """An unchanged control-plane projection does not churn link identity."""
+    target = tmp_path / "payload" / command.COMMAND_NAME
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"executable")
+    command_path = tmp_path / "commands" / command.COMMAND_NAME
+    command.project(command_path, target)
+    before = command_path.lstat()
+    replace = mocker.patch.object(command.os, "replace")
+
+    command.project(command_path, target)
+
+    replace.assert_not_called()
+    after = command_path.lstat()
+    assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
 
 
 def test_restore_and_remove_preserve_a_path_that_changed_ownership(
@@ -135,6 +151,8 @@ def test_snapshot_round_trip_and_rejects_foreign_or_invalid_state(
             {
                 "schema_version": command.SNAPSHOT_SCHEMA,
                 "state": "absent",
+                "path": str(command_path),
+                "target": str(target),
                 "kind": "symlink",
                 "device": 0,
                 "inode": 0,
@@ -171,42 +189,103 @@ def test_project_rejects_invalid_target_and_reports_native_failures(
     assert not list(command_path.parent.glob(".*.tmp-*"))
 
 
-def test_project_uses_a_native_hardlink_on_windows(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_windows_projection_launches_the_complete_onedir_payload(
+    tmp_path: Path,
 ) -> None:
     target = tmp_path / "payload" / f"{command.COMMAND_NAME}.exe"
     target.parent.mkdir(parents=True)
     target.write_text("runtime", encoding="utf-8")
-    command_path = tmp_path / "commands" / f"{command.COMMAND_NAME}.exe"
-    real_link = os.link
-    calls: list[tuple[Path, Path]] = []
-
-    def record_link(source: Path, destination: Path) -> None:
-        calls.append((source, destination))
-        real_link(source, destination)
-
-    monkeypatch.setattr(
-        command,
-        "os",
-        SimpleNamespace(
-            name="nt",
-            getpid=os.getpid,
-            link=record_link,
-            path=os.path,
-            replace=os.replace,
-            symlink=os.symlink,
-        ),
-    )
+    command_path = tmp_path / "commands" / f"{command.COMMAND_NAME}.cmd"
 
     command.project(command_path, target)
 
-    assert calls[0][0] == target
-    assert os.path.samefile(command_path, target)
+    assert command_path.read_bytes() == command.windows_launcher(target)
     assert command.status(command_path, target) == {
         "state": "owned",
-        "kind": "hardlink",
+        "kind": "launcher",
         "path": str(command_path),
     }
+
+
+def test_windows_transition_replaces_and_restores_the_legacy_executable_link(
+    tmp_path: Path,
+) -> None:
+    legacy_target = tmp_path / "legacy" / f"{command.COMMAND_NAME}.exe"
+    current_target = tmp_path / "current" / f"{command.COMMAND_NAME}.exe"
+    legacy_target.parent.mkdir(parents=True)
+    current_target.parent.mkdir(parents=True)
+    legacy_target.write_bytes(b"legacy onedir executable")
+    current_target.write_bytes(b"current onedir executable")
+    command_root = tmp_path / "WindowsApps"
+    legacy_command = command_root / f"{command.COMMAND_NAME}.exe"
+    current_command = command_root / f"{command.COMMAND_NAME}.cmd"
+    command_root.mkdir()
+    os.link(legacy_target, legacy_command)
+    previous = command.snapshot(legacy_command, legacy_target)
+
+    command.project(current_command, current_target, previous=previous)
+
+    assert not legacy_command.exists()
+    assert current_command.read_bytes() == command.windows_launcher(current_target)
+
+    command.restore(current_command, current_target, previous)
+
+    assert not current_command.exists()
+    assert os.path.samefile(legacy_command, legacy_target)
+
+
+def test_windows_transition_restores_the_previous_launcher_when_projection_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    legacy_target = tmp_path / "legacy" / f"{command.COMMAND_NAME}.exe"
+    current_target = tmp_path / "current" / f"{command.COMMAND_NAME}.exe"
+    legacy_target.parent.mkdir(parents=True)
+    current_target.parent.mkdir(parents=True)
+    legacy_target.write_bytes(b"legacy onedir executable")
+    current_target.write_bytes(b"current onedir executable")
+    command_root = tmp_path / "WindowsApps"
+    legacy_command = command_root / f"legacy-{command.COMMAND_NAME}.cmd"
+    current_command = command_root / f"{command.COMMAND_NAME}.cmd"
+    command.project(legacy_command, legacy_target)
+    previous = command.snapshot(legacy_command, legacy_target)
+    real_write_bytes = Path.write_bytes
+
+    def fail_current_projection(self: Path, data: bytes) -> int:
+        if self.parent == command_root and self.name.startswith(f".{current_command.name}.tmp-"):
+            raise OSError("projection unavailable")
+        return real_write_bytes(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_current_projection)
+
+    with pytest.raises(errors.InstallError, match="native command projection failed"):
+        command.project(current_command, current_target, previous=previous)
+
+    assert not current_command.exists()
+    assert legacy_command.read_bytes() == command.windows_launcher(legacy_target)
+
+
+def test_projection_and_restore_reject_changed_snapshot_ownership(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "payload" / command.COMMAND_NAME
+    target.parent.mkdir(parents=True)
+    target.write_text("runtime", encoding="utf-8")
+    previous_path = tmp_path / "commands" / f"legacy-{command.COMMAND_NAME}"
+    previous_path.parent.mkdir(parents=True)
+    previous_path.write_text("prior owner", encoding="utf-8")
+    previous = command.snapshot(previous_path, previous_path)
+    previous_path.unlink()
+    previous_path.write_text("changed owner", encoding="utf-8")
+
+    with pytest.raises(errors.InstallError, match="changed ownership"):
+        command.project(tmp_path / "commands" / command.COMMAND_NAME, target, previous=previous)
+
+    current = tmp_path / "current" / command.COMMAND_NAME
+    current.parent.mkdir(parents=True)
+    current.write_text("foreign", encoding="utf-8")
+    absent = command.Snapshot(state="absent", path=str(current), target=str(target))
+    with pytest.raises(errors.InstallError, match="changed ownership"):
+        command.restore(current, target, absent)
 
 
 def test_project_requires_post_projection_ownership_proof(
@@ -237,7 +316,12 @@ def test_detach_handles_absence_snapshot_ownership_and_unlink_failure(
     command_path.write_text("prior owner", encoding="utf-8")
     metadata = command_path.lstat()
     prior = command.Snapshot(
-        state="owned", kind="symlink", device=metadata.st_dev, inode=metadata.st_ino
+        state="owned",
+        path=str(command_path),
+        target=str(target),
+        kind="symlink",
+        device=metadata.st_dev,
+        inode=metadata.st_ino,
     )
     command.detach(command_path, target, prior)
     assert not command_path.exists()
@@ -303,10 +387,21 @@ def test_classification_and_snapshot_matching_fail_closed(
     assert command._classify(command_path, target) == ("foreign", "")
 
     assert command._matches_snapshot(command_path, None) is False
-    assert command._matches_snapshot(command_path, command.Snapshot(state="absent")) is False
+    assert (
+        command._matches_snapshot(
+            command_path,
+            command.Snapshot(state="absent", path=str(command_path), target=str(target)),
+        )
+        is False
+    )
     metadata = command_path.lstat()
     owned = command.Snapshot(
-        state="owned", kind="hardlink", device=metadata.st_dev, inode=metadata.st_ino
+        state="owned",
+        path=str(command_path),
+        target=str(target),
+        kind="hardlink",
+        device=metadata.st_dev,
+        inode=metadata.st_ino,
     )
     assert command._matches_snapshot(command_path, owned) is True
     assert command._matches_snapshot(command_path, replace(owned, inode=owned.inode + 1)) is False

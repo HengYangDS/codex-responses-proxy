@@ -6,6 +6,7 @@ import getpass
 import os
 import subprocess
 import tempfile
+import time
 import xml.etree.ElementTree as ET
 
 from codex_responses_proxy import errors
@@ -106,7 +107,26 @@ def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
 
 
 def install(ctx: runtime_spec.NativeServiceContext) -> None:
-    """Install and start the Windows scheduled watchdog task."""
+    """Replace and prove the Windows scheduled watchdog task."""
+    previous_executable = configured_executable(ctx)
+    predecessors = []
+    if previous_executable is not None:
+        for pid in process.pids_naming_executable(
+            previous_executable, roles={service_runtime.WATCHDOG_MODE}
+        ):
+            predecessor = process.capture_executable(
+                pid,
+                previous_executable,
+                roles={service_runtime.WATCHDOG_MODE},
+            )
+            if predecessor is None:
+                raise errors.InstallError("scheduled watchdog process identity is unproved")
+            predecessors.append(predecessor)
+    for predecessor in predecessors:
+        if not process.terminate_owned_process(predecessor):
+            raise errors.InstallError(
+                f"scheduled predecessor watchdog {predecessor.pid} did not exit"
+            )
     with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as stream:
         xml_path = stream.name
         stream.write(render_task_xml(ctx))
@@ -128,18 +148,45 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
             raise errors.InstallError(f"schtasks create failed: {detail}")
     finally:
         os.unlink(xml_path)
-    # Start it now (the trigger otherwise only fires at next logon).
-    subprocess.run(
+    started = subprocess.run(
         ["schtasks", "/run", "/tn", ctx.service_id],
+        capture_output=True,
         check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        text=True,
     )
+    if started.returncode:
+        detail = started.stderr.strip() or started.stdout.strip()
+        raise errors.InstallError(f"schtasks run failed: {detail}")
+    if configured_executable(ctx) != ctx.executable:
+        raise errors.InstallError("scheduled watchdog task executable is unproved")
+    if _wait_for_watchdog(ctx) is None:
+        raise errors.InstallError("scheduled successor watchdog process identity is unproved")
 
 
 def _running_watchdog_pids(ctx: runtime_spec.NativeServiceContext) -> list[int]:
     """Return PIDs exactly naming this installation's native watchdog role."""
     return process.pids_naming_executable(ctx.executable, roles={service_runtime.WATCHDOG_MODE})
+
+
+def _wait_for_watchdog(
+    ctx: runtime_spec.NativeServiceContext, timeout_seconds: float = 5.0
+) -> process.OwnedProcess | None:
+    """Boundedly prove the one watchdog started by the registered task."""
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        watchdogs = _running_watchdog_pids(ctx)
+        if len(watchdogs) == 1:
+            watchdog = process.capture_executable(
+                watchdogs[0],
+                ctx.executable,
+                roles={service_runtime.WATCHDOG_MODE},
+            )
+            if watchdog is not None and process.owned_process_alive(watchdog):
+                return watchdog
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        time.sleep(min(0.05, remaining))
 
 
 def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:

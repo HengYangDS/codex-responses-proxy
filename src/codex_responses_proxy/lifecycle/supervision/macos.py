@@ -148,21 +148,16 @@ def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
 def install(ctx: runtime_spec.NativeServiceContext) -> None:
     """Replace and prove one exact launchd watchdog process generation."""
     plist = _plist_path(ctx)
-    Path(ctx.log_dir).mkdir(mode=0o700, parents=True, exist_ok=True)
-    Path(plist).parent.mkdir(parents=True, exist_ok=True)
-    Path(plist).write_text(render_plist(ctx), encoding="utf-8")
-    subprocess.run(
-        [_native_tool("plutil"), "-lint", plist],
-        check=True,
-        stdout=subprocess.DEVNULL,
-    )
-
+    previous_executable = configured_executable(ctx)
     previous = _service(ctx)
     generation = None
     if previous.pid is not None:
+        if previous_executable is None:
+            msg = "registered launchd watchdog executable is unproved"
+            raise errors.InstallError(msg)
         generation = process.capture_executable(
             previous.pid,
-            ctx.executable,
+            previous_executable,
             roles={service_runtime.WATCHDOG_MODE},
         )
         if generation is None:
@@ -180,6 +175,14 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
         msg = f"launchd watchdog generation {generation.pid} remains after bootout"
         raise errors.InstallError(msg)
 
+    Path(ctx.log_dir).mkdir(mode=0o700, parents=True, exist_ok=True)
+    Path(plist).parent.mkdir(parents=True, exist_ok=True)
+    Path(plist).write_text(render_plist(ctx), encoding="utf-8")
+    subprocess.run(
+        [_native_tool("plutil"), "-lint", plist],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
     bootstrap = subprocess.run(
         [_native_tool("launchctl"), "bootstrap", _domain_target(), plist],
         capture_output=True,

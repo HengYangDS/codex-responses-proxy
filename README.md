@@ -165,7 +165,11 @@ A successful upgrade retains exactly one predecessor in the immutable
 generation store. One atomic selector under the stable control root is the
 sole authority for both the active generation and that predecessor; installed
 state and the user command remain stable control surfaces outside either
-generation. Finalization is idempotent across interruption, and the
+generation. The selector chooses the serving payload; the user command stays
+on the newest verified selected release, so an explicit serving rollback cannot
+downgrade `status`, `doctor`, `recover`, `rollback`, or the next installer.
+Native supervision remains bound to the serving generation. Finalization is
+idempotent across interruption, and the
 transaction owns temporary bootstrap evidence, selector reconciliation,
 cleanup, and recovery until it closes. `status` therefore reports rollback as
 `deferred` while a transaction is active instead of treating its intermediate

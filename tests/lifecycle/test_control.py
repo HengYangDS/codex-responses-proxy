@@ -37,6 +37,65 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestControllerLifecycle:
+    def test_recovery_rebinds_supervision_to_the_terminal_generation(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        active = generation.context(ctx, "a" * 32)
+        service = mocker.Mock()
+        service.configured_executable.return_value = active.executable
+        mocker.patch.object(control.payload_state, "status", return_value={"state": "activated"})
+        mocker.patch.object(control, "read_runtime", return_value={"pid": 7})
+        recover = mocker.patch.object(control.transaction, "recover")
+        mocker.patch.object(control, "adapter", return_value=service)
+
+        def recover_and_bind(_ctx, *, runtime, bind_terminal):
+            assert runtime == {"pid": 7}
+            bind_terminal(active)
+            return {"state": "finalized", "version": "3.1.3"}
+
+        recover.side_effect = recover_and_bind
+
+        assert control.recover(ctx) == {"state": "finalized", "version": "3.1.3"}
+
+        recover.assert_called_once()
+        assert recover.call_args.kwargs["runtime"] == {"pid": 7}
+        service.install.assert_called_once_with(active)
+        service.configured_executable.assert_called_once_with(active)
+
+    def test_recovery_rejects_an_unproved_terminal_supervisor(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        active = generation.context(ctx, "a" * 32)
+        service = mocker.Mock()
+        service.configured_executable.return_value = None
+        mocker.patch.object(control.payload_state, "status", return_value={"state": "activated"})
+        mocker.patch.object(control, "read_runtime", return_value={"pid": 7})
+        recover = mocker.patch.object(control.transaction, "recover")
+        mocker.patch.object(control, "adapter", return_value=service)
+
+        def recover_and_bind(_ctx, *, runtime, bind_terminal):
+            assert runtime == {"pid": 7}
+            bind_terminal(active)
+
+        recover.side_effect = recover_and_bind
+
+        with pytest.raises(errors.RecoveryStateError, match="supervisor identity"):
+            control.recover(ctx)
+
+    def test_recovery_no_op_does_not_touch_native_supervision(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        mocker.patch.object(control.payload_state, "status", return_value=None)
+        mocker.patch.object(control, "read_runtime", return_value=None)
+        recover = mocker.patch.object(
+            control.transaction,
+            "recover",
+            return_value={"state": "not_required"},
+        )
+        native = mocker.patch.object(control, "adapter")
+
+        assert control.recover(ctx) == {"state": "not_required"}
+
+        recover.assert_called_once()
+        native.assert_not_called()
+
     def test_loopback_transport_does_not_initialize_https(self, *, mocker) -> None:
         """Keep local control-plane requests independent of TLS support."""
 
@@ -334,7 +393,11 @@ class TestControllerLifecycle:
         command_status = mocker.patch.object(
             control.command,
             "status",
-            return_value={"path": installed_ctx.command, "state": "foreign", "kind": "file"},
+            return_value={
+                "path": installed_ctx.command,
+                "state": "foreign",
+                "kind": "file",
+            },
         )
         with subtests.test(state="command ownership unavailable"):
             degraded = control.status(installed_ctx)
@@ -366,7 +429,10 @@ class TestControllerLifecycle:
             ({"state": "prepared"}, errors.RecoveryRequiredError),
         ):
             mocker.patch.object(payload_state, "status", return_value=transaction_state)
-            with subtests.test(state=transaction_state["state"]), pytest.raises(expected):
+            with (
+                subtests.test(state=transaction_state["state"]),
+                pytest.raises(expected),
+            ):
                 control.reload(ctx)
 
     def test_rollback_requires_idle_and_verified_retained_authority(
@@ -377,7 +443,10 @@ class TestControllerLifecycle:
             payload_state, "status", return_value={"state": "prepared"}
         )
 
-        with subtests.test(state="active transaction"), pytest.raises(errors.RecoveryRequiredError):
+        with (
+            subtests.test(state="active transaction"),
+            pytest.raises(errors.RecoveryRequiredError),
+        ):
             control.rollback(ctx)
 
         transaction_status.return_value = None

@@ -1,4 +1,4 @@
-"""Native user-command path and exact link ownership."""
+"""Native user-command path and exact projection ownership."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from codex_responses_proxy.service import digest
 
 COMMAND_NAME = product_identity.COMMAND_NAME
 SNAPSHOT_FILENAME = "command.json"
-SNAPSHOT_SCHEMA = 1
+SNAPSHOT_SCHEMA = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +24,8 @@ class Snapshot:
     """Pre-transaction command-path state."""
 
     state: str
+    path: str
+    target: str
     kind: str = ""
     device: int = 0
     inode: int = 0
@@ -34,7 +36,7 @@ def path(home: str, environment: Mapping[str, str], *, windows: bool) -> Path:
     if windows:
         local = environment.get("LOCALAPPDATA") or str(PureWindowsPath(home) / "AppData" / "Local")
         return Path(
-            str(PureWindowsPath(local) / "Microsoft" / "WindowsApps" / f"{COMMAND_NAME}.exe")
+            str(PureWindowsPath(local) / "Microsoft" / "WindowsApps" / f"{COMMAND_NAME}.cmd")
         )
     configured = environment.get("XDG_BIN_HOME")
     if configured:
@@ -52,10 +54,12 @@ def snapshot(command_path: Path, target: Path) -> Snapshot:
     if state == "foreign":
         raise errors.InstallError(f"command path is occupied by another owner: {command_path}")
     if state == "absent":
-        return Snapshot(state="absent")
+        return Snapshot(state="absent", path=str(command_path), target=str(target))
     metadata = command_path.lstat()
     return Snapshot(
         state="owned",
+        path=str(command_path),
+        target=str(target),
         kind=kind,
         device=metadata.st_dev,
         inode=metadata.st_ino,
@@ -70,6 +74,8 @@ def write_snapshot(root: Path, value: Snapshot) -> None:
             {
                 "schema_version": SNAPSHOT_SCHEMA,
                 "state": value.state,
+                "path": value.path,
+                "target": value.target,
                 "kind": value.kind,
                 "device": value.device,
                 "inode": value.inode,
@@ -83,6 +89,8 @@ def read_snapshot(root: Path) -> Snapshot:
     """Read one canonical command rollback fact."""
     value = owned_files.read_canonical_json(root / SNAPSHOT_FILENAME, "command snapshot")
     state = value.get("state")
+    path = value.get("path")
+    target = value.get("target")
     kind = value.get("kind")
     device = value.get("device")
     inode = value.get("inode")
@@ -90,33 +98,53 @@ def read_snapshot(root: Path) -> Snapshot:
         value.get("schema_version") != SNAPSHOT_SCHEMA
         or not isinstance(state, str)
         or state not in {"absent", "owned"}
+        or not isinstance(path, str)
+        or not path
+        or not Path(path).is_absolute()
+        or not isinstance(target, str)
+        or not target
+        or not Path(target).is_absolute()
         or not isinstance(kind, str)
-        or kind not in {"", "symlink", "hardlink"}
+        or kind not in {"", "symlink", "hardlink", "launcher"}
         or type(device) is not int
         or type(inode) is not int
         or (state == "absent" and any((kind, device, inode)))
         or (state == "owned" and not all((kind, device, inode)))
     ):
         raise errors.InstallError("command snapshot is invalid")
-    return Snapshot(state=state, kind=kind, device=device, inode=inode)
+    return Snapshot(
+        state=state,
+        path=path,
+        target=target,
+        kind=kind,
+        device=device,
+        inode=inode,
+    )
 
 
 def project(command_path: Path, target: Path, previous: Snapshot | None = None) -> None:
-    """Atomically project the installed executable through one native link."""
+    """Atomically expose the complete installed runtime through one command."""
     if target.is_symlink() or not target.is_file():
         raise errors.InstallError("installed command target is not a regular file")
+    previous_path = Path(previous.path) if previous is not None else command_path
+    if previous is not None and previous_path != command_path and previous.state == "owned":
+        _remove_snapshot(previous_path, previous)
     state, _kind = _classify(command_path, target)
+    if state == "owned":
+        return
     if state == "foreign" and not _matches_snapshot(command_path, previous):
         raise errors.InstallError(f"command path is occupied by another owner: {command_path}")
     command_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = command_path.with_name(f".{command_path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}")
     try:
-        if os.name == "nt":
-            os.link(target, temporary)
+        if command_path.suffix.casefold() == ".cmd":
+            temporary.write_bytes(windows_launcher(target))
         else:
             os.symlink(target, temporary)
         os.replace(temporary, command_path)
     except OSError as exc:
+        if previous is not None and previous_path != command_path and previous.state == "owned":
+            _restore_snapshot(previous_path, Path(previous.target), previous)
         raise errors.InstallError(f"native command projection failed: {command_path}") from exc
     finally:
         temporary.unlink(missing_ok=True)
@@ -139,13 +167,16 @@ def detach(command_path: Path, target: Path, previous: Snapshot) -> None:
 
 def restore(command_path: Path, target: Path, previous: Snapshot) -> None:
     """Restore the exact prior link state after payload restoration."""
+    previous_path = Path(previous.path)
+    if previous.state == "owned" and _matches_snapshot(previous_path, previous):
+        return
     state, _kind = _classify(command_path, target)
     if state == "foreign":
         raise errors.InstallError(f"command path changed ownership: {command_path}")
     if state == "owned":
         command_path.unlink()
     if previous.state == "owned":
-        project(command_path, target)
+        _restore_snapshot(previous_path, Path(previous.target), previous)
 
 
 def remove(command_path: Path, target: Path) -> bool:
@@ -182,6 +213,12 @@ def _classify(command_path: Path, target: Path) -> tuple[str, str]:
                 if command_path.resolve(strict=False) == target.resolve(strict=False)
                 else ("foreign", "")
             )
+        if (
+            command_path.suffix.casefold() == ".cmd"
+            and command_path.is_file()
+            and command_path.read_bytes() == windows_launcher(target)
+        ):
+            return "owned", "launcher"
         if command_path.is_file() and target.is_file() and os.path.samefile(command_path, target):
             return "owned", "hardlink"
     except OSError:
@@ -189,8 +226,47 @@ def _classify(command_path: Path, target: Path) -> tuple[str, str]:
     return "foreign", ""
 
 
+def windows_launcher(target: Path) -> bytes:
+    """Return the canonical Windows command that preserves an onedir payload."""
+    executable = str(target).replace("%", "%%")
+    return f'@echo off\r\n@"{executable}" %*\r\n'.encode()
+
+
+def _remove_snapshot(command_path: Path, previous: Snapshot) -> None:
+    if not _matches_snapshot(command_path, previous):
+        raise errors.InstallError(f"command path changed ownership: {command_path}")
+    try:
+        command_path.unlink()
+    except OSError as exc:
+        raise errors.InstallError(f"native command removal failed: {command_path}") from exc
+
+
+def _restore_snapshot(command_path: Path, target: Path, previous: Snapshot) -> None:
+    command_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = command_path.with_name(f".{command_path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}")
+    try:
+        if previous.kind == "launcher":
+            temporary.write_bytes(windows_launcher(target))
+        elif previous.kind == "hardlink":
+            os.link(target, temporary)
+        elif previous.kind == "symlink":
+            os.symlink(target, temporary)
+        else:
+            raise errors.InstallError("command snapshot kind is invalid")
+        os.replace(temporary, command_path)
+    except OSError as exc:
+        raise errors.InstallError(f"native command restoration failed: {command_path}") from exc
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _matches_snapshot(command_path: Path, previous: Snapshot | None) -> bool:
-    if previous is None or previous.state != "owned" or not os.path.lexists(command_path):
+    if (
+        previous is None
+        or previous.state != "owned"
+        or Path(previous.path) != command_path
+        or not os.path.lexists(command_path)
+    ):
         return False
     try:
         metadata = command_path.lstat()

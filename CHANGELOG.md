@@ -7,6 +7,12 @@ publication authority.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep the installed lifecycle command on the newest verified selected release
+  when the serving payload rolls back, so PATH-based status, diagnosis,
+  recovery, reversal, uninstall, and future upgrade admission remain current.
+
 ## [3.1.2] - 2026-08-26
 
 ### Fixed

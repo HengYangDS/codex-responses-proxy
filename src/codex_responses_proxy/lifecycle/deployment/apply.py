@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import time
 from collections.abc import Callable
 from collections.abc import Mapping
@@ -10,11 +9,14 @@ from typing import Protocol
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import rollback as payload_rollback
+from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import runtime as service_runtime
 
 RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | None]
 type UpgradeStrategy = handoff.DeploymentStrategy
@@ -79,7 +81,11 @@ def install(
         )
     strategy = upgrade_strategy or observed_strategy
     source_listener = handoff.capture_source_listener(ctx, current)
-    if not _same_executable(adapter.configured_executable(ctx), ctx.executable):
+    active = generation.selected_context(ctx)
+    configured = adapter.configured_executable(active)
+    if configured is None or runtime_spec.normalized_path(
+        configured
+    ) != runtime_spec.normalized_path(active.executable):
         raise errors.InstallError("native supervisor is not bound to the canonical executable")
     return _upgrade(
         ctx,
@@ -131,8 +137,8 @@ def _fresh_install(
     payload.commit_projection()
     candidate = payload.context
     try:
-        adapter.install(candidate)
         payload.activate()
+        adapter.install(candidate)
         runtime = wait_for_serving_runtime(
             candidate,
             payload.expected,
@@ -168,24 +174,18 @@ def _upgrade(
 ) -> dict[str, object]:
     payload.commit_projection()
     candidate = payload.context
-    supervisor_replaced = False
     admission_may_be_closed = False
+    successor_committed = False
     try:
         if native_generation:
             admission_may_be_closed = True
             handoff.drain_responses(
                 candidate,
                 source_listener=source_listener,
+                source_runtime=current,
                 runtime_reader=runtime_reader,
                 timeout_seconds=timeout_seconds,
             )
-        _replace_supervisor(
-            adapter,
-            ctx,
-            candidate,
-            timeout_seconds=timeout_seconds,
-        )
-        supervisor_replaced = True
         payload.activate()
         admission_may_be_closed = True
         runtime = (
@@ -206,27 +206,30 @@ def _upgrade(
                 timeout_seconds=timeout_seconds,
             )
         )
+        successor_committed = True
+        _bind_successor_supervisor(
+            adapter,
+            generation.selected_context(ctx),
+        )
     except UnknownDeploymentOutcome as exc:
         payload.preserve_for_recovery(str(exc))
         raise
-    except BaseException:
-        if supervisor_replaced:
+    except BaseException as upgrade_error:
+        if successor_committed:
             try:
-                _restore_predecessor(
-                    adapter,
-                    current=ctx,
-                    candidate=candidate,
-                    timeout_seconds=timeout_seconds,
+                payload.preserve_for_recovery(
+                    "successor committed but native supervisor rebind failed; "
+                    f"failure: {_public_failure(upgrade_error)}"
                 )
-            except UnknownDeploymentOutcome as restore_error:
-                payload.preserve_for_recovery(str(restore_error))
-                raise
-            except BaseException as restore_error:
+            except errors.InstallError as preserve_error:
                 unknown = UnknownDeploymentOutcome(
-                    "native supervisor rollback could not restore the predecessor"
+                    "successor committed but native supervisor recovery is unconfirmed"
                 )
-                payload.preserve_for_recovery(str(unknown))
-                raise unknown from restore_error
+                raise unknown from preserve_error
+            raise UnknownDeploymentOutcome(
+                "successor committed but native supervisor rebind failed; "
+                "transaction preserved for recovery"
+            ) from upgrade_error
         if admission_may_be_closed:
             try:
                 if native_generation and not process.owned_process_alive(source_listener):
@@ -237,13 +240,20 @@ def _upgrade(
                         timeout_seconds=timeout_seconds,
                         old_pid=source_listener.pid,
                     )
-                elif not handoff.resume_responses(ctx, source_listener=source_listener):
+                elif not handoff.resume_responses(
+                    ctx,
+                    source_listener=source_listener,
+                    source_runtime=current,
+                    runtime_reader=runtime_reader,
+                ):
                     raise errors.InstallError(
                         "predecessor listener no longer owns Responses admission"
                     )
             except BaseException as restore_error:
                 unknown = UnknownDeploymentOutcome(
-                    "native supervisor rollback could not restore predecessor admission"
+                    "native supervisor rollback could not restore predecessor admission; "
+                    f"upgrade failure: {_public_failure(upgrade_error)}; "
+                    f"admission recovery failure: {_public_failure(restore_error)}"
                 )
                 payload.preserve_for_recovery(str(unknown))
                 raise unknown from restore_error
@@ -253,72 +263,19 @@ def _upgrade(
     return {"state": "upgraded", "runtime": runtime}
 
 
-def _replace_supervisor(
+def _bind_successor_supervisor(
     adapter: ServiceAdapter,
-    current: runtime_context.RuntimeContext,
     candidate: runtime_context.RuntimeContext,
-    *,
-    timeout_seconds: float,
 ) -> None:
-    """Replace one proved native supervisor and restore it if binding fails."""
-    try:
-        adapter.uninstall(current)
-    except BaseException:
-        try:
-            _install_supervisor(adapter, current, role="predecessor")
-        except BaseException as restore_error:
-            raise UnknownDeploymentOutcome(
-                "native supervisor removal could not restore the predecessor"
-            ) from restore_error
-        raise
-    try:
-        _install_supervisor(adapter, candidate, role="successor")
-    except BaseException:
-        try:
-            _remove_candidate_runtime(
-                candidate,
-                adapter=adapter,
-                timeout_seconds=timeout_seconds,
-            )
-            _install_supervisor(adapter, current, role="predecessor")
-        except BaseException as restore_error:
-            raise UnknownDeploymentOutcome(
-                "native supervisor replacement could not restore the predecessor"
-            ) from restore_error
-        raise
-
-
-def _restore_predecessor(
-    adapter: ServiceAdapter,
-    *,
-    current: runtime_context.RuntimeContext,
-    candidate: runtime_context.RuntimeContext,
-    timeout_seconds: float,
-) -> None:
-    """Stop every candidate-owned process before restoring old supervision."""
-    try:
-        _remove_candidate_runtime(
-            candidate,
-            adapter=adapter,
-            timeout_seconds=timeout_seconds,
+    """Bind durable supervision only after the successor owns admission."""
+    adapter.install(candidate)
+    configured = adapter.configured_executable(candidate)
+    if configured is None or runtime_spec.normalized_path(
+        configured
+    ) != runtime_spec.normalized_path(candidate.executable):
+        raise errors.InstallError(
+            "native supervisor did not bind the committed successor executable"
         )
-        _install_supervisor(adapter, current, role="predecessor")
-    except BaseException as restore_error:
-        raise UnknownDeploymentOutcome(
-            "native supervisor rollback could not restore the predecessor"
-        ) from restore_error
-
-
-def _install_supervisor(
-    adapter: ServiceAdapter,
-    ctx: runtime_context.RuntimeContext,
-    *,
-    role: str,
-) -> None:
-    """Install and prove one native supervisor binding."""
-    adapter.install(ctx)
-    if not _same_executable(adapter.configured_executable(ctx), ctx.executable):
-        raise errors.InstallError(f"native supervisor did not bind the committed {role} executable")
 
 
 def _remove_candidate_runtime(
@@ -375,6 +332,7 @@ def request_handoff(
             timeout_seconds=timeout_seconds,
             lease_seconds=max(1.0, timeout_seconds),
             source_listener=source_listener,
+            source_runtime=current,
         )
         runtime = result.get("runtime")
         if not isinstance(runtime, dict) or not all(isinstance(key, str) for key in runtime):
@@ -420,10 +378,25 @@ def wait_for_serving_runtime(
         runtime = runtime_reader(ctx)
         if isinstance(runtime, dict):
             pid = runtime.get("pid")
+            runtime_process = (
+                process.capture_executable(
+                    pid,
+                    ctx.executable,
+                    roles={
+                        service_runtime.LISTENER_MODE,
+                        service_runtime.HANDOFF_CHILD_MODE,
+                    },
+                )
+                if type(pid) is int
+                else None
+            )
             if (
                 type(pid) is int
                 and pid > 0
-                and process.verified_proxy_listener_pids(ctx) == [pid]
+                and (
+                    process.verified_proxy_listener_pids(ctx) == [pid]
+                    or runtime_process is not None
+                )
                 and pid != old_pid
                 and _runtime_matches(runtime, expected)
             ):
@@ -440,10 +413,8 @@ def _runtime_matches(runtime: Mapping[str, object], expected: Mapping[str, objec
     )
 
 
-def _same_executable(configured: str | None, expected: str) -> bool:
-    """Compare declared executable paths using platform path semantics."""
-    if configured is None:
-        return False
-    return os.path.normcase(os.path.abspath(configured)) == os.path.normcase(
-        os.path.abspath(expected)
-    )
+def _public_failure(error: BaseException) -> str:
+    """Describe a public product failure without exposing arbitrary exception text."""
+    if isinstance(error, errors.ProductError):
+        return str(error)
+    return error.__class__.__name__

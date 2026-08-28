@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 import tempfile
+from collections.abc import Callable
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -14,6 +16,7 @@ import pytest
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import artifact
+from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import generation as payload_generation
 from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.lifecycle import projection as payload_projection
@@ -47,6 +50,20 @@ def recovery_runtime(
         "draining": False,
         "handoff_state": "idle",
     }
+
+
+def recover_transaction(
+    ctx: runtime_context.RuntimeContext,
+    *,
+    runtime: Mapping[str, object] | None,
+    bind_terminal: Callable[[runtime_context.RuntimeContext], None] = lambda _ctx: None,
+) -> dict[str, object]:
+    """Exercise transaction recovery with an explicit terminal-binding boundary."""
+    return payload_transaction.recover(
+        ctx,
+        runtime=runtime,
+        bind_terminal=bind_terminal,
+    )
 
 
 def _retained_carrier_snapshot(root: Path, external_target: Path) -> tuple[object, ...]:
@@ -166,7 +183,7 @@ class TestPayloadTransaction:
     def test_recovery_is_idempotent_when_no_transaction_exists(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
 
-        assert payload_transaction.recover(ctx, runtime=None) == {"state": "not_required"}
+        assert recover_transaction(ctx, runtime=None) == {"state": "not_required"}
 
     def test_finalize_selects_no_predecessor_for_a_fresh_install(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -230,7 +247,7 @@ class TestPayloadTransaction:
         projected = listener_identity.committed_payload(Path(successor.context.executable))
         assert projected is not None
 
-        result = payload_transaction.recover(
+        result = recover_transaction(
             ctx,
             runtime=recovery_runtime(projected, projected),
         )
@@ -287,7 +304,7 @@ class TestPayloadTransaction:
 
         candidate = listener_identity.committed_payload(Path(successor.context.executable))
         assert candidate is not None
-        result = payload_transaction.recover(
+        result = recover_transaction(
             ctx,
             runtime=recovery_runtime(candidate, candidate),
         )
@@ -360,7 +377,7 @@ class TestPayloadTransaction:
 
         candidate = listener_identity.committed_payload(Path(successor.context.executable))
         assert candidate is not None
-        result = payload_transaction.recover(
+        result = recover_transaction(
             ctx,
             runtime=recovery_runtime(candidate, candidate),
         )
@@ -384,7 +401,7 @@ class TestPayloadTransaction:
         successor.activate()
         successor.preserve_for_recovery("controller outcome unknown")
 
-        result = payload_transaction.recover(ctx, runtime=recovery_runtime(predecessor))
+        result = recover_transaction(ctx, runtime=recovery_runtime(predecessor))
 
         assert result["state"] == "rolled_back"
         restored = listener_identity.committed_payload(Path(ctx.executable))
@@ -411,7 +428,7 @@ class TestPayloadTransaction:
         wrong_runtime["release"] = "9.9.9"
 
         with pytest.raises(errors.RecoveryStateError, match="rollback projection"):
-            payload_transaction.recover(ctx, runtime=wrong_runtime)
+            recover_transaction(ctx, runtime=wrong_runtime)
 
         assert Path(payload_state.transaction_root(ctx)).is_dir()
         assert Path(successor.context.payload_dir).is_dir()
@@ -428,6 +445,8 @@ class TestPayloadTransaction:
         successor.activate()
         successor.finalize({"pid": 2})
         retained = payload_rollback.load_retained(ctx)
+        control_executable = Path(ctx.command).resolve(strict=True)
+        assert control_executable.samefile(successor.context.executable)
 
         reverse = payload_transaction.begin_rollback_transaction(ctx, retained)
         reverse.commit_projection()
@@ -436,6 +455,7 @@ class TestPayloadTransaction:
         assert restored is not None
         assert restored.release == "1.2.2"
         reverse.activate()
+        assert Path(ctx.command).resolve(strict=True).samefile(control_executable)
         reverse.rollback()
         selection = payload_generation.read(ctx)
         assert selection is not None
@@ -444,6 +464,35 @@ class TestPayloadTransaction:
         )
         assert current is not None
         assert current.release == "1.2.3"
+
+    def test_finalized_reverse_transition_keeps_newest_control_upgrade_floor(
+        self, *, mocker
+    ) -> None:
+        """Serving rollback cannot make an older release the install authority."""
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        mocker.patch.object(payload_transaction.payload_candidate, "prewarm")
+        first = payload_transaction.begin_transaction(ctx, released_artifact("1.2.2"))
+        first.commit_projection()
+        first.activate()
+        first.finalize({"pid": 1})
+        successor = payload_transaction.begin_transaction(ctx, released_artifact("1.2.3"))
+        successor.commit_projection()
+        successor.activate()
+        successor.finalize({"pid": 2})
+        control_executable = Path(ctx.command).resolve(strict=True)
+        reverse = payload_transaction.begin_rollback_transaction(
+            ctx, payload_rollback.load_retained(ctx)
+        )
+        reverse.commit_projection()
+        reverse.activate()
+        reverse.finalize({"pid": 3})
+
+        assert Path(ctx.command).resolve(strict=True).samefile(control_executable)
+        with pytest.raises(errors.InstallError, match="replay"):
+            payload_transaction.begin_transaction(ctx, released_artifact("1.2.3"))
+
+        forward = payload_transaction.begin_transaction(ctx, released_artifact("1.2.4"))
+        forward.rollback()
 
     def test_interrupted_reverse_transition_recovers_the_original_successor(
         self, tmp_path: Path, *, mocker
@@ -468,7 +517,7 @@ class TestPayloadTransaction:
         )
         assert original_successor is not None
 
-        result = payload_transaction.recover(ctx, runtime=recovery_runtime(original_successor))
+        result = recover_transaction(ctx, runtime=recovery_runtime(original_successor))
 
         assert result["state"] == "rolled_back"
         assert payload_generation.read(ctx) == original_selection
@@ -492,7 +541,7 @@ class TestPayloadTransaction:
         wrong_runtime = recovery_runtime(retained.successor)
         wrong_runtime["release"] = "9.9.9"
         with pytest.raises(errors.RecoveryStateError, match="prior selected generation"):
-            payload_transaction.recover(ctx, runtime=wrong_runtime)
+            recover_transaction(ctx, runtime=wrong_runtime)
 
     @pytest.mark.parametrize("drift", ["installed", "selection", "root"])
     def test_reverse_transition_rejects_stale_authority(
@@ -568,7 +617,7 @@ class TestPayloadTransaction:
             "detail": "payload transaction journal is missing",
         }
         with pytest.raises(errors.InstallError, match="journal is missing"):
-            payload_transaction.recover(ctx, runtime=None)
+            recover_transaction(ctx, runtime=None)
 
     @pytest.mark.parametrize(
         ("carrier", "expected"),
@@ -669,11 +718,11 @@ class TestPayloadTransaction:
                 side_effect=PermissionError("denied"),
             )
             with pytest.raises(errors.RecoveryStateError, match=expected):
-                payload_transaction.recover(ctx, runtime=None)
+                recover_transaction(ctx, runtime=None)
             mocker.stop(read_bytes)
         else:
             with pytest.raises(errors.RecoveryStateError, match=expected):
-                payload_transaction.recover(ctx, runtime=None)
+                recover_transaction(ctx, runtime=None)
 
         assert _retained_carrier_snapshot(root, target) == before
 
@@ -699,7 +748,7 @@ class TestPayloadTransaction:
             expected = "candidate does not match the transaction"
 
         with pytest.raises(errors.RecoveryStateError, match=expected):
-            payload_transaction.recover(ctx, runtime=None)
+            recover_transaction(ctx, runtime=None)
 
     def test_materialized_recovery_rejects_selection_drift(self, tmp_path: Path, *, mocker) -> None:
         """An unselected candidate may be discarded only from its exact prior selection."""
@@ -714,7 +763,7 @@ class TestPayloadTransaction:
         )
 
         with pytest.raises(errors.RecoveryStateError, match="selection changed"):
-            payload_transaction.recover(ctx, runtime=None)
+            recover_transaction(ctx, runtime=None)
 
     def test_fresh_recovery_rejects_an_unrelated_live_runtime(
         self, tmp_path: Path, *, mocker
@@ -731,7 +780,7 @@ class TestPayloadTransaction:
         unrelated["release"] = "9.9.9"
 
         with pytest.raises(errors.InstallError, match="does not match the candidate"):
-            payload_transaction.recover(ctx, runtime=unrelated)
+            recover_transaction(ctx, runtime=unrelated)
 
     def test_installed_state_rejects_a_symlink_even_when_its_target_is_absent(
         self, tmp_path: Path
@@ -750,7 +799,7 @@ class TestPayloadTransaction:
         before = Path(ctx.executable).read_bytes()
         candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
 
-        result = payload_transaction.recover(ctx, runtime=None)
+        result = recover_transaction(ctx, runtime=None)
 
         assert result == {
             "state": "closed",
@@ -768,7 +817,7 @@ class TestPayloadTransaction:
         residue.write_text("unknown\n", encoding="utf-8")
 
         with pytest.raises(errors.InstallError, match="prepared transaction is not empty"):
-            payload_transaction.recover(ctx, runtime=None)
+            recover_transaction(ctx, runtime=None)
 
         assert residue.is_file()
 
@@ -859,7 +908,7 @@ class TestPayloadTransaction:
         )
         assert previous is not None
 
-        result = payload_transaction.recover(ctx, runtime=recovery_runtime(previous))
+        result = recover_transaction(ctx, runtime=recovery_runtime(previous))
 
         assert result["state"] == "rolled_back"
         assert payload_generation.read(ctx) == before
@@ -920,7 +969,7 @@ class TestPayloadTransaction:
 
         candidate = listener_identity.committed_payload(Path(successor.context.executable))
         assert candidate is not None
-        result = payload_transaction.recover(
+        result = recover_transaction(
             ctx,
             runtime=recovery_runtime(candidate, candidate),
         )
@@ -949,7 +998,7 @@ class TestPayloadTransaction:
         previous = listener_identity.committed_payload(Path(predecessor.context.executable))
         assert previous is not None
 
-        result = payload_transaction.recover(ctx, runtime=recovery_runtime(previous))
+        result = recover_transaction(ctx, runtime=recovery_runtime(previous))
 
         assert result["state"] == "rolled_back"
         assert payload_generation.read(ctx) == before
@@ -972,7 +1021,7 @@ class TestPayloadTransaction:
             candidate.activate()
         mocker.stop(interrupted)
 
-        result = payload_transaction.recover(ctx, runtime=None)
+        result = recover_transaction(ctx, runtime=None)
 
         assert result["state"] == "rolled_back"
         assert payload_generation.read(ctx) is None
@@ -1008,7 +1057,7 @@ class TestPayloadTransaction:
 
         candidate = listener_identity.committed_payload(Path(successor.context.executable))
         assert candidate is not None
-        result = payload_transaction.recover(
+        result = recover_transaction(
             ctx,
             runtime=recovery_runtime(candidate, candidate),
         )
@@ -1040,7 +1089,7 @@ class TestPayloadTransaction:
 
         candidate = listener_identity.committed_payload(Path(successor.context.executable))
         assert candidate is not None
-        result = payload_transaction.recover(
+        result = recover_transaction(
             ctx,
             runtime=recovery_runtime(candidate, candidate),
         )
@@ -1207,7 +1256,7 @@ class TestPayloadTransaction:
         assert candidate_identity is not None
         runtime = recovery_runtime(previous_identity)
 
-        result = payload_transaction.recover(ctx, runtime=runtime)
+        result = recover_transaction(ctx, runtime=runtime)
 
         assert result["state"] == "rolled_back"
         assert Path(ctx.executable).read_bytes() == previous
@@ -1229,7 +1278,7 @@ class TestPayloadTransaction:
         assert candidate_identity is not None
         runtime = recovery_runtime(previous_identity, candidate_identity)
 
-        result = payload_transaction.recover(ctx, runtime=runtime)
+        result = recover_transaction(ctx, runtime=runtime)
 
         assert result["state"] == "rolled_back"
         assert Path(ctx.executable).read_bytes() == previous
@@ -1245,7 +1294,7 @@ class TestPayloadTransaction:
         assert candidate_identity is not None
         runtime = recovery_runtime(candidate_identity, candidate_identity)
 
-        result = payload_transaction.recover(ctx, runtime=runtime)
+        result = recover_transaction(ctx, runtime=runtime)
 
         assert result == {
             "transaction_id": result["transaction_id"],
@@ -1259,6 +1308,182 @@ class TestPayloadTransaction:
         assert installed["runtime"] == runtime
         assert not Path(payload_state.transaction_root(ctx)).exists()
 
+    def test_recovery_retains_finalization_authority_until_supervision_is_bound(
+        self, *, mocker
+    ) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        candidate.preserve_for_recovery("controller outcome unknown")
+        candidate_identity = listener_identity.committed_payload(Path(candidate.context.executable))
+        assert candidate_identity is not None
+        runtime = recovery_runtime(candidate_identity, candidate_identity)
+        bind_terminal = mocker.Mock(side_effect=errors.InstallError("bind failed"))
+
+        with pytest.raises(errors.InstallError, match="bind failed"):
+            recover_transaction(
+                ctx,
+                runtime=runtime,
+                bind_terminal=bind_terminal,
+            )
+
+        bind_terminal.assert_called_once_with(candidate.context)
+        assert Path(payload_state.transaction_root(ctx)).is_dir()
+        transaction_status = payload_state.status(ctx)
+        assert transaction_status is not None
+        assert transaction_status["state"] == "recovery_required"
+
+    def test_recovery_retains_rollback_authority_until_supervision_is_bound(
+        self, *, mocker
+    ) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        predecessor = install_payload(ctx, "1.2.2", mocker=mocker)
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        candidate.preserve_for_recovery("handoff outcome unknown")
+        predecessor_identity = listener_identity.committed_payload(
+            Path(predecessor.context.executable)
+        )
+        assert predecessor_identity is not None
+        bind_terminal = mocker.Mock(side_effect=errors.InstallError("bind failed"))
+
+        with pytest.raises(errors.InstallError, match="bind failed"):
+            recover_transaction(
+                ctx,
+                runtime=recovery_runtime(predecessor_identity),
+                bind_terminal=bind_terminal,
+            )
+
+        bind_terminal.assert_called_once_with(predecessor.context)
+        assert Path(payload_state.transaction_root(ctx)).is_dir()
+        assert Path(candidate.context.payload_dir).is_dir()
+        assert payload_generation.selected_context(ctx) == predecessor.context
+
+        bind_terminal.reset_mock(side_effect=True)
+        bind_terminal.side_effect = None
+        result = recover_transaction(
+            ctx,
+            runtime=recovery_runtime(predecessor_identity),
+            bind_terminal=bind_terminal,
+        )
+
+        assert result["state"] == "rolled_back"
+        bind_terminal.assert_called_once_with(predecessor.context)
+        assert not Path(payload_state.transaction_root(ctx)).exists()
+        assert not Path(candidate.context.payload_dir).exists()
+
+    def test_activated_rollback_retries_terminal_binding_without_replaying_handoff(
+        self, *, mocker
+    ) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        predecessor = install_payload(ctx, "1.2.2", mocker=mocker)
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        candidate.activate()
+        candidate.preserve_for_recovery("handoff outcome unknown")
+        predecessor_identity = listener_identity.committed_payload(
+            Path(predecessor.context.executable)
+        )
+        assert predecessor_identity is not None
+        runtime = recovery_runtime(predecessor_identity)
+        bind_terminal = mocker.Mock(side_effect=errors.InstallError("bind failed"))
+
+        with pytest.raises(errors.InstallError, match="bind failed"):
+            recover_transaction(
+                ctx,
+                runtime=runtime,
+                bind_terminal=bind_terminal,
+            )
+
+        assert Path(payload_state.transaction_root(ctx)).is_dir()
+        assert Path(candidate.context.payload_dir).is_dir()
+        assert payload_generation.selected_context(ctx) == predecessor.context
+        bind_terminal.reset_mock(side_effect=True)
+        bind_terminal.side_effect = None
+
+        result = recover_transaction(
+            ctx,
+            runtime=runtime,
+            bind_terminal=bind_terminal,
+        )
+
+        assert result["state"] == "rolled_back"
+        bind_terminal.assert_called_once_with(predecessor.context)
+        assert not Path(payload_state.transaction_root(ctx)).exists()
+        assert not Path(candidate.context.payload_dir).exists()
+
+    def test_recovery_binds_only_the_terminal_generation_once(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        predecessor = install_payload(ctx, "1.2.2", mocker=mocker)
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        candidate.commit_projection()
+        candidate.preserve_for_recovery("handoff outcome unknown")
+        predecessor_identity = listener_identity.committed_payload(
+            Path(predecessor.context.executable)
+        )
+        assert predecessor_identity is not None
+        bind_terminal = mocker.Mock()
+
+        result = recover_transaction(
+            ctx,
+            runtime=recovery_runtime(predecessor_identity),
+            bind_terminal=bind_terminal,
+        )
+
+        assert result["state"] == "rolled_back"
+        bind_terminal.assert_called_once_with(predecessor.context)
+        assert not Path(payload_state.transaction_root(ctx)).exists()
+
+    def test_recovery_keeps_superseded_generation_until_terminal_binding(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        first = install_payload(ctx, "1.2.1", mocker=mocker)
+        second = begin_transaction(ctx, released_artifact("1.2.2"), mocker=mocker)
+        second.commit_projection()
+        second.activate()
+        second.finalize({"pid": 2})
+        third = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        third.commit_projection()
+        third.preserve_for_recovery("controller outcome unknown")
+        third_identity = listener_identity.committed_payload(Path(third.context.executable))
+        assert third_identity is not None
+        first_root = Path(first.context.payload_dir)
+
+        def bind_terminal(active: runtime_context.RuntimeContext) -> None:
+            assert active == third.context
+            assert first_root.is_dir()
+
+        result = recover_transaction(
+            ctx,
+            runtime=recovery_runtime(third_identity, third_identity),
+            bind_terminal=bind_terminal,
+        )
+
+        assert result["state"] == "finalized"
+        assert not first_root.exists()
+
+    def test_recovery_no_op_and_prepared_close_do_not_bind_supervision(self, *, mocker) -> None:
+        ctx = install_context(Path(tempfile.mkdtemp()))
+        bind_terminal = mocker.Mock()
+
+        assert recover_transaction(
+            ctx,
+            runtime=None,
+            bind_terminal=bind_terminal,
+        ) == {"state": "not_required"}
+        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        assert (
+            recover_transaction(
+                ctx,
+                runtime=None,
+                bind_terminal=bind_terminal,
+            )["state"]
+            == "closed"
+        )
+
+        bind_terminal.assert_not_called()
+        candidate.rollback()
+
     def test_recovery_finalizes_an_activated_fresh_candidate(
         self, tmp_path: Path, *, mocker
     ) -> None:
@@ -1271,7 +1496,7 @@ class TestPayloadTransaction:
         candidate_identity = listener_identity.committed_payload(Path(candidate.context.executable))
         assert candidate_identity is not None
 
-        result = payload_transaction.recover(ctx, runtime=recovery_runtime(candidate_identity))
+        result = recover_transaction(ctx, runtime=recovery_runtime(candidate_identity))
 
         assert result["state"] == "finalized"
         assert payload_generation.read(ctx) == payload_generation.Selection(
@@ -1303,7 +1528,7 @@ class TestPayloadTransaction:
         )
         candidate_bytes = Path(ctx.executable).read_bytes()
 
-        result = payload_transaction.recover(ctx, runtime=runtime)
+        result = recover_transaction(ctx, runtime=runtime)
 
         assert result["state"] == "finalized"
         assert Path(ctx.executable).read_bytes() == candidate_bytes
@@ -1316,7 +1541,7 @@ class TestPayloadTransaction:
         candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         candidate.commit_projection()
 
-        result = payload_transaction.recover(ctx, runtime=None)
+        result = recover_transaction(ctx, runtime=None)
 
         assert result["state"] == "rolled_back"
         assert not Path(ctx.install_dir).exists()

@@ -84,17 +84,48 @@ def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
 
 def _install_systemd(ctx: runtime_spec.NativeServiceContext) -> None:
     unit = Path(_unit_path(ctx))
+    service = f"{ctx.service_id}.service"
     unit.parent.mkdir(parents=True, exist_ok=True)
     unit.write_text(render_unit(ctx), encoding="utf-8")
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
-    r = subprocess.run(
-        ["systemctl", "--user", "enable", "--now", str(unit)],
+    enabled = subprocess.run(
+        ["systemctl", "--user", "enable", str(unit)],
         capture_output=True,
         check=False,
         text=True,
     )
-    if r.returncode != 0:
-        raise errors.InstallError(f"systemctl enable failed: {r.stderr.strip()}")
+    if enabled.returncode != 0:
+        raise errors.InstallError(f"systemctl enable failed: {enabled.stderr.strip()}")
+    restarted = subprocess.run(
+        ["systemctl", "--user", "restart", service],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if restarted.returncode != 0:
+        detail = restarted.stderr.strip() or restarted.stdout.strip()
+        raise errors.InstallError(f"systemctl restart failed: {detail}")
+    observed = subprocess.run(
+        ["systemctl", "--user", "show", service, "--property=MainPID", "--value"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    try:
+        watchdog_pid = int(observed.stdout.strip()) if observed.returncode == 0 else 0
+    except ValueError:
+        watchdog_pid = 0
+    watchdog = (
+        process.wait_for_executable(
+            watchdog_pid,
+            ctx.executable,
+            roles={service_runtime.WATCHDOG_MODE},
+        )
+        if watchdog_pid > 0
+        else None
+    )
+    if watchdog is None or not process.owned_process_alive(watchdog):
+        raise errors.InstallError("systemd successor watchdog process identity is unproved")
     # Survive logout / start at boot. Best-effort: on hardened hosts this may need
     # an admin once; we don't fail the install if it can't self-authorize.
     subprocess.run(
