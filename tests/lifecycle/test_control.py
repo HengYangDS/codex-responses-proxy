@@ -674,6 +674,27 @@ class TestControllerLifecycle:
         with pytest.raises(errors.InstallError, match="unknown install content remains"):
             uninstall.uninstall_product(purge=True)
 
+    def test_purge_rejects_control_root_residue_after_owned_generations_are_removed(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Purge cannot report success while unowned control-root content remains."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        residue = Path(ctx.install_dir, "unknown.txt")
+        residue.write_text("operator data", encoding="utf-8")
+        active = generation.selected_context(ctx)
+        service = mocker.Mock()
+        service.status.return_value = "absent"
+        service.terminate_runtime.return_value = 1
+        mocker.patch.object(uninstall.runtime_context, "create", return_value=active)
+        mocker.patch.object(uninstall, "adapter", return_value=service)
+        mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
+
+        with pytest.raises(errors.InstallError, match="unknown install content remains"):
+            uninstall.uninstall_product(purge=True)
+
+        assert residue.read_text(encoding="utf-8") == "operator data"
+
     def test_uninstall_is_idempotent_when_no_installation_exists(self, tmp_path, *, mocker):
         ctx = install_context(tmp_path)
         service = mocker.Mock()
