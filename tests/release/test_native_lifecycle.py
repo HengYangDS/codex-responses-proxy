@@ -122,6 +122,72 @@ class TestSignedNativeLifecycle:
                 ]
                 != installed_pid
             )
+            residue = install / "operator-note.txt"
+            residue.write_text("preserve\n", encoding="utf-8")
+            refused_purge = run_command(
+                executable,
+                environment,
+                "uninstall",
+                "--port",
+                str(port),
+                "--purge",
+                "--json",
+                expected=2,
+            )
+            assert refused_purge["error"] == {
+                "code": "lifecycle_error",
+                "message": "unknown install content remains: operator-note.txt",
+                "next": "codex-responses-proxy doctor",
+            }
+            assert residue.read_text(encoding="utf-8") == "preserve\n"
+            assert not payload_state.transaction_root(ctx).exists()
+            refused_install = run_command(
+                executable,
+                environment,
+                "install",
+                "--asset",
+                str(current_asset),
+                "--trust-anchor",
+                str(anchor),
+                "--port",
+                str(port),
+                "--json",
+                expected=2,
+            )
+            assert refused_install["error"] == {
+                "code": "lifecycle_error",
+                "message": (
+                    "installed payload root contains unverified content; "
+                    "remove it explicitly before installing"
+                ),
+                "next": "codex-responses-proxy doctor",
+            }
+            assert not payload_state.transaction_root(ctx).exists()
+            residue.unlink()
+
+            reinstalled = run_command(
+                executable,
+                environment,
+                "install",
+                "--asset",
+                str(current_asset),
+                "--trust-anchor",
+                str(anchor),
+                "--port",
+                str(port),
+                "--json",
+            )
+            assert reinstalled["state"] == "installed"
+            reinstalled_status = run_command(
+                executable,
+                environment,
+                "status",
+                "--port",
+                str(port),
+                "--json",
+            )
+            assert reinstalled_status["release"] == current_version
+            assert reinstalled_status["service"] == "running"
             run_command(
                 executable,
                 environment,
