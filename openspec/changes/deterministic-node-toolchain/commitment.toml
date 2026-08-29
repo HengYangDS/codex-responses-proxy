@@ -11,6 +11,10 @@ scope = [
   "mise.lock",
   "package.json",
   "package-lock.json",
+  "tools/quality/governance.py",
+  "tests/forge/test_workflow_contracts.py",
+  "tests/quality/test_contract.py",
+  "tests/quality/test_verification.py",
   "openspec/changes/deterministic-node-toolchain/**",
   "openspec/changes/archive/*-deterministic-node-toolchain/**",
 ]
