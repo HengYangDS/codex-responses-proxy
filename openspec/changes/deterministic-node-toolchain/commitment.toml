@@ -20,6 +20,8 @@ scope = [
   "tests/quality/test_contract.py",
   "tests/quality/test_verification.py",
   "openspec/changes/deterministic-node-toolchain/**",
+  "openspec/specs/process-ownership/spec.md",
+  "openspec/specs/repository-organization/spec.md",
   "openspec/changes/archive/*-deterministic-node-toolchain/**",
 ]
 invariants = [
@@ -29,7 +31,7 @@ invariants = [
 ]
 acceptance = [
   "clean_npm_ci_ignore_scripts_succeeds",
-  "openspec_prettier_and_repository_quality_commands_use_node_modules_bin",
+  "openspec_prettier_and_repository_quality_commands_use_locked_npm_execution",
   "github_and_gitlab_source_gates_install_the_same_locked_graph",
 ]
 risks = ["upstream_npm_release_metadata_changes_after_lock_refresh"]
