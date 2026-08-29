@@ -26,6 +26,11 @@ ROOT = Path(__file__).resolve().parents[3]
 class TestParentHandoffStateMachine(HandoffFixture):
     """Legal/illegal runtime behavior of the prepare -> commit -> finalize driver."""
 
+    def test_parent_unit_context_owns_its_log_sink(self):
+        assert self.context.log is not entrypoint_module.operational_log.log
+        self.context.log("fixture-event")
+        assert self.log_events == ["fixture-event"]
+
     def committed(self, *after_ready, health=None, mocker, **kwargs):
         expected = kwargs.pop("expected", expected_metadata())
         child = kwargs.pop("child", fake_child(mocker=mocker))
