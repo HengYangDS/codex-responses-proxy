@@ -273,9 +273,10 @@ def test_release_compatibility_runs_real_published_upgrade_on_each_platform() ->
         step for step in steps if step.get("name") == "Download the published predecessor release"
     )
     assert _mapping(download["env"])["GH_TOKEN"] == "${{ github.token }}"
-    assert 'gh release download "$CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG"' in _string(
+    assert 'gh release download "${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}"' in _string(
         download["run"]
     )
+    assert '"$CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG"' not in _string(download["run"])
     assert "--pattern" in _string(download["run"])
     assert "--repo" not in _string(download["run"])
     predecessor = next(
