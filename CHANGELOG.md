@@ -7,6 +7,15 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.6] - 2026-08-29
+
+### Changed
+
+- Refresh the locked Python and Node development toolchains to their current
+  stable releases while preserving deterministic, attested installation.
+- Define one strict branch-role policy for work, proposal, candidate,
+  accepted, and release refs across local, GitLab, and GitHub workflows.
+
 ## [3.1.5] - 2026-08-29
 
 ### Fixed
