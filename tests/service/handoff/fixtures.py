@@ -523,10 +523,12 @@ class HandoffFixture:
         self.p = handoff_module
         runtime_state_module.reset_for_test()
         self.p.reset_session_to_idle()
+        self.log_events: list[str] = []
         self.context = entrypoint_module._handoff_context()
         object.__setattr__(
             self.context,
             "successor_executable",
             lambda: self.context.executable,
         )
+        object.__setattr__(self.context, "log", self.log_events.append)
         self.installation = runtime_state_module
