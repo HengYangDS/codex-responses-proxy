@@ -10,6 +10,7 @@ The current model has two owners for Node repository tools: top-level versions i
 - Keep signature and provenance validation enabled.
 - Make local, GitHub, and GitLab governance use the same install path.
 - Keep Node tool invocation portable across POSIX and Windows.
+- Advance the locked runtime and Python graphs to current stable releases while preserving one authority per ecosystem.
 
 **Non-Goals:**
 
@@ -24,6 +25,7 @@ The current model has two owners for Node repository tools: top-level versions i
 3. CI runs `npm ci --ignore-scripts` and `npm audit signatures` before governance. Install scripts are unnecessary for these tools and remain disabled.
 4. Governance invokes declared Node tools through `npm exec --offline`. npm owns platform-specific executable resolution, while offline mode prevents an undeclared network install or ambient fallback.
 5. `.config/ci/pipeline.cue` remains the sole CI topology owner and regenerates both Forge YAML projections.
+6. `mise.toml` and `pyproject.toml` own direct stable pins; `mise.lock`, `uv.lock`, and the CUE-generated Forge projections bind their complete resolved graphs and immutable container identities.
 
 ## Risks / Trade-offs
 

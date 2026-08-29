@@ -9,6 +9,7 @@ Fresh Forge jobs resolve OpenSpec through the mise npm backend even though the r
 - Keep mise responsible only for language runtimes and standalone executables.
 - Install and audit the locked npm graph before governance on both Forge projections.
 - Resolve Node tools from the repository-local executable directory on POSIX and Windows.
+- Refresh the repository runtime and Python dependency locks to current stable releases without introducing another resolver or authority.
 
 ## Capabilities
 
@@ -22,4 +23,4 @@ None. This is a repository-tool supply-chain correction; product behavior does n
 
 ## Impact
 
-The repository tool manifests, governance composition, provider-neutral CUE CI graph, generated GitHub/GitLab projections, and focused contracts change. Runtime routing, lifecycle behavior, native assets, and public CLI semantics do not.
+The repository tool manifests, Python dependency graph, governance composition, provider-neutral CUE CI graph, generated GitHub/GitLab projections, and focused contracts change. Runtime routing, lifecycle behavior, native assets, and public CLI semantics do not.

@@ -1,6 +1,6 @@
 schema_version = 2
 id = "change:deterministic-node-toolchain"
-intent = "Install repository-owned Node quality tools from one deterministic npm lock instead of resolving transitive packages through the mise npm backend."
+intent = "Keep repository tool and Python dependency graphs reproducible, current, and governed by their native lockfiles without ambient resolution."
 subjects = ["repository:codex-responses-proxy"]
 scope = [
   ".config/ci/pipeline.cue",
@@ -16,6 +16,8 @@ scope = [
   "mise.lock",
   "package.json",
   "package-lock.json",
+  "pyproject.toml",
+  "uv.lock",
   "tools/quality/governance.py",
   "tests/forge/test_workflow_contracts.py",
   "tests/quality/test_contract.py",
@@ -27,11 +29,13 @@ scope = [
 ]
 invariants = [
   "repository_node_tools_have_one_locked_dependency_graph",
+  "repository_python_dependencies_have_one_locked_dependency_graph",
   "ci_and_local_bootstrap_use_the_same_installation_path",
   "no_supply_chain_trust_check_is_silently_disabled",
 ]
 acceptance = [
   "clean_npm_ci_ignore_scripts_succeeds",
+  "locked_python_dependency_graph_uses_current_stable_releases",
   "openspec_prettier_and_repository_quality_commands_use_locked_npm_execution",
   "github_and_gitlab_source_gates_install_the_same_locked_graph",
 ]

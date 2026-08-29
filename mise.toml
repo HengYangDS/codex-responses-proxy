@@ -6,9 +6,9 @@ locked = true
 
 [tools]
 cue = "0.17.1"
-node = "26.7.0"
+node = "26.8.1"
 python = "3.14.7"
-uv = "0.12.5"
+uv = "0.12.7"
 "aqua:tamasfe/taplo" = "0.10.0"
 "github:gitleaks/gitleaks" = "8.30.1"
 "github:lycheeverse/lychee" = "lychee-v0.24.2"
