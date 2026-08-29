@@ -1,0 +1,23 @@
+schema_version = 2
+id = "change:release-3-1-6"
+intent = "Publish the verified stable toolchain and strict repository policy as the next immutable product release."
+subjects = [
+  "repository:codex-responses-proxy",
+]
+scope = [
+  "CHANGELOG.md",
+  "VERSION",
+  "openspec/changes/release-3-1-6/**",
+]
+invariants = []
+acceptance = []
+risks = []
+authority_refs = []
+predecessors = [
+  "3a5652711c2d518be4b4c8944dc373a67e0902dca8df6b22d987867da8b47187",
+]
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []
