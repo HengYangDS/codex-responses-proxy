@@ -1,0 +1,34 @@
+schema_version = 2
+id = "change:deterministic-node-toolchain"
+intent = "Install repository-owned Node quality tools from one deterministic npm lock instead of resolving transitive packages through the mise npm backend."
+subjects = ["repository:codex-responses-proxy"]
+scope = [
+  ".github/workflows/verify.yml",
+  ".gitlab-ci.yml",
+  "AGENTS.md",
+  "CONTRIBUTING.md",
+  "mise.toml",
+  "mise.lock",
+  "package.json",
+  "package-lock.json",
+  "openspec/changes/deterministic-node-toolchain/**",
+  "openspec/changes/archive/*-deterministic-node-toolchain/**",
+]
+invariants = [
+  "repository_node_tools_have_one_locked_dependency_graph",
+  "ci_and_local_bootstrap_use_the_same_installation_path",
+  "no_supply_chain_trust_check_is_silently_disabled",
+]
+acceptance = [
+  "clean_npm_ci_ignore_scripts_succeeds",
+  "openspec_prettier_and_repository_quality_commands_use_node_modules_bin",
+  "github_and_gitlab_source_gates_install_the_same_locked_graph",
+]
+risks = ["upstream_npm_release_metadata_changes_after_lock_refresh"]
+authority_refs = ["AGENTS.md", "CONTRIBUTING.md", "package-lock.json"]
+predecessors = []
+selected_attestations = []
+dependencies = []
+hypotheses = []
+falsifiers = []
+experiment_protocols = []
