@@ -1,6 +1,7 @@
 """Portable contracts for GitHub verification and release workflows."""
 
 import importlib
+import json
 import re
 import tomllib
 from collections.abc import Mapping
@@ -449,12 +450,14 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
     assert _mapping(source["variables"]) == {
         "GIT_DEPTH": "0",
         "MISE_ENABLE_TOOLS": (
-            "python,uv,node,cue,aqua:tamasfe/taplo,npm:@fission-ai/openspec,npm:prettier,"
-            "github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
+            "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,"
+            "github:rhysd/actionlint,github:lycheeverse/lychee"
         ),
     }
     assert source["before_script"] == [
         "mise install --locked",
+        "npm ci --ignore-scripts",
+        "npm audit signatures",
         "git fetch --tags --force --prune --prune-tags origin",
         (
             "mise exec --locked -- uv sync --locked --group quality "
@@ -468,6 +471,36 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
         )
     ]
     assert _string(_mapping(source["variables"])["MISE_ENABLE_TOOLS"]).startswith("python,uv,")
+
+
+def test_node_repository_tools_have_one_locked_owner() -> None:
+    """Install Node tools from the repository lock, never the mise npm backend."""
+
+    package = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
+    dev_dependencies = package["packages"][""]["devDependencies"]
+    assert dev_dependencies == {
+        "@fission-ai/openspec": "1.11.0",
+        "prettier": "3.9.6",
+    }
+
+    mise = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert all(not name.startswith("npm:") for name in mise["tools"])
+
+    github = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])[
+        "source-and-governance"
+    ]
+    github_steps = tuple(_mapping(step) for step in _sequence(_mapping(github)["steps"]))
+    github_script = "\n".join(str(step.get("run", "")) for step in github_steps)
+    assert "npm ci --ignore-scripts" in github_script
+    assert "npm audit signatures" in github_script
+
+    tag = _mapping(
+        _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])["tag-metadata"]
+    )
+    tag_steps = tuple(_mapping(step) for step in _sequence(tag["steps"]))
+    tag_script = "\n".join(str(step.get("run", "")) for step in tag_steps)
+    assert "npm ci --ignore-scripts" in tag_script
+    assert "npm audit signatures" in tag_script
 
 
 def test_github_python_quality_installs_its_declared_projection_toolchain() -> None:

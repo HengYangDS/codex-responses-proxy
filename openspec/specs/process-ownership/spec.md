@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change windows-successor-ownership. Update Purpose after archive.
+Define how the proxy proves, captures, and terminates only the exact operating-system process generation that owns a runtime role across handoff and cleanup.
 
 ## Requirements
 

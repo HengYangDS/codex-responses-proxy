@@ -45,6 +45,9 @@ repair a replay issue.
 ## Required Verification
 
 ```bash
+mise install --locked
+npm ci --ignore-scripts
+npm audit signatures
 uv sync --locked --all-groups
 uv run --locked --no-sync nox -s full
 uv run --locked --no-sync nox -s release

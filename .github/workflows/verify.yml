@@ -59,6 +59,10 @@ jobs:
         with:
           install: true
           cache: true
+      - name: Install and audit locked Node repository tools
+        run: |-
+          npm ci --ignore-scripts
+          npm audit signatures
       - name: Confirm source identity and repository governance
         run: |-
           uv sync --locked --all-groups
@@ -171,6 +175,10 @@ jobs:
         with:
           install: true
           cache: true
+      - name: Install and audit locked Node repository tools
+        run: |-
+          npm ci --ignore-scripts
+          npm audit signatures
       - name: Install the complete locked tool environment
         run: uv sync --locked --all-groups
       - name: Fetch the exact annotated tag object

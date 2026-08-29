@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change proxy-repository-organization-convergence. Update Purpose after archive.
+Define the repository authorities, development and release boundaries, documentation structure, and portable quality surfaces that keep the proxy lean and reproducible.
 
 ## Requirements
 

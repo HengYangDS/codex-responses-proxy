@@ -1,2 +1,4 @@
 schema: spec-driven
 created: 2026-08-29
+goal: Make the complete Node repository-tool dependency graph deterministic and independent of host npm configuration.
+skip_specs: true

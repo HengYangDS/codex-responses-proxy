@@ -75,11 +75,18 @@ rationale = "Resolved Python dependency versions and hashes are owned by the uni
 projections = ["pyproject.toml"]
 
 [[controls]]
-id = "external-tools"
+id = "standalone-tools"
 kind = "supply-chain-pin"
 owner = "mise.lock"
-rationale = "External executable versions and integrity are owned by the mise lock."
+rationale = "Language runtimes and standalone executable versions and integrity are owned by the mise lock."
 projections = ["mise.toml", ".config/ci/pipeline.cue"]
+
+[[controls]]
+id = "node-repository-tools"
+kind = "supply-chain-pin"
+owner = "package-lock.json"
+rationale = "Repository Node tools and their complete transitive dependency graph are owned by the npm lock."
+projections = ["package.json", ".npmrc", ".config/ci/pipeline.cue"]
 
 [[controls]]
 id = "ci-proof-graph"

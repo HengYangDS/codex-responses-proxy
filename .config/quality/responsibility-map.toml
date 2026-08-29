@@ -84,6 +84,9 @@ files = [
   ".python-versions",
   "mise.lock",
   "mise.toml",
+  ".npmrc",
+  "package-lock.json",
+  "package.json",
   "pyproject.toml",
   "uv.lock",
 ]

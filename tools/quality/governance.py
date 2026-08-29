@@ -11,7 +11,6 @@ from cyclopts import App
 
 ROOT = Path(__file__).resolve().parents[2]
 LINK_POLICY = ".config/quality/native/lychee.toml"
-MARKDOWN_INPUTS = ("./*.md", "./**/*.md")
 
 
 def _tracked_current(suffixes: tuple[str, ...]) -> tuple[str, ...]:
@@ -37,9 +36,14 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
     """Return the single ordered governance graph for this repository."""
     link_mode = () if online_links else ("--offline",)
     markdown_yaml = _tracked_current((".md", ".yaml", ".yml"))
+    markdown = tuple(path for path in markdown_yaml if path.endswith(".md"))
     toml = _tracked_current((".toml",))
     return (
         (
+            "npm",
+            "exec",
+            "--offline",
+            "--",
             "prettier",
             "--check",
             "--config",
@@ -57,7 +61,17 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
         ("cue", "fmt", "--check", "--files", ".config/ci/pipeline.cue"),
         ("cue", "vet", ".config/ci/pipeline.cue"),
         (sys.executable, "-m", "tools.ci.project"),
-        ("openspec", "validate", "--all", "--strict", "--no-interactive"),
+        (
+            "npm",
+            "exec",
+            "--offline",
+            "--",
+            "openspec",
+            "validate",
+            "--all",
+            "--strict",
+            "--no-interactive",
+        ),
         ("actionlint", ".github/workflows/verify.yml"),
         (
             "deptry",
@@ -74,7 +88,7 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
             ".config/quality/native/vulture.toml",
         ),
         ("gitleaks", "git", "--platform", "gitlab", "--redact", "--no-banner", "."),
-        ("lychee", "--config", LINK_POLICY, *link_mode, *MARKDOWN_INPUTS),
+        ("lychee", "--config", LINK_POLICY, *link_mode, *markdown),
         (sys.executable, "-m", "tools.release.metadata"),
         (sys.executable, "-m", "tools.quality.hard_coding"),
         (sys.executable, "-m", "tools.quality.repository"),
