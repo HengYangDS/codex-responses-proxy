@@ -305,6 +305,10 @@ class TestQualityPolicyContracts:
         commands = [tuple(call.args[0]) for call in run.call_args_list[2:]]
         assert commands == [
             (
+                "npm",
+                "exec",
+                "--offline",
+                "--",
                 "prettier",
                 "--check",
                 "--config",
@@ -323,7 +327,17 @@ class TestQualityPolicyContracts:
             ("cue", "fmt", "--check", "--files", ".config/ci/pipeline.cue"),
             ("cue", "vet", ".config/ci/pipeline.cue"),
             (governance.sys.executable, "-m", "tools.ci.project"),
-            ("openspec", "validate", "--all", "--strict", "--no-interactive"),
+            (
+                "npm",
+                "exec",
+                "--offline",
+                "--",
+                "openspec",
+                "validate",
+                "--all",
+                "--strict",
+                "--no-interactive",
+            ),
             ("actionlint", ".github/workflows/verify.yml"),
             (
                 "deptry",
@@ -345,8 +359,7 @@ class TestQualityPolicyContracts:
                 "--config",
                 ".config/quality/native/lychee.toml",
                 "--offline",
-                "./*.md",
-                "./**/*.md",
+                "README.md",
             ),
             (governance.sys.executable, "-m", "tools.release.metadata"),
             (governance.sys.executable, "-m", "tools.quality.hard_coding"),

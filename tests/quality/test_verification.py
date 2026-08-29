@@ -118,7 +118,11 @@ class TestVerificationContracts:
             metadata_checks = sum('["tool"]["uv"]["required-version"]' in item for item in scripts)
             if job == "source-and-governance":
                 assert metadata_checks == 0
-                assert scripts[0] == "mise install --locked"
+                assert scripts[:3] == (
+                    "mise install --locked",
+                    "npm ci --ignore-scripts",
+                    "npm audit signatures",
+                )
                 continue
             assert metadata_checks == 1
         assert 'UV_VERSION="${UV_VERSION#uv }"' in gitlab

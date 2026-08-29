@@ -21,13 +21,22 @@ Requirements:
 
 - Python 3.12, 3.13, and 3.14 compatibility runtimes;
 - `uv` at the version declared in `pyproject.toml`;
+- Node at the version declared in `mise.toml`;
 - Git and OpenSSH for release-provenance work.
 
 Bootstrap once:
 
 ```bash
+mise install --locked
+npm ci --ignore-scripts
+npm audit signatures
 uv sync --locked --all-groups
 ```
+
+`mise.toml` and `mise.lock` own language runtimes and standalone executables.
+`package.json` and `package-lock.json` own OpenSpec, Prettier, and their complete
+npm graph. Governance invokes Node tools through `npm exec --offline`, so local,
+GitHub, GitLab, POSIX, and Windows use the same repository installation.
 
 Run the repository-owned gates:
 

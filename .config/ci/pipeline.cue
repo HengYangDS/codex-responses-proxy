@@ -18,7 +18,7 @@ import "list"
 #Toolchains: {
 	githubMiseAction: "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
 	gitlabMiseImage:  "ghcr.io/jdx/mise@sha256:f2d637d5e5189f7ec177b73bce5cd5db7e7b17a4f466f887c1b88ac2dd431129"
-	quality:          "python,uv,node,cue,aqua:tamasfe/taplo,npm:@fission-ai/openspec,npm:prettier,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
+	quality:          "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
 }
 
 gitlab: {
@@ -90,6 +90,8 @@ gitlab: {
 		}
 		before_script: [
 			"mise install --locked",
+			"npm ci --ignore-scripts",
+			"npm audit signatures",
 			"git fetch --tags --force --prune --prune-tags origin",
 			"mise exec --locked -- uv sync --locked --group quality --python python --no-python-downloads",
 		]
@@ -251,6 +253,12 @@ githubVerify: {
 					cache:   true
 				}
 			}, {
+				name: "Install and audit locked Node repository tools"
+				run: """
+					npm ci --ignore-scripts
+					npm audit signatures
+					"""
+			}, {
 				name: "Confirm source identity and repository governance"
 				run: """
 					uv sync --locked --all-groups
@@ -391,6 +399,12 @@ githubVerify: {
 					install: true
 					cache:   true
 				}
+			}, {
+				name: "Install and audit locked Node repository tools"
+				run: """
+					npm ci --ignore-scripts
+					npm audit signatures
+					"""
 			}, {
 				name: "Install the complete locked tool environment"
 				run:  "uv sync --locked --all-groups"

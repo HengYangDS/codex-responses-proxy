@@ -43,3 +43,6 @@ Thumbs.db
 packaging/release/publication-context.toml
 packaging/release/*-allowed-signers
 packaging/release/commit-allowed-signers
+
+# Repository-local dependencies
+node_modules/
