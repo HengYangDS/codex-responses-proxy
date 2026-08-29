@@ -3,6 +3,7 @@ id = "change:deterministic-node-toolchain"
 intent = "Install repository-owned Node quality tools from one deterministic npm lock instead of resolving transitive packages through the mise npm backend."
 subjects = ["repository:codex-responses-proxy"]
 scope = [
+  ".config/ci/pipeline.cue",
   ".github/workflows/verify.yml",
   ".gitlab-ci.yml",
   ".gitignore",
