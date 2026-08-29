@@ -7,6 +7,18 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.5] - 2026-08-29
+
+### Fixed
+
+- Make published-predecessor downloads shell-independent so the same release
+  compatibility path runs on macOS, Linux, and Windows.
+
+### Changed
+
+- Remove unconsumed OpenSpec summary, scope, capability, and index carriers so
+  the official OpenSpec artifacts remain the sole repository intent model.
+
 ## [3.1.4] - 2026-08-28
 
 ### Fixed
