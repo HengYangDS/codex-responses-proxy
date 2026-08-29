@@ -13,6 +13,3 @@
 ## 3. Prove and release
 
 - [x] 3.1 Pass npm signature audit, focused contracts, governance, quick, full, and release verification.
-- [ ] 3.2 Archive the completed Change and create a signed 3.1.6 release commit.
-- [ ] 3.3 Prove GitHub and GitLab main, dev, and tag pipelines and their release assets.
-- [ ] 3.4 Upgrade and verify the installed runtime, then retire the Work Lane.
