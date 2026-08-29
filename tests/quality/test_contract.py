@@ -167,24 +167,15 @@ class TestQualityPolicyContracts:
             "branch_roles"
         ]
 
-        assert {key: policy[key] for key in policy if key != "transitions"} == {
+        assert policy == {
             "release_branch": "main",
             "accepted_branch": "dev",
             "candidate_branch": "candidate/dev",
+            "release_mirror": "accepted_ff",
             "work_branch_prefix": "work/",
             "proposal_branch_prefix": "proposal/",
+            "canonical_sibling_worktrees": True,
         }
-        assert policy["transitions"] == [
-            {
-                "id": "accepted-to-release",
-                "source_role": "accepted_root",
-                "target_role": "release_root",
-                "capability": "repository.release",
-                "required_gates": [],
-                "required_evidence": ["proof:execution"],
-                "coupled_with": "",
-            }
-        ]
 
     def test_quality_policy_has_one_explicit_owner_per_concern(self) -> None:
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
