@@ -162,15 +162,14 @@ interrupted isolated installations. Equality proves that current lifecycle code
 does not add host residue and that the canonical service remains unchanged.
 
 Older versions may have left enabled override records for already-absent,
-suffix-qualified test services. `launchctl` exposes only the domain-wide
-`reset-disabled` operation for removing persisted override entries; that scope
-is too broad for product automation. Ordinary uninstall therefore does not
-guess, prefix-match, edit launchd's private database, or reset the user domain.
-A host migration may remove historical records only when an administrator can
-provide an explicit reviewed label list, prove each label has no registration,
-plist, or owned process, preserve the canonical label, and verify the full
-before/after projection. The migration is host maintenance, not compatibility
-logic retained in the product.
+suffix-qualified test services. The public `launchctl` interface can list these
+persisted overrides but does not provide an exact-label removal operation.
+Ordinary uninstall therefore does not guess, prefix-match, or edit launchd's
+root-owned private database. Historical override removal is explicit host
+maintenance: an administrator must review the exact label list, prove that each
+label has no registration, plist, or owned process, preserve the canonical
+label, and verify the complete before/after projection. This maintenance does
+not add compatibility logic to the product.
 
 ## Read-only parity audit
 
