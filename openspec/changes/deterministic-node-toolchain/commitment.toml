@@ -5,6 +5,8 @@ subjects = ["repository:codex-responses-proxy"]
 scope = [
   ".github/workflows/verify.yml",
   ".gitlab-ci.yml",
+  ".gitignore",
+  ".npmrc",
   "AGENTS.md",
   "CONTRIBUTING.md",
   "mise.toml",
