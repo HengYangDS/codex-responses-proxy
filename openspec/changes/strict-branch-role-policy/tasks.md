@@ -7,4 +7,4 @@
 
 - [x] 2.1 Pass focused repository governance checks.
 - [x] 2.2 Pass exact-HEAD proof and candidate closeout readiness.
-- [ ] 2.3 Archive the Change and close out candidate to accepted and release.
+- [x] 2.3 Prepare the completed Change for governed archive and closeout.
