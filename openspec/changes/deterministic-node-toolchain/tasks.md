@@ -3,6 +3,7 @@
 - [x] 1.1 Add failing contracts proving Node tools have one package-lock owner and both Forge source jobs install and audit it.
 - [x] 1.2 Add repository-scoped npm authority, package manifests, and ignore the materialized dependency directory.
 - [x] 1.3 Remove npm tools from mise and update its lock.
+- [x] 1.4 Refresh the locked runtime and Python dependency graphs to current stable releases.
 
 ## 2. Project one portable governance path
 
