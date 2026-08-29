@@ -6,5 +6,5 @@
 ## 2. Prove convergence
 
 - [x] 2.1 Pass focused repository governance checks.
-- [ ] 2.2 Pass exact-HEAD proof and candidate closeout readiness.
+- [x] 2.2 Pass exact-HEAD proof and candidate closeout readiness.
 - [ ] 2.3 Archive the Change and close out candidate to accepted and release.
