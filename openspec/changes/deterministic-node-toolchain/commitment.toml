@@ -6,6 +6,7 @@ scope = [
   ".github/workflows/verify.yml",
   ".gitlab-ci.yml",
   ".gitignore",
+  ".config/quality/policy/hard-coding.toml",
   ".npmrc",
   "AGENTS.md",
   "CONTRIBUTING.md",
