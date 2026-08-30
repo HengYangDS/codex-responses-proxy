@@ -7,6 +7,20 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.7] - 2026-08-30
+
+### Fixed
+
+- Isolate native handoff diagnostics so lifecycle tests cannot leak logs into
+  the repository or another test's state.
+- Correct macOS launchd override guidance without introducing unsafe
+  domain-wide cleanup behavior.
+
+### Changed
+
+- Remove obsolete root and archived-change Commitment carriers now that
+  official OpenSpec artifacts are the sole repository intent source.
+
 ## [3.1.6] - 2026-08-29
 
 ### Changed
