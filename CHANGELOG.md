@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.11] - 2026-08-31
+
+### Fixed
+
+- Make GitLab publication retries reuse byte-identical generic-package assets
+  instead of creating duplicate file records, and retain bounded provider
+  response details when the API rejects a request.
+
 ## [3.1.10] - 2026-08-31
 
 ### Fixed
