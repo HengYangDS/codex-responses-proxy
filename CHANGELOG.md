@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.9] - 2026-08-31
+
+### Fixed
+
+- Accept Codex 0.151.0 function-call outputs carrying documented namespace
+  metadata, while keeping that metadata outside the provider-portable outbound
+  pair and continuing to reject unproved output fields.
+
 ## [3.1.8] - 2026-08-31
 
 ### Fixed

@@ -94,6 +94,7 @@ _OUTPUT_FIELDS = frozenset(
         "internal_chat_message_metadata_passthrough",
     )
 )
+_FUNCTION_OUTPUT_FIELDS = _OUTPUT_FIELDS | {"namespace"}
 _DETACHED_DELIVERY_FIELDS = frozenset(
     (
         "type",
@@ -282,7 +283,10 @@ def _project_output(
     outputs: set[str],
 ) -> tuple[JsonObject, dict[str, int]]:
     item_type = cast(str, item.get("type"))
-    _unknown_fields(item, _OUTPUT_FIELDS, "unknown_output_field")
+    allowed_fields = (
+        _FUNCTION_OUTPUT_FIELDS if item_type == "function_call_output" else _OUTPUT_FIELDS
+    )
+    _unknown_fields(item, allowed_fields, "unknown_output_field")
     call_id, caller = item.get("call_id"), item.get("caller")
     if not isinstance(call_id, str) or not call_id or call_id not in calls:
         _reject("orphan_output")
