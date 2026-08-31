@@ -16,7 +16,8 @@ one complete release-bundle identity and sign it once. Each selected Forge
 SHALL publish and re-download the exact same files, and dual-Forge parity SHALL
 require equal complete inventories, bytes, checksum manifest, signature, and
 trust-anchor digest. Provider adapters SHALL only transport and verify the
-bundle.
+bundle. Release-source verification SHALL inspect the annotated tag and its
+target without changing the caller's symbolic ref, `HEAD`, index, or worktree.
 
 #### Scenario: Physical build execution
 
@@ -39,6 +40,20 @@ bundle.
 - **THEN** it SHALL consume the canonical pre-signed bundle without rebuilding
   or re-signing any file
 - **AND** the re-downloaded result SHALL match that bundle byte for byte.
+
+#### Scenario: Release source is verified
+
+- **WHEN** publication verifies an annotated release tag against an expected
+  commit in an attached branch checkout
+- **THEN** the tag object and dereferenced commit SHALL be validated exactly
+- **AND** the symbolic ref, `HEAD`, index, and worktree SHALL remain unchanged.
+
+#### Scenario: Release source identity differs
+
+- **WHEN** the tag is absent, is not annotated, or resolves to a commit other
+  than the expected commit
+- **THEN** publication SHALL fail closed before provider I/O
+- **AND** the caller checkout SHALL remain unchanged.
 
 #### Scenario: Incomplete or independently signed projection
 
