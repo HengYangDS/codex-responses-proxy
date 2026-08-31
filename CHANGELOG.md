@@ -7,6 +7,13 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.10] - 2026-08-31
+
+### Fixed
+
+- Preserve the caller's active branch, HEAD, index, and worktree while
+  verifying an annotated release tag against its expected commit.
+
 ## [3.1.9] - 2026-08-31
 
 ### Fixed
