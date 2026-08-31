@@ -94,6 +94,16 @@ _OUTPUT_FIELDS = frozenset(
         "internal_chat_message_metadata_passthrough",
     )
 )
+_DETACHED_DELIVERY_FIELDS = frozenset(
+    (
+        "type",
+        "id",
+        "name",
+        "namespace",
+        "output",
+        "internal_chat_message_metadata_passthrough",
+    )
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,6 +332,36 @@ def _project_output(
     }
 
 
+def _project_detached_delivery(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
+    _unknown_fields(item, _DETACHED_DELIVERY_FIELDS, "unknown_detached_delivery_field")
+    item_id, name, namespace = item.get("id"), item.get("name"), item.get("namespace")
+    if not all(isinstance(value, str) and value for value in (item_id, name, namespace)):
+        _reject("invalid_detached_delivery")
+    if not isinstance(item.get("output"), str) or not item["output"]:
+        _reject("invalid_detached_delivery")
+    output, _changed, encrypted, markers = project_assistant_text(
+        item.get("output"), encrypted_marker=False
+    )
+    header = json.dumps(
+        {"type": "tool_delivery", "name": name, "namespace": namespace},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return {
+        "type": "message",
+        "role": "assistant",
+        "phase": "commentary",
+        "content": header + "\n" + output,
+    }, {
+        "changed": 1,
+        "item_ids": 1,
+        "encrypted_blocks": encrypted,
+        "omission_markers": markers,
+        "local_image_items": 0,
+        "empty_tool_outputs": 0,
+    }
+
+
 def _project_compaction_trigger(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
     _unknown_fields(item, frozenset(("type",)), "unknown_compaction_trigger_field")
     return {"type": "compaction_trigger"}, {
@@ -365,6 +405,8 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
             projection = _project_agent_message(item)
         elif item_type in _CALL_ARGUMENT_FIELD:
             projection = _project_call(item, calls)
+        elif item_type == "function_call_output" and "call_id" not in item:
+            projection = _project_detached_delivery(item)
         elif item_type in _OUTPUT_CALL_TYPE:
             projection = _project_output(item, calls, outputs)
         elif item_type == "compaction_trigger":

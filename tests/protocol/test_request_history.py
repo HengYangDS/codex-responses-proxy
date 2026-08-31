@@ -13,6 +13,60 @@ from tests.protocol.test_request import _body
 class ProviderPortableHistoryTests:
     """The normal outbound path owns provider-portable history."""
 
+    def test_projects_standalone_namespaced_tool_delivery_to_message(self) -> None:
+        raw = _body(
+            {
+                "model": "gpt-test",
+                "input": [
+                    {
+                        "type": "function_call_output",
+                        "id": "fco_delivery",
+                        "name": "send_message_to_thread",
+                        "namespace": "codex_app",
+                        "output": "<codex_delegation>delivered</codex_delegation>",
+                        "internal_chat_message_metadata_passthrough": {"opaque": True},
+                    }
+                ],
+            }
+        )
+
+        projection = rewrite.sanitize_responses_body(raw)
+
+        assert projection.status == "projected", projection.diagnostic()
+        assert projection.body is not None
+        item = json.loads(projection.body)["input"][0]
+        assert item == {
+            "type": "message",
+            "role": "assistant",
+            "phase": "commentary",
+            "content": '{"type":"tool_delivery","name":"send_message_to_thread","namespace":"codex_app"}\n'
+            "<codex_delegation>delivered</codex_delegation>",
+        }
+
+    def test_rejects_incomplete_or_hybrid_standalone_tool_delivery(self) -> None:
+        invalid_items = (
+            {
+                "type": "function_call_output",
+                "id": "fco_delivery",
+                "namespace": "codex_app",
+                "output": "delivered",
+            },
+            {
+                "type": "function_call_output",
+                "id": "fco_delivery",
+                "name": "send_message_to_thread",
+                "namespace": "codex_app",
+                "call_id": "call_missing",
+                "output": "delivered",
+            },
+        )
+
+        for item in invalid_items:
+            projection = rewrite.sanitize_responses_body(
+                _body({"model": "gpt-test", "input": [item]})
+            )
+            assert projection.status == "rejected"
+
     def test_projects_provider_bound_history_to_closed_portable_grammar(self) -> None:
         raw = _body(HISTORY_PAYLOAD)
 
