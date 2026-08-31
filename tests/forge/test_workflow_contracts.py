@@ -538,7 +538,6 @@ def _assert_github_required_tokens(text: str) -> None:
         "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
         "fetch-tags: true",
         "if: github.ref_type == 'tag'",
-        "python -m tools.release.publish prepare-checkout",
         "python -m tools.quality.governance --online-links",
         'uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"',
         "uv run --locked --no-sync python -m tools.release.metadata",

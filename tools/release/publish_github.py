@@ -92,7 +92,7 @@ def publish(
     ):
         raise GitHubPublishError("GitHub publication inputs are invalid")
     workspace.mkdir(parents=True, exist_ok=True)
-    tag_oid, checked_commit = prepare_checkout(checkout, tag, commit_oid)
+    tag_oid, checked_commit = _local_tag_identity(checkout, tag, commit_oid)
     _verify_source(checkout, tag, tag_trust)
     _verify_remote_identity(repository, tag, tag_oid, checked_commit)
     existing = select_release(_release_records(repository), tag)
@@ -108,32 +108,15 @@ def publish(
     return state
 
 
-def prepare_checkout(checkout: Path, tag: str, commit_oid: str) -> tuple[str, str]:
-    """Fetch, validate, and detach one exact annotated release tag."""
+def _local_tag_identity(checkout: Path, tag: str, commit_oid: str) -> tuple[str, str]:
+    """Validate one local annotated release tag without checkout mutation."""
     git = hosted.executable("git", GitHubPublishError)
-    _run(
-        (
-            git,
-            "-C",
-            str(checkout),
-            "fetch",
-            "--force",
-            "--no-tags",
-            "origin",
-            f"+refs/tags/{tag}:refs/tags/{tag}",
-        ),
-        "GitHub release tag is unavailable",
-    )
     if _output((git, "-C", str(checkout), "cat-file", "-t", f"refs/tags/{tag}")) != "tag":
         raise GitHubPublishError("GitHub release tag is not annotated")
     tag_oid = _output((git, "-C", str(checkout), "rev-parse", f"refs/tags/{tag}^{{tag}}"))
     target = _output((git, "-C", str(checkout), "rev-parse", f"refs/tags/{tag}^{{commit}}"))
     if target != commit_oid:
         raise GitHubPublishError("GitHub release tag differs from the verified commit")
-    _run(
-        (git, "-C", str(checkout), "checkout", "--detach", target),
-        "GitHub release checkout failed",
-    )
     return tag_oid, target
 
 
