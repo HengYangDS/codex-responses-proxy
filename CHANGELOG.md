@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.8] - 2026-08-31
+
+### Fixed
+
+- Replay bounded standalone cross-task tool deliveries as deterministic
+  provider-neutral assistant messages without inventing call identities or
+  modifying conversation history.
+
 ## [3.1.7] - 2026-08-30
 
 ### Fixed
