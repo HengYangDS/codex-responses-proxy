@@ -68,8 +68,8 @@ function/custom-tool call-output pairs; and standalone cross-task tool delivery
 results whose portable provenance is explicit. Assistant, synthesized-agent,
 and standalone delivery history SHALL use provider-neutral Easy Input Message
 strings. System, developer, user, and paired tool-output lists SHALL use
-input-content grammar. Provider IDs, statuses, annotations, and opaque metadata
-SHALL NOT be required.
+input-content grammar. Provider IDs, statuses, annotations, namespaces, and
+opaque metadata SHALL NOT be required by a paired output's outbound form.
 
 #### Scenario: Text and paired calls are replayed
 
@@ -78,6 +78,14 @@ SHALL NOT be required.
 - **THEN** the upstream receives equivalent role-valid portable text and both
   complete call-output pairs
 - **AND** every paired output retains the matching `call_id` and call kind.
+
+#### Scenario: Namespaced function output is replayed
+
+- **WHEN** a valid function output follows its matching call and carries the
+  optional namespace metadata emitted by Codex
+- **THEN** the upstream receives the complete provider-portable call-output pair
+- **AND** the namespace metadata is not required or forwarded
+- **AND** any other unproved output field is still rejected before upstream I/O.
 
 #### Scenario: Standalone cross-task delivery is replayed
 
