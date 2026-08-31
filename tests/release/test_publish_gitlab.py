@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
+import urllib.error
+import urllib.request
+from email.message import Message
 from pathlib import Path
 from typing import TypedDict
 
@@ -59,7 +63,73 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
     trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
     signing.sign_and_verify(assets=assets, key=key, trust=trust)
     expected = {path.name: path.read_bytes() for path in assets.iterdir()}
-    store: dict[str, bytes] = {}
+    store: dict[str, list[bytes]] = {}
+    release: dict[str, object] = {}
+    uploads: list[str] = []
+
+    def request(
+        url: str,
+        _token: str,
+        _credential_kind: publish_gitlab.CredentialKind,
+        *,
+        data: bytes | None = None,
+        method: str = "GET",
+    ) -> bytes:
+        name = url.rsplit("/", 1)[-1]
+        if "/packages/generic/" in url:
+            if method == "PUT":
+                assert data is not None
+                uploads.append(name)
+                store.setdefault(name, []).append(data)
+                return b""
+            if name not in store:
+                raise publish_gitlab._GitLabResourceMissingError(url)
+            return store[name][-1]
+        if method == "POST":
+            if release:
+                raise FileExistsError(url)
+            assert data is not None
+            release.update(json.loads(data))
+            return b"{}"
+        if not release:
+            raise publish_gitlab._GitLabResourceMissingError(url)
+        return json.dumps(release).encode()
+
+    mocker.patch.object(publish_gitlab, "_request", side_effect=request)
+    arguments: _PublicationArguments = {
+        "api_base": "https://gitlab.example/api/v4",
+        "project_id": 453,
+        "tag": "v1.2.3",
+        "token": "redacted",
+        "credential_kind": publish_gitlab.CredentialKind.JOB_TOKEN,
+        "source": assets,
+        "trust": trust,
+    }
+    assert publish_gitlab.publish(**arguments) == "created"
+    assert {name: values[-1] for name, values in store.items()} == expected
+    assert uploads == sorted(expected)
+    assert publish_gitlab.publish(**arguments) == "matched"
+    assert uploads == sorted(expected)
+    assert all(len(values) == 1 for values in store.values())
+    release["name"] = "wrong"
+    with pytest.raises(publish_gitlab.GitLabPublishError, match="immutable identity"):
+        publish_gitlab.publish(**arguments)
+
+
+def test_publication_reuses_exact_partial_package_and_uploads_only_missing_assets(
+    tmp_path: Path, mocker
+) -> None:
+    assets, key = tmp_path / "assets", tmp_path / "signing"
+    assets.mkdir()
+    _assets(assets, "1.2.3")
+    subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
+    public = key.with_suffix(".pub").read_text().strip()
+    trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+    signing.sign_and_verify(assets=assets, key=key, trust=trust)
+    names = sorted(path.name for path in assets.iterdir())
+    present = names[0]
+    store = {present: (assets / present).read_bytes()}
+    uploads: list[str] = []
     release: dict[str, object] = {}
 
     def request(
@@ -74,33 +144,95 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
         if "/packages/generic/" in url:
             if method == "PUT":
                 assert data is not None
+                uploads.append(name)
                 store[name] = data
                 return b""
+            if name not in store:
+                raise publish_gitlab._GitLabResourceMissingError(url)
             return store[name]
         if method == "POST":
-            if release:
-                raise FileExistsError(url)
             assert data is not None
             release.update(json.loads(data))
             return b"{}"
-        return json.dumps(release).encode()
+        raise publish_gitlab._GitLabResourceMissingError(url)
 
     mocker.patch.object(publish_gitlab, "_request", side_effect=request)
-    arguments: _PublicationArguments = {
-        "api_base": "https://gitlab.example/api/v4",
-        "project_id": 453,
-        "tag": "v1.2.3",
-        "token": "redacted",
-        "credential_kind": publish_gitlab.CredentialKind.JOB_TOKEN,
-        "source": assets,
-        "trust": trust,
-    }
-    assert publish_gitlab.publish(**arguments) == "created"
-    assert store == expected
-    assert publish_gitlab.publish(**arguments) == "matched"
-    release["name"] = "wrong"
-    with pytest.raises(publish_gitlab.GitLabPublishError, match="immutable identity"):
-        publish_gitlab.publish(**arguments)
+    assert (
+        publish_gitlab.publish(
+            api_base="https://gitlab.example/api/v4",
+            project_id=453,
+            tag="v1.2.3",
+            token="redacted",
+            credential_kind=publish_gitlab.CredentialKind.JOB_TOKEN,
+            source=assets,
+            trust=trust,
+        )
+        == "created"
+    )
+    assert uploads == [name for name in names if name != present]
+
+
+def test_publication_rejects_different_existing_package_bytes(tmp_path: Path, mocker) -> None:
+    assets, key = tmp_path / "assets", tmp_path / "signing"
+    assets.mkdir()
+    _assets(assets, "1.2.3")
+    subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
+    public = key.with_suffix(".pub").read_text().strip()
+    trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+    signing.sign_and_verify(assets=assets, key=key, trust=trust)
+    conflicting = min(path.name for path in assets.iterdir())
+
+    def request(
+        url: str,
+        _token: str,
+        _credential_kind: publish_gitlab.CredentialKind,
+        *,
+        data: bytes | None = None,
+        method: str = "GET",
+    ) -> bytes:
+        del data
+        if "/packages/generic/" in url:
+            if method == "PUT":
+                pytest.fail("publisher attempted to replace an existing asset")
+            if url.endswith(f"/{conflicting}"):
+                return b"different"
+            raise publish_gitlab._GitLabResourceMissingError(url)
+        raise publish_gitlab._GitLabResourceMissingError(url)
+
+    mocker.patch.object(publish_gitlab, "_request", side_effect=request)
+    with pytest.raises(publish_gitlab.GitLabPublishError, match="differs before upload"):
+        publish_gitlab.publish(
+            api_base="https://gitlab.example/api/v4",
+            project_id=453,
+            tag="v1.2.3",
+            token="redacted",
+            credential_kind=publish_gitlab.CredentialKind.JOB_TOKEN,
+            source=assets,
+            trust=trust,
+        )
+
+
+def test_gitlab_http_failure_preserves_bounded_provider_detail(mocker) -> None:
+    error = urllib.error.HTTPError(
+        "https://gitlab.example/api/v4/projects/453/releases",
+        422,
+        "Unprocessable Entity",
+        Message(),
+        io.BytesIO(b'{"message":"release validation failed"}'),
+    )
+    mocker.patch.object(urllib.request, "urlopen", side_effect=error)
+
+    with pytest.raises(
+        publish_gitlab.GitLabPublishError,
+        match=r"HTTP 422: release validation failed",
+    ):
+        publish_gitlab._request(
+            error.url,
+            "redacted",
+            publish_gitlab.CredentialKind.PRIVATE_TOKEN,
+            data=b"{}",
+            method="POST",
+        )
 
 
 def test_publication_rejects_invalid_boundary_inputs(tmp_path: Path) -> None:

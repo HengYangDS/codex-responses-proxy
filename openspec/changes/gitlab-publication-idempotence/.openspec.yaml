@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-31
+goal: Make GitLab release publication exactly idempotent without duplicate
+  generic-package files and preserve actionable HTTP diagnostics.
