@@ -175,6 +175,73 @@ class ProviderPortableRequestTests:
                 assert projected is None
                 assert note == "rejected invalid_content"
 
+    def test_projects_namespaced_function_output_without_forwarding_namespace(
+        self,
+    ) -> None:
+        projection = rewrite.sanitize_responses_body(
+            _body(
+                {
+                    "input": [
+                        {
+                            "type": "function_call",
+                            "call_id": "namespaced-call",
+                            "name": "read_resource",
+                            "namespace": "workspace",
+                            "arguments": "{}",
+                        },
+                        {
+                            "type": "function_call_output",
+                            "call_id": "namespaced-call",
+                            "name": "read_resource",
+                            "namespace": "workspace",
+                            "output": "available",
+                        },
+                    ]
+                }
+            )
+        )
+
+        assert projection.body is not None, projection.diagnostic()
+        assert json.loads(projection.body)["input"] == [
+            {
+                "type": "function_call",
+                "call_id": "namespaced-call",
+                "name": "read_resource",
+                "namespace": "workspace",
+                "arguments": "{}",
+            },
+            {
+                "type": "function_call_output",
+                "call_id": "namespaced-call",
+                "output": "available",
+            },
+        ]
+
+    def test_rejects_namespace_on_custom_tool_output(self) -> None:
+        projection = rewrite.sanitize_responses_body(
+            _body(
+                {
+                    "input": [
+                        {
+                            "type": "custom_tool_call",
+                            "call_id": "custom-call",
+                            "name": "apply_patch",
+                            "input": "patch",
+                        },
+                        {
+                            "type": "custom_tool_call_output",
+                            "call_id": "custom-call",
+                            "namespace": "workspace",
+                            "output": "done",
+                        },
+                    ]
+                }
+            )
+        )
+
+        assert projection.body is None
+        assert projection.diagnostic() == "rejected unknown_output_field"
+
     def test_normalizes_typed_dialogue_content_by_projected_role(self) -> None:
         raw = _body(
             {
