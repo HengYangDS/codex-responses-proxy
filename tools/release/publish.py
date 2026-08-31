@@ -112,18 +112,11 @@ def _both(
         raise PublicationError("; ".join(failures))
 
 
-def _prepare_checkout(*, tag: str, commit_oid: str, checkout: Path | None = None) -> None:
-    """Prepare one exact annotated release checkout."""
-    tag_oid, target = publish_github.prepare_checkout(checkout or Path.cwd(), tag, commit_oid)
-    print(f"release checkout prepared: {tag_oid} -> {target}")
-
-
 def _app() -> App:
     app = App(help=__doc__, result_action="return_value")
     app.command(_github, name="github")
     app.command(_gitlab, name="gitlab")
     app.command(_both, name="both")
-    app.command(_prepare_checkout, name="prepare-checkout")
     return app
 
 

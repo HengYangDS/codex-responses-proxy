@@ -181,8 +181,6 @@ jobs:
           npm audit signatures
       - name: Install the complete locked tool environment
         run: uv sync --locked --all-groups
-      - name: Fetch the exact annotated tag object
-        run: uv run --locked --no-sync python -m tools.release.publish prepare-checkout --tag "$GITHUB_REF_NAME" --commit-oid "$GITHUB_SHA"
       - name: Verify exact release metadata
         run: uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"
       - name: Verify repository governance

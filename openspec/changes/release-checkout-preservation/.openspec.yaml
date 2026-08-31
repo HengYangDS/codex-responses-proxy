@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-31
+goal: Verify one annotated release tag against the expected commit while
+  preserving the active branch, HEAD, index, and worktree byte-for-byte.
