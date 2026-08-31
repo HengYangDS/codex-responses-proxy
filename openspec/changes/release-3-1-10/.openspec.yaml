@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-08-31
+skip_specs: true
+goal: Release the accepted checkout-preservation correction as one signed,
+  byte-identical, cross-platform product object without changing runtime
+  behavior.
