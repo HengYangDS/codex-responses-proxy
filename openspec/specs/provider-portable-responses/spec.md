@@ -63,11 +63,13 @@ unchanged.
 ### Requirement: Portable dialogue and tool relationships are preserved
 
 The proxy SHALL preserve textual system, developer, user, and assistant
-dialogue; agent author, recipient, and phase context; and complete
-function/custom-tool call-output pairs. Assistant and synthesized-agent history
-SHALL use provider-neutral Easy Input Message strings. System, developer, user,
-and tool-output lists SHALL use input-content grammar. Provider IDs, statuses,
-annotations, and opaque metadata SHALL NOT be required.
+dialogue; agent author, recipient, and phase context; complete
+function/custom-tool call-output pairs; and standalone cross-task tool delivery
+results whose portable provenance is explicit. Assistant, synthesized-agent,
+and standalone delivery history SHALL use provider-neutral Easy Input Message
+strings. System, developer, user, and paired tool-output lists SHALL use
+input-content grammar. Provider IDs, statuses, annotations, and opaque metadata
+SHALL NOT be required.
 
 #### Scenario: Text and paired calls are replayed
 
@@ -75,7 +77,16 @@ annotations, and opaque metadata SHALL NOT be required.
   and output, and a custom-tool call and output
 - **THEN** the upstream receives equivalent role-valid portable text and both
   complete call-output pairs
-- **AND** every output retains the matching `call_id` and call kind.
+- **AND** every paired output retains the matching `call_id` and call kind.
+
+#### Scenario: Standalone cross-task delivery is replayed
+
+- **WHEN** Codex replays a standalone function output with a non-empty item ID,
+  tool name, namespace, and visible output but no `call_id`
+- **THEN** the upstream receives one provider-neutral assistant message that
+  preserves the tool name, namespace, and visible output
+- **AND** the proxy does not invent a function call, call identity, or
+  provider-bound continuation.
 
 #### Scenario: Assistant content is normalized for replay
 
