@@ -1,7 +1,0 @@
-target-version = "py312"
-
-[lint]
-select = ["D"]
-
-[lint.pydocstyle]
-convention = "google"

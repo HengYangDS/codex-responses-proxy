@@ -8,6 +8,9 @@ line-ending = "lf"
 [lint.isort]
 force-single-line = true
 
+[lint.pydocstyle]
+convention = "google"
+
 [lint]
 select = [
   "E4",

@@ -22,7 +22,6 @@ MIN_PYTHON, *_, MAX_PYTHON = PYTHONS
 RELEASE_PYTHON = (ROOT / ".python-release").read_text(encoding="utf-8").strip()
 ROOTS = ("src/codex_responses_proxy", "tools", "tests")
 RUFF_CONFIG = ROOT / ".config/quality/native/ruff.toml"
-RUFF_DOCSTRING_CONFIG = ROOT / ".config/quality/native/ruff-docstrings.toml"
 TY_CONFIG = ROOT / ".config/quality/native/ty.toml"
 COVERAGE_CONFIG = ROOT / ".config/quality/native/coverage.ini"
 PERFORMANCE_POLICY = ROOT / ".config/quality/policy/performance.toml"
@@ -48,23 +47,25 @@ def quick(session: nox.Session) -> None:
     )
     session.run(
         "ruff",
-        "check",
-        "--config",
-        str(RUFF_DOCSTRING_CONFIG),
-        "--no-cache",
-        "src",
-        "tools",
-        "noxfile.py",
-        env=environment,
-    )
-    session.run(
-        "ruff",
         "format",
         "--config",
         str(RUFF_CONFIG),
         "--no-cache",
         "--check",
         ".",
+        env=environment,
+    )
+    session.run(
+        "ruff",
+        "check",
+        "--config",
+        str(RUFF_CONFIG),
+        "--select",
+        "D",
+        "--no-cache",
+        "src",
+        "tools",
+        "noxfile.py",
         env=environment,
     )
     session.run("python", "tools/quality/text_layout.py", env=environment)
@@ -134,23 +135,25 @@ def quality(session: nox.Session) -> None:
     )
     session.run(
         "ruff",
-        "check",
-        "--config",
-        str(RUFF_DOCSTRING_CONFIG),
-        "--no-cache",
-        "src",
-        "tools",
-        "noxfile.py",
-        env=environment,
-    )
-    session.run(
-        "ruff",
         "format",
         "--config",
         str(RUFF_CONFIG),
         "--no-cache",
         "--check",
         ".",
+        env=environment,
+    )
+    session.run(
+        "ruff",
+        "check",
+        "--config",
+        str(RUFF_CONFIG),
+        "--select",
+        "D",
+        "--no-cache",
+        "src",
+        "tools",
+        "noxfile.py",
         env=environment,
     )
     session.run("python", "tools/quality/text_layout.py", env=environment)
