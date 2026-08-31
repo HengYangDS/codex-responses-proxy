@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-31
+goal: Project Codex cross-task delivery outputs into the existing
+  provider-portable tool-result grammar without changing conversation storage.
