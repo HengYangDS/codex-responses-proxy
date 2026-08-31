@@ -221,15 +221,8 @@ class TestQualityPolicyContracts:
             rule == "D" or (rule.startswith("D") and rule[1:].isdigit()) for rule in selected
         )
         assert "ignore" not in ruff["lint"]
+        assert ruff["lint"]["pydocstyle"] == {"convention": "google"}
         assert "per-file-ignores" not in ruff["lint"]
-
-        docstrings = tomllib.loads(
-            (ROOT / ".config/quality/native/ruff-docstrings.toml").read_text(encoding="utf-8")
-        )
-        assert docstrings["lint"] == {
-            "select": ["D"],
-            "pydocstyle": {"convention": "google"},
-        }
 
         rationale = {
             "risk_model",
