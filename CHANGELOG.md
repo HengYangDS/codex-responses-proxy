@@ -7,6 +7,20 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.12] - 2026-09-01
+
+### Fixed
+
+- Classify Responses input items through one authority so valid Codex-local
+  shell call/output history is removed as a complete pair while current
+  dialogue continues, and report recognized unsupported items as schema drift
+  rather than unknown input.
+
+### Changed
+
+- Use one Ruff configuration for source and docstring policy instead of a
+  parallel docstring-only configuration.
+
 ## [3.1.11] - 2026-08-31
 
 ### Fixed

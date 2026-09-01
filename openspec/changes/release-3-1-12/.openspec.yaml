@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-09-01
+goal: >-
+  Publish the accepted Responses item authority and quality-authority changes as
+  release 3.1.12 without altering their canonical product semantics.
+skip_specs: true
