@@ -25,6 +25,11 @@ EMPTY_TOOL_OUTPUT_MARKER = "[tool returned no textual output]"
 _PROVIDER_BINDINGS = ("previous_response_id", "conversation", "prompt_cache_key")
 _VALID_ROLES = frozenset(("user", "assistant", "developer", "system"))
 _VALID_PHASES = frozenset(("commentary", "final_answer"))
+_LOCAL_SHELL_STATUSES = frozenset(("completed", "in_progress", "incomplete"))
+_LOCAL_SHELL_TIMEOUT_MAX = 2**64 - 1
+_LOCAL_SHELL_ACTION_FIELDS = frozenset(
+    ("type", "command", "timeout_ms", "working_directory", "env", "user")
+)
 _CALL_ARGUMENT_FIELD = item_policy.call_argument_fields()
 _OUTPUT_CALL_TYPES = item_policy.output_call_types()
 _MESSAGE_FIELDS = frozenset(
@@ -276,16 +281,41 @@ def _drop_local_tool_call(item: JsonObject, calls: dict[str, str]) -> dict[str, 
         )
     )
     _unknown_fields(item, allowed_fields, "unknown_local_shell_call_field")
-    call_id, action = item.get("call_id"), item.get("action")
+    call_id, status, action = (
+        item.get("call_id"),
+        item.get("status"),
+        item.get("action"),
+    )
     if not isinstance(call_id, str) or not call_id or call_id in calls:
         _reject("invalid_call_id")
-    if not isinstance(action, dict) or action.get("type") != "exec":
+    if status not in _LOCAL_SHELL_STATUSES or not isinstance(action, dict):
+        _reject("invalid_local_shell_call")
+    if set(action) - _LOCAL_SHELL_ACTION_FIELDS or action.get("type") != "exec":
         _reject("invalid_local_shell_call")
     commands = action.get("command")
     if (
         not isinstance(commands, list)
         or not commands
         or not all(isinstance(command, str) and command for command in commands)
+    ):
+        _reject("invalid_local_shell_call")
+    timeout = action.get("timeout_ms")
+    if timeout is not None and (
+        not isinstance(timeout, int)
+        or isinstance(timeout, bool)
+        or not 0 <= timeout <= _LOCAL_SHELL_TIMEOUT_MAX
+    ):
+        _reject("invalid_local_shell_call")
+    for field in ("working_directory", "user"):
+        value = action.get(field)
+        if value is not None and not isinstance(value, str):
+            _reject("invalid_local_shell_call")
+    environment = action.get("env")
+    if environment is not None and (
+        not isinstance(environment, dict)
+        or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in environment.items()
+        )
     ):
         _reject("invalid_local_shell_call")
     calls[call_id] = "local_shell_call"
@@ -470,6 +500,11 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
         projected.append(value)
         for key, value_count in item_metrics.items():
             metrics["changed_items" if key == "changed" else key] += value_count
+    if any(
+        call_type == "local_shell_call" and call_id not in outputs
+        for call_id, call_type in calls.items()
+    ):
+        _reject("incomplete_local_shell_pair")
     if not projected and items:
         _reject("empty_portable_input")
     return projected, metrics

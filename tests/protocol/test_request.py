@@ -59,7 +59,14 @@ class ProviderPortableRequestTests:
                             "id": "lsh_1",
                             "call_id": "call_1",
                             "status": "completed",
-                            "action": {"type": "exec", "command": ["printf", "ok"]},
+                            "action": {
+                                "type": "exec",
+                                "command": ["printf", "ok"],
+                                "timeout_ms": 0,
+                                "working_directory": "workspace",
+                                "env": {"MODE": "test"},
+                                "user": "runner",
+                            },
                         },
                         {
                             "type": "function_call_output",
@@ -77,6 +84,103 @@ class ProviderPortableRequestTests:
             {"type": "message", "role": "user", "content": "continue"}
         ]
         assert projection.metrics.changed_items == 2
+
+    def test_rejects_unpaired_local_shell_call(self) -> None:
+        projection = rewrite.sanitize_responses_body(
+            _body(
+                {
+                    "input": [
+                        {
+                            "type": "local_shell_call",
+                            "call_id": "call_1",
+                            "status": "completed",
+                            "action": {"type": "exec", "command": ["printf", "ok"]},
+                        },
+                        {"type": "message", "role": "user", "content": "continue"},
+                    ]
+                }
+            )
+        )
+
+        assert projection.body is None
+        assert projection.diagnostic() == "rejected incomplete_local_shell_pair"
+
+    def test_rejects_invalid_local_shell_call_fields(self, subtests) -> None:
+        cases = {
+            "missing status": {
+                "type": "local_shell_call",
+                "call_id": "call_1",
+                "action": {"type": "exec", "command": ["printf", "ok"]},
+            },
+            "invalid status": {
+                "type": "local_shell_call",
+                "call_id": "call_1",
+                "status": "done",
+                "action": {"type": "exec", "command": ["printf", "ok"]},
+            },
+            "unknown action field": {
+                "type": "local_shell_call",
+                "call_id": "call_1",
+                "status": "completed",
+                "action": {
+                    "type": "exec",
+                    "command": ["printf", "ok"],
+                    "future": True,
+                },
+            },
+            "boolean timeout": {
+                "type": "local_shell_call",
+                "call_id": "call_1",
+                "status": "completed",
+                "action": {
+                    "type": "exec",
+                    "command": ["printf", "ok"],
+                    "timeout_ms": True,
+                },
+            },
+            "negative timeout": {
+                "type": "local_shell_call",
+                "call_id": "call_1",
+                "status": "completed",
+                "action": {
+                    "type": "exec",
+                    "command": ["printf", "ok"],
+                    "timeout_ms": -1,
+                },
+            },
+            "overflow timeout": {
+                "type": "local_shell_call",
+                "call_id": "call_1",
+                "status": "completed",
+                "action": {
+                    "type": "exec",
+                    "command": ["printf", "ok"],
+                    "timeout_ms": 2**64,
+                },
+            },
+            "invalid environment": {
+                "type": "local_shell_call",
+                "call_id": "call_1",
+                "status": "completed",
+                "action": {
+                    "type": "exec",
+                    "command": ["printf", "ok"],
+                    "env": {"COUNT": 1},
+                },
+            },
+        }
+        output = {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": "ok",
+        }
+
+        for name, call in cases.items():
+            with subtests.test(name=name):
+                projection = rewrite.sanitize_responses_body(_body({"input": [call, output]}))
+
+                assert projection.body is None
+                assert projection.diagnostic() == "rejected invalid_local_shell_call"
 
     def test_rejects_compaction_trigger_with_unknown_fields(self) -> None:
         projection = rewrite.sanitize_responses_body(
