@@ -31,25 +31,24 @@ an ASGI server and data-model stack while the product must still own raw stream
 framing, drain admission, inherited-socket lifecycle, and exact process
 identity.
 
-HTTPX is selected for a separate, bounded upstream-transport migration after
-the quality-system convergence is complete. Its synchronous streaming client,
-typed response surface, connection pooling, raw-byte iteration, and explicit
-connect/read/write/pool timeouts can replace the `urllib` response adapter,
-private socket traversal, and repeated connection setup. The migration is not
-complete until raw encoded response bytes, provider-scoped recovery, bounded
-stream deadlines, proxy-environment behavior, release size, and all three
-native platforms are proven.
+HTTPX 0.28.1 is not selected for the upstream transport. Its public timeout
+configuration is fixed when an active HTTP/1.1 response-body iterator begins.
+Changing the request's read-timeout extension after the first raw chunk does not
+shorten the next blocked read, so HTTPX cannot preserve the existing total SSE
+deadline without private HTTPCore access or an additional cancellation owner.
 
-Framework selection and product migration remain separate commits: the current
-quality change establishes the admission proof; the transport change must show
-actual deletion and behavior parity rather than merely adding a dependency.
+The current `urllib` transport remains the sole implementation until a candidate
+proves public dynamic read-budget control, raw encoded bytes, direct proxy
+isolation, provider-scoped recovery, frozen native portability, and net deletion
+of owned complexity. No speculative dependency or parallel fallback is admitted.
 
 ## Consequences
 
 - The inbound server stays small and synchronous while that remains the least
   complex implementation of the inherited-listener contract.
-- The next transport atom has an explicit deletion target and cannot retain a
-  parallel `urllib` implementation after HTTPX acceptance.
+- The private socket traversal remains an explicit design liability, not a
+  reason to accept a replacement that moves the same liability or adds a second
+  lifecycle.
 - A framework is not rejected because it is external or accepted because it is
   modern; total owned complexity and product fit decide.
 - Dependency versions and hashes remain supply-chain projections of the lock,
@@ -60,9 +59,15 @@ actual deletion and behavior parity rather than merely adding a dependency.
 - **FastAPI plus Uvicorn for all HTTP behavior:** rejected because it does not
   own native service installation, rolling listener transfer, or byte-level
   relay semantics and would widen the runtime surface before deleting them.
-- **Keep `urllib` indefinitely:** rejected because private transport traversal
-  and per-request connection construction are accidental complexity with a
-  mature typed replacement.
+- **Adopt HTTPX 0.28.1 for upstream traffic:** rejected because its public sync
+  streaming API cannot update the active read deadline after iteration begins;
+  private HTTPCore traversal would reproduce the defect under another package.
+- **Add a reader thread or async cancellation layer around HTTPX:** rejected
+  because it adds ownership, shutdown, and failure states without reducing the
+  total maintained surface.
+- **Keep `urllib` without a replacement criterion:** rejected; the current path
+  is retained only while it is the smallest proven implementation, and its
+  private timeout traversal remains a named revisit trigger.
 - **Rewrite the entire service as asynchronous code:** rejected as an
   unbounded migration without evidence that concurrency, rather than upstream
   latency and provider behavior, is the limiting product risk.
@@ -71,6 +76,7 @@ actual deletion and behavior parity rather than merely adding a dependency.
 
 Revisit the inbound decision if an ASGI server proves inherited-socket handoff,
 raw stream parity, smaller frozen assets, and less owned lifecycle code. Revisit
-the HTTPX decision if its native artifacts fail a supported platform, raw-byte
-semantics cannot be preserved, or the migration does not delete the existing
-transport-specific complexity.
+the upstream decision when a stable candidate exposes public per-read deadline
+control for an active synchronous stream and can prove raw-byte, recovery,
+direct-routing, frozen-release, and three-platform parity while deleting more
+transport-specific complexity than it introduces.
