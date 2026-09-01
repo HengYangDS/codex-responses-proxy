@@ -9,8 +9,10 @@ tool call/output relationships.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import cast
 
+from codex_responses_proxy.protocol import item_policy
 from codex_responses_proxy.protocol import response
 
 type JsonObject = dict[str, object]
@@ -20,10 +22,7 @@ type Recovery = tuple[bytes | None, RecoveryMetrics | None]
 
 COMPACTION_RATIO_DENOMINATOR = 2
 
-_TOOL_PAIR_TYPES = {
-    "custom_tool_call": "custom_tool_call_output",
-    "function_call": "function_call_output",
-}
+_TOOL_PAIR_TYPES = item_policy.paired_item_types()
 _TOOL_CALL_TYPES = frozenset(_TOOL_PAIR_TYPES)
 _TOOL_OUTPUT_TYPES = frozenset(_TOOL_PAIR_TYPES.values())
 
@@ -101,7 +100,7 @@ def exhausted_payload(attempts: int) -> bytes:
     )
 
 
-def tool_pair_boundary_is_safe(items: list[object], start: int) -> bool:
+def tool_pair_boundary_is_safe(items: Sequence[object], start: int) -> bool:
     """Return whether a retained suffix contains no orphaned tool output."""
     calls = set()
     for item in items[start:]:

@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass
 from typing import cast
 
+from codex_responses_proxy.protocol import item_policy
 from codex_responses_proxy.protocol.content import ProjectionRejectedError
 from codex_responses_proxy.protocol.content import project_assistant_text
 from codex_responses_proxy.protocol.content import project_input_content
@@ -24,22 +25,8 @@ EMPTY_TOOL_OUTPUT_MARKER = "[tool returned no textual output]"
 _PROVIDER_BINDINGS = ("previous_response_id", "conversation", "prompt_cache_key")
 _VALID_ROLES = frozenset(("user", "assistant", "developer", "system"))
 _VALID_PHASES = frozenset(("commentary", "final_answer"))
-_DROP_ITEM_TYPES = frozenset(
-    (
-        "reasoning",
-        "item_reference",
-        "web_search_call",
-        "tool_search_call",
-        "tool_search_output",
-        "compaction",
-    )
-)
-_SEARCH_ITEM_TYPES = frozenset(("web_search_call", "tool_search_call", "tool_search_output"))
-_CALL_ARGUMENT_FIELD = {"function_call": "arguments", "custom_tool_call": "input"}
-_OUTPUT_CALL_TYPE = {
-    "function_call_output": "function_call",
-    "custom_tool_call_output": "custom_tool_call",
-}
+_CALL_ARGUMENT_FIELD = item_policy.call_argument_fields()
+_OUTPUT_CALL_TYPES = item_policy.output_call_types()
 _MESSAGE_FIELDS = frozenset(
     (
         "type",
@@ -277,6 +264,40 @@ def _project_call(item: JsonObject, calls: dict[str, str]) -> tuple[JsonObject, 
     }
 
 
+def _drop_local_tool_call(item: JsonObject, calls: dict[str, str]) -> dict[str, int]:
+    allowed_fields = frozenset(
+        (
+            "type",
+            "id",
+            "call_id",
+            "status",
+            "action",
+            "internal_chat_message_metadata_passthrough",
+        )
+    )
+    _unknown_fields(item, allowed_fields, "unknown_local_shell_call_field")
+    call_id, action = item.get("call_id"), item.get("action")
+    if not isinstance(call_id, str) or not call_id or call_id in calls:
+        _reject("invalid_call_id")
+    if not isinstance(action, dict) or action.get("type") != "exec":
+        _reject("invalid_local_shell_call")
+    commands = action.get("command")
+    if (
+        not isinstance(commands, list)
+        or not commands
+        or not all(isinstance(command, str) and command for command in commands)
+    ):
+        _reject("invalid_local_shell_call")
+    calls[call_id] = "local_shell_call"
+    return {
+        "changed": 1,
+        "item_ids": int("id" in item),
+        "encrypted_blocks": 0,
+        "omission_markers": 0,
+        "local_image_items": 0,
+    }
+
+
 def _project_output(
     item: JsonObject,
     calls: dict[str, str],
@@ -291,7 +312,7 @@ def _project_output(
     if not isinstance(call_id, str) or not call_id or call_id not in calls:
         _reject("orphan_output")
     valid_call_id = cast(str, call_id)
-    if calls[valid_call_id] != _OUTPUT_CALL_TYPE[item_type]:
+    if calls[valid_call_id] not in _OUTPUT_CALL_TYPES[item_type]:
         _reject("mismatched_output")
     if valid_call_id in outputs:
         _reject("duplicate_output")
@@ -397,26 +418,54 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
             _reject("invalid_item")
         item = cast(JsonObject, raw_item)
         item_type = item.get("type")
-        if item_type in _DROP_ITEM_TYPES:
-            metrics["reasoning_items"] += int(item_type == "reasoning")
-            metrics["reference_items"] += int(item_type in ("item_reference", "compaction"))
-            metrics["search_items"] += int(item_type in _SEARCH_ITEM_TYPES)
+        policy = item_policy.classify_item(item_type)
+        if policy is None:
+            _reject("unknown_item_type")
+        strategy = policy.projection
+        if strategy in {
+            item_policy.ProjectionStrategy.DROP_REASONING,
+            item_policy.ProjectionStrategy.DROP_REFERENCE,
+            item_policy.ProjectionStrategy.DROP_SEARCH,
+            item_policy.ProjectionStrategy.DROP_AUXILIARY,
+        }:
+            metrics["reasoning_items"] += int(
+                strategy is item_policy.ProjectionStrategy.DROP_REASONING
+            )
+            metrics["reference_items"] += int(
+                strategy is item_policy.ProjectionStrategy.DROP_REFERENCE
+            )
+            metrics["search_items"] += int(strategy is item_policy.ProjectionStrategy.DROP_SEARCH)
             metrics["item_ids"] += int("id" in item)
             continue
-        if item_type == "message":
+        if strategy is item_policy.ProjectionStrategy.DROP_LOCAL_TOOL:
+            item_metrics = _drop_local_tool_call(item, calls)
+            for key, value_count in item_metrics.items():
+                metrics["changed_items" if key == "changed" else key] += value_count
+            continue
+        if strategy is item_policy.ProjectionStrategy.MESSAGE:
             projection = _project_message(item)
-        elif item_type == "agent_message":
+        elif strategy is item_policy.ProjectionStrategy.AGENT_MESSAGE:
             projection = _project_agent_message(item)
-        elif item_type in _CALL_ARGUMENT_FIELD:
+        elif strategy is item_policy.ProjectionStrategy.CALL:
             projection = _project_call(item, calls)
-        elif item_type == "function_call_output" and "call_id" not in item:
+        elif (
+            strategy is item_policy.ProjectionStrategy.OUTPUT
+            and isinstance(item.get("call_id"), str)
+            and calls.get(cast(str, item["call_id"])) == "local_shell_call"
+        ):
+            _value, item_metrics = _project_output(item, calls, outputs)
+            item_metrics["changed"] = 1
+            for key, value_count in item_metrics.items():
+                metrics["changed_items" if key == "changed" else key] += value_count
+            continue
+        elif strategy is item_policy.ProjectionStrategy.OUTPUT and "call_id" not in item:
             projection = _project_detached_delivery(item)
-        elif item_type in _OUTPUT_CALL_TYPE:
+        elif strategy is item_policy.ProjectionStrategy.OUTPUT:
             projection = _project_output(item, calls, outputs)
-        elif item_type == "compaction_trigger":
+        elif strategy is item_policy.ProjectionStrategy.COMPACTION_TRIGGER:
             projection = _project_compaction_trigger(item)
         else:
-            _reject("unknown_item_type")
+            _reject(policy.rejection_reason)
         value, item_metrics = projection
         projected.append(value)
         for key, value_count in item_metrics.items():

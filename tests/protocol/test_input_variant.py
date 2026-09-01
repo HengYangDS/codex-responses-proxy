@@ -252,6 +252,7 @@ class TestInputDiagnostic:
             ({"type": {"private": "value"}}, "missing_item_type", {"dict": "1"}),
             ({"type": ["private"]}, "missing_item_type", {"list": "1"}),
             ({"type": "future"}, "unknown_item_type", {"unknown": "1"}),
+            ({"type": "shell_call"}, "schema_drift", {"shell_call": "1"}),
             (
                 {"type": "message", "role": "bogus", "content": "x"},
                 "invalid_message_role",

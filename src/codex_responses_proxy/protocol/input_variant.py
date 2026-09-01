@@ -20,6 +20,8 @@ from dataclasses import field
 from typing import Final
 from typing import cast
 
+from codex_responses_proxy.protocol import item_policy
+
 type JsonObject = dict[str, object]
 type ReadOnlyJsonObject = Mapping[str, object]
 
@@ -27,41 +29,7 @@ _ERROR_MESSAGE: Final = (
     "invalid request body: Invalid 'input': value did not match any expected variant"
 )
 _INVALID_JSON: Final = object()
-_KNOWN_ITEM_TYPES: Final = frozenset(
-    [
-        "message",
-        "agent_message",
-        "reasoning",
-        "function_call",
-        "function_call_output",
-        "custom_tool_call",
-        "custom_tool_call_output",
-        "web_search_call",
-        "tool_search_call",
-        "tool_search_output",
-        "file_search_call",
-        "computer_call",
-        "computer_call_output",
-        "code_interpreter_call",
-        "image_generation_call",
-        "local_shell_call",
-        "local_shell_call_output",
-        "shell_call",
-        "shell_call_output",
-        "apply_patch_call",
-        "apply_patch_call_output",
-        "mcp_list_tools",
-        "mcp_approval_request",
-        "mcp_approval_response",
-        "mcp_call",
-        "compaction",
-        "compaction_trigger",
-        "item_reference",
-        "additional_tools",
-        "program",
-        "program_output",
-    ]
-)
+_KNOWN_ITEM_TYPES: Final = item_policy.item_types()
 _KNOWN_CONTENT_TYPES: Final = frozenset(
     [
         "input_text",
@@ -73,11 +41,7 @@ _KNOWN_CONTENT_TYPES: Final = frozenset(
         "encrypted_content",
     ]
 )
-_PAIR_TYPES: Final = {
-    "custom_tool_call": "custom_tool_call_output",
-    "function_call": "function_call_output",
-    "tool_search_call": "tool_search_output",
-}
+_PAIR_TYPES: Final = item_policy.paired_item_types()
 _CALL_TYPES: Final = frozenset(_PAIR_TYPES)
 _OUTPUT_TYPES: Final = frozenset(_PAIR_TYPES.values())
 _ROLES: Final = ("system", "developer", "user")
@@ -482,7 +446,10 @@ class _DiagnosticState:
 def _item_type_failure(item_type: object) -> str:
     if not isinstance(item_type, str):
         return "missing_item_type"
-    return "" if item_type in _KNOWN_ITEM_TYPES else "unknown_item_type"
+    policy = item_policy.classify_item(item_type)
+    if policy is None:
+        return "unknown_item_type"
+    return policy.rejection_reason
 
 
 def _item_failure(item: ReadOnlyJsonObject, item_type: object) -> str:
