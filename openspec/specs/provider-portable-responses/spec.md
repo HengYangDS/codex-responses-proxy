@@ -171,9 +171,10 @@ Before upstream I/O, the proxy SHALL classify each Responses input item through
 one authoritative item policy shared by diagnostics and provider-portable
 projection. Malformed JSON, invalid input containers, genuinely unknown replay
 item types, unknown content block types, orphaned or mismatched tool outputs,
-duplicate call/output identities, and invalid required fields SHALL be rejected
-locally. The error SHALL identify a bounded structural reason without returning
-request text, credentials, or encrypted payloads.
+duplicate call/output identities, invalid required fields, and incomplete local
+shell pairs SHALL be rejected locally. The error SHALL identify a bounded
+structural reason without returning request text, credentials, or encrypted
+payloads.
 
 #### Scenario: A future client introduces an unknown replay item
 
@@ -199,11 +200,13 @@ request text, credentials, or encrypted payloads.
 
 #### Scenario: Codex local shell history is provider-local
 
-- **WHEN** replay contains a valid `local_shell_call` followed by its matching
-  `function_call_output` and a current dialogue item
+- **WHEN** replay contains a `local_shell_call` with a valid closed `exec`
+  action, a supported status, exactly one matching `function_call_output`, and
+  a current dialogue item
 - **THEN** the proxy removes the complete local shell pair before upstream I/O
 - **AND** it preserves the current dialogue item
-- **AND** an incomplete or malformed local shell pair is rejected locally.
+- **AND** an unpaired call, invalid status, unknown action field, or invalid
+  action value is rejected locally.
 
 #### Scenario: Diagnostic and projection classification agree
 
