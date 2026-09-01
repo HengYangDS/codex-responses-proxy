@@ -41,6 +41,43 @@ class ProviderPortableRequestTests:
         ]
         assert projection.status == "projected"
 
+    def test_reports_recognized_unimplemented_standard_item_as_schema_drift(
+        self,
+    ) -> None:
+        projection = rewrite.sanitize_responses_body(_body({"input": [{"type": "shell_call"}]}))
+
+        assert projection.body is None
+        assert projection.diagnostic() == "rejected schema_drift"
+
+    def test_drops_current_codex_local_shell_history_as_one_pair(self) -> None:
+        projection = rewrite.sanitize_responses_body(
+            _body(
+                {
+                    "input": [
+                        {
+                            "type": "local_shell_call",
+                            "id": "lsh_1",
+                            "call_id": "call_1",
+                            "status": "completed",
+                            "action": {"type": "exec", "command": ["printf", "ok"]},
+                        },
+                        {
+                            "type": "function_call_output",
+                            "call_id": "call_1",
+                            "output": "ok",
+                        },
+                        {"type": "message", "role": "user", "content": "continue"},
+                    ]
+                }
+            )
+        )
+
+        assert projection.body is not None, projection.diagnostic()
+        assert json.loads(projection.body)["input"] == [
+            {"type": "message", "role": "user", "content": "continue"}
+        ]
+        assert projection.metrics.changed_items == 2
+
     def test_rejects_compaction_trigger_with_unknown_fields(self) -> None:
         projection = rewrite.sanitize_responses_body(
             _body({"input": [{"type": "compaction_trigger", "unexpected": True}]})

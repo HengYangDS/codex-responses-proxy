@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-01
+goal: Unify Responses input item classification so diagnosis and
+  provider-portable projection cannot diverge.

@@ -232,6 +232,15 @@ class ResponseFailedContracts:
         assert not response_failed.tool_pair_boundary_is_safe(items, 0)
         assert response_failed.tool_pair_boundary_is_safe(items, 2)
 
+    def test_response_failed_pair_boundary_recognizes_local_shell_history(self) -> None:
+        items = [
+            {"type": "local_shell_call", "call_id": "local"},
+            {"type": "function_call_output", "call_id": "local", "output": "ok"},
+        ]
+
+        assert response_failed.tool_pair_boundary_is_safe(items, 0)
+        assert not response_failed.tool_pair_boundary_is_safe(items, 1)
+
     def test_response_failed_rejects_invalid_compaction_and_recovery_boundaries(self, subtests):
         common = ((b"not-json", None), (b"[]", None), (b'{"input":[]}', None))
         self.assert_rejected(
