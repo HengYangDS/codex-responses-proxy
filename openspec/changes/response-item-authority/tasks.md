@@ -10,4 +10,4 @@
 ## 3. Verification
 
 - [x] 3.1 Run formatting, lint, type, and affected test gates with no warning or failure.
-- [ ] 3.2 Validate the OpenSpec Change and produce exact-HEAD ETHOS proof without modifying the installed 3.1.11 service.
+- [x] 3.2 Validate the OpenSpec Change and produce exact-HEAD ETHOS proof without modifying the installed 3.1.11 service.
