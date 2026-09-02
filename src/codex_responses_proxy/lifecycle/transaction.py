@@ -676,7 +676,7 @@ class PayloadTransaction:
             )
             command.write_snapshot(rollback, command_snapshot)
             if self._reuse_generation:
-                payload_candidate.prewarm(Path(self._candidate_ctx.executable))
+                payload_candidate.prewarm(self._candidate_ctx)
                 self._state = "materialized"
                 self._write_journal()
                 return
@@ -700,7 +700,7 @@ class PayloadTransaction:
             ok, detail = projection.verify_payload_manifest(self._candidate_ctx)
             if not ok:
                 raise errors.InstallError(f"committed payload integrity check failed: {detail}")
-            payload_candidate.prewarm(Path(self._candidate_ctx.executable))
+            payload_candidate.prewarm(self._candidate_ctx)
             self._state = "materialized"
             self._write_journal()
         except BaseException as exc:

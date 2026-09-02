@@ -24,9 +24,9 @@ from typing import Protocol
 from typing import TypedDict
 from typing import cast
 
-from codex_responses_proxy import product_identity
 from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.runtime import loopback
+from codex_responses_proxy.runtime.process_environment import native_process_environment
 
 type JsonObject = dict[str, object]
 type ReadOnlyJsonObject = Mapping[str, object]
@@ -65,6 +65,10 @@ class ChildProcessContext(Protocol):
     @property
     def executable(self) -> Path:
         """Return the immutable replacement product executable."""
+
+    @property
+    def state_root(self) -> Path:
+        """Return the product state root inherited by this process."""
 
 
 HANDOFF_PROTOCOL_VERSION = 2
@@ -251,11 +255,11 @@ def spawn_child(
     windows = os.name == "nt" if is_windows is None else bool(is_windows)
     listener_fd = None if windows else listener.fileno()
     kwargs = popen_kwargs(listener_fd, is_windows=windows)
-    env = os.environ.copy()
-    env[product_identity.environment_name("HANDOFF_CHILD")] = "1"
-    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-    env.pop("PYTHONHOME", None)
-    env.pop("PYTHONPATH", None)
+    env = native_process_environment(
+        install_root=context.executable.parent.parent,
+        state_root=context.state_root,
+        restart_frozen_runtime=True,
+    )
     kwargs["env"] = env
     process: subprocess.Popen[bytes] = subprocess.Popen(
         [str(context.executable), "--internal-handoff-child"],

@@ -13,6 +13,7 @@ from typing import cast
 import pytest
 
 from codex_responses_proxy import errors
+from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import candidate as payload_candidate
 from codex_responses_proxy.lifecycle import context as runtime_context
@@ -160,13 +161,16 @@ class TestPayloadValidation:
             "run",
             return_value=subprocess.CompletedProcess(("proxy", "--internal-prewarm"), 0),
         )
-        executable = tmp_path / "proxy"
+        ctx = install_context(tmp_path)
+        executable = Path(ctx.executable)
+        executable.parent.mkdir(parents=True, exist_ok=True)
         executable.write_bytes(b"native")
-        payload_candidate.prewarm(executable)
+        payload_candidate.prewarm(ctx)
         arguments = completed.call_args.args[0]
         assert arguments[0] == str(executable)
         assert arguments[1:] == [payload_candidate.service_runtime.PREWARM_MODE]
         environment = completed.call_args.kwargs["env"]
+        assert environment[product_identity.environment_name("HOME")] == str(ctx.payload_dir)
         assert environment["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
         assert "PYTHONHOME" not in environment
         assert "PYTHONPATH" not in environment
@@ -185,7 +189,7 @@ class TestPayloadValidation:
                     return_value=effect if not isinstance(effect, BaseException) else None,
                 )
                 with pytest.raises(errors.InstallError, match="prewarm failed"):
-                    payload_candidate.prewarm(executable)
+                    payload_candidate.prewarm(ctx)
 
     def test_transaction_filesystem_failures_remain_fail_closed(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))

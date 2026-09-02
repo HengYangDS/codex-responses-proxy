@@ -14,9 +14,9 @@ from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
+from codex_responses_proxy.runtime.process_environment import native_process_environment
 from tests.release import fixtures as release_fixtures
 from tests.release.fixtures import cleanup_runtime
-from tests.release.fixtures import native_environment
 from tests.release.fixtures import native_service_projection
 from tests.release.fixtures import post_response
 from tests.release.fixtures import preserve_native_host_projection
@@ -50,7 +50,11 @@ class TestSignedNativeLifecycle:
         home.mkdir()
         port = free_port()
         ctx = runtime_context_for(home, install, state, port)
-        environment = native_environment(home, install, state)
+        environment = native_process_environment(
+            user_home=home,
+            install_root=install,
+            state_root=state,
+        )
         assert ctx.service_id != runtime_context.SERVICE_ID
         isolated_before = native_service_projection(ctx)
         assert isolated_before == {
@@ -240,7 +244,11 @@ class TestSignedNativeLifecycle:
         home.mkdir()
         port = free_port()
         ctx = runtime_context_for(home, install, state, port)
-        environment = native_environment(home, install, state)
+        environment = native_process_environment(
+            user_home=home,
+            install_root=install,
+            state_root=state,
+        )
         isolated_before = native_service_projection(ctx)
         canonical_ctx = runtime_context.create()
         canonical_before = native_service_projection(canonical_ctx)

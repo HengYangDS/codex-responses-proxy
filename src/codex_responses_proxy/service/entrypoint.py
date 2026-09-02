@@ -7,7 +7,6 @@ release identity, process bindings, and startup.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -112,6 +111,7 @@ def _handoff_context() -> handoff.Context:
     executable = Path(runtime.current_executable()) if _BOOTSTRAP is None else _BOOTSTRAP.executable
     return handoff.Context(
         executable=executable,
+        state_root=Path(runtime_config.state_dir()),
         successor_executable=lambda: identity.selected_payload_executable(executable),
         release_version=release_version,
         serving_payload_sha256=loaded_serving_payload_sha256,
@@ -172,7 +172,7 @@ def run(*, handoff_child: bool = False) -> int:
     except runtime_config.ConfigurationError as exc:
         operational_log.log(f"configuration_error exception={exc.__class__.__name__}")
         return 2
-    if handoff_child or os.environ.get(product_identity.environment_name("HANDOFF_CHILD")) == "1":
+    if handoff_child:
         return handoff.run_child(_handoff_context())
     operational_log.log(
         f"starting {product_identity.PRODUCT_SLUG} listener={host}:{port} "

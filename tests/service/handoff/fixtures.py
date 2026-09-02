@@ -414,7 +414,7 @@ def write_installed_payload(
     # handoff tests focused on listener transfer rather than host assessment.
     from codex_responses_proxy.lifecycle import candidate as payload_candidate
 
-    payload_candidate.prewarm(target)
+    payload_candidate.prewarm(ctx)
     return ctx
 
 
