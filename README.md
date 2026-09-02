@@ -245,14 +245,18 @@ Development uses the repository-owned Python environments and locked supply
 chain. These commands are DX, not product UX:
 
 ```bash
-uv sync --locked --all-groups
-uv run --locked --no-sync nox -s full
-uv run --locked --no-sync nox -s release
+mise install --locked
+mise exec --locked -- uv sync --locked --all-groups
+mise exec --locked -- uv run --locked --no-sync nox -s full
+mise exec --locked -- uv run --locked --no-sync nox -s release
 ```
 
-Use `nox -s quick` while editing. `full` is the non-redundant admission graph:
-repository governance, strict quality and Python 3.12 coverage, then complete
-compatibility runs on Python 3.13 and 3.14.
+`mise exec --locked --` selects the repository toolchain. uv owns this
+worktree's `.venv`; Nox owns its isolated `.nox/<session>` verification
+environments. Use `mise exec --locked -- uv run --locked --no-sync nox -s
+quick` while editing. `full` is the non-redundant admission graph: repository
+governance, strict quality and Python 3.12 coverage, then complete compatibility
+runs on Python 3.13 and 3.14.
 
 See [CONTRIBUTING](CONTRIBUTING.md) for source verification and release work.
 

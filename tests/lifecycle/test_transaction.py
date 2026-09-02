@@ -941,10 +941,11 @@ class TestPayloadTransaction:
         residue = Path(payload_state.transaction_root(ctx), "unexpected")
         residue.write_text("unknown\n", encoding="utf-8")
 
-        with pytest.raises(errors.InstallError, match="prepared transaction is not empty"):
+        with pytest.raises(errors.RecoveryStateError, match="unowned content"):
             recover_transaction(ctx, runtime=None)
 
         assert residue.is_file()
+        assert Path(payload_state.journal_path(ctx)).is_file()
 
     def test_fresh_commit_writes_manifest_receipt_and_pending_journal_then_finalize_state(
         self, *, mocker

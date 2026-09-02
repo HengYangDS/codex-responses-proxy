@@ -120,7 +120,7 @@ def _close_prepared(
     """Remove only a valid journal that proves no payload mutation began."""
     root = state.transaction_root(ctx)
     if tuple(root.iterdir()) != (state.journal_path(ctx),):
-        raise errors.InstallError("prepared transaction is not empty")
+        raise errors.RecoveryStateError("prepared transaction contains unowned content")
     result = {
         "transaction_id": journal["transaction_id"],
         "version": journal["version"],

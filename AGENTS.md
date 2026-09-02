@@ -46,12 +46,16 @@ repair a replay issue.
 
 ```bash
 mise install --locked
-npm ci --ignore-scripts
-npm audit signatures
-uv sync --locked --all-groups
-uv run --locked --no-sync nox -s full
-uv run --locked --no-sync nox -s release
+mise exec --locked -- npm ci --ignore-scripts
+mise exec --locked -- npm audit signatures
+mise exec --locked -- uv sync --locked --all-groups
+mise exec --locked -- uv run --locked --no-sync nox -s full
+mise exec --locked -- uv run --locked --no-sync nox -s release
 ```
+
+`mise exec --locked --` is the repository tool-selection boundary. It selects
+the locked executables before uv manages this worktree's `.venv` and Nox creates
+isolated `.nox/<session>` verification environments.
 
 Use `codex-responses-proxy status --json` for read-only runtime evidence. Reload
 and upgrade are transactional lifecycle mutations and must be communicated

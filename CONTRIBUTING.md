@@ -19,30 +19,35 @@ CLI, and repository-owned delivery system.
 
 Requirements:
 
-- Python 3.12, 3.13, and 3.14 compatibility runtimes;
-- `uv` at the version declared in `pyproject.toml`;
-- Node at the version declared in `mise.toml`;
+- `mise` at or above the minimum version declared in `mise.toml`;
 - Git and OpenSSH for release-provenance work.
+
+`mise.toml` selects the Python 3.12, 3.13, and 3.14 compatibility runtimes,
+uv, Node, and standalone verification tools.
 
 Bootstrap once:
 
 ```bash
 mise install --locked
-npm ci --ignore-scripts
-npm audit signatures
-uv sync --locked --all-groups
+mise exec --locked -- npm ci --ignore-scripts
+mise exec --locked -- npm audit signatures
+mise exec --locked -- uv sync --locked --all-groups
 ```
 
 `mise.toml` and `mise.lock` own language runtimes and standalone executables.
 `package.json` and `package-lock.json` own OpenSpec, Prettier, and their complete
 npm graph. Governance invokes Node tools through `npm exec --offline`, so local,
 GitHub, GitLab, POSIX, and Windows use the same repository installation.
+`mise exec --locked --` is the supported executable-selection boundary. uv owns
+the current worktree's `.venv`, and Nox owns disposable `.nox/<session>`
+environments. Download caches may be shared; mutable environments are local to
+their worktree or Nox session.
 
 Run the repository-owned gates:
 
 ```bash
-uv run --locked --no-sync nox -s full
-uv run --locked --no-sync nox -s release
+mise exec --locked -- uv run --locked --no-sync nox -s full
+mise exec --locked -- uv run --locked --no-sync nox -s release
 ```
 
 `quick` is the editing feedback loop. `full` is the admission owner and avoids

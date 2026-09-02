@@ -9,9 +9,11 @@ contract. Two separate defects amplified one operational mistake:
 2. recovery demanded rollback-only state before determining that an unselected
    reverse candidate had changed no terminal authority.
 
-Concurrent transaction ownership is already serialized by the existing atomic
-transaction-root claim. This Change therefore addresses sequential intent and
-interrupted recovery rather than adding another lock or registry.
+The transaction root is durable recovery evidence, not a process lock. Its
+atomic creation prevents two fresh transactions from claiming the same path,
+but it does not serialize recovery cleanup against a second lifecycle command.
+All public lifecycle writers therefore share one cross-platform OS lock outside
+the payload root; read-only status and doctor do not acquire it.
 
 ## Goals / Non-Goals
 
@@ -47,9 +49,10 @@ Alternative rejected: consume or delete rollback history after one invocation.
 That prevents one symptom but does not express operator intent and weakens a
 legitimate forward recovery path.
 
-Alternative rejected: add a second transaction lock. The transaction-root claim
-already excludes concurrent writers; the incident involved sequential automatic
-re-execution, which a lock released after each run cannot prevent.
+The writer lock is not another transaction authority. It carries no recovery
+state and makes no lifecycle decision; it only prevents two product commands
+from mutating one installation concurrently. The journal remains the sole
+durable transaction authority.
 
 ### Read restoration state only when restoration is required
 
@@ -85,6 +88,12 @@ requires the exact snapshot to restore the displaced command safely.
 - **A missing snapshot hides partial activation** → allow snapshot-free closure
   only for the exact pre-transaction selection with all terminal identities
   agreeing; every other state remains blocked.
+- **Two lifecycle commands overlap** → reject the second command before it reads
+  transaction state; the first command retains sole responsibility for success,
+  rollback, or durable recovery evidence.
+- **A process bypasses the product command boundary** → treat it as unsupported
+  external mutation rather than duplicating POSIX and Windows handle-specific
+  deletion protocols that still cannot police an equal-privilege actor.
 
 ## Verification Strategy
 
@@ -95,9 +104,11 @@ requires the exact snapshot to restore the displaced command safely.
 3. Transaction RED: unselected reverse candidate with no unused snapshot closes
    only under full terminal proof; selection, installed, command, payload, or
    runtime drift each fails closed and preserves the transaction.
-4. Focused GREEN, lifecycle modules, strict OpenSpec validation, quick quality,
+4. Command-boundary RED: a second lifecycle writer is rejected before its owner
+   runs; success and exception paths both release the lock.
+5. Focused GREEN, lifecycle modules, strict OpenSpec validation, quick quality,
    Python 3.12–3.14, and the release gate.
-5. Build and publish a new signed hotfix. Use an isolated installation root for
+6. Build and publish a new signed hotfix. Use an isolated installation root for
    install/update/rollback/recovery/uninstall validation before any controlled
    repair of the formal installation.
 

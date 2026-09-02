@@ -17,6 +17,8 @@ from cyclopts import App
 from cyclopts import Parameter
 from cyclopts.exceptions import CycloptsError
 from cyclopts.validators import Number
+from filelock import FileLock
+from filelock import Timeout
 from rich.console import Console
 
 from codex_responses_proxy import errors
@@ -88,6 +90,28 @@ class DoctorReport(TypedDict):
 type CommandResult = Mapping[str, object] | None
 
 
+def _lifecycle_lock_path(ctx: runtime_context.RuntimeContext) -> Path:
+    """Return the stable lock shared by all lifecycle writers for one installation."""
+    return Path(ctx.log_dir, "lifecycle.lock")
+
+
+def _acquire_lifecycle_lock(ctx: runtime_context.RuntimeContext) -> FileLock:
+    """Acquire the installation's native writer lock or raise one public error."""
+    lock = FileLock(
+        _lifecycle_lock_path(ctx),
+        timeout=0,
+        fallback_to_soft=False,
+        preserve_lock_file=True,
+    )
+    try:
+        lock.acquire()
+    except Timeout as exc:
+        raise errors.InstallError("lifecycle mutation is already in progress") from exc
+    except OSError as exc:
+        raise errors.InstallError("lifecycle mutation lock is unavailable") from exc
+    return lock
+
+
 def _release_version() -> str:
     if bundle_root := getattr(sys, "_MEIPASS", None):
         return (Path(bundle_root) / "VERSION").read_text(encoding="utf-8").strip()
@@ -150,35 +174,41 @@ def dispatch(command: str, **arguments: object) -> CommandResult: ...
 
 def dispatch(command: str, **arguments: object) -> CommandResult:
     """Execute one parsed command through its semantic owner."""
-    if command == "install":
-        return install.install_asset(
-            _path_argument(arguments, "asset"),
-            trust_anchor=_path_argument(arguments, "trust_anchor"),
-            port=_port_argument(arguments),
-            timeout_seconds=_timeout_argument(arguments),
-        )
-    if command == "uninstall":
-        return uninstall.uninstall_product(
-            port=_port_argument(arguments), purge=_purge_argument(arguments)
-        )
-    context = runtime_context.create(port=_port_argument(arguments))
+    port = _port_argument(arguments)
+    context = runtime_context.create(port=port)
     if command == "status":
         return control.status(context)
     if command == "doctor":
         return _doctor(control.status(context))
-    if command == "recover":
-        return control.recover(context)
-    if command == "reload":
-        return control.reload(context, timeout_seconds=_timeout_argument(arguments))
-    if command == "rollback":
-        to_release = arguments.get("to_release")
-        if not isinstance(to_release, str):
-            raise TypeError("to_release must be a string")
-        return control.rollback(
-            context,
-            to_release=to_release,
-            timeout_seconds=_timeout_argument(arguments),
-        )
+    if command in PUBLIC_COMMANDS:
+        lock = _acquire_lifecycle_lock(context)
+        try:
+            if command == "install":
+                return install.install_asset(
+                    _path_argument(arguments, "asset"),
+                    trust_anchor=_path_argument(arguments, "trust_anchor"),
+                    port=port,
+                    timeout_seconds=_timeout_argument(arguments),
+                )
+            if command == "uninstall":
+                return uninstall.uninstall_product(
+                    port=port,
+                    purge=_purge_argument(arguments),
+                )
+            if command == "recover":
+                return control.recover(context)
+            if command == "reload":
+                return control.reload(context, timeout_seconds=_timeout_argument(arguments))
+            to_release = arguments.get("to_release")
+            if not isinstance(to_release, str):
+                raise TypeError("to_release must be a string")
+            return control.rollback(
+                context,
+                to_release=to_release,
+                timeout_seconds=_timeout_argument(arguments),
+            )
+        finally:
+            lock.release()
     raise ValueError(f"{command} is not implemented")
 
 

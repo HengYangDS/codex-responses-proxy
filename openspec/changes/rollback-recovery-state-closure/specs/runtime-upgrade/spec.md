@@ -54,7 +54,11 @@ is owned by that generation's executable, the immutable payload identity is
 valid, and the accepting non-draining runtime matches that payload. Only then
 may it close the transaction without reading an unused rollback snapshot. It
 SHALL preserve the selected payload, command, listener, and service. Any missing
-proof or any other selection SHALL fail closed without mutation.
+proof or any other selection SHALL fail closed without mutation. Journal-only
+closure SHALL remove only a transaction root whose canonical journal is its sole
+entry. Lifecycle writers are serialized before transaction inspection or
+mutation; processes that bypass the product-owned lifecycle boundary are outside
+the supported concurrency contract.
 
 Any existing but unverifiable transaction carrier SHALL fail closed without
 mutation and identify whether the transaction root or journal is missing, a
@@ -102,6 +106,14 @@ neither outcome may be inferred from process presence alone.
   accepting runtime differs from the prior terminal generation
 - **THEN** recovery fails closed without removing the candidate or transaction
 - **AND** does not read absence of a snapshot as permission to invent state.
+
+#### Scenario: Another lifecycle writer is active
+
+- **WHEN** install, recover, reload, rollback, or uninstall already owns the
+  product lifecycle mutation boundary
+- **THEN** another lifecycle mutation is rejected before reading or changing
+  transaction state
+- **AND** status and doctor remain available as read-only observations.
 
 #### Scenario: All identities agree
 
