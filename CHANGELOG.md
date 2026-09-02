@@ -7,6 +7,17 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.14] - 2026-09-02
+
+### Fixed
+
+- Bind rollback to an explicit target release, return an idempotent no-op when
+  that release is already proven active, and reject unrelated targets before
+  lifecycle mutation.
+- Close an interrupted, unselected reverse transaction after proving the
+  selected installation, command, immutable payload, and accepting runtime are
+  unchanged, without requiring a restoration snapshot that was never needed.
+
 ## [3.1.13] - 2026-09-02
 
 ### Fixed

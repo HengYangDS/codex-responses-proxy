@@ -45,7 +45,11 @@ def read_runtime(ctx: runtime_context.RuntimeContext) -> dict[str, object] | Non
     return {key: value for key, value in payload.items() if isinstance(key, str)}
 
 
-def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
+def status(
+    ctx: runtime_context.RuntimeContext,
+    *,
+    include_rollback: bool = True,
+) -> dict[str, object]:
     """Return non-secret runtime and transaction evidence without mutation."""
     active = generation.selected_context(ctx)
     installed_error: str | None = None
@@ -75,6 +79,15 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         else None
     )
     committed = identity.committed_payload(Path(active.executable)) if integrity_ok else None
+    selection = generation.read(ctx)
+    installed_matches_payload = (
+        installed is not None
+        and committed is not None
+        and installed.get("version") == committed.release
+        and installed.get("receipt_sha256") == committed.release_receipt_sha256
+        and installed.get("command") == ctx.command
+        and (selection is None or installed.get("transaction_id") == selection.active)
+    )
     runtime_matches_payload = (
         isinstance(runtime, dict)
         and committed is not None
@@ -100,12 +113,16 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
     command_state = command.status(installed_command, Path(control_executable))
     payload_transaction = payload_state.status(ctx)
     rollback_status = (
-        payload_rollback.RetainedRollbackStatus(
-            state="deferred",
-            detail="payload transaction owns rollback finalization",
+        (
+            payload_rollback.RetainedRollbackStatus(
+                state="deferred",
+                detail="payload transaction owns rollback finalization",
+            )
+            if payload_transaction is not None
+            else payload_rollback.status(ctx)
         )
-        if payload_transaction is not None
-        else payload_rollback.status(ctx)
+        if include_rollback
+        else None
     )
     install_root = Path(ctx.install_dir)
     absent = (
@@ -128,7 +145,7 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         assert isinstance(payload_transaction, dict)
         lifecycle_state = "invalid"
         detail = str(payload_transaction["detail"])
-    elif rollback_status.state == "invalid":
+    elif rollback_status is not None and rollback_status.state == "invalid":
         lifecycle_state = "invalid"
         detail = rollback_status.detail or "selected rollback predecessor is invalid"
     elif absent:
@@ -137,7 +154,7 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         detail = "not installed"
     elif (
         integrity_ok
-        and installed is not None
+        and installed_matches_payload
         and service == "running"
         and runtime is not None
         and command_state.get("state") == "owned"
@@ -157,6 +174,8 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         lifecycle_state = "degraded"
         if not integrity_ok:
             detail = integrity_detail
+        elif installed is not None and not installed_matches_payload:
+            detail = "installed release state does not match selected payload"
         elif service != "running":
             detail = f"native service is {service}"
         elif runtime is None:
@@ -165,7 +184,7 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
             detail = "native command ownership is unavailable"
         else:
             detail = "installation is degraded"
-    return {
+    evidence: dict[str, object] = {
         "state": lifecycle_state,
         "detail": detail,
         "release": payload_state.require_version(installed) if installed is not None else None,
@@ -175,7 +194,9 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
         "listener_pids": listeners,
         "runtime": runtime,
         "payload_transaction": payload_transaction,
-        "rollback": {
+    }
+    if rollback_status is not None:
+        evidence["rollback"] = {
             key: value
             for key, value in {
                 "state": rollback_status.state,
@@ -184,8 +205,8 @@ def status(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
                 "detail": rollback_status.detail,
             }.items()
             if value is not None
-        },
-    }
+        }
+    return evidence
 
 
 def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -> dict[str, object]:
@@ -278,17 +299,51 @@ def recover(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
 
 
 def rollback(
-    ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0
+    ctx: runtime_context.RuntimeContext,
+    *,
+    to_release: str,
+    timeout_seconds: float = 30.0,
 ) -> dict[str, object]:
-    """Restore the one retained predecessor through the native lifecycle."""
+    """Converge on one explicit installed or retained release."""
+    try:
+        payload_state.version_key(to_release)
+    except errors.InstallError as exc:
+        raise errors.RollbackStateError("requested rollback release is invalid") from exc
     if payload_state.status(ctx) is not None:
         raise errors.RecoveryRequiredError("complete payload recovery before rollback")
+    try:
+        installed = payload_state.read_installed(ctx)
+        active = generation.selected_context(ctx) if installed is not None else None
+        active_identity = (
+            identity.committed_payload(Path(active.executable)) if active is not None else None
+        )
+        selection = generation.read(ctx) if installed is not None else None
+    except errors.InstallError as exc:
+        raise errors.RollbackStateError(str(exc)) from exc
+    if installed is not None and payload_state.require_version(installed) == to_release:
+        observed = status(ctx, include_rollback=False)
+        if not (
+            observed.get("state") == "running"
+            and observed.get("release") == to_release
+            and active_identity is not None
+            and active_identity.release == to_release
+            and installed.get("receipt_sha256") == active_identity.release_receipt_sha256
+            and (selection is None or installed.get("transaction_id") == selection.active)
+        ):
+            raise errors.RollbackStateError(
+                "requested rollback release is installed but not proven active"
+            )
+        return {"state": "unchanged", "release": to_release}
     try:
         retained = payload_rollback.load_retained_or_none(ctx)
     except errors.InstallError as exc:
         raise errors.RollbackStateError(str(exc)) from exc
     if retained is None:
         return {"state": "unavailable", "detail": "no verified predecessor is retained"}
+    if retained.predecessor.release != to_release:
+        raise errors.RollbackStateError(
+            f"requested release {to_release} is not the verified predecessor"
+        )
     return apply.rollback(
         ctx,
         retained,

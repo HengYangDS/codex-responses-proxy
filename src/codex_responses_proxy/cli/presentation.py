@@ -127,6 +127,12 @@ def render(command: str, result: Mapping[str, object] | None) -> str:
                 (("State", "No verified predecessor"),),
                 next_command=product_identity.command("status"),
             )
+        if result.get("state") == "unchanged":
+            return _page(
+                "Already selected",
+                (("Release", result.get("release", "Unknown")),),
+                next_command=product_identity.command("status"),
+            )
         return _page(
             "Rolled back",
             (

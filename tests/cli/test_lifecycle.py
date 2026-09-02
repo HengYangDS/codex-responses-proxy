@@ -575,14 +575,38 @@ class CliLifecycleContracts:
         rollback = mocker.patch.object(application.control, "rollback", return_value=result)
 
         code, stdout, stderr = self.invoke(
-            "rollback", "--json", "--port", "8801", "--timeout-seconds", "12.5"
+            "rollback",
+            "--to-release",
+            "3.0.5",
+            "--json",
+            "--port",
+            "8801",
+            "--timeout-seconds",
+            "12.5",
         )
 
         assert code == 0
         assert stderr == ""
         assert json.loads(stdout) == result
         context.assert_called_once_with(port=8801)
-        rollback.assert_called_once_with("context", timeout_seconds=12.5)
+        rollback.assert_called_once_with(
+            "context",
+            to_release="3.0.5",
+            timeout_seconds=12.5,
+        )
+
+    def test_rollback_requires_an_explicit_target_before_lifecycle_dispatch(
+        self, *, mocker
+    ) -> None:
+        rollback = mocker.patch.object(application.control, "rollback")
+
+        code, stdout, stderr = self.invoke("rollback", "--json")
+
+        assert code == 2
+        assert stdout == ""
+        assert "requires an argument" in stderr.casefold()
+        assert "to-release" in stderr
+        rollback.assert_not_called()
 
     def test_rollback_without_a_predecessor_has_matching_human_and_json_semantics(
         self, *, mocker
@@ -594,12 +618,32 @@ class CliLifecycleContracts:
         mocker.patch.object(application.runtime_context, "create", return_value="context")
         mocker.patch.object(application.control, "rollback", return_value=unavailable)
 
-        json_code, json_stdout, json_stderr = self.invoke("rollback", "--json")
-        human_code, human_stdout, human_stderr = self.invoke("rollback")
+        json_code, json_stdout, json_stderr = self.invoke(
+            "rollback", "--to-release", "3.0.5", "--json"
+        )
+        human_code, human_stdout, human_stderr = self.invoke("rollback", "--to-release", "3.0.5")
 
         assert json_code == human_code == 0
         assert json.loads(json_stdout) == unavailable
         assert "No verified predecessor" in human_stdout
+        assert json_stderr == human_stderr == ""
+
+    def test_rollback_to_the_current_release_reports_an_unchanged_terminal_state(
+        self, *, mocker
+    ) -> None:
+        unchanged = {"state": "unchanged", "release": "3.0.6"}
+        mocker.patch.object(application.runtime_context, "create", return_value="context")
+        mocker.patch.object(application.control, "rollback", return_value=unchanged)
+
+        json_code, json_stdout, json_stderr = self.invoke(
+            "rollback", "--to-release", "3.0.6", "--json"
+        )
+        human_code, human_stdout, human_stderr = self.invoke("rollback", "--to-release", "3.0.6")
+
+        assert json_code == human_code == 0
+        assert json.loads(json_stdout) == unchanged
+        assert "Already selected" in human_stdout
+        assert "3.0.6" in human_stdout
         assert json_stderr == human_stderr == ""
 
     @pytest.mark.parametrize("json_output", [False, True])

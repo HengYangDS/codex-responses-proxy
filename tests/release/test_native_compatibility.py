@@ -22,7 +22,9 @@ from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import control as lifecycle_control
 from codex_responses_proxy.lifecycle import generation
+from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import state as payload_state
+from codex_responses_proxy.lifecycle import transaction as payload_transaction
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
 from tests.release.fixtures import COMMAND_TIMEOUT_SECONDS
@@ -506,10 +508,56 @@ class TestPublishedPredecessorCompatibility:
             upstream.push((200, b'{"id":"after","status":"completed"}'))
             assert post_response(port) == b'{"id":"after","status":"completed"}'
 
+            current_selection = generation.read(ctx)
+            assert current_selection is not None
+            assert current_selection.predecessor is not None
+            installed_before_recovery = Path(payload_state.installed_path(ctx)).read_bytes()
+            command_before_recovery = Path(ctx.command).resolve(strict=True)
+            reverse = payload_transaction.begin_rollback_transaction(
+                ctx,
+                payload_rollback.load_retained(ctx),
+            )
+            reverse.commit_projection()
+            reverse.preserve_for_recovery("rollback controller outcome unknown")
+            rollback_snapshot = Path(payload_state.transaction_root(ctx), "rollback")
+            Path(rollback_snapshot, command.SNAPSHOT_FILENAME).unlink()
+            rollback_snapshot.rmdir()
+
+            recovered = run_command(
+                current_executable,
+                environment,
+                "recover",
+                "--port",
+                str(port),
+                "--json",
+            )
+            assert recovered == {
+                "transaction_id": current_selection.predecessor,
+                "version": previous_version,
+                "state": "rolled_back",
+            }
+            assert generation.read(ctx) == current_selection
+            assert Path(payload_state.installed_path(ctx)).read_bytes() == (
+                installed_before_recovery
+            )
+            assert Path(ctx.command).resolve(strict=True) == command_before_recovery
+            assert not Path(payload_state.transaction_root(ctx)).exists()
+            recovered_status = run_command(
+                current_executable,
+                environment,
+                "status",
+                "--port",
+                str(port),
+                "--json",
+            )
+            _assert_same_runtime_identity(after, recovered_status)
+
             rolled_back = run_command(
                 current_executable,
                 environment,
                 "rollback",
+                "--to-release",
+                previous_version,
                 "--port",
                 str(port),
                 "--timeout-seconds",
@@ -537,6 +585,33 @@ class TestPublishedPredecessorCompatibility:
                 "from_release": previous_version,
                 "to_release": current_version,
             }
+            rollback_selection = generation.read(ctx)
+            rollback_runtime = after_rollback.get("runtime")
+            assert rollback_selection is not None
+            assert isinstance(rollback_runtime, dict)
+            repeated = run_command(
+                installed_command,
+                environment,
+                "rollback",
+                "--to-release",
+                previous_version,
+                "--port",
+                str(port),
+                "--timeout-seconds",
+                "60",
+                "--json",
+            )
+            assert repeated == {"state": "unchanged", "release": previous_version}
+            assert generation.read(ctx) == rollback_selection
+            repeated_status = run_command(
+                installed_command,
+                environment,
+                "status",
+                "--port",
+                str(port),
+                "--json",
+            )
+            _assert_same_runtime_identity(after_rollback, repeated_status)
             assert run_command(
                 installed_command,
                 environment,
@@ -550,6 +625,8 @@ class TestPublishedPredecessorCompatibility:
                 installed_command,
                 environment,
                 "rollback",
+                "--to-release",
+                current_version,
                 "--port",
                 str(port),
                 "--timeout-seconds",

@@ -55,6 +55,7 @@ def recover(
             ctx,
             journal=journal,
             candidate=candidate,
+            runtime=runtime,
             bind_terminal=bind_terminal,
         )
     installed = state.read_installed(ctx)
@@ -102,6 +103,7 @@ def recover(
             ctx,
             journal=journal,
             candidate=candidate,
+            runtime=runtime,
             bind_terminal=bind_terminal,
         )
     return _rollback_upgrade(
@@ -288,6 +290,7 @@ def _rollback_materialized(
     *,
     journal: Mapping[str, object],
     candidate: identity.LoadedPayloadIdentity,
+    runtime: Mapping[str, object] | None,
     bind_terminal: Callable[[runtime_context.RuntimeContext], None],
 ) -> dict[str, object]:
     """Discard a candidate that never became the proven serving runtime."""
@@ -312,6 +315,20 @@ def _rollback_materialized(
     selected_candidate = generation.Selection(candidate_generation, previous_generation)
     if selection not in {expected_before, selected_candidate}:
         raise errors.RecoveryStateError("materialized recovery selection changed")
+    if selection == expected_before and _reuses_retained_generation(journal):
+        assert previous_generation is not None
+        _require_unchanged_prior_terminal(
+            ctx,
+            generation_id=previous_generation,
+            runtime=runtime,
+        )
+        result = {
+            "transaction_id": journal["transaction_id"],
+            "version": candidate.release,
+            "state": "rolled_back",
+        }
+        _remove_transaction_root(ctx)
+        return result
     rollback = state.transaction_root(ctx) / "rollback"
     command_snapshot = command.read_snapshot(rollback)
     if selection == selected_candidate:
@@ -350,6 +367,46 @@ def _rollback_materialized(
     }
     _remove_transaction_root(ctx)
     return result
+
+
+def _require_unchanged_prior_terminal(
+    ctx: runtime_context.RuntimeContext,
+    *,
+    generation_id: str,
+    runtime: Mapping[str, object] | None,
+) -> None:
+    """Prove the unselected reverse candidate changed no terminal authority."""
+    prior_ctx = generation.context(ctx, generation_id)
+    prior = identity.committed_payload(Path(prior_ctx.executable))
+    if prior is None:
+        raise errors.RecoveryStateError(
+            "payload recovery prior selected generation identity is invalid"
+        )
+    try:
+        installed = state.read_installed(ctx)
+        installed_command = state.require_command(installed) if installed is not None else None
+    except errors.InstallError as exc:
+        raise errors.RecoveryStateError(str(exc)) from exc
+    if installed is None or not (
+        installed.get("transaction_id") == generation_id
+        and installed.get("version") == prior.release
+        and installed.get("receipt_sha256") == prior.release_receipt_sha256
+    ):
+        raise errors.RecoveryStateError(
+            "payload recovery installed state does not match the prior selected generation"
+        )
+    if (
+        installed_command != ctx.command
+        or command.status(Path(installed_command), Path(prior_ctx.executable)).get("state")
+        != "owned"
+    ):
+        raise errors.RecoveryStateError(
+            "payload recovery command does not match the prior selected generation"
+        )
+    if not _runtime_matches_projection(runtime, prior):
+        raise errors.RecoveryStateError(
+            "payload recovery runtime does not match the prior selected generation"
+        )
 
 
 def _rollback_upgrade(

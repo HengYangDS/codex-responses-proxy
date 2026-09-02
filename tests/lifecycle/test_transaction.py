@@ -544,6 +544,130 @@ class TestPayloadTransaction:
         with pytest.raises(errors.RecoveryStateError, match="prior selected generation"):
             recover_transaction(ctx, runtime=wrong_runtime)
 
+    def test_unselected_reverse_recovery_does_not_require_an_unused_command_snapshot(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.activate()
+        successor.finalize({"pid": 2})
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        retained = payload_rollback.load_retained(ctx)
+        reverse = payload_transaction.begin_rollback_transaction(ctx, retained)
+        reverse.commit_projection()
+        reverse.preserve_for_recovery("rollback controller outcome unknown")
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
+        Path(rollback, command.SNAPSHOT_FILENAME).unlink()
+        rollback.rmdir()
+        installed_before = Path(payload_state.installed_path(ctx)).read_bytes()
+        command_before = Path(ctx.command).resolve(strict=True)
+        terminal = listener_identity.committed_payload(
+            Path(payload_generation.context(ctx, selection.active).executable)
+        )
+        assert terminal is not None
+        bind_terminal = mocker.Mock()
+
+        result = recover_transaction(
+            ctx,
+            runtime=recovery_runtime(terminal),
+            bind_terminal=bind_terminal,
+        )
+
+        assert result == {
+            "transaction_id": selection.predecessor,
+            "version": "1.2.2",
+            "state": "rolled_back",
+        }
+        assert payload_generation.read(ctx) == selection
+        assert Path(payload_state.installed_path(ctx)).read_bytes() == installed_before
+        assert Path(ctx.command).resolve(strict=True) == command_before
+        assert not Path(payload_state.transaction_root(ctx)).exists()
+        bind_terminal.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("drift", "message"),
+        [
+            ("selection", "selection changed"),
+            ("installed", "installed state"),
+            ("command", "command"),
+            ("command-record", "command"),
+            ("payload", "generation identity"),
+            ("runtime", "runtime"),
+        ],
+    )
+    def test_unselected_reverse_recovery_preserves_ambiguous_state(
+        self,
+        tmp_path: Path,
+        drift: str,
+        message: str,
+        *,
+        mocker,
+    ) -> None:
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.activate()
+        successor.finalize({"pid": 2})
+        selection = payload_generation.read(ctx)
+        assert selection is not None
+        retained = payload_rollback.load_retained(ctx)
+        reverse = payload_transaction.begin_rollback_transaction(ctx, retained)
+        reverse.commit_projection()
+        reverse.preserve_for_recovery("rollback controller outcome unknown")
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
+        Path(rollback, command.SNAPSHOT_FILENAME).unlink()
+        rollback.rmdir()
+        terminal_path = Path(payload_generation.context(ctx, selection.active).executable)
+        terminal = listener_identity.committed_payload(terminal_path)
+        assert terminal is not None
+        runtime = recovery_runtime(terminal)
+
+        if drift == "selection":
+            payload_generation.select(
+                ctx,
+                active=selection.active,
+                predecessor=None,
+            )
+        elif drift == "installed":
+            installed = json.loads(
+                Path(payload_state.installed_path(ctx)).read_text(encoding="utf-8")
+            )
+            installed["receipt_sha256"] = "0" * 64
+            owned_files.write_bytes(
+                payload_state.installed_path(ctx),
+                payload_digest.canonical_json(installed),
+                mode=0o600,
+            )
+        elif drift == "command":
+            Path(ctx.command).unlink()
+        elif drift == "command-record":
+            alternate_command = tmp_path / "bin" / "alternate-proxy"
+            alternate_command.parent.mkdir()
+            alternate_command.symlink_to(terminal_path)
+            installed = json.loads(
+                Path(payload_state.installed_path(ctx)).read_text(encoding="utf-8")
+            )
+            installed["command"] = str(alternate_command)
+            owned_files.write_bytes(
+                payload_state.installed_path(ctx),
+                payload_digest.canonical_json(installed),
+                mode=0o600,
+            )
+        elif drift == "payload":
+            terminal_path.write_bytes(b"tampered")
+        else:
+            runtime["release"] = "9.9.9"
+
+        transaction_root = Path(payload_state.transaction_root(ctx))
+        with pytest.raises(errors.RecoveryStateError, match=message):
+            recover_transaction(ctx, runtime=runtime)
+
+        assert transaction_root.is_dir()
+
     @pytest.mark.parametrize("drift", ["installed", "selection", "root"])
     def test_reverse_transition_rejects_stale_authority(
         self, tmp_path: Path, drift: str, *, mocker
