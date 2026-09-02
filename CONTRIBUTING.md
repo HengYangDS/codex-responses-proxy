@@ -22,8 +22,10 @@ Requirements:
 - `mise` at or above the minimum version declared in `mise.toml`;
 - Git and OpenSSH for release-provenance work.
 
-`mise.toml` selects the Python 3.12, 3.13, and 3.14 compatibility runtimes,
-uv, Node, and standalone verification tools.
+`mise.toml` selects the default and release Python, uv, Node, and standalone
+verification tools. `.python-versions` is the compatibility-matrix authority;
+Nox reads it and uses the uv backend to provision each isolated interpreter
+session.
 
 Bootstrap once:
 
