@@ -1,14 +1,20 @@
 ## MODIFIED Requirements
 
-### Requirement: Rollback converges on an explicit verified release
+### Requirement: Explicit rollback is one reverse lifecycle transaction
 
 The rollback command SHALL require one syntactically valid target release. If
-the installed active release already equals that target, rollback SHALL succeed
-as an idempotent no-op without draining, starting a transaction, changing the
-generation selection, or rewriting the command. If the target equals the sole
-verified retained predecessor, rollback SHALL use the existing transactional
-native lifecycle to select it. Every other target SHALL be rejected before any
-lifecycle mutation.
+the verified installed active release already equals that target, rollback SHALL
+succeed as an idempotent no-op without draining, starting a transaction, changing
+the generation selection, or rewriting the command. Otherwise the target SHALL
+equal the immutable predecessor bound to the current finalized successor.
+Rollback SHALL verify both selected payload identities, current installed state,
+command ownership, and their selector binding before mutation. It SHALL rebind
+the native service and complete a bounded listener handoff to the predecessor
+identity before reporting success. The returned predecessor PID SHALL be the only
+verified product listener when success is reported; finalized health alone SHALL
+NOT establish completion. Rollback SHALL not downgrade the user command or the
+minimum release admitted by the next signed-asset installation. Every other
+target SHALL be rejected before any lifecycle mutation.
 
 #### Scenario: Requested release is already active
 
@@ -17,11 +23,20 @@ lifecycle mutation.
 - **AND** performs no drain, handoff, transaction, selection, command, service,
   listener, or payload mutation.
 
-#### Scenario: Requested release is the verified predecessor
+#### Scenario: Exact predecessor rollback succeeds
 
 - **WHEN** rollback names the sole retained predecessor release
-- **THEN** it restores that release through the verified transactional lifecycle
-- **AND** reports the actual source and target releases.
+- **AND** the current successor and retained predecessor both verify and the
+  predecessor proves accepting, finalized runtime identity
+- **THEN** rollback reports state `rolled_back` only after the predecessor PID
+  is the sole verified product listener
+- **AND** payload, installed state, service definition, and listener identify
+  the predecessor
+- **AND** the command still identifies the newer verified lifecycle control
+  release
+- **AND** the result reports the actual source and target releases
+- **AND** the displaced successor becomes the one retained predecessor for a
+  possible forward reversal.
 
 #### Scenario: Requested release is not admissible
 
@@ -36,6 +51,52 @@ lifecycle mutation.
 - **WHEN** the caller omits `--to-release` or supplies an invalid release value
 - **THEN** command parsing or the existing strict version authority rejects the
   request before lifecycle mutation.
+
+#### Scenario: Post-rollback lifecycle control
+
+- **WHEN** the operator invokes `status`, `doctor`, `recover`, or `rollback`
+  through the installed command after a serving rollback
+- **THEN** that command understands the current selector and installed-state
+  schemas
+- **AND** a release not newer than the retained control release is refused as a
+  replay or downgrade.
+
+#### Scenario: Retained evidence is absent
+
+- **WHEN** no retained predecessor exists
+- **THEN** rollback reports state `unavailable`
+- **AND** changes no filesystem, process, service, command, or listener state.
+
+#### Scenario: Retained evidence is unverifiable
+
+- **WHEN** any carrier shape, byte, mode, digest, generation binding, current
+  installed identity, service identity, or listener identity cannot be proved
+- **THEN** rollback fails closed before mutation
+- **AND** preserves the selected active and predecessor generations for
+  inspection.
+
+#### Scenario: Finalized health precedes listener convergence
+
+- **WHEN** the predecessor reports finalized health while the displaced
+  successor remains a verified listener
+- **THEN** rollback continues bounded convergence and does not report success
+- **AND** reports an indeterminate outcome if one sole predecessor listener
+  cannot be proved within the bound.
+
+#### Scenario: Reverse handoff has a proved failure
+
+- **WHEN** rollback has selected the predecessor but successor retirement or
+  predecessor readiness fails with a proved outcome
+- **THEN** the transaction restores the displaced successor serving projection
+  and stable command ownership
+- **AND** does not report rollback success.
+
+#### Scenario: Reverse handoff outcome is unknown
+
+- **WHEN** neither predecessor finalization nor successor restoration can be
+  proved
+- **THEN** the active transaction is retained for `recover`
+- **AND** no successful rollback or restoration claim is emitted.
 
 ### Requirement: Recovery binds candidate, rollback, and live runtime
 
