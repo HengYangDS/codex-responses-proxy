@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.13] - 2026-09-02
+
+### Fixed
+
+- Reject malformed, unsupported, or incomplete Codex local-shell replay before
+  upstream dispatch while removing valid complete call/output pairs without
+  disturbing the current dialogue.
+
 ## [3.1.12] - 2026-09-01
 
 ### Fixed

@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-02
+goal: Publish the accepted local-shell replay validation as release 3.1.13
+  without changing its product semantics.
