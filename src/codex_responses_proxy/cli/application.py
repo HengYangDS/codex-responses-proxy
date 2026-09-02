@@ -171,7 +171,14 @@ def dispatch(command: str, **arguments: object) -> CommandResult:
     if command == "reload":
         return control.reload(context, timeout_seconds=_timeout_argument(arguments))
     if command == "rollback":
-        return control.rollback(context, timeout_seconds=_timeout_argument(arguments))
+        to_release = arguments.get("to_release")
+        if not isinstance(to_release, str):
+            raise TypeError("to_release must be a string")
+        return control.rollback(
+            context,
+            to_release=to_release,
+            timeout_seconds=_timeout_argument(arguments),
+        )
     raise ValueError(f"{command} is not implemented")
 
 
@@ -386,14 +393,22 @@ def _app() -> App:
     @app.command(name="rollback")
     def rollback_command(
         *,
+        to_release: Annotated[
+            str,
+            Parameter(
+                name="--to-release",
+                help="Exact installed or retained release to select.",
+            ),
+        ],
         json_output: _JSON = False,
         port: _PORT = runtime_context.DEFAULT_PORT,
         timeout_seconds: _TIMEOUT = 30.0,
     ) -> int:
-        """Restore the one verified predecessor release."""
+        """Converge on one explicit installed or retained release."""
         return _execute(
             "rollback",
             as_json=json_output,
+            to_release=to_release,
             port=port,
             timeout_seconds=timeout_seconds,
         )

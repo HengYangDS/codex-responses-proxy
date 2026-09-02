@@ -71,6 +71,7 @@ class ProductInterfaceContracts:
             ("doctor", "--unknown"),
             ("recover", "--port", "invalid"),
             ("reload", "--timeout-seconds", "invalid"),
+            ("rollback",),
             ("uninstall", "--port", "invalid"),
         )
         for arguments in cases:
@@ -100,7 +101,7 @@ class ProductInterfaceContracts:
             ),
             "status": (),
             "doctor": (),
-            "rollback": (),
+            "rollback": ("--to-release", "2.0.47"),
             "recover": (),
             "reload": (),
             "uninstall": (),
@@ -396,6 +397,7 @@ class ProductInterfaceContracts:
                     "doctor": (1, ("--port", port)),
                     "recover": (0, ("--port", port)),
                     "reload": (2, ("--port", port)),
+                    "rollback": (0, ("--to-release", "0.0.0", "--port", port)),
                     "uninstall": (0, ("--port", port)),
                 }
                 for command, (expected_code, arguments) in cases.items():

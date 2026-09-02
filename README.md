@@ -137,8 +137,8 @@ codex-responses-proxy doctor
 # Transactional same-payload handoff
 codex-responses-proxy reload
 
-# Restore the one verified predecessor retained by the last successful upgrade
-codex-responses-proxy rollback
+# Converge on the exact active release or verified retained predecessor
+codex-responses-proxy rollback --to-release <exact-version>
 
 # Resolve an interrupted install or upgrade; idle recovery is a successful no-op
 codex-responses-proxy recover
@@ -151,8 +151,10 @@ codex-responses-proxy uninstall --purge
 ```
 
 Lifecycle JSON uses one explicit `state` discriminator. `rollback` returns
-`unavailable` when no verified predecessor exists and `rolled_back` only after
-the predecessor is the proven accepting installation. `recover` returns
+`unchanged` when the requested release is already the proven active
+installation, `unavailable` when no verified predecessor exists, and
+`rolled_back` only after the requested predecessor is the proven accepting
+installation. `recover` returns
 `not_required` when no transaction exists, `closed` when an unmutated prepared
 transaction is discarded, `finalized` when the committed candidate is already
 the proven live installation, and `rolled_back` when the exact prior state is
