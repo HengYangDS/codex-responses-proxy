@@ -545,15 +545,10 @@ class TestVerificationContracts:
         )
         owner_source = ast.get_source_segment(source, function) or ""
 
-        assert 'product_identity.environment_name("HOME"): str(sandbox / "payload")' in (
-            owner_source
-        )
-        assert 'product_identity.environment_name("STATE_HOME"): str(sandbox / "state")' in (
-            owner_source
-        )
-        assert '"HOME": str(sandbox / "home")' in owner_source
-        assert '"USERPROFILE": str(sandbox / "home")' in owner_source
-        assert '"HOME": str(Path.home())' not in owner_source
+        assert "native_process_environment(" in owner_source
+        assert "SYSTEMROOT" not in owner_source
+        assert "PYTHONHOME" not in owner_source
+        assert "PYTHONPATH" not in owner_source
         acceptance = next(
             node
             for node in tree.body

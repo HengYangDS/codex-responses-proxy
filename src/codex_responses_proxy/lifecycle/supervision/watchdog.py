@@ -20,6 +20,7 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.runtime import bounded_log
 from codex_responses_proxy.runtime import config as runtime_config
+from codex_responses_proxy.runtime.process_environment import native_process_environment
 from codex_responses_proxy.service import runtime as service_runtime
 
 SETTINGS = runtime_config.load()
@@ -66,6 +67,11 @@ def spawn_proxy(executable: str) -> subprocess.Popen[bytes] | None:
         return None
     try:
         command = [executable, LISTENER_MODE]
+        environment = native_process_environment(
+            install_root=os.path.dirname(os.path.dirname(executable)),
+            state_root=runtime_config.state_dir(),
+            restart_frozen_runtime=True,
+        )
         if os.name == "nt":
             proc = subprocess.Popen(
                 command,
@@ -74,6 +80,7 @@ def spawn_proxy(executable: str) -> subprocess.Popen[bytes] | None:
                 stdin=subprocess.DEVNULL,
                 close_fds=True,
                 creationflags=_WINDOWS_DETACH_FLAGS,
+                env=environment,
             )
         else:
             proc = subprocess.Popen(
@@ -82,6 +89,7 @@ def spawn_proxy(executable: str) -> subprocess.Popen[bytes] | None:
                 stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL,
                 close_fds=True,
+                env=environment,
                 start_new_session=True,
             )
         _log(f"spawned proxy pid={proc.pid}")

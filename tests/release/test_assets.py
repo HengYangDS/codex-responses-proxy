@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 
 from codex_responses_proxy import product_identity
-from tests.release.fixtures import native_environment
 from tools.release import assemble_assets
 from tools.release import assets as asset_command
 from tools.release import product_assets as assets
@@ -52,57 +51,6 @@ def _installed_distribution(root: Path, provenance: str) -> Path:
 
 class ReleaseAssetContracts:
     """Keep published bytes portable, reproducible, and exactly enumerable."""
-
-    def test_native_environment_preserves_the_host_execution_substrate(
-        self, tmp_path: Path
-    ) -> None:
-        """Let the installed binary execute platform-native verification tools."""
-
-        host_path = os.pathsep.join(("host-tools", "system-tools"))
-        with pytest.MonkeyPatch.context() as patch:
-            patch.setenv("PATH", host_path)
-            patch.setenv("HOST_EXECUTION_CONTEXT", "preserved")
-            patch.setenv("CODEX_RESPONSES_PROXY_STALE", "retired")
-            environment = native_environment(
-                tmp_path / "home",
-                tmp_path / "payload",
-                tmp_path / "state",
-            )
-
-        assert environment["PATH"] == host_path
-        assert environment["HOST_EXECUTION_CONTEXT"] == "preserved"
-        assert "CODEX_RESPONSES_PROXY_STALE" not in environment
-
-    def test_native_environment_isolates_user_command_roots(self, tmp_path: Path) -> None:
-        """Keep command projection inside the isolated test user home."""
-
-        home = tmp_path / "home"
-        with pytest.MonkeyPatch.context() as patch:
-            patch.setenv("LOCALAPPDATA", str(tmp_path / "real-local-app-data"))
-            patch.setenv("XDG_BIN_HOME", str(tmp_path / "real-bin"))
-            environment = native_environment(
-                home,
-                tmp_path / "payload",
-                tmp_path / "state",
-            )
-
-        assert environment["LOCALAPPDATA"] == str(home / "AppData" / "Local")
-        assert environment["XDG_BIN_HOME"] == str(home / ".local" / "bin")
-
-    def test_native_environment_preserves_the_linux_user_bus(self, tmp_path: Path) -> None:
-        """Let isolated native commands reach only the current user's systemd bus."""
-
-        with pytest.MonkeyPatch.context() as patch:
-            patch.setenv("XDG_RUNTIME_DIR", "/run/user/1000")
-            patch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")
-            environment = native_environment(
-                tmp_path / "home",
-                tmp_path / "payload",
-                tmp_path / "state",
-            )
-
-        assert environment["XDG_RUNTIME_DIR"] == "/run/user/1000"
-        assert environment["DBUS_SESSION_BUS_ADDRESS"] == "unix:path=/run/user/1000/bus"
 
     @pytest.mark.parametrize(
         ("system", "machine", "expected"),

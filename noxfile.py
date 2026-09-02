@@ -14,6 +14,7 @@ from typing import cast
 import nox
 
 from codex_responses_proxy import product_identity
+from codex_responses_proxy.runtime.process_environment import native_process_environment
 from codex_responses_proxy.service import runtime as service_runtime
 
 ROOT = Path(__file__).parent.resolve()
@@ -625,17 +626,12 @@ def _run_without_python(
     sandbox = Path(session.create_tmp()) / "black-box"
     empty_path = sandbox / "empty-path"
     empty_path.mkdir(parents=True, exist_ok=True)
-    environment = {
-        product_identity.environment_name("HOME"): str(sandbox / "payload"),
-        product_identity.environment_name("STATE_HOME"): str(sandbox / "state"),
-        "HOME": str(sandbox / "home"),
-        "PATH": str(empty_path),
-        "PYTHONHOME": "",
-        "PYTHONPATH": "",
-        "PYTHONNOUSERSITE": "1",
-        "SYSTEMROOT": os.environ.get("SYSTEMROOT", "") if platform.system() == "Windows" else "",
-        "USERPROFILE": str(sandbox / "home"),
-    }
+    environment = native_process_environment(
+        user_home=sandbox / "home",
+        install_root=sandbox / "payload",
+        state_root=sandbox / "state",
+        command_search_path=empty_path,
+    )
     if isolated_listener:
         with socket.socket() as reservation:
             reservation.bind(("127.0.0.1", 0))

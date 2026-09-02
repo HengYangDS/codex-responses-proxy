@@ -287,8 +287,13 @@ class TestHandoffPlatformHelpers:
                     str(entrypoint_module._handoff_context().executable),
                     "--internal-handoff-child",
                 ]
-                assert "PYTHONPATH" not in kwargs["env"]
-                assert kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+                environment = kwargs["env"]
+                assert "PYTHONPATH" not in environment
+                assert environment["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+                assert environment[self.p.runtime_config.HOME_ENV] == str(
+                    entrypoint_module._handoff_context().executable.parent.parent
+                )
+                assert environment[self.p.runtime_config.STATE_HOME_ENV]
                 written = b"".join(call.args[0] for call in process.stdin.write.call_args_list)
                 if is_windows:
                     assert "pass_fds" not in kwargs

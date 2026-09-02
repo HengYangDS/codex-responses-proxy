@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import re
 from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
@@ -18,6 +17,7 @@ from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.lifecycle import projection
+from codex_responses_proxy.runtime.process_environment import native_process_environment
 from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import inventory
 from codex_responses_proxy.service import runtime as service_runtime
@@ -120,14 +120,16 @@ def write_projection(
     )
 
 
-def prewarm(executable: Path) -> None:
+def prewarm(ctx: runtime_context.RuntimeContext) -> None:
     """Start the exact installed native executable before listener handoff."""
     import subprocess
 
-    environment = os.environ.copy()
-    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-    environment.pop("PYTHONHOME", None)
-    environment.pop("PYTHONPATH", None)
+    executable = Path(ctx.executable)
+    environment = native_process_environment(
+        install_root=Path(ctx.payload_dir),
+        state_root=Path(ctx.log_dir),
+        restart_frozen_runtime=True,
+    )
     try:
         completed = subprocess.run(
             [str(executable), service_runtime.PREWARM_MODE],

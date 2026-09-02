@@ -23,6 +23,7 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle.supervision import native_service
 from codex_responses_proxy.lifecycle.supervision import process
+from codex_responses_proxy.runtime.process_environment import native_process_environment
 from codex_responses_proxy.service import inventory
 from codex_responses_proxy.service import runtime as service_runtime
 from tools.release import assets as release_assembly
@@ -192,7 +193,11 @@ def runtime_context_for(
 ) -> runtime_context.RuntimeContext:
     """Return one isolated native lifecycle context."""
 
-    environment = native_environment(home, install, state)
+    environment = native_process_environment(
+        user_home=home,
+        install_root=install,
+        state_root=state,
+    )
     windows = platform.system() == "Windows"
 
     return runtime_context.RuntimeContext(
@@ -234,29 +239,6 @@ def _process_contexts(
     for owned_ctx in contexts:
         unique.setdefault(owned_ctx.executable, owned_ctx)
     return tuple(unique.values())
-
-
-def native_environment(home: Path, install: Path, state: Path) -> dict[str, str]:
-    """Isolate product state without deleting the host execution substrate."""
-
-    environment = {
-        name: value
-        for name, value in os.environ.items()
-        if not name.startswith("CODEX_RESPONSES_PROXY_")
-    }
-    environment.update(
-        {
-            "CODEX_RESPONSES_PROXY_HOME": str(install),
-            "CODEX_RESPONSES_PROXY_STATE_HOME": str(state),
-            "HOME": str(home),
-            "LOCALAPPDATA": str(home / "AppData" / "Local"),
-            "PYTHONNOUSERSITE": "1",
-            "USERPROFILE": str(home),
-            "XDG_BIN_HOME": str(home / ".local" / "bin"),
-        }
-    )
-    environment.setdefault("PATH", os.defpath)
-    return environment
 
 
 def cleanup_runtime(ctx: runtime_context.RuntimeContext, wrapper: Path | None = None) -> None:

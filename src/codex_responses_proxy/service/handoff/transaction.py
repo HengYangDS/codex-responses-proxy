@@ -69,6 +69,7 @@ class Context:
     """Proxy-owned primitives needed by the handoff transaction."""
 
     executable: Path
+    state_root: Path
     successor_executable: Callable[[], Path]
     release_version: Callable[[], str]
     serving_payload_sha256: Callable[[], str | None]

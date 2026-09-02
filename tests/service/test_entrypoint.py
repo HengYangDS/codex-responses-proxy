@@ -134,7 +134,6 @@ class TestListenerEntrypoint:
         self._admit_run(mocker)
         listener = mocker.Mock()
         context = mocker.sentinel.handoff_context
-        mocker.patch.dict(entrypoint.os.environ, {}, clear=True)
         mocker.patch.object(entrypoint, "create_server", return_value=listener)
         mocker.patch.object(entrypoint, "_handoff_context", return_value=context)
         log = mocker.patch.object(entrypoint.operational_log, "log")

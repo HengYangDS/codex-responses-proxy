@@ -8,10 +8,10 @@
 
 ## 2. Windows Native Environment and Immediate Release Safety
 
-- [ ] 2.1 Add RED contracts proving one native environment owner preserves arbitrary host execution state, removes inherited Proxy and Python injection state, redirects every product-owned root, and accepts an explicit empty product `PATH`.
-- [ ] 2.2 Implement `tools/release/native/environment.py` as the sole semantic owner and verify its focused contracts on the current host.
-- [ ] 2.3 Migrate the release fixture, packaged CLI contracts, and Nox black-box runner to the semantic owner; delete their partial environment dictionaries, `SystemRoot` special case, and environment allow-list.
-- [ ] 2.4 Verify help, version, status, every public command, prewarm, and native lifecycle black-box paths use the same environment contract without Python discovery or host-substrate removal.
+- [x] 2.1 Add RED contracts proving one native environment owner preserves arbitrary host execution state, removes inherited Proxy and Python injection state, redirects every product-owned root, and accepts an explicit empty product `PATH`.
+- [x] 2.2 Implement `src/codex_responses_proxy/runtime/process_environment.py` as the sole semantic owner and verify its focused contracts on the current host.
+- [x] 2.3 Migrate the release fixture, packaged CLI contracts, and Nox black-box runner to the semantic owner; delete their partial environment dictionaries, `SystemRoot` special case, and environment allow-list.
+- [x] 2.4 Verify help, version, status, every public command, prewarm, and native lifecycle black-box paths use the same environment contract without Python discovery or host-substrate removal.
 - [ ] 2.5 Reproduce the former Windows `WinError 10106` boundary in a regression contract and obtain GREEN evidence from the real Windows native artifact job for the exact candidate commit.
 - [ ] 2.6 Verify macOS and Linux native acceptance remain green and no new service, process, temporary payload, cache, or host configuration survives either successful or failed execution.
 

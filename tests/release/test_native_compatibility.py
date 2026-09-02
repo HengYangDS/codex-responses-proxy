@@ -27,9 +27,9 @@ from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle import transaction as payload_transaction
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
+from codex_responses_proxy.runtime.process_environment import native_process_environment
 from tests.release.fixtures import COMMAND_TIMEOUT_SECONDS
 from tests.release.fixtures import cleanup_runtime
-from tests.release.fixtures import native_environment
 from tests.release.fixtures import post_response
 from tests.release.fixtures import run_command
 from tests.release.fixtures import runtime_context_for
@@ -250,10 +250,10 @@ class TestPublishedPredecessorCompatibility:
             published_state,
             published_port,
         )
-        published_environment = native_environment(
-            published_home,
-            published_install,
-            published_state,
+        published_environment = native_process_environment(
+            user_home=published_home,
+            install_root=published_install,
+            state_root=published_state,
         )
         with ExitStack() as published_cleanups:
             published_cleanups.callback(cleanup_runtime, published_context)
@@ -310,7 +310,11 @@ class TestPublishedPredecessorCompatibility:
         home.mkdir()
         port = free_port()
         ctx = runtime_context_for(home, install, state, port)
-        environment = native_environment(home, install, state)
+        environment = native_process_environment(
+            user_home=home,
+            install_root=install,
+            state_root=state,
+        )
         canonical_before = process.listener_pids(runtime_config.DEFAULT_PORT)
 
         key = tmp_path / "release-key"

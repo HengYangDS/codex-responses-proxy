@@ -114,7 +114,7 @@ def test_commit_prewarms_the_exact_candidate_executable(tmp_path: Path, *, mocke
 
     transaction.commit_projection()
 
-    prewarm.assert_called_once_with(Path(transaction.context.executable))
+    prewarm.assert_called_once_with(transaction.context)
     transaction.rollback()
 
 

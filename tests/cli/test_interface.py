@@ -17,6 +17,7 @@ import pytest
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.cli import application
+from codex_responses_proxy.runtime.process_environment import native_process_environment
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -329,12 +330,16 @@ class ProductInterfaceContracts:
         if executable is None:
             pytest.skip("native executable supplied by release session")
         with tempfile.TemporaryDirectory() as home:
-            environment = os.environ.copy()
-            environment.update({"PATH": home, "HOME": home})
+            root = Path(home)
             result = subprocess.run(
                 [executable, "status", "--json"],
-                cwd=home,
-                env=environment,
+                cwd=root,
+                env=native_process_environment(
+                    user_home=root / "home",
+                    install_root=root / "payload",
+                    state_root=root / "state",
+                    command_search_path=root / "empty-path",
+                ),
                 text=True,
                 capture_output=True,
                 check=False,
@@ -351,12 +356,16 @@ class ProductInterfaceContracts:
         if executable is None:
             pytest.skip("native executable supplied by release session")
         with tempfile.TemporaryDirectory() as empty_path:
-            environment = os.environ.copy()
-            environment.update({"PATH": empty_path, "HOME": empty_path})
+            root = Path(empty_path)
             result = subprocess.run(
                 [executable, "--version"],
-                cwd=empty_path,
-                env=environment,
+                cwd=root,
+                env=native_process_environment(
+                    user_home=root / "home",
+                    install_root=root / "payload",
+                    state_root=root / "state",
+                    command_search_path=root,
+                ),
                 text=True,
                 capture_output=True,
                 check=False,
@@ -370,14 +379,12 @@ class ProductInterfaceContracts:
         if executable is None:
             pytest.skip("native executable supplied by release session")
         with tempfile.TemporaryDirectory() as home:
-            environment = os.environ.copy()
-            environment.update(
-                {
-                    "CODEX_RESPONSES_PROXY_HOME": str(Path(home) / "payload"),
-                    "CODEX_RESPONSES_PROXY_STATE_HOME": str(Path(home) / "state"),
-                    "HOME": home,
-                    "PATH": home,
-                }
+            root = Path(home)
+            environment = native_process_environment(
+                user_home=root / "home",
+                install_root=root / "payload",
+                state_root=root / "state",
+                command_search_path=root / "empty-path",
             )
             with socket.socket() as reservation:
                 reservation.bind(("127.0.0.1", 0))
