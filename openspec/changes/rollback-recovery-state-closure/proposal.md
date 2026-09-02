@@ -22,6 +22,8 @@ was needed. A missing, unused snapshot then stranded a healthy installation in
   from selection, installed state, command ownership, immutable payload, and
   accepting runtime before closing the orphaned transaction without an unused
   snapshot.
+- Serialize public lifecycle writers before transaction inspection or mutation;
+  keep status and doctor read-only.
 - Keep every ambiguous or partially activated transaction fail closed.
 
 ## Capabilities
@@ -46,5 +48,7 @@ None.
 - `openspec/specs/product-interface/spec.md`
 - `openspec/specs/runtime-upgrade/spec.md`
 
-No compatibility alias, parallel state machine, new lock, dependency, release
-format, or direct mutation of an installed runtime is introduced.
+No compatibility alias, parallel state machine, lock registry, release format,
+or direct mutation of an installed runtime is introduced. One mature
+cross-platform file-lock dependency provides the process boundary; the journal
+remains the sole durable transaction authority.

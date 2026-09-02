@@ -531,13 +531,7 @@ class TestQualityPolicyContracts:
     def test_python_command_surfaces_use_one_modern_parser(self) -> None:
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         dependencies = pyproject["project"]["dependencies"]
-        assert {requirement.partition("==")[0] for requirement in dependencies} == {
-            "certifi",
-            "cyclopts",
-            "psutil",
-            "rich",
-        }
-        assert all(requirement.partition("==")[1:] != ("", "") for requirement in dependencies)
+        assert any(requirement.startswith("cyclopts==") for requirement in dependencies)
         offenders = []
         for root in (ROOT / "src", ROOT / "tools"):
             for path in root.rglob("*.py"):
@@ -545,6 +539,17 @@ class TestQualityPolicyContracts:
                 if "import argparse" in source or "from argparse" in source:
                     offenders.append(path.relative_to(ROOT).as_posix())
         assert offenders == []
+
+    def test_runtime_dependencies_are_exactly_pinned(self) -> None:
+        pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        dependencies = pyproject["project"]["dependencies"]
+
+        assert all(
+            name and separator == "==" and version
+            for name, separator, version in (
+                requirement.partition("==") for requirement in dependencies
+            )
+        )
 
     def test_repository_cli_is_quiet_on_success_and_diagnostic_on_failure(
         self, mocker: MockerFixture

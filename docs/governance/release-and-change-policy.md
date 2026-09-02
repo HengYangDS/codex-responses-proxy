@@ -82,9 +82,13 @@ them.
 Required local evidence includes:
 
 ```bash
-uv run --locked --no-sync nox -s full
-uv run --locked --no-sync nox -s release
+mise exec --locked -- uv run --locked --no-sync nox -s full
+mise exec --locked -- uv run --locked --no-sync nox -s release
 ```
+
+The explicit `mise exec --locked --` boundary makes the repository-selected
+toolchain authoritative in interactive shells, agents, and other non-login
+processes alike.
 
 `quick` is optional feedback, not a second admission graph. `full` composes the
 locked governance tools, strict Python 3.12 quality and coverage owner, and the

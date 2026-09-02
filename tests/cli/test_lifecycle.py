@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from filelock import FileLock
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.cli import application
@@ -27,7 +28,14 @@ class CliLifecycleContracts:
             code = application.main(list(arguments))
         return code, stdout.getvalue(), stderr.getvalue()
 
-    def test_install_delegates_exact_asset_trust_anchor_and_port(self, *, mocker) -> None:
+    def test_install_delegates_exact_asset_trust_anchor_and_port(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        mocker.patch.object(
+            application.runtime_context,
+            "create",
+            return_value=install_context(tmp_path),
+        )
         install = mocker.patch.object(
             application.install, "install_asset", return_value={"release": "2.0.8"}
         )
@@ -516,9 +524,12 @@ class CliLifecycleContracts:
             "detail": "accepting",
         }
 
-    def test_reload_delegates_transactionally_with_an_explicit_timeout(self, *, mocker) -> None:
+    def test_reload_delegates_transactionally_with_an_explicit_timeout(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
         result = {"old_pid": 321, "new_pid": 654}
-        mocker.patch.object(application.runtime_context, "create", return_value="context")
+        ctx = install_context(tmp_path)
+        mocker.patch.object(application.runtime_context, "create", return_value=ctx)
         reload = mocker.patch.object(application.control, "reload", return_value=result)
         code, stdout, stderr = self.invoke(
             "reload", "--json", "--port", "8801", "--timeout-seconds", "12.5"
@@ -526,11 +537,16 @@ class CliLifecycleContracts:
         assert code == 0
         assert json.loads(stdout) == result
         assert stderr == ""
-        reload.assert_called_once_with("context", timeout_seconds=12.5)
+        reload.assert_called_once_with(ctx, timeout_seconds=12.5)
 
     def test_install_delegates_with_an_explicit_timeout(self, tmp_path: Path, *, mocker) -> None:
         asset = tmp_path / "release.tar.gz"
         trust = tmp_path / "release.pub"
+        mocker.patch.object(
+            application.runtime_context,
+            "create",
+            return_value=install_context(tmp_path),
+        )
         install = mocker.patch.object(application.install, "install_asset", return_value={})
 
         self.invoke(
@@ -545,9 +561,12 @@ class CliLifecycleContracts:
 
         install.assert_called_once_with(asset, trust_anchor=trust, port=8792, timeout_seconds=45.0)
 
-    def test_recover_restores_only_the_runtime_bound_retained_transaction(self, *, mocker) -> None:
+    def test_recover_restores_only_the_runtime_bound_retained_transaction(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
         runtime = {"pid": 321, "release": "2.0.10", "accepting": True}
-        context = mocker.patch.object(application.runtime_context, "create", return_value="context")
+        ctx = install_context(tmp_path)
+        context = mocker.patch.object(application.runtime_context, "create", return_value=ctx)
         mocker.patch.object(application.control, "read_runtime", return_value=runtime)
         recover = mocker.patch.object(
             application.control,
@@ -561,17 +580,18 @@ class CliLifecycleContracts:
         assert stderr == ""
         assert json.loads(stdout) == {"state": "rolled_back", "version": "2.0.13"}
         context.assert_called_once_with(port=8801)
-        recover.assert_called_once_with("context")
+        recover.assert_called_once_with(ctx)
 
     def test_rollback_is_discoverable_and_delegates_to_the_installed_lifecycle(
-        self, *, mocker
+        self, tmp_path: Path, *, mocker
     ) -> None:
         result = {
             "state": "rolled_back",
             "from_release": "3.0.6",
             "to_release": "3.0.5",
         }
-        context = mocker.patch.object(application.runtime_context, "create", return_value="context")
+        ctx = install_context(tmp_path)
+        context = mocker.patch.object(application.runtime_context, "create", return_value=ctx)
         rollback = mocker.patch.object(application.control, "rollback", return_value=result)
 
         code, stdout, stderr = self.invoke(
@@ -590,7 +610,7 @@ class CliLifecycleContracts:
         assert json.loads(stdout) == result
         context.assert_called_once_with(port=8801)
         rollback.assert_called_once_with(
-            "context",
+            ctx,
             to_release="3.0.5",
             timeout_seconds=12.5,
         )
@@ -609,13 +629,14 @@ class CliLifecycleContracts:
         rollback.assert_not_called()
 
     def test_rollback_without_a_predecessor_has_matching_human_and_json_semantics(
-        self, *, mocker
+        self, tmp_path: Path, *, mocker
     ) -> None:
         unavailable = {
             "state": "unavailable",
             "detail": "no verified predecessor is retained",
         }
-        mocker.patch.object(application.runtime_context, "create", return_value="context")
+        ctx = install_context(tmp_path)
+        mocker.patch.object(application.runtime_context, "create", return_value=ctx)
         mocker.patch.object(application.control, "rollback", return_value=unavailable)
 
         json_code, json_stdout, json_stderr = self.invoke(
@@ -629,10 +650,11 @@ class CliLifecycleContracts:
         assert json_stderr == human_stderr == ""
 
     def test_rollback_to_the_current_release_reports_an_unchanged_terminal_state(
-        self, *, mocker
+        self, tmp_path: Path, *, mocker
     ) -> None:
         unchanged = {"state": "unchanged", "release": "3.0.6"}
-        mocker.patch.object(application.runtime_context, "create", return_value="context")
+        ctx = install_context(tmp_path)
+        mocker.patch.object(application.runtime_context, "create", return_value=ctx)
         mocker.patch.object(application.control, "rollback", return_value=unchanged)
 
         json_code, json_stdout, json_stderr = self.invoke(
@@ -684,8 +706,13 @@ class CliLifecycleContracts:
         assert journal.read_bytes() == before
 
     def test_uninstall_removes_only_the_owned_service_unless_purge_is_requested(
-        self, *, mocker
+        self, tmp_path: Path, *, mocker
     ) -> None:
+        mocker.patch.object(
+            application.runtime_context,
+            "create",
+            return_value=install_context(tmp_path),
+        )
         uninstall = mocker.patch.object(
             application.uninstall,
             "uninstall_product",
@@ -714,8 +741,11 @@ class CliLifecycleContracts:
         assert not stdout.lstrip().startswith("{")
         uninstall.assert_called_once_with(port=8792, purge=True)
 
-    def test_pristine_recover_and_uninstall_are_explicit_no_ops(self, *, mocker) -> None:
-        context = mocker.patch.object(application.runtime_context, "create", return_value="context")
+    def test_pristine_recover_and_uninstall_are_explicit_no_ops(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        context = mocker.patch.object(application.runtime_context, "create", return_value=ctx)
         mocker.patch.object(application.control, "read_runtime", return_value=None)
         recover = mocker.patch.object(
             application.control, "recover", return_value={"state": "not_required"}
@@ -727,7 +757,7 @@ class CliLifecycleContracts:
         assert json.loads(stdout) == {"state": "not_required"}
         assert stderr == ""
         context.assert_called_once_with(port=8792)
-        recover.assert_called_once_with("context")
+        recover.assert_called_once_with(ctx)
 
         uninstall = mocker.patch.object(
             application.uninstall,
@@ -764,9 +794,14 @@ class CliLifecycleContracts:
             }
         }
 
-    def test_install_dispatches_to_its_single_owner(self, *, mocker) -> None:
+    def test_install_dispatches_to_its_single_owner(self, tmp_path: Path, *, mocker) -> None:
         asset = Path("release.tar.gz")
         anchor = Path("allowed-signers")
+        mocker.patch.object(
+            application.runtime_context,
+            "create",
+            return_value=install_context(tmp_path),
+        )
         install = mocker.patch.object(
             application.install, "install_asset", return_value={"ok": True}
         )
@@ -774,6 +809,122 @@ class CliLifecycleContracts:
             "ok": True
         }
         install.assert_called_once_with(asset, trust_anchor=anchor, port=8801, timeout_seconds=30.0)
+
+    @pytest.mark.parametrize("command", ["install", "recover", "reload", "rollback", "uninstall"])
+    def test_mutating_commands_reject_a_second_lifecycle_writer(
+        self,
+        tmp_path: Path,
+        command: str,
+        *,
+        mocker,
+    ) -> None:
+        ctx = install_context(tmp_path)
+        mocker.patch.object(application.runtime_context, "create", return_value=ctx)
+        owners = {
+            "install": mocker.patch.object(application.install, "install_asset"),
+            "recover": mocker.patch.object(application.control, "recover"),
+            "reload": mocker.patch.object(application.control, "reload"),
+            "rollback": mocker.patch.object(application.control, "rollback"),
+            "uninstall": mocker.patch.object(application.uninstall, "uninstall_product"),
+        }
+        arguments: dict[str, object] = {"port": ctx.port}
+        if command == "install":
+            arguments.update(asset=tmp_path / "release.tar.gz", trust_anchor=tmp_path / "trust")
+        elif command == "rollback":
+            arguments["to_release"] = "3.1.13"
+
+        with (
+            FileLock(
+                application._lifecycle_lock_path(ctx),
+                timeout=0,
+                fallback_to_soft=False,
+                preserve_lock_file=True,
+            ),
+            pytest.raises(errors.InstallError, match="lifecycle mutation is already in progress"),
+        ):
+            application.dispatch(command, **arguments)
+
+        for owner in owners.values():
+            owner.assert_not_called()
+
+    def test_lifecycle_lock_is_released_after_success_and_failure(
+        self,
+        tmp_path: Path,
+        *,
+        mocker,
+    ) -> None:
+        ctx = install_context(tmp_path)
+        mocker.patch.object(application.runtime_context, "create", return_value=ctx)
+        recover = mocker.patch.object(
+            application.control,
+            "recover",
+            side_effect=[
+                {"state": "not_required"},
+                errors.InstallError("failed"),
+                {"state": "closed"},
+            ],
+        )
+
+        assert application.dispatch("recover", port=ctx.port) == {"state": "not_required"}
+        with pytest.raises(errors.InstallError, match="failed"):
+            application.dispatch("recover", port=ctx.port)
+        assert application.dispatch("recover", port=ctx.port) == {"state": "closed"}
+        assert recover.call_count == 3
+
+    def test_unavailable_lifecycle_lock_is_a_bounded_public_error(
+        self,
+        tmp_path: Path,
+        *,
+        mocker,
+    ) -> None:
+        ctx = install_context(tmp_path)
+        mocker.patch.object(application.runtime_context, "create", return_value=ctx)
+        lock = mocker.patch.object(application, "FileLock").return_value
+        lock.acquire.side_effect = OSError("private host detail")
+        recover = mocker.patch.object(application.control, "recover")
+
+        code, stdout, stderr = self.invoke("recover", "--json", "--port", str(ctx.port))
+
+        assert code == 2
+        assert stdout == ""
+        assert json.loads(stderr) == {
+            "error": {
+                "code": "lifecycle_error",
+                "message": "lifecycle mutation lock is unavailable",
+                "next": "codex-responses-proxy doctor",
+            }
+        }
+        assert "private host detail" not in stderr
+        assert "Traceback" not in stderr
+        recover.assert_not_called()
+
+    @pytest.mark.parametrize("command", ["status", "doctor"])
+    def test_read_only_commands_remain_available_during_lifecycle_mutation(
+        self,
+        tmp_path: Path,
+        command: str,
+        *,
+        mocker,
+    ) -> None:
+        ctx = install_context(tmp_path)
+        evidence = {"state": "not_installed", "detail": "absent"}
+        mocker.patch.object(application.runtime_context, "create", return_value=ctx)
+        status = mocker.patch.object(application.control, "status", return_value=evidence)
+
+        with FileLock(
+            application._lifecycle_lock_path(ctx),
+            timeout=0,
+            fallback_to_soft=False,
+            preserve_lock_file=True,
+        ):
+            result = application.dispatch(command, port=ctx.port)
+
+        status.assert_called_once_with(ctx)
+        assert result is not None
+        if command == "status":
+            assert result == evidence
+        else:
+            assert result["state"] == "not_installed"
 
     def test_internal_dispatch_argument_contracts_fail_closed(self) -> None:
         cases = (
