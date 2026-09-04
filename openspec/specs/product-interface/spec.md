@@ -136,7 +136,9 @@ command's help, valid and invalid inputs, human and JSON output, exit status,
 real handoff behavior, no-Python execution, prewarmed startup, and release-asset
 packaging. Release validation SHALL exercise the exact native executable that
 installation will serve, using an isolated installation root, native service
-identity, state root, HOME, and listener port. A temporary copy or the canonical
+identity, state root, HOME, and listener port. Native subprocess verification
+SHALL preserve the host operating-system runtime environment and override only
+the isolated paths owned by the test. A temporary copy or the canonical
 installed service SHALL NOT be treated as proof of the release candidate.
 
 #### Scenario: Python and native gates prove distinct facts
@@ -166,6 +168,16 @@ installed service SHALL NOT be treated as proof of the release candidate.
 - **WHEN** a verified release is committed as the successor projection
 - **THEN** the exact installed executable completes a bounded prewarm probe
 - **AND** the handoff uses the operator's configured installation deadline.
+
+#### Scenario: Native verification runs on a supported host
+
+- **WHEN** a native executable test starts a child process on macOS, Linux, or
+  Windows
+- **THEN** the child retains the host variables required by that operating
+  system
+- **AND** the test overrides only its isolated home, product roots, and command
+  search path
+- **AND** absence of Python from that command search path remains proven.
 
 ### Requirement: Local product closure is Forge-free
 
