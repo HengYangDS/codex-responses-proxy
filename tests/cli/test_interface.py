@@ -10,7 +10,6 @@ import os
 import runpy
 import socket
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -330,10 +329,12 @@ class ProductInterfaceContracts:
         if executable is None:
             pytest.skip("native executable supplied by release session")
         with tempfile.TemporaryDirectory() as home:
+            environment = os.environ.copy()
+            environment.update({"PATH": home, "HOME": home})
             result = subprocess.run(
                 [executable, "status", "--json"],
                 cwd=home,
-                env={"PATH": home, "HOME": home},
+                env=environment,
                 text=True,
                 capture_output=True,
                 check=False,
@@ -350,10 +351,12 @@ class ProductInterfaceContracts:
         if executable is None:
             pytest.skip("native executable supplied by release session")
         with tempfile.TemporaryDirectory() as empty_path:
+            environment = os.environ.copy()
+            environment.update({"PATH": empty_path, "HOME": empty_path})
             result = subprocess.run(
                 [executable, "--version"],
                 cwd=empty_path,
-                env={"PATH": empty_path, "HOME": os.environ.get("HOME", "")},
+                env=environment,
                 text=True,
                 capture_output=True,
                 check=False,
@@ -367,14 +370,15 @@ class ProductInterfaceContracts:
         if executable is None:
             pytest.skip("native executable supplied by release session")
         with tempfile.TemporaryDirectory() as home:
-            environment = {
-                "CODEX_RESPONSES_PROXY_HOME": str(Path(home) / "payload"),
-                "CODEX_RESPONSES_PROXY_STATE_HOME": str(Path(home) / "state"),
-                "HOME": home,
-                "PATH": home,
-            }
-            if sys.platform == "win32":
-                environment["SystemRoot"] = os.environ["SYSTEMROOT"]
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "CODEX_RESPONSES_PROXY_HOME": str(Path(home) / "payload"),
+                    "CODEX_RESPONSES_PROXY_STATE_HOME": str(Path(home) / "state"),
+                    "HOME": home,
+                    "PATH": home,
+                }
+            )
             with socket.socket() as reservation:
                 reservation.bind(("127.0.0.1", 0))
                 port = str(reservation.getsockname()[1])

@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-04
+goal: Make native executable verification portable on Windows without changing
+  product runtime behavior.
