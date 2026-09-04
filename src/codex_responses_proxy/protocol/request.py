@@ -14,6 +14,7 @@ from typing import cast
 
 from codex_responses_proxy.protocol import item_policy
 from codex_responses_proxy.protocol.content import ProjectionRejectedError
+from codex_responses_proxy.protocol.content import empty_assistant_placeholder
 from codex_responses_proxy.protocol.content import project_assistant_text
 from codex_responses_proxy.protocol.content import project_input_content
 from codex_responses_proxy.protocol.content import reject as _reject
@@ -170,7 +171,7 @@ def _valid_caller(value: object) -> bool:
     )
 
 
-def _project_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
+def _project_message(item: JsonObject) -> tuple[JsonObject | None, dict[str, int]]:
     _unknown_fields(item, _MESSAGE_FIELDS, "unknown_message_field")
     role = item.get("role")
     phase = item.get("phase")
@@ -179,6 +180,14 @@ def _project_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
     if phase is not None and (role != "assistant" or phase not in _VALID_PHASES):
         _reject("invalid_message_phase")
     if role == "assistant":
+        if empty_assistant_placeholder(item.get("content")):
+            return None, {
+                "changed": 1,
+                "item_ids": int("id" in item),
+                "encrypted_blocks": 0,
+                "omission_markers": 0,
+                "local_image_items": 0,
+            }
         content, changed, encrypted, markers = project_assistant_text(
             item.get("content"), encrypted_marker=False
         )
@@ -497,7 +506,8 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
         else:
             _reject(policy.rejection_reason)
         value, item_metrics = projection
-        projected.append(value)
+        if value is not None:
+            projected.append(value)
         for key, value_count in item_metrics.items():
             metrics["changed_items" if key == "changed" else key] += value_count
     if any(

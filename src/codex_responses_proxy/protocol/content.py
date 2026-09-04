@@ -194,3 +194,19 @@ def project_assistant_text(
     if not text:
         reject("empty_portable_content")
     return text, changed, encrypted, markers
+
+
+def empty_assistant_placeholder(value: object) -> bool:
+    """Return whether content is one valid, empty assistant placeholder."""
+    if not isinstance(value, list) or len(value) != 1:
+        return False
+    block = value[0]
+    if not isinstance(block, dict):
+        return False
+    typed = cast(JsonObject, block)
+    if typed.get("type") != "output_text":
+        return False
+    try:
+        return _text_block_value(typed, "output_text") == ""
+    except ProjectionRejectedError:
+        return False
