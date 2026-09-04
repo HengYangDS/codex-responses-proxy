@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.15] - 2026-09-04
+
+### Fixed
+
+- Omit the exact non-semantic empty assistant placeholder emitted by Codex
+  during replay while preserving subsequent portable history and continuing to
+  reject every other empty or unproved dialogue shape.
+
 ## [3.1.14] - 2026-09-02
 
 ### Fixed

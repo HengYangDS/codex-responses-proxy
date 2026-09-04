@@ -13,6 +13,42 @@ from tests.protocol.test_request import _body
 class ProviderPortableHistoryTests:
     """The normal outbound path owns provider-portable history."""
 
+    def test_drops_empty_assistant_placeholders_from_replay(self) -> None:
+        raw = _body(
+            {
+                "model": "gpt-test",
+                "input": [
+                    {
+                        "type": "message",
+                        "id": "msg_empty",
+                        "role": "assistant",
+                        "phase": "commentary",
+                        "content": [{"type": "output_text", "text": ""}],
+                        "internal_chat_message_metadata_passthrough": {"opaque": True},
+                    },
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "continue"}],
+                    },
+                ],
+            }
+        )
+
+        projection = rewrite.sanitize_responses_body(raw)
+
+        assert projection.status == "projected", projection.diagnostic()
+        assert projection.body is not None
+        assert json.loads(projection.body)["input"] == [
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "continue"}],
+            }
+        ]
+        assert projection.metrics is not None
+        assert projection.metrics.changed_items == 1
+
     def test_projects_standalone_namespaced_tool_delivery_to_message(self) -> None:
         raw = _body(
             {

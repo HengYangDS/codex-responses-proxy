@@ -205,7 +205,15 @@ REJECTION_CASES = {
                 }
             ]
         },
+        "rejected empty_portable_input",
+    ),
+    "assistant empty content list": (
+        {"input": [{"type": "message", "role": "assistant", "content": []}]},
         "rejected empty_portable_content",
+    ),
+    "assistant empty scalar text": (
+        {"input": [{"type": "message", "role": "assistant", "content": ""}]},
+        "rejected empty_text_content",
     ),
     "non-string tool root ciphertext": (
         {
