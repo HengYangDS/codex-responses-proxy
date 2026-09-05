@@ -17,6 +17,29 @@ substitute for native product evidence.
 - **AND** teardown leaves no owned service, process, transaction, payload,
   command, temporary carrier, or host-configuration residue.
 
+### Requirement: Capable handoff preserves request admission
+
+A runtime-to-runtime handoff that advertises the admission-preserving capability
+SHALL transfer listener ownership without changing the request-admission state.
+Draining is reserved for the legacy native-generation replacement path whose
+current runtime cannot perform that handoff.
+
+#### Scenario: A capable runtime is upgraded or rolled back under load
+
+- **WHEN** a verified current runtime advertises both selected-generation and
+  admission-preserving handoff capabilities
+- **THEN** upgrade or rollback uses that handoff while new requests continue to
+  be admitted and already accepted requests reach terminal responses
+- **AND** no request is rejected with `proxy_draining` during the transition.
+
+#### Scenario: A legacy runtime cannot preserve admission
+
+- **WHEN** the verified current runtime lacks the admission-preserving handoff
+  capability
+- **THEN** lifecycle selects the bounded native-generation replacement path
+- **AND** health and command output expose the actual admission state without
+  claiming an admission-preserving transition.
+
 ### Requirement: Legacy lifecycle state has no implicit compatibility authority
 
 An installed payload, journal, launcher, supervisor, manifest, command, or

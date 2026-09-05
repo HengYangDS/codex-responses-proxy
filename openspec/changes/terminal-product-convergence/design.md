@@ -128,6 +128,13 @@ generation, and transaction. Successful, failed, timed-out, and interrupted
 tests prove no net native-resource growth and preserve unrelated canonical
 installations.
 
+A capability-qualified handoff transfers the listener without changing request
+admission: the predecessor stops accepting only when the successor is ready to
+serve, while already accepted handlers finish on the predecessor. Upgrade and
+rollback share this transition. The lifecycle uses draining only for the
+bounded legacy native-generation replacement path; handoff state is never
+presented as admission state.
+
 Environment variables remain the portable non-interactive Provider-secret
 input. Secret storage and client projection are outside this product. The Proxy
 never opens a keyring, changes Codex or Claude configuration, or requires AIGW.

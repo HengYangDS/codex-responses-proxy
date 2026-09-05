@@ -31,6 +31,9 @@ class TestParentHandoffStateMachine(HandoffFixture):
         self.context.log("fixture-event")
         assert self.log_events == ["fixture-event"]
 
+    def test_handoff_context_cannot_mutate_request_admission(self):
+        assert not hasattr(self.context, "set_draining")
+
     def committed(self, *after_ready, health=None, mocker, **kwargs):
         expected = kwargs.pop("expected", expected_metadata())
         child = kwargs.pop("child", fake_child(mocker=mocker))
@@ -85,9 +88,7 @@ class TestParentHandoffStateMachine(HandoffFixture):
         assert self.p._HANDOFF_SESSION.get("outcome") == "finalized"
         assert handoff_outcome_ready().is_set()
 
-    def test_draining_is_set_before_shutdown_and_shutdown_completes_before_commit_is_sent(
-        self, *, mocker
-    ):
+    def test_parent_stops_accepting_before_child_serves_without_closing_admission(self, *, mocker):
         server = fake_server(mocker=mocker)
         child = fake_child(mocker=mocker)
         expected = expected_metadata()
@@ -103,24 +104,17 @@ class TestParentHandoffStateMachine(HandoffFixture):
             child_message("serving", child, expected),
             child_message("finalized", child, expected),
         ]
-        real_set_draining = self.installation.set_draining
-
-        def observing_set_draining(enabled, **kwargs):
-            order.append(f"draining:{enabled}")
-            return real_set_draining(enabled, **kwargs)
-
         observing_context = entrypoint_module._handoff_context()
         object.__setattr__(
             observing_context,
             "successor_executable",
             lambda: observing_context.executable,
         )
-        object.__setattr__(observing_context, "set_draining", observing_set_draining)
         mocker.patch.object(self.p, "spawn_child", return_value=child)
         prepared = self.p.prepare(server, expected, observing_context, timeout_seconds=5)
-        self.p.commit(server, prepared, observing_context)
-        assert "draining:True" in order
-        assert order.index("draining:True") < order.index("shutdown")
+        outcome = self.p.commit(server, prepared, observing_context)
+
+        assert outcome == "finalized"
         assert order.index("shutdown") < order.index("send:commit")
         assert child.recv_message.call_args_list[1].args == (5,)
 
@@ -205,7 +199,7 @@ class TestParentHandoffStateMachine(HandoffFixture):
 
         self.p._HANDOFF_SESSION.update(state="ready", transaction_id="txn-identity")
         identity = self.p.runtime_identity(self.context)
-        assert not identity["accepting"]
+        assert identity["accepting"]
         assert identity["handoff_transaction_id"] == "txn-identity"
 
     def test_probe_health_rejects_oversized_invalid_and_non_object_payloads(

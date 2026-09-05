@@ -175,10 +175,12 @@ idempotent across interruption, and the
 transaction owns temporary bootstrap evidence, selector reconciliation,
 cleanup, and recovery until it closes. `status` therefore reports rollback as
 `deferred` while a transaction is active instead of treating its intermediate
-state as an independent rollback authority. Explicit rollback drains the
-current listener and replaces its native process generation before proving the
-retained predecessor; the older release does not need to understand a newer
-hot-handoff capability.
+state as an independent rollback authority. Upgrade and rollback use the same
+capability-qualified handoff. A runtime that advertises
+`admission-preserving-handoff` transfers listener ownership while continuing to
+admit new requests and lets already accepted requests finish. Draining is used
+only for the bounded native-generation replacement of an older runtime that
+cannot preserve admission.
 
 Expected failures are concise and actionable. Human mode does not emit a
 traceback, warning dump, serialized object, credential, request body, or private

@@ -75,7 +75,10 @@ def matching_health(child_or_pid, expected: dict[str, object], **overrides) -> d
     health = {
         "pid": pid,
         "handoff_protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
-        "handoff_capabilities": ["selected-generation-handoff"],
+        "handoff_capabilities": [
+            handoff_module.SELECTED_GENERATION_HANDOFF_CAPABILITY,
+            handoff_module.ADMISSION_PRESERVING_HANDOFF_CAPABILITY,
+        ],
         "handoff_transaction_id": expected["transaction_id"],
         "release": expected["release"],
         "serving_payload_sha256": expected["serving_payload_sha256"],
@@ -144,7 +147,10 @@ def idle_runtime(**overrides) -> dict[str, object]:
     runtime: dict[str, object] = {
         "pid": 999,
         "handoff_protocol_version": handoff_module.HANDOFF_PROTOCOL_VERSION,
-        "handoff_capabilities": ["selected-generation-handoff"],
+        "handoff_capabilities": [
+            handoff_module.SELECTED_GENERATION_HANDOFF_CAPABILITY,
+            handoff_module.ADMISSION_PRESERVING_HANDOFF_CAPABILITY,
+        ],
         "handoff_transaction_id": None,
         "handoff_state": "idle",
         "release": "1.0.24",

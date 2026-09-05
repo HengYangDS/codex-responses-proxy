@@ -20,6 +20,7 @@ from codex_responses_proxy.lifecycle.deployment import apply
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import runtime as service_runtime
+from codex_responses_proxy.service.handoff import transaction as handoff_transaction
 from tests.lifecycle.fixtures import install_context
 
 
@@ -148,7 +149,10 @@ class TestReleasedDeployment:
         value: dict[str, object] = {
             "pid": 111,
             "handoff_protocol_version": 2,
-            "handoff_capabilities": ["selected-generation-handoff"],
+            "handoff_capabilities": [
+                handoff_transaction.SELECTED_GENERATION_HANDOFF_CAPABILITY,
+                handoff_transaction.ADMISSION_PRESERVING_HANDOFF_CAPABILITY,
+            ],
             "handoff_state": "idle",
             "handoff_transaction_id": None,
             "release": "1.2.2",
@@ -824,11 +828,10 @@ class TestReleasedDeployment:
             adapter=service,
             runtime_reader=runtime_reader,
             timeout_seconds=12.5,
-            upgrade_strategy="native_generation",
         )
 
-    def test_explicit_rollback_replaces_the_native_generation(self, *, mocker) -> None:
-        """An older retained binary is never asked to join a newer handoff protocol."""
+    def test_explicit_rollback_uses_current_runtime_handoff_capability(self, *, mocker) -> None:
+        """Rollback keeps admission open when the current listener supports handoff."""
         retained = payload_rollback.RetainedRollback(
             root=Path("/retained/1.2.2"),
             predecessor=retained_identity("1.2.2"),
@@ -836,6 +839,53 @@ class TestReleasedDeployment:
         )
         payload = FakeTransaction(self.ctx)
         current = self.current_runtime(release="1.2.3")
+        runtime = self.successor(release="1.2.2")
+        service = FakeServiceAdapter(mocker=mocker)
+        source = process.OwnedProcess(111, self.ctx.executable, 1.0)
+        mocker.patch.object(transaction, "begin_rollback_transaction", return_value=payload)
+        mocker.patch.object(process, "capture_executable", return_value=source)
+        drain = mocker.patch.object(apply.handoff, "drain_responses")
+        replace = mocker.patch.object(
+            apply,
+            "_replace_native_generation",
+            return_value=runtime,
+        )
+        request = mocker.patch.object(apply, "request_handoff", return_value=runtime)
+        control = generation.context(self.ctx, "c" * 32)
+        mocker.patch.object(generation, "control_context", return_value=control)
+
+        result = apply.rollback(
+            self.ctx,
+            retained,
+            adapter=service,
+            runtime_reader=lambda _ctx: current,
+        )
+
+        assert result == {
+            "state": "rolled_back",
+            "from_release": "1.2.3",
+            "to_release": "1.2.2",
+            "runtime": runtime,
+        }
+        drain.assert_not_called()
+        replace.assert_not_called()
+        request.assert_called_once()
+        service.install_mock.assert_called_once_with(control)
+
+    def test_explicit_rollback_replaces_a_runtime_without_handoff_capability(
+        self, *, mocker
+    ) -> None:
+        """Rollback retains the bounded replacement fallback for older current runtimes."""
+        retained = payload_rollback.RetainedRollback(
+            root=Path("/retained/1.2.2"),
+            predecessor=retained_identity("1.2.2"),
+            successor=retained_identity("1.2.3"),
+        )
+        payload = FakeTransaction(self.ctx)
+        current = self.current_runtime(
+            release="1.2.3",
+            handoff_capabilities=["repeatable"],
+        )
         runtime = self.successor(release="1.2.2")
         service = FakeServiceAdapter(mocker=mocker)
         source = process.OwnedProcess(111, self.ctx.executable, 1.0)

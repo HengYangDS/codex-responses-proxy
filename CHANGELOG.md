@@ -7,6 +7,15 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.16] - 2026-09-05
+
+### Fixed
+
+- Preserve request admission during capability-qualified upgrade and rollback
+  handoff, so new and in-flight Responses requests are not rejected with
+  `proxy_draining`; retain bounded draining only for legacy native-generation
+  replacement.
+
 ## [3.1.15] - 2026-09-04
 
 ### Fixed

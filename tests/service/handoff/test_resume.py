@@ -9,22 +9,18 @@ from pathlib import Path
 from tests.service.handoff.fixtures import HandoffFixture
 from tests.service.handoff.fixtures import entrypoint_module
 from tests.service.handoff.fixtures import handoff_outcome_ready
-from tests.service.handoff.fixtures import runtime_state_module
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
 class TestServeWithHandoffResume(HandoffFixture):
-    def test_rollback_outcome_reopens_admission_and_serves_again_on_the_same_socket(
-        self, *, mocker
-    ):
+    def test_rollback_outcome_serves_again_on_the_same_socket(self, *, mocker):
         server = mocker.Mock()
         calls = []
 
         def fake_serve_forever():
             calls.append(len(calls) + 1)
             if len(calls) == 1:
-                runtime_state_module.set_draining(True)
                 self.p._HANDOFF_SESSION["outcome"] = "rolled_back"
                 handoff_outcome_ready().set()
             else:
@@ -34,7 +30,6 @@ class TestServeWithHandoffResume(HandoffFixture):
         server.serve_forever.side_effect = fake_serve_forever
         self.p.serve_with_resume(server, self.context)
         assert server.serve_forever.call_count == 2
-        assert not entrypoint_module.runtime_status()["draining"]
 
     def test_waits_for_the_outcome_ready_event_instead_of_trusting_stale_state(self, *, mocker):
         # ``server.shutdown()`` returning on the request thread races with the
@@ -47,7 +42,7 @@ class TestServeWithHandoffResume(HandoffFixture):
         def fake_serve_forever():
             calls.append(len(calls) + 1)
             if len(calls) == 1:
-                runtime_state_module.set_draining(True)
+                self.p._HANDOFF_SESSION["state"] = "committing"
 
                 def delayed_outcome():
                     time.sleep(0.05)
