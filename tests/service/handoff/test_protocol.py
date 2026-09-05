@@ -58,7 +58,10 @@ class TestProtocolContract:
         )
         assert set(required).difference(status) == set()
         assert status["handoff_protocol_version"] == 2
-        assert status["handoff_capabilities"] == ["selected-generation-handoff"]
+        assert status["handoff_capabilities"] == [
+            handoff_module.SELECTED_GENERATION_HANDOFF_CAPABILITY,
+            handoff_module.ADMISSION_PRESERVING_HANDOFF_CAPABILITY,
+        ]
         assert status["pid"] == os.getpid()
 
     def test_runtime_status_reports_an_accepting_idle_state(self):
@@ -74,23 +77,19 @@ class TestProtocolContract:
         )
         assert status["handoff_state"] in (None, "idle")
 
-    def test_a_prepared_or_committing_child_window_is_not_draining_but_is_also_not_accepting(
+    def test_a_prepared_or_committing_handoff_keeps_request_admission_open(
         self,
     ):
-        # ``accepting`` is not merely ``not draining``: a transaction that owns
-        # the single-flight session but has not yet closed admission (draining
-        # is still False) must still report itself as unavailable for a fresh
-        # handoff/admission decision.
-        def assert_unavailable(state):
+        def assert_accepting(state):
             handoff_module._HANDOFF_SESSION["state"] = state
             try:
                 status = self.p.runtime_status()
-                assert (status["draining"], status["accepting"]) == (False, False)
+                assert (status["draining"], status["accepting"]) == (False, True)
             finally:
                 handoff_module.reset_session_to_idle()
 
-        for state in ("ready", "committing"):
-            assert_unavailable(state)
+        for state in ("preparing", "ready", "committing", "serving", "finalizing"):
+            assert_accepting(state)
 
     def test_healthz_over_real_loopback_http_exposes_the_same_shape(self):
         providers = provider_registry.Registry(

@@ -44,6 +44,7 @@
 - [ ] 5.6 Add success, assertion-failure, exception, timeout, and interruption teardown acceptance on all supported platforms; verify each run leaves no net owned service, process, transaction, payload, command, or temporary-file growth.
 - [ ] 5.7 Verify active-target installation is a true no-op, failed successor transition restores the exact predecessor, repeated recovery is terminal, and uninstall preserves all unowned content.
 - [ ] 5.8 Remove legacy payload shapes, alternate launchers, obsolete journals, dead schema readers, compatibility branches, and fallback service identities after the terminal lifecycle proves no consumer.
+- [x] 5.9 Preserve request admission during capability-qualified upgrade and rollback handoff; prove concurrent new requests and in-flight responses complete without `proxy_draining`, while retaining the bounded legacy native-generation fallback.
 
 ## 6. Semantic and Physical Repository Topology
 

@@ -20,6 +20,7 @@ from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import inventory
 from codex_responses_proxy.service import runtime as service_runtime
+from codex_responses_proxy.service.handoff import transaction as handoff_transaction
 from tests.lifecycle.fixtures import install_context
 from tests.service.handoff.fixtures import Response
 from tests.service.handoff.fixtures import expected_metadata
@@ -161,12 +162,31 @@ class TestControllerHandoffWiring:
         )
         cases = (
             (
-                idle_runtime(handoff_capabilities=["selected-generation-handoff"]),
+                idle_runtime(
+                    handoff_capabilities=[
+                        handoff_transaction.SELECTED_GENERATION_HANDOFF_CAPABILITY,
+                        handoff_transaction.ADMISSION_PRESERVING_HANDOFF_CAPABILITY,
+                    ]
+                ),
                 "handoff",
             ),
             (
-                {**finalized, "handoff_capabilities": ["selected-generation-handoff"]},
+                {
+                    **finalized,
+                    "handoff_capabilities": [
+                        handoff_transaction.SELECTED_GENERATION_HANDOFF_CAPABILITY,
+                        handoff_transaction.ADMISSION_PRESERVING_HANDOFF_CAPABILITY,
+                    ],
+                },
                 "handoff",
+            ),
+            (
+                idle_runtime(
+                    handoff_capabilities=[
+                        handoff_transaction.SELECTED_GENERATION_HANDOFF_CAPABILITY
+                    ]
+                ),
+                "native_generation",
             ),
             (
                 {**finalized, "handoff_capabilities": ["repeatable"]},

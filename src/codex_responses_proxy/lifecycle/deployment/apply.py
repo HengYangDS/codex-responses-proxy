@@ -19,7 +19,6 @@ from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import runtime as service_runtime
 
 RuntimeReader = Callable[[runtime_context.RuntimeContext], dict[str, object] | None]
-type UpgradeStrategy = handoff.DeploymentStrategy
 
 
 class ServiceAdapter(Protocol):
@@ -58,7 +57,6 @@ def install(
     adapter: ServiceAdapter,
     runtime_reader: RuntimeReader,
     timeout_seconds: float = 30.0,
-    upgrade_strategy: UpgradeStrategy | None = None,
 ) -> dict[str, object]:
     """Install fresh bytes or hand off one verified current native runtime."""
     current = runtime_reader(ctx)
@@ -74,12 +72,11 @@ def install(
     pid = current.get("pid")
     if type(pid) is not int:
         raise errors.InstallError("installed runtime identity is not verified")
-    observed_strategy = handoff.deployment_strategy(current)
-    if observed_strategy == "unsupported":
+    strategy = handoff.deployment_strategy(current)
+    if strategy == "unsupported":
         raise errors.InstallError(
             "installed runtime is incompatible; remove it before installing this release"
         )
-    strategy = upgrade_strategy or observed_strategy
     source_listener = handoff.capture_source_listener(ctx, current)
     control = generation.control_context(ctx)
     configured = adapter.configured_executable(control)
@@ -117,7 +114,6 @@ def rollback(
         adapter=adapter,
         runtime_reader=runtime_reader,
         timeout_seconds=timeout_seconds,
-        upgrade_strategy="native_generation",
     )
     if result.get("state") != "upgraded":
         raise errors.InstallError("rollback requires a verified running successor")

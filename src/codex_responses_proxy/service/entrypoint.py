@@ -125,7 +125,6 @@ def _handoff_context() -> handoff.Context:
         active_responses=admission.active_responses,
         active_handlers=admission.active_handlers,
         bounded_lease_seconds=admission.bounded_drain_lease_seconds,
-        set_draining=admission.set_draining,
         log=operational_log.log,
         server_factory=lambda listener: server.server_from_listener(listener, _server_bindings()),
         set_server_instance=_set_server_instance,

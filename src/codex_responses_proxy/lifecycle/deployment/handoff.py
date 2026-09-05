@@ -78,14 +78,26 @@ def runtime_supports_selected_generation_handoff(
     )
 
 
-def deployment_strategy(runtime: RuntimeSnapshot | None) -> DeploymentStrategy:
-    """Select the safe deployment transition proved by runtime capabilities."""
+def runtime_supports_admission_preserving_handoff(
+    runtime: RuntimeSnapshot | None,
+) -> bool:
+    """Return whether selected-generation handoff keeps admission open."""
+    if not runtime_supports_selected_generation_handoff(runtime):
+        return False
+    assert isinstance(runtime, dict)
+    capabilities = runtime["handoff_capabilities"]
+    assert isinstance(capabilities, list)
+    return handoff_transaction.ADMISSION_PRESERVING_HANDOFF_CAPABILITY in capabilities
+
+
+def deployment_strategy_identity_is_valid(runtime: RuntimeSnapshot | None) -> bool:
+    """Return whether runtime identity permits a lifecycle transition."""
     if not isinstance(runtime, dict):
-        return "unsupported"
+        return False
     digests_valid = all(digest.is_sha256(runtime.get(field)) for field in _RUNTIME_DIGEST_FIELDS)
     pid = runtime.get("pid")
     release = runtime.get("release")
-    base_identity = all(
+    if not all(
         (
             _positive_int(pid),
             isinstance(release, str) and bool(release),
@@ -99,21 +111,30 @@ def deployment_strategy(runtime: RuntimeSnapshot | None) -> DeploymentStrategy:
                 },
             ),
         )
+    ):
+        return False
+    return _available_transaction(
+        runtime.get("handoff_state"),
+        runtime.get("handoff_transaction_id"),
     )
-    if not base_identity:
+
+
+def deployment_strategy(runtime: RuntimeSnapshot | None) -> DeploymentStrategy:
+    """Select the safe deployment transition proved by runtime capabilities."""
+    if not deployment_strategy_identity_is_valid(runtime):
         return "unsupported"
-    state = runtime.get("handoff_state")
-    transaction_id = runtime.get("handoff_transaction_id")
-    if not _available_transaction(state, transaction_id):
-        return "unsupported"
-    if runtime_supports_selected_generation_handoff(runtime):
+    if runtime_supports_admission_preserving_handoff(runtime):
         return "handoff"
     return "native_generation"
 
 
 def runtime_supports_handoff(runtime: RuntimeSnapshot | None) -> bool:
-    """Return whether a live runtime explicitly supports the next hot handoff."""
-    return deployment_strategy(runtime) == "handoff"
+    """Return whether a live runtime explicitly supports selected-generation handoff."""
+    if not isinstance(runtime, dict):
+        return False
+    return deployment_strategy_identity_is_valid(
+        runtime
+    ) and runtime_supports_selected_generation_handoff(runtime)
 
 
 def capture_source_listener(

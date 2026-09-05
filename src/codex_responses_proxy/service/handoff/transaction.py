@@ -50,6 +50,7 @@ class PreparedHandoff(TypedDict):
 HANDOFF_READY_TIMEOUT_SECONDS = 30.0
 HANDOFF_DEFAULT_LEASE_SECONDS = 30.0
 SELECTED_GENERATION_HANDOFF_CAPABILITY = "selected-generation-handoff"
+ADMISSION_PRESERVING_HANDOFF_CAPABILITY = "admission-preserving-handoff"
 
 _IDENTITY_FIELDS = (
     "transaction_id",
@@ -81,7 +82,6 @@ class Context:
     active_responses: Callable[[], int]
     active_handlers: Callable[[], int]
     bounded_lease_seconds: Callable[[object | None], int]
-    set_draining: Callable[..., JsonObject]
     log: Callable[[str], None]
     server_factory: Callable[[socket.socket], ThreadingHTTPServer]
     set_server_instance: Callable[[ThreadingHTTPServer], None]
@@ -143,11 +143,14 @@ def runtime_identity(context: Context) -> dict[str, object]:
     """Return secret-free process and transaction identity for health proofs."""
     with _HANDOFF_LOCK, context.response_gate_lock:
         state = str(_HANDOFF_SESSION.get("state", "idle"))
-        accepting = not context.draining() and state in {"idle", "serving", "finalized"}
+        accepting = not context.draining()
         return {
             "pid": os.getpid(),
             "handoff_protocol_version": HANDOFF_PROTOCOL_VERSION,
-            "handoff_capabilities": [SELECTED_GENERATION_HANDOFF_CAPABILITY],
+            "handoff_capabilities": [
+                SELECTED_GENERATION_HANDOFF_CAPABILITY,
+                ADMISSION_PRESERVING_HANDOFF_CAPABILITY,
+            ],
             "handoff_transaction_id": _HANDOFF_SESSION.get("transaction_id"),
             "handoff_state": state,
             "payload_manifest_sha256": context.payload_manifest_sha256(),
@@ -316,14 +319,11 @@ def commit(server: ThreadingHTTPServer, prepared: PreparedHandoff, context: Cont
     child_expected = {**expected, "pid": child.runtime_pid}
     timeout_seconds = prepared["timeout_seconds"]
     accept_stopped = False
-    phase = "drain"
+    phase = "shutdown"
     try:
         _transition("committing")
-        drain = context.set_draining(True, lease_seconds=prepared["lease_seconds"])
         with _HANDOFF_LOCK:
             _HANDOFF_SESSION["drain_deadline"] = time.monotonic() + prepared["lease_seconds"]
-            _HANDOFF_SESSION["drain_generation"] = drain["drain_generation"]
-        phase = "shutdown"
         server.shutdown()
         accept_stopped = True
         phase = "serving"
@@ -400,7 +400,6 @@ def serve_with_resume(
         outcome, deadline = _wait_for_handoff_outcome(context)
         if outcome != "rolled_back":
             break
-        context.set_draining(False)
         reset_session_to_idle()
         server.serve_forever()
     if outcome == "finalized":
