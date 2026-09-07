@@ -77,8 +77,16 @@ class TestLinuxLifecycle:
             linux.install(ctx)
             install.assert_called_once_with(ctx)
         else:
-            with pytest.raises(errors.ManualStartRequiredError, match="systemd user manager"):
+            with pytest.raises(
+                errors.NativeServiceUnavailableError, match="systemd user manager"
+            ) as rejection:
                 linux.install(ctx)
+            assert rejection.value.code == "native_service_unavailable"
+            assert rejection.value.next_command == "codex-responses-proxy install --help"
+            assert str(rejection.value) == (
+                "a reachable systemd user manager is required for Linux installation; "
+                "enable a systemd user session and retry installation"
+            )
             install.assert_not_called()
 
         if executable is None:

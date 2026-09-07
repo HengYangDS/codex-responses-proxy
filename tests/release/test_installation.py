@@ -635,6 +635,23 @@ class TestReleasedDeployment:
             self.deploy(payload, None, adapter=service, mocker=mocker)
         assert payload.events == ["commit", "activate", "rollback"]
 
+    def test_service_admission_rejection_rolls_back_without_native_cleanup(self, *, mocker) -> None:
+        payload = FakeTransaction(self.ctx)
+        service = FakeServiceAdapter(
+            failure=errors.NativeServiceUnavailableError("systemd user manager is unavailable"),
+            mocker=mocker,
+        )
+        service.uninstall_mock.side_effect = errors.InstallError("user bus is unavailable")
+        terminate = mocker.spy(service, "terminate_runtime")
+        mocker.patch.object(process, "listener_pids", return_value=[])
+
+        with pytest.raises(errors.NativeServiceUnavailableError, match="systemd user manager"):
+            self.deploy(payload, None, adapter=service, mocker=mocker)
+
+        assert payload.events == ["commit", "activate", "rollback"]
+        service.uninstall_mock.assert_not_called()
+        terminate.assert_not_called()
+
     def test_fresh_failure_preserves_unconfirmed_candidate_cleanup(self, *, mocker) -> None:
         payload = FakeTransaction(self.ctx)
         service = FakeServiceAdapter(failure=errors.InstallError("service failed"), mocker=mocker)

@@ -25,7 +25,7 @@ class ServiceAdapter(Protocol):
     """Native supervision operations required by payload deployment."""
 
     def install(self, ctx: runtime_context.RuntimeContext) -> None:
-        """Install or replace the native service for this runtime context."""
+        """Install service; NativeServiceUnavailableError guarantees no service mutation."""
         ...
 
     def uninstall(self, ctx: runtime_context.RuntimeContext) -> None:
@@ -143,6 +143,9 @@ def _fresh_install(
             runtime_reader=runtime_reader,
             timeout_seconds=timeout_seconds,
         )
+    except errors.NativeServiceUnavailableError:
+        payload.rollback()
+        raise
     except BaseException:
         try:
             _remove_candidate_runtime(

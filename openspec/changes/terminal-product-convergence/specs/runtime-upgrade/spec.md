@@ -26,6 +26,18 @@ substitute for native product evidence.
 - **AND** the lifecycle operation uses the same context that owns its mutation
   lock rather than reconstructing paths or authority during installation.
 
+#### Scenario: Linux service admission fails without a user manager
+
+- **WHEN** Linux installation cannot reach a systemd user manager before any
+  service registration or process creation
+- **THEN** it reports `native_service_unavailable` and restores payload,
+  command, and transaction state without invoking native-service removal
+- **AND** the error describes the required user-service environment rather
+  than a deleted generation path or private process entrypoint
+- **AND** an unreachable manager remains an unknown service observation, not
+  proof of absence; uncertain failures after service mutation still preserve
+  the transaction for recovery.
+
 ### Requirement: Terminal cleanup survives process interruption
 
 Once a transaction has completed its projection and required supervisor binding,

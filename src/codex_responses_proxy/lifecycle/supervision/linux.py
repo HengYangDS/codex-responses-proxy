@@ -140,9 +140,9 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
     if _has_user_systemd():
         _install_systemd(ctx)
     else:
-        raise errors.ManualStartRequiredError(
-            "a systemd user manager is required for durable Linux supervision; "
-            f"run {ctx.executable} {service_runtime.WATCHDOG_MODE} from a native user service"
+        raise errors.NativeServiceUnavailableError(
+            "a reachable systemd user manager is required for Linux installation; "
+            "enable a systemd user session and retry installation"
         )
 
 
