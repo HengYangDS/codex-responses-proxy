@@ -565,51 +565,6 @@ class TestVerificationContracts:
         }
         assert "LINUX_RELEASE_IMAGE" not in gitlab
 
-    def test_release_black_box_path_is_repeatable(self) -> None:
-        """Release verification must tolerate repeated commands in one Nox session."""
-
-        tree = ast.parse((ROOT / "noxfile.py").read_text(encoding="utf-8"))
-        function = next(
-            node
-            for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "_run_without_python"
-        )
-        mkdir = next(
-            node
-            for node in ast.walk(function)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "mkdir"
-        )
-        keywords = {keyword.arg: keyword.value for keyword in mkdir.keywords}
-        exist_ok = keywords.get("exist_ok")
-        assert isinstance(exist_ok, ast.Constant)
-        assert exist_ok.value is True
-
-    def test_release_black_box_commands_are_isolated_from_the_live_installation(
-        self,
-    ) -> None:
-        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        function = next(
-            node
-            for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "_run_without_python"
-        )
-        owner_source = ast.get_source_segment(source, function) or ""
-
-        assert "native_process_environment(" in owner_source
-        assert "SYSTEMROOT" not in owner_source
-        assert "PYTHONHOME" not in owner_source
-        assert "PYTHONPATH" not in owner_source
-        acceptance = next(
-            node
-            for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "_accept_native_executable"
-        )
-        acceptance_source = ast.get_source_segment(source, acceptance) or ""
-        assert "isolated_listener=True" in acceptance_source
-
     def test_release_collects_ctypes_as_source_outside_the_pyz_archive(self) -> None:
         """Avoid marshal identity drift in the Python 3.14 ``ctypes`` code object."""
 

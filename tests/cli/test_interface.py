@@ -18,6 +18,7 @@ import pytest
 from codex_responses_proxy import errors
 from codex_responses_proxy.cli import application
 from codex_responses_proxy.runtime.process_environment import native_process_environment
+from codex_responses_proxy.service import runtime as service_runtime
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -325,40 +326,50 @@ class ProductInterfaceContracts:
         assert "Traceback" not in stderr
         assert "Warning" not in stderr
 
-    def test_built_executable_contains_the_native_platform_adapter(self) -> None:
+    @pytest.mark.parametrize("relative_roots", [False, True])
+    def test_built_executable_reports_a_pristine_native_installation(
+        self, tmp_path: Path, relative_roots: bool, *, monkeypatch
+    ) -> None:
+        """Require a real absent-installation report, not an accepted error exit."""
+
         executable = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
         if executable is None:
             pytest.skip("native executable supplied by release session")
-        with tempfile.TemporaryDirectory() as home:
-            root = Path(home)
+        monkeypatch.chdir(tmp_path)
+        root = Path("sandbox") if relative_roots else tmp_path / "sandbox"
+        with socket.socket() as reservation:
+            reservation.bind(("127.0.0.1", 0))
             result = subprocess.run(
-                [executable, "status", "--json"],
-                cwd=root,
+                [executable, "status", "--json", "--port", str(reservation.getsockname()[1])],
+                cwd=tmp_path,
                 env=native_process_environment(
                     user_home=root / "home",
                     install_root=root / "payload",
                     state_root=root / "state",
-                    command_search_path=root / "empty-path",
+                    command_search_path=tmp_path / "empty-path",
                 ),
                 text=True,
                 capture_output=True,
                 check=False,
             )
-        assert result.returncode in {0, 2}, result.stderr
-        assert "No module named" not in result.stderr
-        assert "Traceback" not in result.stderr
-        assert "Warning" not in result.stderr
-        if result.stderr:
-            assert "product installation is incomplete" not in result.stderr
+        assert result.returncode == 0, result.stderr
+        assert result.stderr == ""
+        report = json.loads(result.stdout)
+        assert report["state"] == "not_installed"
+        assert report["service"] == "absent"
+        assert report["listener_pids"] == []
+        assert report["runtime"] is None
+        assert report["payload_transaction"] is None
 
-    def test_built_executable_runs_without_python_on_path(self) -> None:
+    @pytest.mark.parametrize("argument", ["--version", service_runtime.PREWARM_MODE])
+    def test_built_executable_runs_without_python_on_path(self, argument: str) -> None:
         executable = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
         if executable is None:
             pytest.skip("native executable supplied by release session")
         with tempfile.TemporaryDirectory() as empty_path:
             root = Path(empty_path)
             result = subprocess.run(
-                [executable, "--version"],
+                [executable, argument],
                 cwd=root,
                 env=native_process_environment(
                     user_home=root / "home",
@@ -371,7 +382,8 @@ class ProductInterfaceContracts:
                 check=False,
             )
         assert result.returncode == 0, result.stderr
-        assert result.stdout.strip() == application._release_version()
+        expected = application._release_version() if argument == "--version" else ""
+        assert result.stdout.strip() == expected
         assert result.stderr == ""
 
     def test_built_executable_exercises_every_public_command_contract(self) -> None:
