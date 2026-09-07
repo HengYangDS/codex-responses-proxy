@@ -35,10 +35,16 @@ static-analysis = "python-quality"
 id = "python-quality"
 kind = "static"
 command = [
+  "mise",
+  "exec",
+  "--locked",
+  "--",
   "uv",
   "run",
   "--locked",
   "--no-sync",
+  "--python",
+  "python",
   "nox",
   "-s",
   "quality",
@@ -55,17 +61,21 @@ writes_files = true
 id = "python-matrix"
 kind = "test"
 command = [
+  "mise",
+  "exec",
+  "--locked",
+  "--",
   "uv",
   "run",
   "--locked",
   "--no-sync",
+  "--python",
+  "python",
   "nox",
   "-s",
-  "tests-3.12",
-  "tests-3.13",
-  "tests-3.14",
+  "tests",
 ]
-dimensions = ["behavior", "test", "platform"]
+dimensions = ["behavior", "test"]
 execution_mode = "subprocess"
 evidence_class = "proof"
 trust_bearing = true
