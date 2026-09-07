@@ -34,14 +34,13 @@ WantedBy=default.target
 def _has_user_systemd() -> bool:
     if not shutil.which("systemctl"):
         return False
-    r = subprocess.run(
-        ["systemctl", "--user", "is-system-running"],
+    result = subprocess.run(
+        ["systemctl", "--user", "show", "--property=SystemState", "--value"],
         capture_output=True,
         check=False,
         text=True,
     )
-    # Any answer other than a bus-connection failure means a user manager exists.
-    return "Failed to connect to bus" not in (r.stderr + r.stdout)
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 def _unit_path(ctx: runtime_spec.NativeServiceContext) -> str:
