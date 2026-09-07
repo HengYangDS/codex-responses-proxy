@@ -190,6 +190,7 @@ def _upgrade(
             _replace_native_generation(
                 candidate,
                 payload.expected,
+                adapter=adapter,
                 source_listener=source_listener,
                 runtime_reader=runtime_reader,
                 timeout_seconds=timeout_seconds,
@@ -205,10 +206,8 @@ def _upgrade(
             )
         )
         successor_committed = True
-        _bind_control_supervisor(
-            adapter,
-            generation.control_context(ctx),
-        )
+        if not native_generation:
+            _bind_control_supervisor(adapter, generation.control_context(ctx))
     except UnknownDeploymentOutcome as exc:
         payload.preserve_for_recovery(str(exc))
         raise
@@ -230,15 +229,7 @@ def _upgrade(
             ) from upgrade_error
         if admission_may_be_closed:
             try:
-                if native_generation and not process.owned_process_alive(source_listener):
-                    wait_for_serving_runtime(
-                        ctx,
-                        current,
-                        runtime_reader=runtime_reader,
-                        timeout_seconds=timeout_seconds,
-                        old_pid=source_listener.pid,
-                    )
-                elif not handoff.resume_responses(
+                if not handoff.resume_responses(
                     ctx,
                     source_listener=source_listener,
                     source_runtime=current,
@@ -294,6 +285,7 @@ def _replace_native_generation(
     ctx: runtime_context.RuntimeContext,
     expected: Mapping[str, object],
     *,
+    adapter: ServiceAdapter,
     source_listener: process.OwnedProcess,
     runtime_reader: RuntimeReader,
     timeout_seconds: float,
@@ -301,13 +293,19 @@ def _replace_native_generation(
     """Cross the exact predecessor exit barrier and prove its successor."""
     if not process.terminate_owned_process(source_listener, timeout_seconds=timeout_seconds):
         raise UnknownDeploymentOutcome("native generation replacement outcome is unconfirmed")
-    return wait_for_serving_runtime(
-        ctx,
-        expected,
-        runtime_reader=runtime_reader,
-        timeout_seconds=timeout_seconds,
-        old_pid=source_listener.pid,
-    )
+    try:
+        _bind_control_supervisor(adapter, generation.control_context(ctx))
+        return wait_for_serving_runtime(
+            ctx,
+            expected,
+            runtime_reader=runtime_reader,
+            timeout_seconds=timeout_seconds,
+            old_pid=source_listener.pid,
+        )
+    except BaseException as startup_error:
+        raise UnknownDeploymentOutcome(
+            "native successor startup is unconfirmed after predecessor exit"
+        ) from startup_error
 
 
 def request_handoff(
