@@ -10,9 +10,7 @@ from typing import cast
 
 import pytest
 
-from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import install
 from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.runtime import config as runtime_config
 
@@ -210,22 +208,6 @@ class TestInstallationInputValidation:
                 pytest.raises(runtime_config.ConfigurationError),
             ):
                 runtime_config.load(cast("Mapping[str, str]", {name: value}))
-
-    def test_build_context_rejects_out_of_range_ports(self, subtests):
-        for port in (0, -1, 65536):
-            with subtests.test(port=port), pytest.raises(errors.InstallError):
-                install.build_context(port)
-
-    def test_build_context_rejects_out_of_bounds_log_retention(self, subtests):
-        invalid = (
-            {"proxy_log_max_bytes": 4095},
-            {"proxy_log_backup_count": -1},
-            {"watchdog_log_max_bytes": 64 * 1024 * 1024 + 1},
-            {"watchdog_log_backup_count": 11},
-        )
-        for kwargs in invalid:
-            with subtests.test(kwargs=kwargs), pytest.raises(errors.InstallError):
-                install.build_context(8791, **kwargs)
 
 
 class TestGovernanceMetadata:

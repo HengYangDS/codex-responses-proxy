@@ -116,6 +116,27 @@ class TestSignedNativeLifecycle:
             assert isinstance(installed_runtime, dict)
             installed_pid = installed_runtime.get("pid")
             assert type(installed_pid) is int
+            selected = generation.read(ctx)
+            installed_bytes = payload_state.installed_path(ctx).read_bytes()
+            supervisor = native_service_projection(ctx)
+            repeated = run_command(
+                executable,
+                environment,
+                "install",
+                "--asset",
+                str(current_asset),
+                "--trust-anchor",
+                str(anchor),
+                "--port",
+                str(port),
+                "--json",
+            )
+            assert repeated == {"state": "unchanged", "release": current_version}
+            assert generation.read(ctx) == selected
+            assert payload_state.installed_path(ctx).read_bytes() == installed_bytes
+            assert native_service_projection(ctx) == supervisor
+            assert process.listener_pids(port) == [installed_pid]
+            assert payload_state.status(ctx) is None
             assert (
                 run_command(executable, environment, "doctor", "--port", str(port), "--json")["ok"]
                 is True

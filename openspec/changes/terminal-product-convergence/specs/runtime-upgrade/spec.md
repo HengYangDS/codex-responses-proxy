@@ -17,6 +17,15 @@ substitute for native product evidence.
 - **AND** teardown leaves no owned service, process, transaction, payload,
   command, temporary carrier, or host-configuration residue.
 
+#### Scenario: The requested artifact is already active
+
+- **WHEN** a signed artifact exactly matches the healthy active release receipt
+  and serving payload, with an idle transaction journal and verified supervisor
+- **THEN** `install` returns `unchanged` without creating a transaction, replacing
+  files, rebinding supervision, or restarting the listener
+- **AND** the lifecycle operation uses the same context that owns its mutation
+  lock rather than reconstructing paths or authority during installation.
+
 ### Requirement: Terminal cleanup survives process interruption
 
 Once a transaction has completed its projection and required supervisor binding,

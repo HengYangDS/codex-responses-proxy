@@ -15,6 +15,7 @@ from codex_responses_proxy.lifecycle import control
 from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import install
 from codex_responses_proxy.lifecycle import rollback as payload_rollback
+from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import apply
 from codex_responses_proxy.lifecycle.supervision import process
@@ -22,6 +23,8 @@ from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import runtime as service_runtime
 from codex_responses_proxy.service.handoff import transaction as handoff_transaction
 from tests.lifecycle.fixtures import install_context
+from tests.lifecycle.fixtures import install_payload
+from tests.lifecycle.fixtures import released_artifact
 
 
 class FakeTransaction:
@@ -1019,13 +1022,98 @@ def test_install_has_no_json_publication_proof_loader() -> None:
     assert not hasattr(install, "publication_proof_from_file")
 
 
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        "active",
+        "degraded",
+        "runtime_absent",
+        "different_artifact",
+        "different_payload",
+        "supervisor_absent",
+        "supervisor_replaced",
+        "pending_transaction",
+    ],
+)
+def test_install_of_exact_active_artifact_preserves_every_projection(
+    tmp_path: Path, evidence: str, *, mocker
+):
+    ctx = install_context(tmp_path)
+    installed = install_payload(ctx, mocker=mocker)
+    released = released_artifact(
+        executable_content=(
+            b"different-native-executable"
+            if evidence == "different_artifact"
+            else b"native-executable-fixture"
+        )
+    )
+    mocker.patch.object(install.artifact, "admit", return_value=released)
+    native = mocker.Mock()
+    native.configured_executable.return_value = {
+        "supervisor_absent": None,
+        "supervisor_replaced": str(tmp_path / "unrelated-executable"),
+    }.get(evidence, ctx.executable)
+    mocker.patch(
+        "codex_responses_proxy.lifecycle.supervision.native_service.adapter", return_value=native
+    )
+    mocker.patch.object(
+        control,
+        "status",
+        return_value={
+            "state": "degraded" if evidence == "degraded" else "running",
+            "release": released.version,
+            "runtime": (
+                None
+                if evidence == "runtime_absent"
+                else {
+                    "release_receipt_sha256": installed.receipt_sha256,
+                    "serving_payload_sha256": (
+                        "0" * 64
+                        if evidence == "different_payload"
+                        else installed.expected["serving_payload_sha256"]
+                    ),
+                }
+            ),
+        },
+    )
+    pending = evidence == "pending_transaction"
+    if pending:
+        mocker.patch.object(payload_state, "status", return_value={"state": "prepared"})
+    begin = mocker.spy(transaction, "begin_transaction")
+    applied = mocker.patch.object(apply, "install")
+    projections = (
+        payload_state.installed_path(ctx),
+        generation.selector_path(ctx),
+        Path(ctx.command),
+    )
+    before = {path: path.read_bytes() for path in projections}
+
+    if evidence == "active":
+        assert install.install_asset(
+            ctx, tmp_path / "release.tar.gz", trust_anchor=tmp_path / "allowed-signers"
+        ) == {"state": "unchanged", "release": installed.release}
+    else:
+        error = errors.RecoveryRequiredError if pending else errors.InstallError
+        message = "complete payload recovery" if pending else "not the verified active installation"
+        with pytest.raises(error, match=message):
+            install.install_asset(
+                ctx, tmp_path / "release.tar.gz", trust_anchor=tmp_path / "allowed-signers"
+            )
+
+    assert {path: path.read_bytes() for path in projections} == before
+    assert not payload_state.journal_path(ctx).exists()
+    begin.assert_not_called()
+    applied.assert_not_called()
+    native.install.assert_not_called()
+    native.uninstall.assert_not_called()
+
+
 def test_install_admission_failure_closes_the_prepared_transaction(
     tmp_path: Path, *, mocker
 ) -> None:
     ctx = install_context(tmp_path)
     payload = mocker.Mock()
     payload.rollback_if_prepared.return_value = True
-    mocker.patch.object(install, "build_context", return_value=ctx)
     mocker.patch.object(install.artifact, "admit", return_value="released")
     mocker.patch.object(install.transaction, "begin_transaction", return_value=payload)
     mocker.patch.object(
@@ -1036,6 +1124,7 @@ def test_install_admission_failure_closes_the_prepared_transaction(
 
     with pytest.raises(errors.InstallError, match="identity is not verified"):
         install.install_asset(
+            ctx,
             tmp_path / "release.tar.gz",
             trust_anchor=tmp_path / "allowed-signers",
         )

@@ -185,9 +185,9 @@ def dispatch(command: str, **arguments: object) -> CommandResult:
         try:
             if command == "install":
                 return install.install_asset(
+                    context,
                     _path_argument(arguments, "asset"),
                     trust_anchor=_path_argument(arguments, "trust_anchor"),
-                    port=port,
                     timeout_seconds=_timeout_argument(arguments),
                 )
             if command == "uninstall":
