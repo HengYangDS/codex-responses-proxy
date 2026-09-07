@@ -809,8 +809,8 @@ class PayloadTransaction:
         install_root = Path(self._ctx.install_dir)
         if self._fresh and install_root.is_dir() and not any(install_root.iterdir()):
             install_root.rmdir()
-        self._state = "rolled_back"
         _remove_transaction_root(self._ctx)
+        self._state = "rolled_back"
 
     def rollback_if_prepared(self) -> bool:
         """Close the transaction only before any projection mutation begins."""
