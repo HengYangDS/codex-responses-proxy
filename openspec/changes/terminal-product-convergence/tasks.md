@@ -57,8 +57,9 @@
     3.12, 3.13, and 3.14 suites each passed 1,048 tests, with three artifact-only
     CLI skips and 22 explicitly excluded native/toolchain tests. Combined
     statement/branch coverage is 97.07%. The source implementation shrank by
-    39 lines. Packaged and cross-platform runtime evidence for this slice
-    remain pending; installed 3.1.16 retained its exact payload and listener.
+    39 lines. Hosted native evidence for the resulting source is recorded in
+    the platform acceptance checkpoint below; installed 3.1.16 retained its
+    exact payload and listener. The broader state-machine audit remains open.
 
 - [ ] 5.2 Make payload generation, manifest, command projection, transaction journal, rollback snapshot, service declaration, listener, watchdog, and handoff child each have exact ownership identity and one cleanup owner.
 
@@ -75,17 +76,40 @@
     3 native-artifact CLI skips, and 22 explicitly excluded native/toolchain tests.
     The quality session reported 97.04% combined statement/branch coverage.
     Evidence: `/private/tmp/proxy-terminal-ownership.BDoChs/`. No production
-    abstraction, service, or cleanup framework was added. Native Linux/Windows,
-    new release artifacts, and the rest of this resource-ownership task remain
-    unproved; the installed 3.1.16 service was not changed.
+    abstraction, service, or cleanup framework was added. The platform
+    acceptance checkpoint below now covers native Linux/Windows execution.
+    A new formal release and the complete ownership inventory remain unproved;
+    the installed 3.1.16 service was not changed.
 
-- [ ] 5.3 Prove macOS launchd creation and teardown share the exact label and plist path; remove every suffixed test service, process, and plist while preserving the canonical installed service.
+- [x] 5.3 Prove macOS launchd creation and teardown share the exact label and plist path; remove every suffixed test service, process, and plist while preserving the canonical installed service.
 - [ ] 5.4 Prove Linux systemd behavior on a real supported user service and in the declared container boundary, including explicit behavior when no user bus exists; remove session-only fallback processes.
-- [ ] 5.5 Prove Windows Service Control Manager install, status, handoff, recovery, rollback, uninstall, command projection, and process-generation ownership from the native artifact.
+- [x] 5.5 Prove current-user Windows Task Scheduler install, status, handoff, recovery, rollback, uninstall, command projection, and process-generation ownership from the native artifact.
 - [ ] 5.6 Add success, assertion-failure, exception, timeout, and interruption teardown acceptance on all supported platforms; verify each run leaves no net owned service, process, transaction, payload, command, or temporary-file growth.
 - [ ] 5.7 Verify active-target installation is a true no-op, failed successor transition restores the exact predecessor, repeated recovery is terminal, and uninstall preserves all unowned content.
 - [ ] 5.8 Remove legacy payload shapes, alternate launchers, obsolete journals, dead schema readers, compatibility branches, and fallback service identities after the terminal lifecycle proves no consumer.
 - [x] 5.9 Preserve request admission during capability-qualified upgrade and rollback handoff; prove concurrent new requests and in-flight responses complete without `proxy_draining`, while retaining the bounded legacy native-generation fallback.
+
+    Platform acceptance checkpoint: signed source `57f26e1a`, tree
+    `122b0d78fa9f1190aec16ec76aa1e1ff2fe377b3`, passed GitHub run
+    [34127553062](https://github.com/HengYangDS/codex-responses-proxy/actions/runs/34127553062).
+    macOS and Windows each passed 40 native CLI, signed lifecycle, teardown,
+    and handoff tests. The container-built Linux asset passed 35 tests; the
+    same downloaded asset passed five lifecycle tests under a real user systemd
+    manager. Three platforms each passed four published-predecessor contracts
+    using 3.1.15 binaries, including upgrade, recovery, rollback under concurrent
+    traffic, re-upgrade, and uninstall. The controlled upstream fixture replaces
+    Provider traffic; these tests do not prove external Provider availability.
+    Fresh lifecycle and failure-injection tests compare exact owned and canonical
+    native projections. Local launchd and LaunchAgents inventory contains only
+    the formal watchdog, whose payload, PID 14925, and listener PID 15301 remain
+    unchanged. No current suffixed registration or plist remains; historical
+    launchd override records are separately scoped host maintenance, not active
+    services. Windows uses Task Scheduler as specified by the canonical runtime
+    contract, not the erroneous Service Control Manager wording formerly here.
+    Raw logs and job/asset identities are retained in
+    `/private/tmp/proxy-57f26e1a-publication.gkNJEj/`. GitLab pipeline 6253 remains
+    in progress at this checkpoint. This is candidate acceptance, not a formal
+    release, final security review, complete resource audit, or goal closeout.
 
 ## 6. Semantic and Physical Repository Topology
 

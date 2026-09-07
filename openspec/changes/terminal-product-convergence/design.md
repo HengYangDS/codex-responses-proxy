@@ -110,19 +110,24 @@ control plane.
 
 ### One native process environment contract
 
-`tools/release/native/environment.py` owns derivation of native child-process
-environments for release construction and black-box acceptance. It preserves
+`src/codex_responses_proxy/runtime/process_environment.py` owns derivation of
+native child-process environments for product runtime and black-box acceptance. It preserves
 the supported host execution substrate, removes inherited Proxy and Python
 injection state, redirects all product-owned roots to test-owned locations, and
-accepts an explicit empty product `PATH`. Fixtures, packaged CLI contracts, and
-Nox consume it directly. Partial environments, Windows `SystemRoot` exceptions,
-and platform environment allow-lists are deleted.
+accepts an explicit empty product `PATH`. It binds declared user, payload, and
+state roots before the child changes working directory. Product processes,
+fixtures, and packaged CLI contracts consume it directly. Nox delegates native
+acceptance to those contracts instead of implementing a second command runner.
+Partial environments, Windows `SystemRoot` exceptions, and platform environment
+allow-lists are deleted.
 
 ### One lifecycle state machine, three native adapters
 
 The lifecycle core owns prepare, verify, commit, observe, rollback, recovery,
-and retirement. macOS launchd, Linux systemd, and Windows Service Control
-Manager adapters translate only native service operations. Creation and teardown
+and retirement. macOS launchd, Linux systemd user services, and Windows
+Task Scheduler adapters translate only native service operations. The Windows
+projection belongs to the current user, not a machine-wide Service Control
+Manager service or administrator-owned installation. Creation and teardown
 consume the same exact service target, paths, executable identity, process
 generation, and transaction. Successful, failed, timed-out, and interrupted
 tests prove no net native-resource growth and preserve unrelated canonical
