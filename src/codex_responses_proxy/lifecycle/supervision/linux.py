@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shlex
 import shutil
 import subprocess
@@ -125,14 +124,6 @@ def _install_systemd(ctx: runtime_spec.NativeServiceContext) -> None:
     )
     if watchdog is None or not process.owned_process_alive(watchdog):
         raise errors.InstallError("systemd successor watchdog process identity is unproved")
-    # Survive logout / start at boot. Best-effort: on hardened hosts this may need
-    # an admin once; we don't fail the install if it can't self-authorize.
-    subprocess.run(
-        ["loginctl", "enable-linger", os.environ.get("USER", "")],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
 
 
 def install(ctx: runtime_spec.NativeServiceContext) -> None:

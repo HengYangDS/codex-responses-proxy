@@ -38,6 +38,13 @@ substitute for native product evidence.
   proof of absence; uncertain failures after service mutation still preserve
   the transaction for recovery.
 
+#### Scenario: Linux installation preserves user-wide host policy
+
+- **WHEN** a reachable user manager accepts the Proxy service
+- **THEN** installation changes only its owned unit and process resources
+- **AND** user lingering remains host-administered policy, not an implicit
+  installer side effect or a source of credential prompts.
+
 ### Requirement: Terminal cleanup survives process interruption
 
 Once a transaction has completed its projection and required supervisor binding,
