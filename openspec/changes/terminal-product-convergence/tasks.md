@@ -37,6 +37,29 @@
 ## 5. Native Lifecycle and Resource Ownership
 
 - [ ] 5.1 Model install, upgrade, reload, rollback, recovery, and uninstall as one transaction state machine with explicit preconditions, durable transitions, terminal states, and one mutation lock; remove parallel lifecycle paths.
+
+    Transaction-completion slice: normal finalization and interrupted recovery
+    now share the existing installed-state, predecessor retention, pruning, and
+    journal cleanup owner. The duplicate normal-path implementation is deleted.
+    A RED regression showed that a completed upgrade object could remove the
+    next transaction's journal. Recovery also left old in-memory controllers
+    capable of overwriting or removing a later transaction's state. Every
+    mutation now requires the object's transaction identity to match the current
+    validated journal; finalized objects cannot roll back, and recovery-required
+    objects defer to runtime-aware recovery. Focused tests cover all five stale
+    mutation paths, preservation of the next journal and installed bytes, normal
+    and recovered completion, and cleanup failures. They pass with 434 tests and
+    144 subtests; three artifact-only CLI tests remain skipped in this source
+    run. Strict Ruff and all-platform Python 3.12 type checks pass. Evidence:
+    `/private/tmp/proxy-finalization-owner.e8iHu2/`. No module, framework, public
+    command, or native-service change was added. The full repository gate then
+    passed: governance, strict lint/type checks, and installed-wheel Python
+    3.12, 3.13, and 3.14 suites each passed 1,048 tests, with three artifact-only
+    CLI skips and 22 explicitly excluded native/toolchain tests. Combined
+    statement/branch coverage is 97.07%. The source implementation shrank by
+    39 lines. Packaged and cross-platform runtime evidence for this slice
+    remain pending; installed 3.1.16 retained its exact payload and listener.
+
 - [ ] 5.2 Make payload generation, manifest, command projection, transaction journal, rollback snapshot, service declaration, listener, watchdog, and handoff child each have exact ownership identity and one cleanup owner.
 
     Candidate-failure slice: a failing integrity check exposed an orphaned

@@ -172,6 +172,87 @@ ROOT = Path(__file__).resolve().parents[2]
 class TestPayloadTransaction:
     """Receipt-bound payload transaction lifecycle and recovery contracts."""
 
+    @pytest.mark.parametrize("previous_release", [None, "1.2.2"])
+    def test_finalized_transaction_cannot_rollback_its_committed_payload(
+        self, tmp_path: Path, previous_release: str | None, *, mocker
+    ) -> None:
+        """A consumed transaction cannot mutate its completed installation."""
+        ctx = install_context(tmp_path)
+        if previous_release is not None:
+            install_payload(ctx, previous_release, mocker=mocker)
+        transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        transaction.commit_projection()
+        transaction.activate()
+        transaction.finalize({"pid": 123})
+        root = Path(ctx.install_dir)
+        before = _retained_carrier_snapshot(root, Path(ctx.command))
+        installed = payload_state.installed_path(ctx).read_bytes()
+        command_target = Path(ctx.command).resolve(strict=True)
+
+        with pytest.raises(errors.InstallError, match="finalized"):
+            transaction.rollback()
+
+        assert _retained_carrier_snapshot(root, Path(ctx.command)) == before
+        assert payload_state.installed_path(ctx).read_bytes() == installed
+        assert Path(ctx.command).resolve(strict=True) == command_target
+        assert not payload_state.transaction_root(ctx).exists()
+
+    def test_consumed_transaction_preserves_the_next_transaction(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """An old upgrade capability cannot close a later writer's journal."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.1", mocker=mocker)
+        completed = install_payload(ctx, "1.2.2", mocker=mocker)
+        pending = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        journal = payload_state.journal_path(ctx).read_bytes()
+
+        with pytest.raises(errors.InstallError, match="finalized"):
+            completed.rollback()
+
+        assert payload_state.journal_path(ctx).read_bytes() == journal
+        pending.rollback()
+
+    @pytest.mark.parametrize(
+        "operation", ["materialize", "activate", "finalize", "rollback", "preserve"]
+    )
+    def test_recovered_transaction_cannot_mutate_the_next_transaction(
+        self, tmp_path: Path, operation: str, *, mocker
+    ) -> None:
+        """Recovery consumes the journal authority of any surviving controller."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.1", mocker=mocker)
+        completed = begin_transaction(ctx, released_artifact("1.2.2"), mocker=mocker)
+        if operation == "materialize":
+            assert recover_transaction(ctx, runtime=None)["state"] == "closed"
+        else:
+            completed.commit_projection()
+            if operation != "activate":
+                completed.activate()
+            candidate = listener_identity.committed_payload(Path(completed.context.executable))
+            assert candidate is not None
+            assert (
+                recover_transaction(ctx, runtime=recovery_runtime(candidate))["state"]
+                == "finalized"
+            )
+        pending = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        journal = payload_state.journal_path(ctx).read_bytes()
+        before = _retained_carrier_snapshot(Path(ctx.install_dir), Path(ctx.command))
+
+        actions: dict[str, Callable[[], None]] = {
+            "materialize": completed.commit_projection,
+            "activate": completed.activate,
+            "finalize": lambda: completed.finalize({"pid": 123}),
+            "rollback": completed.rollback,
+            "preserve": lambda: completed.preserve_for_recovery("interrupted controller"),
+        }
+        with pytest.raises(errors.InstallError, match="no longer owns"):
+            actions[operation]()
+
+        assert payload_state.journal_path(ctx).read_bytes() == journal
+        assert _retained_carrier_snapshot(Path(ctx.install_dir), Path(ctx.command)) == before
+        pending.rollback()
+
     def test_begin_accepts_only_opaque_released_payload_not_a_raw_path(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         with pytest.raises((TypeError, errors.InstallError)):
@@ -1621,7 +1702,7 @@ class TestPayloadTransaction:
             runtime=None,
             bind_terminal=bind_terminal,
         ) == {"state": "not_required"}
-        candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         assert (
             recover_transaction(
                 ctx,
@@ -1632,7 +1713,7 @@ class TestPayloadTransaction:
         )
 
         bind_terminal.assert_not_called()
-        candidate.rollback()
+        assert not payload_state.transaction_root(ctx).exists()
 
     def test_recovery_finalizes_an_activated_fresh_candidate(
         self, tmp_path: Path, *, mocker
