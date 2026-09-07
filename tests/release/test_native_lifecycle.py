@@ -9,9 +9,11 @@ from pathlib import Path
 
 import pytest
 
+from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import state as payload_state
+from codex_responses_proxy.lifecycle import transaction as payload_transaction
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.runtime.process_environment import native_process_environment
@@ -203,15 +205,11 @@ class TestSignedNativeLifecycle:
             )
             assert not install.exists()
 
-            transaction_id = "a" * 32
-            payload_state.write_journal(
+            payload_transaction.begin_transaction(
                 ctx,
-                fresh=True,
-                receipt_sha256="0" * 64,
-                state="prepared",
-                transaction_id=transaction_id,
-                version=current_version,
+                artifact.admit(current_asset, trust_anchor=anchor),
             )
+            transaction_id = payload_state.read_journal(ctx)["transaction_id"]
             recovered = run_command(
                 executable, environment, "recover", "--port", str(port), "--json"
             )
@@ -221,6 +219,7 @@ class TestSignedNativeLifecycle:
                 "version": current_version,
             }
             assert not payload_state.transaction_root(ctx).exists()
+            assert not payload_state.journal_path(ctx).exists()
         assert native_service_projection(ctx) == isolated_before
         assert native_service_projection(canonical_ctx) == canonical_service_before
         assert process.listener_pids(runtime_config.DEFAULT_PORT) == canonical_before
