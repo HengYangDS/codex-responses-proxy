@@ -1260,19 +1260,43 @@ class TestPayloadTransaction:
 
         assert command.status(command_path, prior_target)["state"] == "owned"
 
-    def test_failed_commit_rolls_back_before_propagating(self, *, mocker) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
-        install_payload(ctx, "1.2.2", mocker=mocker)
-        before = Path(ctx.executable).read_bytes()
+    @pytest.mark.parametrize("upgrading", [False, True])
+    @pytest.mark.parametrize("failure", ["integrity", "runtime-spec", "interrupted-prewarm"])
+    def test_failed_commit_rolls_back_before_propagating(
+        self, tmp_path: Path, upgrading: bool, failure: str, *, mocker
+    ) -> None:
+        ctx = install_context(tmp_path)
+        if upgrading:
+            install_payload(ctx, "1.2.2", mocker=mocker)
+        before = Path(ctx.executable).read_bytes() if upgrading else None
+        selection = payload_generation.read(ctx)
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
-        mocker.patch.object(
-            payload_projection,
-            "verify_payload_manifest",
-            return_value=(False, "tampered"),
-        )
-        with pytest.raises(errors.InstallError, match="integrity check failed"):
+        failure_type: type[BaseException] = errors.InstallError
+        match failure:
+            case "integrity":
+                mocker.patch.object(
+                    payload_projection,
+                    "verify_payload_manifest",
+                    return_value=(False, "tampered"),
+                )
+            case "runtime-spec":
+                failure_type = OSError
+                mocker.patch.object(
+                    payload_transaction.runtime_spec, "write", side_effect=OSError("disk failure")
+                )
+            case "interrupted-prewarm":
+                failure_type = KeyboardInterrupt
+                mocker.patch.object(
+                    payload_transaction.payload_candidate, "prewarm", side_effect=KeyboardInterrupt
+                )
+        with pytest.raises(failure_type):
             transaction.commit_projection()
-        assert Path(ctx.executable).read_bytes() == before
+        if before is not None:
+            assert Path(ctx.executable).read_bytes() == before
+        else:
+            assert not Path(ctx.executable).exists()
+        assert payload_generation.read(ctx) == selection
+        assert not Path(transaction.context.payload_dir).exists()
         assert not Path(payload_state.transaction_root(ctx)).exists()
 
     def test_upgrade_rollback_restores_payload_receipt_and_installed_state_exactly(
