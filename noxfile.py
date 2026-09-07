@@ -6,6 +6,7 @@ import os
 import platform
 import re
 import socket
+import sys
 import tempfile
 import tomllib
 from pathlib import Path
@@ -264,15 +265,7 @@ def performance(session: nox.Session) -> None:
 def governance(session: nox.Session) -> None:
     """Run the repository governance graph with the locked external toolchain."""
     session.run(
-        "mise",
-        "exec",
-        "--locked",
-        "--",
-        "uv",
-        "run",
-        "--locked",
-        "--no-sync",
-        "python",
+        sys.executable,
         "-m",
         "tools.quality.governance",
         *session.posargs,

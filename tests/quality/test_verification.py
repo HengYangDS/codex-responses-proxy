@@ -6,8 +6,10 @@ import ast
 import os
 import re
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 import yaml
@@ -15,6 +17,12 @@ from pytest_mock import MockerFixture
 
 from tests.quality.fixtures import ROOT
 from tests.quality.fixtures import load as _load
+
+
+@pytest.fixture(scope="module")
+def nox_configuration() -> ModuleType:
+    """Register the repository's Nox sessions once per test module."""
+    return _load("codex_responses_proxy_noxfile", "noxfile.py")
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
@@ -446,10 +454,55 @@ class TestVerificationContracts:
         assert '_install_tools(session, "quality", "release")' in release_session
 
     def test_developer_bootstrap_installs_product_and_quality_groups(self) -> None:
+        toolchain = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+        environment = toolchain["env"]
+        assert environment["UV_PROJECT_ENVIRONMENT"] == "{{config_root}}/.venv"
+        assert environment["VIRTUAL_ENV"] is False
+        assert environment["UV_PYTHON"] is False
+        assert environment["PYTHONHOME"] is False
+        assert environment["PYTHONPATH"] is False
+        assert environment["PYTHONNOUSERSITE"] == "1"
+        assert toolchain["tasks"]["bootstrap"]["run"] == [
+            'uv sync --locked --all-groups --python "{{tools.python.path}}"',
+            "npm ci --ignore-scripts",
+            "npm audit signatures",
+        ]
         for relative in ("AGENTS.md", "CONTRIBUTING.md", "README.md"):
             source = (ROOT / relative).read_text(encoding="utf-8")
-            assert "uv sync --locked --all-groups" in source
-            assert "uv sync --locked --only-group quality" not in source
+            assert "mise run bootstrap" in source
+            assert "mise run check" in source
+
+    @pytest.mark.parametrize(
+        ("task", "session"),
+        [
+            ("quick", "quick"),
+            ("check", "full"),
+            ("native", "release"),
+            ("release", "release_asset"),
+        ],
+    )
+    def test_developer_tasks_delegate_to_existing_verification(
+        self, task: str, session: str
+    ) -> None:
+        toolchain = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+        assert toolchain["tasks"][task]["run"] == (
+            'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s ' + session
+        )
+
+    def test_governance_reuses_the_admitted_interpreter(
+        self, mocker: MockerFixture, nox_configuration: ModuleType
+    ) -> None:
+        session = mocker.Mock(posargs=[])
+
+        nox_configuration.governance(session)
+
+        session.run.assert_called_once_with(
+            sys.executable,
+            "-m",
+            "tools.quality.governance",
+            external=True,
+            env=nox_configuration._environment(),
+        )
 
     def test_repository_declares_the_supported_python_matrix_once(self) -> None:
         assert (ROOT / ".python-versions").read_text(encoding="utf-8") == "3.12\n3.13\n3.14\n"
@@ -577,26 +630,27 @@ class TestVerificationContracts:
         ]
         assert ast.literal_eval(assignment.value) == "py"
 
-    def test_release_runtime_uses_the_session_interpreter(self, mocker: MockerFixture) -> None:
+    def test_release_runtime_uses_the_session_interpreter(
+        self, mocker: MockerFixture, nox_configuration: ModuleType
+    ) -> None:
         """Compare the release session interpreter, not the Nox launcher."""
 
-        module = _load("codex_responses_proxy_noxfile", "noxfile.py")
         session = mocker.Mock()
         session.run.return_value = "3.14.7\n"
 
-        module._assert_release_runtime(session)
+        nox_configuration._assert_release_runtime(session)
 
         session.run.assert_called_once_with(
             "python",
             "-c",
             "import platform; print(platform.python_version())",
-            env=module._environment(),
+            env=nox_configuration._environment(),
             silent=True,
         )
         session.run.return_value = "3.14.6\n"
         session.error.side_effect = RuntimeError
         with pytest.raises(RuntimeError):
-            module._assert_release_runtime(session)
+            nox_configuration._assert_release_runtime(session)
 
     def test_forge_quality_jobs_use_the_locked_runner(self) -> None:
         github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
