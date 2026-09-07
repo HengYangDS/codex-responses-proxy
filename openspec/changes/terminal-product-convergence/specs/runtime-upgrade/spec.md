@@ -17,6 +17,23 @@ substitute for native product evidence.
 - **AND** teardown leaves no owned service, process, transaction, payload,
   command, temporary carrier, or host-configuration residue.
 
+### Requirement: Terminal cleanup survives process interruption
+
+Once a transaction has completed its projection and required supervisor binding,
+its terminal outcome SHALL survive partial removal of transaction-owned
+resources. Recovery SHALL continue disposal without repeating those completed
+effects or depending on a payload or snapshot already removed. Transaction
+authority SHALL remain available until disposal completes, and a new transaction
+SHALL wait for that completion.
+
+#### Scenario: Cleanup is interrupted after terminal effects
+
+- **WHEN** cleanup fails after removing part of a discarded generation, a
+  rollback snapshot, or the entire temporary transaction directory
+- **THEN** a new process completes only the remaining owned cleanup
+- **AND** selected payloads, installed metadata, command projection, and native
+  supervision remain unchanged.
+
 ### Requirement: Capable handoff preserves request admission
 
 A runtime-to-runtime handoff that advertises the admission-preserving capability

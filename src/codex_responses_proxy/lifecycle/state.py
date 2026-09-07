@@ -15,9 +15,9 @@ from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import inventory
 
-TRANSACTION_JOURNAL_FILENAME = "transaction.json"
 INSTALLED_RELEASE_STATE_SCHEMA = 1
-TRANSACTION_JOURNAL_SCHEMA = 3
+TRANSACTION_JOURNAL_SCHEMA = 4
+TERMINAL_STATES = frozenset({"closed", "rolled_back", "finalized"})
 _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
 
@@ -32,14 +32,15 @@ def installed_path(ctx: runtime_context.RuntimeContext) -> Path:
 
 
 def journal_path(ctx: runtime_context.RuntimeContext) -> Path:
-    """Return the active payload transaction journal path."""
-    return transaction_root(ctx) / TRANSACTION_JOURNAL_FILENAME
+    """Keep transaction authority outside its disposable snapshot directory."""
+    return Path(f"{transaction_root(ctx)}.json")
 
 
 def status(ctx: runtime_context.RuntimeContext) -> dict[str, object] | None:
     """Return the bounded identity of one active transaction."""
     root = transaction_root(ctx)
-    if not root.exists() and not root.is_symlink():
+    journal = journal_path(ctx)
+    if not any(path.exists() or path.is_symlink() for path in (root, journal)):
         return None
     try:
         journal = read_journal(ctx)
@@ -63,7 +64,7 @@ def read_journal(ctx: runtime_context.RuntimeContext) -> JsonObject:
     root = transaction_root(ctx)
     if root.is_symlink():
         raise errors.InstallError("payload transaction root is a symbolic link")
-    if not root.is_dir():
+    if root.exists() and not root.is_dir():
         raise errors.InstallError("payload transaction root is not a directory")
     path = journal_path(ctx)
     if path.is_symlink():
@@ -107,7 +108,7 @@ def read_journal(ctx: runtime_context.RuntimeContext) -> JsonObject:
         not required.issubset(journal)
         or set(journal) - allowed
         or journal.get("state")
-        not in {"prepared", "materialized", "activated", "recovery_required"}
+        not in {"prepared", "materialized", "activated", "recovery_required"} | TERMINAL_STATES
         or not isinstance(transaction_id, str)
         or len(transaction_id) != 32
         or any(character not in "0123456789abcdef" for character in transaction_id)
@@ -143,6 +144,8 @@ def read_journal(ctx: runtime_context.RuntimeContext) -> JsonObject:
         or (journal.get("state") != "recovery_required" and phase is not None)
     ):
         raise errors.InstallError("payload transaction journal fields are invalid")
+    if not root.exists() and journal["state"] not in TERMINAL_STATES:
+        raise errors.InstallError("payload transaction root is not a directory")
     return journal
 
 
