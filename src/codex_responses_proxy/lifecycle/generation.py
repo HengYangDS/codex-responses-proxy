@@ -2,19 +2,14 @@
 
 from __future__ import annotations
 
-import os
 import shutil
-from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import owned_files
-from codex_responses_proxy.lifecycle import projection
-from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle import state
-from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import inventory
@@ -88,7 +83,7 @@ def read(ctx: runtime_context.RuntimeContext) -> Selection | None:
 def selected_context(
     ctx: runtime_context.RuntimeContext,
 ) -> runtime_context.RuntimeContext:
-    """Return the active generation context, or the legacy bootstrap context."""
+    """Return the active generation context, or the uninitialized install context."""
     selection = read(ctx)
     return context(ctx, selection.active) if selection is not None else ctx
 
@@ -156,132 +151,6 @@ def select(
         mode=0o600,
         root=Path(ctx.install_dir),
     )
-
-
-def materialize_legacy_projection(
-    ctx: runtime_context.RuntimeContext,
-    source: Path,
-    generation: str,
-    present: Mapping[str, tuple[str, int]],
-) -> runtime_context.RuntimeContext:
-    """Copy one verified legacy snapshot into an immutable generation."""
-    target = path(ctx, generation)
-    projected = context(ctx, generation)
-    if target.is_dir() and not target.is_symlink():
-        _require_snapshot_projection(target, present)
-        return projected
-    if target.exists() or target.is_symlink() or source.is_symlink() or not source.is_dir():
-        raise errors.InstallError("predecessor payload generation source is invalid")
-    staging = target.with_name(f".{target.name}.staging")
-    if staging.exists() or staging.is_symlink():
-        if staging.is_symlink() or not staging.is_dir():
-            raise errors.InstallError("predecessor payload generation staging is invalid")
-        shutil.rmtree(staging)
-    staging.mkdir(parents=True, mode=0o700)
-    try:
-        for relative, (expected_sha256, expected_mode) in sorted(present.items()):
-            source_file = owned_files.regular_file(source, relative, "predecessor snapshot")
-            if (
-                digest.sha256_file(source_file) != expected_sha256
-                or source_file.stat(follow_symlinks=False).st_mode & 0o777 != expected_mode
-            ):
-                raise errors.InstallError(f"predecessor payload snapshot changed: {relative}")
-            target_file = owned_files.path(staging, relative)
-            target_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source_file, target_file, follow_symlinks=False)
-            os.chmod(target_file, expected_mode)
-        staging_executable = inventory.installed_executable(
-            str(staging),
-            windows=inventory.WINDOWS_EXECUTABLE in present,
-        )
-        runtime_spec.write(
-            replace(
-                projected,
-                install_dir=str(target),
-                executable=staging_executable,
-            )
-        )
-        _require_snapshot_projection(staging, present, runtime_root=target)
-        os.replace(staging, target)
-    except OSError as exc:
-        shutil.rmtree(staging, ignore_errors=True)
-        raise errors.InstallError("legacy payload migration failed") from exc
-    except BaseException:
-        shutil.rmtree(staging, ignore_errors=True)
-        raise
-    _require_snapshot_projection(target, present)
-    return projected
-
-
-def retire_legacy_projection(
-    source: Path,
-    present: Mapping[str, tuple[str, int]],
-) -> None:
-    """Remove the verified flat payload after its generation is durable."""
-    for relative in sorted(
-        present,
-        key=lambda value: len(Path(value).parts),
-        reverse=True,
-    ):
-        target = owned_files.path(source, relative)
-        if not target.exists() and not target.is_symlink():
-            continue
-        expected_sha256, expected_mode = present[relative]
-        target = owned_files.regular_file(source, relative, "legacy payload retirement")
-        if (
-            digest.sha256_file(target) != expected_sha256
-            or target.stat(follow_symlinks=False).st_mode & 0o777 != expected_mode
-        ):
-            raise errors.InstallError(f"legacy payload changed before retirement: {relative}")
-        try:
-            target.unlink()
-        except OSError as exc:
-            raise errors.InstallError(f"legacy payload retirement failed: {relative}") from exc
-    projection.remove_empty_owned_directories(source, set(present))
-
-
-def _require_snapshot_projection(
-    target: Path,
-    present: Mapping[str, tuple[str, int]],
-    *,
-    runtime_root: Path | None = None,
-) -> None:
-    """Require one generation to be the exact declared legacy snapshot."""
-    runtime_root = target if runtime_root is None else runtime_root
-    expected_files = set(present) | {inventory.RUNTIME_CONFIG_FILENAME}
-    actual = {
-        item.relative_to(target).as_posix()
-        for item in target.rglob("*")
-        if item.is_file() or item.is_symlink()
-    }
-    if actual != expected_files:
-        raise errors.InstallError("predecessor payload generation inventory is invalid")
-    for relative, (expected_sha256, expected_mode) in present.items():
-        item = owned_files.regular_file(target, relative, "predecessor payload generation")
-        if relative == inventory.RUNTIME_CONFIG_FILENAME:
-            configured_root = owned_files.read_canonical_json(
-                item,
-                "predecessor runtime configuration",
-            ).get("install_dir")
-            if configured_root != str(runtime_root) or (
-                item.stat(follow_symlinks=False).st_mode & 0o777 != expected_mode
-            ):
-                raise errors.InstallError("predecessor runtime configuration is invalid")
-            continue
-        if (
-            digest.sha256_file(item) != expected_sha256
-            or item.stat(follow_symlinks=False).st_mode & 0o777 != expected_mode
-        ):
-            raise errors.InstallError(f"predecessor payload generation changed: {relative}")
-    if target == runtime_root:
-        environment = runtime_spec.environment(target / inventory.RUNTIME_CONFIG_FILENAME)
-        if environment[runtime_config.HOME_ENV] != str(runtime_root):
-            raise errors.InstallError("predecessor runtime configuration is invalid")
-    executable = inventory.installed_executable(
-        str(target), windows=inventory.WINDOWS_EXECUTABLE in present
-    )
-    if identity.committed_payload(Path(executable)) is None:
-        raise errors.InstallError("predecessor payload generation is invalid")
 
 
 def clear(ctx: runtime_context.RuntimeContext) -> None:

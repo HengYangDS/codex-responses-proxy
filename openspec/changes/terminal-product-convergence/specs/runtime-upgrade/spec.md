@@ -90,3 +90,13 @@ bypass, and tests SHALL be deleted.
 - **WHEN** current code cannot prove its exact ownership and safe transition
 - **THEN** the public command reports the bounded removal or reinstall action
 - **AND** no compatibility inference or permissive fallback mutates it.
+
+#### Scenario: An installed payload has no generation selector
+
+- **WHEN** an upgrade encounters installed metadata without a durable generation
+  selector
+- **THEN** it requests explicit uninstall and fresh installation before creating
+  a transaction or changing payload, command, or service state
+- **AND** fresh installation creates only its command rollback record, while
+  current-layout upgrade and rollback reuse the selected immutable generations
+  without a parallel payload snapshot or layout migration.
