@@ -39,6 +39,13 @@ End users need only:
 Python, a source checkout, Git, and Forge credentials are not runtime
 requirements.
 
+Linux installation requires a reachable systemd user manager. A container without
+that user session is not a supported service host. Installation reports
+`native_service_unavailable` and rolls back its payload and command projection;
+it does not start a session-only background process or require payload recovery.
+Enable the user service environment before retrying. If the service manager is
+unreachable, `status` reports the service as `unknown`, not proven absent.
+
 ## Install
 
 ```bash

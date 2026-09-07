@@ -104,11 +104,11 @@ class ProductAssemblyError(ProductError):
         )
 
 
-class ManualStartRequiredError(ProductError):
-    """Report that durable service persistence could not be established."""
+class NativeServiceUnavailableError(InstallError):
+    """Reject native service admission before service or process mutation."""
 
-    code = "manual_start_required"
+    code = "native_service_unavailable"
 
     def __init__(self, message: str) -> None:
-        """Direct a host without durable supervision to observed status."""
-        super().__init__(message, next_command=product_identity.command("status"))
+        """Direct an unsupported service environment to installation requirements."""
+        super().__init__(message, next_command=product_identity.command("install", "--help"))

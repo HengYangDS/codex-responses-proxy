@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from contextlib import ExitStack
 from pathlib import Path
 
@@ -38,6 +39,83 @@ pytestmark = [
 
 class TestSignedNativeLifecycle:
     """Prove the public native lifecycle without touching the canonical service."""
+
+    @pytest.mark.skipif(sys.platform != "linux", reason="Linux user-service boundary")
+    def test_unavailable_user_bus_leaves_no_installation(self, tmp_path: Path) -> None:
+        executable = Path(os.environ["CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE"]).resolve(
+            strict=True
+        )
+        home, install, state = (tmp_path / name for name in ("home", "payload", "state"))
+        home.mkdir()
+        runtime_directory = home / "run"
+        runtime_directory.mkdir(mode=0o700)
+        port = free_port()
+        ctx = runtime_context_for(home, install, state, port)
+        environment = native_process_environment(
+            user_home=home, install_root=install, state_root=state
+        )
+        environment.update(
+            XDG_RUNTIME_DIR=str(runtime_directory),
+            DBUS_SESSION_BUS_ADDRESS=f"unix:path={runtime_directory / 'bus'}",
+        )
+        observation = subprocess.run(
+            ["systemctl", "--user", "show", "--property=SystemState", "--value"],
+            env=environment,
+            capture_output=True,
+            check=False,
+            timeout=release_fixtures.COMMAND_TIMEOUT_SECONDS,
+        )
+        assert observation.returncode != 0
+        key = tmp_path / "release-key"
+        subprocess.run(
+            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)],
+            check=True,
+        )
+        public_key = key.with_suffix(".pub").read_text(encoding="ascii").strip()
+        trust = f'{signing.PRINCIPAL} namespaces="{signing.NAMESPACE}" {public_key}'
+        anchor = tmp_path / "allowed-signers"
+        anchor.write_text(trust + "\n", encoding="ascii")
+        asset = signed_asset(
+            executable.parent,
+            tmp_path / "assets",
+            version=(ROOT / "VERSION").read_text(encoding="ascii").strip(),
+            upstream_url="http://127.0.0.1:1",
+            key=key,
+            trust=trust,
+        )
+
+        result = run_command(
+            executable,
+            environment,
+            "install",
+            "--asset",
+            str(asset),
+            "--trust-anchor",
+            str(anchor),
+            "--port",
+            str(port),
+            "--json",
+            expected=2,
+        )
+        assert result == {
+            "error": {
+                "code": "native_service_unavailable",
+                "message": (
+                    "a reachable systemd user manager is required for Linux installation; "
+                    "enable a systemd user session and retry installation"
+                ),
+                "next": "codex-responses-proxy install --help",
+            }
+        }
+        observed = run_command(executable, environment, "status", "--port", str(port), "--json")
+        assert observed["payload_transaction"] is None
+        assert observed["runtime"] is None
+        assert observed["listener_pids"] == []
+        assert observed["command"] == {"kind": None, "path": ctx.command, "state": "absent"}
+        assert not install.exists()
+        assert not payload_state.journal_path(ctx).exists()
+        assert not payload_state.transaction_root(ctx).exists()
+        assert not any(path.is_file() or path.is_symlink() for path in home.rglob("*"))
 
     def test_signed_fresh_lifecycle_is_transactional(self, tmp_path: Path) -> None:
         executable_value = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
