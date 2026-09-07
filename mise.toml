@@ -13,3 +13,35 @@ uv = "0.12.7"
 "github:gitleaks/gitleaks" = "8.30.1"
 "github:lycheeverse/lychee" = "lychee-v0.24.2"
 "github:rhysd/actionlint" = "1.7.12"
+
+[env]
+UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
+VIRTUAL_ENV = false
+UV_PYTHON = false
+PYTHONHOME = false
+PYTHONPATH = false
+PYTHONNOUSERSITE = "1"
+
+[tasks.bootstrap]
+description = "Install the locked Python and Node development dependencies"
+run = [
+  'uv sync --locked --all-groups --python "{{tools.python.path}}"',
+  "npm ci --ignore-scripts",
+  "npm audit signatures",
+]
+
+[tasks.quick]
+description = "Run the editing feedback loop"
+run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s quick'
+
+[tasks.check]
+description = "Run repository governance, quality, and Python compatibility gates"
+run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s full'
+
+[tasks.native]
+description = "Verify the native artifact and real host service lifecycle"
+run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s release'
+
+[tasks.release]
+description = "Build and verify the native release asset without service registration"
+run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s release_asset'

@@ -31,30 +31,36 @@ Bootstrap once:
 
 ```bash
 mise install --locked
-mise exec --locked -- npm ci --ignore-scripts
-mise exec --locked -- npm audit signatures
-mise exec --locked -- uv sync --locked --all-groups
+mise run bootstrap
 ```
 
 `mise.toml` and `mise.lock` own language runtimes and standalone executables.
 `package.json` and `package-lock.json` own OpenSpec, Prettier, and their complete
 npm graph. Governance invokes Node tools through `npm exec --offline`, so local,
 GitHub, GitLab, POSIX, and Windows use the same repository installation.
-`mise exec --locked --` is the supported executable-selection boundary. uv owns
-the current worktree's `.venv`, and Nox owns disposable `.nox/<session>`
-environments. Download caches may be shared; mutable environments are local to
-their worktree or Nox session.
+The `mise.toml` tasks pass the exact mise Python installation to uv and bind the
+project environment to this worktree's `.venv`. An activated environment or
+inherited Python override does not select the development interpreter. Nox owns
+disposable `.nox/<session>` environments and selects compatibility interpreters
+independently. Download caches may be shared; mutable environments are local to
+their worktree or Nox session. Repeat bootstrap after dependency locks change;
+editing checks do not reinstall Node dependencies.
 
 Run the repository-owned gates:
 
 ```bash
-mise exec --locked -- uv run --locked --no-sync nox -s full
-mise exec --locked -- uv run --locked --no-sync nox -s release
+mise run quick
+mise run check
 ```
 
-`quick` is the editing feedback loop. `full` is the admission owner and avoids
+`quick` is the editing feedback loop. `check` calls Nox's `full` admission and avoids
 rerunning `quick` or the Python 3.12 behavior inventory already exercised by
 strict branch-aware coverage.
+
+`mise run release` builds and verifies a native release asset without service
+registration. `mise run native` additionally exercises the real host service
+lifecycle; run it only on an explicitly authorized test host. Neither task
+publishes a release or upgrades an installed product.
 
 Nox installs a non-editable wheel in isolated environments. Do not add
 `PYTHONPATH`, user-site fallback, or another repository's virtual environment
@@ -114,6 +120,12 @@ credentials, host paths, or Forge identity.
 Tests mirror these semantic packages. New generic buckets, forwarding modules,
 compatibility aliases, and one-caller abstractions require an independently
 proved invariant; otherwise delete them.
+
+Design deep modules: a small intent-oriented interface owns the corresponding
+invariants, effects, rollback, and cleanup. Callers should not coordinate private
+steps or repeat its policy. Split at independent responsibilities, not arbitrary
+file-size targets; merge layers that only forward arguments without hiding
+meaningful complexity.
 
 Before adding any file, directory, schema, carrier, helper, abstraction, state,
 or compatibility path, establish all three conditions:

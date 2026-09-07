@@ -248,17 +248,16 @@ chain. These commands are DX, not product UX:
 
 ```bash
 mise install --locked
-mise exec --locked -- uv sync --locked --all-groups
-mise exec --locked -- uv run --locked --no-sync nox -s full
-mise exec --locked -- uv run --locked --no-sync nox -s release
+mise run bootstrap
+mise run check
 ```
 
-`mise exec --locked --` selects the repository toolchain. uv owns this
-worktree's `.venv`; Nox owns its isolated `.nox/<session>` verification
-environments. Use `mise exec --locked -- uv run --locked --no-sync nox -s
-quick` while editing. `full` is the non-redundant admission graph: repository
-governance, strict quality and Python 3.12 coverage, then complete compatibility
-runs on Python 3.13 and 3.14.
+The tasks in `mise.toml` select the locked Python installation and this
+worktree's `.venv`; Nox owns isolated `.nox/<session>` verification environments.
+Use `mise run quick` while editing. `check` runs repository governance, strict
+quality and Python 3.12 coverage, then Python 3.13 and 3.14 compatibility.
+`mise run release` verifies a native release asset; `mise run native` also
+exercises real host services and requires an authorized test host.
 
 See [CONTRIBUTING](CONTRIBUTING.md) for source verification and release work.
 

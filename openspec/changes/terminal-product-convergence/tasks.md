@@ -88,7 +88,23 @@
 
 ## 8. Development Environment and Supply Chain
 
-- [ ] 8.1 Define `mise` as the sole cross-platform developer entrypoint and provide minimal `bootstrap`, `check`, `native`, and `release` tasks that call existing ecosystem owners rather than shell wrappers.
+- [x] 8.1 Define `mise` as the sole cross-platform developer entrypoint and provide minimal `bootstrap`, `check`, `native`, and `release` tasks that call existing ecosystem owners rather than shell wrappers.
+
+    - The tool-native tasks now own bootstrap and the existing Nox entrypoints;
+      `quick` is the editing loop, `native` includes real host service acceptance,
+      and `release` verifies an asset without service registration. No production
+      module, shell wrapper, dependency, or parallel verification graph was added.
+      On macOS, a clean source copy with an empty HOME and a path containing spaces
+      bootstrapped twice despite hostile ambient interpreter and environment
+      settings. Python resolved to the exact mise 3.14.7 installation; this copy
+      owned its `.venv` and `node_modules`, the foreign environment stayed intact,
+      and all three lock hashes remained unchanged. Nox governance now reuses its
+      admitted interpreter instead of repeating mise/uv discovery; the resulting
+      Python mismatch warning is eliminated. The 27 verification contracts and
+      focused governance gate passed. Evidence: `/private/tmp/proxy-bootstrap.2lG0MZ/`.
+      Native Linux/Windows execution and the broader isolation claims in 8.2/8.3
+      remain open; shared tool/download caches were intentionally retained.
+
 - [ ] 8.2 Prove a clean Work Lane reconstructs independent `.venv`, `.nox`, `node_modules`, build, coverage, and temporary state from locks while sharing only content-addressed mise, uv, npm, and Python caches.
 - [ ] 8.3 Remove ambient interpreter, user-site, global mise configuration, system package, and another repository environment from local and hosted success paths; verify empty-HOME and empty-project-cache bootstrap.
 - [ ] 8.4 Online-audit every direct runtime, development, OpenSpec, Python, Node, mise, uv, Nox, packaging, documentation, CI Action, and release dependency; advance each to its current stable compatible version in its existing SSOT.
