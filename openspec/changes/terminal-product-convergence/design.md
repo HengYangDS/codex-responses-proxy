@@ -133,6 +133,15 @@ generation, and transaction. Successful, failed, timed-out, and interrupted
 tests prove no net native-resource growth and preserve unrelated canonical
 installations.
 
+The transaction journal is one sibling file outside the disposable transaction
+directory. After projection and required supervisor binding finish, the
+transaction persists its terminal outcome before removing any candidate,
+obsolete generation, or rollback snapshot. Recovery of that outcome performs
+only disposal and deletes the journal last; it never replays terminal effects
+or requires an identity already discarded during cleanup. Interrupted cleanup
+continues to block a new transaction. Unrecognized journals and unowned roots
+remain protected, not inferred into a cleanup permission.
+
 A capability-qualified handoff transfers the listener without changing request
 admission: the predecessor stops accepting only when the successor is ready to
 serve, while already accepted handlers finish on the predecessor. Upgrade and

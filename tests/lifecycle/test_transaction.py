@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import multiprocessing
 import os
 import tempfile
 from collections.abc import Callable
@@ -65,6 +66,16 @@ def recover_transaction(
         runtime=runtime,
         bind_terminal=bind_terminal,
     )
+
+
+def _recover_without_binding(ctx: runtime_context.RuntimeContext, outcome: str) -> None:
+    """Exercise restart recovery in a fresh interpreter without native effects."""
+
+    def unexpected_binding(_ctx: runtime_context.RuntimeContext) -> None:
+        raise AssertionError("terminal cleanup repeated service binding")
+
+    result = recover_transaction(ctx, runtime=None, bind_terminal=unexpected_binding)
+    assert result["state"] == outcome
 
 
 def _retained_carrier_snapshot(root: Path, external_target: Path) -> tuple[object, ...]:
@@ -1480,6 +1491,177 @@ class TestPayloadTransaction:
         transaction.rollback()
         assert payload_state.journal_path(ctx).read_bytes() == journal
         pending.rollback()
+
+    @pytest.mark.parametrize("previous_release", [None, "1.2.2"])
+    @pytest.mark.parametrize("outcome", ["rolled_back", "finalized"])
+    @pytest.mark.parametrize("interruption", ["snapshot", "root", "journal"])
+    def test_recovery_finishes_interrupted_terminal_cleanup(
+        self,
+        tmp_path: Path,
+        previous_release: str | None,
+        outcome: str,
+        interruption: str,
+        *,
+        mocker,
+    ) -> None:
+        """Recovery survives a removed snapshot without reapplying terminal effects."""
+        ctx = install_context(tmp_path)
+        if previous_release is not None:
+            install_payload(ctx, previous_release, mocker=mocker)
+        transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        transaction.commit_projection()
+        transaction.activate()
+        projected = listener_identity.committed_payload(Path(transaction.context.executable))
+        assert projected is not None
+        runtime = recovery_runtime(projected, projected)
+        root = payload_state.transaction_root(ctx)
+        remove_tree = payload_transaction.shutil.rmtree
+        unlink = Path.unlink
+
+        def interrupt_cleanup(path: Path, *args, **kwargs) -> None:
+            if Path(path) == root:
+                if interruption == "snapshot":
+                    remove_tree(root / "rollback")
+                    raise PermissionError("interrupted terminal cleanup")
+                if interruption == "root":
+                    remove_tree(root)
+                    raise PermissionError("interrupted terminal cleanup")
+            remove_tree(path, *args, **kwargs)
+
+        def interrupt_journal(path: Path, *args, **kwargs) -> None:
+            if interruption == "journal" and path == payload_state.journal_path(ctx):
+                raise PermissionError("interrupted terminal cleanup")
+            unlink(path, *args, **kwargs)
+
+        cleanup = mocker.patch.object(
+            payload_transaction.shutil, "rmtree", side_effect=interrupt_cleanup
+        )
+        journal_cleanup = mocker.patch.object(Path, "unlink", interrupt_journal)
+        finish = (
+            (lambda: transaction.finalize(runtime))
+            if outcome == "finalized"
+            else transaction.rollback
+        )
+        with pytest.raises(errors.InstallError, match="cleanup failed"):
+            finish()
+        selection = payload_generation.read(ctx)
+        installed = payload_state.read_installed(ctx)
+        mocker.stop(cleanup)
+        mocker.stop(journal_cleanup)
+        journal = payload_state.journal_path(ctx).read_bytes()
+        with pytest.raises(errors.RecoveryRequiredError, match="complete payload recovery"):
+            begin_transaction(ctx, released_artifact("1.2.4"), mocker=mocker)
+        assert payload_state.journal_path(ctx).read_bytes() == journal
+
+        recovery = multiprocessing.get_context("spawn").Process(
+            target=_recover_without_binding, args=(ctx, outcome)
+        )
+        recovery.start()
+        try:
+            recovery.join(timeout=30)
+            assert recovery.exitcode == 0
+        finally:
+            if recovery.is_alive():
+                recovery.kill()
+                recovery.join()
+            recovery.close()
+
+        assert payload_generation.read(ctx) == selection
+        assert payload_state.read_installed(ctx) == installed
+        assert not root.exists()
+        assert not payload_state.journal_path(ctx).exists()
+        assert recover_transaction(ctx, runtime=None) == {"state": "not_required"}
+
+    @pytest.mark.parametrize("outcome", ["rolled_back", "finalized"])
+    def test_terminal_recovery_finishes_partially_removed_generation(
+        self, tmp_path: Path, outcome: str, *, mocker
+    ) -> None:
+        """Disposal does not need the already removed generation's payload identity."""
+        ctx = install_context(tmp_path)
+        oldest = install_payload(ctx, "1.2.1", mocker=mocker)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        transaction.commit_projection()
+        transaction.activate()
+        discarded = oldest if outcome == "finalized" else transaction
+        remove_tree = payload_transaction.shutil.rmtree
+
+        def interrupt_disposal(path: Path, *args, **kwargs) -> None:
+            if Path(path) == Path(discarded.context.payload_dir):
+                Path(discarded.context.executable).unlink()
+                raise PermissionError("interrupted generation disposal")
+            remove_tree(path, *args, **kwargs)
+
+        cleanup = mocker.patch.object(
+            payload_transaction.shutil, "rmtree", side_effect=interrupt_disposal
+        )
+        finish = transaction.finalize if outcome == "finalized" else transaction.rollback
+        with pytest.raises(errors.InstallError, match="generation"):
+            finish()
+        selection = payload_generation.read(ctx)
+        installed = payload_state.read_installed(ctx)
+        mocker.stop(cleanup)
+
+        _recover_without_binding(ctx, outcome)
+
+        assert payload_generation.read(ctx) == selection
+        assert payload_state.read_installed(ctx) == installed
+        assert not Path(discarded.context.payload_dir).exists()
+        assert payload_state.status(ctx) is None
+
+    @pytest.mark.parametrize("restart", [False, True])
+    def test_snapshot_failure_cleanup_remains_retryable(
+        self, tmp_path: Path, restart: bool, *, mocker
+    ) -> None:
+        """An incomplete snapshot has no rollback authority and needs only disposal."""
+        ctx = install_context(tmp_path)
+        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+        snapshot = mocker.patch.object(
+            command, "write_snapshot", side_effect=errors.InstallError("snapshot failed")
+        )
+        cleanup = mocker.patch.object(
+            payload_transaction.shutil, "rmtree", side_effect=PermissionError("cleanup failed")
+        )
+        with pytest.raises(errors.InstallError, match="cleanup failed"):
+            transaction.commit_projection()
+        mocker.stop(cleanup)
+        mocker.stop(snapshot)
+
+        if restart:
+            _recover_without_binding(ctx, "closed")
+        else:
+            transaction.rollback()
+
+        assert payload_state.status(ctx) is None
+        assert not Path(ctx.install_dir).exists()
+        assert not Path(ctx.command).exists()
+
+    @pytest.mark.parametrize("operation", ["activate", "preserve"])
+    def test_disposal_hold_cannot_reopen_a_terminal_transaction(
+        self, tmp_path: Path, operation: str, *, mocker
+    ) -> None:
+        """A surviving controller cannot overwrite a durable terminal outcome."""
+        ctx = install_context(tmp_path)
+        transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+        transaction.commit_projection()
+        cleanup = mocker.patch.object(
+            payload_transaction.shutil, "rmtree", side_effect=PermissionError("cleanup failed")
+        )
+        with pytest.raises(errors.InstallError, match="generation removal failed"):
+            transaction.rollback()
+        journal = payload_state.journal_path(ctx).read_bytes()
+        mocker.stop(cleanup)
+        action = (
+            transaction.activate
+            if operation == "activate"
+            else lambda: transaction.preserve_for_recovery("controller outcome unknown")
+        )
+
+        with pytest.raises(errors.InstallError, match="terminal"):
+            action()
+
+        assert payload_state.journal_path(ctx).read_bytes() == journal
+        transaction.rollback()
 
     def test_replay_and_downgrade_are_rejected_before_any_live_write(
         self, subtests, *, mocker

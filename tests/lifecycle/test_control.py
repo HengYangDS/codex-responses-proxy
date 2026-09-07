@@ -591,6 +591,28 @@ class TestControllerLifecycle:
             "detail": "payload transaction owns rollback finalization",
         }
 
+    @pytest.mark.parametrize("outcome", ["closed", "rolled_back", "finalized"])
+    def test_status_routes_terminal_cleanup_to_recovery(
+        self, tmp_path: Path, outcome: str, *, mocker
+    ) -> None:
+        """A valid disposal hold is recoverable rather than installation damage."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        pending = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        journal = payload_state.read_journal(ctx)
+        journal["state"] = outcome
+        payload_state.journal_path(ctx).write_bytes(payload_digest.canonical_json(journal))
+        self._healthy_status_dependencies(ctx, mocker=mocker)
+
+        result = control.status(ctx)
+
+        assert result["state"] == "recovery_required"
+        assert result["detail"] == "payload cleanup is required"
+        assert payload_state.read_journal(ctx)["state"] == outcome
+        journal["state"] = "prepared"
+        payload_state.journal_path(ctx).write_bytes(payload_digest.canonical_json(journal))
+        pending.rollback()
+
     def test_purge_removes_the_verified_retained_generation(
         self, tmp_path: Path, *, mocker
     ) -> None:

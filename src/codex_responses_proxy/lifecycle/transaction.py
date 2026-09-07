@@ -14,6 +14,7 @@ import uuid
 from collections.abc import Callable
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.json_value import ReadOnlyJsonObject
@@ -39,13 +40,14 @@ def recover(
     bind_terminal: Callable[[runtime_context.RuntimeContext], None],
 ) -> dict[str, object]:
     """Recover one transaction and bind its terminal runtime before closing it."""
-    root = state.transaction_root(ctx)
-    if not root.exists() and not root.is_symlink():
+    if state.status(ctx) is None:
         return {"state": "not_required"}
     try:
         journal = state.read_journal(ctx)
     except errors.InstallError as exc:
         raise errors.RecoveryStateError(str(exc)) from exc
+    if journal["state"] in state.TERMINAL_STATES:
+        return _finish_cleanup(ctx, journal)
     phase = str(journal.get("phase") or journal["state"])
     if phase == "prepared":
         return _close_prepared(ctx, journal)
@@ -54,7 +56,6 @@ def recover(
         return _rollback_materialized(
             ctx,
             journal=journal,
-            candidate=candidate,
             runtime=runtime,
             bind_terminal=bind_terminal,
         )
@@ -102,7 +103,6 @@ def recover(
         return _rollback_materialized(
             ctx,
             journal=journal,
-            candidate=candidate,
             runtime=runtime,
             bind_terminal=bind_terminal,
         )
@@ -119,15 +119,9 @@ def _close_prepared(
 ) -> dict[str, object]:
     """Remove only a valid journal that proves no payload mutation began."""
     root = state.transaction_root(ctx)
-    if tuple(root.iterdir()) != (state.journal_path(ctx),):
+    if any(root.iterdir()):
         raise errors.RecoveryStateError("prepared transaction contains unowned content")
-    result = {
-        "transaction_id": journal["transaction_id"],
-        "version": journal["version"],
-        "state": "closed",
-    }
-    _remove_transaction_root(ctx)
-    return result
+    return _complete_transaction(ctx, journal, outcome="closed")
 
 
 def _recovery_candidate(
@@ -153,17 +147,10 @@ def _close_finalized(
     bind_terminal: Callable[[runtime_context.RuntimeContext], None] | None,
 ) -> dict[str, object]:
     """Remove transaction residue only after finalized state proves the candidate."""
-    selection = _select_retention(ctx, journal=journal)
-    result = {
-        "transaction_id": journal["transaction_id"],
-        "version": journal["version"],
-        "state": "finalized",
-    }
+    _select_retention(ctx, journal=journal)
     if bind_terminal is not None:
         bind_terminal(generation.control_context(ctx))
-    generation.prune(ctx, selection)
-    _remove_transaction_root(ctx)
-    return result
+    return _complete_transaction(ctx, journal, outcome="finalized")
 
 
 def _installed_matches_transaction(
@@ -280,7 +267,6 @@ def _rollback_materialized(
     ctx: runtime_context.RuntimeContext,
     *,
     journal: Mapping[str, object],
-    candidate: identity.LoadedPayloadIdentity,
     runtime: Mapping[str, object] | None,
     bind_terminal: Callable[[runtime_context.RuntimeContext], None],
 ) -> dict[str, object]:
@@ -313,13 +299,7 @@ def _rollback_materialized(
             generation_id=previous_generation,
             runtime=runtime,
         )
-        result = {
-            "transaction_id": journal["transaction_id"],
-            "version": candidate.release,
-            "state": "rolled_back",
-        }
-        _remove_transaction_root(ctx)
-        return result
+        return _complete_transaction(ctx, journal, outcome="rolled_back")
     rollback = state.transaction_root(ctx) / "rollback"
     command_snapshot = command.read_snapshot(rollback)
     if selection == selected_candidate:
@@ -343,21 +323,7 @@ def _rollback_materialized(
             )
     if expected_before is not None:
         bind_terminal(generation.control_context(ctx))
-    if not _reuses_retained_generation(journal):
-        generation.remove(ctx, candidate_generation)
-    generations = generation.root(ctx)
-    if generations.is_dir() and not any(generations.iterdir()):
-        generations.rmdir()
-    install = Path(ctx.install_dir)
-    if journal["fresh"] is True and install.is_dir() and not any(install.iterdir()):
-        install.rmdir()
-    result = {
-        "transaction_id": journal["transaction_id"],
-        "version": candidate.release,
-        "state": "rolled_back",
-    }
-    _remove_transaction_root(ctx)
-    return result
+    return _complete_transaction(ctx, journal, outcome="rolled_back")
 
 
 def _require_unchanged_prior_terminal(
@@ -433,14 +399,8 @@ def _rollback_upgrade(
             Path(generation.control_context(ctx).executable),
             command_snapshot,
         )
-        result = {
-            "transaction_id": journal["transaction_id"],
-            "version": journal["version"],
-            "state": "rolled_back",
-        }
         bind_terminal(generation.control_context(ctx))
-        _remove_transaction_root(ctx)
-        return result
+        return _complete_transaction(ctx, journal, outcome="rolled_back")
     previous_generation = journal.get("previous_generation")
     selection = generation.read(ctx)
     restored = (
@@ -488,14 +448,7 @@ def _rollback_upgrade(
                 command_snapshot,
             )
         bind_terminal(generation.control_context(ctx))
-        generation.remove(ctx, str(journal["transaction_id"]))
-        result = {
-            "transaction_id": journal["transaction_id"],
-            "version": journal["version"],
-            "state": "rolled_back",
-        }
-        _remove_transaction_root(ctx)
-        return result
+        return _complete_transaction(ctx, journal, outcome="rolled_back")
     previous_executable = next(
         (
             rollback / relative
@@ -526,14 +479,7 @@ def _rollback_upgrade(
     )
     command.restore(Path(ctx.command), Path(ctx.executable), command_snapshot)
     bind_terminal(generation.control_context(ctx))
-    generation.remove(ctx, str(journal["transaction_id"]))
-    result = {
-        "transaction_id": journal["transaction_id"],
-        "version": journal["version"],
-        "state": "rolled_back",
-    }
-    _remove_transaction_root(ctx)
-    return result
+    return _complete_transaction(ctx, journal, outcome="rolled_back")
 
 
 def _reuses_retained_generation(journal: Mapping[str, object]) -> bool:
@@ -697,8 +643,8 @@ class PayloadTransaction:
             self._write_journal()
         except BaseException as exc:
             if not mutated:
+                _complete_transaction(self._ctx, self._owned_journal(), outcome="closed")
                 self._state = "rolled_back"
-                _remove_transaction_root(self._ctx)
             else:
                 try:
                     self.rollback()
@@ -766,7 +712,11 @@ class PayloadTransaction:
             raise errors.InstallError(
                 f"payload transaction in {self._state} state cannot be rolled back"
             )
-        self._owned_journal()
+        journal = self._owned_journal(for_rollback=True)
+        if journal["state"] in {"closed", "rolled_back"}:
+            _finish_cleanup(self._ctx, journal)
+            self._state = "rolled_back"
+            return
         rollback = state.transaction_root(self._ctx) / "rollback"
         if rollback.exists():
             command_snapshot = command.read_snapshot(rollback)
@@ -802,14 +752,7 @@ class PayloadTransaction:
                     Path(previous_executable),
                     command_snapshot,
                 )
-            if not self._reuse_generation:
-                generation.remove(self._ctx, self._transaction_id)
-        elif self._fresh:
-            generation.remove(self._ctx, self._transaction_id)
-        install_root = Path(self._ctx.install_dir)
-        if self._fresh and install_root.is_dir() and not any(install_root.iterdir()):
-            install_root.rmdir()
-        _remove_transaction_root(self._ctx)
+        _complete_transaction(self._ctx, journal, outcome="rolled_back")
         self._state = "rolled_back"
 
     def rollback_if_prepared(self) -> bool:
@@ -839,10 +782,14 @@ class PayloadTransaction:
             reason=reason,
         )
 
-    def _owned_journal(self) -> Mapping[str, object]:
+    def _owned_journal(self, *, for_rollback: bool = False) -> Mapping[str, object]:
         journal = state.read_journal(self._ctx)
         if journal["transaction_id"] != self._transaction_id:
             raise errors.InstallError("payload transaction no longer owns the current journal")
+        if journal["state"] in state.TERMINAL_STATES and not (
+            for_rollback and journal["state"] in {"closed", "rolled_back"}
+        ):
+            raise errors.InstallError("payload transaction is terminal; complete recovery")
         return journal
 
     def _write_journal(self) -> None:
@@ -982,9 +929,9 @@ def _empty_or_absent_control_root(root: Path) -> bool:
 
 def _claim_transaction_root(ctx: runtime_context.RuntimeContext) -> Path:
     root = state.transaction_root(ctx)
-    if root.exists() or root.is_symlink():
-        transaction_state = state.status(ctx)
-        if transaction_state is not None and transaction_state.get("state") != "invalid":
+    transaction_state = state.status(ctx)
+    if transaction_state is not None:
+        if transaction_state.get("state") != "invalid":
             raise errors.RecoveryRequiredError("complete payload recovery before installing")
         raise errors.RecoveryStateError(
             "payload transaction evidence is invalid; preserve it for diagnosis"
@@ -992,6 +939,51 @@ def _claim_transaction_root(ctx: runtime_context.RuntimeContext) -> Path:
     root.parent.mkdir(parents=True, exist_ok=True)
     root.mkdir(mode=0o700)
     return root
+
+
+def _complete_transaction(
+    ctx: runtime_context.RuntimeContext,
+    journal: Mapping[str, object],
+    *,
+    outcome: Literal["closed", "rolled_back", "finalized"],
+) -> dict[str, object]:
+    """Persist terminal effects before deleting any recovery input."""
+    terminal = {key: value for key, value in journal.items() if key not in {"phase", "reason"}}
+    terminal["state"] = outcome
+    owned_files.write_bytes(state.journal_path(ctx), digest.canonical_json(terminal), mode=0o600)
+    return _finish_cleanup(ctx, terminal)
+
+
+def _finish_cleanup(
+    ctx: runtime_context.RuntimeContext, journal: Mapping[str, object]
+) -> dict[str, object]:
+    """Resume only disposal; terminal projections and supervision remain unchanged."""
+    match journal["state"]:
+        case "finalized":
+            selection = generation.read(ctx)
+            if selection is None or selection.active != journal["transaction_id"]:
+                raise errors.RecoveryStateError("finalized transaction selection changed")
+            generation.prune(ctx, selection)
+        case "rolled_back":
+            if not _reuses_retained_generation(journal):
+                generation.remove(ctx, str(journal["transaction_id"]))
+            install = Path(ctx.install_dir)
+            if journal["fresh"] is True and install.is_dir() and not any(install.iterdir()):
+                install.rmdir()
+        case "closed":
+            pass
+        case _:
+            raise errors.RecoveryStateError("payload transaction is not terminal")
+    _remove_transaction_root(ctx)
+    try:
+        state.journal_path(ctx).unlink()
+    except OSError as exc:
+        raise errors.InstallError(f"payload transaction cleanup failed: {exc}") from exc
+    return {
+        "transaction_id": journal["transaction_id"],
+        "version": journal["version"],
+        "state": journal["state"],
+    }
 
 
 def _remove_transaction_root(ctx: runtime_context.RuntimeContext) -> None:

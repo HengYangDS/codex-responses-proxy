@@ -162,14 +162,23 @@ def status(
     ):
         lifecycle_state = "running"
         detail = "healthy"
-    elif isinstance(payload_transaction, dict) and payload_transaction.get("state") in {
-        "prepared",
-        "materialized",
-        "activated",
-        "recovery_required",
-    }:
+    elif (
+        isinstance(payload_transaction, dict)
+        and payload_transaction.get("state")
+        in {
+            "prepared",
+            "materialized",
+            "activated",
+            "recovery_required",
+        }
+        | payload_state.TERMINAL_STATES
+    ):
         lifecycle_state = "recovery_required"
-        detail = "payload recovery is required"
+        detail = (
+            "payload cleanup is required"
+            if payload_transaction["state"] in payload_state.TERMINAL_STATES
+            else "payload recovery is required"
+        )
     else:
         lifecycle_state = "degraded"
         if not integrity_ok:
