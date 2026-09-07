@@ -166,19 +166,20 @@ provider switching less observable.
 stateDiagram-v2
     [*] --> Admitted
     Admitted --> Prepared
-    Prepared --> Committed
-    Committed --> Serving: exact successor proof
-    Serving --> GenerationMaterialized: verify predecessor
-    GenerationMaterialized --> GenerationSelected: atomic selector
-    GenerationSelected --> Finalized: retire superseded generation
-    Committed --> RecoveryRequired: runtime outcome unconfirmed
-    GenerationMaterialized --> RecoveryRequired: interrupted
-    GenerationSelected --> RecoveryRequired: cleanup interrupted
-    RecoveryRequired --> GenerationMaterialized: resume
-    RecoveryRequired --> GenerationSelected: resume
-    RecoveryRequired --> Finalized: converge
-    Prepared --> RolledBack: pre-commit failure
+    Prepared --> Materialized: verify and prewarm candidate
+    Materialized --> Activated: select generation and project command
+    Activated --> Finalized: prove serving and retire obsolete generations
+    Materialized --> RecoveryRequired: runtime outcome unconfirmed
+    Activated --> RecoveryRequired: binding or cleanup interrupted
+    RecoveryRequired --> Finalized: prove candidate and bind supervisor
+    RecoveryRequired --> RolledBack: prove prior terminal state
+    Prepared --> Closed: recover before mutation
+    Prepared --> RolledBack: cancel
+    Materialized --> RolledBack: candidate failure
+    Activated --> RolledBack: predecessor admission restored
     Finalized --> [*]
+    RolledBack --> [*]
+    Closed --> [*]
 ```
 
 Artifact admission verifies the release asset, complete bundle inventory, and
@@ -211,6 +212,15 @@ recover an interrupted transition.
 The selector is committed before obsolete-generation cleanup, so interruption
 leaves either the prior selection or a recoverable new selection. Until the
 transaction closes, it alone owns recovery and rollback status.
+
+Normal completion and interrupted recovery share one finalization owner for
+installed state, predecessor retention, pruning, and journal removal. Each
+transaction mutation must match its identity against the current journal;
+an in-memory controller alone grants no write authority. Completion consumes
+that authority: an old controller cannot overwrite or remove a later
+transaction's journal. Once an outcome requires recovery, only runtime-aware
+recovery may resolve it; ordinary rollback cannot guess whether the candidate
+is already serving.
 
 The release that first introduces this transition must drive its own one-time
 upgrade from an older installed release: the predecessor cannot execute

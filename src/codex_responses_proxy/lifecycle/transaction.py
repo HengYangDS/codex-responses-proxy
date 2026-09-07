@@ -70,7 +70,7 @@ def recover(
             journal=journal,
             bind_terminal=bind_terminal,
         )
-    if _runtime_matches_projection(runtime, candidate):
+    if runtime is not None and _runtime_matches_projection(runtime, candidate):
         if phase == "materialized":
             rollback = state.transaction_root(ctx) / "rollback"
             generation.select(
@@ -88,7 +88,7 @@ def recover(
                 Path(generation.control_context(ctx).executable),
                 previous=command.read_snapshot(rollback),
             )
-        return _finalize_recovery(
+        return _finalize_installation(
             ctx,
             journal=journal,
             runtime=runtime,
@@ -150,7 +150,7 @@ def _close_finalized(
     ctx: runtime_context.RuntimeContext,
     *,
     journal: Mapping[str, object],
-    bind_terminal: Callable[[runtime_context.RuntimeContext], None],
+    bind_terminal: Callable[[runtime_context.RuntimeContext], None] | None,
 ) -> dict[str, object]:
     """Remove transaction residue only after finalized state proves the candidate."""
     selection = _select_retention(ctx, journal=journal)
@@ -159,7 +159,8 @@ def _close_finalized(
         "version": journal["version"],
         "state": "finalized",
     }
-    bind_terminal(generation.control_context(ctx))
+    if bind_terminal is not None:
+        bind_terminal(generation.control_context(ctx))
     generation.prune(ctx, selection)
     _remove_transaction_root(ctx)
     return result
@@ -195,15 +196,14 @@ def _runtime_matches_projection(
     )
 
 
-def _finalize_recovery(
+def _finalize_installation(
     ctx: runtime_context.RuntimeContext,
     *,
     journal: Mapping[str, object],
-    runtime: Mapping[str, object] | None,
-    bind_terminal: Callable[[runtime_context.RuntimeContext], None],
+    runtime: Mapping[str, object],
+    bind_terminal: Callable[[runtime_context.RuntimeContext], None] | None,
 ) -> dict[str, object]:
-    """Finalize an installed candidate after its runtime proves success."""
-    assert runtime is not None
+    """Record one serving installation and close its retained transaction."""
     installed = {
         "schema_version": state.INSTALLED_RELEASE_STATE_SCHEMA,
         "version": journal["version"],
@@ -217,16 +217,7 @@ def _finalize_recovery(
         digest.canonical_json(installed),
         mode=0o600,
     )
-    selection = _select_retention(ctx, journal=journal)
-    result = {
-        "transaction_id": journal["transaction_id"],
-        "version": journal["version"],
-        "state": "finalized",
-    }
-    bind_terminal(generation.control_context(ctx))
-    generation.prune(ctx, selection)
-    _remove_transaction_root(ctx)
-    return result
+    return _close_finalized(ctx, journal=journal, bind_terminal=bind_terminal)
 
 
 def _select_retention(
@@ -655,6 +646,7 @@ class PayloadTransaction:
         """Materialize one immutable candidate without changing the active generation."""
         if self._state != "prepared":
             raise errors.InstallError("payload transaction is not prepared")
+        self._owned_journal()
         rollback = state.transaction_root(self._ctx) / "rollback"
         rollback.mkdir(mode=0o700)
         mutated = False
@@ -720,6 +712,7 @@ class PayloadTransaction:
         """Atomically select and project the already materialized candidate."""
         if self._state != "materialized":
             raise errors.InstallError("payload transaction is not materialized")
+        self._owned_journal()
         rollback = state.transaction_root(self._ctx) / "rollback"
         command_snapshot = command.read_snapshot(rollback)
         predecessor = (
@@ -752,67 +745,28 @@ class PayloadTransaction:
         """Record installation success only after the caller proves SERVING."""
         if self._state != "activated":
             raise errors.InstallError("payload transaction is not activated")
-        installed = {
-            "schema_version": state.INSTALLED_RELEASE_STATE_SCHEMA,
-            "version": self._version,
-            "receipt_sha256": self._receipt_sha256,
-            "transaction_id": self._transaction_id,
-            "command": self._ctx.command,
-            "runtime": dict(runtime or {}),
-        }
-        owned_files.write_bytes(
-            state.installed_path(self._ctx),
-            digest.canonical_json(installed),
-            mode=0o600,
-        )
-        rollback = state.transaction_root(self._ctx) / "rollback"
+        journal = self._owned_journal()
         try:
-            if self._reuse_generation:
-                assert self._previous_generation is not None
-                selection = generation.Selection(
-                    self._transaction_id,
-                    self._previous_generation,
-                )
-            elif self._fresh:
-                selection = generation.Selection(self._transaction_id, None)
-            elif self._previous_selection is not None:
-                selection = generation.Selection(
-                    self._transaction_id,
-                    self._previous_selection.active,
-                )
-            else:
-                assert self._previous_generation is not None
-                legacy_inventory = payload_rollback.load_legacy_snapshot(rollback)
-                generation.materialize_legacy_projection(
-                    self._ctx,
-                    rollback,
-                    self._previous_generation,
-                    legacy_inventory.present,
-                )
-                generation.retire_legacy_projection(
-                    Path(self._ctx.install_dir),
-                    legacy_inventory.present,
-                )
-                selection = generation.Selection(
-                    self._transaction_id,
-                    self._previous_generation,
-                )
-            generation.select(
+            _finalize_installation(
                 self._ctx,
-                active=selection.active,
-                predecessor=selection.predecessor,
+                journal=journal,
+                runtime=runtime or {},
+                bind_terminal=None,
             )
-        except errors.InstallError as exc:
-            self.preserve_for_recovery(f"finalization failed: {exc}")
+        except BaseException:
+            self._state = "recovery_required"
             raise
         self._state = "finalized"
-        generation.prune(self._ctx, selection)
-        _remove_transaction_root(self._ctx)
 
     def rollback(self) -> None:
         """Restore the exact prior payload, receipt, state, or their absence."""
         if self._state == "rolled_back":
             return
+        if self._state not in {"prepared", "materialized", "activated"}:
+            raise errors.InstallError(
+                f"payload transaction in {self._state} state cannot be rolled back"
+            )
+        self._owned_journal()
         rollback = state.transaction_root(self._ctx) / "rollback"
         if rollback.exists():
             command_snapshot = command.read_snapshot(rollback)
@@ -869,6 +823,7 @@ class PayloadTransaction:
         """Keep committed bytes and rollback while marking an unknown outcome."""
         if self._state not in {"materialized", "activated"}:
             raise errors.InstallError("only a materialized transaction can require recovery")
+        self._owned_journal()
         phase = self._state
         self._state = "recovery_required"
         state.write_journal(
@@ -883,6 +838,12 @@ class PayloadTransaction:
             phase=phase,
             reason=reason,
         )
+
+    def _owned_journal(self) -> Mapping[str, object]:
+        journal = state.read_journal(self._ctx)
+        if journal["transaction_id"] != self._transaction_id:
+            raise errors.InstallError("payload transaction no longer owns the current journal")
+        return journal
 
     def _write_journal(self) -> None:
         state.write_journal(
