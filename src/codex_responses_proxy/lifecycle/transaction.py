@@ -31,7 +31,6 @@ from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle import state
 from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import identity
-from codex_responses_proxy.service import inventory
 
 
 def recover(
@@ -221,21 +220,7 @@ def _select_retention(
             selection = generation.Selection(active, None)
         else:
             previous = str(previous_generation)
-            rollback = state.transaction_root(ctx) / "rollback"
-            legacy_snapshot = payload_rollback.legacy_snapshot_path(rollback)
-            if legacy_snapshot.is_file():
-                legacy_inventory = payload_rollback.load_legacy_snapshot(rollback)
-                generation.materialize_legacy_projection(
-                    ctx,
-                    rollback,
-                    previous,
-                    legacy_inventory.present,
-                )
-                generation.retire_legacy_projection(
-                    Path(ctx.install_dir),
-                    legacy_inventory.present,
-                )
-            elif not generation.path(ctx, previous).is_dir():
+            if not generation.path(ctx, previous).is_dir():
                 raise errors.InstallError("predecessor payload generation is unavailable")
             selection = generation.Selection(active, previous)
         generation.select(ctx, active=selection.active, predecessor=selection.predecessor)
@@ -450,37 +435,7 @@ def _rollback_upgrade(
             )
         bind_terminal(generation.control_context(ctx))
         return _complete_transaction(ctx, journal, outcome="rolled_back")
-    previous_executable = next(
-        (
-            rollback / relative
-            for relative in (inventory.EXECUTABLE, inventory.WINDOWS_EXECUTABLE)
-            if (rollback / relative).is_file()
-        ),
-        None,
-    )
-    previous = (
-        identity.committed_payload(previous_executable) if previous_executable is not None else None
-    )
-    if previous is None:
-        raise errors.RecoveryStateError("payload recovery rollback runtime identity is invalid")
-    if not _runtime_matches_projection(runtime, previous):
-        raise errors.RecoveryStateError(
-            "payload recovery runtime does not match the rollback projection"
-        )
-    command.detach(
-        Path(ctx.command),
-        Path(generation.context(ctx, str(journal["transaction_id"])).executable),
-        command_snapshot,
-    )
-    generation.clear(ctx)
-    payload_rollback.restore_legacy_projection(
-        ctx,
-        rollback,
-        candidate_paths=owned_files.current_inventory(Path(ctx.install_dir)),
-    )
-    command.restore(Path(ctx.command), Path(ctx.executable), command_snapshot)
-    bind_terminal(generation.control_context(ctx))
-    return _complete_transaction(ctx, journal, outcome="rolled_back")
+    raise errors.RecoveryStateError("payload recovery prior selected generation is unavailable")
 
 
 def _reuses_retained_generation(journal: Mapping[str, object]) -> bool:
@@ -604,11 +559,6 @@ class PayloadTransaction:
                     raise errors.InstallError(
                         "retained rollback predecessor changed before materialization"
                     )
-            previous_ctx = (
-                generation.context(self._ctx, self._previous_selection.active)
-                if self._previous_selection is not None
-                else self._ctx
-            )
             control_ctx = generation.control_context(self._ctx)
             command_snapshot = command.snapshot(
                 Path(self._ctx.command), Path(control_ctx.executable)
@@ -619,8 +569,6 @@ class PayloadTransaction:
                 self._state = "materialized"
                 self._write_journal()
                 return
-            if self._previous_selection is None:
-                payload_rollback.write_legacy_snapshot(previous_ctx, rollback)
             candidate_paths = {blob.path for blob in self._blobs}
             payload_candidate.reject_unowned_collisions(
                 self._candidate_ctx,
@@ -865,7 +813,13 @@ def _begin_transaction(
         raise errors.InstallError(str(exc)) from exc
     payload_candidate.validate(blobs, version, receipt_sha256, receipt)
     previous = state.read_installed(ctx)
+    current_selection = generation.read(ctx)
     if previous is not None:
+        if current_selection is None:
+            raise errors.InstallError(
+                "upgrade requires a selected payload generation; "
+                "uninstall the existing payload explicitly before reinstalling"
+            )
         control_identity = identity.committed_payload(
             Path(generation.control_context(ctx).executable)
         )
@@ -878,17 +832,12 @@ def _begin_transaction(
             raise errors.InstallError("released payload replay is refused")
     install_root = Path(ctx.install_dir)
     fresh = previous is None and _empty_or_absent_control_root(install_root)
-    current_selection = generation.read(ctx)
     if previous is None and current_selection is None and not fresh:
         raise errors.InstallError(
             "installed payload root contains unverified content; remove it explicitly before "
             "installing"
         )
-    previous_generation = (
-        current_selection.active
-        if current_selection is not None
-        else (str(previous["transaction_id"]) if previous is not None else None)
-    )
+    previous_generation = current_selection.active if current_selection is not None else None
     _claim_transaction_root(ctx)
     transaction_id = uuid.uuid4().hex
     state.write_journal(

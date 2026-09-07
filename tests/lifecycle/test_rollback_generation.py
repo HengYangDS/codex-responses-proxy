@@ -8,14 +8,12 @@ import pytest
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import generation
+from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.lifecycle import rollback
-from codex_responses_proxy.lifecycle import runtime_spec
+from codex_responses_proxy.lifecycle import state
 from codex_responses_proxy.lifecycle import transaction as payload_transaction
-from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.service import digest
-from codex_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import begin_transaction
-from tests.lifecycle.fixtures import executable_relative
 from tests.lifecycle.fixtures import install_context
 from tests.lifecycle.fixtures import install_payload
 from tests.lifecycle.fixtures import released_artifact
@@ -109,11 +107,11 @@ def test_retained_installed_binding_drift_is_rejected(tmp_path: Path, *, mocker)
     """Rollback admission binds the selector to the exact installed successor record."""
     ctx = install_context(tmp_path)
     _first, _second = install_successor(ctx, mocker=mocker)
-    installed = rollback.state.read_installed(ctx)
+    installed = state.read_installed(ctx)
     assert installed is not None
     installed["version"] = "1.2.4"
-    rollback.owned_files.write_bytes(
-        rollback.state.installed_path(ctx),
+    owned_files.write_bytes(
+        state.installed_path(ctx),
         digest.canonical_json(installed),
         mode=0o600,
     )
@@ -370,188 +368,3 @@ def test_owned_generation_inventory_distinguishes_absence_from_corruption(
     valid.symlink_to(outside, target_is_directory=True)
     with pytest.raises(errors.InstallError, match="generation store is invalid"):
         generation.owned_contexts(ctx)
-
-
-def test_legacy_generation_rejects_snapshot_and_live_drift(tmp_path: Path, *, mocker) -> None:
-    """Migration uses one exact durable inventory for materialization and retirement."""
-    ctx = install_context(tmp_path)
-    legacy = install_payload(ctx, "1.2.2", mocker=mocker)
-    legacy_root = Path(legacy.context.payload_dir)
-    flat = Path(ctx.install_dir)
-    for child in tuple(legacy_root.iterdir()):
-        child.rename(flat / child.name)
-    generation.clear(ctx)
-    legacy_root.rmdir()
-    ctx.executable = str(flat / executable_relative())
-
-    snapshot_root = tmp_path / "snapshot"
-    snapshot_root.mkdir()
-    snapshot = rollback.write_legacy_snapshot(ctx, snapshot_root)
-    executable = snapshot_root / executable_relative()
-    executable.write_bytes(b"changed")
-    with pytest.raises(errors.InstallError, match="snapshot changed"):
-        generation.materialize_legacy_projection(
-            ctx,
-            snapshot_root,
-            str(legacy.expected["transaction_id"]),
-            snapshot.present,
-        )
-
-    executable.write_bytes((flat / executable_relative()).read_bytes())
-    executable.chmod(snapshot.present[executable_relative()][1])
-    generation.materialize_legacy_projection(
-        ctx,
-        snapshot_root,
-        str(legacy.expected["transaction_id"]),
-        snapshot.present,
-    )
-    (flat / inventory.PROVIDER_MANIFEST).write_text("changed\n", encoding="utf-8")
-    with pytest.raises(errors.InstallError, match="changed before retirement"):
-        generation.retire_legacy_projection(flat, snapshot.present)
-
-
-def test_legacy_generation_rejects_invalid_staging(tmp_path: Path, *, mocker) -> None:
-    """A foreign staging carrier cannot be adopted or overwritten."""
-    ctx = install_context(tmp_path)
-    legacy = install_payload(ctx, "1.2.2", mocker=mocker)
-    snapshot_root = tmp_path / "snapshot"
-    snapshot_root.mkdir()
-    snapshot = rollback.write_legacy_snapshot(legacy.context, snapshot_root)
-    generation_id = "d" * 32
-    staging = generation.path(ctx, generation_id).with_name(f".{generation_id}.staging")
-    staging.parent.mkdir(parents=True, exist_ok=True)
-    staging.write_text("foreign\n", encoding="utf-8")
-
-    with pytest.raises(errors.InstallError, match="staging is invalid"):
-        generation.materialize_legacy_projection(
-            ctx,
-            snapshot_root,
-            generation_id,
-            snapshot.present,
-        )
-
-
-def test_legacy_generation_reuses_only_the_exact_materialized_snapshot(
-    tmp_path: Path, *, mocker
-) -> None:
-    """An existing predecessor generation must equal the durable migration snapshot."""
-    ctx = install_context(tmp_path)
-    legacy = install_payload(ctx, "1.2.2", mocker=mocker)
-    snapshot_root = tmp_path / "snapshot"
-    snapshot_root.mkdir()
-    snapshot = rollback.write_legacy_snapshot(legacy.context, snapshot_root)
-    generation_id = "d" * 32
-    target = generation.path(ctx, generation_id)
-    staging = target.with_name(f".{generation_id}.staging")
-    staging.parent.mkdir(parents=True, exist_ok=True)
-    staging.mkdir()
-    (staging / "interrupted").write_text("stale\n", encoding="utf-8")
-
-    generation.materialize_legacy_projection(
-        ctx,
-        snapshot_root,
-        generation_id,
-        snapshot.present,
-    )
-    assert not staging.exists()
-    assert generation.materialize_legacy_projection(
-        ctx,
-        snapshot_root,
-        generation_id,
-        snapshot.present,
-    ).payload_dir == str(target)
-
-    (target / executable_relative()).write_bytes(b"changed")
-    with pytest.raises(errors.InstallError, match="generation changed"):
-        generation.materialize_legacy_projection(
-            ctx,
-            snapshot_root,
-            generation_id,
-            snapshot.present,
-        )
-
-
-def test_legacy_retirement_is_idempotent_after_owned_file_deletion(
-    tmp_path: Path, *, mocker
-) -> None:
-    """Interrupted retirement can resume without recreating an already deleted file."""
-    ctx = install_context(tmp_path)
-    legacy = install_payload(ctx, "1.2.2", mocker=mocker)
-    legacy_root = Path(legacy.context.payload_dir)
-    flat = Path(ctx.install_dir)
-    for child in tuple(legacy_root.iterdir()):
-        child.rename(flat / child.name)
-    generation.clear(ctx)
-    legacy_root.rmdir()
-    ctx.executable = str(flat / executable_relative())
-
-    snapshot_root = tmp_path / "snapshot"
-    snapshot_root.mkdir()
-    snapshot = rollback.write_legacy_snapshot(ctx, snapshot_root)
-    generation.materialize_legacy_projection(
-        ctx,
-        snapshot_root,
-        str(legacy.expected["transaction_id"]),
-        snapshot.present,
-    )
-    already_retired = flat / executable_relative()
-    already_retired.unlink()
-
-    generation.retire_legacy_projection(flat, snapshot.present)
-
-    assert not already_retired.exists()
-    for relative in snapshot.present:
-        assert not (flat / relative).exists()
-
-
-def test_legacy_generation_projects_an_executable_local_runtime_root(
-    tmp_path: Path, *, mocker
-) -> None:
-    """A published predecessor must accept its carrier after immutable migration."""
-    ctx = install_context(tmp_path)
-    legacy = install_payload(ctx, "1.2.2", mocker=mocker)
-    snapshot_root = tmp_path / "snapshot"
-    snapshot_root.mkdir()
-    snapshot = rollback.write_legacy_snapshot(legacy.context, snapshot_root)
-
-    projected = generation.materialize_legacy_projection(
-        ctx,
-        snapshot_root,
-        "e" * 32,
-        snapshot.present,
-    )
-
-    environment = runtime_spec.environment(runtime_spec.path(projected))
-    assert environment[runtime_config.HOME_ENV] == projected.payload_dir
-
-
-@pytest.mark.parametrize("carrier", ["target-file", "source-file", "source-symlink"])
-def test_legacy_generation_rejects_invalid_source_carriers(
-    tmp_path: Path, carrier: str, *, mocker
-) -> None:
-    """Migration rejects non-directory sources and pre-existing target carriers."""
-    ctx = install_context(tmp_path)
-    legacy = install_payload(ctx, "1.2.2", mocker=mocker)
-    snapshot_root = tmp_path / "snapshot"
-    snapshot_root.mkdir()
-    snapshot = rollback.write_legacy_snapshot(legacy.context, snapshot_root)
-    generation_id = "d" * 32
-    target = generation.path(ctx, generation_id)
-    source = snapshot_root
-    if carrier == "target-file":
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("foreign\n", encoding="utf-8")
-    elif carrier == "source-file":
-        source = tmp_path / "snapshot-file"
-        source.write_text("foreign\n", encoding="utf-8")
-    else:
-        source = tmp_path / "snapshot-link"
-        source.symlink_to(snapshot_root, target_is_directory=True)
-
-    with pytest.raises(errors.InstallError, match="source is invalid"):
-        generation.materialize_legacy_projection(
-            ctx,
-            source,
-            generation_id,
-            snapshot.present,
-        )

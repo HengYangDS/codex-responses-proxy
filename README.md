@@ -76,25 +76,14 @@ exact path so status, rollback, and uninstall do not depend on a later shell's
 environment. Installation never downloads dependencies or reads provider
 credentials.
 
-### Upgrade from 2.x
+### Upgrade eligibility
 
-Release 2.0.58 coupled candidate prewarm to the retired public `version`
-subcommand and therefore cannot drive an in-place upgrade to 3.x. For that one
-historical boundary, extract the verified 3.x archive and invoke its bundled
-`bin/codex-responses-proxy install` command with the same `--asset` and
-`--trust-anchor` arguments. The candidate then owns the normal transactional
-upgrade. Releases after 3.0.0 use a private, version-neutral prewarm protocol;
-future public CLI changes do not alter it.
-
-### Upgrade to 3.1.0
-
-Release 3.1.0 introduces the retained-generation finalization required by the
-new `rollback` command. An older installer cannot retroactively execute that
-new finalization step. To establish the carrier once, extract the verified
-3.1.0 archive and invoke its bundled `bin/codex-responses-proxy install`
-command with the usual `--asset` and `--trust-anchor` arguments. After that
-transition, the installed release again owns ordinary adjacent upgrades. No
-legacy carrier is synthesized and no compatibility reader is retained.
+In-place upgrade and rollback use immutable payload generations selected by
+one durable selector. An installation without that selector is not an upgrade
+predecessor. Use its existing uninstaller to remove the service and owned
+payload, then install the verified release into a fresh target. Inspect any
+reported residue before removing it; unknown files are never migration input.
+Provider credentials and client configuration remain outside this lifecycle.
 
 ## Configure a client route
 

@@ -102,7 +102,7 @@ def _retained_carrier_snapshot(root: Path, external_target: Path) -> tuple[objec
 
 
 def _project_as_legacy_flat_install(ctx, installed) -> None:
-    """Recreate the released flat layout accepted by the one-time migrator."""
+    """Recreate a manifest-owned flat payload for explicit removal checks."""
     generation_root = Path(installed.context.payload_dir)
     install_root = Path(ctx.install_dir)
     for child in tuple(generation_root.iterdir()):
@@ -349,182 +349,6 @@ class TestPayloadTransaction:
         retained = payload_rollback.load_retained(ctx)
         assert retained.predecessor.release == "1.2.2"
         assert retained.successor.release == "1.2.3"
-
-    def test_legacy_migration_failure_preserves_snapshot_for_recovery(
-        self, tmp_path: Path, *, mocker
-    ) -> None:
-        """A failed legacy migration must leave one complete retry source."""
-        ctx = install_context(tmp_path)
-        legacy = begin_transaction(ctx, released_artifact("1.2.2"), mocker=mocker)
-        legacy.commit_projection()
-        legacy.activate()
-        legacy.finalize({"pid": 1})
-        _project_as_legacy_flat_install(ctx, legacy)
-
-        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-        successor.commit_projection()
-        successor.activate()
-        snapshot = Path(payload_state.transaction_root(ctx), "rollback")
-        before = {
-            relative: Path(snapshot, relative).read_bytes()
-            for relative in (*runtime_files(), inventory.MANIFEST_FILENAME)
-        }
-        original_copy = payload_generation.shutil.copyfile
-        attempts = 0
-
-        def interrupt_second_file(source: Path, target: Path, **kwargs) -> None:
-            nonlocal attempts
-            attempts += 1
-            if attempts == 2:
-                raise OSError("migration interrupted")
-            original_copy(source, target, **kwargs)
-
-        copy = mocker.patch.object(
-            payload_generation.shutil,
-            "copyfile",
-            side_effect=interrupt_second_file,
-        )
-
-        with pytest.raises(errors.InstallError, match="legacy payload migration failed"):
-            successor.finalize({"pid": 2})
-
-        mocker.stop(copy)
-        assert {
-            relative: Path(snapshot, relative).read_bytes()
-            for relative in (*runtime_files(), inventory.MANIFEST_FILENAME)
-        } == before
-        assert not payload_generation.path(ctx, str(legacy.expected["transaction_id"])).exists()
-
-        candidate = listener_identity.committed_payload(Path(successor.context.executable))
-        assert candidate is not None
-        result = recover_transaction(
-            ctx,
-            runtime=recovery_runtime(candidate, candidate),
-        )
-
-        assert result["state"] == "finalized"
-        retained = payload_rollback.load_retained(ctx)
-        assert retained.predecessor.release == "1.2.2"
-
-    def test_legacy_migration_retires_flat_payload_without_unknown_content(
-        self, tmp_path: Path, *, mocker
-    ) -> None:
-        """Successful migration leaves only selected generations as payload authority."""
-        ctx = install_context(tmp_path)
-        legacy = begin_transaction(ctx, released_artifact("1.2.2"), mocker=mocker)
-        legacy.commit_projection()
-        legacy.activate()
-        legacy.finalize({"pid": 1})
-        _project_as_legacy_flat_install(ctx, legacy)
-        unknown = Path(ctx.install_dir, "operator-notes.txt")
-        unknown.write_text("preserve\n", encoding="utf-8")
-
-        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-        successor.commit_projection()
-        successor.activate()
-        successor.finalize({"pid": 2})
-
-        selection = payload_generation.read(ctx)
-        assert selection is not None
-        assert selection.predecessor == str(legacy.expected["transaction_id"])
-        for relative in (*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA):
-            assert not Path(ctx.install_dir, relative).exists()
-        assert unknown.read_text(encoding="utf-8") == "preserve\n"
-
-    def test_legacy_retirement_resumes_after_partial_deletion(
-        self, tmp_path: Path, *, mocker
-    ) -> None:
-        """Recovery completes the exact retirement plan after interruption."""
-        ctx = install_context(tmp_path)
-        legacy = begin_transaction(ctx, released_artifact("1.2.2"), mocker=mocker)
-        legacy.commit_projection()
-        legacy.activate()
-        legacy.finalize({"pid": 1})
-        _project_as_legacy_flat_install(ctx, legacy)
-        unknown = Path(ctx.install_dir, "operator-notes.txt")
-        unknown.write_text("preserve\n", encoding="utf-8")
-
-        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-        successor.commit_projection()
-        successor.activate()
-        original_unlink = Path.unlink
-        deleted: list[Path] = []
-
-        def interrupt_second_owned_file(target: Path, *args, **kwargs) -> None:
-            if target.is_relative_to(ctx.install_dir) and "generations" not in target.parts:
-                deleted.append(target)
-                if len(deleted) == 2:
-                    raise OSError("retirement interrupted")
-            original_unlink(target, *args, **kwargs)
-
-        unlink = mocker.patch.object(
-            Path,
-            "unlink",
-            autospec=True,
-            side_effect=interrupt_second_owned_file,
-        )
-        with pytest.raises(errors.InstallError, match="legacy payload retirement failed"):
-            successor.finalize({"pid": 2})
-        mocker.stop(unlink)
-        assert deleted[0].exists() is False
-
-        candidate = listener_identity.committed_payload(Path(successor.context.executable))
-        assert candidate is not None
-        result = recover_transaction(
-            ctx,
-            runtime=recovery_runtime(candidate, candidate),
-        )
-
-        assert result["state"] == "finalized"
-        for relative in (*runtime_files(), *owned_files.OWNED_PAYLOAD_METADATA):
-            assert not Path(ctx.install_dir, relative).exists()
-        assert unknown.read_text(encoding="utf-8") == "preserve\n"
-
-    def test_activated_legacy_upgrade_recovers_the_flat_predecessor(
-        self, tmp_path: Path, *, mocker
-    ) -> None:
-        """Rollback restores the sole legacy authority and retires the candidate generation."""
-        ctx = install_context(tmp_path)
-        legacy = install_payload(ctx, "1.2.2", mocker=mocker)
-        _project_as_legacy_flat_install(ctx, legacy)
-        predecessor = listener_identity.committed_payload(Path(ctx.executable))
-        assert predecessor is not None
-        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-        successor.commit_projection()
-        successor.activate()
-        successor.preserve_for_recovery("controller outcome unknown")
-
-        result = recover_transaction(ctx, runtime=recovery_runtime(predecessor))
-
-        assert result["state"] == "rolled_back"
-        restored = listener_identity.committed_payload(Path(ctx.executable))
-        assert restored is not None
-        assert restored.release == "1.2.2"
-        assert payload_generation.read(ctx) is None
-        assert not Path(successor.context.payload_dir).exists()
-        assert Path(ctx.command).samefile(ctx.executable)
-
-    def test_activated_legacy_upgrade_rejects_an_unproved_predecessor_runtime(
-        self, tmp_path: Path, *, mocker
-    ) -> None:
-        """Legacy rollback preserves all evidence until its live predecessor is proven."""
-        ctx = install_context(tmp_path)
-        legacy = install_payload(ctx, "1.2.2", mocker=mocker)
-        _project_as_legacy_flat_install(ctx, legacy)
-        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
-        successor.commit_projection()
-        successor.activate()
-        successor.preserve_for_recovery("controller outcome unknown")
-        candidate = listener_identity.committed_payload(Path(successor.context.executable))
-        assert candidate is not None
-        wrong_runtime = recovery_runtime(candidate)
-        wrong_runtime["release"] = "9.9.9"
-
-        with pytest.raises(errors.RecoveryStateError, match="rollback projection"):
-            recover_transaction(ctx, runtime=wrong_runtime)
-
-        assert Path(payload_state.transaction_root(ctx)).is_dir()
-        assert Path(successor.context.payload_dir).is_dir()
 
     def test_retained_predecessor_reuses_an_exact_reverse_transaction(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -1101,8 +925,7 @@ class TestPayloadTransaction:
         successor.commit_projection()
 
         rollback = Path(payload_state.transaction_root(ctx), "rollback")
-        assert (rollback / "command.json").is_file()
-        assert not payload_rollback.legacy_snapshot_path(rollback).exists()
+        assert {path.name for path in rollback.iterdir()} == {command.SNAPSHOT_FILENAME}
         successor.rollback()
 
     def test_activated_generation_recovery_restores_the_exact_prior_selection(
@@ -2155,8 +1978,28 @@ class TestPayloadTransaction:
         assert journal["fresh"] is True
         assert "previous_generation" not in journal
         candidate.commit_projection()
+        rollback = Path(payload_state.transaction_root(ctx), "rollback")
+        assert {path.name for path in rollback.iterdir()} == {command.SNAPSHOT_FILENAME}
         candidate.rollback()
         assert not Path(ctx.install_dir).exists()
+
+    def test_upgrade_requires_a_selected_generation_before_any_write(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Only a durable generation selector can authorize an installed predecessor."""
+        ctx = install_context(tmp_path)
+        installed = install_payload(ctx, "1.2.2", mocker=mocker)
+        _project_as_legacy_flat_install(ctx, installed)
+        root = Path(ctx.install_dir)
+        before = _retained_carrier_snapshot(root, tmp_path / "unused")
+        command_before = Path(ctx.command).readlink()
+
+        with pytest.raises(errors.InstallError, match="requires a selected payload generation"):
+            begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+
+        assert _retained_carrier_snapshot(root, tmp_path / "unused") == before
+        assert Path(ctx.command).readlink() == command_before
+        assert not Path(payload_state.transaction_root(ctx)).exists()
 
     def test_nonempty_control_root_without_installed_authority_is_rejected(
         self, tmp_path: Path, *, mocker
