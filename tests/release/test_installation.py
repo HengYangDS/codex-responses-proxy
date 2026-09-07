@@ -300,50 +300,33 @@ class TestReleasedDeployment:
         request.assert_not_called()
         service.install_mock.assert_called_once_with(payload.context)
 
-    def test_failed_native_replacement_waits_for_a_new_predecessor_runtime(self, *, mocker) -> None:
-        """A dead drained PID is never reused as rollback admission authority."""
+    @pytest.mark.parametrize("failure_phase", ["supervisor", "serving"])
+    @pytest.mark.parametrize("failure_type", [errors.InstallError, KeyboardInterrupt])
+    def test_native_replacement_preserves_unconfirmed_successor(
+        self, failure_phase: str, failure_type: type[BaseException], *, mocker
+    ) -> None:
+        """Keep durable recovery authority after the predecessor has exited."""
         payload = FakeTransaction(self.ctx)
-        current = self.current_runtime(
-            handoff_capabilities=["repeatable"],
-            handoff_state="finalized",
-            handoff_transaction_id="txn-previous",
+        current = self.current_runtime(handoff_capabilities=["repeatable"])
+        failure = failure_type("successor unavailable")
+        service = FakeServiceAdapter(
+            failure=failure if failure_phase == "supervisor" else None,
+            mocker=mocker,
         )
-        restored = {**current, "pid": 333}
-        service = FakeServiceAdapter(mocker=mocker)
-        source = process.OwnedProcess(111, self.ctx.executable, 1.0)
-        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
-        mocker.patch.object(process, "capture_executable", return_value=source)
         mocker.patch.object(process, "terminate_owned_process", return_value=True)
-        mocker.patch.object(process, "owned_process_alive", side_effect=[True, False])
         mocker.patch.object(apply.handoff, "drain_responses")
-        wait = mocker.patch.object(
-            apply,
-            "wait_for_serving_runtime",
-            side_effect=[errors.InstallError("successor unavailable"), restored],
-        )
+        wait = mocker.patch.object(apply, "wait_for_serving_runtime", side_effect=failure)
         resume = mocker.patch.object(apply.handoff, "resume_responses")
 
-        with pytest.raises(errors.InstallError, match="successor unavailable"):
+        with pytest.raises(
+            apply.UnknownDeploymentOutcome,
+            match="native successor startup is unconfirmed",
+        ) as raised:
             self.deploy(payload, current, adapter=service, mocker=mocker)
 
-        assert payload.events == ["commit", "activate", "rollback"]
-        service.install_mock.assert_not_called()
-        assert wait.call_args_list == [
-            mocker.call(
-                payload.context,
-                payload.expected,
-                runtime_reader=mocker.ANY,
-                timeout_seconds=30,
-                old_pid=111,
-            ),
-            mocker.call(
-                self.ctx,
-                current,
-                runtime_reader=mocker.ANY,
-                timeout_seconds=30,
-                old_pid=111,
-            ),
-        ]
+        assert payload.events == ["commit", "activate", ("preserve", str(raised.value))]
+        service.install_mock.assert_called_once_with(payload.context)
+        assert wait.call_count == (1 if failure_phase == "serving" else 0)
         resume.assert_not_called()
 
     def test_published_predecessor_without_selected_generation_handoff_uses_replacement(
@@ -382,10 +365,10 @@ class TestReleasedDeployment:
         )
         request.assert_not_called()
 
-    def test_candidate_generation_is_materialized_before_the_predecessor_exits(
+    def test_native_replacement_binds_current_supervisor_before_waiting_for_successor(
         self, *, mocker
     ) -> None:
-        """Keep the old payload immutable while preparing its exact successor."""
+        """The old watchdog need not understand the current transaction schema."""
         events: list[object] = []
         payload = FakeTransaction(self.ctx, events=events)
         current = self.current_runtime(
@@ -423,8 +406,8 @@ class TestReleasedDeployment:
             "source-drained",
             "activate",
             "source-exit",
-            "successor-serving",
             "service-install",
+            "successor-serving",
             ("finalize", self.successor()),
         ]
 
@@ -469,55 +452,6 @@ class TestReleasedDeployment:
             "activate",
             ("preserve", "native generation replacement outcome is unconfirmed"),
         ]
-
-    def test_generation_replacement_restores_predecessor_when_successor_never_serves(
-        self, *, mocker
-    ) -> None:
-        payload = FakeTransaction(self.ctx)
-        current = self.current_runtime(
-            handoff_capabilities=["repeatable"],
-            handoff_state="finalized",
-            handoff_transaction_id="txn-previous",
-        )
-        service = FakeServiceAdapter(mocker=mocker)
-        source = process.OwnedProcess(111, self.ctx.executable, 1.0)
-        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[111])
-        mocker.patch.object(process, "capture_executable", return_value=source)
-        mocker.patch.object(process, "terminate_owned_process", return_value=True)
-        mocker.patch.object(apply.handoff, "drain_responses")
-        mocker.patch.object(
-            apply,
-            "wait_for_serving_runtime",
-            side_effect=errors.InstallError("successor unavailable"),
-        )
-        mocker.patch.object(
-            apply.handoff,
-            "resume_responses",
-            return_value=False,
-        )
-
-        with pytest.raises(
-            apply.UnknownDeploymentOutcome,
-            match="could not restore predecessor admission",
-        ) as raised:
-            self.deploy(payload, current, adapter=service, mocker=mocker)
-
-        assert str(raised.value) == (
-            "native supervisor rollback could not restore predecessor admission; "
-            "upgrade failure: successor unavailable; "
-            "admission recovery failure: predecessor listener no longer owns "
-            "Responses admission"
-        )
-        assert payload.events == [
-            "commit",
-            "activate",
-            (
-                "preserve",
-                str(raised.value),
-            ),
-        ]
-        service.uninstall_mock.assert_not_called()
-        service.install_mock.assert_not_called()
 
     def test_candidate_processes_exit_before_payload_rollback(self, *, mocker) -> None:
         events: list[object] = []
@@ -875,7 +809,7 @@ class TestReleasedDeployment:
     def test_explicit_rollback_replaces_a_runtime_without_handoff_capability(
         self, *, mocker
     ) -> None:
-        """Rollback retains the bounded replacement fallback for older current runtimes."""
+        """A reverse transition keeps the newest control supervisor authoritative."""
         retained = payload_rollback.RetainedRollback(
             root=Path("/retained/1.2.2"),
             predecessor=retained_identity("1.2.2"),
@@ -891,12 +825,9 @@ class TestReleasedDeployment:
         source = process.OwnedProcess(111, self.ctx.executable, 1.0)
         mocker.patch.object(transaction, "begin_rollback_transaction", return_value=payload)
         mocker.patch.object(process, "capture_executable", return_value=source)
+        terminate = mocker.patch.object(process, "terminate_owned_process", return_value=True)
         drain = mocker.patch.object(apply.handoff, "drain_responses")
-        replace = mocker.patch.object(
-            apply,
-            "_replace_native_generation",
-            return_value=runtime,
-        )
+        mocker.patch.object(apply, "wait_for_serving_runtime", return_value=runtime)
         request = mocker.patch.object(apply, "request_handoff")
         control = generation.context(self.ctx, "c" * 32)
         mocker.patch.object(generation, "control_context", return_value=control)
@@ -915,7 +846,7 @@ class TestReleasedDeployment:
             "runtime": runtime,
         }
         drain.assert_called_once()
-        replace.assert_called_once()
+        terminate.assert_called_once_with(source, timeout_seconds=30)
         request.assert_not_called()
         service.install_mock.assert_called_once_with(control)
 
