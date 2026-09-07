@@ -18,6 +18,32 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class TestLinuxLifecycle:
+    @pytest.mark.parametrize(
+        "observation",
+        [
+            _completed(returncode=1, stderr="Failed to connect to bus"),
+            _completed(returncode=1, stdout="LoadState=not-found\nActiveState=inactive\n"),
+            _completed(stdout=""),
+        ],
+        ids=("unreachable-manager", "failed-observation", "missing-properties"),
+    )
+    def test_service_absence_requires_a_successful_manager_observation(
+        self, observation, tmp_path, *, mocker
+    ) -> None:
+        ctx = platform_context()
+        ctx.user_home = str(tmp_path)
+        mocker.patch.object(linux.shutil, "which", return_value="systemctl")
+        command = mocker.patch.object(linux.subprocess, "run", return_value=observation)
+        processes = mocker.patch.object(linux.process, "pids_naming_executable")
+
+        with pytest.raises(errors.InstallError, match="service state is unproven"):
+            linux.status(ctx)
+        with pytest.raises(errors.InstallError, match="service state is unproven"):
+            linux.uninstall(ctx)
+
+        assert all(call.args[0][2] == "show" for call in command.call_args_list)
+        processes.assert_not_called()
+
     def test_service_carrier_uses_the_context_user_home(self, tmp_path) -> None:
         owned_home = tmp_path / "owned-home"
         ctx = platform_context()
@@ -199,6 +225,12 @@ class TestLinuxLifecycle:
                     "LoadState=loaded\nActiveState=inactive\n",
                     "installed",
                 ),
+                (
+                    False,
+                    "systemctl",
+                    "LoadState=not-found\nActiveState=inactive\n",
+                    "absent",
+                ),
                 (False, None, "", "absent"),
             ):
                 _set_file(unit, "unit" if systemd else None)
@@ -210,7 +242,7 @@ class TestLinuxLifecycle:
                 )
                 assert linux.status(ctx) == expected
 
-    def test_uninstall_fails_closed_until_systemd_and_cron_are_proven_absent(self, *, mocker):
+    def test_uninstall_requires_verified_systemd_removal(self, *, mocker):
         with _temporary_context("log_dir") as ctx:
             unit = _set_file(linux._unit_path(ctx), "unit")
             mocker.patch.object(linux.shutil, "which", return_value=None)
@@ -246,7 +278,7 @@ class TestLinuxLifecycle:
                 linux.uninstall(ctx)
 
             _set_file(unit, "unit")
-            mocker.patch.object(linux.shutil, "which", return_value="crontab")
+            mocker.patch.object(linux.shutil, "which", return_value="systemctl")
             mocker.patch.object(
                 linux.subprocess,
                 "run",
