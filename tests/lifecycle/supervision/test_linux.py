@@ -53,30 +53,43 @@ class TestLinuxLifecycle:
             owned_home / ".config" / "systemd" / "user" / f"{ctx.service_id}.service"
         )
 
-    def test_probe_and_install_dispatch(self, *, mocker):
-        for executable, output, expected in (
+    @pytest.mark.parametrize(
+        ("executable", "observation", "available"),
+        [
             (None, None, False),
-            ("systemctl", _completed(stderr="Failed to connect to bus"), False),
-            ("systemctl", _completed(stdout="degraded"), True),
-        ):
-            mocker.patch.object(linux.shutil, "which", return_value=executable)
-            invoked = mocker.patch.object(linux.subprocess, "run", return_value=output)
-            assert linux._has_user_systemd() == expected
-            assert invoked.call_count == int(executable is not None)
-            mocker.stopall()
-
+            ("systemctl", _completed(stdout="running\n"), True),
+            ("systemctl", _completed(stdout="degraded\n"), True),
+            ("systemctl", _completed(returncode=1), False),
+            ("systemctl", _completed(returncode=1, stdout="running\n"), False),
+            ("systemctl", _completed(stdout="\n"), False),
+        ],
+        ids=("no-command", "running", "degraded", "no-bus", "failed-query", "empty-state"),
+    )
+    def test_install_requires_a_successful_manager_query(
+        self, executable, observation, available, *, mocker
+    ) -> None:
         ctx = platform_context()
-        for available in (False, True):
-            mocker.patch.object(linux, "_has_user_systemd", return_value=available)
-            called = mocker.patch.object(linux, "_install_systemd")
-            if available:
+        mocker.patch.object(linux.shutil, "which", return_value=executable)
+        query = mocker.patch.object(linux.subprocess, "run", return_value=observation)
+        install = mocker.patch.object(linux, "_install_systemd")
+
+        if available:
+            linux.install(ctx)
+            install.assert_called_once_with(ctx)
+        else:
+            with pytest.raises(errors.ManualStartRequiredError, match="systemd user manager"):
                 linux.install(ctx)
-                called.assert_called_once_with(ctx)
-            else:
-                with pytest.raises(errors.ManualStartRequiredError, match="systemd user manager"):
-                    linux.install(ctx)
-                called.assert_not_called()
-            mocker.stopall()
+            install.assert_not_called()
+
+        if executable is None:
+            query.assert_not_called()
+        else:
+            query.assert_called_once_with(
+                ["systemctl", "--user", "show", "--property=SystemState", "--value"],
+                capture_output=True,
+                check=False,
+                text=True,
+            )
 
     def test_native_service_contract_never_persists_python_or_source_paths(self):
         ctx = platform_context()
