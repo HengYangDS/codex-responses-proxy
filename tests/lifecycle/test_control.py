@@ -627,15 +627,13 @@ class TestControllerLifecycle:
         assert selected.predecessor is not None
         retained_root = generation.path(ctx, selected.predecessor)
         assert retained_root.is_dir()
-        active = generation.selected_context(ctx)
         service = mocker.Mock()
         service.status.return_value = "absent"
         service.terminate_runtime.side_effect = [1, 1]
-        mocker.patch.object(uninstall.runtime_context, "create", return_value=active)
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
 
-        result = uninstall.uninstall_product(purge=True)
+        result = uninstall.uninstall_product(ctx, purge=True)
 
         assert result["state"] == "purged"
         assert result["stopped"] == 2
@@ -662,11 +660,10 @@ class TestControllerLifecycle:
         service = mocker.Mock()
         service.status.return_value = "absent"
         service.terminate_runtime.return_value = 1
-        mocker.patch.object(uninstall.runtime_context, "create", return_value=active)
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
 
-        result = uninstall.uninstall_product(purge=True)
+        result = uninstall.uninstall_product(ctx, purge=True)
 
         assert result["state"] == "purged"
         stopped = {
@@ -674,6 +671,64 @@ class TestControllerLifecycle:
         }
         assert orphan in stopped
         assert not Path(ctx.install_dir).exists()
+
+    @pytest.mark.parametrize("resume", ["uninstall", "recover"])
+    @pytest.mark.parametrize("interruption", ["selector", "payload", "metadata", "root", "journal"])
+    def test_interrupted_purge_resumes_without_deleted_payload_identity(
+        self, tmp_path: Path, resume: str, interruption: str, *, mocker
+    ) -> None:
+        """A recorded removal continues after losing part of the active payload."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, mocker=mocker)
+        active = generation.selected_context(ctx)
+        service = mocker.Mock()
+        service.status.return_value = "absent"
+        service.terminate_runtime.return_value = 0
+        mocker.patch.object(uninstall, "adapter", return_value=service)
+        mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
+        mocker.patch.object(control, "read_runtime", return_value=None)
+        unlink = Path.unlink
+        rmdir = Path.rmdir
+        executable = Path(active.executable)
+        interrupted = {
+            "selector": generation.selector_path(ctx),
+            "payload": executable,
+            "metadata": payload_state.installed_path(ctx),
+            "root": Path(ctx.install_dir),
+            "journal": payload_state.journal_path(ctx),
+        }[interruption]
+
+        def interrupted_unlink(path: Path, *args, **kwargs) -> None:
+            if interruption == "journal" and path == interrupted:
+                raise PermissionError("interrupted transaction cleanup")
+            unlink(path, *args, **kwargs)
+            if path == interrupted:
+                raise PermissionError("interrupted payload removal")
+
+        def interrupted_rmdir(path: Path, *args, **kwargs) -> None:
+            rmdir(path, *args, **kwargs)
+            if interruption == "root" and path == interrupted:
+                raise PermissionError("interrupted root removal")
+
+        failure = mocker.patch.object(Path, "unlink", interrupted_unlink)
+        root_failure = mocker.patch.object(Path, "rmdir", interrupted_rmdir)
+        with pytest.raises(errors.InstallError, match="failed"):
+            uninstall.uninstall_product(ctx, purge=True)
+        mocker.stop(failure)
+        mocker.stop(root_failure)
+        pending = payload_state.status(ctx)
+        assert pending is not None
+        assert pending["state"] == "purged"
+
+        result = (
+            uninstall.uninstall_product(ctx, purge=True)
+            if resume == "uninstall"
+            else control.recover(active)
+        )
+
+        assert result["state"] == "purged"
+        assert not Path(ctx.install_dir).exists()
+        assert payload_state.status(ctx) is None
 
     @staticmethod
     def _healthy_status_dependencies(ctx, *, mocker) -> None:
@@ -727,23 +782,21 @@ class TestControllerLifecycle:
         assert uninstall._stop_proxy(service, active) == 1
         service.terminate_runtime.assert_called_once_with(active, timeout_seconds=5.0)
 
-    def test_uninstall_product_covers_success_and_fail_closed_boundaries(self, *, mocker):
-        ctx = install_context(Path(tempfile.mkdtemp()))
-        Path(ctx.install_dir).mkdir(parents=True)
+    def test_uninstall_product_covers_success_and_fail_closed_boundaries(self, tmp_path, *, mocker):
+        ctx = install_context(tmp_path)
+        install_payload(ctx, mocker=mocker)
         service = mocker.Mock()
         service.status.return_value = "absent"
         service.terminate_runtime.return_value = 0
-        mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
-        mocker.patch.object(uninstall.projection, "purge_installed_projection", return_value=[])
-        remove_command = mocker.patch.object(uninstall.command, "remove", return_value=True)
-        assert uninstall.uninstall_product(purge=True) == {
+        assert uninstall.uninstall_product(ctx, purge=True) == {
             "state": "purged",
             "stopped": 0,
             "command_removed": True,
         }
-        remove_command.assert_called_once_with(Path(ctx.command), Path(ctx.executable))
+        assert not Path(ctx.command).exists()
+        assert not Path(ctx.install_dir).exists()
         service.uninstall.assert_called_once_with(ctx)
 
         service.status.return_value = "loaded"
@@ -751,26 +804,13 @@ class TestControllerLifecycle:
             uninstall._remove_service(service, ctx)
 
         service.status.return_value = "absent"
-        Path(ctx.install_dir).mkdir(parents=True)
-        mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
-        mocker.patch.object(uninstall, "adapter", return_value=service)
-        mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
-        assert uninstall.uninstall_product() == {
+        install_payload(ctx, mocker=mocker)
+        assert uninstall.uninstall_product(ctx) == {
             "state": "uninstalled",
             "stopped": 0,
             "command_removed": True,
         }
-        mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
-        mocker.patch.object(uninstall, "adapter", return_value=service)
-        mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
-        mocker.patch.object(
-            uninstall.projection,
-            "purge_installed_projection",
-            return_value=["unknown.txt"],
-        )
-
-        with pytest.raises(errors.InstallError, match="unknown install content remains"):
-            uninstall.uninstall_product(purge=True)
+        assert Path(ctx.install_dir).is_dir()
 
     def test_purge_rejects_control_root_residue_after_owned_generations_are_removed(
         self, tmp_path: Path, *, mocker
@@ -780,16 +820,14 @@ class TestControllerLifecycle:
         install_payload(ctx, "1.2.2", mocker=mocker)
         residue = Path(ctx.install_dir, "unknown.txt")
         residue.write_text("operator data", encoding="utf-8")
-        active = generation.selected_context(ctx)
         service = mocker.Mock()
         service.status.return_value = "absent"
         service.terminate_runtime.return_value = 1
-        mocker.patch.object(uninstall.runtime_context, "create", return_value=active)
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
 
         with pytest.raises(errors.InstallError, match="unknown install content remains"):
-            uninstall.uninstall_product(purge=True)
+            uninstall.uninstall_product(ctx, purge=True)
 
         assert residue.read_text(encoding="utf-8") == "operator data"
 
@@ -797,11 +835,10 @@ class TestControllerLifecycle:
         ctx = install_context(tmp_path)
         service = mocker.Mock()
         service.status.return_value = "absent"
-        mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
 
-        assert uninstall.uninstall_product(purge=True) == {
+        assert uninstall.uninstall_product(ctx, purge=True) == {
             "state": "not_installed",
             "stopped": 0,
             "command_removed": False,
@@ -814,20 +851,19 @@ class TestControllerLifecycle:
         ctx = install_context(tmp_path)
         service = mocker.Mock()
         service.status.return_value = "absent"
-        mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
         mocker.patch.object(uninstall, "adapter", return_value=service)
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
 
         root = Path(payload_state.transaction_root(ctx))
         root.mkdir(parents=True)
         with pytest.raises(errors.RecoveryStateError, match="invalid"):
-            uninstall.uninstall_product(purge=True)
+            uninstall.uninstall_product(ctx, purge=True)
         service.uninstall.assert_not_called()
 
         root.rmdir()
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
         with pytest.raises(errors.RecoveryRequiredError, match="recovery"):
-            uninstall.uninstall_product(purge=True)
+            uninstall.uninstall_product(ctx, purge=True)
         service.uninstall.assert_not_called()
         transaction.rollback()
 
@@ -863,14 +899,13 @@ class TestControllerLifecycle:
         assert command_evidence["path"] == str(installed_command)
         command_status.assert_called_once_with(installed_command, Path(ctx.executable))
 
-        mocker.patch.object(uninstall.runtime_context, "create", return_value=ctx)
         service = mocker.patch.object(uninstall, "adapter").return_value
         service.status.return_value = "absent"
         service.terminate_runtime.return_value = 0
         mocker.patch.object(uninstall.process, "verified_proxy_listener_pids", return_value=[])
         remove = mocker.patch.object(uninstall.command, "remove", return_value=True)
 
-        uninstall.uninstall_product()
+        uninstall.uninstall_product(ctx)
 
         remove.assert_called_once_with(installed_command, Path(ctx.executable))
 
@@ -906,12 +941,12 @@ class TestControllerLifecycle:
         )
 
         mocker.patch.object(
-            uninstall.runtime_context,
-            "create",
+            uninstall,
+            "adapter",
             side_effect=errors.UnsupportedPlatformError("no host"),
         )
         with pytest.raises(errors.UnsupportedPlatformError, match="no host"):
-            uninstall.uninstall_product()
+            uninstall.uninstall_product(ctx)
 
     def test_control_status_includes_secret_free_runtime_when_listener_is_available(
         self, *, mocker

@@ -1609,6 +1609,147 @@ class TestPayloadTransaction:
         assert not Path(discarded.context.payload_dir).exists()
         assert payload_state.status(ctx) is None
 
+    def test_purge_recovery_uses_its_inventory_in_a_fresh_process(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Disposal authority survives the controller and its selected executable."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, mocker=mocker)
+        executable = Path(ctx.executable)
+        unlink = Path.unlink
+
+        def interrupt(path: Path, *args, **kwargs) -> None:
+            unlink(path, *args, **kwargs)
+            if path == executable:
+                raise PermissionError("interrupted payload disposal")
+
+        failure = mocker.patch.object(Path, "unlink", interrupt)
+        with pytest.raises(errors.InstallError, match="purge failed"):
+            payload_transaction.purge(ctx)
+        mocker.stop(failure)
+        assert not executable.exists()
+        recovery = multiprocessing.get_context("spawn").Process(
+            target=_recover_without_binding, args=(ctx, "purged")
+        )
+        recovery.start()
+        try:
+            recovery.join(timeout=30)
+            assert recovery.exitcode == 0
+        finally:
+            if recovery.is_alive():
+                recovery.kill()
+                recovery.join()
+            recovery.close()
+        assert not Path(ctx.install_dir).exists()
+        assert payload_state.status(ctx) is None
+
+    def test_purge_accepts_a_verified_flat_payload_without_installed_state(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """A preserved complete manifest proves removal without a selected generation."""
+        ctx = install_context(tmp_path)
+        installed = install_payload(ctx, mocker=mocker)
+        _project_as_legacy_flat_install(ctx, installed)
+        payload_generation.root(ctx).rmdir()
+        payload_state.installed_path(ctx).unlink()
+
+        assert payload_transaction.purge(ctx)["state"] == "purged"
+        assert not Path(ctx.install_dir).exists()
+        assert payload_state.status(ctx) is None
+
+    def test_pending_transaction_retains_exclusive_removal_authority(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """Purge cannot replace a live transaction's journal or installed selection."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, mocker=mocker)
+        pending = begin_transaction(ctx, released_artifact("1.2.4"), mocker=mocker)
+        before = payload_state.journal_path(ctx).read_bytes()
+        with pytest.raises(errors.RecoveryRequiredError, match="recovery"):
+            payload_transaction.purge(ctx)
+        assert payload_state.journal_path(ctx).read_bytes() == before
+        pending.rollback()
+
+    @pytest.mark.parametrize(
+        "corruption",
+        ["empty", "generation", "unknown", "digest", "state", "transaction_root"],
+    )
+    def test_removal_authority_is_validated_before_disposal(
+        self, tmp_path: Path, corruption: str, *, mocker
+    ) -> None:
+        """Only a canonical terminal inventory grants deletion of recorded bytes."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, mocker=mocker)
+        failure = mocker.patch.object(
+            payload_projection, "purge_owned_files", side_effect=errors.InstallError("interrupted")
+        )
+        with pytest.raises(errors.InstallError, match="interrupted"):
+            payload_transaction.purge(ctx)
+        mocker.stop(failure)
+        journal = payload_state.read_journal(ctx)
+        files = journal["files"]
+        assert isinstance(files, dict)
+        match corruption:
+            case "empty":
+                journal["files"] = {}
+            case "generation":
+                files["generations/not-a-generation/providers.toml"] = "0" * 64
+            case "unknown":
+                files["operator.txt"] = "0" * 64
+            case "digest":
+                files[next(iter(files))] = "invalid"
+            case "state":
+                journal["state"] = "closed"
+            case "transaction_root":
+                payload_state.transaction_root(ctx).mkdir()
+        payload_state.journal_path(ctx).write_bytes(payload_digest.canonical_json(journal))
+        before = _retained_carrier_snapshot(Path(ctx.install_dir), tmp_path / "unrelated")
+
+        with pytest.raises(errors.RecoveryStateError):
+            _recover_without_binding(ctx, "purged")
+
+        assert _retained_carrier_snapshot(Path(ctx.install_dir), tmp_path / "unrelated") == before
+
+    @pytest.mark.parametrize("replacement", ["file", "symlink", "unknown", "empty_directory"])
+    def test_purge_recovery_preserves_unowned_replacements(
+        self, tmp_path: Path, replacement: str, *, mocker
+    ) -> None:
+        """An interrupted purge never expands its original byte or directory ownership."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, mocker=mocker)
+        failure = mocker.patch.object(
+            payload_projection, "purge_owned_files", side_effect=errors.InstallError("interrupted")
+        )
+        with pytest.raises(errors.InstallError, match="interrupted"):
+            payload_transaction.purge(ctx)
+        mocker.stop(failure)
+        retained = Path(ctx.executable)
+        expected = b"operator data"
+        if replacement == "file":
+            retained.write_bytes(expected)
+        elif replacement == "symlink":
+            external = tmp_path / "external"
+            external.write_bytes(expected)
+            retained.unlink()
+            retained.symlink_to(external)
+        else:
+            retained = Path(ctx.payload_dir, "bin", "operator")
+            if replacement == "unknown":
+                retained.write_bytes(expected)
+            else:
+                retained.mkdir()
+
+        with pytest.raises(errors.InstallError):
+            _recover_without_binding(ctx, "purged")
+
+        if replacement == "empty_directory":
+            assert retained.is_dir()
+        else:
+            assert retained.read_bytes() == expected
+        pending = payload_state.status(ctx)
+        assert pending is not None
+        assert pending["state"] == "purged"
+
     @pytest.mark.parametrize("restart", [False, True])
     def test_snapshot_failure_cleanup_remains_retryable(
         self, tmp_path: Path, restart: bool, *, mocker

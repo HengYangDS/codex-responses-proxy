@@ -13,11 +13,12 @@ from codex_responses_proxy.json_value import is_json_object
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.service import digest
+from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import inventory
 
 INSTALLED_RELEASE_STATE_SCHEMA = 1
-TRANSACTION_JOURNAL_SCHEMA = 4
-TERMINAL_STATES = frozenset({"closed", "rolled_back", "finalized"})
+TRANSACTION_JOURNAL_SCHEMA = 5
+TERMINAL_STATES = frozenset({"closed", "rolled_back", "finalized", "purged"})
 _STRICT_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
 
@@ -95,7 +96,7 @@ def read_journal(ctx: runtime_context.RuntimeContext) -> JsonObject:
         "receipt_sha256",
         "fresh",
     }
-    allowed = required | {"previous_generation", "previous_predecessor", "phase", "reason"}
+    allowed = required | {"previous_generation", "previous_predecessor", "phase", "reason", "files"}
     transaction_id = journal.get("transaction_id")
     version = journal.get("version")
     receipt_sha256 = journal.get("receipt_sha256")
@@ -144,9 +145,49 @@ def read_journal(ctx: runtime_context.RuntimeContext) -> JsonObject:
         or (journal.get("state") != "recovery_required" and phase is not None)
     ):
         raise errors.InstallError("payload transaction journal fields are invalid")
+    if journal["state"] == "purged":
+        if root.exists():
+            raise errors.InstallError("payload removal has an unexpected transaction directory")
+        removal_files(journal)
+    elif "files" in journal:
+        raise errors.InstallError("payload transaction journal fields are invalid")
     if not root.exists() and journal["state"] not in TERMINAL_STATES:
         raise errors.InstallError("payload transaction root is not a directory")
     return journal
+
+
+def removal_files(journal: ReadOnlyJsonObject) -> dict[str, str]:
+    """Read one positive, root-relative deletion inventory from transaction authority."""
+    files = journal.get("files")
+    if not isinstance(files, dict) or not files:
+        raise errors.InstallError("payload removal inventory is invalid")
+    result = {}
+    for name, expected in files.items():
+        relative = owned_files.canonical_relative(name, "payload removal")
+        parts = relative.split("/")
+        if parts[0] == identity.PAYLOAD_GENERATIONS_DIRNAME:
+            if len(parts) < 3 or re.fullmatch(r"[0-9a-f]{32}", parts[1]) is None:
+                raise errors.InstallError("payload removal generation is invalid")
+            member = "/".join(parts[2:])
+        else:
+            member = relative
+        if (
+            (
+                member not in set(owned_files.OWNED_PAYLOAD_METADATA)
+                and relative
+                not in {
+                    inventory.INSTALLED_RELEASE_STATE_FILENAME,
+                    identity.PAYLOAD_SELECTOR_FILENAME,
+                }
+                and not inventory.is_runtime_file(member)
+                and not inventory.is_runtime_file(member, windows=True)
+            )
+            or not isinstance(expected, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected) is None
+        ):
+            raise errors.InstallError("payload removal file identity is invalid")
+        result[relative] = expected
+    return result
 
 
 def write_journal(

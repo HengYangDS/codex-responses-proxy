@@ -17,6 +17,7 @@ from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle.supervision import process
 from tests.lifecycle.fixtures import install_context
+from tests.lifecycle.fixtures import install_payload
 
 
 class CliLifecycleContracts:
@@ -708,11 +709,8 @@ class CliLifecycleContracts:
     def test_uninstall_removes_only_the_owned_service_unless_purge_is_requested(
         self, tmp_path: Path, *, mocker
     ) -> None:
-        mocker.patch.object(
-            application.runtime_context,
-            "create",
-            return_value=install_context(tmp_path),
-        )
+        ctx = install_context(tmp_path)
+        mocker.patch.object(application.runtime_context, "create", return_value=ctx)
         uninstall = mocker.patch.object(
             application.uninstall,
             "uninstall_product",
@@ -728,7 +726,7 @@ class CliLifecycleContracts:
         assert "1" in stdout
         assert not stdout.lstrip().startswith("{")
         assert stderr == ""
-        uninstall.assert_called_once_with(port=8801, purge=False)
+        uninstall.assert_called_once_with(ctx, purge=False)
         uninstall = mocker.patch.object(
             application.uninstall,
             "uninstall_product",
@@ -739,7 +737,7 @@ class CliLifecycleContracts:
         assert stderr == ""
         assert "Purged" in stdout
         assert not stdout.lstrip().startswith("{")
-        uninstall.assert_called_once_with(port=8792, purge=True)
+        uninstall.assert_called_once_with(ctx, purge=True)
 
     def test_pristine_recover_and_uninstall_are_explicit_no_ops(
         self, tmp_path: Path, *, mocker
@@ -772,7 +770,56 @@ class CliLifecycleContracts:
         assert code == 0
         assert json.loads(stdout)["state"] == "not_installed"
         assert stderr == ""
-        uninstall.assert_called_once_with(port=8792, purge=True)
+        uninstall.assert_called_once_with(ctx, purge=True)
+
+    @pytest.mark.parametrize("interruption", ["payload", "journal"])
+    def test_public_recovery_reconstructs_context_after_interrupted_purge(
+        self, tmp_path: Path, interruption: str, *, mocker
+    ) -> None:
+        """The public lifecycle reconstructs removal from declared roots, not old objects."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, mocker=mocker)
+        config = application.runtime_context.config
+        mocker.patch.object(config, "data_dir", return_value=ctx.install_dir)
+        mocker.patch.object(config, "state_dir", return_value=ctx.log_dir)
+        mocker.patch.object(config, "home_dir", return_value=ctx.user_home)
+        service = mocker.Mock()
+        service.status.return_value = "absent"
+        service.terminate_runtime.return_value = 0
+        mocker.patch.object(application.uninstall, "adapter", return_value=service)
+        mocker.patch.object(application.control, "adapter", return_value=service)
+        mocker.patch.object(process, "verified_proxy_listener_pids", return_value=[])
+        mocker.patch.object(application.control, "read_runtime", return_value=None)
+        unlink = Path.unlink
+        interrupted = (
+            Path(ctx.executable) if interruption == "payload" else payload_state.journal_path(ctx)
+        )
+
+        def fail(path: Path, *args, **kwargs) -> None:
+            if path == interrupted:
+                raise PermissionError("interrupted purge")
+            unlink(path, *args, **kwargs)
+
+        failure = mocker.patch.object(Path, "unlink", fail)
+        code, _stdout, stderr = self.invoke("uninstall", "--purge", "--json")
+        assert code == 2
+        assert "failed" in stderr
+        mocker.stop(failure)
+
+        code, stdout, stderr = self.invoke("status", "--json")
+        assert code == 0
+        assert json.loads(stdout)["state"] == "recovery_required"
+        assert stderr == ""
+        code, stdout, stderr = self.invoke("recover", "--json")
+        assert code == 0
+        assert json.loads(stdout)["state"] == "purged"
+        assert stderr == ""
+        assert not Path(ctx.install_dir).exists()
+        assert payload_state.status(ctx) is None
+        code, stdout, stderr = self.invoke("uninstall", "--purge", "--json")
+        assert code == 0
+        assert json.loads(stdout)["state"] == "not_installed"
+        assert stderr == ""
 
     def test_expected_lifecycle_failures_are_rendered_once(self, *, mocker) -> None:
         mocker.patch.object(

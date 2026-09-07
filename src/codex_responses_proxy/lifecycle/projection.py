@@ -23,8 +23,8 @@ def payload_manifest_path(ctx: runtime_context.RuntimeContext) -> Path:
     return Path(ctx.payload_dir, inventory.MANIFEST_FILENAME)
 
 
-def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str, ...]:
-    """Delete only bytes proven by the current installed manifest."""
+def owned_payload_files(ctx: runtime_context.RuntimeContext) -> dict[str, str]:
+    """Capture the exact bytes authorized by a complete current payload manifest."""
     install = Path(ctx.payload_dir)
     manifest_path = payload_manifest_path(ctx)
     if manifest_path.is_symlink():
@@ -35,25 +35,44 @@ def purge_installed_projection(ctx: runtime_context.RuntimeContext) -> tuple[str
     if not ok:
         raise errors.InstallError(f"installed payload integrity check failed: {detail}")
     manifest = owned_files.read_json_object(manifest_path, "installed payload manifest")
-    files = manifest["files"]
-    assert isinstance(files, dict)
     owned = set(owned_files.declared_files(manifest)) | set(owned_files.OWNED_PAYLOAD_METADATA)
-    for relative in owned:
-        owned_files.regular_file(install, relative, "installed payload purge")
-    for relative in sorted(owned, key=lambda value: len(PurePosixPath(value).parts), reverse=True):
+    return {
+        relative: digest.sha256_file(
+            owned_files.regular_file(install, relative, "installed payload purge")
+        )
+        for relative in sorted(owned)
+    }
+
+
+def purge_owned_files(root: Path, files: Mapping[str, str]) -> tuple[str, ...]:
+    """Resume exact byte removal, preserving replacements and undeclared content."""
+    if root.is_symlink() or (root.exists() and not root.is_dir()):
+        raise errors.InstallError("installed payload root is not a real directory")
+    remaining_files = []
+    for relative, expected in files.items():
+        target = owned_files.path(root, owned_files.canonical_relative(relative, "payload purge"))
+        if not target.exists() and not target.is_symlink():
+            continue
+        target = owned_files.regular_file(root, relative, "installed payload purge")
+        if digest.sha256_file(target) != expected:
+            raise errors.InstallError(f"installed payload purge identity changed: {relative}")
+        remaining_files.append(relative)
+    for relative in sorted(
+        remaining_files, key=lambda value: (-len(PurePosixPath(value).parts), value)
+    ):
         try:
-            owned_files.path(install, relative).unlink()
+            owned_files.path(root, relative).unlink()
         except OSError as exc:
             raise errors.InstallError(f"installed payload purge failed: {relative}") from exc
-    remove_empty_owned_directories(install, owned)
+    remove_empty_owned_directories(root, set(files))
     if residual := [
         relative
-        for relative in owned
-        if owned_files.path(install, relative).exists()
-        or owned_files.path(install, relative).is_symlink()
+        for relative in files
+        if owned_files.path(root, relative).exists()
+        or owned_files.path(root, relative).is_symlink()
     ]:
         raise errors.InstallError("installed payload remains after purge: " + ", ".join(residual))
-    return _remaining_paths(install)
+    return _remaining_paths(root)
 
 
 def manifest_serving_payload_sha256(file_digests: Mapping[str, str]) -> str:
@@ -100,15 +119,6 @@ def remove_empty_owned_directories(install: Path, owned: set[str]) -> None:
             raise errors.InstallError(
                 f"installed payload directory changed type: {relative.as_posix()}"
             )
-        for current, children, _files in directory.walk(top_down=False):
-            for child_name in children:
-                child = current / child_name
-                if child.is_symlink():
-                    continue
-                try:
-                    child.rmdir()
-                except OSError:
-                    pass
         try:
             directory.rmdir()
         except OSError:

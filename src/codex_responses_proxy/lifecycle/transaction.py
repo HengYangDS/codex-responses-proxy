@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Literal
 
 from codex_responses_proxy import errors
+from codex_responses_proxy.json_value import JsonObject
 from codex_responses_proxy.json_value import ReadOnlyJsonObject
 from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import candidate as payload_candidate
@@ -954,11 +955,63 @@ def _complete_transaction(
     return _finish_cleanup(ctx, terminal)
 
 
+def purge(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
+    """Record exact disposal authority after supervision and processes have exited."""
+    if state.status(ctx) is not None:
+        raise errors.RecoveryRequiredError("complete payload recovery before uninstalling")
+    root = Path(ctx.install_dir)
+    files: JsonObject = {}
+    for selected in generation.owned_contexts(ctx) or (ctx,):
+        payload_root = Path(selected.payload_dir)
+        for relative, expected in projection.owned_payload_files(selected).items():
+            files[(payload_root / relative).relative_to(root).as_posix()] = expected
+    installed = state.read_installed(ctx)
+    if installed is None:
+        manifest = owned_files.read_json_object(
+            projection.payload_manifest_path(ctx), "installed payload manifest"
+        )
+        version = manifest["release"]
+        receipt_sha256 = manifest["release_receipt_sha256"]
+    else:
+        version = state.require_version(installed)
+        receipt_sha256 = installed["receipt_sha256"]
+    for target in (generation.selector_path(ctx), state.installed_path(ctx)):
+        if target.exists() or target.is_symlink():
+            relative = target.relative_to(root).as_posix()
+            files[relative] = digest.sha256_file(
+                owned_files.regular_file(root, relative, "payload removal")
+            )
+    journal: JsonObject = {
+        "schema_version": state.TRANSACTION_JOURNAL_SCHEMA,
+        "transaction_id": uuid.uuid4().hex,
+        "version": version,
+        "receipt_sha256": receipt_sha256,
+        "fresh": False,
+        "state": "purged",
+        "files": files,
+    }
+    state.removal_files(journal)
+    owned_files.write_bytes(state.journal_path(ctx), digest.canonical_json(journal), mode=0o600)
+    return _finish_cleanup(ctx, journal)
+
+
 def _finish_cleanup(
     ctx: runtime_context.RuntimeContext, journal: Mapping[str, object]
 ) -> dict[str, object]:
     """Resume only disposal; terminal projections and supervision remain unchanged."""
     match journal["state"]:
+        case "purged":
+            files = state.removal_files(journal)
+            root = Path(ctx.install_dir)
+            # Detach selection before any generation can become partially absent.
+            selector = identity.PAYLOAD_SELECTOR_FILENAME
+            if selector in files:
+                projection.purge_owned_files(root, {selector: files[selector]})
+            remaining = projection.purge_owned_files(root, files)
+            if remaining:
+                raise errors.InstallError(
+                    "unknown install content remains: " + ", ".join(remaining)
+                )
         case "finalized":
             selection = generation.read(ctx)
             if selection is None or selection.active != journal["transaction_id"]:
