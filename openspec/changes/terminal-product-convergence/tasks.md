@@ -38,6 +38,24 @@
 
 - [ ] 5.1 Model install, upgrade, reload, rollback, recovery, and uninstall as one transaction state machine with explicit preconditions, durable transitions, terminal states, and one mutation lock; remove parallel lifecycle paths.
 - [ ] 5.2 Make payload generation, manifest, command projection, transaction journal, rollback snapshot, service declaration, listener, watchdog, and handoff child each have exact ownership identity and one cleanup owner.
+
+    Candidate-failure slice: a failing integrity check exposed an orphaned
+    generation after the transaction journal had already been deleted. Cleanup
+    incorrectly depended on the presence of a legacy flat-layout snapshot; modern
+    generation upgrades have no such snapshot. Removing that condition sends
+    every mutated candidate through the existing transaction rollback owner.
+    The regression covers fresh install and upgrade across integrity failure,
+    runtime-spec write failure, and interrupted prewarm; it proves candidate and
+    journal absence while preserving the previous generation selection and bytes.
+    Focused verification passed 190 tests and 72 subtests. Installed-wheel suites
+    passed on Python 3.12, 3.13, and 3.14 on macOS, each with 1,035 passed,
+    3 native-artifact CLI skips, and 22 explicitly excluded native/toolchain tests.
+    The quality session reported 97.04% combined statement/branch coverage.
+    Evidence: `/private/tmp/proxy-terminal-ownership.BDoChs/`. No production
+    abstraction, service, or cleanup framework was added. Native Linux/Windows,
+    new release artifacts, and the rest of this resource-ownership task remain
+    unproved; the installed 3.1.16 service was not changed.
+
 - [ ] 5.3 Prove macOS launchd creation and teardown share the exact label and plist path; remove every suffixed test service, process, and plist while preserving the canonical installed service.
 - [ ] 5.4 Prove Linux systemd behavior on a real supported user service and in the declared container boundary, including explicit behavior when no user bus exists; remove session-only fallback processes.
 - [ ] 5.5 Prove Windows Service Control Manager install, status, handoff, recovery, rollback, uninstall, command projection, and process-generation ownership from the native artifact.

@@ -704,7 +704,7 @@ class PayloadTransaction:
             self._state = "materialized"
             self._write_journal()
         except BaseException as exc:
-            if not mutated or not payload_rollback.legacy_snapshot_path(rollback).exists():
+            if not mutated:
                 self._state = "rolled_back"
                 _remove_transaction_root(self._ctx)
             else:
