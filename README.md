@@ -140,7 +140,7 @@ codex-responses-proxy reload
 # Converge on the exact active release or verified retained predecessor
 codex-responses-proxy rollback --to-release <exact-version>
 
-# Resolve an interrupted install or upgrade; idle recovery is a successful no-op
+# Resolve an interrupted payload transaction; idle recovery is a successful no-op
 codex-responses-proxy recover
 
 # Remove native supervision; preserve the verified payload
@@ -157,11 +157,20 @@ installation, `unavailable` when no verified predecessor exists, and
 installation. `recover` returns
 `not_required` when no transaction exists, `closed` when an unmutated prepared
 transaction is discarded, `finalized` when the committed candidate is already
-the proven live installation, and `rolled_back` when the exact prior state is
-restored. `uninstall` and `uninstall --purge` return `not_installed` with exit
+the proven live installation, `rolled_back` when the exact prior state is
+restored, and `purged` when interrupted removal finishes. `uninstall` and
+`uninstall --purge` return `not_installed` with exit
 status zero only when no owned service, listener, command, payload, or
 transaction exists. Existing but unverifiable state is never treated as
 absence and remains unchanged for diagnosis.
+
+Before deleting payload files, purge records their exact paths and digests in
+the existing transaction journal. An interrupted purge resumes through
+`recover` or `uninstall --purge`; it does not depend on files already removed.
+Unknown content and changed replacements are preserved and reported, including
+empty directories. Remove or relocate that content deliberately, then retry.
+During recovery, use a separate verified release executable if the installed
+command has already been removed.
 
 A successful upgrade retains exactly one predecessor in the immutable
 generation store. One atomic selector under the stable control root is the

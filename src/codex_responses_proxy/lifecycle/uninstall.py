@@ -10,11 +10,10 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import generation
-from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle import state
+from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.lifecycle.supervision.native_service import adapter
-from codex_responses_proxy.runtime import config as runtime_config
 
 
 class ServiceAdapter(Protocol):
@@ -56,14 +55,18 @@ def _remove_service(service: ServiceAdapter, ctx: runtime_context.RuntimeContext
 
 
 def uninstall_product(
-    *, port: int = runtime_config.DEFAULT_PORT, purge: bool = False
+    ctx: runtime_context.RuntimeContext, *, purge: bool = False
 ) -> dict[str, object]:
     """Remove owned supervision and optionally purge the verified payload."""
-    ctx = runtime_context.create(port=port)
     service = cast(ServiceAdapter, adapter())
 
     transaction_state = state.status(ctx)
     if transaction_state is not None:
+        if purge and transaction_state.get("state") == "purged":
+            _remove_service(service, ctx)
+            stopped = _stop_proxy(service, ctx)
+            result = transaction.recover(ctx, runtime=None, bind_terminal=lambda _ctx: None)
+            return {**result, "stopped": stopped, "command_removed": False}
         if transaction_state.get("state") == "invalid":
             raise errors.RecoveryStateError(
                 "payload transaction evidence is invalid; preserve it for diagnosis"
@@ -97,29 +100,7 @@ def uninstall_product(
     command_removed = command.remove(command_path, Path(control_ctx.executable))
 
     if purge:
-        owned_generations = generation.owned_contexts(ctx)
-        selection = generation.read(ctx)
-        payload_contexts = owned_generations or (ctx,)
-        for owned_ctx in payload_contexts:
-            remaining = projection.purge_installed_projection(owned_ctx)
-            if remaining:
-                raise errors.InstallError(
-                    "manifest-owned payload was removed, but unknown install content remains: "
-                    + ", ".join(remaining)
-                )
-        if selection is not None:
-            generation.clear(ctx)
-        for owned_ctx in owned_generations:
-            generation.remove(ctx, Path(owned_ctx.payload_dir).name)
-        Path(state.installed_path(ctx)).unlink(missing_ok=True)
-        if install_root.is_symlink() or not install_root.is_dir():
-            raise errors.InstallError("installed payload root is unavailable or invalid")
-        remaining = tuple(
-            sorted(path.relative_to(install_root).as_posix() for path in install_root.rglob("*"))
-        )
-        if remaining:
-            raise errors.InstallError("unknown install content remains: " + ", ".join(remaining))
-        install_root.rmdir()
+        transaction.purge(ctx)
     return {
         "state": "purged" if purge else "uninstalled",
         "stopped": stopped,

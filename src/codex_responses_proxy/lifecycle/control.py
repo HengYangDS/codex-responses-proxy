@@ -16,6 +16,7 @@ from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle import state as payload_state
 from codex_responses_proxy.lifecycle import transaction
+from codex_responses_proxy.lifecycle import uninstall
 from codex_responses_proxy.lifecycle.deployment import apply
 from codex_responses_proxy.lifecycle.deployment import handoff
 from codex_responses_proxy.lifecycle.supervision import process
@@ -288,6 +289,8 @@ def reload(ctx: runtime_context.RuntimeContext, timeout_seconds: float = 30.0) -
 
 def recover(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
     """Converge one interrupted payload transaction and its native supervisor."""
+    if (pending := payload_state.status(ctx)) is not None and pending.get("state") == "purged":
+        return uninstall.uninstall_product(ctx, purge=True)
 
     def bind_terminal(control: runtime_context.RuntimeContext) -> None:
         native = adapter()

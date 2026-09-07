@@ -34,6 +34,17 @@ SHALL wait for that completion.
 - **AND** selected payloads, installed metadata, command projection, and native
   supervision remain unchanged.
 
+#### Scenario: Payload removal is interrupted
+
+- **WHEN** native supervision and owned processes have stopped and a purge
+  removes only part of its verified payload
+- **THEN** the existing transaction journal retains the exact root-relative
+  file digests until disposal completes
+- **AND** either `recover` or repeated `uninstall --purge` resumes that removal
+  without requiring a deleted executable, manifest, or generation selector
+- **AND** changed files, symbolic links, unknown files, and unknown empty
+  directories remain untouched and prevent a successful purge result.
+
 ### Requirement: Capable handoff preserves request admission
 
 A runtime-to-runtime handoff that advertises the admission-preserving capability

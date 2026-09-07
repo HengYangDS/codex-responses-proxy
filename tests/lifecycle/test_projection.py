@@ -76,7 +76,8 @@ class TestPayloadProjection:
         unknown = Path(ctx.install_dir) / "operator-note.txt"
         unknown.write_text("keep\n", encoding="utf-8")
 
-        remaining = payload_projection.purge_installed_projection(ctx)
+        files = payload_projection.owned_payload_files(ctx)
+        remaining = payload_projection.purge_owned_files(install, files)
 
         assert remaining == ()
         assert unknown.read_text(encoding="utf-8") == "keep\n"
@@ -108,7 +109,7 @@ class TestPayloadProjection:
         (install / inventory.MANIFEST_FILENAME).write_bytes(payload_digest.canonical_json(manifest))
 
         with pytest.raises(errors.InstallError, match="manifest schema is unsupported"):
-            payload_projection.purge_installed_projection(ctx)
+            payload_projection.owned_payload_files(ctx)
         assert (install / "operator-note.txt").read_bytes() == b"keep\n"
 
     def test_purge_fails_closed_without_one_valid_manifest(self, subtests) -> None:
@@ -128,7 +129,7 @@ class TestPayloadProjection:
                 marker.write_text("1.2.3\n", encoding="utf-8")
                 mutate(ctx)
                 with pytest.raises(errors.InstallError, match=message):
-                    payload_projection.purge_installed_projection(ctx)
+                    payload_projection.owned_payload_files(ctx)
                 assert marker.exists()
 
     def test_serving_payload_identity_is_order_independent_and_length_delimited(
@@ -167,16 +168,18 @@ class TestPayloadProjection:
     def test_purge_and_residue_inventory_report_filesystem_failures(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
         install_payload(ctx, mocker=mocker)
+        files = payload_projection.owned_payload_files(ctx)
         mocker.patch.object(Path, "unlink", side_effect=OSError("blocked"))
         with pytest.raises(errors.InstallError, match="purge failed"):
-            payload_projection.purge_installed_projection(ctx)
+            payload_projection.purge_owned_files(Path(ctx.payload_dir), files)
         mocker.stopall()
 
         ctx = install_context(Path(tempfile.mkdtemp()))
         install_payload(ctx, mocker=mocker)
+        files = payload_projection.owned_payload_files(ctx)
         residual = mocker.patch.object(Path, "exists", return_value=True)
         with pytest.raises(errors.InstallError, match="remains after purge"):
-            payload_projection.purge_installed_projection(ctx)
+            payload_projection.purge_owned_files(Path(ctx.payload_dir), files)
         mocker.stop(residual)
 
         absent = Path(tempfile.mkdtemp()) / "absent"

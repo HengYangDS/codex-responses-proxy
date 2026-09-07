@@ -192,7 +192,7 @@ def dispatch(command: str, **arguments: object) -> CommandResult:
                 )
             if command == "uninstall":
                 return uninstall.uninstall_product(
-                    port=port,
+                    context,
                     purge=_purge_argument(arguments),
                 )
             if command == "recover":

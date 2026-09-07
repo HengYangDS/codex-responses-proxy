@@ -142,6 +142,15 @@ or requires an identity already discarded during cleanup. Interrupted cleanup
 continues to block a new transaction. Unrecognized journals and unowned roots
 remain protected, not inferred into a cleanup permission.
 
+Purge uses that same journal after proving native-service absence and owned
+process exit. Its terminal record contains the verified, root-relative file
+digests. Selection is detached first; disposal checks remaining bytes against
+the recorded digests and removes only declared empty parent directories.
+Neither a missing payload nor missing metadata invalidates completed removal.
+Unknown content or a changed replacement keeps the journal open for deliberate
+resolution. Public recovery and repeated purge consume this one disposal owner;
+there is no separate uninstall log, retry engine, or inferred recursive deletion.
+
 A capability-qualified handoff transfers the listener without changing request
 admission: the predecessor stops accepting only when the successor is ready to
 serve, while already accepted handlers finish on the predecessor. Upgrade and
