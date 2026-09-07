@@ -87,6 +87,7 @@ def released_artifact(
     version: str = "1.2.3",
     *,
     executable_content: bytes = b"native-executable-fixture",
+    windows: bool = False,
 ) -> artifact.VerifiedArtifact:
     """Build an admitted release artifact for lifecycle behavior tests."""
 
@@ -104,7 +105,7 @@ def released_artifact(
             content=content,
         )
 
-    files = runtime_files()
+    files = runtime_files(windows=windows)
     blobs = tuple(map(blob, files))
     serving = {item.path: item.sha256 for item in blobs if item.path in files}
     receipt = {
@@ -155,7 +156,10 @@ def install_payload(
 ) -> payload_transaction.PayloadTransaction:
     """Install and finalize one released payload projection."""
 
-    transaction = begin_transaction(ctx, released_artifact(version), mocker=mocker)
+    candidate = released_artifact(
+        version, windows=Path(ctx.executable).name == Path(inventory.WINDOWS_EXECUTABLE).name
+    )
+    transaction = begin_transaction(ctx, candidate, mocker=mocker)
     transaction.commit_projection()
     transaction.activate()
     transaction.finalize({"pid": 1})

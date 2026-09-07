@@ -7,6 +7,7 @@ import io
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from filelock import FileLock
@@ -772,14 +773,20 @@ class CliLifecycleContracts:
         assert stderr == ""
         uninstall.assert_called_once_with(ctx, purge=True)
 
+    @pytest.mark.parametrize("windows", [False, True], ids=["unix", "windows"])
     @pytest.mark.parametrize("interruption", ["payload", "journal"])
     def test_public_recovery_reconstructs_context_after_interrupted_purge(
-        self, tmp_path: Path, interruption: str, *, mocker
+        self, tmp_path: Path, interruption: str, *, windows: bool, mocker
     ) -> None:
         """The public lifecycle reconstructs removal from declared roots, not old objects."""
-        ctx = install_context(tmp_path)
+        ctx = install_context(tmp_path, windows=windows)
         install_payload(ctx, mocker=mocker)
         config = application.runtime_context.config
+        mocker.patch.object(
+            config,
+            "os",
+            SimpleNamespace(name="nt" if windows else "posix", environ=config.os.environ),
+        )
         mocker.patch.object(config, "data_dir", return_value=ctx.install_dir)
         mocker.patch.object(config, "state_dir", return_value=ctx.log_dir)
         mocker.patch.object(config, "home_dir", return_value=ctx.user_home)

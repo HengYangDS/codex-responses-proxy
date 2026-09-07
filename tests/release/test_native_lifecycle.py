@@ -147,6 +147,8 @@ class TestSignedNativeLifecycle:
             }
             assert residue.read_text(encoding="utf-8") == "preserve\n"
             assert not payload_state.transaction_root(ctx).exists()
+            pending_purge = payload_state.read_journal(ctx)
+            assert pending_purge["state"] == "purged"
             refused_install = run_command(
                 executable,
                 environment,
@@ -170,6 +172,18 @@ class TestSignedNativeLifecycle:
             }
             assert not payload_state.transaction_root(ctx).exists()
             residue.unlink()
+            recovered_purge = run_command(
+                executable, environment, "recover", "--port", str(port), "--json"
+            )
+            assert recovered_purge == {
+                "state": "purged",
+                "transaction_id": pending_purge["transaction_id"],
+                "version": current_version,
+                "stopped": 0,
+                "command_removed": False,
+            }
+            assert not install.exists()
+            assert not payload_state.journal_path(ctx).exists()
 
             reinstalled = run_command(
                 executable,
