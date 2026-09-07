@@ -10,7 +10,7 @@
 
 - [x] 2.1 Add RED contracts proving one native environment owner preserves arbitrary host execution state, removes inherited Proxy and Python injection state, redirects every product-owned root, and accepts an explicit empty product `PATH`.
 - [x] 2.2 Implement `src/codex_responses_proxy/runtime/process_environment.py` as the sole semantic owner and verify its focused contracts on the current host.
-- [x] 2.3 Migrate the release fixture, packaged CLI contracts, and Nox black-box runner to the semantic owner; delete their partial environment dictionaries, `SystemRoot` special case, and environment allow-list.
+- [x] 2.3 Make the release fixture and packaged CLI contracts consume the semantic environment owner; delete the duplicate Nox black-box runner, partial environment dictionaries, `SystemRoot` special case, and environment allow-list.
 - [x] 2.4 Verify help, version, status, every public command, prewarm, and native lifecycle black-box paths use the same environment contract without Python discovery or host-substrate removal.
 - [x] 2.5 Reproduce the former Windows `WinError 10106` boundary in a regression contract and obtain GREEN evidence from the real Windows native artifact job for the exact candidate commit.
 - [x] 2.6 Verify macOS and Linux native acceptance remain green and no new service, process, temporary payload, cache, or host configuration survives either successful or failed execution.
@@ -130,6 +130,20 @@
 
 - [ ] 8.2 Prove a clean Work Lane reconstructs independent `.venv`, `.nox`, `node_modules`, build, coverage, and temporary state from locks while sharing only content-addressed mise, uv, npm, and Python caches.
 - [ ] 8.3 Remove ambient interpreter, user-site, global mise configuration, system package, and another repository environment from local and hosted success paths; verify empty-HOME and empty-project-cache bootstrap.
+
+    - Asset acceptance exposed relative Nox sandbox roots reaching the native
+      command as an invalid `XDG_BIN_HOME`. Its duplicate runner accepted exit
+      code 2 and incorrectly reported success. The environment owner now binds
+      user, payload, and state roots to absolute paths before child execution.
+      Existing packaged CLI tests own acceptance: a pristine installation must
+      report `not_installed`, an absent service, and no listener or transaction;
+      version and prewarm must succeed without Python on PATH. The duplicate
+      Nox implementation was deleted rather than repaired in parallel.
+      Relative-root unit and native-artifact contracts reproduced two failures
+      before the repair; all 31 focused contracts then passed. Evidence:
+      `/private/tmp/proxy-b86c85bf-assets.zubVcn/`. Current-source three-platform
+      native acceptance and the broader clean-bootstrap proof remain open.
+
 - [ ] 8.4 Online-audit every direct runtime, development, OpenSpec, Python, Node, mise, uv, Nox, packaging, documentation, CI Action, and release dependency; advance each to its current stable compatible version in its existing SSOT.
 - [ ] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json` deterministically; verify a second resolution is byte-clean and no duplicate version literal controls behavior.
 - [ ] 8.6 Configure one dependency update proposal owner with release-age policy, grouping, vulnerability priority, auto-merge criteria, and dual-Forge projection; verify it cannot open competing GitHub and GitLab updates for the same change.

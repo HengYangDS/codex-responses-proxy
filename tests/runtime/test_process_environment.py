@@ -118,6 +118,29 @@ def test_product_process_keeps_the_user_root_and_projects_runtime_roots(
     assert environment[product_identity.environment_name("STATE_HOME")] == str(tmp_path / "state")
 
 
+def test_relative_roots_are_bound_before_the_child_changes_directory(
+    tmp_path: Path, *, monkeypatch
+) -> None:
+    """Keep all owned roots stable across a subprocess working-directory change."""
+
+    monkeypatch.chdir(tmp_path)
+    environment = native_process_environment(
+        user_home=Path("sandbox/home"),
+        install_root=Path("sandbox/payload"),
+        state_root=Path("sandbox/state"),
+        inherited={},
+    )
+
+    assert environment[product_identity.environment_name("HOME")] == str(
+        tmp_path / "sandbox/payload"
+    )
+    assert environment[product_identity.environment_name("STATE_HOME")] == str(
+        tmp_path / "sandbox/state"
+    )
+    assert environment["HOME"] == str(tmp_path / "sandbox/home")
+    assert environment["XDG_BIN_HOME"] == str(tmp_path / "sandbox/home/.local/bin")
+
+
 def test_product_process_restarts_the_pyinstaller_environment(tmp_path: Path) -> None:
     """Request a fresh frozen runtime after inherited bootloader state is removed."""
 

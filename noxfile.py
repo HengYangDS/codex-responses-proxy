@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import platform
 import re
-import socket
 import sys
 import tempfile
 import tomllib
@@ -15,8 +14,6 @@ from typing import cast
 import nox
 
 from codex_responses_proxy import product_identity
-from codex_responses_proxy.runtime.process_environment import native_process_environment
-from codex_responses_proxy.service import runtime as service_runtime
 
 ROOT = Path(__file__).parent.resolve()
 PYTHONS = tuple((ROOT / ".python-versions").read_text(encoding="utf-8").splitlines())
@@ -301,7 +298,6 @@ def release_asset(session: nox.Session) -> None:
         "tests/service/handoff/test_subprocess.py",
         env=environment,
     )
-    _accept_native_executable(session, executable)
     _package_release_asset(session, bundle, work)
 
 
@@ -324,7 +320,6 @@ def release(session: nox.Session) -> None:
         "tests/service/handoff/test_subprocess.py",
         env=environment,
     )
-    _accept_native_executable(session, executable)
     _package_release_asset(session, bundle, work)
 
 
@@ -347,21 +342,6 @@ def _build_native_candidate(session: nox.Session) -> tuple[Path, Path, Path]:
     _assert_installed_product(session, work)
     bundle, executable = _build_executable(session, work)
     return work, bundle, executable
-
-
-def _accept_native_executable(session: nox.Session, executable: Path) -> None:
-    """Prove the native executable starts without a Python runtime on PATH."""
-    _run_without_python(session, executable, "--help")
-    _run_without_python(session, executable, "--version")
-    _run_without_python(
-        session,
-        executable,
-        "status",
-        "--json",
-        isolated_listener=True,
-        success_codes=(0, 2),
-    )
-    session.log(f"native executable accepted: {executable.name}")
 
 
 @nox.session(python=RELEASE_PYTHON)
@@ -559,8 +539,6 @@ def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
     executable = bundle / name
     if not executable.is_file():
         session.error(f"native executable was not produced: {executable}")
-    _run_without_python(session, executable, "--version")
-    _run_without_python(session, executable, service_runtime.PREWARM_MODE)
     return bundle, executable
 
 
@@ -605,46 +583,6 @@ def _package_release_asset(session: nox.Session, bundle: Path, work: Path) -> No
         "--output",
         str(output),
         env=_environment(),
-    )
-
-
-def _run_without_python(
-    session: nox.Session,
-    executable: Path,
-    *arguments: str,
-    isolated_listener: bool = False,
-    success_codes: tuple[int, ...] = (0,),
-) -> None:
-    """Run a black-box command with no Python executable or package path."""
-    sandbox = Path(session.create_tmp()) / "black-box"
-    empty_path = sandbox / "empty-path"
-    empty_path.mkdir(parents=True, exist_ok=True)
-    environment = native_process_environment(
-        user_home=sandbox / "home",
-        install_root=sandbox / "payload",
-        state_root=sandbox / "state",
-        command_search_path=empty_path,
-    )
-    if isolated_listener:
-        with socket.socket() as reservation:
-            reservation.bind(("127.0.0.1", 0))
-            port = str(reservation.getsockname()[1])
-            session.run(
-                str(executable),
-                *arguments,
-                "--port",
-                port,
-                env=environment,
-                external=True,
-                success_codes=success_codes,
-            )
-        return
-    session.run(
-        str(executable),
-        *arguments,
-        env=environment,
-        external=True,
-        success_codes=success_codes,
     )
 
 

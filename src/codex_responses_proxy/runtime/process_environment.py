@@ -34,15 +34,15 @@ def native_process_environment(
     }
     environment.update(
         {
-            product_identity.environment_name("HOME"): os.fspath(install_root),
-            product_identity.environment_name("STATE_HOME"): os.fspath(state_root),
+            product_identity.environment_name("HOME"): os.path.abspath(install_root),
+            product_identity.environment_name("STATE_HOME"): os.path.abspath(state_root),
             "PATH": (
                 inherited_path if command_search_path is None else os.fspath(command_search_path)
             ),
         }
     )
     if user_home is not None:
-        user_root = Path(user_home)
+        user_root = Path(user_home).absolute()
         environment.update(
             {
                 "APPDATA": os.fspath(user_root / "AppData" / "Roaming"),
