@@ -1439,6 +1439,48 @@ class TestPayloadTransaction:
         assert not Path(payload_state.transaction_root(ctx)).exists()
         transaction.rollback()
 
+    @pytest.mark.parametrize("previous_release", [None, "1.2.2"])
+    @pytest.mark.parametrize("phase", ["prepared", "materialized", "activated"])
+    def test_rollback_retries_cleanup_before_becoming_terminal(
+        self, tmp_path: Path, previous_release: str | None, phase: str, *, mocker
+    ) -> None:
+        """A failed cleanup remains retryable and cannot consume a later journal."""
+        ctx = install_context(tmp_path)
+        if previous_release is not None:
+            install_payload(ctx, previous_release, mocker=mocker)
+        selection = payload_generation.read(ctx)
+        installed = payload_state.read_installed(ctx)
+        transaction = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        if phase != "prepared":
+            transaction.commit_projection()
+        if phase == "activated":
+            transaction.activate()
+        cleanup = mocker.patch.object(
+            payload_transaction,
+            "_remove_transaction_root",
+            side_effect=errors.InstallError("payload transaction cleanup failed"),
+        )
+
+        with pytest.raises(errors.InstallError, match="cleanup failed"):
+            transaction.rollback()
+
+        assert payload_state.journal_path(ctx).is_file()
+        assert payload_generation.read(ctx) == selection
+        assert payload_state.read_installed(ctx) == installed
+        assert not Path(transaction.context.payload_dir).exists()
+        mocker.stop(cleanup)
+
+        transaction.rollback()
+
+        assert not payload_state.transaction_root(ctx).exists()
+        assert payload_generation.read(ctx) == selection
+        assert payload_state.read_installed(ctx) == installed
+        pending = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        journal = payload_state.journal_path(ctx).read_bytes()
+        transaction.rollback()
+        assert payload_state.journal_path(ctx).read_bytes() == journal
+        pending.rollback()
+
     def test_replay_and_downgrade_are_rejected_before_any_live_write(
         self, subtests, *, mocker
     ) -> None:

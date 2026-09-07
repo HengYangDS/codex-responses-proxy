@@ -61,6 +61,25 @@
     the platform acceptance checkpoint below; installed 3.1.16 retained its
     exact payload and listener. The broader state-machine audit remains open.
 
+    Rollback-completion slice: the transaction becomes terminal only after its
+    owned journal directory is removed. Six RED cases covered fresh install and
+    upgrade at prepared, materialized, and activated phases: a cleanup failure
+    previously made the next rollback silently succeed while leaving the
+    transaction hold. The existing rollback operation now retries that cleanup,
+    preserves the predecessor selection and installed state, and becomes inert
+    only after success; a later transaction's journal remains unchanged. No
+    state, API, helper, module, or production line was added. Focused lifecycle
+    and handoff verification passed 435 tests and 183 subtests, with 12 explicit
+    native/toolchain exclusions; Ruff and all-platform Python 3.12 type checks
+    passed. The complete governance, quality, and installed-wheel matrix then
+    passed: Python 3.12, 3.13, and 3.14 each passed 1,053 tests, with five
+    artifact-only skips and 22 explicit native/toolchain exclusions; combined
+    statement/branch coverage remained 97.07%. Evidence:
+    `/private/tmp/proxy-rollback-completion.o0bht9/`. This proves same-controller
+    retry after a cleanup failure, not interrupted
+    cross-process recovery after partial directory removal; that broader
+    recovery boundary remains part of this open task.
+
 - [ ] 5.2 Make payload generation, manifest, command projection, transaction journal, rollback snapshot, service declaration, listener, watchdog, and handoff child each have exact ownership identity and one cleanup owner.
 
     Candidate-failure slice: a failing integrity check exposed an orphaned
@@ -107,8 +126,9 @@
     services. Windows uses Task Scheduler as specified by the canonical runtime
     contract, not the erroneous Service Control Manager wording formerly here.
     Raw logs and job/asset identities are retained in
-    `/private/tmp/proxy-57f26e1a-publication.gkNJEj/`. GitLab pipeline 6253 remains
-    in progress at this checkpoint. This is candidate acceptance, not a formal
+    `/private/tmp/proxy-57f26e1a-publication.gkNJEj/`. GitLab pipeline 6253 also
+    passed all six jobs: source/governance, three Python versions, quality,
+    and performance. This is candidate acceptance, not a formal
     release, final security review, complete resource audit, or goal closeout.
 
 ## 6. Semantic and Physical Repository Topology
