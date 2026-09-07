@@ -8,44 +8,46 @@ from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import control
+from codex_responses_proxy.lifecycle import generation
+from codex_responses_proxy.lifecycle import runtime_spec
+from codex_responses_proxy.lifecycle import state
 from codex_responses_proxy.lifecycle import transaction
 from codex_responses_proxy.lifecycle.deployment import apply
-from codex_responses_proxy.runtime import config as runtime_config
-
-
-def build_context(
-    port: int,
-    *,
-    proxy_log_max_bytes: int = runtime_config.DEFAULT_PROXY_LOG_MAX_BYTES,
-    proxy_log_backup_count: int = runtime_config.DEFAULT_PROXY_LOG_BACKUP_COUNT,
-    watchdog_log_max_bytes: int = runtime_config.DEFAULT_WATCHDOG_LOG_MAX_BYTES,
-    watchdog_log_backup_count: int = runtime_config.DEFAULT_WATCHDOG_LOG_BACKUP_COUNT,
-) -> runtime_context.RuntimeContext:
-    """Project user-facing arguments into one portable deployment context."""
-    return runtime_context.create(
-        port=port,
-        proxy_log_max_bytes=proxy_log_max_bytes,
-        proxy_log_backup_count=proxy_log_backup_count,
-        watchdog_log_max_bytes=watchdog_log_max_bytes,
-        watchdog_log_backup_count=watchdog_log_backup_count,
-    )
 
 
 def install_asset(
+    ctx: runtime_context.RuntimeContext,
     asset: Path,
     *,
     trust_anchor: Path,
-    port: int = runtime_config.DEFAULT_PORT,
     timeout_seconds: float = 30.0,
 ) -> dict[str, object]:
     """Install one verified native asset through the platform service adapter."""
     from codex_responses_proxy.lifecycle.supervision import native_service
 
-    ctx = build_context(port)
     try:
         released = artifact.admit(asset, trust_anchor=trust_anchor)
     except errors.InstallError as exc:
         raise errors.InstallInputError(str(exc)) from exc
+    previous = state.read_installed(ctx)
+    if previous is not None and previous.get("version") == released.version:
+        if state.status(ctx) is not None:
+            raise errors.RecoveryRequiredError("complete payload recovery before installing")
+        observed = control.status(ctx, include_rollback=False)
+        runtime = observed.get("runtime")
+        control_ctx = generation.control_context(ctx)
+        configured = native_service.adapter().configured_executable(control_ctx)
+        if (
+            observed.get("state") == "running"
+            and isinstance(runtime, dict)
+            and runtime.get("release_receipt_sha256") == released.receipt_sha256
+            and runtime.get("serving_payload_sha256") == released.serving_payload_sha256
+            and configured is not None
+            and runtime_spec.normalized_path(configured)
+            == runtime_spec.normalized_path(control_ctx.executable)
+        ):
+            return {"state": "unchanged", "release": released.version}
+        raise errors.InstallError("requested artifact is not the verified active installation")
     payload_transaction = transaction.begin_transaction(ctx, released)
     try:
         return apply.install(

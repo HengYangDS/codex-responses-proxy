@@ -33,10 +33,11 @@ class CliLifecycleContracts:
     def test_install_delegates_exact_asset_trust_anchor_and_port(
         self, tmp_path: Path, *, mocker
     ) -> None:
-        mocker.patch.object(
+        ctx = install_context(tmp_path)
+        create = mocker.patch.object(
             application.runtime_context,
             "create",
-            return_value=install_context(tmp_path),
+            return_value=ctx,
         )
         install = mocker.patch.object(
             application.install, "install_asset", return_value={"release": "2.0.8"}
@@ -56,11 +57,12 @@ class CliLifecycleContracts:
         assert not stdout.lstrip().startswith("{")
         assert stderr == ""
         install.assert_called_once_with(
+            ctx,
             Path("/release/proxy.tar.gz"),
             trust_anchor=Path("/release/trust.json"),
-            port=8801,
             timeout_seconds=30.0,
         )
+        create.assert_called_once_with(port=8801)
 
     def test_source_version_requires_the_real_src_checkout_shape(self, tmp_path, *, mocker) -> None:
         mocker.patch.object(application, "__file__", str(tmp_path / "installed.py"))
@@ -544,10 +546,11 @@ class CliLifecycleContracts:
     def test_install_delegates_with_an_explicit_timeout(self, tmp_path: Path, *, mocker) -> None:
         asset = tmp_path / "release.tar.gz"
         trust = tmp_path / "release.pub"
+        ctx = install_context(tmp_path)
         mocker.patch.object(
             application.runtime_context,
             "create",
-            return_value=install_context(tmp_path),
+            return_value=ctx,
         )
         install = mocker.patch.object(application.install, "install_asset", return_value={})
 
@@ -561,7 +564,23 @@ class CliLifecycleContracts:
             "45",
         )
 
-        install.assert_called_once_with(asset, trust_anchor=trust, port=8792, timeout_seconds=45.0)
+        install.assert_called_once_with(ctx, asset, trust_anchor=trust, timeout_seconds=45.0)
+
+    def test_install_of_the_active_artifact_reports_no_change(self, tmp_path: Path, *, mocker):
+        ctx = install_context(tmp_path)
+        mocker.patch.object(application.runtime_context, "create", return_value=ctx)
+        unchanged = {"state": "unchanged", "release": "3.1.16"}
+        mocker.patch.object(application.install, "install_asset", return_value=unchanged)
+        arguments = ("install", "--asset", "release.tar.gz", "--trust-anchor", "allowed-signers")
+
+        code, stdout, stderr = self.invoke(*arguments)
+        assert code == 0
+        assert "Already installed" in stdout
+        assert stderr == ""
+        code, stdout, stderr = self.invoke(*arguments, "--json")
+        assert code == 0
+        assert json.loads(stdout) == unchanged
+        assert stderr == ""
 
     def test_recover_restores_only_the_runtime_bound_retained_transaction(
         self, tmp_path: Path, *, mocker
@@ -851,10 +870,11 @@ class CliLifecycleContracts:
     def test_install_dispatches_to_its_single_owner(self, tmp_path: Path, *, mocker) -> None:
         asset = Path("release.tar.gz")
         anchor = Path("allowed-signers")
+        ctx = install_context(tmp_path)
         mocker.patch.object(
             application.runtime_context,
             "create",
-            return_value=install_context(tmp_path),
+            return_value=ctx,
         )
         install = mocker.patch.object(
             application.install, "install_asset", return_value={"ok": True}
@@ -862,7 +882,7 @@ class CliLifecycleContracts:
         assert application.dispatch("install", asset=asset, trust_anchor=anchor, port=8801) == {
             "ok": True
         }
-        install.assert_called_once_with(asset, trust_anchor=anchor, port=8801, timeout_seconds=30.0)
+        install.assert_called_once_with(ctx, asset, trust_anchor=anchor, timeout_seconds=30.0)
 
     @pytest.mark.parametrize("command", ["install", "recover", "reload", "rollback", "uninstall"])
     def test_mutating_commands_reject_a_second_lifecycle_writer(

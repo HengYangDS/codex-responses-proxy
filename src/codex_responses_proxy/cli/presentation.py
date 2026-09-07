@@ -107,7 +107,10 @@ def render(command: str, result: Mapping[str, object] | None) -> str:
         runtime = raw_runtime if isinstance(raw_runtime, Mapping) else {}
         release = result.get("release") or runtime.get("release") or "Verified release"
         return _page(
-            "Upgraded" if result.get("state") == "upgraded" else "Installed",
+            {
+                "upgraded": "Upgraded",
+                "unchanged": "Already installed",
+            }.get(str(result.get("state")), "Installed"),
             (("Release", release),),
             next_command=product_identity.command("status"),
         )

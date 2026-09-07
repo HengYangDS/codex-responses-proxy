@@ -914,7 +914,6 @@ class TestControllerLifecycle:
         released = mocker.Mock()
         payload_transaction = mocker.Mock()
         service = mocker.Mock()
-        mocker.patch.object(install, "build_context", return_value=ctx)
         admit = mocker.patch.object(install.artifact, "admit", return_value=released)
         begin = mocker.patch.object(
             install.transaction, "begin_transaction", return_value=payload_transaction
@@ -927,7 +926,7 @@ class TestControllerLifecycle:
         asset = Path(ctx.install_dir) / "release.tar.gz"
         trust = Path(ctx.install_dir) / "release-trust"
 
-        assert install.install_asset(asset, trust_anchor=trust, port=8801, timeout_seconds=4) == {
+        assert install.install_asset(ctx, asset, trust_anchor=trust, timeout_seconds=4) == {
             "release": "2.0.15"
         }
         admit.assert_called_once_with(asset, trust_anchor=trust)

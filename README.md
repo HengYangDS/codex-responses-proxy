@@ -150,7 +150,11 @@ codex-responses-proxy uninstall
 codex-responses-proxy uninstall --purge
 ```
 
-Lifecycle JSON uses one explicit `state` discriminator. `rollback` returns
+Lifecycle JSON uses one explicit `state` discriminator. `install` returns
+`unchanged` when the signed artifact exactly matches the healthy active
+installation; it neither replaces files nor restarts the listener. The same
+version with different artifact bytes is not the same installation.
+`rollback` returns
 `unchanged` when the requested release is already the proven active
 installation, `unavailable` when no verified predecessor exists, and
 `rolled_back` only after the requested predecessor is the proven accepting
