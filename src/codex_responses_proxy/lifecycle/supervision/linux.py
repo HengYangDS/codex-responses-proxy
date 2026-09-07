@@ -1,4 +1,4 @@
-"""Persist the watchdog with a user service or verified login fallback."""
+"""Persist the watchdog through the systemd user service manager."""
 
 from __future__ import annotations
 
@@ -209,6 +209,10 @@ def status(ctx: runtime_spec.NativeServiceContext) -> str:
         properties = dict(
             line.split("=", 1) for line in observed.stdout.splitlines() if "=" in line
         )
-        if properties.get("LoadState") not in {None, "not-found"}:
+        if observed.returncode or not all(
+            properties.get(key) for key in ("LoadState", "ActiveState")
+        ):
+            raise errors.InstallError("systemd service state is unproven; query the user manager")
+        if properties["LoadState"] != "not-found":
             return "running" if properties.get("ActiveState") == "active" else "installed"
     return "installed" if unit.exists() else "absent"
