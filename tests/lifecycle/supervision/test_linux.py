@@ -162,7 +162,6 @@ class TestLinuxLifecycle:
     def test_systemd_install_success_and_failure(self, *, mocker):
         with _temporary_context("log_dir") as ctx:
             unit = Path(linux._unit_path(ctx))
-            mocker.patch.dict(linux.os.environ, {"USER": "tester"})
             watchdog = linux.process.OwnedProcess(417, ctx.executable, 1.0)
             wait = mocker.patch.object(
                 linux.process,
@@ -178,29 +177,28 @@ class TestLinuxLifecycle:
                     _completed(),
                     _completed(),
                     _completed(stdout="417\n"),
-                    _completed(),
                 ],
             )
             linux._install_systemd(ctx)
             assert unit.read_text(encoding="utf-8") == linux.render_unit(ctx)
-            assert invoked.call_args_list[1].args[0] == [
-                "systemctl",
-                "--user",
-                "enable",
-                str(unit),
-            ]
-            assert invoked.call_args_list[2].args[0] == [
-                "systemctl",
-                "--user",
-                "restart",
-                f"{ctx.service_id}.service",
+            assert [call.args[0] for call in invoked.call_args_list] == [
+                ["systemctl", "--user", "daemon-reload"],
+                ["systemctl", "--user", "enable", str(unit)],
+                ["systemctl", "--user", "restart", f"{ctx.service_id}.service"],
+                [
+                    "systemctl",
+                    "--user",
+                    "show",
+                    f"{ctx.service_id}.service",
+                    "--property=MainPID",
+                    "--value",
+                ],
             ]
             wait.assert_called_once_with(
                 417,
                 ctx.executable,
                 roles={service_runtime.WATCHDOG_MODE},
             )
-            assert invoked.call_args_list[-1].args[0][0] == "loginctl"
             mocker.patch.object(
                 linux.subprocess,
                 "run",
@@ -309,10 +307,12 @@ class TestLinuxLifecycle:
             with pytest.raises(errors.InstallError, match="remains registered"):
                 linux.uninstall(ctx)
 
-    def test_uninstall_refuses_unproved_process_terminal_states(self, subtests, *, mocker) -> None:
+    def test_uninstall_refuses_unproved_process_terminal_states(
+        self, tmp_path, subtests, *, mocker
+    ) -> None:
         ctx = platform_context()
-        mocker.patch.object(linux.os.path, "exists", return_value=False)
-        mocker.patch.object(linux.process, "pids_naming_executable", return_value=[])
+        ctx.user_home = str(tmp_path)
+        mocker.patch.object(linux, "status", return_value="absent")
         mocker.patch.object(linux.process, "pids_naming_executable", side_effect=[[17], []])
         mocker.patch.object(linux.process, "terminate_executable", return_value=False)
         with (
@@ -328,10 +328,10 @@ class TestLinuxLifecycle:
         ):
             linux.uninstall(ctx)
 
-    def test_uninstall_terminates_each_verified_linux_watchdog(self, *, mocker):
+    def test_uninstall_terminates_each_verified_linux_watchdog(self, tmp_path, *, mocker):
         ctx = platform_context()
-        mocker.patch.object(linux.os.path, "exists", return_value=False)
-        mocker.patch.object(linux.shutil, "which", return_value=None)
+        ctx.user_home = str(tmp_path)
+        mocker.patch.object(linux, "status", return_value="absent")
         mocker.patch.object(
             linux.process,
             "pids_naming_executable",
