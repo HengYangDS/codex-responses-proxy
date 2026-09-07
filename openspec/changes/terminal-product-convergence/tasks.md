@@ -4,7 +4,7 @@
 - [ ] 1.2 Inventory every tracked file and generated projection by semantic owner, consumer, source-of-truth, reason to change, dependency direction, and retirement condition; verify no file is silently omitted or multiply owned.
 - [ ] 1.3 Map every public command, result, configuration field, environment variable, network route, native resource, release artifact, and documentation entrypoint to one product invariant and one authoritative implementation.
 - [ ] 1.4 Reconcile all active source, tests, OpenSpec, documentation, quality declarations, CI projections, and release metadata; record each contradiction as an explicit task in this Change rather than a parallel backlog.
-- [ ] 1.5 Prove the current installed release remains healthy and unchanged before source migration; save its exact version, executable digest, payload identity, service identity, listener PID, and loopback health as the rollback baseline.
+- [x] 1.5 Prove the current installed release remains healthy and unchanged before source migration; save its exact version, executable digest, payload identity, service identity, listener PID, and loopback health as the rollback baseline.
 
 ## 2. Windows Native Environment and Immediate Release Safety
 
@@ -42,7 +42,7 @@
 - [ ] 5.4 Prove Linux systemd behavior on a real supported user service and in the declared container boundary, including explicit behavior when no user bus exists; remove session-only fallback processes.
 - [x] 5.5 Prove current-user Windows Task Scheduler install, status, handoff, recovery, rollback, uninstall, command projection, and process-generation ownership from the native artifact.
 - [ ] 5.6 Verify bounded teardown after success, assertion failure, exception, timeout, and interruption on every supported platform; compare exact owned services, processes, journals, payloads, commands, and temporary files before and after, preserving unrelated canonical installations.
-- [ ] 5.7 Verify active-target installation is a true no-op, failed successor transition restores the exact predecessor, repeated recovery is terminal, and uninstall preserves all unowned content.
+- [x] 5.7 Verify active-target installation is a true no-op, failed successor transition restores the exact predecessor, repeated recovery is terminal, and uninstall preserves all unowned content.
 - [ ] 5.8 Remove legacy payload shapes, alternate launchers, obsolete journals, dead schema readers, compatibility branches, and fallback service identities after the terminal lifecycle proves no consumer.
 - [x] 5.9 Preserve request admission during capability-qualified upgrade and rollback handoff; prove concurrent new requests and in-flight responses complete without `proxy_draining`, while retaining the bounded legacy native-generation fallback.
 
