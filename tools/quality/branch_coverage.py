@@ -1,4 +1,4 @@
-"""Enforce aggregate coverage floors and semantic-package observation."""
+"""Enforce independent source-root coverage and semantic-package observation."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import tomllib
 from collections import defaultdict
 from collections.abc import Mapping
 from decimal import Decimal
-from importlib import import_module
 from pathlib import Path
 from pathlib import PurePosixPath
 from typing import Annotated
@@ -19,7 +18,6 @@ from cyclopts import App
 from cyclopts import Parameter
 
 ROOT = Path(__file__).resolve().parents[2]
-ARCHITECTURE_POLICY = ROOT / ".config/quality/policy/architecture.toml"
 _POLICY_KEYS = {
     "minimum_percent",
     "comparison",
@@ -108,18 +106,14 @@ def measured_report(coverage: Coverage) -> dict[str, object]:
 
 def _semantic_package(path: str, package_marker: str) -> str | None:
     parts = PurePosixPath(path.replace("\\", "/")).parts
+    if parts[-1] == f"{package_marker}.py":
+        return "root"
     try:
         index = parts.index(package_marker)
     except ValueError:
         return None
     relative = parts[index + 1 :]
     return relative[0] if len(relative) > 1 else "root"
-
-
-def _package_gap(package: str, gap: str) -> str:
-    """Qualify one stable aggregate gap with its semantic package."""
-    reason, separator, detail = gap.partition(":")
-    return f"package_{reason}:{package}{separator}{detail}"
 
 
 def package_totals(files: Mapping[str, object], package_marker: str) -> dict[str, dict[str, int]]:
@@ -159,6 +153,35 @@ def package_gaps(totals: Mapping[str, Mapping[str, int]]) -> list[str]:
     return gaps
 
 
+def source_gaps(
+    files: Mapping[str, object], sources: tuple[str, ...], floor: float
+) -> tuple[list[str], dict[str, dict[str, object]]]:
+    """Admit every native-configured source independently of unrelated coverage."""
+    if not sources:
+        return ["coverage_sources_undeclared"], {}
+    gaps = []
+    report: dict[str, dict[str, object]] = {}
+    for source in sources:
+        packages = package_totals(files, source)
+        totals = {
+            key: sum(package[key] for package in packages.values())
+            for key in ("num_statements", "covered_lines", "num_branches", "covered_branches")
+        }
+        report[source] = {**totals, "packages": packages}
+        if not packages:
+            gaps.append(f"coverage_source_unmeasured:{source}")
+            continue
+        violations = [
+            *statement_gaps(totals, floor),
+            *(branch_gaps(totals, floor) if totals["num_branches"] else []),
+            *package_gaps(packages),
+        ]
+        for violation in violations:
+            reason, separator, detail = violation.partition(":")
+            gaps.append(f"source_{reason}:{source}{separator}{detail}")
+    return gaps, report
+
+
 def load_policy(path: Path) -> dict[str, object]:
     """Load the complete coverage contract without implicit defaults."""
     policy = _object_mapping(
@@ -172,8 +195,8 @@ def load_policy(path: Path) -> dict[str, object]:
         raise ValueError("minimum_percent must be within (0, 100]")
     if policy["comparison"] != "at-least":
         raise ValueError("comparison must be at-least")
-    if policy["threshold_scopes"] != ["aggregate"]:
-        raise ValueError("threshold_scopes must contain exactly aggregate")
+    if policy["threshold_scopes"] != ["source-root"]:
+        raise ValueError("threshold_scopes must contain exactly source-root")
     if policy["package_observation"] != "required":
         raise ValueError("package_observation must be required")
     if policy["metrics"] != ["statement", "branch"]:
@@ -194,18 +217,6 @@ def load_policy(path: Path) -> dict[str, object]:
     return policy
 
 
-def package_marker(path: Path = ARCHITECTURE_POLICY) -> str:
-    """Derive the Python package marker from the architecture SSOT."""
-    policy = tomllib.loads(path.read_text(encoding="utf-8"))
-    root = policy.get("package_root")
-    if not isinstance(root, str) or not root.strip():
-        raise ValueError("architecture package_root must be non-empty")
-    marker = PurePosixPath(root).name
-    if not marker:
-        raise ValueError("architecture package_root must name a package")
-    return marker
-
-
 def _command(
     *,
     policy_path: Annotated[Path, Parameter(name="--policy")],
@@ -216,20 +227,23 @@ def _command(
     if isinstance(raw_floor, bool) or not isinstance(raw_floor, int | float):
         raise AssertionError("validated coverage floor must be numeric")
     floor = float(raw_floor)
-    coverage = import_module("coverage").Coverage()
+    coverage = Coverage(config_file=str(ROOT / ".config/quality/native/coverage.ini"))
     coverage.load()
     report = measured_report(coverage)
     totals = _object_mapping(report.get("totals"), label="coverage totals")
     files = _object_mapping(report.get("files"), label="coverage files")
-    packages = package_totals(files, package_marker())
-    gaps = [
-        *statement_gaps(totals, floor),
-        *branch_gaps(totals, floor),
-        *package_gaps(packages),
-    ]
+    sources = []
+    for option in ("run:source_pkgs", "run:source_dirs"):
+        configured = coverage.get_option(option)
+        if not isinstance(configured, list) or not all(
+            isinstance(item, str) for item in configured
+        ):
+            raise ValueError(f"{option} must declare source roots")
+        sources.extend(PurePosixPath(str(item)).name for item in configured)
+    gaps, source_report = source_gaps(files, tuple(sources), floor)
     print(
         json.dumps(
-            {"ok": not gaps, "gaps": gaps, "packages": packages, **totals},
+            {"ok": not gaps, "gaps": gaps, "sources": source_report, **totals},
             sort_keys=True,
         )
     )

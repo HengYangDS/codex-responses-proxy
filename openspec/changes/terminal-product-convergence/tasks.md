@@ -68,7 +68,7 @@
 - [ ] 7.8 Verify commit subjects through one scoped Conventional Commit grammar in local hooks and both Forge paths, including generated lifecycle commits, with no duplicate parser or historical exception list.
 - [ ] 7.9 Run formatter, linter, type, architecture, dependency, security, documentation, configuration, and focused behavior gates on the migrated tree; require pristine output before the full suite.
 - [ ] 7.10 Prove control effectiveness with isolated conformance cases for native tool settings, scope inclusion, nonzero exits, local entrypoints and hooks, and every CUE event route; a missing tool, skipped required check, empty scope or stale report must not establish acceptance.
-- [ ] 7.11 Reconcile the quality responsibility map with actual coverage, dependency, dead-code, security, documentation and delivery checks; explicitly close product/tooling measurement gaps, remove duplicate custom checkers, and leave every unverified claim open.
+- [ ] 7.11 Reconcile the quality responsibility map with actual coverage, dependency, dead-code, security, documentation and delivery checks; close product/tooling/orchestration coverage independently, including unexecuted namespace files and nonzero admission on missing or below-floor roots; remove duplicate custom checkers and leave every unverified claim open.
 
 ## 8. Development Environment and Supply Chain
 
