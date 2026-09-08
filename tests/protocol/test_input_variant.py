@@ -8,7 +8,10 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from codex_responses_proxy.protocol import input_variant
+from codex_responses_proxy.protocol.request import sanitize_responses_body
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -65,6 +68,104 @@ class TestExactErrorContract:
 
 class TestInputDiagnostic:
     """Keep structural diagnostics bounded, categorical, and content-free."""
+
+    @pytest.mark.parametrize(
+        ("payload", "portable"),
+        [
+            pytest.param({"input": "current"}, True, id="string-input"),
+            pytest.param(
+                {"input": [{"role": "user", "content": "current"}]},
+                False,
+                id="missing-message-type",
+            ),
+            pytest.param(
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [
+                                {"type": "output_text", "text": ""},
+                            ],
+                        },
+                        {"type": "message", "role": "user", "content": "current"},
+                    ]
+                },
+                True,
+                id="empty-assistant-placeholder",
+            ),
+            pytest.param(
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_image",
+                                    "image_url": "https://example.invalid/image.png",
+                                },
+                            ],
+                        }
+                    ]
+                },
+                True,
+                id="image-default-detail",
+            ),
+            pytest.param(
+                {
+                    "input": [
+                        {"type": "function_call", "call_id": "c", "name": "f", "arguments": "{}"},
+                        {
+                            "type": "function_call_output",
+                            "call_id": "c",
+                            "output": None,
+                            "encrypted_content": "private-ciphertext",
+                        },
+                    ]
+                },
+                True,
+                id="ciphertext-only-output",
+            ),
+            pytest.param(
+                {
+                    "input": [
+                        {
+                            "type": "function_call_output",
+                            "id": "delivery",
+                            "name": "notify",
+                            "namespace": "tools",
+                            "output": "delivered",
+                        }
+                    ]
+                },
+                True,
+                id="detached-delivery",
+            ),
+            pytest.param({"input": None}, False, id="invalid-input"),
+            pytest.param({"input": "current", "include": [1]}, False, id="invalid-include"),
+            pytest.param(
+                {
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": "current",
+                            "private-field": "private-value",
+                        }
+                    ]
+                },
+                False,
+                id="unknown-message-field",
+            ),
+        ],
+    )
+    def test_diagnosis_consumes_request_projection(self, payload: object, portable: bool) -> None:
+        raw = _json(payload)
+        projection = sanitize_responses_body(raw)
+        assert (projection.body is not None) is portable, projection.reason
+        diagnostic = input_variant.diagnose(raw)
+        assert diagnostic.first_incompatible_reason == (projection.reason or "")
 
     def test_private_names_values_and_cardinality_are_erased(self) -> None:
         secret = "private-value-never-log"
@@ -162,6 +263,7 @@ class TestInputDiagnostic:
         valid_search = [
             {"type": "tool_search_call", "call_id": "search", "arguments": {}},
             {"type": "tool_search_output", "call_id": "search", "tools": []},
+            {"type": "message", "role": "user", "content": "current"},
         ]
         assert (
             input_variant.diagnose(_json({"input": valid_search})).first_incompatible_reason == ""
@@ -170,7 +272,7 @@ class TestInputDiagnostic:
             _diagnose(
                 {"type": "tool_search_output", "call_id": "search", "output": []}
             ).first_incompatible_reason
-            == "invalid_tool_search_output"
+            == "empty_portable_input"
         )
 
         diagnostic = input_variant.diagnose(
@@ -217,138 +319,27 @@ class TestInputDiagnostic:
             diagnostic.unmatched_outputs,
         ) == (True,) * 5
 
-    def test_failure_reasons_cover_the_closed_shape_contract(self) -> None:
-        raw_cases = (
+    @pytest.mark.parametrize(
+        ("raw", "reason"),
+        [
             (b"not-json", "invalid_json"),
+            (b"\xff", "invalid_json"),
             (b"[]", "request_not_object"),
-            (b'{"input":null}', "input_not_list"),
-            (_json({"input": [1]}), "item_not_object"),
-            (
-                _json(
-                    {
-                        "input": [
-                            {
-                                "type": "function_call",
-                                "call_id": "c",
-                                "name": "f",
-                                "arguments": "{}",
-                            },
-                            {
-                                "type": "custom_tool_call_output",
-                                "call_id": "c",
-                                "output": "x",
-                            },
-                        ]
-                    }
-                ),
-                "mismatched_output_type",
-            ),
-        )
-        assert [
-            input_variant.diagnose(body).first_incompatible_reason for body, _ in raw_cases
-        ] == [reason for _, reason in raw_cases]
+            (b'{"input":null}', "invalid_input"),
+            (b'{"input":[1]}', "invalid_item"),
+            (b'{"input":[{"type":"future"}]}', "unknown_item_type"),
+        ],
+    )
+    def test_failure_reason_is_the_projection_verdict(self, raw: bytes, reason: str) -> None:
+        assert sanitize_responses_body(raw).reason == reason
+        assert input_variant.diagnose(raw).first_incompatible_reason == reason
 
-        item_cases = (
-            ({"type": {"private": "value"}}, "missing_item_type", {"dict": "1"}),
-            ({"type": ["private"]}, "missing_item_type", {"list": "1"}),
-            ({"type": "future"}, "unknown_item_type", {"unknown": "1"}),
-            ({"type": "shell_call"}, "schema_drift", {"shell_call": "1"}),
-            (
-                {"type": "message", "role": "bogus", "content": "x"},
-                "invalid_message_role",
-                None,
-            ),
-            (
-                {"type": "message", "role": "user", "content": None},
-                "invalid_message_content",
-                None,
-            ),
-            (
-                {"type": "message", "role": "user", "content": []},
-                "empty_message_content",
-                None,
-            ),
-            (
-                {
-                    "type": "function_call",
-                    "call_id": "c",
-                    "name": "",
-                    "arguments": "{}",
-                },
-                "invalid_function_call",
-                None,
-            ),
-            (
-                {"type": "custom_tool_call", "call_id": "c", "name": "", "input": "{}"},
-                "invalid_custom_tool_call",
-                None,
-            ),
-            (
-                {"type": "tool_search_call", "call_id": "c", "arguments": "{}"},
-                "invalid_tool_search_call",
-                None,
-            ),
-            (
-                {"type": "function_call_output", "call_id": "c", "output": None},
-                "invalid_tool_output",
-                None,
-            ),
-            (
-                {"type": "message", "role": "user", "content": [1]},
-                "invalid_content_block",
-                None,
-            ),
-            (
-                {"type": "message", "role": "user", "content": [{"type": "future"}]},
-                "unknown_content_type",
-                None,
-            ),
-            (
-                {
-                    "type": "message",
-                    "role": "user",
-                    "content": [{"type": "input_text"}],
-                },
-                "invalid_input_text_block",
-                None,
-            ),
-            (
-                {"type": "agent_message", "content": [{"type": "encrypted_content"}]},
-                "malformed_encrypted_content_block",
-                None,
-            ),
-            (
-                {
-                    "type": "message",
-                    "role": "user",
-                    "content": [{"type": "input_image", "detail": "auto"}],
-                },
-                "invalid_input_image_block",
-                None,
-            ),
-            (
-                {
-                    "type": "message",
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_image",
-                            "detail": "auto",
-                            "image_url": "https://example.invalid",
-                        }
-                    ],
-                },
-                "",
-                None,
-            ),
-        )
-        diagnostics = [_diagnose(item) for item, _, _ in item_cases]
-        assert [diagnostic.first_incompatible_reason for diagnostic in diagnostics] == [
-            reason for _, reason, _ in item_cases
-        ]
-        assert [diagnostic.item_types for diagnostic in diagnostics[:3]] == [
-            case[2] for case in item_cases[:3]
-        ]
+    @pytest.mark.parametrize(
+        ("item_type", "label"),
+        [({"private": "value"}, "dict"), (["private"], "list"), ("private-type", "unknown")],
+    )
+    def test_raw_item_type_is_categorical(self, item_type: object, label: str) -> None:
+        assert _diagnose({"type": item_type}).item_types == {label: "1"}
 
     def test_mapping_projection_rejects_untrusted_buckets_and_flags(self) -> None:
         rendered = input_variant.format_diagnostic(

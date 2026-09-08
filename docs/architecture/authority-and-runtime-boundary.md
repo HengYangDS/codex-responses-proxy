@@ -145,6 +145,13 @@ each retained suffix through this owner rather than treating a matching ID alone
 as proof of a valid pair. Pending portable calls remain observable; a local-only
 call may be removed only with its complete output relationship.
 
+Input diagnostics report the request projection's rejection reason, not a
+second content validator. An empty reason means the request is locally
+projectable; it does not claim that an upstream Provider will accept it.
+Categorical counts, shape hashes, and relationship flags describe the original
+input without recording its values. They remain observations, not additional
+admission rules.
+
 The live-response boundary preserves encrypted control content needed for the
 current turn. Portability is applied only if a later request replays that
 output. Empty, truncated, malformed, oversized, or non-terminal success bodies
