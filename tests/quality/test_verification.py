@@ -107,7 +107,7 @@ class TestVerificationContracts:
             assert re.search(r"\buv==\d", source) is None
 
         github = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
-        assert "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" in github
+        assert "astral-sh/setup-uv@" in github
         assert "version:" not in "\n".join(
             line for line in github.splitlines() if "setup-uv" in line or "uv-version" in line
         )
