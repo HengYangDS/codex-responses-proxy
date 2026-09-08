@@ -32,7 +32,6 @@ _LOCAL_SHELL_ACTION_FIELDS = frozenset(
     ("type", "command", "timeout_ms", "working_directory", "env", "user")
 )
 _CALL_ARGUMENT_FIELD = item_policy.call_argument_fields()
-_OUTPUT_CALL_TYPES = item_policy.output_call_types()
 _MESSAGE_FIELDS = frozenset(
     (
         "type",
@@ -242,14 +241,16 @@ def _project_agent_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]
     }
 
 
-def _project_call(item: JsonObject, calls: dict[str, str]) -> tuple[JsonObject, dict[str, int]]:
+def _project_call(
+    item: JsonObject, relationships: item_policy.ToolRelationships
+) -> tuple[JsonObject, dict[str, int]]:
     item_type = cast(str, item.get("type"))
     _unknown_fields(item, _CALL_FIELDS[item_type], "unknown_call_field")
     call_id, name = item.get("call_id"), item.get("name")
     argument_field = _CALL_ARGUMENT_FIELD[item_type]
     argument = item.get(argument_field)
     namespace, caller = item.get("namespace"), item.get("caller")
-    if not isinstance(call_id, str) or not call_id or call_id in calls:
+    if relationships.observe(item_type, call_id):
         _reject("invalid_call_id")
     valid_call_id = cast(str, call_id)
     if not isinstance(name, str) or not name or not isinstance(argument, str):
@@ -258,7 +259,6 @@ def _project_call(item: JsonObject, calls: dict[str, str]) -> tuple[JsonObject, 
         _reject("invalid_namespace")
     if not _valid_caller(caller):
         _reject("invalid_caller")
-    calls[valid_call_id] = item_type
     projected: JsonObject = {
         "type": item_type,
         "call_id": valid_call_id,
@@ -278,7 +278,9 @@ def _project_call(item: JsonObject, calls: dict[str, str]) -> tuple[JsonObject, 
     }
 
 
-def _drop_local_tool_call(item: JsonObject, calls: dict[str, str]) -> dict[str, int]:
+def _drop_local_tool_call(
+    item: JsonObject, relationships: item_policy.ToolRelationships
+) -> dict[str, int]:
     allowed_fields = frozenset(
         (
             "type",
@@ -295,7 +297,7 @@ def _drop_local_tool_call(item: JsonObject, calls: dict[str, str]) -> dict[str, 
         item.get("status"),
         item.get("action"),
     )
-    if not isinstance(call_id, str) or not call_id or call_id in calls:
+    if relationships.observe("local_shell_call", call_id):
         _reject("invalid_call_id")
     if status not in _LOCAL_SHELL_STATUSES or not isinstance(action, dict):
         _reject("invalid_local_shell_call")
@@ -327,7 +329,6 @@ def _drop_local_tool_call(item: JsonObject, calls: dict[str, str]) -> dict[str, 
         )
     ):
         _reject("invalid_local_shell_call")
-    calls[call_id] = "local_shell_call"
     return {
         "changed": 1,
         "item_ids": int("id" in item),
@@ -339,8 +340,7 @@ def _drop_local_tool_call(item: JsonObject, calls: dict[str, str]) -> dict[str, 
 
 def _project_output(
     item: JsonObject,
-    calls: dict[str, str],
-    outputs: set[str],
+    relationships: item_policy.ToolRelationships,
 ) -> tuple[JsonObject, dict[str, int]]:
     item_type = cast(str, item.get("type"))
     allowed_fields = (
@@ -348,13 +348,16 @@ def _project_output(
     )
     _unknown_fields(item, allowed_fields, "unknown_output_field")
     call_id, caller = item.get("call_id"), item.get("caller")
-    if not isinstance(call_id, str) or not call_id or call_id not in calls:
-        _reject("orphan_output")
+    issue = relationships.observe(item_type, call_id)
+    if issue:
+        _reject(
+            {
+                "missing_call_id": "orphan_output",
+                "output_before_call": "orphan_output",
+                "mismatched_output_type": "mismatched_output",
+            }.get(issue, issue)
+        )
     valid_call_id = cast(str, call_id)
-    if calls[valid_call_id] not in _OUTPUT_CALL_TYPES[item_type]:
-        _reject("mismatched_output")
-    if valid_call_id in outputs:
-        _reject("duplicate_output")
     if not _valid_caller(caller):
         _reject("invalid_caller")
     raw_output = item.get("output")
@@ -378,7 +381,6 @@ def _project_output(
             encrypted_marker=True,
             root_ciphertext=root_ciphertext,
         )
-    outputs.add(valid_call_id)
     projected: JsonObject = {
         "type": item_type,
         "call_id": valid_call_id,
@@ -438,8 +440,7 @@ def _project_compaction_trigger(item: JsonObject) -> tuple[JsonObject, dict[str,
 
 
 def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
-    calls: dict[str, str] = {}
-    outputs: set[str] = set()
+    relationships = item_policy.ToolRelationships()
     projected: list[object] = []
     metrics = {
         "reasoning_items": 0,
@@ -477,7 +478,7 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
             metrics["item_ids"] += int("id" in item)
             continue
         if strategy is item_policy.ProjectionStrategy.DROP_LOCAL_TOOL:
-            item_metrics = _drop_local_tool_call(item, calls)
+            item_metrics = _drop_local_tool_call(item, relationships)
             for key, value_count in item_metrics.items():
                 metrics["changed_items" if key == "changed" else key] += value_count
             continue
@@ -486,13 +487,12 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
         elif strategy is item_policy.ProjectionStrategy.AGENT_MESSAGE:
             projection = _project_agent_message(item)
         elif strategy is item_policy.ProjectionStrategy.CALL:
-            projection = _project_call(item, calls)
+            projection = _project_call(item, relationships)
         elif (
             strategy is item_policy.ProjectionStrategy.OUTPUT
-            and isinstance(item.get("call_id"), str)
-            and calls.get(cast(str, item["call_id"])) == "local_shell_call"
+            and relationships.call_type(item.get("call_id")) == "local_shell_call"
         ):
-            _value, item_metrics = _project_output(item, calls, outputs)
+            _value, item_metrics = _project_output(item, relationships)
             item_metrics["changed"] = 1
             for key, value_count in item_metrics.items():
                 metrics["changed_items" if key == "changed" else key] += value_count
@@ -500,7 +500,7 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
         elif strategy is item_policy.ProjectionStrategy.OUTPUT and "call_id" not in item:
             projection = _project_detached_delivery(item)
         elif strategy is item_policy.ProjectionStrategy.OUTPUT:
-            projection = _project_output(item, calls, outputs)
+            projection = _project_output(item, relationships)
         elif strategy is item_policy.ProjectionStrategy.COMPACTION_TRIGGER:
             projection = _project_compaction_trigger(item)
         else:
@@ -510,10 +510,7 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
             projected.append(value)
         for key, value_count in item_metrics.items():
             metrics["changed_items" if key == "changed" else key] += value_count
-    if any(
-        call_type == "local_shell_call" and call_id not in outputs
-        for call_id, call_type in calls.items()
-    ):
+    if relationships.has_pending_call("local_shell_call"):
         _reject("incomplete_local_shell_pair")
     if not projected and items:
         _reject("empty_portable_input")

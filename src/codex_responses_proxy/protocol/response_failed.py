@@ -22,10 +22,6 @@ type Recovery = tuple[bytes | None, RecoveryMetrics | None]
 
 COMPACTION_RATIO_DENOMINATOR = 2
 
-_TOOL_PAIR_TYPES = item_policy.paired_item_types()
-_TOOL_CALL_TYPES = frozenset(_TOOL_PAIR_TYPES)
-_TOOL_OUTPUT_TYPES = frozenset(_TOOL_PAIR_TYPES.values())
-
 
 def _request(raw: bytes, minimum_items: int = 1) -> Request | None:
     """Decode a request with enough input items and return its latest user index."""
@@ -101,19 +97,13 @@ def exhausted_payload(attempts: int) -> bytes:
 
 
 def tool_pair_boundary_is_safe(items: Sequence[object], start: int) -> bool:
-    """Return whether a retained suffix contains no orphaned tool output."""
-    calls = set()
+    """Return whether a retained suffix has valid ordered tool relationships."""
+    relationships = item_policy.ToolRelationships()
     for item in items[start:]:
         if not isinstance(item, dict):
             continue
         item = cast(JsonObject, item)
-        call_id = item.get("call_id")
-        if not isinstance(call_id, str) or not call_id:
-            continue
-        item_type = item.get("type")
-        if item_type in _TOOL_CALL_TYPES:
-            calls.add(call_id)
-        elif item_type in _TOOL_OUTPUT_TYPES and call_id not in calls:
+        if relationships.observe(item.get("type"), item.get("call_id")):
             return False
     return True
 

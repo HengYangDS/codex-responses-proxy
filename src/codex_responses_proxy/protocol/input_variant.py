@@ -41,9 +41,6 @@ _KNOWN_CONTENT_TYPES: Final = frozenset(
         "encrypted_content",
     ]
 )
-_PAIR_TYPES: Final = item_policy.paired_item_types()
-_CALL_TYPES: Final = frozenset(_PAIR_TYPES)
-_OUTPUT_TYPES: Final = frozenset(_PAIR_TYPES.values())
 _ROLES: Final = ("system", "developer", "user")
 _VALUE_KINDS: Final = {
     type(None): "null",
@@ -354,9 +351,7 @@ class _DiagnosticState:
         self.input_items = input_items
         self.item_types: Counter[str] = Counter()
         self.content_types: Counter[str] = Counter()
-        self.calls: dict[str, str] = {}
-        self.outputs: set[str] = set()
-        self.flags: set[str] = set()
+        self.relationships = item_policy.ToolRelationships()
         self.first_reason = ""
 
     def observe(self, item: object) -> None:
@@ -370,7 +365,7 @@ class _DiagnosticState:
         self._fail(_item_type_failure(raw_type))
         self._fail(_item_failure(typed_item, raw_type))
         self._observe_content(typed_item.get("content"))
-        self._observe_pair(typed_item, raw_type)
+        self._fail(self.relationships.observe(raw_type, typed_item.get("call_id")))
 
     def _observe_content(self, content: object) -> None:
         if isinstance(content, str):
@@ -389,50 +384,11 @@ class _DiagnosticState:
         self.content_types[_closed_label(block_type, _KNOWN_CONTENT_TYPES)] += 1
         self._fail(_content_failure(typed_block, block_type))
 
-    def _observe_pair(self, item: ReadOnlyJsonObject, item_type: object) -> None:
-        if not isinstance(item_type, str) or item_type not in _CALL_TYPES | _OUTPUT_TYPES:
-            return
-        call_id = item.get("call_id")
-        if not isinstance(call_id, str) or not call_id:
-            self.flags.add("missing_call_ids")
-            self._fail("missing_call_id")
-        elif item_type in _CALL_TYPES:
-            self._record_call(call_id, item_type)
-        else:
-            self._record_output(call_id, item_type)
-
-    def _record_call(self, call_id: str, item_type: str) -> None:
-        if call_id in self.calls:
-            self.flags.add("duplicate_calls")
-            self._fail("duplicate_call")
-        self.calls[call_id] = item_type
-
-    def _record_output(self, call_id: str, item_type: str) -> None:
-        duplicate = call_id in self.outputs
-        self.outputs.add(call_id)
-        call = self.calls.get(call_id)
-        if call is None:
-            self.flags.add("outputs_before_calls")
-            self._fail("output_before_call")
-        elif _PAIR_TYPES[call] != item_type:
-            self.flags.add("mismatched_output_types")
-            self._fail("mismatched_output_type")
-        elif not duplicate:
-            self.flags.add("matched_pairs")
-        if duplicate:
-            self.flags.add("duplicate_outputs")
-            self._fail("duplicate_output")
-
     def _fail(self, reason: str) -> None:
         self.first_reason = self.first_reason or reason
 
     def finish(self) -> InputDiagnostic:
-        flags = self.flags
-        call_ids, output_ids = set(self.calls), set(self.outputs)
-        if not call_ids <= output_ids:
-            flags.add("unmatched_calls")
-        if not output_ids <= call_ids:
-            flags.add("unmatched_outputs")
+        flags = self.relationships.diagnostic_flags
         return InputDiagnostic(
             _size_bucket(self.input_items),
             _bucketed_counts(self.item_types),
@@ -463,8 +419,11 @@ def _item_failure(item: ReadOnlyJsonObject, item_type: object) -> str:
     contract = _ITEM_VALUE_FIELDS.get(item_type)
     if contract is not None and not isinstance(item.get(contract[0]), contract[1]):
         return contract[2]
-    if item_type in _OUTPUT_TYPES - {"tool_search_output"} and not isinstance(
-        item.get("output"), (str, list)
+    policy = item_policy.classify_item(item_type)
+    if (
+        policy is not None
+        and policy.projection is item_policy.ProjectionStrategy.OUTPUT
+        and not isinstance(item.get("output"), (str, list))
     ):
         return "invalid_tool_output"
     return ""

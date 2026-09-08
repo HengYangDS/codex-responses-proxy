@@ -1,11 +1,13 @@
-"""Single authority for Responses input item classification."""
+"""Own Responses input classification and ordered tool relationships."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
+from typing import Literal
 
 
 class ProjectionStrategy(StrEnum):
@@ -121,22 +123,80 @@ def item_types() -> frozenset[str]:
     return frozenset(ITEM_POLICIES)
 
 
-def paired_item_types() -> dict[str, str]:
-    """Return call-to-output relationships declared by the policy."""
-    return {
-        item_type: policy.paired_output
-        for item_type, policy in ITEM_POLICIES.items()
-        if policy.paired_output is not None
-    }
+_PAIRED_OUTPUTS: Final = frozenset(
+    policy.paired_output for policy in ITEM_POLICIES.values() if policy.paired_output is not None
+)
+
+type RelationshipIssue = Literal[
+    "",
+    "missing_call_id",
+    "duplicate_call",
+    "output_before_call",
+    "mismatched_output_type",
+    "duplicate_output",
+]
 
 
-def output_call_types() -> dict[str, frozenset[str]]:
-    """Return output-to-call relationships declared by the policy."""
-    relationships: dict[str, set[str]] = {}
-    for item_type, policy in ITEM_POLICIES.items():
+@dataclass(slots=True)
+class ToolRelationships:
+    """Own ordered call identity and output matching for one request projection."""
+
+    _calls: dict[str, str] = field(default_factory=dict)
+    _outputs: set[str] = field(default_factory=set)
+    _flags: set[str] = field(default_factory=set)
+
+    def observe(self, item_type: object, call_id: object) -> RelationshipIssue:
+        """Record one declared relationship and return its first structural issue."""
+        if not isinstance(item_type, str):
+            return ""
+        policy = ITEM_POLICIES.get(item_type)
+        if policy is None or (policy.paired_output is None and item_type not in _PAIRED_OUTPUTS):
+            return ""
+        if not isinstance(call_id, str) or not call_id:
+            self._flags.add("missing_call_ids")
+            return "missing_call_id"
         if policy.paired_output is not None:
-            relationships.setdefault(policy.paired_output, set()).add(item_type)
-    return {output: frozenset(calls) for output, calls in relationships.items()}
+            if call_id in self._calls:
+                self._flags.add("duplicate_calls")
+                return "duplicate_call"
+            self._calls[call_id] = item_type
+            return ""
+        duplicate = call_id in self._outputs
+        self._outputs.add(call_id)
+        if duplicate:
+            self._flags.add("duplicate_outputs")
+        call = self._calls.get(call_id)
+        if call is None:
+            self._flags.add("outputs_before_calls")
+            return "output_before_call"
+        if ITEM_POLICIES[call].paired_output != item_type:
+            self._flags.add("mismatched_output_types")
+            return "mismatched_output_type"
+        if duplicate:
+            return "duplicate_output"
+        self._flags.add("matched_pairs")
+        return ""
+
+    def call_type(self, call_id: object) -> str | None:
+        """Return the original declared call kind without accepting a new identity."""
+        return self._calls.get(call_id) if isinstance(call_id, str) else None
+
+    def has_pending_call(self, item_type: str) -> bool:
+        """Return whether the given call kind still lacks an observed output."""
+        return any(
+            kind == item_type and call_id not in self._outputs
+            for call_id, kind in self._calls.items()
+        )
+
+    @property
+    def diagnostic_flags(self) -> frozenset[str]:
+        """Return content-free facts, including currently unmatched identities."""
+        flags = set(self._flags)
+        if not self._calls.keys() <= self._outputs:
+            flags.add("unmatched_calls")
+        if not self._outputs <= self._calls.keys():
+            flags.add("unmatched_outputs")
+        return frozenset(flags)
 
 
 def call_argument_fields() -> dict[str, str]:
