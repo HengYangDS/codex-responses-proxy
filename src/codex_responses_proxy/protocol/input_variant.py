@@ -21,6 +21,7 @@ from typing import Final
 from typing import cast
 
 from codex_responses_proxy.protocol import item_policy
+from codex_responses_proxy.protocol.request import sanitize_responses_body
 
 type JsonObject = dict[str, object]
 type ReadOnlyJsonObject = Mapping[str, object]
@@ -54,19 +55,6 @@ _VALUE_KINDS: Final = {
 _SIZE_BUCKETS: Final = ((0, "0"), (1, "1"), (4, "2-4"), (16, "5-16"))
 _TEXT_CONTENT_TYPES: Final = frozenset(("input_text", "output_text"))
 _BUCKETS: Final = frozenset(("0", "1", "2-4", "5-16", "17+"))
-_REQUIRED_STRING_FIELDS: Final = {
-    "function_call": ("call_id", "name", "arguments"),
-    "custom_tool_call": ("call_id", "name", "input"),
-}
-_CONTENT_VALUE_FIELDS: Final = {
-    "input_text": ("text", "invalid_input_text_block"),
-    "output_text": ("text", "invalid_input_text_block"),
-    "encrypted_content": ("encrypted_content", "malformed_encrypted_content_block"),
-}
-_ITEM_VALUE_FIELDS: Final = {
-    "tool_search_call": ("arguments", dict, "invalid_tool_search_call"),
-    "tool_search_output": ("tools", list, "invalid_tool_search_output"),
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,20 +103,21 @@ def is_exact_validation_error(status_code: int, error_body: bytes) -> bool:
 
 
 def diagnose(raw: bytes) -> InputDiagnostic:
-    """Describe request structure without retaining values or high-cardinality sizes."""
+    """Observe raw structure and report the request owner's projection verdict."""
     payload = _load_json(raw)
+    reason = sanitize_responses_body(raw).reason or ""
     if payload is _INVALID_JSON:
-        return _diagnostic(first_reason="invalid_json", shape="invalid-json")
-    shape = _shape(payload)
+        return InputDiagnostic(first_incompatible_reason=reason)
     shape_sha256 = hashlib.sha256(
-        json.dumps(shape, sort_keys=True, separators=(",", ":")).encode()
+        json.dumps(_shape(payload), sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    if not isinstance(payload, dict):
-        return _diagnostic(first_reason="request_not_object", shape=shape_sha256)
-    items = payload.get("input")
+    items = payload.get("input") if isinstance(payload, dict) else None
     if not isinstance(items, list):
-        return _diagnostic(first_reason="input_not_list", shape=shape_sha256)
-    return _diagnose_items(items, shape_sha256)
+        return InputDiagnostic(first_incompatible_reason=reason, shape_sha256=shape_sha256)
+    state = _DiagnosticState(shape_sha256=shape_sha256, input_items=len(items), first_reason=reason)
+    for item in items:
+        state.observe(item)
+    return state.finish()
 
 
 def _load_json(raw: bytes) -> object:
@@ -332,40 +321,26 @@ def _presence(value: bool) -> str:
     return "present" if value else "absent"
 
 
-def _diagnostic(*, first_reason: str, shape: str) -> InputDiagnostic:
-    return InputDiagnostic(first_incompatible_reason=first_reason, shape_sha256=shape)
-
-
-def _diagnose_items(items: Sequence[object], shape_sha256: str) -> InputDiagnostic:
-    state = _DiagnosticState(shape_sha256=shape_sha256, input_items=len(items))
-    for item in items:
-        state.observe(item)
-    return state.finish()
-
-
 class _DiagnosticState:
-    """Reduce one rejected input to bounded structural evidence."""
+    """Collect raw structural facts without reinterpreting projection validity."""
 
-    def __init__(self, *, shape_sha256: str, input_items: int) -> None:
+    def __init__(self, *, shape_sha256: str, input_items: int, first_reason: str) -> None:
         self.shape_sha256 = shape_sha256
         self.input_items = input_items
         self.item_types: Counter[str] = Counter()
         self.content_types: Counter[str] = Counter()
         self.relationships = item_policy.ToolRelationships()
-        self.first_reason = ""
+        self.first_reason = first_reason
 
     def observe(self, item: object) -> None:
         if not isinstance(item, dict):
-            self._fail("item_not_object")
             self.item_types[_value_kind(item)] += 1
             return
         typed_item = cast(ReadOnlyJsonObject, item)
         raw_type = typed_item.get("type")
         self.item_types[_closed_label(raw_type, _KNOWN_ITEM_TYPES)] += 1
-        self._fail(_item_type_failure(raw_type))
-        self._fail(_item_failure(typed_item, raw_type))
         self._observe_content(typed_item.get("content"))
-        self._fail(self.relationships.observe(raw_type, typed_item.get("call_id")))
+        self.relationships.observe(raw_type, typed_item.get("call_id"))
 
     def _observe_content(self, content: object) -> None:
         if isinstance(content, str):
@@ -377,15 +352,10 @@ class _DiagnosticState:
     def _observe_block(self, block: object) -> None:
         if not isinstance(block, dict):
             self.content_types[_value_kind(block)] += 1
-            self._fail("invalid_content_block")
             return
         typed_block = cast(ReadOnlyJsonObject, block)
         block_type = typed_block.get("type")
         self.content_types[_closed_label(block_type, _KNOWN_CONTENT_TYPES)] += 1
-        self._fail(_content_failure(typed_block, block_type))
-
-    def _fail(self, reason: str) -> None:
-        self.first_reason = self.first_reason or reason
 
     def finish(self) -> InputDiagnostic:
         flags = self.relationships.diagnostic_flags
@@ -397,69 +367,6 @@ class _DiagnosticState:
             first_incompatible_reason=self.first_reason,
             shape_sha256=self.shape_sha256,
         )
-
-
-def _item_type_failure(item_type: object) -> str:
-    if not isinstance(item_type, str):
-        return "missing_item_type"
-    policy = item_policy.classify_item(item_type)
-    if policy is None:
-        return "unknown_item_type"
-    return policy.rejection_reason
-
-
-def _item_failure(item: ReadOnlyJsonObject, item_type: object) -> str:
-    if not isinstance(item_type, str):
-        return ""
-    if item_type == "message":
-        return _message_failure(item)
-    fields = _REQUIRED_STRING_FIELDS.get(item_type)
-    if fields is not None and not _strings_present(item, fields):
-        return f"invalid_{item_type}"
-    contract = _ITEM_VALUE_FIELDS.get(item_type)
-    if contract is not None and not isinstance(item.get(contract[0]), contract[1]):
-        return contract[2]
-    policy = item_policy.classify_item(item_type)
-    if (
-        policy is not None
-        and policy.projection is item_policy.ProjectionStrategy.OUTPUT
-        and not isinstance(item.get("output"), (str, list))
-    ):
-        return "invalid_tool_output"
-    return ""
-
-
-def _content_failure(block: ReadOnlyJsonObject, block_type: object) -> str:
-    if not isinstance(block_type, str) or block_type not in _KNOWN_CONTENT_TYPES:
-        return "unknown_content_type"
-    if block_type == "input_image" and not _valid_image(block):
-        return "invalid_input_image_block"
-    contract = _CONTENT_VALUE_FIELDS.get(block_type)
-    if contract and not isinstance(block.get(contract[0]), str):
-        return contract[1]
-    return ""
-
-
-def _strings_present(item: ReadOnlyJsonObject, fields: tuple[str, ...]) -> bool:
-    return all(type(item.get(field)) is str and bool(item.get(field)) for field in fields)
-
-
-def _message_failure(item: ReadOnlyJsonObject) -> str:
-    content = item.get("content")
-    match item.get("role") in (*_ROLES, "assistant"), content:
-        case False, _:
-            return "invalid_message_role"
-        case True, value if not isinstance(value, (str, list)):
-            return "invalid_message_content"
-        case True, []:
-            return "empty_message_content"
-        case _:
-            return ""
-
-
-def _valid_image(block: ReadOnlyJsonObject) -> bool:
-    has_source = any(isinstance(block.get(field), str) for field in ("image_url", "file_id"))
-    return block.get("detail") in {"low", "high", "auto", "original"} and has_source
 
 
 def _bucket_counts(value: object) -> dict[str, str]:
