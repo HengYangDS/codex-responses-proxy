@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tools.quality.architecture import architecture_gaps
+from tools.quality.repository.topology import architecture_gaps
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = ROOT / "src" / "codex_responses_proxy"

@@ -7,7 +7,7 @@ import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 POLICY = ROOT / ".config/quality/policy/architecture.toml"
 
 _POLICY_FIELDS = frozenset(

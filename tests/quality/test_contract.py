@@ -3,49 +3,41 @@
 from __future__ import annotations
 
 import ast
-import os
+import importlib.util
 import re
 import tempfile
 import tomllib
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 from pytest_mock import MockerFixture
 
 from tests.quality.fixtures import ROOT
-from tests.quality.fixtures import checker as _checker
 from tests.quality.fixtures import git as _git
-from tests.quality.fixtures import load as _load
 from tests.quality.fixtures import repository as _test_repository
-
-
-def _commit_checker() -> ModuleType:
-    _load("tools", "tools/__init__.py")
-    _load("tools.quality", "tools/quality/__init__.py")
-    return _load("codex_responses_proxy_commit_checker", "tools/quality/commits.py")
-
-
-def _governance_checker() -> ModuleType:
-    _load("tools", "tools/__init__.py")
-    _load("tools.quality", "tools/quality/__init__.py")
-    return _load("codex_responses_proxy_governance_checker", "tools/quality/governance.py")
-
-
-def _responsibility_checker() -> ModuleType:
-    _load("tools", "tools/__init__.py")
-    _load("tools.quality", "tools/quality/__init__.py")
-    return _load(
-        "codex_responses_proxy_responsibility_checker",
-        "tools/quality/responsibilities.py",
-    )
+from tools.quality import commits
+from tools.quality import governance
+from tools.quality import responsibilities
+from tools.quality.repository import __main__ as repository_audit
+from tools.quality.repository.decisions import decision_record_gaps
+from tools.quality.repository.names import semantic_name_gaps
+from tools.quality.repository.topology import architecture_gaps
 
 
 class TestQualityPolicyContracts:
     """Keep the repository quality scope executable rather than documentary."""
 
+    def test_repository_checks_share_one_semantic_package(self) -> None:
+        """Repository topology, naming, and decisions belong to one audit package."""
+        package = importlib.util.find_spec("tools.quality.repository")
+        assert package is not None
+        assert package.submodule_search_locations is not None
+        for concern in ("topology", "names", "decisions"):
+            owner = importlib.util.find_spec(f"tools.quality.repository.{concern}")
+            assert owner is not None
+
     def test_responsibility_map_covers_every_carrier_exactly_once(self) -> None:
-        report = _responsibility_checker().audit()
+        report = responsibilities.audit()
 
         assert report["errors"] == []
         assert report["ok"] is True
@@ -61,7 +53,7 @@ class TestQualityPolicyContracts:
         policy = tmp_path / "responsibility-map.toml"
         policy.write_text(malformed, encoding="utf-8")
 
-        report = _responsibility_checker().audit(ROOT, policy)
+        report = responsibilities.audit(ROOT, policy)
 
         assert "responsibility_map_concern_field_missing:python-lint:risk_model" in report["errors"]
 
@@ -75,14 +67,14 @@ class TestQualityPolicyContracts:
         policy = tmp_path / "responsibility-map.toml"
         policy.write_text(malformed, encoding="utf-8")
 
-        report = _responsibility_checker().audit(ROOT, policy)
+        report = responsibilities.audit(ROOT, policy)
 
         assert any(
             error.startswith("responsibility_map_multiple_roles:src/") for error in report["errors"]
         )
 
     def test_current_repository_policy_is_internally_consistent(self) -> None:
-        report = _checker().audit()
+        report = repository_audit.audit()
         assert report["policy_errors"] == []
         inventory_gaps = [gap for gap in report["gaps"] if gap.startswith("quality_inventory_")]
         untracked = _git(
@@ -256,7 +248,6 @@ class TestQualityPolicyContracts:
         )["tool"]["vulture"]
         assert dead_code == {"min_confidence": 100, "sort_by_size": True}
 
-        governance = _governance_checker()
         commands = governance._commands(online_links=False)
         assert sum(command[0] == "deptry" for command in commands) == 1
         assert sum(command[0] == "vulture" for command in commands) == 1
@@ -272,7 +263,6 @@ class TestQualityPolicyContracts:
         assert "--baseline" not in quality_commands
 
     def test_governance_composition_owns_each_repository_check_once(self, mocker) -> None:
-        governance = _governance_checker()
         completed = mocker.Mock(returncode=0)
         tracked = mocker.Mock(
             returncode=0,
@@ -396,13 +386,12 @@ class TestQualityPolicyContracts:
         assert policy["trim_trailing_whitespace"] is True
 
     def test_commit_subjects_consume_the_tracked_positive_grammar(self) -> None:
-        checker = _checker()
-        assert checker.commit_subject_gaps(ROOT) == []
+        assert commits.commit_subject_gaps(ROOT) == []
 
         policy = tomllib.loads(
             (ROOT / ".config/quality/policy/commits.toml").read_text(encoding="utf-8")
         )
-        (subject,) = _commit_checker().commit_subject_patterns(policy)
+        (subject,) = commits.commit_subject_patterns(policy)
 
         assert subject.fullmatch("refactor(quality): centralize repository policy owners")
         assert subject.fullmatch("fix(ci): provision quality projection tools")
@@ -416,13 +405,12 @@ class TestQualityPolicyContracts:
         policy = tomllib.loads(
             (ROOT / ".config/quality/policy/commits.toml").read_text(encoding="utf-8")
         )
-        (subject,) = _commit_checker().commit_subject_patterns(policy)
+        (subject,) = commits.commit_subject_patterns(policy)
 
         assert subject.fullmatch("chore(release): prepare v2.0.22")
         assert not subject.fullmatch("chore(release): prepare v2.0.22.")
 
     def test_commit_subjects_use_remote_main_when_candidate_is_local_only(self) -> None:
-        checker = _checker()
         with _test_repository(("tracked.txt",)) as root:
             _git(
                 root,
@@ -451,12 +439,11 @@ class TestQualityPolicyContracts:
                 "invalid hosted subject",
             )
 
-            assert checker.commit_subject_gaps(root) == [
+            assert commits.commit_subject_gaps(root) == [
                 "commit_subject_invalid:invalid hosted subject"
             ]
 
     def test_commit_subjects_validate_head_without_an_integration_ref(self) -> None:
-        checker = _checker()
         with _test_repository(("tracked.txt",)) as root:
             _git(
                 root,
@@ -473,12 +460,11 @@ class TestQualityPolicyContracts:
             _git(root, "switch", "--detach", "-q")
             _git(root, "branch", "-D", branch)
 
-            assert checker.commit_subject_gaps(root) == [
+            assert commits.commit_subject_gaps(root) == [
                 "commit_subject_invalid:invalid root subject"
             ]
 
     def test_commit_subjects_skip_an_integration_ref_ahead_of_head(self) -> None:
-        checker = _checker()
         with _test_repository(("tracked.txt",)) as root:
             _git(
                 root,
@@ -509,7 +495,7 @@ class TestQualityPolicyContracts:
             _git(root, "update-ref", "refs/heads/candidate/dev", candidate)
             _git(root, "reset", "--hard", "-q", head)
 
-            assert checker.commit_subject_gaps(root) == [
+            assert commits.commit_subject_gaps(root) == [
                 "commit_subject_invalid:invalid root subject"
             ]
 
@@ -554,62 +540,26 @@ class TestQualityPolicyContracts:
     def test_repository_cli_is_quiet_on_success_and_diagnostic_on_failure(
         self, mocker: MockerFixture
     ) -> None:
-        checker = _checker()
-        mocker.patch.object(checker, "audit", return_value={"ok": True, "gaps": []})
+        mocker.patch.object(repository_audit, "audit", return_value={"ok": True, "gaps": []})
         output = mocker.patch("builtins.print")
-        checker.main()
+        repository_audit.main()
         output.assert_not_called()
 
         mocker.patch.object(
-            checker, "audit", return_value={"ok": False, "gaps": ["invalid_contract"]}
+            repository_audit, "audit", return_value={"ok": False, "gaps": ["invalid_contract"]}
         )
         output.reset_mock()
         with pytest.raises(SystemExit):
-            checker.main()
+            repository_audit.main()
         output.assert_called_once()
 
-    def test_worktree_fingerprint_is_stable_and_content_sensitive(self) -> None:
-        checker = _checker()
-        with _test_repository(("tracked.txt",)) as root:
-            untracked = root / "untracked.txt"
-            untracked.write_text("first\n", encoding="utf-8")
-
-            initial = checker.worktree_fingerprint(root)
-            assert checker.worktree_fingerprint(root) == initial
-
-            (root / "tracked.txt").write_text("changed\n", encoding="utf-8")
-            tracked_changed = checker.worktree_fingerprint(root)
-            assert tracked_changed != initial
-
-            untracked.write_text("second\n", encoding="utf-8")
-            untracked_changed = checker.worktree_fingerprint(root)
-            assert untracked_changed != tracked_changed
-
-            if os.name != "nt":
-                (root / "tracked.txt").chmod(0o755)
-                assert checker.worktree_fingerprint(root) != untracked_changed
-
-    def test_worktree_fingerprint_is_path_sensitive_and_ignores_git_internals(
-        self,
-    ) -> None:
-        checker = _checker()
-        with _test_repository(("first.txt",)) as root:
-            before = checker.worktree_fingerprint(root)
-            (root / "first.txt").rename(root / "second.txt")
-            renamed = checker.worktree_fingerprint(root)
-            assert renamed != before
-
-            (root / ".git" / "irrelevant").write_text("internal\n", encoding="utf-8")
-            assert checker.worktree_fingerprint(root) == renamed
-
     def test_current_product_architecture_is_acyclic_and_directional(self) -> None:
-        assert _checker().architecture_gaps(ROOT) == []
+        assert architecture_gaps(ROOT) == []
 
     def test_decision_records_have_one_register_and_semantic_names(self) -> None:
-        assert _checker().decision_record_gaps(ROOT) == []
+        assert decision_record_gaps(ROOT) == []
 
     def test_decision_record_gate_rejects_numeric_and_unregistered_names(self) -> None:
-        checker = _checker()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             decisions = root / "docs/decisions"
@@ -630,7 +580,7 @@ class TestQualityPolicyContracts:
                 encoding="utf-8",
             )
 
-            gaps = checker.decision_record_gaps(root)
+            gaps = decision_record_gaps(root)
 
         assert "decision_record_name_invalid:docs/decisions/0001-vague.md" in gaps
         assert "decision_record_unregistered:docs/decisions/dr-0002-release-trust.md" in gaps
@@ -638,7 +588,6 @@ class TestQualityPolicyContracts:
     def test_decision_record_gate_requires_unique_registration_without_history_ratchets(
         self,
     ) -> None:
-        checker = _checker()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             decisions = root / "docs/decisions"
@@ -663,18 +612,17 @@ class TestQualityPolicyContracts:
                 encoding="utf-8",
             )
 
-            gaps = checker.decision_record_gaps(root)
+            gaps = decision_record_gaps(root)
 
         assert "decision_record_sequence_gap:0002" not in gaps
         assert "decision_record_registration_duplicate:docs/decisions/dr-0001-boundary.md" in gaps
 
     def test_tracked_project_files_follow_semantic_type_grammars(self) -> None:
-        assert _checker().semantic_name_gaps(ROOT) == []
+        assert semantic_name_gaps(ROOT) == []
 
     def test_semantic_name_gate_rejects_numeric_and_cross_language_grammar(
         self,
     ) -> None:
-        checker = _checker()
         with _test_repository(
             (
                 "src/valid_name.py",
@@ -683,28 +631,26 @@ class TestQualityPolicyContracts:
                 "docs/2026-plan.md",
             )
         ) as root:
-            gaps = checker.semantic_name_gaps(root)
+            gaps = semantic_name_gaps(root)
 
         assert "semantic_name_invalid:python:src/invalid-name.py" in gaps
         assert "semantic_name_invalid:shell:scripts/release/check_release.sh" in gaps
         assert "semantic_name_invalid:markdown:docs/2026-plan.md" in gaps
 
     def test_semantic_name_gate_exempts_only_openspec_history(self) -> None:
-        checker = _checker()
         with _test_repository(
             (
                 "docs/2026-plan.md",
                 "openspec/changes/archive/2026-08-07-release/specs/product/spec.md",
             )
         ) as root:
-            gaps = checker.semantic_name_gaps(root)
+            gaps = semantic_name_gaps(root)
 
         assert gaps == ["semantic_name_invalid:markdown:docs/2026-plan.md"]
 
     def test_semantic_name_gate_accepts_official_pyinstaller_hook_modules(self) -> None:
-        checker = _checker()
         with _test_repository(("tools/release/hooks/hook-ctypes.py",)) as root:
-            gaps = checker.semantic_name_gaps(root)
+            gaps = semantic_name_gaps(root)
 
         assert gaps == []
 

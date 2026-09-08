@@ -233,7 +233,7 @@ review_condition = "Reassess when supported Python versions, platforms, or third
 
 [[concerns]]
 id = "python-package-architecture"
-owner = "tools.quality.architecture"
+owner = "tools.quality.repository.topology"
 scope = "production-python"
 session = "quick"
 configuration = [".config/quality/policy/architecture.toml"]
@@ -416,7 +416,7 @@ review_condition = "Reassess when the product gains a durable semantic owner."
 
 [[concerns]]
 id = "decision-record-integrity"
-owner = "tools.quality.decision_records"
+owner = "tools.quality.repository.decisions"
 scope = "product-documentation"
 session = "quick"
 configuration = ["docs/decisions/decision-register.md"]
@@ -428,7 +428,7 @@ review_condition = "Reassess when the decision lifecycle or naming contract chan
 
 [[concerns]]
 id = "semantic-path-names"
-owner = "tools.quality.semantic_names"
+owner = "tools.quality.repository.names"
 scope = "all-carriers"
 session = "quick"
 configuration = [".config/quality/responsibility-map.toml"]
