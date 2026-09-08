@@ -248,6 +248,24 @@ prior audit said so. Pixi, Nix, Bazel, Just, Task, shell wrappers, and another
 update bot are not added unless a proved requirement cannot be carried by this
 control plane.
 
+Nox's native session installation API owns the target environment and selected
+installer. Repository code exports the locked dependency set and requests its
+installation; it does not reinterpret `session.python`, which is a version
+selector rather than an environment path. The installed-product probe requires
+the imported package to resolve beneath that interpreter's installed-package
+directory and its manifest beneath the same product package. Merely resolving
+outside a temporary working directory does not prove source independence:
+an editable `.pth` projection can still point back into the checkout.
+
+Orchestration contracts execute the declared sessions through Nox and observe
+their command boundary, environment ownership, ordering, and failure exits.
+Artifact admission additionally runs the actual isolated interpreter against
+installed and source-linked fixtures. These contracts replace source-string
+assertions; they prove orchestration, not native product operation. Artifact
+admission and session execution have separate test owners under
+`tests/quality/orchestration`, with domain-local fixtures in pytest's native
+`conftest.py` carrier.
+
 ### One native process environment contract
 
 `src/codex_responses_proxy/runtime/process_environment.py` owns derivation of

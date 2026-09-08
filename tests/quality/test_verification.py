@@ -3,28 +3,17 @@
 from __future__ import annotations
 
 import ast
-import importlib
 import json
 import os
 import re
 import subprocess
-import sys
 import tomllib
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 import yaml
-from nox.command import CommandFailed
-from pytest_mock import MockerFixture
 
 from tests.quality.fixtures import ROOT
-
-
-@pytest.fixture(scope="module")
-def nox_configuration() -> ModuleType:
-    """Register the repository's Nox sessions once per test module."""
-    return importlib.import_module("noxfile")
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
@@ -221,158 +210,6 @@ class TestVerificationContracts:
                     offenders.append(f"{relative}:{node.lineno}:direct_test_entrypoint")
         assert offenders == []
 
-    def test_nox_tests_build_and_install_the_wheel_before_running_pytest(self) -> None:
-        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-        assert set(functions) >= {
-            "_build_wheel",
-            "_install_wheel",
-            "_assert_installed_product",
-        }
-        calls = [
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-        ]
-        commands = [
-            tuple(
-                argument.value
-                for argument in call.args
-                if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
-            )
-            for call in calls
-            if isinstance(call.func, ast.Attribute)
-            and isinstance(call.func.value, ast.Name)
-            and call.func.value.id == "session"
-            and call.func.attr in {"run", "run_install"}
-        ]
-        assert any(command[:3] == ("uv", "build", "--wheel") for command in commands)
-        assert any(command[:3] == ("uv", "pip", "install") for command in commands)
-        install_source = ast.get_source_segment(source, functions["_install_wheel"]) or ""
-        assert '"--no-deps"' not in install_source
-        tests_calls = {
-            node.func.id
-            for node in ast.walk(functions["tests"])
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-        }
-        assert tests_calls >= {
-            "_build_wheel",
-            "_install_wheel",
-            "_assert_installed_product",
-        }
-        assert "_build_executable" not in tests_calls
-        tests_source = ast.get_source_segment(source, functions["tests"]) or ""
-        quality_source = ast.get_source_segment(source, functions["quality"]) or ""
-        assert "PYTEST_CONFIG" not in source
-        assert 'ROOT / "pytest.ini"' not in source
-        assert 'f"--rootdir={ROOT}"' not in source
-        assert '"compileall",' in tests_source
-        for owner_source in (tests_source, quality_source):
-            assert '"not native_distribution and not repository_toolchain"' in owner_source
-        for owner_source in (tests_source, quality_source):
-            assert 'product_identity.environment_name("EXECUTABLE")' in owner_source
-        assert "PYTHONPATH=src" not in source
-
-    def test_nox_tool_environment_contains_product_runtime_dependencies(self) -> None:
-        """Repository tools must run from one lock-derived, self-contained environment."""
-        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        install_tools = next(
-            node
-            for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "_install_tools"
-        )
-        install_source = ast.get_source_segment(source, install_tools) or ""
-        groups = install_tools.args.vararg
-        assert groups is not None
-        assert groups.arg == "groups"
-        assert 'groups or ("quality",)' in install_source
-        assert 'command.extend(("--group", group))' in install_source
-        assert '"--only-group"' not in install_source
-
-    def test_wheel_build_preserves_the_tool_owned_dependency_cache(
-        self, tmp_path: Path, mocker: MockerFixture, nox_configuration: ModuleType
-    ) -> None:
-        session = mocker.Mock()
-        wheelhouse = tmp_path / "wheelhouse"
-        wheel = wheelhouse / "product.whl"
-        session.run_install.side_effect = lambda *_args, **_kwargs: wheel.touch()
-
-        assert nox_configuration._build_wheel(session, tmp_path) == wheel
-        session.run_install.assert_called_once_with(
-            "uv", "build", "--wheel", "--out-dir", str(wheelhouse), str(ROOT), external=True
-        )
-
-    def test_nox_release_exports_one_manifest_bound_native_asset_set(self) -> None:
-        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-        release_source = ast.get_source_segment(source, functions["release"]) or ""
-        assert '"tests/cli/test_interface.py"' in release_source
-        assert '"tests/service/handoff/test_subprocess.py"' in release_source
-        assert 'product_identity.environment_name("NATIVE_EXECUTABLE"): str(executable)' in (
-            release_source
-        )
-        assert '"-m", "tests.' not in release_source
-        release_calls = {
-            node.func.id
-            for node in ast.walk(functions["release"])
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-        }
-        assert "_package_release_asset" in release_calls
-        package_source = ast.get_source_segment(source, functions["_package_release_asset"]) or ""
-        assert "tools.release.artifact" in package_source
-        assert "--bundle" in package_source
-        assert "--platform" in package_source
-        assert "session.posargs" in package_source
-
-        native_build_owners = {
-            name
-            for name, function in functions.items()
-            if any(
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "_build_executable"
-                for node in ast.walk(function)
-            )
-        }
-        assert native_build_owners == {"_build_native_candidate"}
-
-    def test_linux_asset_construction_defers_service_acceptance_to_the_native_host(
-        self,
-    ) -> None:
-        """Keep containerized construction independent of a host service manager."""
-        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-        asset_source = ast.get_source_segment(source, functions["release_asset"]) or ""
-
-        assert '"tests/cli/test_interface.py"' in asset_source
-        assert '"tests/service/handoff/test_subprocess.py"' in asset_source
-        assert '"tests/release/test_native_lifecycle.py"' not in asset_source
-        assert "_package_release_asset" in asset_source
-
-    def test_release_compatibility_uses_one_verified_published_predecessor(
-        self,
-    ) -> None:
-        """A release candidate must upgrade a real signed predecessor, never a relabeled build."""
-        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-        compatibility = functions["release_compatibility"]
-        compatibility_source = ast.get_source_segment(source, compatibility) or ""
-        lifecycle = (ROOT / "tests/release/test_native_lifecycle.py").read_text(encoding="utf-8")
-
-        assert 'product_identity.environment_name("PREVIOUS_RELEASE_ASSET")' in (
-            compatibility_source
-        )
-        assert 'product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR")' in (
-            compatibility_source
-        )
-        assert '"tests/release/test_native_compatibility.py"' in compatibility_source
-        assert "_previous_patch" not in lifecycle
-
     def test_native_distribution_tests_are_explicit_and_release_owned(self) -> None:
         pytest_config = (ROOT / "pytest.ini").read_text(encoding="utf-8")
         assert (
@@ -453,12 +290,6 @@ class TestVerificationContracts:
         assert quality.isdisjoint(release)
         assert release == {"pyinstaller"}
 
-        noxfile = (ROOT / "noxfile.py").read_text(encoding="utf-8")
-        release_session = noxfile.split("def release(session: nox.Session)", 1)[1].split(
-            "\ndef _install_tools", 1
-        )[0]
-        assert '_install_tools(session, "quality", "release")' in release_session
-
     def test_developer_bootstrap_installs_product_and_quality_groups(self) -> None:
         toolchain = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
         environment = toolchain["env"]
@@ -494,82 +325,6 @@ class TestVerificationContracts:
         assert toolchain["tasks"][task]["run"] == (
             'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s ' + session
         )
-
-    def test_governance_reuses_the_admitted_interpreter(
-        self, mocker: MockerFixture, nox_configuration: ModuleType
-    ) -> None:
-        session = mocker.Mock(posargs=[])
-
-        nox_configuration.governance(session)
-
-        session.run.assert_called_once_with(
-            sys.executable,
-            "-m",
-            "tools.quality.governance",
-            external=True,
-            env=nox_configuration._environment(),
-        )
-
-    @pytest.mark.parametrize("session_name", ["quick", "quality"])
-    def test_static_checks_cover_the_same_source_and_configuration_scope(
-        self,
-        session_name: str,
-        tmp_path: Path,
-        mocker: MockerFixture,
-        nox_configuration: ModuleType,
-    ) -> None:
-        session = mocker.Mock()
-        session.create_tmp.return_value = str(tmp_path)
-        for name in (
-            "_install_tools",
-            "_build_wheel",
-            "_install_wheel",
-            "_assert_installed_product",
-        ):
-            mocker.patch.object(nox_configuration, name)
-        mocker.patch.object(
-            nox_configuration, "_installed_executable", return_value=tmp_path / "proxy"
-        )
-
-        getattr(nox_configuration, session_name)(session)
-
-        calls = [call.args for call in session.run.call_args_list]
-        (lint,) = [call for call in calls if call[:2] == ("ruff", "check")]
-        assert lint[lint.index("--config") + 1] == str(nox_configuration.RUFF_CONFIG)
-        (typing,) = [call for call in calls if call[:2] == ("ty", "check")]
-        assert set(typing[-4:]) == {"src/codex_responses_proxy", "tools", "tests", "noxfile.py"}
-        assert typing[typing.index("--python-platform") + 1] == "all"
-        assert typing[typing.index("--python-version") + 1] == nox_configuration.MIN_PYTHON
-
-    @pytest.mark.parametrize("session_name", ["quick", "quality"])
-    def test_static_failure_stops_acceptance_before_behavioral_gates(
-        self,
-        session_name: str,
-        tmp_path: Path,
-        mocker: MockerFixture,
-        nox_configuration: ModuleType,
-    ) -> None:
-        session = mocker.Mock()
-        session.create_tmp.return_value = str(tmp_path)
-        for name in (
-            "_install_tools",
-            "_build_wheel",
-            "_install_wheel",
-            "_assert_installed_product",
-        ):
-            mocker.patch.object(nox_configuration, name)
-        mocker.patch.object(
-            nox_configuration, "_installed_executable", return_value=tmp_path / "proxy"
-        )
-        failure = CommandFailed("source validation failed", return_code=1)
-        session.run.side_effect = failure
-
-        with pytest.raises(CommandFailed) as raised:
-            getattr(nox_configuration, session_name)(session)
-
-        assert raised.value is failure
-        session.run.assert_called_once()
-        assert session.run.call_args.args[:2] == ("ruff", "check")
 
     @pytest.mark.parametrize(
         ("relative", "source", "expected"),
@@ -614,29 +369,6 @@ class TestVerificationContracts:
         assert {item["code"] for item in json.loads(result.stdout)} == expected
 
     def test_repository_declares_the_supported_python_matrix_once(self) -> None:
-        assert (ROOT / ".python-versions").read_text(encoding="utf-8") == "3.12\n3.13\n3.14\n"
-        assert (ROOT / ".python-release").read_text(encoding="utf-8") == "3.14.7\n"
-        assert not (ROOT / ".python-version").exists()
-        noxfile = (ROOT / "noxfile.py").read_text(encoding="utf-8")
-        assert 'PYTHONS = tuple((ROOT / ".python-versions").read_text' in noxfile
-        assert "MIN_PYTHON, *_, MAX_PYTHON = PYTHONS" in noxfile
-        assert 'RELEASE_PYTHON = (ROOT / ".python-release").read_text' in noxfile
-        assert '("3.12", "3.13", "3.14")' not in noxfile
-        assert '@nox.session(python="3.12")' not in noxfile
-        assert '@nox.session(python="3.14")' not in noxfile
-        assert '"--python-version",\n        "3.12"' not in noxfile
-        for session in ("quick", "full", "release"):
-            assert f"def {session}(session: nox.Session)" in noxfile
-
-        tree = ast.parse(noxfile)
-        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-        full_source = ast.get_source_segment(noxfile, functions["full"]) or ""
-        assert 'session.notify("governance")' in full_source
-        assert 'session.notify("quick")' not in full_source
-        assert "for python in PYTHONS[1:]" in full_source
-        assert 'session.notify(f"tests-{python}")' in full_source
-        assert 'session.notify("tests",' not in full_source
-
         github = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         supported = (ROOT / ".python-versions").read_text(encoding="utf-8").splitlines()
@@ -676,11 +408,8 @@ class TestVerificationContracts:
 
     def test_release_collects_ctypes_as_source_outside_the_pyz_archive(self) -> None:
         """Avoid marshal identity drift in the Python 3.14 ``ctypes`` code object."""
-        source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
         hook = ROOT / "tools" / "release" / "hooks" / "hook-ctypes.py"
 
-        assert '"--additional-hooks-dir"' in source
-        assert 'ROOT / "tools/release/hooks"' in source
         hook_tree = ast.parse(hook.read_text(encoding="utf-8"))
         executable_statements = hook_tree.body[1:]
 
@@ -692,27 +421,6 @@ class TestVerificationContracts:
             "module_collection_mode"
         ]
         assert ast.literal_eval(assignment.value) == "py"
-
-    def test_release_runtime_uses_the_session_interpreter(
-        self, mocker: MockerFixture, nox_configuration: ModuleType
-    ) -> None:
-        """Compare the release session interpreter, not the Nox launcher."""
-        session = mocker.Mock()
-        session.run.return_value = "3.14.7\n"
-
-        nox_configuration._assert_release_runtime(session)
-
-        session.run.assert_called_once_with(
-            "python",
-            "-c",
-            "import platform; print(platform.python_version())",
-            env=nox_configuration._environment(),
-            silent=True,
-        )
-        session.run.return_value = "3.14.6\n"
-        session.error.side_effect = RuntimeError
-        with pytest.raises(RuntimeError):
-            nox_configuration._assert_release_runtime(session)
 
     def test_forge_quality_jobs_use_the_locked_runner(self) -> None:
         github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
@@ -746,12 +454,6 @@ class TestVerificationContracts:
         assert (ROOT / ".config/quality/policy/performance.toml").is_file()
         assert (ROOT / "tools/performance/benchmark.py").is_file()
         assert (ROOT / "tools/performance/memory.py").is_file()
-
-        nox_source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
-        assert "def performance(session: nox.Session)" in nox_source
-        assert '"tools.performance.benchmark"' in nox_source
-        assert '"tools.performance.memory"' in nox_source
-        assert '"tools.performance.verify"' in nox_source
 
         github = _load_yaml(ROOT / ".github/workflows/verify.yml")
         gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
