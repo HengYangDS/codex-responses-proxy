@@ -247,11 +247,6 @@ class TestVerificationContracts:
             and call.func.attr in {"run", "run_install"}
         ]
         assert any(command[:3] == ("uv", "build", "--wheel") for command in commands)
-        assert any(
-            "--cache-dir" in command
-            for command in commands
-            if command[:3] == ("uv", "build", "--wheel")
-        )
         assert any(command[:3] == ("uv", "pip", "install") for command in commands)
         install_source = ast.get_source_segment(source, functions["_install_wheel"]) or ""
         assert '"--no-deps"' not in install_source
@@ -295,6 +290,19 @@ class TestVerificationContracts:
         assert 'groups or ("quality",)' in install_source
         assert 'command.extend(("--group", group))' in install_source
         assert '"--only-group"' not in install_source
+
+    def test_wheel_build_preserves_the_tool_owned_dependency_cache(
+        self, tmp_path: Path, mocker: MockerFixture, nox_configuration: ModuleType
+    ) -> None:
+        session = mocker.Mock()
+        wheelhouse = tmp_path / "wheelhouse"
+        wheel = wheelhouse / "product.whl"
+        session.run_install.side_effect = lambda *_args, **_kwargs: wheel.touch()
+
+        assert nox_configuration._build_wheel(session, tmp_path) == wheel
+        session.run_install.assert_called_once_with(
+            "uv", "build", "--wheel", "--out-dir", str(wheelhouse), str(ROOT), external=True
+        )
 
     def test_nox_release_exports_one_manifest_bound_native_asset_set(self) -> None:
         source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
