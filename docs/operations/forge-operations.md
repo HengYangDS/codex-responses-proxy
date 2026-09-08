@@ -119,6 +119,13 @@ remain under [`tools/release`](../../tools/release/); publishers only consume
 the resulting immutable bundle. These are different responsibilities, not
 alternative publication implementations.
 
+Publication success covers both the verified bundle and its user-facing Release
+links. GitLab publication compares every link's name, URL, and type with the
+requested bundle, independent of ordering and server-assigned fields. It reads
+the persisted Release after asset verification and creation or a concurrent
+creation conflict; a POST acknowledgement alone is not publication evidence.
+An existing mismatched Release fails without rewriting its metadata.
+
 The read-only dual-Forge verifier accepts explicit `--gitlab-git-url` and
 `--github-git-url` values. These are fetchable Git URLs, not checkout-local
 remote names: verification runs in an isolated bare repository that deliberately

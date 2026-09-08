@@ -36,8 +36,15 @@ def _assets(root: Path, version: str) -> None:
         (root / name).write_bytes(content)
 
 
+@pytest.mark.parametrize("create_conflict", [False, True], ids=["created", "raced"])
+@pytest.mark.parametrize("link_field", ["name", "url", "link_type"])
+@pytest.mark.parametrize("corrupt_on_create", [False, True], ids=["existing", "persisted"])
 def test_publication_creates_and_accepts_only_exact_existing_release(
-    tmp_path: Path, mocker
+    tmp_path: Path,
+    mocker,
+    create_conflict: bool,
+    link_field: str,
+    corrupt_on_create: bool,
 ) -> None:
     assets, key = tmp_path / "assets", tmp_path / "signing"
     assets.mkdir()
@@ -73,7 +80,12 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
             if release:
                 raise FileExistsError(url)
             assert data is not None
-            release.update(json.loads(data))
+            persisted = json.loads(data)
+            if corrupt_on_create:
+                persisted["assets"]["links"][0][link_field] = "wrong"
+            release.update(persisted)
+            if create_conflict:
+                raise FileExistsError(url)
             return b"{}"
         if not release:
             raise publish._GitLabResourceMissingError(url)
@@ -89,12 +101,28 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
         "source": assets,
         "trust": trust,
     }
-    assert publish.publish(**arguments) == "created"
+    if corrupt_on_create:
+        with pytest.raises(publish.GitLabPublishError, match="immutable identity"):
+            publish.publish(**arguments)
+        return
+    assert publish.publish(**arguments) == ("matched" if create_conflict else "created")
     assert {name: values[-1] for name, values in store.items()} == expected
     assert uploads == sorted(expected)
     assert publish.publish(**arguments) == "matched"
     assert uploads == sorted(expected)
     assert all(len(values) == 1 for values in store.values())
+    release_assets = release["assets"]
+    assert isinstance(release_assets, dict)
+    links = release_assets["links"]
+    links.reverse()
+    for index, link in enumerate(links):
+        link["id"] = index
+    assert publish.publish(**arguments) == "matched"
+    original = links[0][link_field]
+    links[0][link_field] = "wrong"
+    with pytest.raises(publish.GitLabPublishError, match="immutable identity"):
+        publish.publish(**arguments)
+    links[0][link_field] = original
     release["name"] = "wrong"
     with pytest.raises(publish.GitLabPublishError, match="immutable identity"):
         publish.publish(**arguments)
@@ -138,6 +166,8 @@ def test_publication_reuses_exact_partial_package_and_uploads_only_missing_asset
             assert data is not None
             release.update(json.loads(data))
             return b"{}"
+        if release:
+            return json.dumps(release).encode()
         raise publish._GitLabResourceMissingError(url)
 
     mocker.patch.object(publish, "_request", side_effect=request)

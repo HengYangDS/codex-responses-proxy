@@ -99,7 +99,7 @@
 - [ ] 10.2 Build reproducible macOS, Linux, and Windows native bundles from the locked candidate; verify contents, modes, manifests, checksums, signatures, SBOM, provenance, and common-platform byte identity where applicable.
 - [ ] 10.3 Verify the release source is clean, signed, exact-HEAD proved, OpenSpec-complete, and immutable before creating one signed annotated tag object.
 - [ ] 10.4 Project the same signed commit and tag objects to each selected Forge through independent exact-CAS operations; verify no author, committer, parent, tree, message, or signature rewriting.
-- [ ] 10.5 Publish complete matching Release inventories on GitHub and GitLab, re-download every asset, and verify byte digests, signatures, trust anchors, and metadata independently.
+- [ ] 10.5 Publish complete matching Release inventories on GitHub and GitLab; independently verify byte digests, signatures, trust anchors, metadata, and user-facing link identity from fresh persisted state, including idempotent and concurrent publication paths.
 - [ ] 10.6 Upgrade the preserved working installation from the previous accepted release, prove runtime health and active-target no-op, roll back, recover, re-upgrade, uninstall, and reinstall using only published artifacts.
 - [ ] 10.7 Verify installed status reports exact release, payload, manifest, service, process, listener, command projection, and transaction state without consulting source, Git, uv, Nox, ETHOS, or a Forge.
 
