@@ -1,1 +1,1 @@
-"""Forge-native publication observation adapters."""
+"""Immutable release publication and independent hosted verification."""

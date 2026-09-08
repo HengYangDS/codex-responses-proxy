@@ -58,10 +58,14 @@ semantics, Provider wire adaptation, relay transport, runtime configuration,
 installed payload generations, lifecycle transactions, native supervision, and
 public CLI presentation. Repository-only domains are development bootstrap,
 quality, CI projection, release construction, Forge transport, and publication
-verification. Tests mirror these owners by behavior. Files do not distinguish
-roles by accumulated suffixes such as `publish_github.py`, `publish_gitlab.py`,
-or `*_manager.py`; provider differences live behind adapters within the one
-owning semantic package.
+verification. Tests mirror these owners by behavior. Provider differences live
+within the owning semantic package, rather than in suffix-named sibling files.
+The release publication package owns one command tree and one subpackage per
+Forge. Within each Forge, publication writes and hosted observations are distinct
+operations. Cross-Forge verification consumes observations; artifact assembly
+and signing remain release-construction concerns. Git reference projection,
+repository settings, and runner admission remain Forge concerns rather than a
+second release publication mechanism.
 
 A package survives only when it owns a distinct invariant and dependency
 boundary. Catch-all packages and names such as `common`, `shared`, `utils`,

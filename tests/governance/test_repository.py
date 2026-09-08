@@ -291,7 +291,7 @@ class TestGovernanceMetadata:
 
     def test_publication_authority_has_no_scripts_module_loader(self):
         assert (ROOT / "tools/release/publication/__init__.py").read_text(encoding="utf-8") == (
-            '"""Forge-native publication observation adapters."""\n'
+            '"""Immutable release publication and independent hosted verification."""\n'
         )
 
     def test_collaboration_has_one_exact_object_projection_surface(self, subtests):

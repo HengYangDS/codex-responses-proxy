@@ -6,15 +6,18 @@ from pathlib import Path
 
 import pytest
 
-from tools.release import publish
+from tools.release.publication import __main__ as commands
+from tools.release.publication.github import observe as github_observer
+from tools.release.publication.github import publish as github
+from tools.release.publication.gitlab import publish as gitlab
 
 
 def test_github_command_dispatches_verified_inputs_without_secret_arguments(
     tmp_path: Path, mocker
 ) -> None:
-    adapter = mocker.patch.object(publish.publish_github, "publish", return_value="created")
+    adapter = mocker.patch.object(github, "publish", return_value="created")
     mocker.patch.dict(
-        publish.os.environ,
+        commands.os.environ,
         {
             "CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST": "tag trust",
             "RELEASE_ASSET_TRUST": "asset trust",
@@ -22,7 +25,7 @@ def test_github_command_dispatches_verified_inputs_without_secret_arguments(
         clear=True,
     )
 
-    publish.main(
+    commands.main(
         (
             "github",
             "--repository",
@@ -55,20 +58,20 @@ def test_github_command_dispatches_verified_inputs_without_secret_arguments(
 @pytest.mark.parametrize(
     ("kind", "variable", "token"),
     [
-        (publish.publish_gitlab.CredentialKind.JOB_TOKEN, "CI_JOB_TOKEN", "job token"),
+        (gitlab.CredentialKind.JOB_TOKEN, "CI_JOB_TOKEN", "job token"),
         (
-            publish.publish_gitlab.CredentialKind.PRIVATE_TOKEN,
+            gitlab.CredentialKind.PRIVATE_TOKEN,
             "CODEX_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN",
             "private token",
         ),
     ],
 )
 def test_gitlab_command_reads_only_the_declared_credential(
-    tmp_path: Path, mocker, kind: publish.publish_gitlab.CredentialKind, variable: str, token: str
+    tmp_path: Path, mocker, kind: gitlab.CredentialKind, variable: str, token: str
 ) -> None:
-    adapter = mocker.patch.object(publish.publish_gitlab, "publish", return_value="matched")
+    adapter = mocker.patch.object(gitlab, "publish", return_value="matched")
     mocker.patch.dict(
-        publish.os.environ,
+        commands.os.environ,
         {
             "CI_JOB_TOKEN": "unused job token",
             "CODEX_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN": "unused private token",
@@ -78,7 +81,7 @@ def test_gitlab_command_reads_only_the_declared_credential(
         clear=True,
     )
 
-    publish.main(
+    commands.main(
         (
             "gitlab",
             "--api-base",
@@ -106,10 +109,10 @@ def test_gitlab_command_reads_only_the_declared_credential(
 
 
 def test_command_fails_closed_without_provider_credentials(tmp_path: Path, mocker) -> None:
-    mocker.patch.dict(publish.os.environ, {}, clear=True)
+    mocker.patch.dict(commands.os.environ, {}, clear=True)
 
     with pytest.raises(SystemExit) as failure:
-        publish.main(
+        commands.main(
             (
                 "gitlab",
                 "--api-base",
@@ -128,20 +131,21 @@ def test_command_fails_closed_without_provider_credentials(tmp_path: Path, mocke
     assert failure.value.code == 1
 
 
-def test_provider_adapters_do_not_expose_parallel_command_roots() -> None:
-    assert not hasattr(publish.publish_github, "main")
-    assert not hasattr(publish.publish_github, "_app")
-    assert not hasattr(publish.publish_gitlab, "main")
-    assert not hasattr(publish.publish_gitlab, "_command")
+def test_publication_commands_share_one_semantic_entrypoint(capsys) -> None:
+    commands.main(("--help",))
+    help_text = capsys.readouterr().out
+    assert f"python -m {commands.__package__}" in help_text
+    for operation in ("github", "gitlab", "both", "verify", "predecessor"):
+        assert operation in help_text
 
 
 def test_dual_command_projects_the_same_bundle_to_both_peers(tmp_path: Path, mocker) -> None:
-    github = mocker.patch.object(publish, "_github")
-    gitlab = mocker.patch.object(publish, "_gitlab")
+    github_dispatch = mocker.patch.object(commands, "_github")
+    gitlab_dispatch = mocker.patch.object(commands, "_gitlab")
     assets = tmp_path / "assets"
     workspace = tmp_path / "workspace"
 
-    publish._both(
+    commands._both(
         github_repository="team/proxy",
         gitlab_api_base="https://gitlab.example/api/v4",
         gitlab_project_id=453,
@@ -149,11 +153,11 @@ def test_dual_command_projects_the_same_bundle_to_both_peers(tmp_path: Path, moc
         commit_oid="a" * 40,
         assets=assets,
         workspace=workspace,
-        gitlab_credential_kind=publish.publish_gitlab.CredentialKind.JOB_TOKEN,
+        gitlab_credential_kind=gitlab.CredentialKind.JOB_TOKEN,
         checkout=tmp_path,
     )
 
-    github.assert_called_once_with(
+    github_dispatch.assert_called_once_with(
         repository="team/proxy",
         tag="v1.2.3",
         commit_oid="a" * 40,
@@ -161,25 +165,25 @@ def test_dual_command_projects_the_same_bundle_to_both_peers(tmp_path: Path, moc
         workspace=workspace,
         checkout=tmp_path,
     )
-    gitlab.assert_called_once_with(
+    gitlab_dispatch.assert_called_once_with(
         api_base="https://gitlab.example/api/v4",
         project_id=453,
         tag="v1.2.3",
         assets=assets,
-        credential_kind=publish.publish_gitlab.CredentialKind.JOB_TOKEN,
+        credential_kind=gitlab.CredentialKind.JOB_TOKEN,
     )
 
 
 def test_dual_command_attempts_both_peers_before_reporting_failure(tmp_path: Path, mocker) -> None:
     mocker.patch.object(
-        publish,
+        commands,
         "_github",
-        side_effect=publish.publish_github.GitHubPublishError("github unavailable"),
+        side_effect=github.GitHubPublishError("github unavailable"),
     )
-    gitlab = mocker.patch.object(publish, "_gitlab")
+    gitlab_dispatch = mocker.patch.object(commands, "_gitlab")
 
-    with pytest.raises(publish.PublicationError, match="github unavailable"):
-        publish._both(
+    with pytest.raises(commands.PublicationError, match="github unavailable"):
+        commands._both(
             github_repository="team/proxy",
             gitlab_api_base="https://gitlab.example/api/v4",
             gitlab_project_id=453,
@@ -187,7 +191,34 @@ def test_dual_command_attempts_both_peers_before_reporting_failure(tmp_path: Pat
             commit_oid="a" * 40,
             assets=tmp_path / "assets",
             workspace=tmp_path / "workspace",
-            gitlab_credential_kind=publish.publish_gitlab.CredentialKind.JOB_TOKEN,
+            gitlab_credential_kind=gitlab.CredentialKind.JOB_TOKEN,
         )
 
-    gitlab.assert_called_once()
+    gitlab_dispatch.assert_called_once()
+
+
+def test_github_predecessor_cli_projects_the_exact_tag_to_github_environment(
+    *, mocker, capsys, tmp_path
+) -> None:
+    """Project the exact tag without depending on the runner's command shell."""
+
+    resolve = mocker.patch.object(github_observer, "published_predecessor", return_value="v3.1.0")
+    environment = tmp_path / "github-environment"
+
+    commands.main(
+        (
+            "predecessor",
+            "--repository",
+            "owner/repo",
+            "--candidate-version",
+            "3.1.2",
+            "--github-environment",
+            str(environment),
+        )
+    )
+
+    resolve.assert_called_once_with(repository="owner/repo", version="3.1.2")
+    assert capsys.readouterr().out == "v3.1.0\n"
+    assert environment.read_text(encoding="utf-8") == (
+        "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG=v3.1.0\n"
+    )

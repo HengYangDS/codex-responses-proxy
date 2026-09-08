@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import subprocess
-import sys
 from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Final
-
-from cyclopts import App
 
 from codex_responses_proxy import product_identity
 from tools.release import identity
@@ -30,7 +27,7 @@ class GitHubProofError(RuntimeError):
     """GitHub hosted evidence is missing, ambiguous, or mismatched."""
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 
 
 def _version_key(version: str) -> tuple[int, int, int]:
@@ -301,25 +298,3 @@ def _api_pages(endpoint: str) -> list[object]:
     if not isinstance(value, list):
         raise GitHubProofError("GitHub paginated API response is malformed")
     return list(value)
-
-
-def _predecessor(*, repository: str, candidate_version: str, github_environment: Path) -> None:
-    """Print the exact published predecessor for one candidate version."""
-    tag = published_predecessor(repository=repository, version=candidate_version)
-    with github_environment.open("a", encoding="utf-8", newline="\n") as environment:
-        environment.write(f"{product_identity.environment_name('PREVIOUS_RELEASE_TAG')}={tag}\n")
-    print(tag)
-
-
-def main(argv: tuple[str, ...] | None = None) -> None:
-    """Run the GitHub release observer through the repository parser stack."""
-    app = App(help=__doc__, result_action="return_value")
-    app.command(_predecessor, name="predecessor")
-    try:
-        app(tuple(sys.argv[1:] if argv is None else argv))
-    except GitHubProofError as error:
-        raise SystemExit(f"ERROR: {error}") from error
-
-
-if __name__ == "__main__":
-    main()

@@ -413,7 +413,7 @@ githubVerify: {
 				run:  "uv run --locked --no-sync python -m tools.release.metadata --tag \"$GITHUB_REF_NAME\""
 			}, {
 				name: "Verify repository governance"
-				run:  "uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/test_publish.py tests/release/test_publish_gitlab.py"
+				run:  "uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/publication"
 			}]
 		}
 		"python-quality": {
@@ -643,7 +643,7 @@ githubVerify: {
 			}, {
 				name: "Resolve the exact published predecessor"
 				env: GH_TOKEN: "${{ github.token }}"
-				run: "uv run --locked --no-sync python -m tools.release.publication.github predecessor --repository \"${{ github.repository }}\" --candidate-version \"$(cat VERSION)\" --github-environment \"${{ github.env }}\""
+				run: "uv run --locked --no-sync python -m tools.release.publication predecessor --repository \"${{ github.repository }}\" --candidate-version \"$(cat VERSION)\" --github-environment \"${{ github.env }}\""
 			}, {
 				name: "Download the published predecessor release"
 				env: GH_TOKEN: "${{ github.token }}"

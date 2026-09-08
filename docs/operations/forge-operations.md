@@ -105,6 +105,20 @@ Publication is a separate product operation, not a second provider-specific
 workflow. A publisher accepts only the complete pre-signed bundle and cannot
 build assets or regenerate its checksum inventory or signature.
 
+### Publication ownership
+
+[`tools/release/publication`](../../tools/release/publication/) owns the command
+tree for publishing, verification, and published-predecessor discovery. Each
+Forge has its own semantic subpackage: `publish` owns remote release writes;
+`observe` owns read-only hosted identity and CI evidence. The verifier composes
+those observations without granting installation authority.
+
+[`tools/forge`](../../tools/forge/) owns Git-reference projection, tag trust,
+repository settings, and runner admission. Release construction and signing
+remain under [`tools/release`](../../tools/release/); publishers only consume
+the resulting immutable bundle. These are different responsibilities, not
+alternative publication implementations.
+
 The read-only dual-Forge verifier accepts explicit `--gitlab-git-url` and
 `--github-git-url` values. These are fetchable Git URLs, not checkout-local
 remote names: verification runs in an isolated bare repository that deliberately
@@ -115,7 +129,7 @@ transport credentials do not create different release identities.
 Example:
 
 ```bash
-mise exec --locked -- uv run --locked --no-sync python -m tools.release.verify \
+mise exec --locked -- uv run --locked --no-sync python -m tools.release.publication verify \
   --tag "v$VERSION" \
   --gitlab-git-url "$GITLAB_GIT_URL" \
   --gitlab-api-base "$GITLAB_API_BASE" \
@@ -134,7 +148,7 @@ without exposing a credential or transport error body.
 Publish the same bundle to both peers with the single composition root:
 
 ```bash
-mise exec --locked -- uv run --locked --no-sync python -m tools.release.publish both \
+mise exec --locked -- uv run --locked --no-sync python -m tools.release.publication both \
   --github-repository "$GITHUB_REPOSITORY" \
   --gitlab-api-base "$GITLAB_API_BASE" \
   --gitlab-project-id "$GITLAB_PROJECT_ID" \

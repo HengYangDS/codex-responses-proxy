@@ -16,8 +16,8 @@ from codex_responses_proxy.service import digest
 from tools.release import identity
 from tools.release.publication import evaluator
 from tools.release.publication import git
-from tools.release.publication import github
-from tools.release.publication import gitlab
+from tools.release.publication.github import observe as github
+from tools.release.publication.gitlab import observe as gitlab
 
 
 class PublicationError(RuntimeError):

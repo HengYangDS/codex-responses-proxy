@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+import operator
+from collections.abc import Mapping
 from typing import cast
 
+import pytest
+
+from codex_responses_proxy.lifecycle import artifact
+from tests.release.publication.fixtures import VERIFY_ARGUMENTS
+from tests.release.publication.fixtures import VerifyArguments
+from tests.release.publication.fixtures import forge_evidence
+from tests.release.publication.fixtures import verified_evidence
+from tools.release import product_assets
 from tools.release.publication import evaluator
+from tools.release.publication import verification as publication
 
 
 def _forge(
@@ -217,3 +228,131 @@ class PublicationProofContracts:
             "gitlab.release_prerelease",
         ):
             assert expected in reasons
+
+
+class PublicationEvidenceContracts:
+    """Verify immutable, secret-free publication evidence without installation authority."""
+
+    def test_publication_owner_imports_semantic_collaborators(self) -> None:
+        assert publication.evaluator is evaluator
+
+    def test_evidence_projection_has_no_installation_capability(self, *, mocker) -> None:
+        assert not hasattr(artifact, "ForgePublication")
+        assert not hasattr(artifact, "PublicationProof")
+        assert not hasattr(publication, "PublishedRelease")
+        assert not hasattr(publication, "consume")
+        assert verified_evidence(forge_evidence(), mocker=mocker)["verified"]
+
+    def test_publication_verifier_fails_closed_on_invalid_inputs(self, *, mocker) -> None:
+        arguments = VERIFY_ARGUMENTS
+        mocker.patch.object(
+            publication.git,
+            "collect",
+            side_effect=publication.git.GitProofError("offline"),
+        )
+        with pytest.raises(publication.PublicationError, match="unavailable or invalid") as failure:
+            publication.verify(**arguments)
+        assert failure.value.reasons == ("gitlab.remote_git_evidence_invalid",)
+
+        invalid_tag: VerifyArguments = {**arguments, "tag": "latest"}
+        with pytest.raises(publication.PublicationError, match="exact vMAJOR") as failure:
+            publication.verify(**invalid_tag)
+        assert failure.value.reasons == ("release_tag_invalid",)
+
+    def test_publication_verifier_composes_validated_adapter_evidence(self, *, mocker) -> None:
+        commit = "b" * 40
+        git_evidence = {
+            "tag_object_oid": "a" * 40,
+            "commit_oid": commit,
+            "tree_oid": "c" * 40,
+            "anchor_sha256": "f" * 64,
+            "signature_verified": True,
+        }
+        assets = dict.fromkeys(
+            product_assets.release_asset_names("1.2.3", product_assets.RELEASE_PLATFORMS),
+            "1" * 64,
+        )
+
+        def collect_git(*, provider: str, **_: object) -> dict[str, object]:
+            return {"provider": provider, "tag": "v1.2.3", **git_evidence}
+
+        def collect_hosted(*, repository: str, **_: object) -> dict[str, object]:
+            return {
+                "repository": repository,
+                "ci": {
+                    "id": 42,
+                    "revision_oid": commit,
+                    "status": "success",
+                    "jobs": {"required": "success"},
+                },
+                "release": {
+                    "id": 99,
+                    "tag": "v1.2.3",
+                    "commit_oid": commit,
+                    "name": "Codex Responses Proxy v1.2.3",
+                    "draft": False,
+                    "prerelease": False,
+                },
+                "assets": assets,
+            }
+
+        mocker.patch.object(publication.git, "collect", side_effect=collect_git)
+        mocker.patch.object(publication.gitlab, "collect", side_effect=collect_hosted)
+        mocker.patch.object(publication.github, "collect", side_effect=collect_hosted)
+
+        result = publication.verify(**VERIFY_ARGUMENTS)
+
+        assert result["verified"] is True
+        forges = result["forges"]
+        assert isinstance(forges, Mapping)
+        for forge in forges.values():
+            assert isinstance(forge, Mapping)
+            ci = forge["ci"]
+            assert isinstance(ci, Mapping)
+            assert set(ci) == {"id", "revision_oid", "status"}
+
+    def test_publication_verifier_rejects_unverified_and_malformed_results(
+        self, subtests, *, mocker
+    ) -> None:
+        identity = {
+            "tag_object_oid": "a" * 40,
+            "commit_oid": "b" * 40,
+            "tree_oid": "c" * 40,
+        }
+        arguments = VERIFY_ARGUMENTS
+        hosted = {
+            "repository": "example/repository",
+            "ci": {"id": 1, "revision_oid": "b" * 40, "status": "success"},
+            "release": {},
+            "assets": {},
+        }
+        for result, message in (
+            ({"verified": False}, "did not verify"),
+            ({"verified": True, "forges": []}, "malformed"),
+        ):
+            mocker.patch.object(publication.git, "collect", return_value=identity)
+            mocker.patch.object(publication.gitlab, "collect", return_value=hosted)
+            mocker.patch.object(publication.github, "collect", return_value=hosted)
+            mocker.patch.object(
+                publication.evaluator,
+                "evaluate",
+                side_effect=lambda *_args, result=result: result,
+            )
+            with (
+                subtests.test(result=result),
+                pytest.raises(publication.PublicationError, match=message),
+            ):
+                publication.verify(**arguments)
+
+    def test_publication_evidence_is_deeply_frozen(self, *, mocker) -> None:
+        evidence = verified_evidence(forge_evidence(items=[{"value": 1}]), mocker=mocker)
+        forges = evidence["forges"]
+        assert isinstance(forges, Mapping)
+        gitlab = forges["gitlab"]
+        assert isinstance(gitlab, Mapping)
+        items = gitlab["items"]
+        assert isinstance(items, tuple)
+        item = items[0]
+        assert isinstance(item, Mapping)
+        with pytest.raises(TypeError):
+            operator.setitem(item, "value", 2)
