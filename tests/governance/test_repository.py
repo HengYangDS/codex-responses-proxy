@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import ntpath
 import sys
 from collections.abc import Mapping
@@ -289,10 +290,9 @@ class TestGovernanceMetadata:
     def test_provider_specific_wire_policies_have_a_semantic_owner(self):
         assert (ROOT / "src/codex_responses_proxy/providers/policies/dmxapi.py").is_file()
 
-    def test_publication_authority_has_no_scripts_module_loader(self):
-        assert (ROOT / "tools/release/publication/__init__.py").read_text(encoding="utf-8") == (
-            '"""Immutable release publication and independent hosted verification."""\n'
-        )
+    def test_publication_has_importable_command_and_peer_owners(self):
+        for owner in ("__main__", "verification", "github.publish", "gitlab.publish"):
+            assert importlib.util.find_spec(f"tools.release.publication.{owner}") is not None
 
     def test_collaboration_has_one_exact_object_projection_surface(self, subtests):
         projector = ROOT / "tools" / "forge" / "project.py"
