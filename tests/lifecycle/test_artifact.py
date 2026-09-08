@@ -258,8 +258,9 @@ def _members(
 def test_verified_artifact_is_opaque_immutable_and_single_use() -> None:
     with pytest.raises(TypeError, match="opaque"):
         artifact.VerifiedArtifact(blobs=(), receipt={}, sidecar={})
-    with pytest.raises(artifact.ArtifactError, match="admitted"):
-        artifact.claim(object())
+    for untrusted in (object(), str(Path(__file__)), Path(__file__)):
+        with pytest.raises(artifact.ArtifactError, match="admitted"):
+            artifact.claim(untrusted)
 
     candidate = released_artifact()
     assert candidate.version == VERSION

@@ -11,7 +11,6 @@ from collections.abc import Callable
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -263,11 +262,6 @@ class TestPayloadTransaction:
         assert payload_state.journal_path(ctx).read_bytes() == journal
         assert _retained_carrier_snapshot(Path(ctx.install_dir), Path(ctx.command)) == before
         pending.rollback()
-
-    def test_begin_accepts_only_opaque_released_payload_not_a_raw_path(self, *, mocker) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
-        with pytest.raises((TypeError, errors.InstallError)):
-            begin_transaction(ctx, cast("artifact.VerifiedArtifact", str(ROOT)), mocker=mocker)
 
     def test_transaction_status_is_absent_without_a_journal(self) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
@@ -1341,7 +1335,7 @@ class TestPayloadTransaction:
         remove_tree = payload_transaction.shutil.rmtree
         unlink = Path.unlink
 
-        def interrupt_cleanup(path: Path, *args, **kwargs) -> None:
+        def interrupt_cleanup(path: Path) -> None:
             if Path(path) == root:
                 if interruption == "snapshot":
                     remove_tree(root / "rollback")
@@ -1349,7 +1343,7 @@ class TestPayloadTransaction:
                 if interruption == "root":
                     remove_tree(root)
                     raise PermissionError("interrupted terminal cleanup")
-            remove_tree(path, *args, **kwargs)
+            remove_tree(path)
 
         def interrupt_journal(path: Path, *args, **kwargs) -> None:
             if interruption == "journal" and path == payload_state.journal_path(ctx):
@@ -1409,11 +1403,11 @@ class TestPayloadTransaction:
         discarded = oldest if outcome == "finalized" else transaction
         remove_tree = payload_transaction.shutil.rmtree
 
-        def interrupt_disposal(path: Path, *args, **kwargs) -> None:
+        def interrupt_disposal(path: Path) -> None:
             if Path(path) == Path(discarded.context.payload_dir):
                 Path(discarded.context.executable).unlink()
                 raise PermissionError("interrupted generation disposal")
-            remove_tree(path, *args, **kwargs)
+            remove_tree(path)
 
         cleanup = mocker.patch.object(
             payload_transaction.shutil, "rmtree", side_effect=interrupt_disposal

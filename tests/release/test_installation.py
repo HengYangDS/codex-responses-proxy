@@ -594,7 +594,7 @@ class TestReleasedDeployment:
     ) -> None:
         for current, captured, message in (
             (
-                cast("dict[str, object]", {"pid": 111}),
+                dict[str, object](pid=111),
                 mocker.sentinel.process,
                 "incompatible",
             ),

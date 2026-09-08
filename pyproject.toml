@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
   "certifi==2026.7.22",
-  "cyclopts==4.23.3",
+  "cyclopts==4.25.1",
   "filelock==3.32.5",
   "psutil==7.2.2",
   "rich==15.0.0",
@@ -35,14 +35,14 @@ quality = [
   "pytest-mock==3.15.1",
   "pytest-subtests==0.15.0",
   "pyyaml==6.0.3",
-  "ruff==0.16.5",
-  "ty==0.0.75",
+  "ruff==0.16.6",
+  "ty==0.0.79",
   "vulture==2.16",
 ]
 release = ["pyinstaller==6.22.2"]
 
 [tool.uv]
-required-version = "==0.12.7"
+required-version = "==0.12.10"
 link-mode = "copy"
 
 [tool.deptry]

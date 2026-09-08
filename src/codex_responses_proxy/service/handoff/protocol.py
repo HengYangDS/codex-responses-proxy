@@ -159,8 +159,6 @@ class HandoffChild:
 
     def send_message(self, message: JsonObject) -> None:
         """Send one bounded canonical control message to the replacement child."""
-        if not isinstance(message, dict):
-            raise HandoffError("handoff message must be an object")
         encoded = _encode_control_message(message, "handoff message exceeds the control limit")
         with self._send_lock:
             try:

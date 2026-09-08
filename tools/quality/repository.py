@@ -297,9 +297,6 @@ def audit() -> dict[str, object]:
         policy_errors.append("version_source_must_remain_VERSION")
     if repository.get("distribution") != "native-executable" or "build-system" not in config:
         policy_errors.append("distribution_must_be_native_executable")
-    if not isinstance(policy, dict):
-        policy_errors.append("quality_policy_must_be_a_table")
-        policy = {}
     source_roots = _string_list(policy, "source_roots", policy_errors)
     test_roots = _string_list(policy, "test_roots", policy_errors)
     repository_inventory = _repository_inventory(ROOT, source_roots, test_roots)

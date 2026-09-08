@@ -348,12 +348,8 @@ def request_handoff(
             )
         except (OSError, errors.InstallError):
             resolution, runtime = "unknown", None
-        if (
-            resolution == "finalized"
-            and isinstance(runtime, dict)
-            and all(isinstance(key, str) for key in runtime)
-        ):
-            return {key: value for key, value in runtime.items() if isinstance(key, str)}
+        if resolution == "finalized" and runtime is not None:
+            return runtime
         if resolution == "unknown":
             raise UnknownDeploymentOutcome(
                 "handoff outcome is unconfirmed; transaction preserved for recovery"

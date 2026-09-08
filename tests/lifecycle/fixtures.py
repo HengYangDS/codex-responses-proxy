@@ -141,8 +141,6 @@ def begin_transaction(
 ) -> payload_transaction.PayloadTransaction:
     """Begin a transaction through the artifact claim authority boundary."""
 
-    if not isinstance(candidate, artifact.VerifiedArtifact):
-        return payload_transaction.begin_transaction(ctx, candidate)
     blobs = candidate.peek_blobs()
     receipt = candidate.receipt
     claimed = (blobs, candidate.version, candidate.receipt_sha256, receipt, {})
