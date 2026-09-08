@@ -153,8 +153,12 @@ The review at source `268ce99f` established these gaps:
 - Top-level package admission and a complete file-role inventory did not prove
   cohesion within a package. Lifecycle transaction and control tests, relay
   fixtures, and native compatibility journeys remain concrete review targets.
-- The documented Python coverage floor concerns product code. Test execution of
-  repository tools must not be represented as measured tooling coverage.
+- The former Python coverage configuration omitted repository tools and Nox
+  orchestration. Real coverage.py conformance now includes those sources and
+  unexecuted namespace modules. The admission command consumes that same native
+  configuration and evaluates each source independently; a product aggregate
+  cannot establish tool or orchestration coverage. This exposes existing test
+  gaps rather than completing them.
 
 The terminal acceptance scopes are explicit:
 
@@ -218,6 +222,14 @@ Quality repair proceeds in this order within the existing task groups:
 Generic ETHOS scope, lifecycle, hook dispatch, and capability-reporting defects
 belong to ETHOS. Product policy, native tool configuration, tests, and CI remain
 this repository's responsibility and continue without waiting for ETHOS changes.
+
+The coverage repair is deliberately limited to that owning boundary: no new
+scanner, waiver baseline, product mutation, or quality configuration is added.
+Coverage.py owns file discovery and executable counts; the existing admission
+command owns the independent source-root decision and its nonzero exit. Product,
+tooling, and orchestration each retain the current floor. Their measured gaps
+must be resolved through meaningful tests, deletion, or simpler responsibilities,
+not by combining denominators or silently reusing a product-only green proof.
 
 ### One development and supply-chain control plane
 

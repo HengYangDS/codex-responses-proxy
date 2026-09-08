@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import json
 import os
 import re
@@ -18,13 +19,12 @@ from nox.command import CommandFailed
 from pytest_mock import MockerFixture
 
 from tests.quality.fixtures import ROOT
-from tests.quality.fixtures import load as _load
 
 
 @pytest.fixture(scope="module")
 def nox_configuration() -> ModuleType:
     """Register the repository's Nox sessions once per test module."""
-    return _load("codex_responses_proxy_noxfile", "noxfile.py")
+    return importlib.import_module("noxfile")
 
 
 def _load_yaml(path: Path) -> dict[str, object]:

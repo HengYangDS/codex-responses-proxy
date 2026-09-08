@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import ast
 import io
+import json
+import os
 import subprocess
+import sys
 import tempfile
 import tokenize
 import tomllib
@@ -19,6 +22,7 @@ from tests.quality.fixtures import git
 from tests.quality.fixtures import load
 from tests.quality.fixtures import quality_inventory
 from tests.quality.fixtures import repository
+from tools.quality import branch_coverage
 from tools.quality import governance
 from tools.quality import responsibilities
 from tools.quality import text_layout
@@ -28,6 +32,70 @@ from tools.quality.repository.topology import architecture_gaps
 
 
 class TestStructuralQualityContracts:
+    def test_native_coverage_measures_product_tools_and_orchestration(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        package = tmp_path / "codex_responses_proxy"
+        package.mkdir()
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        observed = package / "observed.py"
+        behavior = "def choose(value):\n    if value:\n        return 1\n    return 0\n"
+        observed.write_text(behavior, encoding="utf-8")
+        (package / "unexecuted.py").write_text(behavior, encoding="utf-8")
+        tooling = tmp_path / "tools/quality"
+        tooling.mkdir(parents=True)
+        (tooling / "observed.py").write_text(behavior, encoding="utf-8")
+        (tooling / "unexecuted.py").write_text(behavior, encoding="utf-8")
+        (tmp_path / "noxfile.py").write_text(behavior, encoding="utf-8")
+        driver = tmp_path / "probe.py"
+        driver.write_text(
+            "from codex_responses_proxy import observed as product\n"
+            "from tools.quality import observed as tooling\nimport noxfile\n"
+            "for owner in (product, tooling, noxfile):\n"
+            "    owner.choose(True)\n    owner.choose(False)\n",
+            encoding="utf-8",
+        )
+        config = ROOT / ".config/quality/native/coverage.ini"
+        data_file = tmp_path / ".coverage"
+        environment = {**os.environ, "COVERAGE_FILE": str(data_file)}
+        subprocess.run(
+            [sys.executable, "-m", "coverage", "run", "--rcfile", str(config), str(driver)],
+            cwd=tmp_path,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        result = subprocess.run(
+            [sys.executable, "-m", "coverage", "json", "--rcfile", str(config), "-o", "-"],
+            cwd=tmp_path,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        files = json.loads(result.stdout)["files"]
+        assert set(files) == {
+            "codex_responses_proxy/__init__.py",
+            "codex_responses_proxy/observed.py",
+            "codex_responses_proxy/unexecuted.py",
+            "tools/quality/observed.py",
+            "tools/quality/unexecuted.py",
+            "noxfile.py",
+        }
+        for name in ("codex_responses_proxy/unexecuted.py", "tools/quality/unexecuted.py"):
+            assert files[name]["summary"]["num_statements"] == 4
+            assert files[name]["summary"]["covered_lines"] == 0
+        monkeypatch.setenv("COVERAGE_FILE", str(data_file))
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(SystemExit) as failure:
+            branch_coverage.main(("--policy", str(ROOT / ".config/quality/policy/coverage.toml")))
+        assert failure.value.code == 1
+        admission = json.loads(capsys.readouterr().out)
+        assert set(admission["sources"]) == {"codex_responses_proxy", "tools", "noxfile"}
+        assert admission["sources"]["noxfile"]["covered_branches"] == 2
+        assert len(admission["gaps"]) == 4
+
     def test_python_data_models_do_not_escape_through_any(self) -> None:
         offenders = []
         for root in (ROOT / "src", ROOT / "tools", ROOT / "tests"):
@@ -179,8 +247,62 @@ class TestStructuralQualityContracts:
         }
         assert policy["minimum_percent"] == 95.0
         assert policy["comparison"] == "at-least"
-        assert policy["threshold_scopes"] == ["aggregate"]
+        assert policy["threshold_scopes"] == ["source-root"]
         assert policy["package_observation"] == "required"
+
+    def test_coverage_admission_keeps_each_configured_source_root_independent(self) -> None:
+        files: dict[str, object] = {
+            "codex_responses_proxy/relay/exchange.py": {
+                "summary": {
+                    "num_statements": 1000,
+                    "covered_lines": 1000,
+                    "num_branches": 1000,
+                    "covered_branches": 1000,
+                }
+            },
+            "tools/release/publish.py": {
+                "summary": {
+                    "num_statements": 10,
+                    "covered_lines": 1,
+                    "num_branches": 10,
+                    "covered_branches": 1,
+                }
+            },
+            "noxfile.py": {
+                "summary": {
+                    "num_statements": 10,
+                    "covered_lines": 10,
+                    "num_branches": 10,
+                    "covered_branches": 10,
+                }
+            },
+        }
+
+        gaps, sources = branch_coverage.source_gaps(
+            files, ("codex_responses_proxy", "noxfile", "tools"), 95.0
+        )
+
+        assert gaps == [
+            "source_statement_coverage_below_floor:tools:10.00<95.00",
+            "source_branch_coverage_below_floor:tools:10.00<95.00",
+        ]
+        assert sources["noxfile"]["num_statements"] == 10
+        assert sources["tools"]["packages"] == {
+            "release": {
+                "num_statements": 10,
+                "covered_lines": 1,
+                "num_branches": 10,
+                "covered_branches": 1,
+            }
+        }
+
+    def test_coverage_admission_requires_every_configured_source(self) -> None:
+        gaps, _ = branch_coverage.source_gaps({}, ("tools",), 95.0)
+        assert gaps == ["coverage_source_unmeasured:tools"]
+
+    def test_coverage_admission_requires_a_declared_scope(self) -> None:
+        gaps, _ = branch_coverage.source_gaps({}, (), 95.0)
+        assert gaps == ["coverage_sources_undeclared"]
 
     def test_repository_policy_declares_positive_owners_without_numeric_vetoes(
         self,

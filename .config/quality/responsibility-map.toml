@@ -254,17 +254,17 @@ review_condition = "Reassess when the supported runtime or native-platform matri
 [[concerns]]
 id = "python-coverage"
 owner = "coverage.py"
-scope = "product-python"
+scope = "production-python"
 session = "quality"
 configuration = [
   ".config/quality/native/coverage.ini",
   ".config/quality/policy/coverage.toml",
 ]
-risk_model = "Unobserved lifecycle and protocol branches permit silent regressions."
-measurement = "Exact statement and branch coverage plus semantic-package observation."
-false_positive_cost = "Per-file floors can reward fragmentation, so the blocking floor is aggregate and package visibility remains diagnostic."
+risk_model = "Unobserved lifecycle, protocol, release, and verification branches permit silent regressions or false acceptance."
+measurement = "Independent statement and branch floors for every native-configured product, tooling, and orchestration root; unexecuted namespace files remain in the denominator and every semantic package requires execution evidence."
+false_positive_cost = "Per-file floors can reward fragmentation; source roots remain separate risk boundaries and branchless roots require only measured statements."
 remediation = "Test meaningful behavior, delete unreachable code, or simplify the responsible package."
-review_condition = "Reassess after escaped defects or repeated legitimate denominator-only failures."
+review_condition = "Reassess after escaped defects or repeated legitimate denominator-only failures; never narrow scope to make a current implementation pass."
 
 [[concerns]]
 id = "python-dependencies"
