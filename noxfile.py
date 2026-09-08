@@ -8,7 +8,6 @@ import re
 import sys
 import tomllib
 from pathlib import Path
-from typing import cast
 
 import nox
 
@@ -340,7 +339,6 @@ def _required_file(variable: str, label: str) -> Path:
 def _install_tools(session: nox.Session, *groups: str) -> None:
     """Install the repository-locked verification tool set into this session."""
     requirements = Path(session.create_tmp()) / "requirements.txt"
-    python = _session_python(session)
     command = [
         "uv",
         "export",
@@ -361,17 +359,11 @@ def _install_tools(session: nox.Session, *groups: str) -> None:
         env={"PYTHONNOUSERSITE": "1", "UV_NO_PROGRESS": "1"},
         external=True,
     )
-    session.run_install(
-        "uv",
-        "pip",
-        "install",
-        "--python",
-        python,
+    session.install(
         "--requirements",
         str(requirements),
         "--strict",
         env={"PYTHONNOUSERSITE": "1", "UV_NO_PROGRESS": "1"},
-        external=True,
     )
 
 
@@ -390,16 +382,10 @@ def _build_wheel(session: nox.Session, work: Path) -> Path:
 
 def _install_wheel(session: nox.Session, wheel: Path) -> None:
     """Install only the built product artifact, never the source checkout."""
-    session.run_install(
-        "uv",
-        "pip",
-        "install",
-        "--python",
-        _session_python(session),
+    session.install(
         "--strict",
         str(wheel),
         env={"PYTHONNOUSERSITE": "1", "UV_NO_PROGRESS": "1"},
-        external=True,
     )
 
 
@@ -417,24 +403,18 @@ def _session_packages(session: nox.Session) -> Path:
     return Path(packages.strip()).resolve(strict=True)
 
 
-def _session_python(session: nox.Session) -> str:
-    """Return the concrete interpreter path selected by Nox."""
-    python = session.python
-    if not isinstance(python, (str, os.PathLike)):
-        session.error("Nox did not provide one concrete Python interpreter")
-    return os.fspath(cast("str | os.PathLike[str]", python))
-
-
 def _assert_installed_product(session: nox.Session, work: Path) -> None:
     """Prove imports and packaged data resolve outside the source checkout."""
     probe = (
         "from pathlib import Path; "
+        "import sysconfig; "
         "import codex_responses_proxy as package; "
         "from codex_responses_proxy.providers import registry; "
         "root = Path(package.__file__).resolve(); "
         "manifest = registry.default_manifest_path().resolve(); "
-        "assert not root.is_relative_to(Path.cwd().resolve()); "
-        "assert manifest.is_file()"
+        "installed = Path(sysconfig.get_path('purelib')).resolve(); "
+        "assert root.is_relative_to(installed); "
+        "assert manifest.is_file() and manifest.is_relative_to(root.parent)"
     )
     with session.chdir(work):
         session.run("python", "-I", "-c", probe, env=_environment())

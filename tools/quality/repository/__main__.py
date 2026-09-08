@@ -182,7 +182,9 @@ def _repository_inventory(
             continue
         if relative.match("test_*.py"):
             configured_tests.append(path)
-        elif relative.name == "fixtures.py" or relative.name.endswith("_fixture.py"):
+        elif relative.name in {"conftest.py", "fixtures.py"} or relative.name.endswith(
+            "_fixture.py"
+        ):
             continue
         else:
             misnamed.append(path)

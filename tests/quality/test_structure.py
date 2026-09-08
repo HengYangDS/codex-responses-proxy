@@ -532,6 +532,7 @@ class TestStructuralQualityContracts:
             "src/current.py",
             "tests/test_current.py",
             "tests/__init__.py",
+            "tests/service/conftest.py",
             "tests/service/fixtures.py",
             "tests/protocol/replay_fixture.py",
             "tests/nested/helper.py",
