@@ -94,7 +94,6 @@ def test_signing_failure_reports_the_openssh_reason_without_traceback(
     tmp_path: Path, mocker
 ) -> None:
     """Keep CI failure output concise while preserving the actionable cause."""
-
     key, assets = tmp_path / "signing", tmp_path / "assets"
     key.write_text("incomplete private key", encoding="utf-8")
     assets.mkdir()

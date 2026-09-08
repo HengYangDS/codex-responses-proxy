@@ -987,7 +987,6 @@ class TestReleasedDeployment:
         self, *, mocker
     ) -> None:
         """Loopback identity and exact process ownership outlive stale TCP inventory."""
-
         expected = FakeTransaction(self.ctx).expected
         match = self.successor()
         owned = process.OwnedProcess(222, self.ctx.executable, 1.0)

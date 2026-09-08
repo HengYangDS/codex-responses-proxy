@@ -17,6 +17,7 @@ select = [
   "E7",
   "E9",
   "F",
+  "D",
   "I",
   "N",
   "ARG",
@@ -67,3 +68,7 @@ select = [
   "PERF",
   "RUF",
 ]
+
+[lint.per-file-ignores]
+# Behavior-named tests need no obligatory docstrings; existing prose is still checked.
+"tests/**" = ["D1"]

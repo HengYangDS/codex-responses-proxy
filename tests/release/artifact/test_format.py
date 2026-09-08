@@ -26,7 +26,6 @@ class FormatContracts:
         self, system: str, machine: str, expected: str
     ) -> None:
         """Map native hosts through the release platform inventory once."""
-
         assert product_identity.native_release_platform(system, machine) == expected
 
     @pytest.mark.parametrize(
@@ -37,7 +36,6 @@ class FormatContracts:
         self, system: str, machine: str
     ) -> None:
         """Reject host identities absent from the release inventory."""
-
         with pytest.raises(ValueError, match="unsupported native release platform"):
             product_identity.native_release_platform(system, machine)
 

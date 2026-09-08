@@ -176,7 +176,6 @@ def test_release_checkout_mismatch_fails_without_repository_state_change(tmp_pat
 
 def test_release_validation_preserves_the_active_environment(tmp_path: Path, mocker) -> None:
     """Do not resolve a virtual-environment interpreter into the host Python."""
-
     host_python = tmp_path / "host-python"
     host_python.write_text("", encoding="utf-8")
     environment_python = tmp_path / "environment-python"

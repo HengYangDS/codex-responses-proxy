@@ -217,12 +217,10 @@ class TestQualityPolicyContracts:
         assert {"F", "I", "N", "PT", "UP", "B", "RET", "PERF", "RUF"} <= set(selected)
         assert "ANN" not in selected
         assert any(rule == "S" or rule.startswith("S") for rule in selected)
-        assert not any(
-            rule == "D" or (rule.startswith("D") and rule[1:].isdigit()) for rule in selected
-        )
+        assert "D" in selected
         assert "ignore" not in ruff["lint"]
         assert ruff["lint"]["pydocstyle"] == {"convention": "google"}
-        assert "per-file-ignores" not in ruff["lint"]
+        assert ruff["lint"]["per-file-ignores"] == {"tests/**": ["D1"]}
 
         rationale = {
             "risk_model",

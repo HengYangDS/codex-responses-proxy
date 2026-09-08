@@ -28,7 +28,6 @@ class ForgeFixture(TypedDict):
 
 def run(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
     """Run Git with isolated user configuration."""
-
     result = subprocess.run(
         args,
         cwd=cwd,
@@ -44,7 +43,6 @@ def run(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProces
 
 def signed_commit(repository: Path, name: str, content: str) -> str:
     """Create one signed fixture commit and return its object ID."""
-
     (repository / name).write_text(content, encoding="utf-8")
     run("git", "add", name, cwd=repository)
     run("git", "commit", "-qS", "-m", f"test: {name}", cwd=repository)
@@ -54,7 +52,6 @@ def signed_commit(repository: Path, name: str, content: str) -> str:
 @pytest.fixture
 def forge_fixture(tmp_path: Path) -> ForgeFixture:
     """Create a portable signed source and two empty peer repositories."""
-
     if shutil.which("ssh-keygen") is None:
         pytest.skip("OpenSSH signing is unavailable")
     source = tmp_path / "source"
@@ -94,7 +91,6 @@ def forge_fixture(tmp_path: Path) -> ForgeFixture:
 
 def publish(fixture: ForgeFixture, provider: str, remote: str, source_ref: str = "main") -> str:
     """Publish through the public projector contract."""
-
     return project(
         root=fixture["source"],
         provider=provider,
@@ -107,7 +103,6 @@ def publish(fixture: ForgeFixture, provider: str, remote: str, source_ref: str =
 
 def tip(repository: Path, branch: str) -> str:
     """Read one bare peer branch tip."""
-
     return run("git", "rev-parse", f"refs/heads/{branch}", cwd=repository).stdout.strip()
 
 
@@ -115,7 +110,6 @@ def test_each_optional_peer_receives_the_exact_local_commit(
     forge_fixture: ForgeFixture,
 ) -> None:
     """Local, GitLab, and GitHub share one immutable commit object."""
-
     local = run("git", "rev-parse", "main", cwd=forge_fixture["source"]).stdout.strip()
     gitlab = publish(forge_fixture, "gitlab", "origin")
     github = publish(forge_fixture, "github", "github")
@@ -127,7 +121,6 @@ def test_each_optional_peer_receives_the_exact_local_commit(
 
 def test_new_remote_refs_use_zero_oid_leases(forge_fixture: ForgeFixture, monkeypatch) -> None:
     """A branch absent at observation cannot appear before the atomic push."""
-
     from tools.forge import project as projector
 
     calls: list[tuple[str, ...]] = []
@@ -151,7 +144,6 @@ def test_one_peer_does_not_read_or_require_the_other(
     forge_fixture: ForgeFixture,
 ) -> None:
     """A missing GitHub remote cannot block GitLab publication."""
-
     run("git", "remote", "remove", "github", cwd=forge_fixture["source"])
     published = publish(forge_fixture, "gitlab", "origin")
 
@@ -163,7 +155,6 @@ def test_main_and_dev_advance_atomically_without_rewriting(
     forge_fixture: ForgeFixture,
 ) -> None:
     """Normal publication is idempotent and forward-only."""
-
     first = publish(forge_fixture, "gitlab", "origin")
     assert publish(forge_fixture, "gitlab", "origin") == first
     second = signed_commit(forge_fixture["source"], "next.txt", "two\n")
@@ -178,7 +169,6 @@ def test_divergent_peer_fails_without_partial_ref_updates(
     forge_fixture: ForgeFixture,
 ) -> None:
     """Git fast-forward and atomic semantics guard normal publication."""
-
     publish(forge_fixture, "gitlab", "origin")
     with tempfile.TemporaryDirectory() as directory:
         checkout = Path(directory) / "checkout"
@@ -213,7 +203,6 @@ def test_proposal_publication_does_not_touch_persistent_branches(
     forge_fixture: ForgeFixture,
 ) -> None:
     """A proposal is the only independently publishable non-persistent branch."""
-
     run("git", "branch", "proposal/review", "main", cwd=forge_fixture["source"])
     published = publish(forge_fixture, "github", "github", "proposal/review")
 
@@ -235,7 +224,6 @@ def test_projection_requires_clean_trusted_local_identity(
     forge_fixture: ForgeFixture,
 ) -> None:
     """The projector verifies, but never recreates, the local object."""
-
     (forge_fixture["source"] / "dirty.txt").write_text("dirty\n", encoding="utf-8")
     with pytest.raises(ProjectionError, match="dirty checkout"):
         publish(forge_fixture, "gitlab", "origin")
@@ -268,7 +256,6 @@ def test_projection_rejects_non_publication_branches(
     forge_fixture: ForgeFixture, source_ref: str
 ) -> None:
     """Only main and proposal refs belong to a Forge peer."""
-
     if source_ref != "dev":
         run("git", "branch", source_ref, "main", cwd=forge_fixture["source"])
     with pytest.raises(ProjectionError, match="main or proposal"):

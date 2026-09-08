@@ -68,7 +68,6 @@ def _assert_same_runtime_identity(
     observed_status: Mapping[str, object],
 ) -> None:
     """Prove two observations identify one process serving one payload."""
-
     command_runtime = command_result.get("runtime")
     observed_runtime = observed_status.get("runtime")
     assert isinstance(command_runtime, dict), command_result
@@ -114,7 +113,6 @@ def _wait_for_upgrade_drain(
 
 def test_upgrade_drain_releases_held_requests(tmp_path: Path, *, mocker) -> None:
     """Release held requests once native replacement closes admission."""
-
     ctx = runtime_context_for(
         tmp_path / "home",
         tmp_path / "payload",
@@ -144,7 +142,6 @@ def test_upgrade_drain_releases_held_requests(tmp_path: Path, *, mocker) -> None
 
 def test_upgrade_drain_waits_through_materialization(tmp_path: Path, *, mocker) -> None:
     """A materialized candidate is not yet at the native drain boundary."""
-
     ctx = runtime_context_for(
         tmp_path / "home",
         tmp_path / "payload",
@@ -182,7 +179,6 @@ def test_upgrade_drain_waits_through_materialization(tmp_path: Path, *, mocker) 
 
 def test_runtime_context_uses_the_native_command_projection(tmp_path: Path, *, mocker) -> None:
     """Build release-test paths through the same owner as production."""
-
     mocker.patch("tests.release.fixtures.platform.system", return_value="Windows")
     home = tmp_path / "home"
     install = tmp_path / "payload"
@@ -198,7 +194,6 @@ def test_runtime_context_uses_the_native_command_projection(tmp_path: Path, *, m
 
 def _materialize_native_bundle(candidate: artifact.VerifiedArtifact, output: Path) -> Path:
     """Materialize exact admitted native executable bytes without its provider manifest."""
-
     output.mkdir()
     for blob in candidate.peek_blobs():
         if blob.path == "providers.toml":

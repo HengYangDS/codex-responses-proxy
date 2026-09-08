@@ -20,7 +20,6 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def install_context(root: Path, *, windows: bool = False) -> runtime_context.RuntimeContext:
     """Build an isolated install context for one explicitly modeled platform."""
-
     install_dir = root / "data" / "codex-responses-proxy"
     executable = inventory.installed_executable(str(install_dir), windows=windows)
     return runtime_context.RuntimeContext(
@@ -39,7 +38,6 @@ def install_context(root: Path, *, windows: bool = False) -> runtime_context.Run
 
 def platform_context(port: int = 8791, *, windows: bool = False) -> runtime_context.RuntimeContext:
     """Build a deterministic service-definition fixture for one modeled platform."""
-
     if windows:
         home = PureWindowsPath("C:/fixture-home")
         install_dir = home / "AppData" / "Local" / "codex-responses-proxy"
@@ -64,19 +62,16 @@ def platform_context(port: int = 8791, *, windows: bool = False) -> runtime_cont
 
 def runtime_files(*, windows: bool = False) -> tuple[str, ...]:
     """Return the installed payload inventory for the modeled platform."""
-
     return tuple(sorted(inventory.required_runtime_files(windows=windows)))
 
 
 def executable_relative(*, windows: bool = False) -> str:
     """Return the installed executable member for the modeled platform."""
-
     return inventory.executable_name(windows=windows)
 
 
 def assert_private_log_mode(mode: int) -> None:
     """Assert the strongest portable privacy bits exposed by the host."""
-
     if os.name == "nt":
         assert mode & 384 == 384
     else:
@@ -140,7 +135,6 @@ def begin_transaction(
     ctx: runtime_context.RuntimeContext, candidate: artifact.VerifiedArtifact, *, mocker
 ) -> payload_transaction.PayloadTransaction:
     """Begin a transaction through the artifact claim authority boundary."""
-
     blobs = candidate.peek_blobs()
     receipt = candidate.receipt
     claimed = (blobs, candidate.version, candidate.receipt_sha256, receipt, {})
@@ -153,7 +147,6 @@ def install_payload(
     ctx: runtime_context.RuntimeContext, version: str = "1.2.3", *, mocker
 ) -> payload_transaction.PayloadTransaction:
     """Install and finalize one released payload projection."""
-
     candidate = released_artifact(
         version, windows=Path(ctx.executable).name == Path(inventory.WINDOWS_EXECUTABLE).name
     )

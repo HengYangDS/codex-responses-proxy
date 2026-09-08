@@ -34,20 +34,17 @@ def _run(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
 
 def require(condition: object, message: str) -> None:
     """Fail one metadata contract with its exact diagnostic."""
-
     if not condition:
         raise SystemExit(message)
 
 
 def require_success(completed: subprocess.CompletedProcess[str]) -> None:
     """Require one repository command to succeed."""
-
     require(completed.returncode == 0, completed.stderr)
 
 
 def ci_block(source: str, job: str, next_job: str | None = None) -> str:
     """Return one exact top-level CI job or template block."""
-
     start = source.index(job)
     end = source.index(next_job, start) if next_job else source.find("\n\n", start)
     return source[start : end if end >= 0 else None]
@@ -55,14 +52,12 @@ def ci_block(source: str, job: str, next_job: str | None = None) -> str:
 
 def require_tokens(source: str, tokens: tuple[str, ...], context: str) -> None:
     """Require every literal contract token in one source surface."""
-
     missing = [token for token in tokens if token not in source]
     require(not missing, f"{context} is missing {missing[0] if missing else ''}")
 
 
 def expect_rejection(text: str, description: str, *args: str) -> None:
     """Require the release metadata checker to reject a Changelog fixture."""
-
     with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8", delete=False) as handle:
         path = Path(handle.name)
         handle.write(text)
@@ -85,13 +80,11 @@ def expect_rejection(text: str, description: str, *args: str) -> None:
 
 def load_checker() -> ModuleType:
     """Load the checker so pure policy units can replace Git observations."""
-
     return importlib.import_module(METADATA_MODULE)
 
 
 def expect_value_error(action: Callable[[], object], message: str, description: str) -> None:
     """Require a zero-argument policy action to fail with a useful diagnostic."""
-
     try:
         action()
     except ValueError as exc:
@@ -102,7 +95,6 @@ def expect_value_error(action: Callable[[], object], message: str, description: 
 
 def test_release_identity_has_one_strict_semver_and_tag_contract() -> None:
     """Keep release versions and annotated tag names on one exact grammar."""
-
     for version in ("0.0.0", "1.2.3", "20.56.300"):
         assert identity.is_version(version)
         tag = f"v{version}"
@@ -121,7 +113,6 @@ def test_release_identity_has_one_strict_semver_and_tag_contract() -> None:
 
 def test_product_release_history_is_provider_neutral(*, mocker) -> None:
     """Validate the one local release history without a Forge semantic input."""
-
     checker = load_checker()
     releases = [
         ("1.0.3", "2026-07-03"),
@@ -142,7 +133,6 @@ def test_product_release_history_is_provider_neutral(*, mocker) -> None:
 
 def test_prepare_release_rejects_only_future_dates() -> None:
     """Keep prepared metadata stable across days while rejecting impossible chronology."""
-
     checker = load_checker()
     current = date(2026, 7, 27)
     checker.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-27")], today=current)
@@ -158,7 +148,6 @@ def test_prepare_release_rejects_only_future_dates() -> None:
 
 def test_exact_release_tag_contract(*, mocker) -> None:
     """Reject lightweight, misnamed, nested, and wrong-target release tags."""
-
     checker = load_checker()
     cases = (
         (
@@ -220,7 +209,6 @@ def test_exact_release_tag_contract(*, mocker) -> None:
 
 def test_release_metadata_command_has_no_forge_semantics() -> None:
     """Keep ordinary product validation independent from publication peers."""
-
     completed = _run(sys.executable, "-m", METADATA_MODULE)
     require_success(completed)
     legacy = _run(sys.executable, "-m", METADATA_MODULE, "--provider", "gitlab")
@@ -229,7 +217,6 @@ def test_release_metadata_command_has_no_forge_semantics() -> None:
 
 def test_local_tag_owner_signs_once_then_publishes_the_exact_object() -> None:
     """Require one local tag object with provider-parametric validation and push."""
-
     source = (ROOT / "tools" / "release" / "tag.py").read_text(encoding="utf-8")
     prepare = '_metadata(root, "--prepare-release")'
     exact = '_metadata(root, "--tag", tag)'
@@ -252,7 +239,6 @@ def test_local_tag_owner_signs_once_then_publishes_the_exact_object() -> None:
 
 def test_exact_local_object_forge_publication_contract() -> None:
     """Require one provider-parametric projector that never recreates Git objects."""
-
     source = (ROOT / "tools" / "forge" / "project.py").read_text(encoding="utf-8")
     git_environment = (ROOT / "tools" / "git_environment.py").read_text(encoding="utf-8")
     require_tokens(
@@ -325,7 +311,6 @@ def test_exact_local_object_forge_publication_contract() -> None:
 
 def test_prune_tags_removes_deleted_remote_tag() -> None:
     """Reproduce the reused-runner stale-tag failure without network access."""
-
     with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-prune-tags-") as temp:
         temp_root = Path(temp)
         remote = temp_root / "remote.git"
@@ -381,7 +366,6 @@ def test_prune_tags_removes_deleted_remote_tag() -> None:
 
 def test_github_tag_metadata_fetches_complete_provider_tags() -> None:
     """Require the tag proof to observe the complete provider tag namespace."""
-
     workflow = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
     start = workflow.index("\n  tag-metadata:")
     end = workflow.index("\n  python-quality:", start)
@@ -391,7 +375,6 @@ def test_github_tag_metadata_fetches_complete_provider_tags() -> None:
 
 def test_native_bundle_has_one_runtime_and_one_signer() -> None:
     """Build every platform once and sign only the complete assembled bundle."""
-
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     image = metadata["tool"]["codex-responses-proxy"]["linux-release-image"]
     github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
@@ -419,7 +402,6 @@ def test_native_bundle_has_one_runtime_and_one_signer() -> None:
 
 def test_current_release_metadata_chronology() -> None:
     """Validate the current release train and representative chronology failures."""
-
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     heading = f"## [{version}]"
