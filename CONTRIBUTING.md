@@ -66,6 +66,11 @@ Nox installs a non-editable wheel in isolated environments. Do not add
 `PYTHONPATH`, user-site fallback, or another repository's virtual environment
 to make a test pass.
 
+Build output, verification results, temporary files, and their cleanup follow
+the [evidence storage policy](docs/evidence/evidence-policy.md#storage-and-retention).
+Mutable output stays local to this worktree; ETHOS selects the shared storage
+for its own evidence and coordination.
+
 ## Change method
 
 ```mermaid
