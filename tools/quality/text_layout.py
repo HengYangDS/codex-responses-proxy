@@ -17,7 +17,7 @@ DEFAULT_POLICY = ROOT / ".config/quality/policy/text.toml"
 
 def _tracked(root: Path) -> tuple[str, ...]:
     completed = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z"],
+        ["git", "-C", str(root), "--git-dir=.git", "--work-tree=.", "ls-files", "-z"],
         check=True,
         capture_output=True,
     )

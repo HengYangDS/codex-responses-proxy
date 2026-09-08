@@ -16,7 +16,7 @@ LINK_POLICY = ".config/quality/native/lychee.toml"
 def _tracked_current(suffixes: tuple[str, ...]) -> tuple[str, ...]:
     """Return tracked current authorities for one native formatter."""
     completed = subprocess.run(
-        ("git", "ls-files", "-z"),
+        ("git", "--git-dir=.git", "--work-tree=.", "ls-files", "-z"),
         cwd=ROOT,
         check=True,
         capture_output=True,

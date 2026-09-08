@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import ast
 import io
+import subprocess
 import tempfile
 import tokenize
 import tomllib
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -17,7 +19,11 @@ from tests.quality.fixtures import git
 from tests.quality.fixtures import load
 from tests.quality.fixtures import quality_inventory
 from tests.quality.fixtures import repository
+from tools.quality import governance
+from tools.quality import responsibilities
+from tools.quality import text_layout
 from tools.quality.repository import __main__ as repository_audit
+from tools.quality.repository.names import semantic_name_gaps
 from tools.quality.repository.topology import architecture_gaps
 
 
@@ -309,6 +315,58 @@ class TestStructuralQualityContracts:
             "src/added.py",
             "tests/test_current.py",
         ]
+
+    def test_quality_inventory_requires_its_own_repository_root(self) -> None:
+        with repository(("nested/src/current.py", "nested/tests/test_current.py")) as parent:
+            inventory = quality_inventory(parent / "nested")
+        assert inventory.paths == ()
+        assert any(gap.startswith("quality_inventory_git_failed:") for gap in inventory.gaps)
+
+    @pytest.mark.parametrize("consumer", ["responsibilities", "text", "names", "governance"])
+    def test_quality_consumers_require_their_own_repository_root(
+        self, consumer: str, *, monkeypatch
+    ) -> None:
+        with repository(("nested/README.md",)) as parent:
+            root = parent / "nested"
+            monkeypatch.setattr(governance, "ROOT", root)
+            read = {
+                "responsibilities": partial(responsibilities._tracked_paths, root),
+                "text": partial(text_layout._tracked, root),
+                "names": partial(semantic_name_gaps, root),
+                "governance": partial(governance._tracked_current, (".md",)),
+            }[consumer]
+            with pytest.raises(subprocess.CalledProcessError):
+                read()
+
+    def test_quality_inventory_reads_the_linked_worktree_index(self, tmp_path: Path) -> None:
+        with repository(("src/current.py", "tests/test_current.py")) as root:
+            git(
+                root,
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgSign=false",
+                "commit",
+                "-qm",
+                "fixture",
+            )
+            lane = tmp_path / "linked-lane"
+            try:
+                git(root, "worktree", "add", "--detach", str(lane))
+                (lane / "src/added.py").write_text("pass\n", encoding="utf-8")
+                git(lane, "add", "src/added.py")
+                inventory = quality_inventory(lane)
+                assert inventory.gaps == ()
+                assert [path.relative_to(lane).as_posix() for path in inventory.paths] == [
+                    "src/added.py",
+                    "src/current.py",
+                    "tests/test_current.py",
+                ]
+                assert "src/added.py" not in git(root, "ls-files").stdout.decode()
+            finally:
+                git(root, "worktree", "remove", "--force", str(lane))
 
     def test_quality_inventory_rejects_untracked_missing_and_out_of_scope_is_ignored(
         self,
