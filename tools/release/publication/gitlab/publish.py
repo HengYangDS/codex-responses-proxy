@@ -12,9 +12,8 @@ from enum import StrEnum
 from pathlib import Path
 
 from codex_responses_proxy import product_identity
-from tools.release import assemble_assets
 from tools.release import identity
-from tools.release import signing
+from tools.release.artifact import assembly
 
 
 class GitLabPublishError(RuntimeError):
@@ -78,11 +77,9 @@ def _request(
 def _verify(assets: Path, trust: str) -> list[str]:
     """Verify one complete pre-signed bundle without changing its bytes."""
     try:
-        signing.verify(assets=assets, trust=trust)
-        assemble_assets.verify(assets)
-    except (OSError, ValueError, signing.SignatureError) as error:
+        return sorted(assembly.verify(assets, trust=trust))
+    except (OSError, ValueError) as error:
         raise GitLabPublishError("release asset signature verification failed") from error
-    return sorted(path.name for path in assets.iterdir() if path.is_file())
 
 
 def publish(

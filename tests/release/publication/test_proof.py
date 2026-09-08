@@ -13,7 +13,7 @@ from tests.release.publication.fixtures import VERIFY_ARGUMENTS
 from tests.release.publication.fixtures import VerifyArguments
 from tests.release.publication.fixtures import forge_evidence
 from tests.release.publication.fixtures import verified_evidence
-from tools.release import product_assets
+from tools.release.artifact import format as product_assets
 from tools.release.publication import evaluator
 from tools.release.publication import verification as publication
 

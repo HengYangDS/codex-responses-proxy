@@ -110,6 +110,6 @@ projections = [
 [[controls]]
 id = "release-platforms"
 kind = "domain-constant"
-owner = "tools/release/product_assets.py"
+owner = "tools/release/artifact/format.py"
 rationale = "The published native platform set and asset grammar form one release-domain contract."
 projections = [".config/ci/pipeline.cue", "docs/", "tests/release/"]

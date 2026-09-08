@@ -27,6 +27,14 @@ from tools.quality.repository.topology import architecture_gaps
 class TestQualityPolicyContracts:
     """Keep the repository quality scope executable rather than documentary."""
 
+    def test_release_artifacts_have_one_construction_owner(self) -> None:
+        package = importlib.util.find_spec("tools.release.artifact")
+        assert package is not None
+        assert package.submodule_search_locations is not None
+        for concern in ("bundle", "format", "assembly", "signing", "__main__"):
+            owner = importlib.util.find_spec(f"tools.release.artifact.{concern}")
+            assert owner is not None
+
     def test_repository_checks_share_one_semantic_package(self) -> None:
         """Repository topology, naming, and decisions belong to one audit package."""
         package = importlib.util.find_spec("tools.quality.repository")

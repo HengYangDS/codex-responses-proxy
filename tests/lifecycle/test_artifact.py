@@ -22,7 +22,7 @@ from codex_responses_proxy.service import digest
 from codex_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import released_artifact
 from tests.lifecycle.fixtures import runtime_files
-from tools.release import product_assets
+from tools.release.artifact import format as product_assets
 
 VERSION = "1.2.3"
 PLATFORM = "linux-x86_64"

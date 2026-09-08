@@ -1,0 +1,45 @@
+"""Portable asset fixtures shared by construction and publication tests."""
+
+from pathlib import Path
+
+from codex_responses_proxy import product_identity
+from tools.release.artifact import format as assets
+
+
+def release_bundle(
+    platforms: tuple[str, ...] = assets.RELEASE_PLATFORMS,
+    *,
+    version: str = "1.2.3",
+) -> dict[str, bytes]:
+    platform_assets: dict[str, bytes] = {}
+    for platform in platforms:
+        executable = product_identity.executable_name(windows=platform.startswith("windows-"))
+        files = {f"bin/{executable}": assets.ArchiveFile(f"native-{platform}".encode(), mode=0o755)}
+        archive_name = assets.archive_name(version, platform)
+        archive = assets.archive_bytes(files, version, platform)
+        platform_assets[archive_name] = archive
+        platform_assets[assets.manifest_name(platform)] = assets.asset_manifest(
+            version=version,
+            platform=platform,
+            archive_name=archive_name,
+            archive=archive,
+            files=files,
+        )
+    unsigned = {
+        **platform_assets,
+        assets.CHECKSUM_NAME: assets.checksums(platform_assets),
+    }
+    return {**unsigned, assets.SIGNATURE_NAME: b"fixture-signature\n"}
+
+
+def native_inputs(root: Path) -> tuple[Path, ...]:
+    """Write one complete set of platform build outputs for assembly tests."""
+    inputs: list[Path] = []
+    for platform in assets.RELEASE_PLATFORMS:
+        output = root / platform
+        output.mkdir()
+        for name, content in release_bundle((platform,)).items():
+            if name != assets.SIGNATURE_NAME:
+                (output / name).write_bytes(content)
+        inputs.append(output)
+    return tuple(inputs)

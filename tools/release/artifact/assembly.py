@@ -2,17 +2,11 @@
 
 from __future__ import annotations
 
-import os
-import sys
 from pathlib import Path
-from typing import Annotated
-
-from cyclopts import App
-from cyclopts import Parameter
 
 from codex_responses_proxy import product_identity
-from tools.release import product_assets as assets
-from tools.release import signing
+from tools.release.artifact import format as assets
+from tools.release.artifact import signing
 
 
 def assemble(inputs: tuple[Path, ...], output: Path) -> dict[str, bytes]:
@@ -45,23 +39,24 @@ def assemble(inputs: tuple[Path, ...], output: Path) -> dict[str, bytes]:
     return release
 
 
-def verify(root: Path, *, require_signature: bool = True) -> dict[str, str]:
-    """Verify one complete release directory and return its exact digests."""
+def _digests(root: Path) -> dict[str, str]:
+    """Validate one complete signed inventory and return its measured digests."""
     files = {path.name: path.read_bytes() for path in root.iterdir() if path.is_file()}
-    versions = {
-        name.removeprefix(f"{product_identity.PRODUCT_SLUG}-").removesuffix(f"-{platform}.tar.gz")
-        for platform in assets.RELEASE_PLATFORMS
-        for name in files
-        if name.endswith(f"-{platform}.tar.gz")
-    }
-    if len(versions) != 1:
-        raise assets.AssetError("release directory does not contain one version")
+    version = _version(files)
     return assets.release_digests(
         files,
-        versions.pop(),
+        version,
         assets.RELEASE_PLATFORMS,
-        require_signature=require_signature,
     )
+
+
+def verify(root: Path, *, trust: str) -> dict[str, str]:
+    """Authenticate one complete release against explicit external trust."""
+    try:
+        signing.verify(assets=root, trust=trust)
+    except signing.SignatureError as error:
+        raise assets.AssetError("release asset signature is invalid") from error
+    return _digests(root)
 
 
 def assemble_sign_verify(
@@ -73,7 +68,7 @@ def assemble_sign_verify(
     assemble(inputs, output)
     try:
         signing.sign_and_verify(assets=output, key=key, trust=trust)
-        return verify(output)
+        return _digests(output)
     except signing.SignatureError as error:
         raise assets.AssetError("release asset signature is invalid") from error
 
@@ -88,47 +83,3 @@ def _version(discovered: dict[str, bytes]) -> str:
     if len(versions) != 1:
         raise assets.AssetError("native platform assets do not share one version")
     return versions.pop()
-
-
-def _command(
-    *,
-    inputs: Annotated[tuple[Path, ...], Parameter(name="--input")] = (),
-    output: Path | None = None,
-    verify_path: Annotated[Path | None, Parameter(name="--verify")] = None,
-    sign: bool = False,
-) -> None:
-    """Assemble or verify one complete release asset set."""
-    if verify_path:
-        if inputs or output:
-            raise SystemExit("--verify cannot be combined with --input or --output")
-        digests = verify(verify_path)
-        print(f"verified release assets: {len(digests)} files")
-        return
-    if not inputs or not output:
-        raise SystemExit("--input and --output are required when assembling")
-    if sign:
-        release = assemble_sign_verify(
-            inputs=inputs,
-            output=output,
-            key=Path(os.environ.get("RELEASE_ASSET_SIGNING_KEY_PATH", "")),
-            trust=os.environ.get("RELEASE_ASSET_TRUST", ""),
-        )
-        print(f"assembled signed release assets: {len(release)} files")
-        return
-    release = assemble(inputs, output)
-    print(f"assembled release assets: {len(release)} files")
-
-
-def main(argv: tuple[str, ...] | None = None) -> None:
-    """Run release assembly through the repository's single parser stack."""
-    try:
-        App(default_command=_command, help=__doc__, result_action="return_value")(
-            tuple(sys.argv[1:] if argv is None else argv)
-        )
-    except (assets.AssetError, signing.SignatureError) as error:
-        print(str(error), file=sys.stderr)
-        raise SystemExit(1) from None
-
-
-if __name__ == "__main__":
-    main()

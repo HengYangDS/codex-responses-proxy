@@ -4,19 +4,16 @@ from __future__ import annotations
 
 import csv
 import os
-import sys
 from pathlib import Path
 
-from cyclopts import App
-
 from codex_responses_proxy import product_identity
-from tools.release import product_assets as assets
+from tools.release.artifact import format as assets
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 INSTALLER_PROVENANCE = frozenset({"direct_url.json", "uv_cache.json"})
 
 
-def _normalize(packages: Path) -> None:
+def normalize(packages: Path) -> None:
     """Remove installer-local product metadata before executable freezing."""
     metadata = tuple(packages.glob("codex_responses_proxy-*.dist-info"))
     if len(metadata) != 1 or not metadata[0].is_dir() or metadata[0].is_symlink():
@@ -78,7 +75,7 @@ def bundle_files(bundle: Path) -> tuple[tuple[Path, Path], ...]:
     return tuple(files)
 
 
-def _command(*, bundle: Path, platform: str, output: Path) -> None:
+def pack(*, bundle: Path, platform: str, output: Path) -> None:
     """Write one platform archive, machine manifest, and checksum manifest."""
     if output.exists() and any(output.iterdir()):
         raise SystemExit("release asset output directory must be empty")
@@ -121,14 +118,3 @@ def _command(*, bundle: Path, platform: str, output: Path) -> None:
         require_signature=False,
     )
     print(f"release assets: {archive_name} {manifest_name} {assets.CHECKSUM_NAME} OK")
-
-
-def main(argv: tuple[str, ...] | None = None) -> None:
-    """Run asset assembly through the repository's single parser stack."""
-    app = App(default_command=_command, help=__doc__, result_action="return_value")
-    app.command(_normalize, name="normalize")
-    app(tuple(sys.argv[1:] if argv is None else argv))
-
-
-if __name__ == "__main__":
-    main()

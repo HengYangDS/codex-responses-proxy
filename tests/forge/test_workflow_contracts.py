@@ -64,10 +64,8 @@ def _string(value: object) -> str:
 def test_forge_workflows_are_generated_from_one_declarative_graph() -> None:
     """Keep Forge syntax as projections, never independent topology owners."""
 
-    repository = (ROOT / "tools" / "quality" / "repository.py").read_text(encoding="utf-8")
     projector = (ROOT / "tools" / "ci" / "project.py").read_text(encoding="utf-8")
     governance = (ROOT / "tools" / "quality" / "governance.py").read_text(encoding="utf-8")
-    assert "reconcile_ci_projections" not in repository
     assert 'sys.executable, "-m", "tools.ci.project"' in governance
     assert 'MODEL = ROOT / ".config/ci/pipeline.cue"' in projector
     assert reconcile(write=False) == ()
@@ -391,7 +389,7 @@ def test_native_bundle_is_built_and_signed_once_in_release_graph() -> None:
     """Keep native construction and product signing in one authoritative workflow."""
 
     verify = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
-    assert verify.count("uv run --locked --no-sync python -m tools.release.assemble_assets") == 1
+    assert verify.count("uv run --locked --no-sync python -m tools.release.artifact assemble") == 1
     assert verify.count("--sign") == 1
     assert "container: ${{ needs.python-matrix.outputs.linux-release-image }}" in verify
 
@@ -555,7 +553,7 @@ def _assert_github_required_tokens(text: str) -> None:
         "GH_TOKEN: ${{ github.token }}",
         """gh run download "$GITHUB_RUN_ID" --pattern 'native-*' """
         """--dir "$RUNNER_TEMP/native" """.rstrip(),
-        "uv run --locked --no-sync python -m tools.release.assemble_assets",
+        "uv run --locked --no-sync python -m tools.release.artifact assemble",
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY",
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
         'install -m 600 /dev/null "$RUNNER_TEMP/release-asset-signing-key"',

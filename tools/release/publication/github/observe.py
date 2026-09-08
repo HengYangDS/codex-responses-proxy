@@ -10,7 +10,7 @@ from typing import Final
 
 from codex_responses_proxy import product_identity
 from tools.release import identity
-from tools.release import product_assets as release_assets
+from tools.release.artifact import format as release_assets
 from tools.release.publication import hosted
 
 DEFAULT_REQUIRED_JOBS: Final = (
