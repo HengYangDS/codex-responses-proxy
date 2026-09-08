@@ -13,6 +13,7 @@ from pathlib import Path
 from types import ModuleType
 
 from tools.git_environment import isolated_config_environment
+from tools.quality.repository import __main__ as repository_audit
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -26,13 +27,6 @@ def load(name: str, relative: str) -> ModuleType:
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
-
-
-def checker() -> ModuleType:
-    """Load the repository quality checker with its package owners."""
-    load("tools", "tools/__init__.py")
-    load("tools.quality", "tools/quality/__init__.py")
-    return load("codex_responses_proxy_quality_checker", "tools/quality/repository.py")
 
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
@@ -66,7 +60,7 @@ def repository(files: tuple[str, ...], *, tracked: tuple[str, ...] | None = None
 
 def quality_inventory(root: Path):
     """Compile the fixture's configured Python inventory."""
-    return checker()._repository_inventory(root, ("src",), ("tests",))
+    return repository_audit._repository_inventory(root, ("src",), ("tests",))
 
 
 def audit_source(source_text: str):
@@ -75,4 +69,4 @@ def audit_source(source_text: str):
         root = Path(directory)
         source = root / "source.py"
         source.write_text(source_text, encoding="utf-8")
-        return checker().audit_paths(root, [source])
+        return repository_audit.audit_paths(root, [source])

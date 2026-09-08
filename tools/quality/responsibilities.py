@@ -7,6 +7,7 @@ import subprocess
 import tomllib
 from collections.abc import Iterable
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[2]
 MAP = ROOT / ".config/quality/responsibility-map.toml"
@@ -76,7 +77,18 @@ def _mapping(value: object, *, label: str, errors: list[str]) -> dict[str, objec
     return dict(value)
 
 
-def audit(root: Path = ROOT, policy_path: Path = MAP) -> dict[str, object]:
+class AuditReport(TypedDict):
+    """Exact carrier assignments and diagnostics from the responsibility map."""
+
+    ok: bool
+    errors: list[str]
+    roles: list[str]
+    scopes: list[str]
+    concerns: list[str]
+    assignments: dict[str, str]
+
+
+def audit(root: Path = ROOT, policy_path: Path = MAP) -> AuditReport:
     """Return exact ownership gaps for carriers, scopes, concerns, and configuration."""
     policy = tomllib.loads(policy_path.read_text(encoding="utf-8"))
     errors: list[str] = []

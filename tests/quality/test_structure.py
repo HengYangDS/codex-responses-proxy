@@ -13,11 +13,12 @@ import pytest
 
 from tests.quality.fixtures import ROOT
 from tests.quality.fixtures import audit_source
-from tests.quality.fixtures import checker
 from tests.quality.fixtures import git
 from tests.quality.fixtures import load
 from tests.quality.fixtures import quality_inventory
 from tests.quality.fixtures import repository
+from tools.quality.repository import __main__ as repository_audit
+from tools.quality.repository.topology import architecture_gaps
 
 
 class TestStructuralQualityContracts:
@@ -63,7 +64,6 @@ class TestStructuralQualityContracts:
     def test_architecture_gate_enforces_positive_topology_and_package_contracts(
         self,
     ) -> None:
-        quality_checker = checker()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             files = {
@@ -83,7 +83,7 @@ class TestStructuralQualityContracts:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(source, encoding="utf-8")
 
-            gaps = quality_checker.architecture_gaps(root)
+            gaps = architecture_gaps(root)
 
         assert "architecture_root_implementation:control.py" in gaps
         assert "architecture_init_behavior:src/codex_responses_proxy/__init__.py" in gaps
@@ -204,7 +204,6 @@ class TestStructuralQualityContracts:
         isolated_config_consumers = (
             ROOT / "tools/forge/audit.py",
             ROOT / "tools/forge/project.py",
-            ROOT / "tools/quality/repository_state.py",
             ROOT / "tools/release/tag.py",
             ROOT / "tests/forge/test_audit.py",
             ROOT / "tests/forge/test_forward_only.py",
@@ -227,7 +226,6 @@ class TestStructuralQualityContracts:
             assert "GIT_CONFIG_GLOBAL" not in source
 
     def test_package_initializer_contract_is_explicit_and_configurable(self) -> None:
-        quality_checker = checker()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             package = root / "src" / "codex_responses_proxy"
@@ -250,9 +248,9 @@ class TestStructuralQualityContracts:
                 "package_initializers": "declarations-only",
                 "allowed_package_edges": {"service": []},
             }
-            gaps = quality_checker.architecture_gaps(root, policy)
+            gaps = architecture_gaps(root, policy)
             policy["package_initializers"] = "ordinary-modules"
-            relaxed = quality_checker.architecture_gaps(root, policy)
+            relaxed = architecture_gaps(root, policy)
         expected = "architecture_init_behavior:src/codex_responses_proxy/service/__init__.py"
         assert expected in gaps
         assert expected not in relaxed
@@ -306,11 +304,10 @@ class TestStructuralQualityContracts:
     def test_quality_inventory_glob_does_not_expand_beyond_its_configured_depth(
         self,
     ) -> None:
-        quality_checker = checker()
-        assert quality_checker._in_scope("owner.py", ("*.py",))
-        assert not quality_checker._in_scope("nested/foreign.py", ("*.py",))
-        assert quality_checker._in_scope("tools/owner.py", ("tools/*.py",))
-        assert not quality_checker._in_scope("tools/nested/foreign.py", ("tools/*.py",))
+        assert repository_audit._in_scope("owner.py", ("*.py",))
+        assert not repository_audit._in_scope("nested/foreign.py", ("*.py",))
+        assert repository_audit._in_scope("tools/owner.py", ("tools/*.py",))
+        assert not repository_audit._in_scope("tools/nested/foreign.py", ("tools/*.py",))
 
     def test_quality_inventory_rejects_symlink_misnamed_test_and_empty_tests(
         self,

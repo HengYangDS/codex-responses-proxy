@@ -15,19 +15,39 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from pathlib import PurePosixPath
+from typing import TypedDict
 
 from cyclopts import App
 
-from tools.quality.architecture import architecture_gaps
 from tools.quality.commits import commit_subject_gaps
-from tools.quality.decision_records import decision_record_gaps
-from tools.quality.repository_state import worktree_fingerprint
-from tools.quality.semantic_names import semantic_name_gaps
+from tools.quality.repository.decisions import decision_record_gaps
+from tools.quality.repository.names import semantic_name_gaps
+from tools.quality.repository.topology import architecture_gaps
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 CONFIG = ROOT / ".config/quality/policy/architecture.toml"
 PROJECT = ROOT / "pyproject.toml"
 _DEFINITION_TYPES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+class SourceMetrics(TypedDict):
+    """Descriptive structure measurements for one repository-owned Python file."""
+
+    path: str
+    logical_statements: int
+    effective_lines: int
+    max_function_lines: int
+    max_nesting_depth: int
+
+
+class AuditReport(TypedDict):
+    """Repository audit result shared by its command and direct consumers."""
+
+    ok: bool
+    gaps: list[str]
+    policy_errors: list[str]
+    files: list[SourceMetrics]
+    configured_paths: dict[str, list[str]]
 
 
 @dataclass(frozen=True)
@@ -250,10 +270,10 @@ def _logical_statements(path: Path, tree: ast.Module) -> int:
 def audit_paths(
     root: Path,
     paths: Iterable[Path],
-) -> tuple[list[str], list[dict[str, object]]]:
+) -> tuple[list[str], list[SourceMetrics]]:
     """Audit semantic contracts and report descriptive source metrics."""
     gaps: list[str] = []
-    inventory: list[dict[str, object]] = []
+    inventory: list[SourceMetrics] = []
     selected = sorted(set(paths))
     for path in selected:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -281,7 +301,7 @@ def _string_list(policy: Mapping[str, object], key: str, errors: list[str]) -> l
     return [item for item in value if isinstance(item, str)]
 
 
-def audit() -> dict[str, object]:
+def audit() -> AuditReport:
     """Return one deterministic quality report for CI and local verification."""
     policy = tomllib.loads(CONFIG.read_text(encoding="utf-8"))
     config = tomllib.loads(PROJECT.read_text(encoding="utf-8"))
@@ -327,12 +347,8 @@ def audit() -> dict[str, object]:
     }
 
 
-def _command(*, fingerprint: bool = False) -> None:
-    """Print an explicit fingerprint or audit the repository quietly."""
-    if fingerprint:
-        print(worktree_fingerprint(ROOT))
-        return
-
+def _command() -> None:
+    """Audit the repository quietly, emitting diagnostics only for gaps."""
     report = audit()
     if not report["ok"]:
         print(json.dumps(report, sort_keys=True))

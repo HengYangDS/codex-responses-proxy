@@ -67,6 +67,12 @@ and signing remain release-construction concerns. Git reference projection,
 repository settings, and runner admission remain Forge concerns rather than a
 second release publication mechanism.
 
+Repository-specific quality checks share the `tools.quality.repository` package:
+topology, names, and decision records feed its existing audit command. Tests
+import each actual owner directly rather than reload files under synthetic module
+names. The unused worktree fingerprint command and implementation are removed;
+no replacement state authority or compatibility import remains.
+
 A package survives only when it owns a distinct invariant and dependency
 boundary. Catch-all packages and names such as `common`, `shared`, `utils`,
 `helpers`, `misc`, `manager`, or `service` are not terminal names. Existing
