@@ -270,12 +270,15 @@ or requires an identity already discarded during cleanup. Interrupted cleanup
 continues to block a new transaction. Unrecognized journals and unowned roots
 remain protected, not inferred into a cleanup permission.
 
-Interrupted upgrade and retained rollback use one prior-generation recovery
-path. It admits only the journal's exact before or after selection and verifies
-the prior serving identity before mutation. Once selection and command
-projection are restored, a supervisor-binding retry does not detach, select, or
-project again. Retaining the rollback target changes disposal ownership, not
-the validation or recovery algorithm; selection drift remains unowned state.
+Controller rollback, interrupted materialization, and serving-generation
+recovery share one prior-projection restoration operation. It admits only the
+transaction's exact before or after selection; serving-generation recovery also
+verifies the prior runtime identity before mutation. Selector restoration and
+command restoration are independent durable effects: a restored selector never
+proves that the command was restored. Retry completes the missing command before
+binding supervision, while an already restored command remains untouched.
+Retaining the rollback target changes disposal ownership, not the restoration
+algorithm; selection drift remains unowned state in every entrypoint.
 
 Purge uses that same journal after proving native-service absence and owned
 process exit. Its terminal record contains the verified, root-relative file

@@ -249,6 +249,40 @@ def _select_retention(
         raise
 
 
+def _prior_selection(journal: Mapping[str, object]) -> generation.Selection | None:
+    """Decode the exact generation pair owned before this transaction."""
+    previous = journal.get("previous_generation")
+    predecessor = journal.get("previous_predecessor")
+    return (
+        generation.Selection(str(previous), str(predecessor) if predecessor is not None else None)
+        if previous is not None
+        else None
+    )
+
+
+def _restore_prior_projection(
+    ctx: runtime_context.RuntimeContext,
+    journal: Mapping[str, object],
+    previous: generation.Selection | None,
+) -> None:
+    """Resume exact selector and command restoration as independent durable effects."""
+    selection = generation.read(ctx)
+    candidate = str(journal["transaction_id"])
+    selected_candidate = generation.Selection(candidate, previous.active if previous else None)
+    if selection not in {previous, selected_candidate}:
+        raise errors.RecoveryStateError("payload transaction selection changed")
+    snapshot = command.read_snapshot(state.transaction_root(ctx) / "rollback")
+    if selection != previous:
+        command.detach(
+            Path(ctx.command), Path(generation.context(ctx, candidate).executable), snapshot
+        )
+        if previous is None:
+            generation.clear(ctx)
+        else:
+            generation.select(ctx, active=previous.active, predecessor=previous.predecessor)
+    command.restore(Path(ctx.command), Path(generation.control_context(ctx).executable), snapshot)
+
+
 def _rollback_materialized(
     ctx: runtime_context.RuntimeContext,
     *,
@@ -257,57 +291,18 @@ def _rollback_materialized(
     bind_terminal: Callable[[runtime_context.RuntimeContext], None],
 ) -> dict[str, object]:
     """Discard a candidate that never became the proven serving runtime."""
-    previous_generation_value = journal.get("previous_generation")
-    previous_generation = (
-        str(previous_generation_value) if previous_generation_value is not None else None
-    )
+    previous = _prior_selection(journal)
     selection = generation.read(ctx)
-    candidate_generation = str(journal["transaction_id"])
-    expected_before = (
-        generation.Selection(
-            previous_generation,
-            (
-                str(journal["previous_predecessor"])
-                if journal.get("previous_predecessor") is not None
-                else None
-            ),
+    if _reuses_retained_generation(journal):
+        if selection == previous and not (state.transaction_root(ctx) / "rollback").exists():
+            assert previous is not None
+            _require_unchanged_prior_terminal(ctx, generation_id=previous.active, runtime=runtime)
+            return _complete_transaction(ctx, journal, outcome="rolled_back")
+        return _restore_prior_generation(
+            ctx, journal=journal, runtime=runtime, bind_terminal=bind_terminal
         )
-        if previous_generation is not None
-        else None
-    )
-    selected_candidate = generation.Selection(candidate_generation, previous_generation)
-    if selection not in {expected_before, selected_candidate}:
-        raise errors.RecoveryStateError("materialized recovery selection changed")
-    if selection == expected_before and _reuses_retained_generation(journal):
-        assert previous_generation is not None
-        _require_unchanged_prior_terminal(
-            ctx,
-            generation_id=previous_generation,
-            runtime=runtime,
-        )
-        return _complete_transaction(ctx, journal, outcome="rolled_back")
-    rollback = state.transaction_root(ctx) / "rollback"
-    command_snapshot = command.read_snapshot(rollback)
-    if selection == selected_candidate:
-        command.detach(
-            Path(ctx.command),
-            Path(generation.context(ctx, candidate_generation).executable),
-            command_snapshot,
-        )
-        if expected_before is None:
-            generation.clear(ctx)
-        else:
-            generation.select(
-                ctx,
-                active=expected_before.active,
-                predecessor=expected_before.predecessor,
-            )
-            command.restore(
-                Path(ctx.command),
-                Path(generation.control_context(ctx).executable),
-                command_snapshot,
-            )
-    if expected_before is not None:
+    _restore_prior_projection(ctx, journal, previous)
+    if previous is not None:
         bind_terminal(generation.control_context(ctx))
     return _complete_transaction(ctx, journal, outcome="rolled_back")
 
@@ -359,58 +354,19 @@ def _restore_prior_generation(
     runtime: Mapping[str, object] | None,
     bind_terminal: Callable[[runtime_context.RuntimeContext], None],
 ) -> dict[str, object]:
-    """Restore the exact prior selection once and bind its proven live runtime."""
-    rollback = state.transaction_root(ctx) / "rollback"
-    command_snapshot = command.read_snapshot(rollback)
-    previous_generation = journal.get("previous_generation")
-    selection = generation.read(ctx)
-    restored = (
-        generation.Selection(
-            str(previous_generation),
-            (
-                str(journal["previous_predecessor"])
-                if journal.get("previous_predecessor") is not None
-                else None
-            ),
+    """Restore the exact prior projection and bind its proven live runtime."""
+    previous = _prior_selection(journal)
+    if previous is None or not generation.path(ctx, previous.active).is_dir():
+        raise errors.RecoveryStateError("payload recovery prior selected generation is unavailable")
+    previous_ctx = generation.context(ctx, previous.active)
+    identity_before = identity.committed_payload(Path(previous_ctx.executable))
+    if identity_before is None or not _runtime_matches_projection(runtime, identity_before):
+        raise errors.RecoveryStateError(
+            "payload recovery runtime does not match the prior selected generation"
         )
-        if previous_generation is not None
-        else None
-    )
-    if (
-        restored is not None
-        and selection is not None
-        and selection
-        in {
-            generation.Selection(str(journal["transaction_id"]), str(previous_generation)),
-            restored,
-        }
-        and generation.path(ctx, restored.active).is_dir()
-    ):
-        previous_ctx = generation.context(ctx, restored.active)
-        previous = identity.committed_payload(Path(previous_ctx.executable))
-        if previous is None or not _runtime_matches_projection(runtime, previous):
-            raise errors.RecoveryStateError(
-                "payload recovery runtime does not match the prior selected generation"
-            )
-        if selection != restored:
-            command.detach(
-                Path(ctx.command),
-                Path(generation.context(ctx, str(journal["transaction_id"])).executable),
-                command_snapshot,
-            )
-            generation.select(
-                ctx,
-                active=restored.active,
-                predecessor=restored.predecessor,
-            )
-            command.restore(
-                Path(ctx.command),
-                Path(generation.control_context(ctx).executable),
-                command_snapshot,
-            )
-        bind_terminal(generation.control_context(ctx))
-        return _complete_transaction(ctx, journal, outcome="rolled_back")
-    raise errors.RecoveryStateError("payload recovery prior selected generation is unavailable")
+    _restore_prior_projection(ctx, journal, previous)
+    bind_terminal(generation.control_context(ctx))
+    return _complete_transaction(ctx, journal, outcome="rolled_back")
 
 
 def _reuses_retained_generation(journal: Mapping[str, object]) -> bool:
@@ -641,41 +597,8 @@ class PayloadTransaction:
             _finish_cleanup(self._ctx, journal)
             self._state = "rolled_back"
             return
-        rollback = state.transaction_root(self._ctx) / "rollback"
-        if rollback.exists():
-            command_snapshot = command.read_snapshot(rollback)
-            if self._previous_selection is None:
-                command.detach(
-                    Path(self._ctx.command),
-                    Path(self._candidate_ctx.executable),
-                    command_snapshot,
-                )
-                generation.clear(self._ctx)
-                if self._previous_generation is not None:
-                    command.restore(
-                        Path(self._ctx.command),
-                        Path(self._ctx.executable),
-                        command_snapshot,
-                    )
-            else:
-                selection = generation.read(self._ctx)
-                if selection is not None and selection.active == self._transaction_id:
-                    command.detach(
-                        Path(self._ctx.command),
-                        Path(self._candidate_ctx.executable),
-                        command_snapshot,
-                    )
-                generation.select(
-                    self._ctx,
-                    active=self._previous_selection.active,
-                    predecessor=self._previous_selection.predecessor,
-                )
-                previous_executable = generation.control_context(self._ctx).executable
-                command.restore(
-                    Path(self._ctx.command),
-                    Path(previous_executable),
-                    command_snapshot,
-                )
+        if (state.transaction_root(self._ctx) / "rollback").exists():
+            _restore_prior_projection(self._ctx, journal, self._previous_selection)
         _complete_transaction(self._ctx, journal, outcome="rolled_back")
         self._state = "rolled_back"
 
