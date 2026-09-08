@@ -6,14 +6,14 @@ import json
 
 import pytest
 
-from codex_responses_proxy.protocol.input_variant import diagnose
-from codex_responses_proxy.protocol.item_policy import ITEM_POLICIES
-from codex_responses_proxy.protocol.item_policy import ProjectionStrategy
-from codex_responses_proxy.protocol.item_policy import ToolRelationships
-from codex_responses_proxy.protocol.item_policy import classify_item
-from codex_responses_proxy.protocol.item_policy import item_types
-from codex_responses_proxy.protocol.request import sanitize_responses_body
-from codex_responses_proxy.protocol.response_failed import tool_pair_boundary_is_safe
+from codex_responses_proxy.protocol.recovery.execution import tool_pair_boundary_is_safe
+from codex_responses_proxy.protocol.recovery.input import diagnose
+from codex_responses_proxy.protocol.replay.items import ITEM_POLICIES
+from codex_responses_proxy.protocol.replay.items import ProjectionStrategy
+from codex_responses_proxy.protocol.replay.items import ToolRelationships
+from codex_responses_proxy.protocol.replay.items import classify_item
+from codex_responses_proxy.protocol.replay.items import item_types
+from codex_responses_proxy.protocol.replay.projection import sanitize_responses_body
 
 
 @pytest.mark.parametrize("item_type", item_types())

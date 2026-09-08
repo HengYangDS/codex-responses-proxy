@@ -11,7 +11,7 @@ from typing import cast
 
 import pytest
 
-from codex_responses_proxy.protocol import request as rewrite
+from codex_responses_proxy.protocol.replay import projection as rewrite
 from codex_responses_proxy.relay import admission
 from codex_responses_proxy.relay import cooldown
 from codex_responses_proxy.relay import exchange as upstream_exchange

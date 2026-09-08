@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 HISTORY_PAYLOAD = {
     "model": "gpt-5.6-terra",
     "stream": True,
@@ -92,3 +94,8 @@ HISTORY_PAYLOAD = {
         {"type": "message", "role": "user", "content": "continue here"},
     ],
 }
+
+
+def body(payload: object) -> bytes:
+    """Encode a request fixture with the portable projection wire grammar."""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()

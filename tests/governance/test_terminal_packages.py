@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 from tools.quality.repository.topology import architecture_gaps
@@ -12,6 +13,20 @@ TERMINAL = {"cli", "protocol", "providers", "relay", "runtime", "service", "life
 
 
 class TerminalPackageContracts:
+    def test_protocol_packages_follow_replay_and_recovery_ownership(self) -> None:
+        """Replay projection and failure recovery have explicit protocol owners."""
+        concerns = {
+            "replay": ("projection", "content", "items"),
+            "recovery": ("input", "execution"),
+        }
+        for package, modules in concerns.items():
+            name = f"codex_responses_proxy.protocol.{package}"
+            owner = importlib.util.find_spec(name)
+            assert owner is not None
+            assert owner.submodule_search_locations is not None
+            for module in modules:
+                assert importlib.util.find_spec(f"{name}.{module}") is not None
+
     def test_only_terminal_production_packages_remain(self) -> None:
         actual = {
             path.name

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 
-from codex_responses_proxy.protocol import content as portable_content
-from codex_responses_proxy.protocol import request as rewrite
-from tests.protocol.history_fixture import HISTORY_PAYLOAD
-from tests.protocol.test_request import _body
+from codex_responses_proxy.protocol.replay import content as portable_content
+from codex_responses_proxy.protocol.replay import projection as rewrite
+from tests.protocol.replay.fixtures import HISTORY_PAYLOAD
+from tests.protocol.replay.fixtures import body as _body
 
 
 class ProviderPortableHistoryTests:

@@ -5,16 +5,12 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
-from pathlib import Path
 from typing import cast
 
 import pytest
 
-from codex_responses_proxy.protocol import input_variant
-from codex_responses_proxy.protocol.request import sanitize_responses_body
-
-ROOT = Path(__file__).resolve().parents[2]
-
+from codex_responses_proxy.protocol.recovery import input as input_recovery
+from codex_responses_proxy.protocol.replay.projection import sanitize_responses_body
 
 EXACT_ERROR = {
     "error": {
@@ -30,17 +26,17 @@ def _json(value: object) -> bytes:
     return json.dumps(value, separators=(",", ":")).encode()
 
 
-def _diagnose(item: object) -> input_variant.InputDiagnostic:
-    return input_variant.diagnose(_json({"input": [item]}))
+def _diagnose(item: object) -> input_recovery.InputDiagnostic:
+    return input_recovery.diagnose(_json({"input": [item]}))
 
 
 def _shape_hash(payload: object) -> str:
-    return input_variant.diagnose(_json(payload)).shape_sha256
+    return input_recovery.diagnose(_json(payload)).shape_sha256
 
 
 def _recover(payload: Mapping[str, object], budget: int):
     raw = _json(payload)
-    recovery, metrics = input_variant.build_recovery(raw, budget if budget > 0 else len(raw))
+    recovery, metrics = input_recovery.build_recovery(raw, budget if budget > 0 else len(raw))
     return raw, recovery, metrics
 
 
@@ -62,7 +58,7 @@ class TestExactErrorContract:
             (400, b'{"error":null}', False),
         )
         assert [
-            input_variant.is_exact_validation_error(status, body) for status, body, _ in cases
+            input_recovery.is_exact_validation_error(status, body) for status, body, _ in cases
         ] == [expected for _, _, expected in cases]
 
 
@@ -164,7 +160,7 @@ class TestInputDiagnostic:
         raw = _json(payload)
         projection = sanitize_responses_body(raw)
         assert (projection.body is not None) is portable, projection.reason
-        diagnostic = input_variant.diagnose(raw)
+        diagnostic = input_recovery.diagnose(raw)
         assert diagnostic.first_incompatible_reason == (projection.reason or "")
 
     def test_private_names_values_and_cardinality_are_erased(self) -> None:
@@ -176,12 +172,12 @@ class TestInputDiagnostic:
                 "private-field": secret,
             }
         )
-        projected = input_variant.diagnostic_dict(diagnostic)
-        rendered = input_variant.format_diagnostic(projected)
+        projected = input_recovery.diagnostic_dict(diagnostic)
+        rendered = input_recovery.format_diagnostic(projected)
         disclosure = rendered + json.dumps(projected, sort_keys=True)
         assert not {secret, "private-extension-name", "private-field"} & set(disclosure.split())
 
-        def diagnostic_for(repetitions: int) -> input_variant.InputDiagnostic:
+        def diagnostic_for(repetitions: int) -> input_recovery.InputDiagnostic:
             items: list[dict[str, object]] = [
                 {"type": "message", "role": "user", "content": "current"},
                 {
@@ -202,10 +198,10 @@ class TestInputDiagnostic:
                     },
                     {"type": "custom_tool_call", "name": "f", "input": "{}"},
                 ]
-            return input_variant.diagnose(_json({"input": items}))
+            return input_recovery.diagnose(_json({"input": items}))
 
         projected = [
-            input_variant.diagnostic_dict(diagnostic_for(repetitions)) for repetitions in (2, 4)
+            input_recovery.diagnostic_dict(diagnostic_for(repetitions)) for repetitions in (2, 4)
         ]
         assert [
             cast("dict[str, str]", item["item_types"])["custom_tool_call"] for item in projected
@@ -216,7 +212,7 @@ class TestInputDiagnostic:
             assert item["unmatched_calls"]
             assert item["missing_call_ids"]
             assert "first_incompatible_index" not in item
-        rendered = input_variant.format_diagnostic(diagnostic_for(2))
+        rendered = input_recovery.format_diagnostic(diagnostic_for(2))
         assert "input_items=" not in rendered
         assert not re.search(r"(?:matched_pairs|unmatched_calls|missing_call_ids)=\d", rendered)
 
@@ -266,7 +262,7 @@ class TestInputDiagnostic:
             {"type": "message", "role": "user", "content": "current"},
         ]
         assert (
-            input_variant.diagnose(_json({"input": valid_search})).first_incompatible_reason == ""
+            input_recovery.diagnose(_json({"input": valid_search})).first_incompatible_reason == ""
         )
         assert (
             _diagnose(
@@ -275,7 +271,7 @@ class TestInputDiagnostic:
             == "empty_portable_input"
         )
 
-        diagnostic = input_variant.diagnose(
+        diagnostic = input_recovery.diagnose(
             _json(
                 {
                     "input": [
@@ -332,7 +328,7 @@ class TestInputDiagnostic:
     )
     def test_failure_reason_is_the_projection_verdict(self, raw: bytes, reason: str) -> None:
         assert sanitize_responses_body(raw).reason == reason
-        assert input_variant.diagnose(raw).first_incompatible_reason == reason
+        assert input_recovery.diagnose(raw).first_incompatible_reason == reason
 
     @pytest.mark.parametrize(
         ("item_type", "label"),
@@ -342,7 +338,7 @@ class TestInputDiagnostic:
         assert _diagnose({"type": item_type}).item_types == {label: "1"}
 
     def test_mapping_projection_rejects_untrusted_buckets_and_flags(self) -> None:
-        rendered = input_variant.format_diagnostic(
+        rendered = input_recovery.format_diagnostic(
             {
                 "input_items_bucket": "private",
                 "item_types": {"message": "1", "secret": "private", 1: "1"},
@@ -392,7 +388,7 @@ class TestDialogueRecovery:
         assert recovered["input"] == [payload["input"][0], payload["input"][1]]
         assert recovered["include"] == ["other"]
         assert not {"previous_response_id", "conversation", "prompt_cache_key"} & recovered.keys()
-        assert metrics == input_variant.RecoveryMetrics(
+        assert metrics == input_recovery.RecoveryMetrics(
             len(raw), len(recovery), 2, 1, 3, True, True
         )
 
@@ -523,7 +519,7 @@ class TestDialogueRecovery:
             (valid, True),
             (valid, 10),
         )
-        assert [input_variant.build_recovery(raw, budget) for raw, budget in cases] == [
+        assert [input_recovery.build_recovery(raw, budget) for raw, budget in cases] == [
             (None, None)
         ] * len(cases)
 
@@ -536,4 +532,4 @@ class TestDialogueRecovery:
             },
             separators=(",", ":"),
         ).encode()
-        assert input_variant.build_recovery(raw, len(raw)) == (None, None)
+        assert input_recovery.build_recovery(raw, len(raw)) == (None, None)

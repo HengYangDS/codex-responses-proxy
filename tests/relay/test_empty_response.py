@@ -17,8 +17,8 @@ from typing import cast
 
 import pytest
 
-from codex_responses_proxy.protocol import content as portable_content
-from codex_responses_proxy.protocol import request as rewrite
+from codex_responses_proxy.protocol.replay import content as portable_content
+from codex_responses_proxy.protocol.replay import projection as rewrite
 from codex_responses_proxy.providers.policies import dmxapi as policy
 from codex_responses_proxy.relay import admission
 from codex_responses_proxy.relay import cooldown

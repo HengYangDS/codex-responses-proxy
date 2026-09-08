@@ -711,12 +711,16 @@ class TestQualityPolicyContracts:
 
     def test_protocol_and_relay_tests_follow_terminal_ownership(self) -> None:
         tests = ROOT / "tests"
-        assert [
-            name for name in ("compatibility", "transport", "recovery") if (tests / name).exists()
-        ] == []
-        assert (tests / "protocol/test_request.py").is_file()
-        assert (tests / "protocol/test_response.py").is_file()
-        assert (tests / "protocol/test_input_variant.py").is_file()
-        assert (tests / "relay/test_empty_response.py").is_file()
-        assert (tests / "relay/test_routes.py").is_file()
-        assert not tuple(tests.joinpath("providers").glob("test_portable_*.py"))
+        owners = (
+            "protocol/replay/test_projection.py",
+            "protocol/replay/test_content.py",
+            "protocol/replay/test_history.py",
+            "protocol/replay/test_admission.py",
+            "protocol/replay/test_items.py",
+            "protocol/test_response.py",
+            "protocol/recovery/test_input.py",
+            "protocol/recovery/test_execution.py",
+            "relay/test_empty_response.py",
+            "relay/test_routes.py",
+        )
+        assert all((tests / owner).is_file() for owner in owners)

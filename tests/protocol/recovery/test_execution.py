@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
-from codex_responses_proxy.protocol import response_failed
+from codex_responses_proxy.protocol.recovery import execution as execution_recovery
 from codex_responses_proxy.runtime import config as runtime_config
 
 COMPACTION_BUDGET = runtime_config.DEFAULT_RESPONSE_FAILED_COMPACTION_BUDGET
@@ -70,12 +70,12 @@ class ResponseFailedContracts:
         )
         for status, payload, expected in cases:
             with subtests.test(status=status, payload=payload):
-                assert response_failed.retry_disposition(status, payload) == expected
-        assert json.loads(response_failed.exhausted_payload(4))["error"]["attempts"] == 4
+                assert execution_recovery.retry_disposition(status, payload) == expected
+        assert json.loads(execution_recovery.exhausted_payload(4))["error"]["attempts"] == 4
 
     def test_recovery_is_not_triggered_by_incidental_error_prose(self) -> None:
         prose_only = b'{"error":{"message":"response_failed and request blocked are documentation text","type":"invalid_request_error","code":"ordinary_error"}}'
-        assert response_failed.retry_disposition(400, prose_only) == ""
+        assert execution_recovery.retry_disposition(400, prose_only) == ""
 
     def test_response_failed_compaction_keeps_complete_tool_pairs_and_latest_user(self):
         """Fallback removes only an old prefix; no retained output is orphaned."""
@@ -90,7 +90,7 @@ class ResponseFailedContracts:
             ],
             prompt_cache_key="cache-key-must-not-reach-the-fallback",
         )
-        compact, detail = response_failed.compact_request(body, COMPACTION_BUDGET)
+        compact, detail = execution_recovery.compact_request(body, COMPACTION_BUDGET)
         compact, detail = self.assert_compacted(compact, detail)
         assert detail["removed_inputs"] >= 1
         assert len(compact) <= COMPACTION_BUDGET
@@ -120,7 +120,7 @@ class ResponseFailedContracts:
                 _message("user", "newest user context"),
             ]
         )
-        compact, detail = response_failed.compact_request(body, COMPACTION_BUDGET)
+        compact, detail = execution_recovery.compact_request(body, COMPACTION_BUDGET)
         compact, detail = self.assert_compacted(compact, detail)
         assert detail["removed_inputs"] == 3
         obj = json.loads(compact)
@@ -137,7 +137,7 @@ class ResponseFailedContracts:
             prompt_cache_key="stale-full-history-key",
         )
         assert len(body) < COMPACTION_BUDGET
-        compact, detail = response_failed.compact_request(body, COMPACTION_BUDGET)
+        compact, detail = execution_recovery.compact_request(body, COMPACTION_BUDGET)
         compact, detail = self.assert_compacted(compact, detail)
         assert len(compact) <= len(body) // 2
         assert detail["removed_inputs"] == 1
@@ -154,13 +154,13 @@ class ResponseFailedContracts:
                 _output("custom_tool_call_output", "latest-call", "y" * 220000),
             ]
         )
-        compact, detail = response_failed.compact_request(body, budget=20000)
+        compact, detail = execution_recovery.compact_request(body, budget=20000)
         compact, detail = self.assert_compacted(compact, detail)
         assert not detail["budget_met"]
         assert len(compact) < len(body)
         obj = json.loads(compact)
         assert obj["input"][0]["content"] == "latest user context"
-        assert response_failed.tool_pair_boundary_is_safe(obj["input"], 0)
+        assert execution_recovery.tool_pair_boundary_is_safe(obj["input"], 0)
 
     def test_response_failed_compaction_is_a_noop_when_no_safe_suffix_fits(self):
         body = _body(
@@ -168,15 +168,15 @@ class ResponseFailedContracts:
             tools=[{"type": "function", "name": "huge", "parameters": "x" * 600000}],
             prompt_cache_key="must-remain-on-original-request",
         )
-        compact, detail = response_failed.compact_request(body, COMPACTION_BUDGET)
+        compact, detail = execution_recovery.compact_request(body, COMPACTION_BUDGET)
         assert compact is None
         assert detail is None
         assert json.loads(body)["prompt_cache_key"] == "must-remain-on-original-request"
 
     def test_response_failed_compaction_rejects_every_unsafe_suffix(self, monkeypatch):
         body = _body([_message("user", "old"), _message("user", "latest")])
-        monkeypatch.setattr(response_failed, "tool_pair_boundary_is_safe", lambda *_args: False)
-        assert response_failed.compact_request(body, COMPACTION_BUDGET) == (None, None)
+        monkeypatch.setattr(execution_recovery, "tool_pair_boundary_is_safe", lambda *_args: False)
+        assert execution_recovery.compact_request(body, COMPACTION_BUDGET) == (None, None)
 
     def test_response_failed_dialogue_recovery_keeps_latest_context_without_tool_replay(
         self,
@@ -195,7 +195,7 @@ class ResponseFailedContracts:
             ],
             prompt_cache_key="stale-full-history-key",
         )
-        recovery, detail = response_failed.recover_dialogue(body, COMPACTION_BUDGET)
+        recovery, detail = execution_recovery.recover_dialogue(body, COMPACTION_BUDGET)
         recovery, detail = self.assert_compacted(recovery, detail)
         recovered = json.loads(recovery)
         assert recovered["store"] is False
@@ -219,7 +219,7 @@ class ResponseFailedContracts:
                 _output("custom_tool_call_output", "new", "large" + "x" * 100000),
             ]
         )
-        recovery, detail = response_failed.recover_dialogue(body, COMPACTION_BUDGET)
+        recovery, detail = execution_recovery.recover_dialogue(body, COMPACTION_BUDGET)
         recovery, detail = self.assert_compacted(recovery, detail)
         assert json.loads(recovery)["input"] == [_message("user", "latest user request")]
         assert detail["retained_messages"] == 1
@@ -229,8 +229,8 @@ class ResponseFailedContracts:
             1,
             {"type": "function_call_output", "call_id": "missing", "output": "x"},
         ]
-        assert not response_failed.tool_pair_boundary_is_safe(items, 0)
-        assert response_failed.tool_pair_boundary_is_safe(items, 2)
+        assert not execution_recovery.tool_pair_boundary_is_safe(items, 0)
+        assert execution_recovery.tool_pair_boundary_is_safe(items, 2)
 
     def test_response_failed_pair_boundary_recognizes_local_shell_history(self) -> None:
         items = [
@@ -238,19 +238,19 @@ class ResponseFailedContracts:
             {"type": "function_call_output", "call_id": "local", "output": "ok"},
         ]
 
-        assert response_failed.tool_pair_boundary_is_safe(items, 0)
-        assert not response_failed.tool_pair_boundary_is_safe(items, 1)
+        assert execution_recovery.tool_pair_boundary_is_safe(items, 0)
+        assert not execution_recovery.tool_pair_boundary_is_safe(items, 1)
 
     def test_response_failed_rejects_invalid_compaction_and_recovery_boundaries(self, subtests):
         common = ((b"not-json", 1024), (b"[]", 1024), (b'{"input":[]}', 1024))
         self.assert_rejected(
-            response_failed.compact_request,
+            execution_recovery.compact_request,
             (*common, (b'{"input":[1,2]}', 1024), (b'{"input":[{},{}]}', 0)),
             subtests,
         )
         valid = _body([_message("user", "old"), _message("user", "current")])
         self.assert_rejected(
-            response_failed.recover_dialogue,
+            execution_recovery.recover_dialogue,
             (
                 *common,
                 (

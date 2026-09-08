@@ -12,12 +12,12 @@ import json
 from dataclasses import dataclass
 from typing import cast
 
-from codex_responses_proxy.protocol import item_policy
-from codex_responses_proxy.protocol.content import ProjectionRejectedError
-from codex_responses_proxy.protocol.content import empty_assistant_placeholder
-from codex_responses_proxy.protocol.content import project_assistant_text
-from codex_responses_proxy.protocol.content import project_input_content
-from codex_responses_proxy.protocol.content import reject as _reject
+from codex_responses_proxy.protocol.replay import items as item_policy
+from codex_responses_proxy.protocol.replay.content import ProjectionRejectedError
+from codex_responses_proxy.protocol.replay.content import empty_assistant_placeholder
+from codex_responses_proxy.protocol.replay.content import project_assistant_text
+from codex_responses_proxy.protocol.replay.content import project_input_content
+from codex_responses_proxy.protocol.replay.content import reject as _reject
 
 type JsonObject = dict[str, object]
 

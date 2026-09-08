@@ -20,8 +20,8 @@ from dataclasses import field
 from typing import Final
 from typing import cast
 
-from codex_responses_proxy.protocol import item_policy
-from codex_responses_proxy.protocol.request import sanitize_responses_body
+from codex_responses_proxy.protocol.replay import items as item_policy
+from codex_responses_proxy.protocol.replay.projection import sanitize_responses_body
 
 type JsonObject = dict[str, object]
 type ReadOnlyJsonObject = Mapping[str, object]

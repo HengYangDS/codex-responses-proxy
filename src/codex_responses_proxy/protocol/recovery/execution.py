@@ -12,8 +12,8 @@ import json
 from collections.abc import Sequence
 from typing import cast
 
-from codex_responses_proxy.protocol import item_policy
 from codex_responses_proxy.protocol import response
+from codex_responses_proxy.protocol.replay import items as item_policy
 
 type JsonObject = dict[str, object]
 type Request = tuple[JsonObject, list[object], int]
