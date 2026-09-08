@@ -6,7 +6,6 @@ import os
 import platform
 import re
 import sys
-import tempfile
 import tomllib
 from pathlib import Path
 from typing import cast
@@ -423,18 +422,9 @@ def _build_wheel(session: nox.Session, work: Path) -> Path:
     """Build the exact wheel exercised by behavior and quality sessions."""
     wheelhouse = work / "wheelhouse"
     wheelhouse.mkdir()
-    with tempfile.TemporaryDirectory(prefix=f"{product_identity.PRODUCT_SLUG}-uv-") as cache:
-        session.run_install(
-            "uv",
-            "build",
-            "--wheel",
-            "--cache-dir",
-            cache,
-            "--out-dir",
-            str(wheelhouse),
-            str(ROOT),
-            external=True,
-        )
+    session.run_install(
+        "uv", "build", "--wheel", "--out-dir", str(wheelhouse), str(ROOT), external=True
+    )
     wheels = tuple(wheelhouse.glob("*.whl"))
     if len(wheels) != 1:
         session.error(f"expected one wheel, found {len(wheels)}")
