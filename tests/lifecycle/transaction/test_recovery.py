@@ -122,12 +122,39 @@ def test_reverse_recovery_preserves_selection_outside_its_transaction(
     before = _retained_carrier_snapshot(Path(ctx.install_dir), tmp_path / "unused")
     binder = mocker.Mock()
 
-    with pytest.raises(errors.RecoveryStateError, match="prior selected generation"):
+    with pytest.raises(errors.RecoveryStateError, match="selection changed"):
         recover_transaction(ctx, runtime=recovery_runtime(retained.successor), bind_terminal=binder)
 
     assert payload_generation.read(ctx) == selection
     assert _retained_carrier_snapshot(Path(ctx.install_dir), tmp_path / "unused") == before
     binder.assert_not_called()
+
+
+@pytest.mark.parametrize("reverse", [False, True], ids=["upgrade", "retained-rollback"])
+def test_controller_rollback_preserves_selection_outside_its_transaction(
+    tmp_path: Path, reverse: bool, *, mocker
+) -> None:
+    ctx = install_context(tmp_path)
+    install_payload(ctx, "1.2.2", mocker=mocker)
+    candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+    candidate.commit_projection()
+    candidate.activate()
+    if reverse:
+        candidate.finalize({"pid": 2})
+        candidate = payload_transaction.begin_rollback_transaction(
+            ctx, payload_rollback.load_retained(ctx)
+        )
+        candidate.commit_projection()
+        candidate.activate()
+    payload_generation.select(
+        ctx, active=str(candidate.expected["transaction_id"]), predecessor=None
+    )
+    before = _retained_carrier_snapshot(Path(ctx.install_dir), tmp_path / "unused")
+
+    with pytest.raises(errors.InstallError, match="selection"):
+        candidate.rollback()
+
+    assert _retained_carrier_snapshot(Path(ctx.install_dir), tmp_path / "unused") == before
 
 
 def test_unselected_reverse_recovery_does_not_require_an_unused_command_snapshot(
@@ -817,6 +844,65 @@ def test_activated_rollback_retries_terminal_binding_without_replaying_handoff(
     bind_terminal.assert_called_once_with(predecessor.context)
     assert select.call_count == 1
     assert not Path(payload_state.transaction_root(ctx)).exists()
+    assert Path(candidate.context.payload_dir).exists() is reverse
+
+
+@pytest.mark.parametrize("reverse", [False, True], ids=["upgrade", "retained-rollback"])
+@pytest.mark.parametrize("windows", [False, True], ids=["posix-link", "windows-launcher"])
+@pytest.mark.parametrize("phase", ["materialized", "activated"])
+def test_recovery_retries_command_restoration_after_selection_is_restored(
+    tmp_path: Path, reverse: bool, windows: bool, phase: str, *, mocker
+) -> None:
+    ctx = install_context(tmp_path, windows=windows)
+    predecessor = install_payload(ctx, "1.2.2", mocker=mocker)
+    candidate = begin_transaction(ctx, released_artifact("1.2.3", windows=windows), mocker=mocker)
+    candidate.commit_projection()
+    if reverse:
+        candidate.activate()
+        candidate.finalize({"pid": 2})
+        predecessor = candidate
+        candidate = payload_transaction.begin_rollback_transaction(
+            ctx, payload_rollback.load_retained(ctx)
+        )
+        candidate.commit_projection()
+    if phase == "materialized":
+        interruption = mocker.patch.object(
+            payload_state,
+            "write_journal",
+            side_effect=errors.InstallError("activation interrupted"),
+        )
+        with pytest.raises(errors.InstallError, match="activation interrupted"):
+            candidate.activate()
+        mocker.stop(interruption)
+    else:
+        candidate.activate()
+    prior = listener_identity.committed_payload(Path(predecessor.context.executable))
+    assert prior is not None
+    runtime = recovery_runtime(prior)
+    failure = mocker.patch.object(
+        command, "restore", side_effect=errors.InstallError("command restoration interrupted")
+    )
+    binder = mocker.Mock()
+
+    with pytest.raises(errors.InstallError, match="command restoration interrupted"):
+        recover_transaction(ctx, runtime=runtime, bind_terminal=binder)
+
+    assert payload_generation.selected_context(ctx) == predecessor.context
+    assert not Path(ctx.command).exists()
+    assert payload_state.journal_path(ctx).is_file()
+    binder.assert_not_called()
+    mocker.stop(failure)
+
+    def bind_restored_terminal(active: runtime_context.RuntimeContext) -> None:
+        assert command.status(Path(ctx.command), Path(active.executable))["state"] == "owned"
+
+    result = recover_transaction(ctx, runtime=runtime, bind_terminal=bind_restored_terminal)
+
+    assert result["state"] == "rolled_back"
+    assert (
+        command.status(Path(ctx.command), Path(predecessor.context.executable))["state"] == "owned"
+    )
+    assert payload_state.status(ctx) is None
     assert Path(candidate.context.payload_dir).exists() is reverse
 
 
