@@ -22,7 +22,9 @@ _GRAMMARS = {
 def semantic_name_gaps(root: Path) -> list[str]:
     """Return tracked project files that violate their carrier's native grammar."""
     output = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z"], capture_output=True, check=True
+        ["git", "-C", str(root), "--git-dir=.git", "--work-tree=.", "ls-files", "-z"],
+        capture_output=True,
+        check=True,
     ).stdout
     gaps: list[str] = []
     for encoded in output.split(b"\0"):

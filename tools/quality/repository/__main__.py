@@ -99,7 +99,16 @@ def _index_entries(root: Path) -> tuple[dict[str, str], list[str]]:
     """Read stage-zero index modes without treating the working tree as ownership truth."""
     try:
         result = subprocess.run(
-            ["git", "-C", str(root), "ls-files", "--stage", "-z"],
+            [
+                "git",
+                "-C",
+                str(root),
+                "--git-dir=.git",
+                "--work-tree=.",
+                "ls-files",
+                "--stage",
+                "-z",
+            ],
             capture_output=True,
             check=False,
         )

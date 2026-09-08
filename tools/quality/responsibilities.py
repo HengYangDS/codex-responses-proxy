@@ -36,6 +36,8 @@ def _tracked_paths(root: Path) -> tuple[str, ...]:
     completed = subprocess.run(
         (
             "git",
+            "--git-dir=.git",
+            "--work-tree=.",
             "ls-files",
             "-z",
             "--cached",

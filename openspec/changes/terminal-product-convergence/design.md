@@ -131,6 +131,14 @@ configuration defines their executable rules; Nox invokes them; CUE projects the
 same obligations into each Forge. No second checker, registry, or workflow may
 independently define the same rule.
 
+Quality inventory binds Git's directory and working tree to the requested
+checkout, rather than treating the command's current directory as repository
+identity. Native Git resolves both regular `.git` directories and linked-lane
+`.git` files. A nested non-checkout must fail instead of inheriting its parent's
+index and producing a plausible but unauthorized scope. Structure, names, text,
+responsibility mapping, and native formatter inputs use this same boundary;
+each retains its own explicitly declared tracked or pending-file semantics.
+
 The review at source `268ce99f` established these gaps:
 
 - Structural inventory returned measurements without size or complexity vetoes;
