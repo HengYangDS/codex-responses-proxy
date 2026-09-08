@@ -114,6 +114,28 @@ class TestStructuralQualityContracts:
         assert inventory[0]["max_function_lines"] == 4
         assert inventory[0]["max_nesting_depth"] == 1
 
+    @pytest.mark.parametrize(
+        ("source", "effective_lines", "function_lines"),
+        [
+            ("value = 1  # inline comment\n# comment-only line\n", 1, 0),
+            ('"""Module documentation."""; value = "retained"\n', 1, 0),
+            (
+                'def owner():\n    """Summary.\n\n    Detail.\n    """\n\n'
+                "    value = 1  # inline comment\n    # comment-only line\n    return value\n",
+                3,
+                3,
+            ),
+            ('value = """first\n\nlast"""\n', 2, 0),
+        ],
+        ids=("inline-comment", "docstring-with-code", "function-docstring", "multiline-data"),
+    )
+    def test_file_and_function_eloc_share_executable_line_semantics(
+        self, source: str, effective_lines: int, function_lines: int
+    ) -> None:
+        _, inventory = audit_source(source)
+        assert inventory[0]["effective_lines"] == effective_lines
+        assert inventory[0]["max_function_lines"] == function_lines
+
     def test_structural_metrics_are_observations_not_merge_thresholds(self) -> None:
         source = "\n".join(
             [

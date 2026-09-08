@@ -203,19 +203,27 @@ def _docstring_expressions(tree: ast.Module) -> Iterable[ast.Expr]:
             yield node.body[0]
 
 
-def _effective_lines(path: Path, tree: ast.Module) -> int:
-    """Count code lines while excluding comments, blanks, and docstring carriers."""
-    lines = path.read_text(encoding="utf-8").splitlines()
-    excluded: set[int] = set()
-    for token in tokenize.tokenize(BytesIO(path.read_bytes()).readline):
+def _effective_line_numbers(path: Path, tree: ast.Module) -> set[int]:
+    """Select code lines after removing only comment and docstring spans."""
+    source = path.read_bytes()
+    lines = source.splitlines()
+    spans = [
+        ((node.lineno, node.col_offset), (node.end_lineno, node.end_col_offset))
+        for node in _docstring_expressions(tree)
+        if node.end_lineno is not None and node.end_col_offset is not None
+    ]
+    for token in tokenize.tokenize(BytesIO(source).readline):
         if token.type == tokenize.COMMENT:
-            excluded.update(range(token.start[0], token.end[0] + 1))
-    for expression in _docstring_expressions(tree):
-        if expression.end_lineno is not None:
-            excluded.update(range(expression.lineno, expression.end_lineno + 1))
-    return sum(
-        bool(line.strip()) and lineno not in excluded for lineno, line in enumerate(lines, 1)
-    )
+            number, column = token.start
+            offset = len(lines[number - 1].decode()[:column].encode())
+            spans.append(((number, offset), (number, len(lines[number - 1]))))
+    for (start_line, start_column), (end_line, end_column) in sorted(spans, reverse=True):
+        for number in range(start_line, end_line + 1):
+            line = lines[number - 1]
+            first = start_column if number == start_line else 0
+            last = end_column if number == end_line else len(line)
+            lines[number - 1] = line[:first] + b" " * (last - first) + line[last:]
+    return {number for number, line in enumerate(lines, 1) if line.strip()}
 
 
 def _nesting_depth(node: ast.AST) -> int:
@@ -246,10 +254,13 @@ def _nesting_depth(node: ast.AST) -> int:
     return visit(node, 0)
 
 
-def _function_structure(tree: ast.Module) -> tuple[int, int]:
+def _function_structure(tree: ast.Module, effective_lines: set[int]) -> tuple[int, int]:
     """Return the largest function ELOC and control-flow nesting depth."""
     metrics = [
-        (node.end_lineno - node.lineno + 1, _nesting_depth(node))
+        (
+            sum(node.lineno <= line <= node.end_lineno for line in effective_lines),
+            _nesting_depth(node),
+        )
         for node in ast.walk(tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.end_lineno is not None
     ]
@@ -279,13 +290,13 @@ def audit_paths(
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         relative = path.relative_to(root).as_posix()
         logical = _logical_statements(path, tree)
-        effective_lines = _effective_lines(path, tree)
-        function_eloc, nesting_depth = _function_structure(tree)
+        effective_lines = _effective_line_numbers(path, tree)
+        function_eloc, nesting_depth = _function_structure(tree, effective_lines)
         inventory.append(
             {
                 "path": relative,
                 "logical_statements": logical,
-                "effective_lines": effective_lines,
+                "effective_lines": len(effective_lines),
                 "max_function_lines": function_eloc,
                 "max_nesting_depth": nesting_depth,
             }
