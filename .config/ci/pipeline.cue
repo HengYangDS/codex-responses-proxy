@@ -16,9 +16,16 @@ import "list"
 }
 
 #Toolchains: {
-	githubMiseAction: "jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c"
-	gitlabMiseImage:  "ghcr.io/jdx/mise@sha256:812f7860a2fb911e1d5dd3375834abb2a08f8c783a23f783fcbccaf7fc7357aa"
-	quality:          "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
+	githubActions: {
+		checkout: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"          // v7.0.1
+		python:   "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"      // v7.0.0
+		uv:       "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d"        // v10.0.1
+		mise:     "jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c"           // v4.3.0
+		upload:   "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"   // v7.0.1
+		download: "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" // v8.0.1
+	}
+	gitlabMiseImage: "ghcr.io/jdx/mise@sha256:812f7860a2fb911e1d5dd3375834abb2a08f8c783a23f783fcbccaf7fc7357aa"
+	quality:         "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
 }
 
 gitlab: {
@@ -217,9 +224,9 @@ githubVerify: {
 				"linux-release-image": "${{ steps.versions.outputs.linux-release-image }}"
 			}
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				uses: #Toolchains.githubActions.checkout
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+				uses: #Toolchains.githubActions.uv
 			}, {
 				name: "Install the locked matrix tool environment"
 				run:  "uv sync --locked --all-groups"
@@ -235,19 +242,19 @@ githubVerify: {
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 10
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 					ref:           #Conditions.productSHA
 				}
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+				uses: #Toolchains.githubActions.python
 				with: "python-version-file": ".python-release"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d"
+				uses: #Toolchains.githubActions.uv
 			}, {
-				uses: #Toolchains.githubMiseAction
+				uses: #Toolchains.githubActions.mise
 				with: {
 					install: true
 					cache:   true
@@ -277,17 +284,17 @@ githubVerify: {
 				matrix: "python-version": "${{ fromJSON(needs.python-matrix.outputs.versions) }}"
 			}
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 					ref:           #Conditions.productSHA
 				}
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
+				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ matrix.python-version }}"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+				uses: #Toolchains.githubActions.uv
 				with: "cache-suffix": "${{ matrix.python-version }}"
 			}, {
 				name: "Compile and test"
@@ -305,17 +312,17 @@ githubVerify: {
 				matrix: "python-version": "${{ fromJSON(needs.python-matrix.outputs.versions) }}"
 			}
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 					ref:           #Conditions.productSHA
 				}
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
+				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ matrix.python-version }}"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+				uses: #Toolchains.githubActions.uv
 				with: "cache-suffix": "${{ matrix.python-version }}"
 			}, {
 				name: "Compile and test"
@@ -328,16 +335,16 @@ githubVerify: {
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 10
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 				}
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
+				uses: #Toolchains.githubActions.python
 				with: "python-version-file": ".python-release"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+				uses: #Toolchains.githubActions.uv
 			}, {
 				name: "Confirm accepted source and metadata"
 				run: """
@@ -354,17 +361,17 @@ githubVerify: {
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 10
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 					ref:           "${{ github.event.pull_request.head.sha }}"
 				}
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+				uses: #Toolchains.githubActions.python
 				with: "python-version-file": ".python-release"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d"
+				uses: #Toolchains.githubActions.uv
 			}, {
 				name: "Prove exact dev-to-main promotion"
 				run: """
@@ -383,18 +390,18 @@ githubVerify: {
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 15
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 				}
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
+				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.latest }}"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+				uses: #Toolchains.githubActions.uv
 			}, {
-				uses: #Toolchains.githubMiseAction
+				uses: #Toolchains.githubActions.mise
 				with: {
 					install: true
 					cache:   true
@@ -423,19 +430,19 @@ githubVerify: {
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 15
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 					ref:           #Conditions.productSHA
 				}
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
+				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.floor }}"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+				uses: #Toolchains.githubActions.uv
 			}, {
-				uses: #Toolchains.githubMiseAction
+				uses: #Toolchains.githubActions.mise
 				with: {
 					install: true
 					cache:   true
@@ -452,22 +459,22 @@ githubVerify: {
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 10
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 					ref:           #Conditions.productSHA
 				}
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.release }}"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d"
+				uses: #Toolchains.githubActions.uv
 			}, {
 				name: "Measure deterministic product overhead"
 				run:  "uv run --locked --group quality nox -s performance -- \"$RUNNER_TEMP/performance\""
 			}, {
-				uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+				uses: #Toolchains.githubActions.upload
 				with: {
 					name:                "performance"
 					path:                "${{ runner.temp }}/performance/*.json"
@@ -493,17 +500,17 @@ githubVerify: {
 				}]
 			}
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 					ref:           #Conditions.productSHA
 				}
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
+				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.release }}"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+				uses: #Toolchains.githubActions.uv
 			}, {
 				name: "Install the locked release tool environment"
 				run:  "uv sync --locked --group quality"
@@ -511,7 +518,7 @@ githubVerify: {
 				name: "Build and accept the native release asset"
 				run:  "uv run --locked --no-sync nox -s release -- \"${{ runner.temp }}/native-assets\""
 			}, {
-				uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a" // v7.0.1
+				uses: #Toolchains.githubActions.upload
 				with: {
 					name:                "native-${{ matrix.platform }}"
 					path:                "${{ runner.temp }}/native-assets"
@@ -528,14 +535,14 @@ githubVerify: {
 			container:         "${{ needs.python-matrix.outputs.linux-release-image }}"
 			"timeout-minutes": 20
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 					ref:           #Conditions.productSHA
 				}
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+				uses: #Toolchains.githubActions.uv
 			}, {
 				name: "Materialize the canonical release source root"
 				run:  "install -d /workspace && git -c safe.directory=\"$GITHUB_WORKSPACE\" archive --format=tar HEAD | tar -xf - -C /workspace"
@@ -546,7 +553,7 @@ githubVerify: {
 				name: "Build the native release asset"
 				run:  "cd /workspace && uv run --locked --no-sync --python python --no-python-downloads nox -s release_asset -- \"$GITHUB_WORKSPACE/.release-assets/linux-x86_64\""
 			}, {
-				uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a" // v7.0.1
+				uses: #Toolchains.githubActions.upload
 				with: {
 					name:                "native-linux-x86_64"
 					path:                "${{ github.workspace }}/.release-assets/linux-x86_64"
@@ -562,19 +569,19 @@ githubVerify: {
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 10
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 					ref:           #Conditions.productSHA
 				}
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
+				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.release }}"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+				uses: #Toolchains.githubActions.uv
 			}, {
-				uses: "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" // v8.0.1
+				uses: #Toolchains.githubActions.download
 				with: {
 					name: "native-linux-x86_64"
 					path: "${{ runner.temp }}/native-linux"
@@ -626,17 +633,17 @@ githubVerify: {
 				}]
 			}
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
 					"fetch-tags":  true
 					ref:           #Conditions.productSHA
 				}
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
+				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.release }}"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+				uses: #Toolchains.githubActions.uv
 			}, {
 				name: "Install the locked release tool environment"
 				run:  "uv sync --locked --group quality"
@@ -672,12 +679,12 @@ githubVerify: {
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 10
 			steps: [{
-				uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" // v7.0.1
+				uses: #Toolchains.githubActions.checkout
 			}, {
-				uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" // v7.0.0
+				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.latest }}"
 			}, {
-				uses: "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d" // v10.0.1
+				uses: #Toolchains.githubActions.uv
 			}, {
 				name: "Download native release assets"
 				env: GH_TOKEN: "${{ github.token }}"
@@ -701,7 +708,7 @@ githubVerify: {
 				}
 				run: "uv run --locked --no-sync python -m tools.release.artifact assemble --input \"$RUNNER_TEMP/native/native-linux-x86_64\" --input \"$RUNNER_TEMP/native/native-macos-arm64\" --input \"$RUNNER_TEMP/native/native-windows-x86_64\" --output \"$RUNNER_TEMP/release-assets\" --sign"
 			}, {
-				uses: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a" // v7.0.1
+				uses: #Toolchains.githubActions.upload
 				with: {
 					name:                "release-assets"
 					path:                "${{ runner.temp }}/release-assets"

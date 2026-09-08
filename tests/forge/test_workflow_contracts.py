@@ -3,6 +3,7 @@
 import importlib
 import json
 import re
+import subprocess
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -69,6 +70,38 @@ def test_forge_workflows_are_generated_from_one_declarative_graph() -> None:
     assert 'sys.executable, "-m", "tools.ci.project"' in governance
     assert 'MODEL = ROOT / ".config/ci/pipeline.cue"' in projector
     assert reconcile(write=False) == ()
+
+
+@pytest.mark.repository_toolchain
+def test_github_actions_consume_one_immutable_toolchain_catalog() -> None:
+    """Keep action identity and revision in one CUE-owned declaration."""
+    result = subprocess.run(
+        (
+            "cue",
+            "export",
+            str(CI_MODEL),
+            "--expression",
+            "#Toolchains.githubActions",
+            "--out",
+            "json",
+        ),
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    catalog = [_string(value) for value in _mapping(json.loads(result.stdout)).values()]
+    assert catalog
+    assert all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", action) for action in catalog)
+    assert len({action.split("@", 1)[0] for action in catalog}) == len(catalog)
+    jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
+    projected = {
+        _string(step["uses"])
+        for job in jobs.values()
+        for raw_step in _sequence(_mapping(job)["steps"])
+        if "uses" in (step := _mapping(raw_step))
+    }
+    assert projected == set(catalog)
 
 
 def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
@@ -224,8 +257,7 @@ def test_linux_asset_build_and_native_lifecycle_have_distinct_execution_hosts() 
         for step in lifecycle_steps
     )
     assert any(
-        str(_mapping(step).get("uses", ""))
-        == "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+        _string(_mapping(step).get("uses", "")).split("@", 1)[0] == "actions/download-artifact"
         and _mapping(_mapping(step)["with"])["name"] == "native-linux-x86_64"
         for step in lifecycle_steps
     )
@@ -520,20 +552,20 @@ def _assert_github_required_tokens(text: str) -> None:
         "GIT_CONFIG_VALUE_0: main",
         "runs-on: macos-26",
         "runs-on: ubuntu-24.04",
-        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "actions/checkout@",
         "uv run --locked --no-sync python -m tools.quality.python_matrix",
         "python-version: ${{ fromJSON(needs.python-matrix.outputs.versions) }}",
         'uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"',
         "python-windows:",
         "windows-2025",
-        "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+        "actions/setup-python@",
         "fetch-tags: true",
         "if: github.ref_type == 'tag'",
         "python -m tools.quality.governance --online-links",
         'uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"',
         "uv run --locked --no-sync python -m tools.release.metadata",
         "python-quality:",
-        "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d",
+        "astral-sh/setup-uv@",
         "uv run --locked --group quality nox -s quality",
         "python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py",
         "tests/release/publication",
@@ -545,7 +577,7 @@ def _assert_github_required_tokens(text: str) -> None:
         "name: Native asset (linux-x86_64)",
         "container: ${{ needs.python-matrix.outputs.linux-release-image }}",
         'uv run --locked --no-sync nox -s release -- "${{ runner.temp }}/native-assets"',
-        "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        "actions/upload-artifact@",
         "release-assets:",
         "name: Release assets",
         "python-version: ${{ needs.python-matrix.outputs.latest }}",
@@ -574,7 +606,7 @@ def _assert_github_matrix_contract(text: str) -> None:
     matrix_end = text.index("\n  python:", matrix_start)
     matrix_block = text[matrix_start:matrix_end]
     for token in (
-        "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d",
+        "astral-sh/setup-uv@",
         "uv sync --locked --all-groups",
         "uv run --locked --no-sync python -m tools.quality.python_matrix",
     ):
@@ -603,7 +635,7 @@ def _assert_github_platform_contract(text: str) -> None:
     governance_start = text.index("\n  accepted-source:")
     mac_block = text[mac_start:windows_start]
     windows_block = text[windows_start:governance_start]
-    setup_uv = "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d"
+    setup_uv = "astral-sh/setup-uv@"
     if (
         mac_block.count(setup_uv) != 1
         or "cache-suffix: ${{ matrix.python-version }}" not in mac_block
@@ -615,8 +647,8 @@ def _assert_github_platform_contract(text: str) -> None:
     for token in (
         "runs-on: windows-2025",
         "python-version: ${{ fromJSON(needs.python-matrix.outputs.versions) }}",
-        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-        "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+        "actions/checkout@",
+        "actions/setup-python@",
         'uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"',
     ):
         if token not in windows_block:
