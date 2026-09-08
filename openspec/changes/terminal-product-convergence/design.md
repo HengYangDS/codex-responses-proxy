@@ -76,6 +76,18 @@ and signing remain release-construction concerns. Git reference projection,
 repository settings, and runner admission remain Forge concerns rather than a
 second release publication mechanism.
 
+Release construction has one semantic owner under `tools/release/artifact`.
+`bundle` normalizes frozen inputs and packages one native target; `format` owns
+archive, manifest, and checksum grammar; `assembly` admits one complete release
+set; `signing` owns the external OpenSSH trust boundary. One command tree exposes
+`normalize`, `pack`, `assemble`, and `verify`. Publication adapters consume these
+owners without creating another asset grammar or coordinating build internals.
+The `verify` operation authenticates the signature against explicit external
+trust before reporting success; signature-file presence is not authentication.
+Both Forge publishers consume that same complete verification boundary.
+Tests follow bundle, format, assembly, and signing semantics. The former flat
+asset entrypoints and declaration-only publication initializer are removed.
+
 Repository-specific quality checks share the `tools.quality.repository` package:
 topology, names, and decision records feed its existing audit command. Tests
 import each actual owner directly rather than reload files under synthetic module

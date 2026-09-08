@@ -11,9 +11,8 @@ from pathlib import Path
 
 from codex_responses_proxy import product_identity
 from tools.forge import tag_signature
-from tools.release import assemble_assets
 from tools.release import identity
-from tools.release import signing
+from tools.release.artifact import assembly
 from tools.release.publication import hosted
 
 
@@ -184,9 +183,8 @@ def _release_records(repository: str) -> list[Mapping[str, object]]:
 
 def _verify_assets(root: Path, trust: str) -> dict[str, str]:
     try:
-        signing.verify(assets=root, trust=trust)
-        return assemble_assets.verify(root)
-    except (signing.SignatureError, OSError, ValueError) as error:
+        return assembly.verify(root, trust=trust)
+    except (OSError, ValueError) as error:
         raise GitHubPublishError("GitHub release assets are invalid") from error
 
 

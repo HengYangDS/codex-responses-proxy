@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 
-from tests.release.publication.fixtures import release_bundle
+from tests.release.artifact.fixtures import release_bundle
 from tools.release.publication.gitlab import observe as gitlab
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.release import signing
+from tools.release.artifact import signing
 
 
 def test_sign_and_verify_uses_one_external_trust_boundary(tmp_path: Path) -> None:

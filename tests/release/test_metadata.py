@@ -404,13 +404,13 @@ def test_native_bundle_has_one_runtime_and_one_signer() -> None:
             "container: ${{ needs.python-matrix.outputs.linux-release-image }}",
             "platform: macos-arm64",
             "platform: windows-x86_64",
-            "python -m tools.release.assemble_assets",
+            "python -m tools.release.artifact assemble",
             "--sign",
         ),
         "single native bundle builder",
     )
     require(
-        github.count("python -m tools.release.assemble_assets") == 1,
+        github.count("python -m tools.release.artifact assemble") == 1,
         "bundle assembled twice",
     )
     require(github.count("--sign") == 1, "bundle signed more than once")

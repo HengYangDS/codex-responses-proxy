@@ -333,7 +333,7 @@ def _build_native_candidate(session: nox.Session) -> tuple[Path, Path, Path]:
     session.run(
         "python",
         "-m",
-        "tools.release.assets",
+        "tools.release.artifact",
         "normalize",
         "--packages",
         str(_session_packages(session)),
@@ -575,7 +575,8 @@ def _package_release_asset(session: nox.Session, bundle: Path, work: Path) -> No
     session.run(
         "python",
         "-m",
-        "tools.release.assets",
+        "tools.release.artifact",
+        "pack",
         "--bundle",
         str(bundle),
         "--platform",

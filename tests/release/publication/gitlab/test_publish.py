@@ -13,8 +13,9 @@ from typing import TypedDict
 
 import pytest
 
-from tools.release import product_assets
-from tools.release import signing
+from tests.release.artifact.fixtures import release_bundle
+from tools.release.artifact import format as assets
+from tools.release.artifact import signing
 from tools.release.publication.gitlab import publish
 
 
@@ -29,25 +30,8 @@ class _PublicationArguments(TypedDict):
 
 
 def _assets(root: Path, version: str) -> None:
-    release: dict[str, bytes] = {}
-    for platform in product_assets.RELEASE_PLATFORMS:
-        executable = (
-            "codex-responses-proxy.exe"
-            if platform.startswith("windows-")
-            else "codex-responses-proxy"
-        )
-        files = {f"bin/{executable}": product_assets.ArchiveFile(platform.encode(), 0o755)}
-        archive_name = product_assets.archive_name(version, platform)
-        archive = product_assets.archive_bytes(files, version, platform)
-        release[archive_name] = archive
-        release[product_assets.manifest_name(platform)] = product_assets.asset_manifest(
-            version=version,
-            platform=platform,
-            archive_name=archive_name,
-            archive=archive,
-            files=files,
-        )
-    release[product_assets.CHECKSUM_NAME] = product_assets.checksums(release)
+    release = release_bundle(version=version)
+    del release[assets.SIGNATURE_NAME]
     for name, content in release.items():
         (root / name).write_bytes(content)
 

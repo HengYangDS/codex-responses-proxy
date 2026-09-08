@@ -39,7 +39,7 @@ from tests.release.fixtures import signed_asset
 from tests.service.handoff.fixtures import ScriptedUpstream
 from tests.service.handoff.fixtures import free_port
 from tests.service.handoff.fixtures import wait_until
-from tools.release import signing
+from tools.release.artifact import signing
 
 ROOT = Path(__file__).resolve().parents[2]
 

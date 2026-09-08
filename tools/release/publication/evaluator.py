@@ -9,7 +9,7 @@ from typing import cast
 
 from codex_responses_proxy import product_identity
 from tools.release import identity
-from tools.release import product_assets
+from tools.release.artifact import format as product_assets
 
 _OID: Final = re.compile(r"^[0-9a-f]{40,64}$")
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$")

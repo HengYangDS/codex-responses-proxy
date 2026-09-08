@@ -411,7 +411,7 @@ jobs:
         env:
           RELEASE_ASSET_SIGNING_KEY_PATH: ${{ runner.temp }}/release-asset-signing-key
           RELEASE_ASSET_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}
-        run: uv run --locked --no-sync python -m tools.release.assemble_assets --input "$RUNNER_TEMP/native/native-linux-x86_64" --input "$RUNNER_TEMP/native/native-macos-arm64" --input "$RUNNER_TEMP/native/native-windows-x86_64" --output "$RUNNER_TEMP/release-assets" --sign
+        run: uv run --locked --no-sync python -m tools.release.artifact assemble --input "$RUNNER_TEMP/native/native-linux-x86_64" --input "$RUNNER_TEMP/native/native-macos-arm64" --input "$RUNNER_TEMP/native/native-windows-x86_64" --output "$RUNNER_TEMP/release-assets" --sign
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-assets

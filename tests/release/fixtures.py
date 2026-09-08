@@ -26,9 +26,9 @@ from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime.process_environment import native_process_environment
 from codex_responses_proxy.service import inventory
 from codex_responses_proxy.service import runtime as service_runtime
-from tools.release import assets as release_assembly
-from tools.release import product_assets
-from tools.release import signing
+from tools.release.artifact import bundle as release_assembly
+from tools.release.artifact import format as product_assets
+from tools.release.artifact import signing
 
 ROOT = Path(__file__).resolve().parents[2]
 COMMAND_TIMEOUT_SECONDS = 180
