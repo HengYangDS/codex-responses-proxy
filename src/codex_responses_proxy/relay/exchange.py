@@ -13,9 +13,9 @@ from typing import cast
 
 import certifi
 
-from codex_responses_proxy.protocol import input_variant
 from codex_responses_proxy.protocol import response as live_response
-from codex_responses_proxy.protocol import response_failed
+from codex_responses_proxy.protocol.recovery import execution as execution_recovery
+from codex_responses_proxy.protocol.recovery import input as input_recovery
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.relay import cooldown
 from codex_responses_proxy.relay import operational_log
@@ -72,7 +72,7 @@ def _request(url: str, body: bytes, method: str, headers: dict[str, str]) -> url
 def _input_variant_recovery(
     raw: bytes,
 ) -> tuple[bytes | None, InputVariantMetrics | None]:
-    recovery, metrics = input_variant.build_recovery(raw, RESPONSE_FAILED_COMPACTION_BUDGET)
+    recovery, metrics = input_recovery.build_recovery(raw, RESPONSE_FAILED_COMPACTION_BUDGET)
     if metrics is None:
         return recovery, None
     return recovery, {
@@ -109,9 +109,9 @@ class Exchange:
     profile: provider_registry.Profile
     response_failed_stages: int = 0
     used_response_failed_compaction: bool = False
-    compact_metrics: response_failed.RecoveryMetrics | None = None
+    compact_metrics: execution_recovery.RecoveryMetrics | None = None
     used_response_failed_dialogue: bool = False
-    dialogue_metrics: response_failed.RecoveryMetrics | None = None
+    dialogue_metrics: execution_recovery.RecoveryMetrics | None = None
     used_input_variant_dialogue: bool = False
     input_variant_metrics: InputVariantMetrics | None = None
     response: UpstreamResponse | None = None
@@ -200,10 +200,10 @@ def _classification(
 
 
 def _recover_input_variant(exchange: Exchange) -> bool:
-    diagnostic = input_variant.diagnostic_dict(input_variant.diagnose(exchange.attempt_body))
+    diagnostic = input_recovery.diagnostic_dict(input_recovery.diagnose(exchange.attempt_body))
     exchange.log(
         "input_variant_validation_error",
-        f"{input_variant.format_diagnostic(diagnostic)} ",
+        f"{input_recovery.format_diagnostic(diagnostic)} ",
     )
     recovery, metrics = _input_variant_recovery(exchange.body)
     if recovery is None or metrics is None:
@@ -227,7 +227,7 @@ def _recover_response_failed(exchange: Exchange, status_code: int, disposition: 
     if not (exchange.is_responses and status_code == 400 and disposition == "full"):
         return False
     if exchange.response_failed_stages < RESPONSE_FAILED_MAX_STAGES:
-        compact, metrics = response_failed.compact_request(
+        compact, metrics = execution_recovery.compact_request(
             exchange.attempt_body, RESPONSE_FAILED_COMPACTION_BUDGET
         )
         if compact is not None and metrics is not None:
@@ -249,7 +249,7 @@ def _recover_response_failed(exchange: Exchange, status_code: int, disposition: 
             return True
     if exchange.used_response_failed_dialogue:
         return False
-    recovery, metrics = response_failed.recover_dialogue(
+    recovery, metrics = execution_recovery.recover_dialogue(
         exchange.body, RESPONSE_FAILED_COMPACTION_BUDGET
     )
     if recovery is None or metrics is None:
@@ -276,7 +276,7 @@ def _exhaust_response_failed(exchange: Exchange) -> None:
     downstream.send_payload(
         exchange.handler,
         503,
-        response_failed.exhausted_payload(attempts),
+        execution_recovery.exhausted_payload(attempts),
         retry_after="3",
     )
     exchange.log(
@@ -349,7 +349,7 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
         payload, status_code, headers = error.read(), error.code, error.headers
     finally:
         error.close()
-    portable = response_failed.retry_disposition(status_code, payload)
+    portable = execution_recovery.retry_disposition(status_code, payload)
     policy = exchange.profile.wire_policy
     rate_limited = exchange.is_responses and status_code == 429
     wire_failure = (
@@ -358,7 +358,7 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
         and policy.is_retryable_failure(status_code, payload)
     )
     disposition = "full" if wire_failure else portable
-    exact = input_variant.is_exact_validation_error(status_code, payload)
+    exact = input_recovery.is_exact_validation_error(status_code, payload)
     classification = _classification(status_code, payload, disposition, exact, wire_failure)
     telemetry.record_upstream_classification(classification)
     if rate_limited:

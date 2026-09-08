@@ -5,8 +5,8 @@ from __future__ import annotations
 import urllib.error
 from http.server import BaseHTTPRequestHandler
 
-from codex_responses_proxy.protocol import request as replay_request
 from codex_responses_proxy.protocol import response as replay_response
+from codex_responses_proxy.protocol.replay import projection as replay_request
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.relay import admission
 from codex_responses_proxy.relay import cooldown

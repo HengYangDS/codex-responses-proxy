@@ -3,16 +3,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-from codex_responses_proxy.protocol import content as portable_content
-from codex_responses_proxy.protocol import request as rewrite
-
-ROOT = Path(__file__).resolve().parents[2]
-
-
-def _body(payload: object) -> bytes:
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+from codex_responses_proxy.protocol.replay import content as portable_content
+from codex_responses_proxy.protocol.replay import projection as rewrite
+from tests.protocol.replay.fixtures import body as _body
 
 
 class ProviderPortableRequestEdgeTests:

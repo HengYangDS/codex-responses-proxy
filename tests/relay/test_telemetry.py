@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-from codex_responses_proxy.protocol.request import ProjectionMetrics
+from codex_responses_proxy.protocol.replay.projection import ProjectionMetrics
 from codex_responses_proxy.relay import telemetry
 
 ROOT = Path(__file__).resolve().parents[2]

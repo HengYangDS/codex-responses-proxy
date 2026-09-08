@@ -60,6 +60,15 @@ public CLI presentation. Repository-only domains are development bootstrap,
 quality, CI projection, release construction, Forge transport, and publication
 verification. Tests mirror these owners by behavior. Provider differences live
 within the owning semantic package, rather than in suffix-named sibling files.
+
+The protocol package separates request-local replay from failure recovery and
+live response validation. `replay` owns item relationships, content projection,
+and whole-request projection. `recovery` consumes those rules to handle input
+validation and execution failures; it does not own another replay grammar.
+`response` validates live wire data without rewriting it. Tests mirror replay
+projection, content, history, admission, and recovery instead of suffix families;
+shared request encoding belongs to their fixture, not another test module.
+
 The release publication package owns one command tree and one subpackage per
 Forge. Within each Forge, publication writes and hosted observations are distinct
 operations. Cross-Forge verification consumes observations; artifact assembly

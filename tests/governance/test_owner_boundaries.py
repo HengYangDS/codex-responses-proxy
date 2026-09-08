@@ -16,7 +16,7 @@ import pytest
 from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle.supervision import native_service
-from codex_responses_proxy.protocol import request as replay_request
+from codex_responses_proxy.protocol.replay import projection as replay_request
 from codex_responses_proxy.relay import responses
 from codex_responses_proxy.relay import sse
 from codex_responses_proxy.service import control
