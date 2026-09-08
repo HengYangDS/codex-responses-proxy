@@ -212,8 +212,9 @@ def check_governance_contract() -> None:
         "tools/forge/audit.py",
         "tools/release/tag.py",
         "tools/forge/tag_signature.py",
-        "tools/release/publish.py",
-        "tools/release/publish_gitlab.py",
+        "tools/release/publication/__main__.py",
+        "tools/release/publication/github/publish.py",
+        "tools/release/publication/gitlab/publish.py",
         "tools/reliability/observe.py",
         ".github/workflows/verify.yml",
     )

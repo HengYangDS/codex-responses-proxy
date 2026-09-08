@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TypedDict
 
+from tools.release import product_assets
 from tools.release.publication import verification as publication
 
 
@@ -129,3 +130,36 @@ def verified_evidence(evidence: Mapping[str, object], *, mocker) -> Mapping[str,
         gitlab_anchor=Path("gitlab-anchor"),
         github_anchor=Path("github-anchor"),
     )
+
+
+def release_bundle(
+    platforms: tuple[str, ...] = product_assets.RELEASE_PLATFORMS,
+) -> dict[str, bytes]:
+    version = "1.2.3"
+    platform_assets: dict[str, bytes] = {}
+    for platform in platforms:
+        executable = (
+            "codex-responses-proxy.exe"
+            if platform.startswith("windows-")
+            else "codex-responses-proxy"
+        )
+        files = {
+            f"bin/{executable}": product_assets.ArchiveFile(
+                f"native-{platform}".encode(), mode=0o755
+            )
+        }
+        archive_name = product_assets.archive_name(version, platform)
+        archive = product_assets.archive_bytes(files, version, platform)
+        platform_assets[archive_name] = archive
+        platform_assets[product_assets.manifest_name(platform)] = product_assets.asset_manifest(
+            version=version,
+            platform=platform,
+            archive_name=archive_name,
+            archive=archive,
+            files=files,
+        )
+    unsigned = {
+        **platform_assets,
+        product_assets.CHECKSUM_NAME: product_assets.checksums(platform_assets),
+    }
+    return {**unsigned, product_assets.SIGNATURE_NAME: b"fixture-signature\n"}

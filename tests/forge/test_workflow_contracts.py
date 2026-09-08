@@ -285,7 +285,7 @@ def test_release_compatibility_runs_real_published_upgrade_on_each_platform() ->
     )
     assert _mapping(predecessor["env"])["GH_TOKEN"] == "${{ github.token }}"
     assert predecessor["run"] == (
-        "uv run --locked --no-sync python -m tools.release.publication.github predecessor "
+        "uv run --locked --no-sync python -m tools.release.publication predecessor "
         '--repository "${{ github.repository }}" --candidate-version "$(cat VERSION)" '
         '--github-environment "${{ github.env }}"'
     )
@@ -387,25 +387,13 @@ def test_native_release_runtime_is_exact_and_platform_independent() -> None:
     assert "python-version: ${{ needs.python-matrix.outputs.release }}" in native_job
 
 
-def test_single_bundle_is_built_once_and_forges_only_project_it() -> None:
+def test_native_bundle_is_built_and_signed_once_in_release_graph() -> None:
     """Keep native construction and product signing in one authoritative workflow."""
 
     verify = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
-    gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-
     assert verify.count("uv run --locked --no-sync python -m tools.release.assemble_assets") == 1
     assert verify.count("--sign") == 1
     assert "container: ${{ needs.python-matrix.outputs.linux-release-image }}" in verify
-    publish = (ROOT / "tools/release/publish.py").read_text(encoding="utf-8")
-    assert '"both"' in publish
-    assert "publish_github.publish" in publish
-    assert "publish_gitlab.publish" in publish
-    for forbidden in (
-        "tools.release.publish_gitlab",
-        "nox -s release",
-        "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY",
-    ):
-        assert forbidden not in gitlab
 
 
 def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
@@ -550,7 +538,7 @@ def _assert_github_required_tokens(text: str) -> None:
         "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d",
         "uv run --locked --group quality nox -s quality",
         "python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py",
-        "tests/release/test_publish_gitlab.py",
+        "tests/release/publication",
         "native-assets:",
         "name: Native asset (${{ matrix.platform }})",
         "platform: macos-arm64",

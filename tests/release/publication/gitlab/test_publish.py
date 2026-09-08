@@ -14,8 +14,8 @@ from typing import TypedDict
 import pytest
 
 from tools.release import product_assets
-from tools.release import publish_gitlab
 from tools.release import signing
+from tools.release.publication.gitlab import publish
 
 
 class _PublicationArguments(TypedDict):
@@ -23,7 +23,7 @@ class _PublicationArguments(TypedDict):
     project_id: int
     tag: str
     token: str
-    credential_kind: publish_gitlab.CredentialKind
+    credential_kind: publish.CredentialKind
     source: Path
     trust: str
 
@@ -70,7 +70,7 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
     def request(
         url: str,
         _token: str,
-        _credential_kind: publish_gitlab.CredentialKind,
+        _credential_kind: publish.CredentialKind,
         *,
         data: bytes | None = None,
         method: str = "GET",
@@ -83,7 +83,7 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
                 store.setdefault(name, []).append(data)
                 return b""
             if name not in store:
-                raise publish_gitlab._GitLabResourceMissingError(url)
+                raise publish._GitLabResourceMissingError(url)
             return store[name][-1]
         if method == "POST":
             if release:
@@ -92,28 +92,28 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
             release.update(json.loads(data))
             return b"{}"
         if not release:
-            raise publish_gitlab._GitLabResourceMissingError(url)
+            raise publish._GitLabResourceMissingError(url)
         return json.dumps(release).encode()
 
-    mocker.patch.object(publish_gitlab, "_request", side_effect=request)
+    mocker.patch.object(publish, "_request", side_effect=request)
     arguments: _PublicationArguments = {
         "api_base": "https://gitlab.example/api/v4",
         "project_id": 453,
         "tag": "v1.2.3",
         "token": "redacted",
-        "credential_kind": publish_gitlab.CredentialKind.JOB_TOKEN,
+        "credential_kind": publish.CredentialKind.JOB_TOKEN,
         "source": assets,
         "trust": trust,
     }
-    assert publish_gitlab.publish(**arguments) == "created"
+    assert publish.publish(**arguments) == "created"
     assert {name: values[-1] for name, values in store.items()} == expected
     assert uploads == sorted(expected)
-    assert publish_gitlab.publish(**arguments) == "matched"
+    assert publish.publish(**arguments) == "matched"
     assert uploads == sorted(expected)
     assert all(len(values) == 1 for values in store.values())
     release["name"] = "wrong"
-    with pytest.raises(publish_gitlab.GitLabPublishError, match="immutable identity"):
-        publish_gitlab.publish(**arguments)
+    with pytest.raises(publish.GitLabPublishError, match="immutable identity"):
+        publish.publish(**arguments)
 
 
 def test_publication_reuses_exact_partial_package_and_uploads_only_missing_assets(
@@ -135,7 +135,7 @@ def test_publication_reuses_exact_partial_package_and_uploads_only_missing_asset
     def request(
         url: str,
         _token: str,
-        _credential_kind: publish_gitlab.CredentialKind,
+        _credential_kind: publish.CredentialKind,
         *,
         data: bytes | None = None,
         method: str = "GET",
@@ -148,22 +148,22 @@ def test_publication_reuses_exact_partial_package_and_uploads_only_missing_asset
                 store[name] = data
                 return b""
             if name not in store:
-                raise publish_gitlab._GitLabResourceMissingError(url)
+                raise publish._GitLabResourceMissingError(url)
             return store[name]
         if method == "POST":
             assert data is not None
             release.update(json.loads(data))
             return b"{}"
-        raise publish_gitlab._GitLabResourceMissingError(url)
+        raise publish._GitLabResourceMissingError(url)
 
-    mocker.patch.object(publish_gitlab, "_request", side_effect=request)
+    mocker.patch.object(publish, "_request", side_effect=request)
     assert (
-        publish_gitlab.publish(
+        publish.publish(
             api_base="https://gitlab.example/api/v4",
             project_id=453,
             tag="v1.2.3",
             token="redacted",
-            credential_kind=publish_gitlab.CredentialKind.JOB_TOKEN,
+            credential_kind=publish.CredentialKind.JOB_TOKEN,
             source=assets,
             trust=trust,
         )
@@ -185,7 +185,7 @@ def test_publication_rejects_different_existing_package_bytes(tmp_path: Path, mo
     def request(
         url: str,
         _token: str,
-        _credential_kind: publish_gitlab.CredentialKind,
+        _credential_kind: publish.CredentialKind,
         *,
         data: bytes | None = None,
         method: str = "GET",
@@ -196,17 +196,17 @@ def test_publication_rejects_different_existing_package_bytes(tmp_path: Path, mo
                 pytest.fail("publisher attempted to replace an existing asset")
             if url.endswith(f"/{conflicting}"):
                 return b"different"
-            raise publish_gitlab._GitLabResourceMissingError(url)
-        raise publish_gitlab._GitLabResourceMissingError(url)
+            raise publish._GitLabResourceMissingError(url)
+        raise publish._GitLabResourceMissingError(url)
 
-    mocker.patch.object(publish_gitlab, "_request", side_effect=request)
-    with pytest.raises(publish_gitlab.GitLabPublishError, match="differs before upload"):
-        publish_gitlab.publish(
+    mocker.patch.object(publish, "_request", side_effect=request)
+    with pytest.raises(publish.GitLabPublishError, match="differs before upload"):
+        publish.publish(
             api_base="https://gitlab.example/api/v4",
             project_id=453,
             tag="v1.2.3",
             token="redacted",
-            credential_kind=publish_gitlab.CredentialKind.JOB_TOKEN,
+            credential_kind=publish.CredentialKind.JOB_TOKEN,
             source=assets,
             trust=trust,
         )
@@ -223,26 +223,26 @@ def test_gitlab_http_failure_preserves_bounded_provider_detail(mocker) -> None:
     mocker.patch.object(urllib.request, "urlopen", side_effect=error)
 
     with pytest.raises(
-        publish_gitlab.GitLabPublishError,
+        publish.GitLabPublishError,
         match=r"HTTP 422: release validation failed",
     ):
-        publish_gitlab._request(
+        publish._request(
             error.url,
             "redacted",
-            publish_gitlab.CredentialKind.PRIVATE_TOKEN,
+            publish.CredentialKind.PRIVATE_TOKEN,
             data=b"{}",
             method="POST",
         )
 
 
 def test_publication_rejects_invalid_boundary_inputs(tmp_path: Path) -> None:
-    with pytest.raises(publish_gitlab.GitLabPublishError):
-        publish_gitlab.publish(
+    with pytest.raises(publish.GitLabPublishError):
+        publish.publish(
             api_base="file:///tmp",
             project_id=0,
             tag="latest",
             token="redacted",
-            credential_kind=publish_gitlab.CredentialKind.JOB_TOKEN,
+            credential_kind=publish.CredentialKind.JOB_TOKEN,
             source=tmp_path,
             trust="",
         )
@@ -253,13 +253,13 @@ def test_publication_rejects_unsigned_or_incomplete_bundle(tmp_path: Path) -> No
     assets.mkdir()
     _assets(assets, "1.2.3")
 
-    with pytest.raises(publish_gitlab.GitLabPublishError, match="signature verification failed"):
-        publish_gitlab.publish(
+    with pytest.raises(publish.GitLabPublishError, match="signature verification failed"):
+        publish.publish(
             api_base="https://gitlab.example/api/v4",
             project_id=453,
             tag="v1.2.3",
             token="redacted",
-            credential_kind=publish_gitlab.CredentialKind.JOB_TOKEN,
+            credential_kind=publish.CredentialKind.JOB_TOKEN,
             source=assets,
             trust="missing trust",
         )
@@ -268,11 +268,11 @@ def test_publication_rejects_unsigned_or_incomplete_bundle(tmp_path: Path) -> No
 @pytest.mark.parametrize(
     ("kind", "header"),
     [
-        (publish_gitlab.CredentialKind.JOB_TOKEN, "JOB-TOKEN"),
-        (publish_gitlab.CredentialKind.PRIVATE_TOKEN, "PRIVATE-TOKEN"),
+        (publish.CredentialKind.JOB_TOKEN, "JOB-TOKEN"),
+        (publish.CredentialKind.PRIVATE_TOKEN, "PRIVATE-TOKEN"),
     ],
 )
 def test_credential_kind_selects_one_exact_gitlab_header(
-    kind: publish_gitlab.CredentialKind, header: str
+    kind: publish.CredentialKind, header: str
 ) -> None:
-    assert publish_gitlab._authentication_header(kind) == header
+    assert publish._authentication_header(kind) == header
