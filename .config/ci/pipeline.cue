@@ -16,8 +16,8 @@ import "list"
 }
 
 #Toolchains: {
-	githubMiseAction: "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
-	gitlabMiseImage:  "ghcr.io/jdx/mise@sha256:f2d637d5e5189f7ec177b73bce5cd5db7e7b17a4f466f887c1b88ac2dd431129"
+	githubMiseAction: "jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c"
+	gitlabMiseImage:  "ghcr.io/jdx/mise@sha256:812f7860a2fb911e1d5dd3375834abb2a08f8c783a23f783fcbccaf7fc7357aa"
 	quality:          "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
 }
 
@@ -36,8 +36,8 @@ gitlab: {
 	variables: {
 		DEBIAN_FRONTEND:                          "noninteractive"
 		CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: "origin"
-		UV_PYTHON_FLOOR_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.7-python3.12-trixie-slim@sha256:9b269b249ad3de71611f3f4c8cabd38f7786205bbd79f727029a5cfdb072ffd4"
-		UV_PYTHON_LATEST_IMAGE:                   "ghcr.io/astral-sh/uv:0.12.7-python3.14-trixie-slim@sha256:0e664b12a6be9cd16be1015ec5cc3feebdeb42078ab587389707afbdfab8b10f"
+		UV_PYTHON_FLOOR_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.10-python3.12-trixie-slim@sha256:4bf11151c225e2a4d60e2a576b67d925660055199389d9a64fbdc02b6f3d43d5"
+		UV_PYTHON_LATEST_IMAGE:                   "ghcr.io/astral-sh/uv:0.12.10-python3.14-trixie-slim@sha256:d5ddd498c5a28ec77ff1c70276f8f3c4a116a303c8b5583a018ea43c2e89e366"
 		UV_CACHE_DIR:                             "$CI_PROJECT_DIR/.cache/uv"
 		UV_PYTHON_INSTALL_DIR:                    "$CI_PROJECT_DIR/.cache/uv/python"
 		CODEX_RESPONSES_PROXY_CI_TARGET:          "linux-arm64"

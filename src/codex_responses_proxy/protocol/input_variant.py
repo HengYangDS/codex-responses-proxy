@@ -162,7 +162,7 @@ def format_diagnostic(diagnostic: InputDiagnostic | dict[str, object]) -> str:
 
 def build_recovery(raw: bytes, budget: int) -> tuple[bytes | None, RecoveryMetrics | None]:
     """Build one instructions-plus-current-dialogue request, or reject safely."""
-    if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
+    if isinstance(budget, bool) or budget <= 0:
         return None, None
     payload = _load_json(raw)
     if not isinstance(payload, dict):

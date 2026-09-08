@@ -22,7 +22,7 @@ def safe_request_path(value: str) -> str:
     """Return a bounded request path without query values or caller text."""
     with suppress(TypeError, ValueError):
         path = urllib.parse.urlsplit(value).path
-        if isinstance(path, str) and path.startswith("/"):
+        if path.startswith("/"):
             return re.sub(r"[^A-Za-z0-9._~/-]", "_", path)[:192] or "/"
     return "/invalid-path"
 

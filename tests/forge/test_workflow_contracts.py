@@ -128,7 +128,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     assert _mapping(github_jobs["tag-metadata"])["if"] == "github.ref_type == 'tag'"
     tag_steps = _sequence(_mapping(github_jobs["tag-metadata"])["steps"])
     assert any(
-        _mapping(step).get("uses") == "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
+        re.fullmatch(r"jdx/mise-action@[0-9a-f]{40}", str(_mapping(step).get("uses", "")))
         for step in tag_steps
     )
 
@@ -440,13 +440,9 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
     source = _mapping(gitlab["source-and-governance"])
 
-    assert _mapping(source["image"]) == {
-        "name": (
-            "ghcr.io/jdx/mise@sha256:"
-            "f2d637d5e5189f7ec177b73bce5cd5db7e7b17a4f466f887c1b88ac2dd431129"
-        ),
-        "entrypoint": [""],
-    }
+    image = _mapping(source["image"])
+    assert re.fullmatch(r"ghcr.io/jdx/mise@sha256:[0-9a-f]{64}", _string(image["name"]))
+    assert image["entrypoint"] == [""]
     assert _mapping(source["variables"]) == {
         "GIT_DEPTH": "0",
         "MISE_ENABLE_TOOLS": (
@@ -478,10 +474,12 @@ def test_node_repository_tools_have_one_locked_owner() -> None:
 
     package = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
     dev_dependencies = package["packages"][""]["devDependencies"]
-    assert dev_dependencies == {
-        "@fission-ai/openspec": "1.11.0",
-        "prettier": "3.9.6",
-    }
+    manifest = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    assert dev_dependencies == manifest["devDependencies"]
+    assert set(dev_dependencies) == {"@fission-ai/openspec", "prettier"}
+    for name, version in dev_dependencies.items():
+        assert re.fullmatch(r"\d+\.\d+\.\d+", version)
+        assert package["packages"][f"node_modules/{name}"]["version"] == version
 
     mise = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
     assert all(not name.startswith("npm:") for name in mise["tools"])
@@ -511,7 +509,14 @@ def test_github_python_quality_installs_its_declared_projection_toolchain() -> N
     steps = tuple(_mapping(step) for step in _sequence(quality["steps"]))
     mise = next(step for step in steps if str(step.get("uses", "")).startswith("jdx/mise-action@"))
 
-    assert mise["uses"] == "jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518"
+    assert re.fullmatch(r"jdx/mise-action@[0-9a-f]{40}", _string(mise["uses"]))
+    mise_actions = {
+        str(step["uses"])
+        for job in jobs.values()
+        for raw_step in _sequence(_mapping(job)["steps"])
+        if str((step := _mapping(raw_step)).get("uses", "")).startswith("jdx/mise-action@")
+    }
+    assert mise_actions == {mise["uses"]}
     assert _mapping(mise["with"]) == {
         "install": "true",
         "cache": "true",

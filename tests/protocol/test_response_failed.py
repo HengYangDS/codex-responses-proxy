@@ -242,10 +242,10 @@ class ResponseFailedContracts:
         assert not response_failed.tool_pair_boundary_is_safe(items, 1)
 
     def test_response_failed_rejects_invalid_compaction_and_recovery_boundaries(self, subtests):
-        common = ((b"not-json", None), (b"[]", None), (b'{"input":[]}', None))
+        common = ((b"not-json", 1024), (b"[]", 1024), (b'{"input":[]}', 1024))
         self.assert_rejected(
             response_failed.compact_request,
-            (*common, (b'{"input":[1,2]}', None), (b'{"input":[{},{}]}', 0)),
+            (*common, (b'{"input":[1,2]}', 1024), (b'{"input":[{},{}]}', 0)),
             subtests,
         )
         valid = _body([_message("user", "old"), _message("user", "current")])
@@ -255,7 +255,7 @@ class ResponseFailedContracts:
                 *common,
                 (
                     b'{"input":[{"type":"message","role":"developer","content":"x"}]}',
-                    None,
+                    1024,
                 ),
                 (valid, 0),
                 (valid, 1),

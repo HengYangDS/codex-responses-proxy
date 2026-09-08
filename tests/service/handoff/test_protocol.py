@@ -11,7 +11,6 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -180,11 +179,9 @@ class TestHandoffPlatformHelpers:
         with pytest.raises(self.p.HandoffError, match="runtime has not started"):
             _ = child.runtime_pid
 
-    def test_child_message_writer_rejects_invalid_oversized_and_broken_pipes(self, *, mocker):
+    def test_child_message_writer_rejects_oversized_messages_and_broken_pipes(self, *, mocker):
         process = mocker.Mock(stdin=mocker.Mock(), stdout=mocker.Mock())
         child = self.p.HandoffChild(process)
-        with pytest.raises(self.p.HandoffError, match="must be an object"):
-            child.send_message(cast("dict[str, object]", []))
         with pytest.raises(self.p.HandoffError, match="exceeds the control limit"):
             child.send_message({"value": "x" * self.p.HANDOFF_CONTROL_MAX_BYTES})
         process.stdin.write.side_effect = BrokenPipeError

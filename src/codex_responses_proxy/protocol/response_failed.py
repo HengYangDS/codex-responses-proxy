@@ -51,7 +51,7 @@ def _request(raw: bytes, minimum_items: int = 1) -> Request | None:
 
 def _budget(raw: bytes, budget: int) -> int | None:
     """Bound a positive caller budget by the required compaction ratio."""
-    if not isinstance(budget, int) or budget <= 0:
+    if budget <= 0:
         return None
     return min(budget, max(1, len(raw) // COMPACTION_RATIO_DENOMINATOR))
 

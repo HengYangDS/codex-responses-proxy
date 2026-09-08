@@ -6,9 +6,8 @@ import hashlib
 import json
 import subprocess
 import tempfile
+from dataclasses import replace
 from pathlib import Path
-from typing import Literal
-from typing import cast
 
 import pytest
 
@@ -73,33 +72,19 @@ class TestPayloadValidation:
         ]
         blob = blobs[0]
 
-        def altered_blob(
-            *,
-            mode: Literal["100644", "100755"] = blob.mode,
-            sha256: str = blob.sha256,
-            content: bytes = blob.content,
-        ) -> artifact.ArtifactFile:
-            return artifact.ArtifactFile(
-                path=blob.path,
-                mode=mode,
-                blob_oid=blob.blob_oid,
-                sha256=sha256,
-                content=content,
-            )
+        invalid_mode = replace(blob)
+        object.__setattr__(invalid_mode, "mode", "100600")
 
         cases += (
             (
-                (
-                    altered_blob(mode=cast("Literal['100644', '100755']", "100600")),
-                    *blobs[1:],
-                ),
+                (invalid_mode, *blobs[1:]),
                 "1.2.3",
                 "0" * 64,
                 receipt,
                 "mode is invalid",
             ),
             (
-                (altered_blob(sha256="0" * 64), *blobs[1:]),
+                (replace(blob, sha256="0" * 64), *blobs[1:]),
                 "1.2.3",
                 "0" * 64,
                 receipt,
