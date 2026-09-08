@@ -262,6 +262,13 @@ or requires an identity already discarded during cleanup. Interrupted cleanup
 continues to block a new transaction. Unrecognized journals and unowned roots
 remain protected, not inferred into a cleanup permission.
 
+Interrupted upgrade and retained rollback use one prior-generation recovery
+path. It admits only the journal's exact before or after selection and verifies
+the prior serving identity before mutation. Once selection and command
+projection are restored, a supervisor-binding retry does not detach, select, or
+project again. Retaining the rollback target changes disposal ownership, not
+the validation or recovery algorithm; selection drift remains unowned state.
+
 Purge uses that same journal after proving native-service absence and owned
 process exit. Its terminal record contains the verified, root-relative file
 digests. Selection is detached first; disposal checks remaining bytes against

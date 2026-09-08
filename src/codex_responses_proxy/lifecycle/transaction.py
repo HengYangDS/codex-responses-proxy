@@ -106,7 +106,7 @@ def recover(
             runtime=runtime,
             bind_terminal=bind_terminal,
         )
-    return _rollback_upgrade(
+    return _restore_prior_generation(
         ctx,
         journal=journal,
         runtime=runtime,
@@ -352,41 +352,16 @@ def _require_unchanged_prior_terminal(
         )
 
 
-def _rollback_upgrade(
+def _restore_prior_generation(
     ctx: runtime_context.RuntimeContext,
     *,
     journal: Mapping[str, object],
     runtime: Mapping[str, object] | None,
     bind_terminal: Callable[[runtime_context.RuntimeContext], None],
 ) -> dict[str, object]:
-    """Restore one exact retained upgrade bound to its prior live runtime."""
+    """Restore the exact prior selection once and bind its proven live runtime."""
     rollback = state.transaction_root(ctx) / "rollback"
     command_snapshot = command.read_snapshot(rollback)
-    if _reuses_retained_generation(journal):
-        previous_generation = str(journal["previous_generation"])
-        previous_ctx = generation.context(ctx, previous_generation)
-        previous = identity.committed_payload(Path(previous_ctx.executable))
-        if previous is None or not _runtime_matches_projection(runtime, previous):
-            raise errors.RecoveryStateError(
-                "payload recovery runtime does not match the prior selected generation"
-            )
-        selection = generation.Selection(
-            previous_generation,
-            str(journal["transaction_id"]),
-        )
-        command.detach(
-            Path(ctx.command),
-            Path(generation.context(ctx, str(journal["transaction_id"])).executable),
-            command_snapshot,
-        )
-        generation.select(ctx, active=selection.active, predecessor=selection.predecessor)
-        command.restore(
-            Path(ctx.command),
-            Path(generation.control_context(ctx).executable),
-            command_snapshot,
-        )
-        bind_terminal(generation.control_context(ctx))
-        return _complete_transaction(ctx, journal, outcome="rolled_back")
     previous_generation = journal.get("previous_generation")
     selection = generation.read(ctx)
     restored = (

@@ -453,6 +453,37 @@ class TestPayloadTransaction:
         with pytest.raises(errors.RecoveryStateError, match="prior selected generation"):
             recover_transaction(ctx, runtime=wrong_runtime)
 
+    def test_reverse_recovery_preserves_selection_outside_its_transaction(
+        self, tmp_path: Path, *, mocker
+    ) -> None:
+        """A reverse recovery owns only its exact before and after selection."""
+        ctx = install_context(tmp_path)
+        install_payload(ctx, "1.2.2", mocker=mocker)
+        successor = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
+        successor.commit_projection()
+        successor.activate()
+        successor.finalize({"pid": 2})
+        retained = payload_rollback.load_retained(ctx)
+        reverse = payload_transaction.begin_rollback_transaction(ctx, retained)
+        reverse.commit_projection()
+        reverse.activate()
+        reverse.preserve_for_recovery("rollback controller outcome unknown")
+        payload_generation.select(
+            ctx, active=str(reverse.expected["transaction_id"]), predecessor=None
+        )
+        selection = payload_generation.read(ctx)
+        before = _retained_carrier_snapshot(Path(ctx.install_dir), tmp_path / "unused")
+        binder = mocker.Mock()
+
+        with pytest.raises(errors.RecoveryStateError, match="prior selected generation"):
+            recover_transaction(
+                ctx, runtime=recovery_runtime(retained.successor), bind_terminal=binder
+            )
+
+        assert payload_generation.read(ctx) == selection
+        assert _retained_carrier_snapshot(Path(ctx.install_dir), tmp_path / "unused") == before
+        binder.assert_not_called()
+
     def test_unselected_reverse_recovery_does_not_require_an_unused_command_snapshot(
         self, tmp_path: Path, *, mocker
     ) -> None:
@@ -1785,14 +1816,23 @@ class TestPayloadTransaction:
         assert not Path(payload_state.transaction_root(ctx)).exists()
         assert not Path(candidate.context.payload_dir).exists()
 
+    @pytest.mark.parametrize("reverse", [False, True], ids=["upgrade", "retained-rollback"])
     def test_activated_rollback_retries_terminal_binding_without_replaying_handoff(
-        self, *, mocker
+        self, tmp_path: Path, reverse: bool, *, mocker
     ) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+        ctx = install_context(tmp_path)
         predecessor = install_payload(ctx, "1.2.2", mocker=mocker)
         candidate = begin_transaction(ctx, released_artifact("1.2.3"), mocker=mocker)
         candidate.commit_projection()
         candidate.activate()
+        if reverse:
+            candidate.finalize({"pid": 2})
+            predecessor = candidate
+            candidate = payload_transaction.begin_rollback_transaction(
+                ctx, payload_rollback.load_retained(ctx)
+            )
+            candidate.commit_projection()
+            candidate.activate()
         candidate.preserve_for_recovery("handoff outcome unknown")
         predecessor_identity = listener_identity.committed_payload(
             Path(predecessor.context.executable)
@@ -1800,30 +1840,25 @@ class TestPayloadTransaction:
         assert predecessor_identity is not None
         runtime = recovery_runtime(predecessor_identity)
         bind_terminal = mocker.Mock(side_effect=errors.InstallError("bind failed"))
+        select = mocker.spy(payload_generation, "select")
 
         with pytest.raises(errors.InstallError, match="bind failed"):
-            recover_transaction(
-                ctx,
-                runtime=runtime,
-                bind_terminal=bind_terminal,
-            )
+            recover_transaction(ctx, runtime=runtime, bind_terminal=bind_terminal)
 
         assert Path(payload_state.transaction_root(ctx)).is_dir()
         assert Path(candidate.context.payload_dir).is_dir()
         assert payload_generation.selected_context(ctx) == predecessor.context
+        assert select.call_count == 1
         bind_terminal.reset_mock(side_effect=True)
         bind_terminal.side_effect = None
 
-        result = recover_transaction(
-            ctx,
-            runtime=runtime,
-            bind_terminal=bind_terminal,
-        )
+        result = recover_transaction(ctx, runtime=runtime, bind_terminal=bind_terminal)
 
         assert result["state"] == "rolled_back"
         bind_terminal.assert_called_once_with(predecessor.context)
+        assert select.call_count == 1
         assert not Path(payload_state.transaction_root(ctx)).exists()
-        assert not Path(candidate.context.payload_dir).exists()
+        assert Path(candidate.context.payload_dir).exists() is reverse
 
     def test_recovery_binds_only_the_terminal_generation_once(self, *, mocker) -> None:
         ctx = install_context(Path(tempfile.mkdtemp()))
