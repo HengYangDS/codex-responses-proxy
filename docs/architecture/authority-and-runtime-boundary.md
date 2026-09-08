@@ -137,6 +137,14 @@ The request projection removes response, conversation, cache, provider-issued
 item, search, and encrypted-reasoning bindings. It retains portable dialogue
 and complete tool relationships. Unknown or unsafe structures fail locally.
 
+The item policy owns ordered tool relationships as well as item classification.
+Projection, diagnostics, and recovery consume the same request-local relationship
+state: one call identity, its declared output kind, and at most one output after
+that call. A repeated call cannot replace the original identity. Recovery checks
+each retained suffix through this owner rather than treating a matching ID alone
+as proof of a valid pair. Pending portable calls remain observable; a local-only
+call may be removed only with its complete output relationship.
+
 The live-response boundary preserves encrypted control content needed for the
 current turn. Portability is applied only if a later request replays that
 output. Empty, truncated, malformed, oversized, or non-terminal success bodies
