@@ -76,6 +76,16 @@ and signing remain release-construction concerns. Git reference projection,
 repository settings, and runner admission remain Forge concerns rather than a
 second release publication mechanism.
 
+Publication identity includes what users can download, not merely a matching
+asset-name inventory. The GitLab adapter compares the complete expected link
+records (name, URL, type), allowing only response ordering and server-assigned
+metadata to vary. Every success path ends by reading and validating the
+persisted Release after verifying package bytes, including first creation,
+existing Release reuse, and concurrent creation. Signed package verification
+and Release-link verification protect different boundaries; neither replaces
+the other. An isolated HTTP store proves these adapter contracts without
+claiming real Forge publication or changing an installed product.
+
 Release construction has one semantic owner under `tools/release/artifact`.
 `bundle` normalizes frozen inputs and packages one native target; `format` owns
 archive, manifest, and checksum grammar; `assembly` admits one complete release

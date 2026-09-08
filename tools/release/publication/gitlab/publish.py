@@ -108,20 +108,14 @@ def publish(
             f"{api_base.rstrip('/')}/projects/{project_id}/packages/generic/"
             f"{product_identity.PRODUCT_SLUG}/{tag}"
         )
+        links = [
+            {"name": item, "url": f"{asset_base}/{item}", "link_type": "package"} for item in names
+        ]
         release = {
             "tag_name": tag,
             "name": product_identity.release_title(tag),
             "description": "Provider-native source release. See CHANGELOG.md for user-relevant changes.",
-            "assets": {
-                "links": [
-                    {
-                        "name": item,
-                        "url": f"{asset_base}/{item}",
-                        "link_type": "package",
-                    }
-                    for item in names
-                ]
-            },
+            "assets": {"links": links},
         }
         endpoint = f"{api_base.rstrip('/')}/projects/{project_id}/releases"
         try:
@@ -129,7 +123,7 @@ def publish(
         except _GitLabResourceMissingError:
             existing = None
         else:
-            _require_matching_release(existing, release, names)
+            _require_matching_release(existing, release, links)
         for asset_name in names:
             payload = (root / asset_name).read_bytes()
             try:
@@ -153,41 +147,47 @@ def publish(
             (downloaded / asset_name).write_bytes(received)
         if _verify(downloaded, trust) != names:
             raise GitLabPublishError("GitLab release asset inventory differs after upload")
-        if existing is not None:
-            return "matched"
-        try:
-            _request(
-                endpoint,
-                token,
-                credential_kind,
-                data=json.dumps(release).encode(),
-                method="POST",
-            )
-            return "created"
-        except FileExistsError:
-            existing = json.loads(_request(f"{endpoint}/{tag}", token, credential_kind))
-            _require_matching_release(existing, release, names)
-            return "matched"
+        result = "matched"
+        if existing is None:
+            try:
+                _request(
+                    endpoint,
+                    token,
+                    credential_kind,
+                    data=json.dumps(release).encode(),
+                    method="POST",
+                )
+                result = "created"
+            except FileExistsError:
+                pass
+        persisted = json.loads(_request(f"{endpoint}/{tag}", token, credential_kind))
+        _require_matching_release(persisted, release, links)
+        return result
 
 
 def _require_matching_release(
-    existing: object, expected: Mapping[str, object], names: list[str]
+    existing: object, expected: Mapping[str, object], expected_links: list[dict[str, str]]
 ) -> None:
     """Require one existing Release to equal the requested immutable identity."""
     if not isinstance(existing, Mapping):
         raise GitLabPublishError("existing GitLab release does not match immutable identity")
     assets = existing.get("assets")
     links = assets.get("links") if isinstance(assets, Mapping) else None
-    link_names = (
-        sorted(link.get("name") for link in links if isinstance(link, Mapping))
-        if isinstance(links, list)
-        else []
-    )
+    observed_links: list[dict[str, str]] = []
+    if isinstance(links, list):
+        for link in links:
+            match link:
+                case {"name": str(name), "url": str(url), "link_type": str(link_type)}:
+                    observed_links.append({"name": name, "url": url, "link_type": link_type})
+                case _:
+                    raise GitLabPublishError(
+                        "existing GitLab release does not match immutable identity"
+                    )
     if (
         existing.get("tag_name") != expected["tag_name"]
         or existing.get("name") != expected["name"]
         or existing.get("description") != expected["description"]
-        or link_names != names
+        or sorted(observed_links, key=lambda link: link["name"]) != expected_links
     ):
         raise GitLabPublishError("existing GitLab release does not match immutable identity")
 
