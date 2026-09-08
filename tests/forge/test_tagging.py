@@ -30,7 +30,6 @@ def _run(*args: str, cwd: Path, environment: dict[str, str] | None = None) -> st
 @pytest.fixture
 def tag_fixture(monkeypatch):
     """Create one signed source and two independent peers without personal state."""
-
     if os.name == "nt" or any(shutil.which(name) is None for name in ("ssh-agent", "ssh-add")):
         pytest.skip("OpenSSH agent integration is unavailable")
     with tempfile.TemporaryDirectory() as name:

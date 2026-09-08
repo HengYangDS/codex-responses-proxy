@@ -40,7 +40,6 @@ def recovery_runtime(
     candidate_identity: listener_identity.LoadedPayloadIdentity | None = None,
 ) -> dict[str, object]:
     """Project one accepting runtime for one exact committed payload."""
-
     return {
         "pid": 321,
         "release": runtime_identity.release,

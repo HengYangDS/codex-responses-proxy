@@ -18,7 +18,7 @@ ROOT = Path(__file__).parent.resolve()
 PYTHONS = tuple((ROOT / ".python-versions").read_text(encoding="utf-8").splitlines())
 MIN_PYTHON, *_, MAX_PYTHON = PYTHONS
 RELEASE_PYTHON = (ROOT / ".python-release").read_text(encoding="utf-8").strip()
-ROOTS = ("src/codex_responses_proxy", "tools", "tests")
+ROOTS = ("src/codex_responses_proxy", "tools", "tests", "noxfile.py")
 RUFF_CONFIG = ROOT / ".config/quality/native/ruff.toml"
 TY_CONFIG = ROOT / ".config/quality/native/ty.toml"
 COVERAGE_CONFIG = ROOT / ".config/quality/native/coverage.ini"
@@ -33,6 +33,19 @@ nox.options.reuse_existing_virtualenvs = False
 def quick(session: nox.Session) -> None:
     """Run the cheapest deterministic contract and source checks."""
     _install_tools(session)
+    _static_checks(session)
+    session.run(
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/quality/test_contract.py",
+        env=_environment(),
+    )
+
+
+def _static_checks(session: nox.Session) -> None:
+    """Run one policy and scope for editing feedback and full acceptance."""
     environment = _environment()
     session.run(
         "ruff",
@@ -53,29 +66,22 @@ def quick(session: nox.Session) -> None:
         ".",
         env=environment,
     )
-    session.run(
-        "ruff",
-        "check",
-        "--config",
-        str(RUFF_CONFIG),
-        "--select",
-        "D",
-        "--no-cache",
-        "src",
-        "tools",
-        "noxfile.py",
-        env=environment,
-    )
     session.run("python", "tools/quality/text_layout.py", env=environment)
     session.run("python", "-m", "tools.quality.responsibilities", env=environment)
     session.run("python", "-m", "tools.quality.hard_coding", env=environment)
     session.run("python", "-m", "tools.quality.repository", env=environment)
     session.run(
-        "python",
-        "-m",
-        "pytest",
-        "-q",
-        "tests/quality/test_contract.py",
+        "ty",
+        "check",
+        "--config-file",
+        str(TY_CONFIG),
+        "--python-version",
+        MIN_PYTHON,
+        "--python-platform",
+        "all",
+        "--error-on-warning",
+        "--no-progress",
+        *ROOTS,
         env=environment,
     )
 
@@ -122,56 +128,7 @@ def quality(session: nox.Session) -> None:
         **_environment(),
         product_identity.environment_name("EXECUTABLE"): str(_installed_executable(session)),
     }
-    session.run(
-        "ruff",
-        "check",
-        "--config",
-        str(RUFF_CONFIG),
-        "--no-cache",
-        ".",
-        env=environment,
-    )
-    session.run(
-        "ruff",
-        "format",
-        "--config",
-        str(RUFF_CONFIG),
-        "--no-cache",
-        "--check",
-        ".",
-        env=environment,
-    )
-    session.run(
-        "ruff",
-        "check",
-        "--config",
-        str(RUFF_CONFIG),
-        "--select",
-        "D",
-        "--no-cache",
-        "src",
-        "tools",
-        "noxfile.py",
-        env=environment,
-    )
-    session.run("python", "tools/quality/text_layout.py", env=environment)
-    session.run("python", "-m", "tools.quality.responsibilities", env=environment)
-    session.run("python", "-m", "tools.quality.hard_coding", env=environment)
-    session.run("python", "-m", "tools.quality.repository", env=environment)
-    session.run(
-        "ty",
-        "check",
-        "--config-file",
-        str(TY_CONFIG),
-        "--python-version",
-        MIN_PYTHON,
-        "--python-platform",
-        "all",
-        "--error-on-warning",
-        "--no-progress",
-        *ROOTS,
-        env=environment,
-    )
+    _static_checks(session)
     session.run("coverage", "erase", "--rcfile", str(COVERAGE_CONFIG), env=environment)
     session.run(
         "coverage",

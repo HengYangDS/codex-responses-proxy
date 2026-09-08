@@ -14,7 +14,6 @@ from tests.lifecycle.fixtures import assert_private_log_mode
 
 def load_watchdog():
     """Load a fresh watchdog module so tests cannot share mutable globals."""
-
     return importlib.reload(watchdog)
 
 

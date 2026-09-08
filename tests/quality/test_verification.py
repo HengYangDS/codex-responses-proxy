@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import os
 import re
 import subprocess
@@ -13,6 +14,7 @@ from types import ModuleType
 
 import pytest
 import yaml
+from nox.command import CommandFailed
 from pytest_mock import MockerFixture
 
 from tests.quality.fixtures import ROOT
@@ -27,7 +29,6 @@ def nox_configuration() -> ModuleType:
 
 def _load_yaml(path: Path) -> dict[str, object]:
     """Load a workflow as semantic data rather than presentation text."""
-
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(data, dict)
     assert all(isinstance(key, str) for key in data)
@@ -275,7 +276,6 @@ class TestVerificationContracts:
 
     def test_nox_tool_environment_contains_product_runtime_dependencies(self) -> None:
         """Repository tools must run from one lock-derived, self-contained environment."""
-
         source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         install_tools = next(
@@ -343,7 +343,6 @@ class TestVerificationContracts:
         self,
     ) -> None:
         """Keep containerized construction independent of a host service manager."""
-
         source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
@@ -358,7 +357,6 @@ class TestVerificationContracts:
         self,
     ) -> None:
         """A release candidate must upgrade a real signed predecessor, never a relabeled build."""
-
         source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
@@ -512,6 +510,109 @@ class TestVerificationContracts:
             env=nox_configuration._environment(),
         )
 
+    @pytest.mark.parametrize("session_name", ["quick", "quality"])
+    def test_static_checks_cover_the_same_source_and_configuration_scope(
+        self,
+        session_name: str,
+        tmp_path: Path,
+        mocker: MockerFixture,
+        nox_configuration: ModuleType,
+    ) -> None:
+        session = mocker.Mock()
+        session.create_tmp.return_value = str(tmp_path)
+        for name in (
+            "_install_tools",
+            "_build_wheel",
+            "_install_wheel",
+            "_assert_installed_product",
+        ):
+            mocker.patch.object(nox_configuration, name)
+        mocker.patch.object(
+            nox_configuration, "_installed_executable", return_value=tmp_path / "proxy"
+        )
+
+        getattr(nox_configuration, session_name)(session)
+
+        calls = [call.args for call in session.run.call_args_list]
+        (lint,) = [call for call in calls if call[:2] == ("ruff", "check")]
+        assert lint[lint.index("--config") + 1] == str(nox_configuration.RUFF_CONFIG)
+        (typing,) = [call for call in calls if call[:2] == ("ty", "check")]
+        assert set(typing[-4:]) == {"src/codex_responses_proxy", "tools", "tests", "noxfile.py"}
+        assert typing[typing.index("--python-platform") + 1] == "all"
+        assert typing[typing.index("--python-version") + 1] == nox_configuration.MIN_PYTHON
+
+    @pytest.mark.parametrize("session_name", ["quick", "quality"])
+    def test_static_failure_stops_acceptance_before_behavioral_gates(
+        self,
+        session_name: str,
+        tmp_path: Path,
+        mocker: MockerFixture,
+        nox_configuration: ModuleType,
+    ) -> None:
+        session = mocker.Mock()
+        session.create_tmp.return_value = str(tmp_path)
+        for name in (
+            "_install_tools",
+            "_build_wheel",
+            "_install_wheel",
+            "_assert_installed_product",
+        ):
+            mocker.patch.object(nox_configuration, name)
+        mocker.patch.object(
+            nox_configuration, "_installed_executable", return_value=tmp_path / "proxy"
+        )
+        failure = CommandFailed("source validation failed", return_code=1)
+        session.run.side_effect = failure
+
+        with pytest.raises(CommandFailed) as raised:
+            getattr(nox_configuration, session_name)(session)
+
+        assert raised.value is failure
+        session.run.assert_called_once()
+        assert session.run.call_args.args[:2] == ("ruff", "check")
+
+    @pytest.mark.parametrize(
+        ("relative", "source", "expected"),
+        [
+            (
+                "src/codex_responses_proxy/probe.py",
+                "def answer():\n    return 42\n",
+                {"D100", "D103"},
+            ),
+            ("tools/probe.py", "def answer():\n    return 42\n", {"D100", "D103"}),
+            ("noxfile.py", "def answer():\n    return 42\n", {"D100", "D103"}),
+            ("tests/probe.py", "def answer():\n    return 42\n", set()),
+            (
+                "tests/probe.py",
+                'def answer():\n    """Return the answer"""\n    return 42\n',
+                {"D415"},
+            ),
+        ],
+    )
+    def test_native_ruff_applies_documentation_policy_by_semantic_role(
+        self, relative: str, source: str, expected: set[str]
+    ) -> None:
+        result = subprocess.run(
+            (
+                "ruff",
+                "check",
+                "--config",
+                str(ROOT / ".config/quality/native/ruff.toml"),
+                "--output-format",
+                "json",
+                "--stdin-filename",
+                str(ROOT / relative),
+                "-",
+            ),
+            input=source,
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            check=False,
+        )
+        assert result.returncode == bool(expected), result.stderr
+        assert {item["code"] for item in json.loads(result.stdout)} == expected
+
     def test_repository_declares_the_supported_python_matrix_once(self) -> None:
         assert (ROOT / ".python-versions").read_text(encoding="utf-8") == "3.12\n3.13\n3.14\n"
         assert (ROOT / ".python-release").read_text(encoding="utf-8") == "3.14.7\n"
@@ -575,7 +676,6 @@ class TestVerificationContracts:
 
     def test_release_collects_ctypes_as_source_outside_the_pyz_archive(self) -> None:
         """Avoid marshal identity drift in the Python 3.14 ``ctypes`` code object."""
-
         source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
         hook = ROOT / "tools" / "release" / "hooks" / "hook-ctypes.py"
 
@@ -597,7 +697,6 @@ class TestVerificationContracts:
         self, mocker: MockerFixture, nox_configuration: ModuleType
     ) -> None:
         """Compare the release session interpreter, not the Nox launcher."""
-
         session = mocker.Mock()
         session.run.return_value = "3.14.7\n"
 
@@ -641,7 +740,6 @@ class TestVerificationContracts:
 
     def test_performance_is_an_independent_locked_proof_surface(self) -> None:
         """Performance must be measured explicitly, not inferred from functional tests."""
-
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         quality = metadata["dependency-groups"]["quality"]
         assert "pyperf==2.10.0" in quality

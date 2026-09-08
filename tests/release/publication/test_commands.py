@@ -201,7 +201,6 @@ def test_github_predecessor_cli_projects_the_exact_tag_to_github_environment(
     *, mocker, capsys, tmp_path
 ) -> None:
     """Project the exact tag without depending on the runner's command shell."""
-
     resolve = mocker.patch.object(github_observer, "published_predecessor", return_value="v3.1.0")
     environment = tmp_path / "github-environment"
 

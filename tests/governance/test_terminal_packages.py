@@ -40,7 +40,6 @@ class TerminalPackageContracts:
 
     def test_verified_native_artifact_has_one_semantic_owner(self) -> None:
         """The runtime transaction consumes an admitted artifact, never source checkout state."""
-
         lifecycle = PACKAGE_ROOT / "lifecycle"
         assert (lifecycle / "artifact.py").is_file()
         assert not (lifecycle / "source.py").exists()

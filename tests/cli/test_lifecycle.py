@@ -504,7 +504,6 @@ class CliLifecycleContracts:
         self,
     ) -> None:
         """Doctor must not contradict the status owner's verified runtime."""
-
         evidence = {
             "state": "running",
             "release": "3.1.3",

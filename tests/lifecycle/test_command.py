@@ -46,7 +46,6 @@ def test_windows_command_path_uses_the_user_application_alias_directory() -> Non
 
 def assert_native_projection(command_path: Path, target: Path) -> None:
     """Assert the selected projection owns the exact installed executable."""
-
     expected_kind = "launcher" if command_path.suffix.casefold() == ".cmd" else "symlink"
     assert command.status(command_path, target) == {
         "state": "owned",

@@ -46,7 +46,6 @@ def _macos_service_projection() -> tuple[
     frozenset[str], frozenset[tuple[str, str]], tuple[tuple[str, str], ...]
 ]:
     """Return every persistent launchd surface owned by this product."""
-
     completed = subprocess.run(
         ["/bin/launchctl", "list"],
         capture_output=True,
@@ -90,7 +89,6 @@ def _macos_service_projection() -> tuple[
 @pytest.fixture(scope="module")
 def preserve_native_host_projection():
     """Prove one native test module leaves the host projection unchanged."""
-
     if sys.platform != "darwin" or "CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE" not in os.environ:
         yield
         return
@@ -106,7 +104,6 @@ def run_command(
     expected: int = 0,
 ) -> dict[str, object]:
     """Run one native command and require clean machine-readable output."""
-
     result = subprocess.run(
         [str(executable), *arguments],
         env=environment,
@@ -135,7 +132,6 @@ def signed_asset(
     trust: str,
 ) -> Path:
     """Build one route-controlled asset from exact native bundle bytes."""
-
     platform_id = product_identity.native_release_platform(platform.system(), platform.machine())
     executable_name = product_identity.executable_name(windows=platform_id.startswith("windows-"))
     executable = bundle / executable_name
@@ -173,7 +169,6 @@ def signed_asset(
 
 def post_response(port: int, *, stream: bool = False, timeout: float = 15) -> bytes:
     """Send one unproxied Responses request to an isolated listener."""
-
     body = b'{"stream": true, "input": []}' if stream else b'{"stream": false, "input": []}'
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}/dmxapi/v1/responses",
@@ -192,7 +187,6 @@ def runtime_context_for(
     home: Path, install: Path, state: Path, port: int
 ) -> runtime_context.RuntimeContext:
     """Return one isolated native lifecycle context."""
-
     environment = native_process_environment(
         user_home=home,
         install_root=install,
@@ -212,7 +206,6 @@ def runtime_context_for(
 
 def native_service_projection(ctx: runtime_context.RuntimeContext) -> dict[str, object]:
     """Return the exact native-service and process state owned by one context."""
-
     service = native_service.adapter()
     return {
         "service_id": ctx.service_id,
@@ -233,7 +226,6 @@ def _process_contexts(
     ctx: runtime_context.RuntimeContext,
 ) -> tuple[runtime_context.RuntimeContext, ...]:
     """Include selected, unselected, and legacy executable identities for teardown."""
-
     contexts = (*owned_runtime_contexts(ctx), ctx)
     unique: dict[str, runtime_context.RuntimeContext] = {}
     for owned_ctx in contexts:
@@ -243,7 +235,6 @@ def _process_contexts(
 
 def cleanup_runtime(ctx: runtime_context.RuntimeContext, wrapper: Path | None = None) -> None:
     """Stop only processes and launch configuration owned by an isolated test."""
-
     service = native_service.adapter()
     owned_contexts = _process_contexts(ctx)
     configured = service.configured_executable(ctx)

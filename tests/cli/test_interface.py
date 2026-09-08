@@ -331,7 +331,6 @@ class ProductInterfaceContracts:
         self, tmp_path: Path, relative_roots: bool, *, monkeypatch
     ) -> None:
         """Require a real absent-installation report, not an accepted error exit."""
-
         executable = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
         if executable is None:
             pytest.skip("native executable supplied by release session")

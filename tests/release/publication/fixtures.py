@@ -66,7 +66,6 @@ def forge_evidence(*, items: list[dict[str, object]] | None = None) -> dict[str,
 
 def verified_evidence(evidence: Mapping[str, object], *, mocker) -> Mapping[str, object]:
     """Run ``publication.verify`` with offline Forge adapters."""
-
     forges = evidence["forges"]
     assert isinstance(forges, Mapping)
     assert all(isinstance(key, str) for key in forges)

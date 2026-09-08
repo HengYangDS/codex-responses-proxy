@@ -344,7 +344,6 @@ class TestSignedNativeLifecycle:
         interruption: type[BaseException],
     ) -> None:
         """Leave no native service behind when a test aborts after installation."""
-
         executable_value = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
         assert executable_value is not None, "native executable must be supplied by release session"
         executable = Path(executable_value).resolve(strict=True)

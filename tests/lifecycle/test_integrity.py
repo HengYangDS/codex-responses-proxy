@@ -311,7 +311,6 @@ class TestPayloadValidation:
         self, tmp_path: Path, *, mocker
     ) -> None:
         """Exercise each fail-closed filesystem type boundary without private host paths."""
-
         with pytest.raises(errors.InstallError, match="non-empty string"):
             owned_files.canonical_relative(None, "fixture")
 

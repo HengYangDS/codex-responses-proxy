@@ -36,7 +36,6 @@ def _load_yaml(path: Path) -> dict[str, object]:
 
 def _mapping(value: object) -> Mapping[str, object]:
     """Narrow one parsed workflow mapping for typed contract assertions."""
-
     assert isinstance(value, Mapping)
     assert all(isinstance(key, str) for key in value)
     return {str(key): item for key, item in value.items()}
@@ -64,7 +63,6 @@ def _string(value: object) -> str:
 @pytest.mark.repository_toolchain
 def test_forge_workflows_are_generated_from_one_declarative_graph() -> None:
     """Keep Forge syntax as projections, never independent topology owners."""
-
     projector = (ROOT / "tools" / "ci" / "project.py").read_text(encoding="utf-8")
     governance = (ROOT / "tools" / "quality" / "governance.py").read_text(encoding="utf-8")
     assert 'sys.executable, "-m", "tools.ci.project"' in governance
@@ -106,7 +104,6 @@ def test_github_actions_consume_one_immutable_toolchain_catalog() -> None:
 
 def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     """Project the same lifecycle contexts without duplicate proposal pipelines."""
-
     github = _load_yaml(ROOT / ".github/workflows/verify.yml")
     github_triggers = github["on"]
     assert github_triggers == {
@@ -209,7 +206,6 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
 
 def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:
     """Make the source package importable while Nox loads its release sessions."""
-
     jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
     expected = {
         "native-assets": "uv sync --locked --group quality",
@@ -240,7 +236,6 @@ def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:
 
 def test_linux_asset_build_and_native_lifecycle_have_distinct_execution_hosts() -> None:
     """Keep reproducible Linux construction separate from real systemd acceptance."""
-
     jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
     build = _mapping(jobs["native-linux"])
     lifecycle = _mapping(jobs["native-linux-lifecycle"])
@@ -279,7 +274,6 @@ def test_linux_asset_build_and_native_lifecycle_have_distinct_execution_hosts() 
 
 def test_release_compatibility_runs_real_published_upgrade_on_each_platform() -> None:
     """Exercise one authentic published predecessor before every accepted patch."""
-
     jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
     compatibility = _mapping(jobs["release-compatibility"])
     assert compatibility["runs-on"] == "${{ matrix.runner }}"
@@ -419,7 +413,6 @@ def test_native_release_runtime_is_exact_and_platform_independent() -> None:
 
 def test_native_bundle_is_built_and_signed_once_in_release_graph() -> None:
     """Keep native construction and product signing in one authoritative workflow."""
-
     verify = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
     assert verify.count("uv run --locked --no-sync python -m tools.release.artifact assemble") == 1
     assert verify.count("--sign") == 1
@@ -428,7 +421,6 @@ def test_native_bundle_is_built_and_signed_once_in_release_graph() -> None:
 
 def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     """Start verification from immutable UV/Python executors, not pip bootstrap."""
-
     text = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
     default = _mapping(gitlab["default"])
@@ -454,7 +446,6 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
 
 def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
     """Run source policy from the immutable mise image and repository lock."""
-
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
     source = _mapping(gitlab["source-and-governance"])
 
@@ -489,7 +480,6 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
 
 def test_node_repository_tools_have_one_locked_owner() -> None:
     """Install Node tools from the repository lock, never the mise npm backend."""
-
     package = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
     dev_dependencies = package["packages"][""]["devDependencies"]
     manifest = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
@@ -521,7 +511,6 @@ def test_node_repository_tools_have_one_locked_owner() -> None:
 
 def test_github_python_quality_installs_its_declared_projection_toolchain() -> None:
     """Provision every repository-locked tool consumed by the quality owner."""
-
     jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
     quality = _mapping(jobs["python-quality"])
     steps = tuple(_mapping(step) for step in _sequence(quality["steps"]))

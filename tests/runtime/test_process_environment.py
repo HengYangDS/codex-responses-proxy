@@ -11,7 +11,6 @@ from codex_responses_proxy.runtime.process_environment import native_process_env
 
 def test_isolation_preserves_the_host_execution_substrate(tmp_path: Path) -> None:
     """Keep platform services and unrelated host state available."""
-
     host_path = os.pathsep.join(("host-tools", "system-tools"))
     environment = native_process_environment(
         user_home=tmp_path / "home",
@@ -33,7 +32,6 @@ def test_isolation_preserves_the_host_execution_substrate(tmp_path: Path) -> Non
 
 def test_isolation_removes_ambient_python_runtime_state(tmp_path: Path) -> None:
     """Keep a native artifact independent from an ambient Python runtime."""
-
     environment = native_process_environment(
         user_home=tmp_path / "home",
         install_root=tmp_path / "payload",
@@ -54,7 +52,6 @@ def test_isolation_removes_ambient_python_runtime_state(tmp_path: Path) -> None:
 
 def test_isolation_accepts_an_explicit_empty_command_search_path(tmp_path: Path) -> None:
     """Prove a native artifact need not discover Python through ``PATH``."""
-
     empty_path = tmp_path / "empty-path"
     environment = native_process_environment(
         user_home=tmp_path / "home",
@@ -69,7 +66,6 @@ def test_isolation_accepts_an_explicit_empty_command_search_path(tmp_path: Path)
 
 def test_isolation_redirects_every_user_and_product_root(tmp_path: Path) -> None:
     """Keep native lifecycle effects inside the declared isolated roots."""
-
     home = tmp_path / "home"
     install = tmp_path / "payload"
     state = tmp_path / "state"
@@ -105,7 +101,6 @@ def test_product_process_keeps_the_user_root_and_projects_runtime_roots(
     tmp_path: Path,
 ) -> None:
     """Run installed product roles in the real user domain with owned state."""
-
     environment = native_process_environment(
         install_root=tmp_path / "payload",
         state_root=tmp_path / "state",
@@ -122,7 +117,6 @@ def test_relative_roots_are_bound_before_the_child_changes_directory(
     tmp_path: Path, *, monkeypatch
 ) -> None:
     """Keep all owned roots stable across a subprocess working-directory change."""
-
     monkeypatch.chdir(tmp_path)
     environment = native_process_environment(
         user_home=Path("sandbox/home"),
@@ -143,7 +137,6 @@ def test_relative_roots_are_bound_before_the_child_changes_directory(
 
 def test_product_process_restarts_the_pyinstaller_environment(tmp_path: Path) -> None:
     """Request a fresh frozen runtime after inherited bootloader state is removed."""
-
     environment = native_process_environment(
         install_root=tmp_path / "payload",
         state_root=tmp_path / "state",
@@ -157,7 +150,6 @@ def test_product_process_restarts_the_pyinstaller_environment(tmp_path: Path) ->
 
 def test_isolation_preserves_the_linux_user_bus(tmp_path: Path) -> None:
     """Let isolated native commands reach the current user's systemd bus."""
-
     environment = native_process_environment(
         user_home=tmp_path / "home",
         install_root=tmp_path / "payload",

@@ -19,7 +19,6 @@ ROOT = Path(__file__).resolve().parents[3]
 
 def _installed_distribution(root: Path, provenance: str) -> Path:
     """Create one installed product distribution with local installer metadata."""
-
     metadata = root / "codex_responses_proxy-2.0.30.dist-info"
     package = root / "codex_responses_proxy"
     metadata.mkdir(parents=True)
@@ -52,7 +51,6 @@ class BundleContracts:
 
     def test_bundle_rejects_installer_provenance(self, tmp_path: Path) -> None:
         """Exclude checkout paths and installer timestamps from release payloads."""
-
         bundle = tmp_path / "codex-responses-proxy"
         metadata = bundle / "_internal" / "codex_responses_proxy-2.0.25.dist-info"
         metadata.mkdir(parents=True)
@@ -70,7 +68,6 @@ class BundleContracts:
 
     def test_distinct_checkout_roots_produce_identical_archives(self, tmp_path: Path) -> None:
         """Prove checkout-local installer provenance cannot perturb release bytes."""
-
         archives = []
         for index, checkout in enumerate(("gitlab-build", "github-runner")):
             bundle = tmp_path / checkout / "codex-responses-proxy"
@@ -94,7 +91,6 @@ class BundleContracts:
 
     def test_native_freeze_input_discards_installer_provenance(self, tmp_path: Path) -> None:
         """Normalize metadata before it can alter the frozen executable."""
-
         first = _installed_distribution(tmp_path / "github", "/workspace/github")
         second = _installed_distribution(tmp_path / "gitlab", "/builds/gitlab")
 

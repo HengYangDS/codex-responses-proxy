@@ -66,7 +66,6 @@ class TestInstallationInputValidation:
 
     def test_macos_state_root_is_not_lost_in_platform_matrix(self, *, mocker):
         """Keep the native macOS path branch covered on every CI host."""
-
         mocker.patch.dict(runtime_config.os.environ, {}, clear=True)
         mocker.patch.object(runtime_config.os, "name", "posix")
         mocker.patch.object(runtime_config.sys, "platform", "darwin")
