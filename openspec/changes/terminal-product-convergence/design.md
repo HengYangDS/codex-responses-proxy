@@ -122,6 +122,95 @@ cannot express. Adoption requires net reduction in custom code and authorities;
 a tool is rejected when configuration and maintenance exceed the mechanism it
 would replace.
 
+### Quality acceptance protects product invariants, not a green dashboard
+
+The quality system has four distinct obligations: a useful policy, a correct
+measurement, a complete execution path, and a working product. Passing one does
+not establish the others. The responsibility map assigns concerns; native tool
+configuration defines their executable rules; Nox invokes them; CUE projects the
+same obligations into each Forge. No second checker, registry, or workflow may
+independently define the same rule.
+
+The review at source `268ce99f` established these gaps:
+
+- Structural inventory returned measurements without size or complexity vetoes;
+  a regression explicitly required large functions to pass. Ruff did not select
+  `C901`, `PLR0912`, `PLR0913`, or `PLR0915`. A read-only probe with those native
+  rules produced 88 diagnostics across product, test, and tooling code. These
+  are candidate findings, not 88 independently established product defects.
+- Function ELOC used a physical line span, while file ELOC removed entire lines
+  carrying inline comments. The two measures were neither accurate nor equal.
+  Commit `6110515b` repairs that measurement with focused regression evidence;
+  this does not complete structural enforcement or the quality system.
+- Top-level package admission and a complete file-role inventory did not prove
+  cohesion within a package. Lifecycle transaction and control tests, relay
+  fixtures, and native compatibility journeys remain concrete review targets.
+- The documented Python coverage floor concerns product code. Test execution of
+  repository tools must not be represented as measured tooling coverage.
+
+The terminal acceptance scopes are explicit:
+
+| Concern                    | Protected invariant                                                              | Executable owner and acceptance                                                                                               |
+| -------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Semantics and topology     | One responsibility, state owner, and dependency direction                        | Product ontology plus architecture checks; review real caller edges and mutation ownership, not file counts                   |
+| Source correctness         | Typed boundaries, explicit errors, safe concurrency and resource lifetime        | Ruff, Ty, focused behavior tests, then native platform contracts                                                              |
+| Structural maintainability | A change remains locally understandable without caller-coordinated recovery      | Native complexity, branches, statements, arguments, and nesting checks; trustworthy ELOC locates module and function hotspots |
+| Test quality               | Assertions exercise a product invariant at the correct evidence scope            | Domain tests, failure-path contracts, and native artifact journeys; fixtures own exact cleanup                                |
+| Coverage                   | Missing behavior cannot disappear in aggregation or omitted roots                | Coverage configuration declares product and tooling scopes separately; report each supported measurement honestly             |
+| Dependencies and security  | No unowned dependency, exposed secret, unsafe update, or unsupported trust claim | Locked dependency, dead-code, secret, vulnerability, license, SBOM, and signature checks at their native owners               |
+| Non-code carriers          | Configuration and documentation are current, valid, navigable, and readable      | Native format/lint/schema/link tools plus narrow cross-carrier product contracts                                              |
+| Environment and delivery   | The released executable works outside this checkout and shell                    | Locked lane bootstrap, installed-wheel tests, native build and lifecycle acceptance, exact-source CI and assets               |
+| Control effectiveness      | A declared failure reaches a nonzero decision everywhere it is required          | Isolated conformance cases run the real tool and configured command; inspect local hooks and CUE event routes                 |
+
+Structural limits are engineering decisions, not universal constants. First
+measure with named semantics; then assess the protected risk, current
+percentiles, worst legitimate cohesive examples, and native tool guidance.
+Reject both a bound chosen just above the current maximum and a number that
+forces forwarding helpers or state fragmentation. Product and tooling branches
+are executable risk; a long declarative test table is not equivalent, but test
+setup, control flow, assertions, and teardown still need bounded ownership.
+Any distinct scope needs a semantic reason, never a filename exception for a
+current offender. Existing gaps remain open until the chosen final policy
+passes; an informational probe is never called a blocking gate.
+
+Ruff remains the first owner for its native complexity rules, documented in the
+[rule catalog](https://docs.astral.sh/ruff/rules/). ELOC and logical statements
+must be named separately. Module size is reviewed with cohesion and dependency
+edges; moving half a function into an alias package does not satisfy either.
+Do not add another analyzer until its required metric or behavior is absent
+from the admitted tools and its maintenance cost is lower than the displaced
+custom implementation.
+
+Topology changes follow complete semantic operations. Review payload admission,
+generation transition, rollback/recovery, cleanup, portable replay, and streaming
+as distinct invariants. Keep each state transition's validation, effect, and
+compensation together. Tests follow those behaviors and separate unit, integration,
+native, and release evidence without copying product implementation structure.
+Platform filenames may remain when they express real platform dispatch; generic
+suffix clusters and fixture buckets must instead be absorbed, narrowed, or
+split around real consumers. The acceptance proof is preserved behavior, fewer
+parallel owners, and understandable dependencies, not directory depth.
+
+Quality repair proceeds in this order within the existing task groups:
+
+1. Correct measurement and scope errors, record current effective tool settings,
+   and reopen unsupported completion claims. Keep the installed service intact.
+2. Consolidate native rule ownership and test the complete invocation/exit path.
+   Document selected bounds before changing them; keep unproved scopes open.
+3. Resolve product hotspots by invariant, then organize their behavioral tests
+   and fixtures in the same closure. Delete displaced code and imports before
+   moving to the next owner. Review tooling and non-code carriers by the same rule.
+4. Enable the agreed blocking policies with no blanket exclusions or permanent
+   violation baseline. Run focused checks after each closure; batch independent
+   formatter fixes before running expensive proof.
+5. Exercise all CI event classes, cold bootstrap, native artifacts and lifecycle,
+   security and performance, then freeze one exact candidate for full acceptance.
+   Only that evidence permits release, archive, and resource retirement.
+
+Generic ETHOS scope, lifecycle, hook dispatch, and capability-reporting defects
+belong to ETHOS. Product policy, native tool configuration, tests, and CI remain
+this repository's responsibility and continue without waiting for ETHOS changes.
+
 ### One development and supply-chain control plane
 
 `mise` selects locked cross-platform tools and exposes the small developer task

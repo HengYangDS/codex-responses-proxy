@@ -62,11 +62,13 @@
 - [ ] 7.2 Consolidate Ruff formatting, imports, correctness, modernization, naming, documentation, exception, logging, security, complexity, pytest, and dead-code rules into one comprehensible authority; enable every applicable rule and justify every inapplicable rule without blanket ignores.
 - [ ] 7.3 Make Ty strict at product and repository-tool boundaries, narrow unions and protocols, eliminate avoidable `Any`, and add typed adapters where external data enters; verify no unresolved type warning is accepted.
 - [ ] 7.4 Adopt or fully exercise mature tools for dependency hygiene, dead code, security, Markdown format and lint, links, TOML, YAML, JSON, CUE, Actions, secrets, licenses, SBOM, and vulnerabilities; delete custom equivalents that add no unique semantic value.
-- [ ] 7.5 Define rational complexity, ELOC, nesting, parameter, test-size, coverage, and performance policies from protected risks and observed distributions; remove arbitrary numbers and verify each threshold has a review condition and remediation path.
+- [ ] 7.5 Close structural measurement and enforcement together: verify file/function ELOC, logical statements, nesting and complexity semantics; classify the native-rule findings by product, tooling and test behavior; set risk-justified blocking limits, remove the observation-only acceptance contract, and simplify each affected semantic owner without suppressions or shallow extraction.
 - [ ] 7.6 Enforce public API and repository-tool docstrings while excluding ornamental test docstrings; verify documentation signatures and implementation signatures cannot drift.
 - [ ] 7.7 Make warnings fatal across tests, builds, docs, tools, native binaries, and CI; remove every known warning at its owner rather than filtering or baseline-suppressing it.
 - [ ] 7.8 Verify commit subjects through one scoped Conventional Commit grammar in local hooks and both Forge paths, including generated lifecycle commits, with no duplicate parser or historical exception list.
 - [ ] 7.9 Run formatter, linter, type, architecture, dependency, security, documentation, configuration, and focused behavior gates on the migrated tree; require pristine output before the full suite.
+- [ ] 7.10 Prove control effectiveness with isolated conformance cases for native tool settings, scope inclusion, nonzero exits, local entrypoints and hooks, and every CUE event route; a missing tool, skipped required check, empty scope or stale report must not establish acceptance.
+- [ ] 7.11 Reconcile the quality responsibility map with actual coverage, dependency, dead-code, security, documentation and delivery checks; explicitly close product/tooling measurement gaps, remove duplicate custom checkers, and leave every unverified claim open.
 
 ## 8. Development Environment and Supply Chain
 
