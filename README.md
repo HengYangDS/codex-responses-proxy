@@ -47,7 +47,7 @@ Enable the user service environment before retrying. If the service manager is
 unreachable, `status` reports the service as `unknown`, not proven absent.
 
 Boot-time startup and continued operation after logout depend on the host's
-[systemd user lingering policy](https://www.freedesktop.org/software/systemd/man/latest/loginctl.html#enable-linger%20USER%E2%80%A6).
+[systemd user lingering policy](https://man.archlinux.org/man/loginctl.1.en).
 The host administrator owns that user-wide policy. Proxy installs only its own
 user service; it does not change lingering or request administrative credentials.
 
