@@ -74,18 +74,21 @@ class TestStructuralQualityContracts:
             capture_output=True,
             text=True,
         )
-        files = json.loads(result.stdout)["files"]
+        files = {Path(name): detail for name, detail in json.loads(result.stdout)["files"].items()}
         assert set(files) == {
-            "codex_responses_proxy/__init__.py",
-            "codex_responses_proxy/observed.py",
-            "codex_responses_proxy/unexecuted.py",
-            "tools/quality/observed.py",
-            "tools/quality/unexecuted.py",
-            "noxfile.py",
+            Path(name)
+            for name in (
+                "codex_responses_proxy/__init__.py",
+                "codex_responses_proxy/observed.py",
+                "codex_responses_proxy/unexecuted.py",
+                "tools/quality/observed.py",
+                "tools/quality/unexecuted.py",
+                "noxfile.py",
+            )
         }
         for name in ("codex_responses_proxy/unexecuted.py", "tools/quality/unexecuted.py"):
-            assert files[name]["summary"]["num_statements"] == 4
-            assert files[name]["summary"]["covered_lines"] == 0
+            assert files[Path(name)]["summary"]["num_statements"] == 4
+            assert files[Path(name)]["summary"]["covered_lines"] == 0
         monkeypatch.setenv("COVERAGE_FILE", str(data_file))
         monkeypatch.chdir(tmp_path)
         with pytest.raises(SystemExit) as failure:
