@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import importlib
 import re
 import subprocess
 import sys
 import tempfile
 import tomllib
-from collections.abc import Callable
 from datetime import date
 from pathlib import Path
-from types import ModuleType
+
+import pytest
 
 from tools.release import identity
+from tools.release import metadata
 
 ROOT = Path(__file__).resolve().parents[2]
 METADATA_MODULE = "tools.release.metadata"
@@ -32,17 +32,6 @@ def _run(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
     )
 
 
-def require(condition: object, message: str) -> None:
-    """Fail one metadata contract with its exact diagnostic."""
-    if not condition:
-        raise SystemExit(message)
-
-
-def require_success(completed: subprocess.CompletedProcess[str]) -> None:
-    """Require one repository command to succeed."""
-    require(completed.returncode == 0, completed.stderr)
-
-
 def ci_block(source: str, job: str, next_job: str | None = None) -> str:
     """Return one exact top-level CI job or template block."""
     start = source.index(job)
@@ -53,44 +42,7 @@ def ci_block(source: str, job: str, next_job: str | None = None) -> str:
 def require_tokens(source: str, tokens: tuple[str, ...], context: str) -> None:
     """Require every literal contract token in one source surface."""
     missing = [token for token in tokens if token not in source]
-    require(not missing, f"{context} is missing {missing[0] if missing else ''}")
-
-
-def expect_rejection(text: str, description: str, *args: str) -> None:
-    """Require the release metadata checker to reject a Changelog fixture."""
-    with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8", delete=False) as handle:
-        path = Path(handle.name)
-        handle.write(text)
-    try:
-        completed = _run(
-            sys.executable,
-            "-m",
-            METADATA_MODULE,
-            *args,
-            "--changelog",
-            str(path),
-        )
-        require(
-            completed.returncode != 0,
-            f"release metadata checker accepted {description}",
-        )
-    finally:
-        path.unlink(missing_ok=True)
-
-
-def load_checker() -> ModuleType:
-    """Load the checker so pure policy units can replace Git observations."""
-    return importlib.import_module(METADATA_MODULE)
-
-
-def expect_value_error(action: Callable[[], object], message: str, description: str) -> None:
-    """Require a zero-argument policy action to fail with a useful diagnostic."""
-    try:
-        action()
-    except ValueError as exc:
-        require(message in str(exc), f"{description} returned an unclear error: {exc}")
-    else:
-        raise SystemExit(f"release metadata checker accepted {description}")
+    assert not missing, f"{context} is missing {missing[0] if missing else ''}"
 
 
 def test_release_identity_has_one_strict_semver_and_tag_contract() -> None:
@@ -104,51 +56,126 @@ def test_release_identity_has_one_strict_semver_and_tag_contract() -> None:
         assert not identity.is_version(invalid)
     for invalid in ("1.2.3", "v01.2.3", "v1.2", "v1.2.3-rc.1"):
         assert not identity.is_tag(invalid)
-        expect_value_error(
-            lambda value=invalid: identity.version_from_tag(value),
-            "exact vMAJOR.MINOR.PATCH",
-            f"invalid release tag {invalid!r}",
-        )
+        with pytest.raises(ValueError, match=re.escape("exact vMAJOR.MINOR.PATCH")):
+            identity.version_from_tag(invalid)
 
 
 def test_product_release_history_is_provider_neutral(*, mocker) -> None:
     """Validate the one local release history without a Forge semantic input."""
-    checker = load_checker()
     releases = [
         ("1.0.3", "2026-07-03"),
         ("1.0.2", "2026-07-02"),
         ("1.0.1", "2026-07-01"),
     ]
-    known = mocker.patch.object(checker, "known_release_versions", return_value=["1.0.2", "1.0.1"])
-    checker.check_changelog_provenance(releases, pending_version="1.0.3")
+    known = mocker.patch.object(metadata, "known_release_versions", return_value=["1.0.2", "1.0.1"])
+    metadata.check_changelog_provenance(releases, pending_version="1.0.3")
     known.return_value = ["1.0.2"]
-    expect_value_error(
-        lambda: checker.check_changelog_provenance(
-            [("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")]
-        ),
-        "must appear once",
-        "a local tag without a shared heading",
-    )
+    with pytest.raises(ValueError, match="must appear once"):
+        metadata.check_changelog_provenance([("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")])
 
 
 def test_prepare_release_rejects_only_future_dates() -> None:
     """Keep prepared metadata stable across days while rejecting impossible chronology."""
-    checker = load_checker()
     current = date(2026, 7, 27)
-    checker.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-27")], today=current)
-    checker.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-26")], today=current)
-    expect_value_error(
-        lambda: checker.check_pending_release_date(
-            "1.2.3", [("1.2.3", "2026-07-28")], today=current
-        ),
-        "future UTC date",
-        "a pending release dated in the future",
-    )
+    metadata.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-27")], today=current)
+    metadata.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-26")], today=current)
+    with pytest.raises(ValueError, match="future UTC date"):
+        metadata.check_pending_release_date("1.2.3", [("1.2.3", "2026-07-28")], today=current)
+
+
+@pytest.mark.parametrize("version", ["0.0.0", "1.2.3", "01.2.3", "1.2.3-rc.1", ""])
+def test_version_file_uses_the_product_grammar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str
+) -> None:
+    (tmp_path / "VERSION").write_text(version + "\n", encoding="utf-8")
+    monkeypatch.setattr(metadata, "ROOT", tmp_path)
+    if identity.is_version(version):
+        assert metadata.read_version() == version
+    else:
+        with pytest.raises(ValueError, match="release SemVer"):
+            metadata.read_version()
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "diagnostic"),
+    [
+        ('requires-python = ">=3.12"', 'requires-python = ">=3.13"', "require Python"),
+        ('dynamic = ["version"]', "dynamic = []", "sole version owner"),
+        ('path = "VERSION"', 'path = "version.txt"', "read package version"),
+        ('distribution = "native-executable"', 'distribution = "wheel"', "native executable"),
+    ],
+)
+def test_package_metadata_keeps_version_and_distribution_owners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    before: str,
+    after: str,
+    diagnostic: str,
+) -> None:
+    source = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    target = tmp_path / "pyproject.toml"
+    target.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(metadata, "ROOT", tmp_path)
+    metadata.check_python_metadata()
+    assert source.count(before) == 1
+    target.write_text(source.replace(before, after), encoding="utf-8")
+    with pytest.raises(ValueError, match=diagnostic):
+        metadata.check_python_metadata()
+
+
+@pytest.mark.parametrize(
+    ("known", "headings", "current", "prepared", "diagnostic"),
+    [
+        (["1.0.0"], ["1.0.0"], "1.0.0", False, None),
+        (["1.0.0"], [], "1.0.0", False, "lacks dated release heading"),
+        (["1.0.0"], ["1.0.1", "1.0.0"], "1.0.1", True, None),
+        (["1.0.0"], ["1.0.1", "1.0.0"], "1.0.1", False, None),
+        ([], ["1.0.0"], "1.0.0", False, None),
+        (["2.0.0"], ["1.0.0"], "1.0.0", False, "exists before its Git tag"),
+        ([], ["2.0.0", "1.0.0"], "1.0.0", False, "exists before its Git tag"),
+        (["1.0.0"], ["1.0.0"], "1.0.1", False, None),
+        (["1.0.1"], ["1.0.1"], "1.0.0", False, "must be newer"),
+        ([], [], "1.0.0", False, "cannot identify"),
+    ],
+)
+def test_release_train_admission_uses_exact_local_chronology(
+    monkeypatch: pytest.MonkeyPatch,
+    known: list[str],
+    headings: list[str],
+    current: str,
+    prepared: bool,
+    diagnostic: str | None,
+) -> None:
+    monkeypatch.setattr(metadata, "known_release_versions", lambda: known)
+    releases = [(version, "2026-07-01") for version in headings]
+    if diagnostic is None:
+        metadata.check_active_release_train(current, releases, pending_release=prepared)
+    else:
+        with pytest.raises(ValueError, match=diagnostic):
+            metadata.check_active_release_train(current, releases, pending_release=prepared)
+
+
+@pytest.mark.parametrize(
+    ("headings", "diagnostic"),
+    [
+        ("", "must start"),
+        ("## [1.0.0] - 2026-07-01\n", "must start"),
+        ("## [Unreleased]\n## [Unreleased]\n", "exactly one"),
+        ("## [Unreleased]\n## [1.0.0]\n", "must be dated"),
+        ("## [Unreleased]\n## [1.0.0] - 2026-07-01\n## [2.0.0] - 2026-07-02\n", "descending"),
+    ],
+)
+def test_changelog_requires_ordered_dated_release_sections(
+    tmp_path: Path, headings: str, diagnostic: str
+) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(headings, encoding="utf-8")
+    with pytest.raises(ValueError, match=diagnostic):
+        metadata.changelog_releases(path)
 
 
 def test_exact_release_tag_contract(*, mocker) -> None:
     """Reject lightweight, misnamed, nested, and wrong-target release tags."""
-    checker = load_checker()
     cases = (
         (
             lambda *args: "commit" if args[:2] == ("cat-file", "-t") else "v1.2.3",
@@ -187,14 +214,11 @@ def test_exact_release_tag_contract(*, mocker) -> None:
             "an annotated tag that directly names the wrong commit",
         ),
     )
-    git = mocker.patch.object(checker, "_git")
-    for git_observation, message, description in cases:
+    git = mocker.patch.object(metadata, "_git")
+    for git_observation, message, _description in cases:
         git.side_effect = git_observation
-        expect_value_error(
-            lambda: checker.check_release_tag("v1.2.3", "1.2.3"),
-            message,
-            description,
-        )
+        with pytest.raises(ValueError, match=message):
+            metadata.check_release_tag("v1.2.3", "1.2.3")
     git.side_effect = lambda *args: {
         ("cat-file", "-t", "refs/tags/v1.2.3"): "tag",
         (
@@ -204,15 +228,15 @@ def test_exact_release_tag_contract(*, mocker) -> None:
         ): "object same-commit\ntype commit\ntag v1.2.3\n\nmessage",
         ("rev-parse", "HEAD^{commit}"): "same-commit",
     }[args]
-    checker.check_release_tag("v1.2.3", "1.2.3")
+    metadata.check_release_tag("v1.2.3", "1.2.3")
 
 
 def test_release_metadata_command_has_no_forge_semantics() -> None:
     """Keep ordinary product validation independent from publication peers."""
     completed = _run(sys.executable, "-m", METADATA_MODULE)
-    require_success(completed)
+    assert (completed).returncode == 0
     legacy = _run(sys.executable, "-m", METADATA_MODULE, "--provider", "gitlab")
-    require(legacy.returncode != 0, "metadata retained a Forge-specific compatibility flag")
+    assert legacy.returncode != 0, "metadata retained a Forge-specific compatibility flag"
 
 
 def test_local_tag_owner_signs_once_then_publishes_the_exact_object() -> None:
@@ -227,13 +251,11 @@ def test_local_tag_owner_signs_once_then_publishes_the_exact_object() -> None:
         (prepare, exact, signing, push, '"ls-remote", "--tags", remote'),
         "local tag owner",
     )
-    require(
-        source.index(prepare) < source.index(signing) < source.index(exact) < source.index(push),
-        "local tag validation order is unsafe",
-    )
-    require(
-        "clone" not in source,
-        "tag publication must not clone a peer or recreate a provider-native tag",
+    assert (
+        source.index(prepare) < source.index(signing) < source.index(exact) < source.index(push)
+    ), "local tag validation order is unsafe"
+    assert "clone" not in source, (
+        "tag publication must not clone a peer or recreate a provider-native tag"
     )
 
 
@@ -259,18 +281,14 @@ def test_exact_local_object_forge_publication_contract() -> None:
         ('"GIT_CONFIG_GLOBAL": os.devnull', '"GIT_CONFIG_NOSYSTEM": "1"'),
         "canonical Git subprocess environment",
     )
-    require(
-        "canonical GitLab" not in source and "GitLab receives" not in source,
-        "Forge projection still treats GitLab as source authority",
-    )
+    assert "canonical GitLab" not in source
+    assert "GitLab receives" not in source
     context_source = (ROOT / "tools" / "forge" / "context.py").read_text(encoding="utf-8")
-    require(
-        "publication context" in context_source,
-        "provider identity context is not externally supplied",
+    assert "publication context" in context_source, (
+        "provider identity context is not externally supplied"
     )
-    require(
-        all(token not in source for token in ("filter-branch", "commit-tree", '"-S"')),
-        "forge projector can recreate Git objects",
+    assert all(token not in source for token in ("filter-branch", "commit-tree", '"-S"')), (
+        "forge projector can recreate Git objects"
     )
     context = (ROOT / "tools" / "forge" / "context.py").read_text(encoding="utf-8")
     require_tokens(
@@ -284,29 +302,23 @@ def test_exact_local_object_forge_publication_contract() -> None:
         ),
         "provider publication context",
     )
-    require(
-        all(
-            token not in context
-            for token in (
-                "/Users/",
-                "$HOME/.ssh",
-                "security",
-                "SSH_ASKPASS",
-                "pty",
-                "ssh-agent",
-            )
-        ),
-        "provider publication must not hard-code a workstation or manage credentials",
-    )
+    assert all(
+        token not in context
+        for token in (
+            "/Users/",
+            "$HOME/.ssh",
+            "security",
+            "SSH_ASKPASS",
+            "pty",
+            "ssh-agent",
+        )
+    ), "provider publication must not hard-code a workstation or manage credentials"
     tagger = (ROOT / "tools" / "release" / "tag.py").read_text(encoding="utf-8")
     require_tokens(tagger, ("context.load", "context.select_signing_key"), "provider tagger")
-    require(
-        all(
-            token not in tagger
-            for token in ("/Users/", "$HOME/.ssh", "id_" + "ed25519", "AUTHOR_EMAIL")
-        ),
-        "provider tagger contains a personal or host-specific default",
-    )
+    assert all(
+        token not in tagger
+        for token in ("/Users/", "$HOME/.ssh", "id_" + "ed25519", "AUTHOR_EMAIL")
+    ), "provider tagger contains a personal or host-specific default"
 
 
 def test_prune_tags_removes_deleted_remote_tag() -> None:
@@ -321,13 +333,13 @@ def test_prune_tags_removes_deleted_remote_tag() -> None:
             ("git", "init", "--bare", str(remote)),
             ("git", "init", str(publisher)),
         ):
-            require_success(_run(*args, cwd=temp_root))
+            assert (_run(*args, cwd=temp_root)).returncode == 0
         for args in (
             ("git", "config", "user.name", "Release Test"),
             ("git", "config", "user.email", "release@example.test"),
             ("git", "config", "user.useConfigOnly", "true"),
         ):
-            require_success(_run(*args, cwd=publisher))
+            assert (_run(*args, cwd=publisher)).returncode == 0
         (publisher / "README.md").write_text("release metadata fixture\n", encoding="utf-8")
         for args in (
             ("git", "add", "README.md"),
@@ -338,14 +350,15 @@ def test_prune_tags_removes_deleted_remote_tag() -> None:
             ("git", "tag", "v9.9.9"),
             ("git", "push", "origin", "refs/tags/v9.9.9"),
         ):
-            require_success(_run(*args, cwd=publisher))
-        require_success(_run("git", "clone", str(remote), str(reused_runner), cwd=temp_root))
-        require_success(_run("git", "push", "origin", ":refs/tags/v9.9.9", cwd=publisher))
-        require(
+            assert (_run(*args, cwd=publisher)).returncode == 0
+        assert (
+            _run("git", "clone", str(remote), str(reused_runner), cwd=temp_root)
+        ).returncode == 0
+        assert (_run("git", "push", "origin", ":refs/tags/v9.9.9", cwd=publisher)).returncode == 0
+        assert (
             _run("git", "rev-parse", "--verify", "refs/tags/v9.9.9", cwd=reused_runner).returncode
-            == 0,
-            "fixture did not retain the stale local tag",
-        )
+            == 0
+        ), "fixture did not retain the stale local tag"
         completed = _run(
             "git",
             "fetch",
@@ -356,12 +369,11 @@ def test_prune_tags_removes_deleted_remote_tag() -> None:
             "origin",
             cwd=reused_runner,
         )
-        require_success(completed)
-        require(
+        assert (completed).returncode == 0
+        assert (
             _run("git", "rev-parse", "--verify", "refs/tags/v9.9.9", cwd=reused_runner).returncode
-            != 0,
-            "tag-pruning fetch retained a tag deleted from origin",
-        )
+            != 0
+        ), "tag-pruning fetch retained a tag deleted from origin"
 
 
 def test_github_tag_metadata_fetches_complete_provider_tags() -> None:
@@ -379,7 +391,7 @@ def test_native_bundle_has_one_runtime_and_one_signer() -> None:
     image = metadata["tool"]["codex-responses-proxy"]["linux-release-image"]
     github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
     gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-    require("@sha256:" in image, "Linux release runtime must be immutable")
+    assert "@sha256:" in image, "Linux release runtime must be immutable"
     require_tokens(
         github,
         (
@@ -392,46 +404,29 @@ def test_native_bundle_has_one_runtime_and_one_signer() -> None:
         ),
         "single native bundle builder",
     )
-    require(
-        github.count("python -m tools.release.artifact assemble") == 1,
-        "bundle assembled twice",
-    )
-    require(github.count("--sign") == 1, "bundle signed more than once")
-    require("nox -s release" not in gitlab, "GitLab independently rebuilds product assets")
+    assert github.count("python -m tools.release.artifact assemble") == 1, "bundle assembled twice"
+    assert github.count("--sign") == 1, "bundle signed more than once"
+    assert "nox -s release" not in gitlab, "GitLab independently rebuilds product assets"
 
 
-def test_current_release_metadata_chronology() -> None:
-    """Validate the current release train and representative chronology failures."""
+def test_current_release_metadata_chronology(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Exercise real repository chronology through the measured CLI owner."""
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-    heading = f"## [{version}]"
+    version = metadata.read_version()
     tag_exists = _run("git", "rev-parse", "--verify", f"refs/tags/v{version}").returncode == 0
-    if heading in source and not tag_exists:
-        subprocess.run(
-            [sys.executable, "-m", METADATA_MODULE, "--prepare-release"],
-            cwd=ROOT,
-            check=True,
-        )
-    else:
-        subprocess.run([sys.executable, "-m", METADATA_MODULE], cwd=ROOT, check=True)
-        if tag_exists:
-            expect_rejection(
-                source,
-                "a tagged release checked as a pending release",
-                "--prepare-release",
-            )
-        else:
-            expect_rejection(source, "an absent pending release heading", "--prepare-release")
-    tagged_version = (
-        _run("git", "tag", "--list", "v[0-9]*", "--sort=-version:refname")
-        .stdout.splitlines()[0]
-        .removeprefix("v")
-    )
-    tagged_heading = re.compile(
-        rf"(?m)^## \[{re.escape(tagged_version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$"
-    )
-    missing_tag_source = tagged_heading.sub("", source, count=1)
-    expect_rejection(missing_tag_source, "a missing reachable tag")
-    # Forge publication state is audited separately; product chronology has one
-    # provider-neutral result for the exact local checkout.
-    subprocess.run([sys.executable, "-m", METADATA_MODULE], cwd=ROOT, check=True)
+    prepared = f"## [{version}]" in source and not tag_exists
+    metadata.main(("--prepare-release",) if prepared else ())
+    assert f"metadata: {version} OK" in capsys.readouterr().out
+    if not prepared:
+        with pytest.raises((ValueError, SystemExit)):
+            metadata.main(("--prepare-release",))
+    tagged_version = metadata.known_release_versions()[0]
+    heading = re.compile(rf"(?m)^## \[{re.escape(tagged_version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$")
+    incomplete = tmp_path / "CHANGELOG.md"
+    incomplete.write_text(heading.sub("", source, count=1), encoding="utf-8")
+    with pytest.raises(ValueError, match="must appear once"):
+        metadata.main(("--changelog", str(incomplete)))
+    metadata.main(())
+    assert f"metadata: {version} OK" in capsys.readouterr().out
