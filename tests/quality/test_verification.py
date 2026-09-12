@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 from tests.quality.fixtures import ROOT
+from tools.ci import project
 
 
 def _load_yaml(path: Path) -> dict[str, object]:
@@ -45,6 +46,62 @@ def _required_uv_version() -> str:
 
 class TestVerificationContracts:
     """Keep verification on mature tools and the released product artifact."""
+
+    @pytest.mark.parametrize("initial", [None, b"stale\n", b"current\n"])
+    def test_ci_projection_checks_then_restores_only_owned_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, initial: bytes | None
+    ) -> None:
+        path = tmp_path / "nested" / "workflow.yml"
+        foreign = tmp_path / "notes.txt"
+        foreign.write_bytes(b"user owned\n")
+        if initial is not None:
+            path.parent.mkdir()
+            path.write_bytes(initial)
+        monkeypatch.setattr(project, "ROOT", tmp_path)
+        monkeypatch.setattr(project, "PROJECTIONS", (project.Projection(path, "workflow"),))
+        monkeypatch.setattr(project, "render", lambda _expression: b"current\n")
+
+        if initial == b"current\n":
+            project.main(())
+        else:
+            with pytest.raises(
+                SystemExit, match=re.escape("projection drift: nested/workflow.yml")
+            ):
+                project.main(())
+        assert (path.read_bytes() if path.exists() else None) == initial
+        project.main(("--write",))
+        assert path.read_bytes() == b"current\n"
+        project.main(())
+        assert foreign.read_bytes() == b"user owned\n"
+        assert {p.relative_to(tmp_path) for p in tmp_path.rglob("*")} == {
+            Path("notes.txt"),
+            Path("nested"),
+            Path("nested/workflow.yml"),
+        }
+
+    def test_ci_projection_renderer_binds_the_locked_repository(self, mocker) -> None:
+        command = mocker.patch.object(
+            project.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"yaml\n")
+        )
+
+        assert project.render("workflow") == b"yaml\n"
+
+        args = command.call_args.args[0]
+        assert args[:5] == ("mise", "exec", "--locked", "--", "cue")
+        assert args[5:] == (
+            "export",
+            str(project.MODEL),
+            "--expression",
+            "workflow",
+            "--out",
+            "yaml",
+        )
+        assert command.call_args.kwargs["check"] is True
+        assert command.call_args.kwargs["cwd"] == project.ROOT
+        assert command.call_args.kwargs["env"]["MISE_CONFIG_FILE"] == str(project.MISE)
+        command.side_effect = subprocess.CalledProcessError(1, args)
+        with pytest.raises(subprocess.CalledProcessError):
+            project.render("workflow")
 
     def test_pytest_is_the_only_behavior_test_runner(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
