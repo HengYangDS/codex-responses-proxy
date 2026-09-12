@@ -123,10 +123,13 @@ class EmptyResponseTransportTests:
         assert portable_content.OPAQUE_CONTENT_MARKER in retried
         assert secret not in retried
 
-    def test_classified_477_retries_portable_remote_images(self):
+    @pytest.mark.parametrize(
+        "image_url", ["https://example.test/a.png", "data:image/png;base64,cGl4ZWxz"]
+    )
+    def test_classified_477_retries_portable_images(self, image_url: str) -> None:
         image = {
             "type": "input_image",
-            "image_url": "https://example.test/a.png",
+            "image_url": image_url,
             "detail": "auto",
         }
         request_body = self._body(

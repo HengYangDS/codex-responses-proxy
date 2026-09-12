@@ -15,6 +15,16 @@ or fallback SHALL reinterpret it independently.
 - **AND** no duplicate classifier, silent deletion, invented history, or
   unknown-item fall-through changes its meaning.
 
+#### Scenario: Replay contains an inline screenshot
+
+- **WHEN** image-capable input contains a nonempty, strictly Base64-encoded
+  PNG, JPEG, WebP, or GIF data URL
+- **THEN** projection retains its original URL, detail, and order in dialogue
+  and paired tool-output input, including image-only content
+- **AND** repeated projection and classified retries preserve the image bytes
+- **AND** validation performs no filesystem access, network fetch, raster
+  decoding, or image re-encoding.
+
 ### Requirement: Provider extension is adapter-only
 
 A new upstream Provider SHALL be admitted through one manifest entry, one narrow

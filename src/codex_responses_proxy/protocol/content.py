@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import urllib.parse
 from typing import Never
 from typing import cast
@@ -20,9 +22,22 @@ def reject(reason: str) -> Never:
     raise ProjectionRejectedError(reason)
 
 
-def _is_replayable_remote_image_url(value: object) -> bool:
+def _is_replayable_image_url(value: object) -> bool:
     if not isinstance(value, str) or not value or any(character.isspace() for character in value):
         return False
+    if value[:5].lower() == "data:":
+        header, separator, payload = value.partition(",")
+        if not separator or header.lower() not in {
+            "data:image/png;base64",
+            "data:image/jpeg;base64",
+            "data:image/webp;base64",
+            "data:image/gif;base64",
+        }:
+            return False
+        try:
+            return bool(base64.b64decode(payload, validate=True))
+        except (binascii.Error, ValueError):
+            return False
     try:
         parsed = urllib.parse.urlsplit(value)
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
@@ -115,7 +130,7 @@ def project_input_content(
             allowed = {"type", "image_url", "detail"}
             if set(typed) - allowed:
                 reject("invalid_image_block")
-            if not _is_replayable_remote_image_url(typed.get("image_url")):
+            if not _is_replayable_image_url(typed.get("image_url")):
                 local_images += 1
                 changed = True
                 continue
