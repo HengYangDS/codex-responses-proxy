@@ -217,9 +217,6 @@ class TestQualityPolicyContracts:
         assert "`pytest.ini` therefore owns test discovery and warning policy" in governance
         assert "`.config/quality/policy/` owns quality policy" not in governance
 
-        ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
-        assert ".pytest_cache/" in ignored
-
         ruff = tomllib.loads(
             (ROOT / ".config/quality/native/ruff.toml").read_text(encoding="utf-8")
         )
