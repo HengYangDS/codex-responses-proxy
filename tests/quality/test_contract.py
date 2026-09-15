@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import re
+import subprocess
 import tempfile
 import tomllib
 from pathlib import Path
@@ -21,6 +22,21 @@ from tools.quality.repository import __main__ as repository_audit
 from tools.quality.repository.decisions import decision_record_gaps
 from tools.quality.repository.names import semantic_name_gaps
 from tools.quality.repository.topology import architecture_gaps
+
+
+@pytest.mark.parametrize("failure", [OSError("missing"), subprocess.CompletedProcess([], 1)])
+def test_governance_failure_stops_before_subsequent_commands(failure, mocker, capsys):
+    mocker.patch.object(governance, "_commands", return_value=(("first",), ("second",)))
+    run = mocker.patch.object(governance.subprocess, "run")
+    if isinstance(failure, OSError):
+        run.side_effect = failure
+    else:
+        run.return_value = failure
+    with pytest.raises(SystemExit) as stopped:
+        governance.main(())
+    assert stopped.value.code == 1
+    assert run.call_count == 1
+    assert "first" in capsys.readouterr().err
 
 
 class TestQualityPolicyContracts:

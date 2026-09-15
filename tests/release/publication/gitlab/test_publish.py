@@ -290,3 +290,84 @@ def test_credential_kind_selects_one_exact_gitlab_header(
     kind: publish.CredentialKind, header: str
 ) -> None:
     assert publish._authentication_header(kind) == header
+
+
+@pytest.mark.parametrize(
+    ("status", "error_type"),
+    [
+        (404, publish._GitLabResourceMissingError),
+        (409, FileExistsError),
+        (500, publish.GitLabPublishError),
+    ],
+)
+def test_http_failure_preserves_status_and_closes_response(status, error_type, mocker):
+    stream = io.BytesIO(b"provider unavailable")
+    error = urllib.error.HTTPError(
+        "https://gitlab.example/api", status, "failed", Message(), stream
+    )
+    mocker.patch.object(publish.urllib.request, "urlopen", side_effect=error)
+    with pytest.raises(error_type):
+        publish._request(error.url, "not-a-secret", publish.CredentialKind.JOB_TOKEN)
+    assert stream.closed
+
+
+@pytest.mark.parametrize("content", [b"payload", "not-bytes"])
+def test_request_admits_binary_payload_and_sets_json_content_type(content, mocker):
+    response = mocker.MagicMock()
+    response.__enter__.return_value.read.return_value = content
+    open_url = mocker.patch.object(publish.urllib.request, "urlopen", return_value=response)
+    if isinstance(content, bytes):
+        assert (
+            publish._request(
+                "https://gitlab.example/api",
+                "not-a-secret",
+                publish.CredentialKind.PRIVATE_TOKEN,
+                data=b"{}",
+                method="POST",
+            )
+            == content
+        )
+        assert open_url.call_args.args[0].get_header("Content-type") == "application/json"
+    else:
+        with pytest.raises(publish.GitLabPublishError, match="not binary"):
+            publish._request(
+                "https://gitlab.example/api", "not-a-secret", publish.CredentialKind.JOB_TOKEN
+            )
+
+
+def test_transport_failure_does_not_become_resource_absence(mocker):
+    mocker.patch.object(publish.urllib.request, "urlopen", side_effect=OSError("offline"))
+    with pytest.raises(publish.GitLabPublishError, match="transport failed"):
+        publish._request(
+            "https://gitlab.example/api", "not-a-secret", publish.CredentialKind.JOB_TOKEN
+        )
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"", b"a" * 3000, b'{"message":{"reason":"invalid"}}', b'"failure"', b'{"message":""}'],
+)
+def test_provider_diagnostic_is_bounded_for_each_payload_shape(content):
+    error = urllib.error.HTTPError(
+        "https://gitlab.example/api", 500, "failed", Message(), io.BytesIO(content)
+    )
+    try:
+        detail = publish._error_detail(error)
+        assert len(detail) <= 514
+    finally:
+        error.close()
+
+
+def test_unreadable_error_body_has_no_secondary_failure(mocker):
+    error = mocker.Mock()
+    error.read.side_effect = OSError("closed")
+    assert publish._error_detail(error) == ""
+
+
+@pytest.mark.parametrize("existing", [None, {"assets": None}, {"assets": {"links": [1]}}])
+def test_existing_release_requires_complete_link_objects(existing):
+    expected = {"tag_name": "v1.2.3", "name": "release", "description": "notes"}
+    with pytest.raises(publish.GitLabPublishError, match="immutable identity"):
+        publish._require_matching_release(
+            existing, expected, [{"name": "asset", "url": "url", "link_type": "package"}]
+        )
