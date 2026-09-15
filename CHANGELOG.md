@@ -7,6 +7,19 @@ publication authority.
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-09-15
+
+### Fixed
+
+- Forward available SSE events without waiting for an application buffer to
+  fill. Finish each HTTP response at its terminal event even when the upstream
+  leaves its connection open.
+- Release upstream connections when downstream writes fail. Preserve an
+  interrupted committed stream as truncated HTTP instead of appending another
+  status line or a successful chunk terminator; never replay delivered output.
+- Isolate concurrent CI dependency-cache writers and refresh stable repository
+  tooling dependencies without changing the supported Python range.
+
 ## [4.0.0] - 2026-09-15
 
 ### Changed
