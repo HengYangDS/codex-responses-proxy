@@ -430,3 +430,65 @@ def test_current_release_metadata_chronology(
         metadata.main(("--changelog", str(incomplete)))
     metadata.main(())
     assert f"metadata: {version} OK" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "combined",
+        "missing-heading",
+        "not-first",
+        "future",
+        "invalid-train",
+        "invalid-tag",
+        "missing-tag-heading",
+        "valid-prepared",
+        "valid-tagged",
+    ],
+)
+def test_cli_release_transition_admission(defect, mocker, capsys):
+    mocker.patch.object(metadata, "read_version", return_value="1.2.3")
+    mocker.patch.object(metadata, "check_python_metadata")
+    releases = [("1.2.3", "2026-01-01"), ("1.2.2", "2025-12-31")]
+    if defect in {"missing-heading", "missing-tag-heading"}:
+        releases = releases[1:]
+    elif defect == "not-first":
+        releases = list(reversed(releases))
+    elif defect == "future":
+        releases[0] = ("1.2.3", "9999-01-01")
+    mocker.patch.object(metadata, "changelog_releases", return_value=releases)
+    mocker.patch.object(metadata, "known_release_versions", return_value=["1.2.2"])
+    train = mocker.patch.object(metadata, "check_active_release_train")
+    tag = mocker.patch.object(metadata, "check_release_tag")
+    mocker.patch.object(metadata, "check_governance_contract")
+    if defect == "invalid-train":
+        train.side_effect = ValueError("invalid train")
+    if defect == "invalid-tag":
+        tag.side_effect = ValueError("invalid tag")
+    args = ("--tag", "v1.2.3") if "tag" in defect else ("--prepare-release",)
+    if defect == "combined":
+        args = ("--prepare-release", "--tag", "v1.2.3")
+    if defect.startswith("valid-"):
+        metadata.main(args)
+        assert "metadata: 1.2.3 OK" in capsys.readouterr().out
+    else:
+        with pytest.raises(SystemExit):
+            metadata.main(args)
+
+
+@pytest.mark.parametrize("releases", [[("1.2.3", "invalid")], []])
+def test_pending_release_requires_an_actual_date(releases):
+    with pytest.raises(ValueError, match="no valid release date"):
+        metadata.check_pending_release_date("1.2.3", releases)
+
+
+def test_duplicate_changelog_versions_cannot_claim_one_release(mocker):
+    mocker.patch.object(metadata, "known_release_versions", return_value=[])
+    with pytest.raises(ValueError, match="must not duplicate"):
+        metadata.check_changelog_provenance([("1.2.3", "2026-01-01")] * 2)
+
+
+def test_missing_tag_is_a_release_identity_error(mocker):
+    mocker.patch.object(metadata, "_git", side_effect=subprocess.CalledProcessError(1, ["git"]))
+    with pytest.raises(ValueError, match="does not exist"):
+        metadata.check_release_tag("v1.2.3", "1.2.3")

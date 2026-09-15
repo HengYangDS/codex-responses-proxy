@@ -11,6 +11,7 @@ from typing import TypedDict
 
 import pytest
 
+from tools.forge import project as projector
 from tools.forge.project import ProjectionError
 from tools.forge.project import project
 from tools.git_environment import isolated_config_environment
@@ -260,3 +261,131 @@ def test_projection_rejects_non_publication_branches(
         run("git", "branch", source_ref, "main", cwd=forge_fixture["source"])
     with pytest.raises(ProjectionError, match="main or proposal"):
         publish(forge_fixture, "gitlab", "origin", source_ref)
+
+
+@pytest.mark.parametrize(
+    "failure", [OSError("missing"), subprocess.CompletedProcess([], 2, "", "failed")]
+)
+def test_git_failure_is_not_interpreted_as_remote_absence(tmp_path, failure, mocker):
+    if isinstance(failure, OSError):
+        mocker.patch.object(projector.subprocess, "run", side_effect=failure)
+    else:
+        mocker.patch.object(projector.subprocess, "run", return_value=failure)
+    with pytest.raises(ProjectionError):
+        projector._git(tmp_path, "ls-remote")
+
+
+@pytest.mark.parametrize("value", ["", "main", "=abc", "main=", "main=a", "main=b"])
+def test_expected_tips_require_unique_branch_values(value):
+    if value in {"main=a", "main=b"}:
+        assert projector._parse_expected((value,)) == {"main": value.partition("=")[2]}
+        with pytest.raises(ProjectionError, match="unique"):
+            projector._parse_expected((value, value))
+    else:
+        with pytest.raises(ProjectionError, match="unique"):
+            projector._parse_expected((value,))
+
+
+def test_observation_and_ancestry_failures_remain_errors(tmp_path, mocker):
+    output = mocker.patch.object(projector, "_output", return_value="a refs/heads/wrong")
+    with pytest.raises(ProjectionError, match="malformed"):
+        projector._remote_tip(tmp_path, "peer", "main")
+    output.return_value = "refs/tags/main"
+    with pytest.raises(ProjectionError, match="not a local branch"):
+        projector._local_branch(tmp_path, "main")
+    mocker.patch.object(
+        projector, "_git", return_value=subprocess.CompletedProcess([], 2, "", "failed")
+    )
+    with pytest.raises(ProjectionError, match="failed"):
+        projector._is_ancestor(tmp_path, "a", "b")
+    with pytest.raises(ProjectionError, match="trust anchor"):
+        projector._verify_local_identity(tmp_path, "a", "author", tmp_path / "absent")
+
+
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+def test_selected_runner_admission_precedes_ref_publication(provider, tmp_path, mocker):
+    mocker.patch.object(projector, "_output", return_value="")
+    mocker.patch.object(projector, "_local_branch", return_value=("refs/heads/main", "a" * 40))
+    mocker.patch.object(projector, "_verify_local_identity")
+    tip = mocker.patch.object(projector, "_remote_tip", return_value="a" * 40)
+    mocker.patch.object(projector, "_git")
+    admission = mocker.patch.object(projector.runner_admission, f"_{provider}")
+    assert (
+        projector.project(
+            root=tmp_path,
+            provider=provider,
+            source_ref="main",
+            remote="peer",
+            email="author",
+            allowed_signers=tmp_path / "anchor",
+            repository_coordinate="team/repo",
+        )
+        == "a" * 40
+    )
+    assert admission.call_count == 1
+    assert tip.call_count == 4
+
+
+@pytest.mark.parametrize("cutover", [False, True])
+def test_divergent_cutover_and_post_push_readback_are_exact(cutover, tmp_path, mocker):
+    mocker.patch.object(projector, "_output", return_value="")
+    mocker.patch.object(projector, "_local_branch", return_value=("refs/heads/main", "a" * 40))
+    mocker.patch.object(projector, "_verify_local_identity")
+    mocker.patch.object(projector, "_remote_tip", side_effect=["b" * 40, "b" * 40, "c" * 40])
+    mocker.patch.object(projector, "_fetch_remote_branch")
+    mocker.patch.object(projector, "_is_ancestor", return_value=False)
+    git = mocker.patch.object(projector, "_git")
+    with pytest.raises(ProjectionError, match="does not equal" if cutover else "diverges"):
+        projector.project(
+            root=tmp_path,
+            provider="github",
+            source_ref="main",
+            remote="peer",
+            email="author",
+            allowed_signers=tmp_path / "anchor",
+            expected_remote_tips={"main": "b" * 40, "dev": "b" * 40} if cutover else None,
+        )
+    if cutover:
+        assert "--force-with-lease=refs/heads/main:" + "b" * 40 in git.call_args.args
+    else:
+        git.assert_not_called()
+
+
+@pytest.mark.parametrize("as_json", [False, True])
+def test_projection_cli_preserves_machine_and_human_results(as_json, tmp_path, mocker, capsys):
+    import json
+
+    invoke = mocker.patch.object(projector, "project", return_value="a" * 40)
+    args = (
+        "--provider",
+        "github",
+        "--email",
+        "author",
+        "--allowed-signers",
+        str(tmp_path / "anchor"),
+    )
+    projector.main((*args, "--json") if as_json else args)
+    output = capsys.readouterr().out
+    if as_json:
+        assert json.loads(output)["commit"] == "a" * 40
+    else:
+        assert "github synchronized" in output
+    invoke.side_effect = ProjectionError("rejected")
+    with pytest.raises(SystemExit) as stopped:
+        projector.main(args)
+    assert stopped.value.code == 1
+    assert "rejected" in capsys.readouterr().err
+
+
+def test_unknown_forge_never_starts_a_git_operation(tmp_path, mocker):
+    git = mocker.patch.object(projector, "_git")
+    with pytest.raises(ProjectionError, match="provider must"):
+        projector.project(
+            root=tmp_path,
+            provider="unknown",
+            source_ref="main",
+            remote="peer",
+            email="author",
+            allowed_signers=tmp_path / "anchor",
+        )
+    git.assert_not_called()
