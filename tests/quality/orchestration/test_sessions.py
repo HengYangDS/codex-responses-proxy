@@ -6,6 +6,7 @@ import os
 import sys
 from pathlib import Path
 from types import ModuleType
+from types import SimpleNamespace
 
 import pytest
 from nox.command import CommandFailed
@@ -18,13 +19,32 @@ from tests.quality.fixtures import ROOT
 @pytest.mark.parametrize(
     "session_name", ["tests", "quality", "release_asset", "release", "performance"]
 )
+@pytest.mark.parametrize(
+    ("system", "machine", "release_platform"),
+    [
+        ("Darwin", "arm64", "macos-arm64"),
+        ("Linux", "x86_64", "linux-x86_64"),
+        ("Windows", "AMD64", "windows-x86_64"),
+    ],
+)
 def test_sessions_accept_built_artifacts_before_publication(
     session_name: str,
+    system: str,
+    machine: str,
+    release_platform: str,
     tmp_path: Path,
     mocker: MockerFixture,
     nox_configuration: ModuleType,
     orchestration_session: Session,
 ) -> None:
+    mocker.patch.object(
+        nox_configuration,
+        "platform",
+        SimpleNamespace(
+            system=lambda: system,
+            machine=lambda: machine,
+        ),
+    )
     executable_name = nox_configuration.product_identity.executable_name(windows=os.name == "nt")
     packages = tmp_path / "site-packages"
     packages.mkdir()
@@ -72,6 +92,7 @@ def test_sessions_accept_built_artifacts_before_publication(
         assert "tests/cli/test_interface.py" in tests
         assert "tests/service/handoff/test_subprocess.py" in tests
         assert calls[pack][-2:] == ("--output", orchestration_session.posargs[0])
+        assert calls[pack][calls[pack].index("--platform") + 1] == release_platform
     elif session_name == "performance":
         performance = [
             args for args in calls if any(str(arg).startswith("tools.performance.") for arg in args)
