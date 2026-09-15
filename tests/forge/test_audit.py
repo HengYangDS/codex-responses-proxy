@@ -7,6 +7,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.forge.test_forward_only import ForgeFixture
+from tests.forge.test_forward_only import forge_fixture
+from tests.forge.test_forward_only import run
+from tools.forge import audit
 from tools.forge.audit import branches_for_audit
 from tools.forge.audit import exact_branch_parity
 from tools.forge.audit import exact_tag_parity
@@ -84,9 +88,191 @@ proposal_branch_prefix = "proposal/"
         _run("git", "remote", "add", "peer", str(remote), cwd=source)
         _run("git", "push", "peer", "main", cwd=source)
 
-        with pytest.raises(RuntimeError, match="exact main and dev"):
-            remote_branch_oids(source, "peer")
+        with pytest.raises(RuntimeError, match="declared persistent refs"):
+            remote_branch_oids(source, "peer", frozenset(("main", "dev")))
 
         _run("git", "push", "peer", "main:dev", cwd=source)
         oid = _run("git", "rev-parse", "HEAD", cwd=source)
-        assert remote_branch_oids(source, "peer") == {"main": oid, "dev": oid}
+        assert remote_branch_oids(source, "peer", frozenset(("main", "dev"))) == {
+            "main": oid,
+            "dev": oid,
+        }
+
+
+@pytest.mark.usefixtures(forge_fixture.__name__)
+@pytest.mark.parametrize("peers", [(), ("origin",), ("github",), ("origin", "github")])
+def test_selected_peers_are_optional_and_object_preserving(forge_fixture: ForgeFixture, peers):
+    source = forge_fixture["source"]
+    policy = source / ".ethos" / "workspace.toml"
+    policy.parent.mkdir()
+    policy.write_text(
+        '[branch_roles]\nrelease_branch="main"\naccepted_branch="dev"\ncandidate_branch="candidate/dev"\n'
+    )
+    run("git", "tag", "-s", "v1.0.0", "-m", "Release", cwd=source)
+    for remote in ("origin", "github"):
+        if remote in peers:
+            run("git", "push", remote, "main", "dev", "--tags", cwd=source)
+        else:
+            run("git", "remote", "remove", remote, cwd=source)
+    refs_before = run("git", "show-ref", cwd=source).stdout
+
+    report = audit.audit(
+        root=source,
+        commit_anchor=forge_fixture["anchor"],
+        author_email=forge_fixture["email"],
+        tag_anchor=forge_fixture["anchor"],
+        peers=peers,
+    )
+
+    assert report["ok"]
+    branches, tags = report["branches"], report["tags"]
+    assert isinstance(branches, dict)
+    assert isinstance(tags, dict)
+    assert set(branches) == {"local", *peers}
+    assert set(tags) == {"local", *peers}
+    assert refs_before == run("git", "show-ref", cwd=source).stdout
+
+
+def test_audit_uses_declared_roles_instead_of_main_dev(forge_fixture: ForgeFixture):
+    source = forge_fixture["source"]
+    run("git", "branch", "-m", "main", "stable", cwd=source)
+    run("git", "branch", "-m", "dev", "integration", cwd=source)
+    policy = source / ".ethos" / "workspace.toml"
+    policy.parent.mkdir()
+    policy.write_text(
+        '[branch_roles]\nrelease_branch="stable"\naccepted_branch="integration"\ncandidate_branch="candidate/integration"\n'
+    )
+    run("git", "tag", "-s", "v1.0.0", "-m", "Release", cwd=source)
+    report = audit.audit(
+        root=source,
+        commit_anchor=forge_fixture["anchor"],
+        author_email=forge_fixture["email"],
+        tag_anchor=forge_fixture["anchor"],
+    )
+    assert report["ok"]
+    branches = report["branches"]
+    assert isinstance(branches, dict)
+    assert set(branches["local"]) == {"stable", "integration"}
+
+
+@pytest.mark.parametrize("peers", [("origin", "origin"), ("absent",), ("local",)])
+def test_invalid_peer_selection_fails_before_observation(
+    forge_fixture: ForgeFixture, peers, mocker
+):
+    remote = mocker.patch.object(audit, "remote_branch_oids")
+    with pytest.raises(RuntimeError, match="peer"):
+        audit.audit(
+            root=forge_fixture["source"],
+            commit_anchor=forge_fixture["anchor"],
+            author_email=forge_fixture["email"],
+            tag_anchor=forge_fixture["anchor"],
+            peers=peers,
+        )
+    remote.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("local", "peer"), [({}, {}), ({"stable": "x"}, {}), ({"stable": "x"}, {"other": "x"})]
+)
+def test_branch_parity_rejects_missing_or_different_roles(local, peer):
+    assert not exact_branch_parity(local, peer)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "[broken",
+        "",
+        "[branch_roles]\n",
+        '[branch_roles]\nrelease_branch=""\naccepted_branch="dev"\ncandidate_branch="candidate/dev"',
+    ],
+)
+def test_branch_role_policy_must_be_complete(text, tmp_path):
+    policy = tmp_path / "workspace.toml"
+    policy.write_text(text)
+    with pytest.raises(RuntimeError, match="policy"):
+        branches_for_audit(policy)
+
+
+def test_missing_policy_is_reported_without_guessing(tmp_path):
+    with pytest.raises(RuntimeError, match="policy"):
+        branches_for_audit(tmp_path / "missing")
+
+
+def test_subprocess_failure_is_bounded_and_checked(tmp_path):
+    with pytest.raises(RuntimeError):
+        audit.command("git", "rev-parse", "--verify", "missing", cwd=tmp_path)
+    assert (
+        audit.command(
+            "git", "rev-parse", "--verify", "missing", cwd=tmp_path, check=False
+        ).returncode
+        != 0
+    )
+
+
+def test_release_audit_detects_untrusted_tags_identity_and_residual_branches(forge_fixture):
+    source = forge_fixture["source"]
+    anchor = forge_fixture["anchor"]
+    commit = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+    assert audit._verify_product_commit(source, commit, anchor, forge_fixture["email"])
+    assert not audit._verify_product_commit(source, commit, anchor, "other@example.test")
+    run("git", "tag", "v1.0.0", cwd=source)
+    tags = audit.local_release_evidence(source, anchor)
+    assert not tags["v1.0.0"]["annotated"]
+    assert not exact_tag_parity(tags)
+    assert not exact_tag_parity({})
+    run("git", "branch", "proposal/owned", cwd=source)
+    run("git", "push", "origin", "main", "dev", "proposal/owned", cwd=source)
+    assert audit.local_branches(source, frozenset(("main", "dev"))) == ["proposal/owned"]
+    assert audit.remote_branches(source, "origin", frozenset(("main", "dev"))) == ["proposal/owned"]
+
+
+@pytest.mark.parametrize("as_json", [False, True])
+def test_cli_reports_exact_selected_peer_scope(as_json, forge_fixture, mocker, capsys):
+    expected = {"ok": True, "branch_object_parity": True, "tag_object_parity": True}
+    collect = mocker.patch.object(audit, "audit", return_value=expected)
+    args = [
+        "--commit-anchor",
+        str(forge_fixture["anchor"]),
+        "--tag-anchor",
+        str(forge_fixture["anchor"]),
+        "--author-email",
+        forge_fixture["email"],
+        "--root",
+        str(forge_fixture["source"]),
+        "--peer",
+        "origin",
+        "--peer",
+        "github",
+    ]
+    if as_json:
+        args.append("--json")
+    audit.main(tuple(args))
+    assert collect.call_args.kwargs["peers"] == ("origin", "github")
+    output = capsys.readouterr().out
+    if as_json:
+        assert '"ok": true' in output
+    else:
+        assert "housekeeping: OK" in output
+
+
+@pytest.mark.parametrize("failure", ["anchor", "observation", "parity"])
+def test_cli_failure_is_nonzero(failure, forge_fixture, mocker):
+    anchor = forge_fixture["anchor"]
+    if failure == "anchor":
+        anchor = anchor.with_name("absent")
+    elif failure == "observation":
+        mocker.patch.object(audit, "audit", side_effect=RuntimeError("unreachable peer"))
+    else:
+        mocker.patch.object(
+            audit,
+            "audit",
+            return_value={"ok": False, "branch_object_parity": False, "tag_object_parity": False},
+        )
+    with pytest.raises(SystemExit):
+        audit._command(
+            commit_anchor=anchor,
+            tag_anchor=anchor,
+            author_email=forge_fixture["email"],
+            root=forge_fixture["source"],
+        )
