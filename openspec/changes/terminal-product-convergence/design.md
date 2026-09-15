@@ -227,7 +227,10 @@ Quality repair proceeds in this order within the existing task groups:
    formatter fixes before running expensive proof.
 5. Exercise all CI event classes, cold bootstrap, native artifacts and lifecycle,
    security and performance, then freeze one exact candidate for full acceptance.
-   Only that evidence permits release, archive, and resource retirement.
+   Exact applicable proof and current source authority permit a releasable increment.
+   Delivery and actual-use obligations consume that release; whole-Change archive
+   and lane retirement follow their observed completion. Preserve immutable release
+   identity when later task evidence updates the active Change.
 
 Generic ETHOS scope, lifecycle, hook dispatch, and capability-reporting defects
 belong to ETHOS. Product policy, native tool configuration, tests, and CI remain
