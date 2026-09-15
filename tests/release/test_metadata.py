@@ -492,3 +492,57 @@ def test_missing_tag_is_a_release_identity_error(mocker):
     mocker.patch.object(metadata, "_git", side_effect=subprocess.CalledProcessError(1, ["git"]))
     with pytest.raises(ValueError, match="does not exist"):
         metadata.check_release_tag("v1.2.3", "1.2.3")
+
+
+@pytest.mark.parametrize(
+    ("carrier", "before", "after", "diagnostic"),
+    [
+        ("README.md", "# Codex Responses Proxy", "# Other", "formal Project Name"),
+        (
+            ".gitlab-ci.yml",
+            "python -m tools.release.metadata",
+            "unrelated",
+            "release and governance checker",
+        ),
+        (".gitlab-ci.yml", "verify-release-tag:", "other-tag:", "exact trusted product tag"),
+        (".gitlab-ci.yml", "", "\npublish-gitlab-release:\n", "must not rebuild"),
+        (
+            "docs/operations/forge-operations.md",
+            "tools.forge.audit",
+            "other",
+            "read-only parity audit",
+        ),
+        (
+            "docs/operations/forge-operations.md",
+            "GITLAB_COMMIT_ALLOWED_SIGNERS",
+            "other",
+            "provider commit trust",
+        ),
+        (
+            "docs/operations/forge-operations.md",
+            "",
+            "\ncommit-author-name\n",
+            "couple shared history",
+        ),
+    ],
+)
+def test_governance_reader_detects_contradicted_public_contract(
+    carrier, before, after, diagnostic, mocker
+):
+    original = Path.read_text
+
+    def read(path, *args, **kwargs):
+        content = original(path, *args, **kwargs)
+        if path == ROOT / carrier:
+            return content.replace(before, after) if before else content + after
+        return content
+
+    mocker.patch.object(Path, "read_text", read)
+    with pytest.raises(ValueError, match=diagnostic):
+        metadata.check_governance_contract()
+
+
+def test_governance_requires_real_repository_carriers(tmp_path, mocker):
+    mocker.patch.object(metadata, "ROOT", tmp_path)
+    with pytest.raises(ValueError, match="missing governance documents"):
+        metadata.check_governance_contract()

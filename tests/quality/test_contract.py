@@ -39,6 +39,39 @@ def test_governance_failure_stops_before_subsequent_commands(failure, mocker, ca
     assert "first" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "defect", ["missing-register", "duplicate-sequence", "title", "status", "date", "section"]
+)
+def test_decision_register_requires_unique_complete_records(tmp_path, defect):
+    directory = tmp_path / "docs/decisions"
+    directory.mkdir(parents=True)
+    register = directory / "decision-register.md"
+    if defect == "missing-register":
+        assert decision_record_gaps(tmp_path) == ["decision_record_register_missing"]
+        return
+    register.write_text("[decision](dr-0001-owner.md)\n")
+    text = "# DR-0001: Owner\n- Status: accepted\n- Date: 2026-01-01\n## Context\n## Decision\n## Consequences\n## Revisit Trigger\n"
+    replacements = {
+        "title": ("# DR-0001", "# Other"),
+        "status": ("accepted", "invalid"),
+        "date": ("- Date: 2026-01-01", ""),
+        "section": ("## Context", ""),
+    }
+    if defect in replacements:
+        text = text.replace(*replacements[defect])
+    (directory / "dr-0001-owner.md").write_text(text)
+    if defect == "duplicate-sequence":
+        (directory / "dr-0001-other.md").write_text(text)
+    expected = {
+        "duplicate-sequence": "sequence_duplicate",
+        "title": "title_invalid",
+        "status": "status_invalid",
+        "date": "date_invalid",
+        "section": "section_missing",
+    }
+    assert any(expected[defect] in gap for gap in decision_record_gaps(tmp_path))
+
+
 class TestQualityPolicyContracts:
     """Keep the repository quality scope executable rather than documentary."""
 
