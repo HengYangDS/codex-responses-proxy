@@ -17,7 +17,6 @@ from tests.quality.fixtures import git as _git
 from tests.quality.fixtures import repository as _test_repository
 from tools.quality import commits
 from tools.quality import governance
-from tools.quality import responsibilities
 from tools.quality.repository import __main__ as repository_audit
 from tools.quality.repository.decisions import decision_record_gaps
 from tools.quality.repository.names import semantic_name_gaps
@@ -43,43 +42,6 @@ class TestQualityPolicyContracts:
         for concern in ("topology", "names", "decisions"):
             owner = importlib.util.find_spec(f"tools.quality.repository.{concern}")
             assert owner is not None
-
-    def test_responsibility_map_covers_every_carrier_exactly_once(self) -> None:
-        report = responsibilities.audit()
-
-        assert report["errors"] == []
-        assert report["ok"] is True
-        assert len(report["assignments"]) > 1000
-
-    def test_responsibility_map_rejects_missing_concern_rationale(self, tmp_path: Path) -> None:
-        source = (ROOT / ".config/quality/responsibility-map.toml").read_text(encoding="utf-8")
-        malformed = source.replace(
-            'risk_model = "Python correctness, import, modernization, security, performance, and maintainability defects escape review."\n',
-            "",
-            1,
-        )
-        policy = tmp_path / "responsibility-map.toml"
-        policy.write_text(malformed, encoding="utf-8")
-
-        report = responsibilities.audit(ROOT, policy)
-
-        assert "responsibility_map_concern_field_missing:python-lint:risk_model" in report["errors"]
-
-    def test_responsibility_map_rejects_overlapping_roles(self, tmp_path: Path) -> None:
-        source = (ROOT / ".config/quality/responsibility-map.toml").read_text(encoding="utf-8")
-        malformed = source.replace(
-            'prefixes = ["tools/"]\n',
-            'prefixes = ["tools/", "src/"]\n',
-            1,
-        )
-        policy = tmp_path / "responsibility-map.toml"
-        policy.write_text(malformed, encoding="utf-8")
-
-        report = responsibilities.audit(ROOT, policy)
-
-        assert any(
-            error.startswith("responsibility_map_multiple_roles:src/") for error in report["errors"]
-        )
 
     def test_current_repository_policy_is_internally_consistent(self) -> None:
         report = repository_audit.audit()

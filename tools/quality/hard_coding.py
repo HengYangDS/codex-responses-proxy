@@ -8,11 +8,21 @@ import sys
 import tomllib
 from collections.abc import Iterable
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / ".config/quality/policy/hard-coding.toml"
 REQUIRED_FIELDS = ("id", "kind", "owner", "rationale", "projections")
 PROJECTION_MATCHES = {"toml-key", "toml-value"}
+
+
+class AuditReport(TypedDict):
+    """Typed controlled-value inventory and its admission diagnostics."""
+
+    ok: bool
+    errors: list[str]
+    kinds: list[str]
+    controls: list[str]
 
 
 def _exists(root: Path, value: str) -> bool:
@@ -113,7 +123,7 @@ def _projection_errors(
     return errors
 
 
-def audit(root: Path = ROOT, policy_path: Path = POLICY) -> dict[str, object]:
+def audit(root: Path = ROOT, policy_path: Path = POLICY) -> AuditReport:
     """Return ownership and projection gaps in the controlled-value registry."""
     errors: list[str] = []
     try:
@@ -123,16 +133,29 @@ def audit(root: Path = ROOT, policy_path: Path = POLICY) -> dict[str, object]:
             "ok": False,
             "errors": [f"hard_coding_policy_invalid:{error}"],
             "kinds": [],
+            "controls": [],
         }
-    if policy.get("schema_version") != 1:
+    version = policy.get("schema_version")
+    if not isinstance(version, int) or isinstance(version, bool) or version != 1:
         errors.append("hard_coding_schema_version_must_be_1")
     allowed = policy.get("allowed_kinds")
     allowed_kinds = (
         {item for item in allowed if isinstance(item, str)} if isinstance(allowed, list) else set()
     )
+    if (
+        not isinstance(allowed, list)
+        or not allowed
+        or len(allowed_kinds) != len(allowed)
+        or "" in allowed_kinds
+    ):
+        errors.append("hard_coding_allowed_kinds_must_be_nonempty_unique_strings")
+    declarations = policy.get("controls")
+    if not isinstance(declarations, list) or not declarations:
+        errors.append("hard_coding_controls_must_be_nonempty_list")
+        declarations = []
     controls: dict[str, dict[str, object]] = {}
     owners: dict[str, str] = {}
-    for index, raw in enumerate(policy.get("controls", [])):
+    for index, raw in enumerate(declarations):
         if not isinstance(raw, dict):
             errors.append(f"hard_coding_control_must_be_table:{index}")
             continue
@@ -151,7 +174,7 @@ def audit(root: Path = ROOT, policy_path: Path = POLICY) -> dict[str, object]:
             if field not in control
         )
         kind = control.get("kind")
-        if kind not in allowed_kinds:
+        if not isinstance(kind, str) or kind not in allowed_kinds:
             errors.append(f"hard_coding_control_kind_invalid:{identifier}")
         owner = control.get("owner")
         if not isinstance(owner, str) or not owner:

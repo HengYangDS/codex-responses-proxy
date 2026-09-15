@@ -22,7 +22,11 @@ RATIONALE_FIELDS = (
 
 def _strings(value: object, *, field: str, errors: list[str]) -> tuple[str, ...]:
     """Return one non-empty unique string sequence or record a precise error."""
-    if not isinstance(value, list) or not value or not all(isinstance(item, str) for item in value):
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) and item.strip() for item in value)
+    ):
         errors.append(f"responsibility_map_{field}_must_be_nonempty_string_list")
         return ()
     values = tuple(item for item in value if isinstance(item, str))
@@ -48,27 +52,21 @@ def _tracked_paths(root: Path) -> tuple[str, ...]:
         check=True,
         capture_output=True,
     )
-    return tuple(
-        sorted(
-            path.decode()
-            for path in completed.stdout.split(b"\0")
-            if path and not path.decode().startswith(".codebase-memory/")
-        )
-    )
+    return tuple(sorted(path.decode() for path in completed.stdout.split(b"\0") if path))
 
 
-def _role_matches(path: str, role: dict[str, object]) -> bool:
+def _role_matches(path: str, role: tuple[tuple[str, ...], tuple[str, ...]]) -> bool:
     """Return whether one path belongs to the role's exact positive scope."""
-    files = _optional_strings(role.get("files"))
-    prefixes = _optional_strings(role.get("prefixes"))
+    files, prefixes = role
     return path in files or any(path.startswith(prefix) for prefix in prefixes)
 
 
-def _optional_strings(value: object) -> tuple[str, ...]:
-    """Return a string sequence for an optional role selector."""
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        return ()
-    return tuple(item for item in value if isinstance(item, str))
+def _declarations(value: object, *, field: str, errors: list[str]) -> list[object]:
+    """Require a nonempty declaration inventory before checking its entries."""
+    if not isinstance(value, list) or not value:
+        errors.append(f"responsibility_map_{field}_must_be_nonempty_list")
+        return []
+    return list[object](value)
 
 
 def _mapping(value: object, *, label: str, errors: list[str]) -> dict[str, object]:
@@ -94,18 +92,21 @@ def audit(root: Path = ROOT, policy_path: Path = MAP) -> AuditReport:
     """Return exact ownership gaps for carriers, scopes, concerns, and configuration."""
     policy = tomllib.loads(policy_path.read_text(encoding="utf-8"))
     errors: list[str] = []
-    if policy.get("schema_version") != 1:
+    version = policy.get("schema_version")
+    if type(version) is not int or version != 1:
         errors.append("responsibility_map_schema_version_must_be_1")
     for field in ("owner", "purpose"):
         value = policy.get(field)
         if not isinstance(value, str) or not value.strip():
             errors.append(f"responsibility_map_{field}_must_be_nonempty_string")
 
-    roles: dict[str, dict[str, object]] = {}
-    for index, raw_role in enumerate(policy.get("roles", [])):
+    roles: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
+    for index, raw_role in enumerate(
+        _declarations(policy.get("roles"), field="roles", errors=errors),
+    ):
         role = _mapping(raw_role, label=f"role_{index}", errors=errors)
         identifier = role.get("id")
-        if not isinstance(identifier, str) or not identifier:
+        if not isinstance(identifier, str) or not identifier.strip():
             errors.append(f"responsibility_map_role_{index}_id_must_be_nonempty_string")
             continue
         if identifier in roles:
@@ -114,19 +115,23 @@ def audit(root: Path = ROOT, policy_path: Path = MAP) -> AuditReport:
         description = role.get("description")
         if not isinstance(description, str) or not description.strip():
             errors.append(f"responsibility_map_role_description_missing:{identifier}")
-        files = _optional_strings(role.get("files"))
-        prefixes = _optional_strings(role.get("prefixes"))
+        files, prefixes = (
+            _strings(role[field], field=f"role_{identifier}_{field}", errors=errors)
+            if field in role
+            else ()
+            for field in ("files", "prefixes")
+        )
         if not files and not prefixes:
             errors.append(f"responsibility_map_role_scope_missing:{identifier}")
-        if not all(isinstance(path, str) and path for path in (*files, *prefixes)):
-            errors.append(f"responsibility_map_role_scope_invalid:{identifier}")
-        roles[identifier] = role
+        roles[identifier] = (files, prefixes)
 
     scopes: dict[str, tuple[str, ...]] = {}
-    for index, raw_scope in enumerate(policy.get("scopes", [])):
+    for index, raw_scope in enumerate(
+        _declarations(policy.get("scopes"), field="scopes", errors=errors),
+    ):
         scope = _mapping(raw_scope, label=f"scope_{index}", errors=errors)
         identifier = scope.get("id")
-        if not isinstance(identifier, str) or not identifier:
+        if not isinstance(identifier, str) or not identifier.strip():
             errors.append(f"responsibility_map_scope_{index}_id_must_be_nonempty_string")
             continue
         if identifier in scopes:
@@ -141,10 +146,12 @@ def audit(root: Path = ROOT, policy_path: Path = MAP) -> AuditReport:
         scopes[identifier] = role_ids
 
     concerns: dict[str, dict[str, object]] = {}
-    for index, raw_concern in enumerate(policy.get("concerns", [])):
+    for index, raw_concern in enumerate(
+        _declarations(policy.get("concerns"), field="concerns", errors=errors),
+    ):
         concern = _mapping(raw_concern, label=f"concern_{index}", errors=errors)
         identifier = concern.get("id")
-        if not isinstance(identifier, str) or not identifier:
+        if not isinstance(identifier, str) or not identifier.strip():
             errors.append(f"responsibility_map_concern_{index}_id_must_be_nonempty_string")
             continue
         if identifier in concerns:
@@ -170,7 +177,10 @@ def audit(root: Path = ROOT, policy_path: Path = MAP) -> AuditReport:
         concerns[identifier] = concern
 
     assignments: dict[str, str] = {}
-    for path in _tracked_paths(root):
+    tracked = _tracked_paths(root)
+    if not tracked:
+        errors.append("responsibility_map_tracked_inventory_empty")
+    for path in tracked:
         owners = [identifier for identifier, role in roles.items() if _role_matches(path, role)]
         if not owners:
             errors.append(f"responsibility_map_unowned_carrier:{path}")
