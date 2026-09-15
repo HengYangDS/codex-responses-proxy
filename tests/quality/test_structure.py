@@ -19,7 +19,6 @@ import pytest
 from tests.quality.fixtures import ROOT
 from tests.quality.fixtures import audit_source
 from tests.quality.fixtures import git
-from tests.quality.fixtures import load
 from tests.quality.fixtures import quality_inventory
 from tests.quality.fixtures import repository
 from tools.quality import branch_coverage
@@ -568,8 +567,7 @@ class TestStructuralQualityContracts:
     def test_branch_coverage_floor_is_enforced_independently(
         self, totals: dict[str, int], floor: int, expected: list[str]
     ) -> None:
-        checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
-        assert checker.branch_gaps(totals, floor) == expected
+        assert branch_coverage.branch_gaps(totals, floor) == expected
 
     @pytest.mark.parametrize(
         ("totals", "floor", "expected"),
@@ -595,11 +593,9 @@ class TestStructuralQualityContracts:
     def test_statement_coverage_floor_is_enforced_independently(
         self, totals: dict[str, int], floor: int, expected: list[str]
     ) -> None:
-        checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
-        assert checker.statement_gaps(totals, floor) == expected
+        assert branch_coverage.statement_gaps(totals, floor) == expected
 
     def test_each_semantic_package_must_have_execution_evidence(self) -> None:
-        checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
         files = {
             "/site-packages/codex_responses_proxy/cli/application.py": {
                 "summary": {
@@ -618,10 +614,14 @@ class TestStructuralQualityContracts:
                 }
             },
         }
-        assert checker.package_gaps(checker.package_totals(files, "codex_responses_proxy")) == []
+        assert (
+            branch_coverage.package_gaps(
+                branch_coverage.package_totals(files, "codex_responses_proxy")
+            )
+            == []
+        )
 
     def test_branchless_root_package_is_governed_by_statement_coverage(self) -> None:
-        checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
         files = {
             "/site-packages/codex_responses_proxy/cli/__main__.py": {
                 "summary": {
@@ -632,10 +632,14 @@ class TestStructuralQualityContracts:
                 }
             }
         }
-        assert checker.package_gaps(checker.package_totals(files, "codex_responses_proxy")) == []
+        assert (
+            branch_coverage.package_gaps(
+                branch_coverage.package_totals(files, "codex_responses_proxy")
+            )
+            == []
+        )
 
     def test_files_combine_into_their_semantic_package_before_admission(self) -> None:
-        checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
         files = {
             "/site-packages/codex_responses_proxy/relay/first.py": {
                 "summary": {
@@ -654,10 +658,14 @@ class TestStructuralQualityContracts:
                 }
             },
         }
-        assert checker.package_gaps(checker.package_totals(files, "codex_responses_proxy")) == []
+        assert (
+            branch_coverage.package_gaps(
+                branch_coverage.package_totals(files, "codex_responses_proxy")
+            )
+            == []
+        )
 
     def test_semantic_package_observation_rejects_wholly_unexecuted_owner(self) -> None:
-        checker = load("codex_responses_proxy_branch_coverage", "tools/quality/branch_coverage.py")
         files = {
             "/site-packages/codex_responses_proxy/relay/exchange.py": {
                 "summary": {
@@ -668,8 +676,8 @@ class TestStructuralQualityContracts:
                 }
             }
         }
-        totals = checker.package_totals(files, "codex_responses_proxy")
-        assert checker.package_gaps(totals) == [
+        totals = branch_coverage.package_totals(files, "codex_responses_proxy")
+        assert branch_coverage.package_gaps(totals) == [
             "package_statement_coverage_unobserved:relay",
             "package_branch_coverage_unobserved:relay",
         ]
