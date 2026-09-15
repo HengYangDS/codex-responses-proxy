@@ -7,6 +7,31 @@ publication authority.
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-09-15
+
+### Changed
+
+- Require durable generation-based installations for in-place upgrades.
+  Older flat installations must be explicitly uninstalled before a fresh
+  install; their removed migration path is the breaking change in this release.
+- Keep installation, rollback, recovery and purge on one transaction owner;
+  retain interrupted cleanup authority until exact owned resources are retired.
+- Require a reachable Linux user service manager without changing the host's
+  lingering policy or leaving a fallback service behind.
+
+### Fixed
+
+- Recover output-free upstream `server_error` streams within the existing
+  reconnect deadline. SSE comments, heartbeats, `[DONE]` and JSON whitespace
+  no longer prematurely commit a retry-safe response. Already-delivered output,
+  tool calls, permanent failures and unknown failures are never replayed.
+- Report bounded stream failure classes and request identifiers without logging
+  upstream messages or caller payloads.
+- Preserve exact active installations and restore prior generation projections
+  through interrupted lifecycle transitions.
+- Validate publication, native asset and quality-policy identities strictly;
+  verify product, tooling and orchestration coverage independently.
+
 ## [3.1.17] - 2026-09-12
 
 ### Fixed
