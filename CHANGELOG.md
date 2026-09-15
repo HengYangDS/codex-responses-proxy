@@ -7,6 +7,14 @@ publication authority.
 
 ## [Unreleased]
 
+## [3.1.17] - 2026-09-12
+
+### Fixed
+
+- Preserve inline PNG, JPEG, WebP, and GIF image data URLs through Responses
+  replay and classified retries without changing image bytes, detail, or order.
+  Image-only dialogue and paired tool results remain available to the model.
+
 ## [3.1.16] - 2026-09-05
 
 ### Fixed

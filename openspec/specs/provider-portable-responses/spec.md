@@ -129,9 +129,19 @@ opaque metadata SHALL NOT be required by a paired output's outbound form.
 - **AND** it does not rebuild replay, restore an older request body, or recreate
   a provider-bound assistant typed-block shape.
 
+#### Scenario: Replay contains an inline screenshot
+
+- **WHEN** image-capable input contains a nonempty, strictly Base64-encoded
+  PNG, JPEG, WebP, or GIF data URL
+- **THEN** projection retains its original URL, detail, and order in dialogue
+  and paired tool-output input, including image-only content
+- **AND** repeated projection and classified retries preserve the image bytes
+- **AND** validation performs no filesystem access, network fetch, raster
+  decoding, or image re-encoding.
+
 #### Scenario: Classified DMX retry retains replayable input images
 
-- **WHEN** the normal portable request contains a validated remote
+- **WHEN** the normal portable request contains a validated remote or inline
   `input_image` in system, developer, user, or tool-output input content and
   receives the exact classified DMX empty-response error
 - **THEN** the byte-identical retry preserves that image on input grammar

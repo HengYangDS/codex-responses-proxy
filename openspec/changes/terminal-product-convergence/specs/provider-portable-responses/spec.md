@@ -21,7 +21,7 @@ or fallback SHALL reinterpret it independently.
   strictly Base64-encoded PNG, JPEG, WebP, or GIF data URL
 - **THEN** the shared content projection preserves the original URL, detail,
   content order, and image-only message or paired tool output
-- **AND** repeated projection retains those image bytes without increasing
+- **AND** repeated projection and classified retries retain those image bytes without increasing
   the omitted-image count
 - **AND** transport validation performs no filesystem access, network image
   fetch, raster decoding, or image re-encoding. Local file references and
