@@ -517,7 +517,8 @@ class TestProxyTransport:
         failed = {
             "chunks": [
                 b'data: {"type":"response.created"}\n\n',
-                b'data: {"type":"response.failed"}\n\n',
+                b'data: {"type":"response.failed","response":{"error":{"code":"server_error"}}}\n\n',
+                b"data: [DONE]\n\n",
             ],
         }
         recovered = {

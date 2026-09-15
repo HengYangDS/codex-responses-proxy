@@ -51,6 +51,53 @@ class TestRealSubprocessHandoffIntegration:
     def teardown_method(self) -> None:
         self._cleanups.close()
 
+    def test_native_listener_recovers_pre_content_failure_without_duplicate_output(self):
+        upstream = ScriptedUpstream()
+        self._cleanups.callback(upstream.close)
+        request_id = "64781e82-1e8f-42af-a06a-409e154bbfe2"
+        failed = (
+            b'data: {"type":"response.created"}\n\n'
+            b'data: {"type":"response.failed","response":{"error":{"code":"server_error",'
+            b'"message":"request ID ' + request_id.encode() + b'"}}}\n\ndata: [DONE]\n\n'
+        )
+        completed = (
+            b'data: {"type":"response.output_text.delta","delta":"recovered"}\n\n'
+            b'data: {"type":"response.completed"}\n\n'
+        )
+
+        def send(handler):
+            payload = failed if len(upstream.received) == 1 else completed
+            handler.send_response(200)
+            handler.send_header("Content-Type", "text/event-stream")
+            handler.send_header("Content-Length", str(len(payload)))
+            handler.end_headers()
+            handler.wfile.write(payload)
+
+        upstream.push(send)
+        upstream.push(send)
+        port = free_port()
+        root, ctx, _owned = self._installed_fixture(
+            release="1.0.25", port=port, upstream_url=upstream.base_url()
+        )
+        child = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=root / "proxy.log")
+        self._cleanups.callback(lambda: terminate_process(child))
+        upstream.start()
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/dmxapi/v1/responses",
+            data=b'{"model":"synthetic","stream":true,"input":[]}',
+            headers={"Content-Type": "application/json"},
+        )
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(request, timeout=30) as response:
+            assert response.read() == completed
+        assert len(upstream.received) == 2
+        assert upstream.received[0] == upstream.received[1]
+        logs = (Path(ctx.log_dir) / "proxy.log").read_text(encoding="utf-8")
+        assert f"upstream_request_id={request_id}" in logs
+        failure = next(line for line in logs.splitlines() if "event=sse_upstream_failed" in line)
+        assert "code=server_error" in failure
+        assert "committed=False" in failure
+
     def test_scripted_upstream_starts_only_after_the_proxy_child_is_spawned(
         self,
     ) -> None:

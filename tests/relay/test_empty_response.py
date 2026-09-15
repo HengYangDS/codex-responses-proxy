@@ -504,7 +504,7 @@ class EmptyResponseTransportTests:
         started, release = threading.Event(), threading.Event()
         scripted = {
             "status": 200,
-            "chunks": [SUCCESS],
+            "chunks": [b'data: {"type":"response.completed"}\n\n'],
             "started_event": started,
             "release_event": release,
         }
