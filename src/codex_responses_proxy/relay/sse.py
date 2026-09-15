@@ -13,6 +13,7 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from http.server import BaseHTTPRequestHandler
+from typing import NotRequired
 from typing import Protocol
 from typing import TypedDict
 from typing import runtime_checkable
@@ -25,15 +26,8 @@ from codex_responses_proxy.runtime import config as runtime_config
 
 UPSTREAM_READ_TIMEOUT = runtime_config.load().upstream_read_timeout
 UPSTREAM_TIMEOUT = runtime_config.load().upstream_timeout
-_HELD_TYPES = (
-    b'"type":"response.created"',
-    b'"type": "response.created"',
-    b'"type":"response.in_progress"',
-    b'"type": "response.in_progress"',
-    b'"type":"response.failed"',
-    b'"type": "response.failed"',
-)
-_TERMINALS = ("completed", "failed", "incomplete")
+_HELD_TYPES = frozenset(("response.created", "response.in_progress"))
+_TERMINALS = frozenset(("response.completed", "response.failed", "response.incomplete"))
 _CLEAN_TERMINALS = {"response.completed", "response.incomplete"}
 
 
@@ -58,6 +52,8 @@ class StreamResult(TypedDict):
     wrote_downstream: bool
     detail: str
     error: BaseException | None
+    failure_code: NotRequired[str]
+    upstream_request_id: NotRequired[str]
 
 
 class RelayResult(TypedDict):
@@ -89,18 +85,6 @@ def _set_read_timeout(response: ResponseLike, timeout: float) -> None:
         if isinstance(candidate, _TimeoutSocket):
             candidate.settimeout(timeout)
             return
-
-
-def _terminal_type(event: bytes) -> str | None:
-    return next(
-        (
-            f"response.{terminal}"
-            for terminal in _TERMINALS
-            if f'"type":"response.{terminal}"'.encode() in event
-            or f'"type": "response.{terminal}"'.encode() in event
-        ),
-        None,
-    )
 
 
 def _release_upstream(response: ResponseLike) -> None:
@@ -157,6 +141,7 @@ def _read_one_stream(
     terminal_event = None
     upstream_detail = "eof"
     upstream_error: BaseException | None = None
+    failure_code, upstream_request_id = "unknown", "none"
     wrote_downstream = prelude_flushed = False
     prelude: list[bytes] = []
 
@@ -176,8 +161,8 @@ def _read_one_stream(
         prelude.clear()
         prelude_flushed = True
 
-    def emit(data: bytes) -> None:
-        if not prelude_flushed and any(marker in data for marker in _HELD_TYPES):
+    def emit(data: bytes, *, hold: bool) -> None:
+        if not prelude_flushed and hold:
             prelude.append(data)
             return
         flush_prelude()
@@ -185,15 +170,28 @@ def _read_one_stream(
 
     def process_event(event: bytes) -> None:
         nonlocal event_count, terminal_event, upstream_detail, upstream_error
+        nonlocal failure_code, upstream_request_id
         try:
-            validated = live_response.validate_sse_event(event)
+            payload = live_response.sse_event_data(event)
         except ValueError as error:
             upstream_detail = "projection_failed"
             upstream_error = error
             return
         event_count += 1
-        terminal_event = _terminal_type(validated) or terminal_event
-        emit(validated)
+        event_type = payload.get("type") if isinstance(payload, dict) else None
+        event_type = event_type if isinstance(event_type, str) else ""
+        terminal_event = event_type if event_type in _TERMINALS else terminal_event
+        response_body = payload.get("response") if isinstance(payload, dict) else None
+        error = response_body.get("error") if isinstance(response_body, dict) else None
+        if event_type == "response.failed":
+            failure_code, upstream_request_id = live_response.failure_diagnostic(error)
+        retryable = (
+            event_type == "response.failed"
+            and failure_code == "server_error"
+            and isinstance(response_body, dict)
+            and not response_body.get("output")
+        )
+        emit(event, hold=payload is None or event_type in _HELD_TYPES or retryable)
 
     armed: float | None = None
     while True:
@@ -236,6 +234,8 @@ def _read_one_stream(
         "wrote_downstream": wrote_downstream,
         "detail": detail,
         "error": upstream_error,
+        "failure_code": failure_code,
+        "upstream_request_id": upstream_request_id,
     }
 
 
@@ -266,13 +266,23 @@ def relay(
         result = _read_one_stream(handler, current, on_first_write, deadline)
         _release_upstream(current)
         terminal = result["terminal"]
+        if terminal == "response.failed":
+            code = result.get("failure_code", "unknown")
+            telemetry.record_upstream_classification(f"sse_{code}")
+            operational_log.log(
+                f"req={request_id} event=sse_upstream_failed code={code} "
+                f"upstream_request_id={result.get('upstream_request_id', 'none')} "
+                f"committed={result['wrote_downstream']} attempt={attempt + 1} "
+                f"path={operational_log.safe_request_path(path)}"
+            )
         if (
             result["wrote_downstream"]
             or terminal in _CLEAN_TERMINALS
             or result["detail"] == "projection_failed"
         ):
             break
-        if attempt == max_attempts - 1 or time.monotonic() >= deadline:
+        delay = backoffs[min(attempt, len(backoffs) - 1)]
+        if attempt == max_attempts - 1 or time.monotonic() + delay >= deadline:
             break
         telemetry.record_counter("streams_pre_content_reconnect_attempts")
         why = terminal or result["detail"]
@@ -281,7 +291,7 @@ def relay(
             f"events={result['events']} attempt={attempt + 1}/{max_attempts - 1} "
             f"path={operational_log.safe_request_path(path)}"
         )
-        time.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+        time.sleep(delay)
         assert reopen is not None
         try:
             current = reopen()

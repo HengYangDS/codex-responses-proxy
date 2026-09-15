@@ -8,6 +8,7 @@ the current turn's decryption and tool dispatch.
 from __future__ import annotations
 
 import json
+import re
 
 _JSON_TERMINALS = frozenset(("completed", "incomplete"))
 
@@ -31,17 +32,43 @@ def error_payload(
 
 def validate_sse_event(raw_event: bytes) -> bytes:
     """Validate JSON-bearing SSE data lines and return the exact event bytes."""
-    for line in raw_event.splitlines():
-        if not line.startswith(b"data: "):
-            continue
-        data = line[6:]
-        if data == b"[DONE]":
-            continue
-        try:
-            json.loads(data)
-        except (TypeError, ValueError, RecursionError, UnicodeError) as exc:
-            raise ValueError("invalid_responses_event") from exc
+    sse_event_data(raw_event)
     return raw_event
+
+
+def sse_event_data(raw_event: bytes) -> object:
+    """Decode one SSE data field sequence without depending on JSON whitespace."""
+    fields: list[bytes] = []
+    for line in raw_event.splitlines():
+        name, _, value = line.partition(b":")
+        if name == b"data":
+            fields.append(value.removeprefix(b" "))
+    data = b"\n".join(fields)
+    if not data or data == b"[DONE]":
+        return None
+    try:
+        return json.loads(data)
+    except (TypeError, ValueError, RecursionError, UnicodeError) as exc:
+        raise ValueError("invalid_responses_event") from exc
+
+
+def failure_diagnostic(error: object) -> tuple[str, str]:
+    """Extract a bounded failure class and UUID, never upstream prose or payloads."""
+    if not isinstance(error, dict):
+        return "unknown", "none"
+    code = error.get("code")
+    code = (
+        str(code)
+        if isinstance(code, str)
+        and code in ("server_error", "rate_limit_exceeded", "invalid_prompt")
+        else "unknown"
+    )
+    message = error.get("message")
+    request_id = re.search(
+        r"(?i)\brequest[ _-]id[ :]+([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})\b",
+        str(message)[:2048] if isinstance(message, str) else "",
+    )
+    return code, str(request_id[1]).lower() if request_id else "none"
 
 
 def validate_json_response(raw_response: bytes) -> bytes:

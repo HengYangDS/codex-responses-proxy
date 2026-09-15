@@ -34,6 +34,151 @@ PROVIDERS = provider_registry.load()
 
 
 class TestSseTransport(InputTransportFixture):
+    @pytest.mark.parametrize(
+        "control", [b"data: [DONE]\n\n", b": keepalive\n\n", b"event: ping\n\n"]
+    )
+    def test_pre_content_failure_controls_preserve_reconnect(self, control, *, mocker) -> None:
+        failed = (
+            b'data:{"type" : "response.created"}\n\n'
+            b'data:{"type" : "response.in_progress"}\n\n'
+            b'data:{"type" : "response.failed",'
+            b'"response":{"error":{"code":"server_error"}}}\n\n' + control
+        )
+        completed = b'data: {"type":"response.completed"}\n\n'
+        handler = MemoryHandler()
+        reopen = mocker.Mock(return_value=DirectResponse(completed))
+        mocker.patch.object(sse.time, "sleep", return_value=None)
+
+        result = sse.relay(
+            handler, DirectResponse(failed), "/ucloud/v1/responses", 1, reopen=reopen
+        )
+
+        assert result["attempts"] == 2
+        reopen.assert_called_once_with()
+        assert b"response.failed" not in handler.output()
+        assert handler.output().count(b"response.completed") == 1
+
+    @pytest.mark.parametrize("event", ["response.output_text.delta", "response.output_item.added"])
+    def test_committed_output_is_never_replayed(self, event, *, mocker) -> None:
+        content = json.dumps(
+            {"type": event, "delta": "keep", "item": {"type": "function_call"}}
+        ).encode()
+        raw = (
+            b"data: " + content + b"\n\n"
+            b'data: {"type":"response.failed","response":{"error":{"code":"server_error"}}}\n\n'
+            b"data: [DONE]\n\n"
+        )
+        handler = MemoryHandler()
+        reopen = mocker.Mock()
+
+        result = sse.relay(handler, DirectResponse(raw), "/ucloud/v1/responses", 1, reopen=reopen)
+
+        assert result["attempts"] == 1
+        reopen.assert_not_called()
+        assert content in handler.output()
+        assert b"response.failed" in handler.output()
+
+    @pytest.mark.parametrize("code", ["invalid_prompt", "rate_limit_exceeded", "unknown"])
+    def test_permanent_failure_is_preserved_without_reconnect(self, code, *, mocker) -> None:
+        raw = (
+            b"data: "
+            + json.dumps(
+                {"type": "response.failed", "response": {"error": {"code": code}}}
+            ).encode()
+            + b"\n\n"
+        )
+        handler = MemoryHandler()
+        reopen = mocker.Mock()
+
+        result = sse.relay(handler, DirectResponse(raw), "/ucloud/v1/responses", 1, reopen=reopen)
+
+        assert result["attempts"] == 1
+        reopen.assert_not_called()
+        assert raw in handler.output()
+
+    def test_failed_response_with_output_is_not_replayed(self, *, mocker) -> None:
+        raw = b'data: {"type":"response.failed","response":{"output":[{"type":"function_call"}],"error":{"code":"server_error"}}}\n\n'
+        handler = MemoryHandler()
+        reopen = mocker.Mock(return_value=DirectResponse())
+        mocker.patch.object(sse.time, "sleep", return_value=None)
+
+        result = sse.relay(handler, DirectResponse(raw), "/ucloud/v1/responses", 1, reopen=reopen)
+
+        assert result["attempts"] == 1
+        reopen.assert_not_called()
+        assert raw in handler.output()
+
+    def test_failure_diagnostics_correlate_without_disclosing_payload(self, *, mocker) -> None:
+        request_id = "64781e82-1e8f-42af-a06a-409e154bbfe2"
+        raw = (
+            b"data: "
+            + json.dumps(
+                {
+                    "type": "response.failed",
+                    "response": {
+                        "error": {
+                            "code": "server_error",
+                            "message": f"private-prompt-secret request ID {request_id} in your email",
+                        }
+                    },
+                }
+            ).encode()
+            + b"\n\n"
+        )
+        mocker.patch.object(sse.time, "sleep", return_value=None)
+        reopen = mocker.Mock(
+            return_value=DirectResponse(b'data: {"type":"response.completed"}\n\n')
+        )
+
+        sse.relay(MemoryHandler(), DirectResponse(raw), "/ucloud/v1/responses", 7, reopen=reopen)
+
+        logs = Path(operational_log.LOG_PATH).read_text()
+        assert f"upstream_request_id={request_id}" in logs
+        assert "code=server_error" in logs
+        assert "req=7 event=sse_upstream_failed" in logs
+        assert "private-prompt-secret" not in logs
+
+    def test_reconnect_backoff_does_not_outlive_stream_deadline(self, *, mocker) -> None:
+        handler = MemoryHandler()
+        reopen = mocker.Mock(return_value=DirectResponse())
+        mocker.patch.object(
+            sse,
+            "_read_one_stream",
+            return_value={
+                "terminal": None,
+                "events": 0,
+                "wrote_downstream": False,
+                "detail": "eof",
+                "error": None,
+            },
+        )
+        sleep = mocker.patch.object(sse.time, "sleep", return_value=None)
+        mocker.patch.object(
+            sse.time, "monotonic", side_effect=[0.0] + [sse.UPSTREAM_TIMEOUT - 0.1] * 20
+        )
+
+        result = sse.relay(handler, DirectResponse(), "/ucloud/v1/responses", 1, reopen=reopen)
+
+        assert result["attempts"] == 1
+        sleep.assert_not_called()
+        reopen.assert_not_called()
+
+    def test_transient_failure_reconnects_are_bounded(self, *, mocker) -> None:
+        raw = (
+            b'data: {"type":"response.failed","response":{"error":{"code":"server_error"}}}\n\n'
+            b"data: [DONE]\n\n"
+        )
+        handler = MemoryHandler()
+        reopen = mocker.Mock(side_effect=lambda: DirectResponse(raw))
+        mocker.patch.object(sse.time, "sleep", return_value=None)
+
+        result = sse.relay(handler, DirectResponse(raw), "/ucloud/v1/responses", 1, reopen=reopen)
+
+        assert result["pre_content_exhausted"]
+        assert result["attempts"] == 6
+        assert reopen.call_count == 5
+        assert handler.output() == b""
+
     def test_recovered_sse_failure_does_not_reconnect(self, *, mocker) -> None:
         body = request_body(stream=True)
         incomplete = b'data: {"type":"response.created"}\n\n'
@@ -279,7 +424,9 @@ class TestSseTransport(InputTransportFixture):
     def test_direct_sse_relay_handles_reopen_failure_and_incomplete_terminal(
         self, *, mocker
     ) -> None:
-        failed = DirectResponse(b'data: {"type":"response.failed"}\n\n')
+        failed = DirectResponse(
+            b'data: {"type":"response.failed","response":{"error":{"code":"server_error"}}}\n\n'
+        )
         handler = MemoryHandler()
         mocker.patch.object(sse.time, "sleep", return_value=None)
         result = sse.relay(
