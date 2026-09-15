@@ -6,6 +6,7 @@ import sys
 import tomllib
 from collections.abc import Mapping
 from math import ceil
+from math import isfinite
 from pathlib import Path
 
 import pyperf
@@ -32,6 +33,10 @@ def _measurements(
                 f"performance evidence unit mismatch: {benchmark.get_name()}={benchmark.get_unit()}"
             )
         values = sorted(benchmark.get_values())
+        if any(isinstance(value, bool) or not isfinite(value) or value < 0 for value in values):
+            raise PerformanceError(
+                f"performance evidence contains invalid samples: {benchmark.get_name()}"
+            )
         if len(values) < minimum_samples:
             raise PerformanceError(
                 f"performance evidence has too few samples: {benchmark.get_name()}={len(values)}"
@@ -48,7 +53,13 @@ def _budgets(contract: Mapping[str, object], group: str) -> dict[str, float]:
         raise PerformanceError(f"performance policy section is invalid: {group}")
     budgets: dict[str, float] = {}
     for name, maximum in raw.items():
-        if not isinstance(name, str) or not isinstance(maximum, int | float) or maximum <= 0:
+        if (
+            not isinstance(name, str)
+            or isinstance(maximum, bool)
+            or not isinstance(maximum, int | float)
+            or not isfinite(maximum)
+            or maximum <= 0
+        ):
             raise PerformanceError(f"performance budget is invalid: {group}.{name}")
         budgets[name] = float(maximum)
     return budgets
@@ -65,10 +76,13 @@ def verify(*, policy: Path, latency: Path, memory: Path) -> None:
     percentile = execution.get("percentile")
     if (
         not isinstance(minimum_latency_samples, int)
+        or isinstance(minimum_latency_samples, bool)
         or minimum_latency_samples <= 0
         or not isinstance(minimum_memory_samples, int)
+        or isinstance(minimum_memory_samples, bool)
         or minimum_memory_samples <= 0
         or not isinstance(percentile, int)
+        or isinstance(percentile, bool)
         or not 50 <= percentile <= 99
     ):
         raise PerformanceError("performance distribution policy is invalid")
