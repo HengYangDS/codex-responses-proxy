@@ -125,6 +125,10 @@ class DirectResponse:
     def close(self) -> None:
         """Satisfy the upstream response lifecycle contract."""
 
+    def read1(self, amount: int = -1) -> bytes:
+        """Read one scripted transport fragment without combining it with another."""
+        return self.read(amount)
+
 
 class InputTransportFixture:
     """Reset shared relay state around each transport contract."""

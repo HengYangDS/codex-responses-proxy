@@ -28,6 +28,11 @@ import "list"
 	quality:         "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
 }
 
+#UvSetup: {
+	uses: #Toolchains.githubActions.uv
+	with: "cache-suffix": "${{ github.job }}-${{ strategy.job-index }}"
+}
+
 gitlab: {
 	workflow: rules: [{
 		if: "$CI_COMMIT_TAG"
@@ -226,7 +231,7 @@ githubVerify: {
 			steps: [{
 				uses: #Toolchains.githubActions.checkout
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				name: "Install the locked matrix tool environment"
 				run:  "uv sync --locked --all-groups"
@@ -252,7 +257,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version-file": ".python-release"
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				uses: #Toolchains.githubActions.mise
 				with: {
@@ -294,8 +299,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ matrix.python-version }}"
 			}, {
-				uses: #Toolchains.githubActions.uv
-				with: "cache-suffix": "${{ matrix.python-version }}"
+				#UvSetup
 			}, {
 				name: "Compile and test"
 				run:  "uv run --locked --group quality nox -s \"tests-${{ matrix.python-version }}\""
@@ -322,8 +326,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ matrix.python-version }}"
 			}, {
-				uses: #Toolchains.githubActions.uv
-				with: "cache-suffix": "${{ matrix.python-version }}"
+				#UvSetup
 			}, {
 				name: "Compile and test"
 				run:  "uv run --locked --group quality nox -s \"tests-${{ matrix.python-version }}\""
@@ -344,7 +347,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version-file": ".python-release"
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				name: "Confirm accepted source and metadata"
 				run: """
@@ -371,7 +374,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version-file": ".python-release"
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				name: "Prove exact dev-to-main promotion"
 				run: """
@@ -399,7 +402,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.latest }}"
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				uses: #Toolchains.githubActions.mise
 				with: {
@@ -440,7 +443,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.floor }}"
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				uses: #Toolchains.githubActions.mise
 				with: {
@@ -469,7 +472,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.release }}"
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				name: "Measure deterministic product overhead"
 				run:  "uv run --locked --group quality nox -s performance -- \"$RUNNER_TEMP/performance\""
@@ -510,7 +513,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.release }}"
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				name: "Install the locked release tool environment"
 				run:  "uv sync --locked --group quality"
@@ -542,7 +545,7 @@ githubVerify: {
 					ref:           #Conditions.productSHA
 				}
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				name: "Materialize the canonical release source root"
 				run:  "install -d /workspace && git -c safe.directory=\"$GITHUB_WORKSPACE\" archive --format=tar HEAD | tar -xf - -C /workspace"
@@ -579,7 +582,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.release }}"
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				uses: #Toolchains.githubActions.download
 				with: {
@@ -643,7 +646,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.release }}"
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				name: "Install the locked release tool environment"
 				run:  "uv sync --locked --group quality"
@@ -684,7 +687,7 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version": "${{ needs.python-matrix.outputs.latest }}"
 			}, {
-				uses: #Toolchains.githubActions.uv
+				#UvSetup
 			}, {
 				name: "Download native release assets"
 				env: GH_TOKEN: "${{ github.token }}"

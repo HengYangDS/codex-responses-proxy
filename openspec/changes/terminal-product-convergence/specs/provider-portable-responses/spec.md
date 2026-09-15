@@ -40,3 +40,37 @@ SHALL NOT branch on Provider names.
 - **THEN** the common conformance suite proves request, stream, non-stream,
   error, retry, cooldown, and redaction behavior
 - **AND** no existing generic product module requires Provider-specific code.
+
+### Requirement: HTTP event-stream commitment and release are irreversible
+
+Each HTTP Responses stream SHALL forward validated available events without
+waiting to fill an application buffer or for upstream EOF. A terminal
+`response.completed`, `response.incomplete`, or `response.failed` event SHALL
+finish that response's stream; subsequent bytes SHALL NOT reopen or extend it.
+This single-response HTTP contract SHALL NOT be applied to a persistent
+WebSocket that can carry successive responses and steering events.
+
+Every upstream attempt SHALL release its connection after success, rejection,
+exception or downstream disconnect. Before downstream commitment, a malformed
+event SHALL yield one structured HTTP failure. After commitment, malformed or
+unterminated output SHALL close the existing response without a second status
+line, a successful chunk terminator, fabricated completion or request replay.
+Only the existing classified pre-content recovery may reopen a request.
+
+#### Scenario: A complete event arrives on a held-open chunked connection
+
+- **WHEN** the upstream sends a terminal event but leaves its HTTP connection open
+- **THEN** the client receives that complete response without waiting for EOF
+- **AND** the upstream attempt is released without another request.
+
+#### Scenario: The client disconnects during a write
+
+- **WHEN** a downstream header or body write raises an exception
+- **THEN** the owned upstream response is closed exactly once
+- **AND** no retry starts for the disconnected client.
+
+#### Scenario: A malformed event follows visible content
+
+- **WHEN** HTTP 200 and validated content have already reached the client
+- **THEN** the client observes a truncated response, not a second HTTP 503
+- **AND** the proxy records the failure and releases the upstream connection.

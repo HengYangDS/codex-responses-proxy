@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import socket
+import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -34,6 +35,96 @@ PROVIDERS = provider_registry.load()
 
 
 class TestSseTransport(InputTransportFixture):
+    def test_terminal_stream_finishes_while_chunked_upstream_remains_open(self, *, mocker):
+        completed = b'data: {"type":"response.completed"}\n\n'
+        release = threading.Event()
+        mocker.patch.object(sse, "UPSTREAM_READ_TIMEOUT", 1.0)
+        mocker.patch.object(sse.time, "sleep", return_value=None)
+        with running_proxy([{"chunks": [completed], "stall_event": release}]) as (port, received):
+            try:
+                with request(port, request_body(stream=True)) as response:
+                    assert response.status == 200
+                    assert completed in response.read()
+                    assert not release.is_set()
+            finally:
+                release.set()
+        assert len(received) == 1
+
+    def test_malformed_committed_stream_remains_a_truncated_http_response(self):
+        content = b'data: {"type":"response.output_text.delta","delta":"keep"}\n\n'
+        with (
+            running_proxy([{"chunks": [content, b'data: {"type":\n\n']}]) as (
+                port,
+                received,
+            ),
+            request(port, request_body(stream=True)) as response,
+        ):
+            assert response.status == 200
+            with pytest.raises(http.client.IncompleteRead) as raised:
+                response.read()
+            assert content in raised.value.partial
+            assert b"503" not in raised.value.partial
+            assert b"stream_projection_failed" not in raised.value.partial
+        assert len(received) == 1
+
+    @pytest.mark.parametrize(
+        "terminal", ["response.completed", "response.incomplete", "response.failed"]
+    )
+    def test_terminal_event_finishes_without_reading_or_forwarding_trailing_data(
+        self, terminal, *, mocker
+    ) -> None:
+        event = b"data: " + json.dumps({"type": terminal}).encode() + b"\n\n"
+        tail = b'data: {"type":"response.output_text.delta","delta":"after-terminal"}\n\n'
+        upstream = DirectResponse(event + tail, TimeoutError("must not await upstream EOF"))
+        read = mocker.spy(upstream, "read")
+        close = mocker.spy(upstream, "close")
+        handler = MemoryHandler()
+
+        result = sse.relay(handler, upstream, "/v1/responses", 1)
+
+        read.assert_called_once_with(8192)
+        close.assert_called_once_with()
+        assert result["result"] is not None
+        assert result["result"]["terminal"] == terminal
+        assert result["result"]["error"] is None
+        assert event in handler.output()
+        assert b"after-terminal" not in handler.output()
+
+    @pytest.mark.parametrize("failure", [BrokenPipeError, ConnectionResetError, RuntimeError])
+    def test_downstream_failure_releases_owned_upstream_without_reconnect(
+        self, failure, *, mocker
+    ) -> None:
+        upstream = DirectResponse(b'data: {"type":"response.completed"}\n\n')
+        close = mocker.spy(upstream, "close")
+        handler = MemoryHandler()
+        mocker.patch.object(handler.wfile, "write", side_effect=failure("private-detail"))
+        reopen = mocker.Mock()
+
+        with pytest.raises(failure):
+            sse.relay(handler, upstream, "/v1/responses", 1, reopen=reopen)
+
+        close.assert_called_once_with()
+        reopen.assert_not_called()
+
+    def test_malformed_event_after_commit_closes_without_a_second_http_response(
+        self, *, mocker
+    ) -> None:
+        content = b'data: {"type":"response.output_text.delta","delta":"keep"}\n\n'
+        upstream = DirectResponse(content, b'data: {"type":\n\n')
+        close = mocker.spy(upstream, "close")
+        handler = MemoryHandler()
+        exchange = mocker.Mock(handler=handler, request_id=1, used_input_variant_dialogue=False)
+
+        downstream.relay_sse(exchange, upstream)
+
+        assert handler.statuses == [200]
+        assert handler.close_connection
+        assert content in handler.output()
+        assert b"stream_projection_failed" not in handler.output()
+        assert not handler.output().endswith(b"0\r\n\r\n")
+        close.assert_called_once_with()
+        exchange.upstream.assert_not_called()
+
     @pytest.mark.parametrize(
         "control", [b"data: [DONE]\n\n", b": keepalive\n\n", b"event: ping\n\n"]
     )

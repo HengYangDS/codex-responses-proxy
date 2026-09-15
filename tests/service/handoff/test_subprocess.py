@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import socket
 import tempfile
@@ -51,9 +52,12 @@ class TestRealSubprocessHandoffIntegration:
     def teardown_method(self) -> None:
         self._cleanups.close()
 
-    def test_native_listener_recovers_pre_content_failure_without_duplicate_output(self):
+    @pytest.mark.parametrize("ending", ["closed", "held_open", "malformed"])
+    def test_native_listener_recovers_pre_content_failure_without_duplicate_output(self, ending):
         upstream = ScriptedUpstream()
         self._cleanups.callback(upstream.close)
+        release = threading.Event()
+        self._cleanups.callback(release.set)
         request_id = "64781e82-1e8f-42af-a06a-409e154bbfe2"
         failed = (
             b'data: {"type":"response.created"}\n\n'
@@ -64,14 +68,25 @@ class TestRealSubprocessHandoffIntegration:
             b'data: {"type":"response.output_text.delta","delta":"recovered"}\n\n'
             b'data: {"type":"response.completed"}\n\n'
         )
+        if ending == "malformed":
+            completed = completed.split(b'data: {"type":"response.completed"}')[0]
+            completed += b'data: {"type":\n\n'
 
         def send(handler):
             payload = failed if len(upstream.received) == 1 else completed
             handler.send_response(200)
             handler.send_header("Content-Type", "text/event-stream")
-            handler.send_header("Content-Length", str(len(payload)))
+            held = ending == "held_open" and len(upstream.received) == 2
+            if held:
+                handler.send_header("Transfer-Encoding", "chunked")
+            else:
+                handler.send_header("Content-Length", str(len(payload)))
             handler.end_headers()
-            handler.wfile.write(payload)
+            handler.wfile.write(b"%X\r\n%s\r\n" % (len(payload), payload) if held else payload)
+            handler.wfile.flush()
+            if held:
+                release.wait(timeout=10)
+                handler.close_connection = True
 
         upstream.push(send)
         upstream.push(send)
@@ -88,8 +103,18 @@ class TestRealSubprocessHandoffIntegration:
             headers={"Content-Type": "application/json"},
         )
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(request, timeout=30) as response:
-            assert response.read() == completed
+        try:
+            with opener.open(request, timeout=5) as response:
+                if ending == "malformed":
+                    with pytest.raises(http.client.IncompleteRead) as raised:
+                        response.read()
+                    assert b'"delta":"recovered"' in raised.value.partial
+                    assert b"stream_projection_failed" not in raised.value.partial
+                else:
+                    assert response.read() == completed
+                assert not release.is_set()
+        finally:
+            release.set()
         assert len(upstream.received) == 2
         assert upstream.received[0] == upstream.received[1]
         logs = (Path(ctx.log_dir) / "proxy.log").read_text(encoding="utf-8")

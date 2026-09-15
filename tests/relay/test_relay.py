@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import threading
 import urllib.error
@@ -597,7 +598,14 @@ class TestProxyTransport:
         }
         body = json.dumps({"stream": True, "input": []}).encode()
 
-        received, payload = self.exchange([partial, unexpected_retry], body)
+        with (
+            running_proxy([partial, unexpected_retry]) as (port, received),
+            request(port, body) as response,
+        ):
+            assert response.status == 200
+            with pytest.raises(http.client.IncompleteRead) as raised:
+                response.read()
+            payload = raised.value.partial
 
         assert len(received) == 1
         assert b"partial" in payload

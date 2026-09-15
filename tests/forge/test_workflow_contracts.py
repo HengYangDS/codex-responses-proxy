@@ -625,11 +625,8 @@ def _assert_github_platform_contract(text: str) -> None:
     mac_block = text[mac_start:windows_start]
     windows_block = text[windows_start:governance_start]
     setup_uv = "astral-sh/setup-uv@"
-    if (
-        mac_block.count(setup_uv) != 1
-        or "cache-suffix: ${{ matrix.python-version }}" not in mac_block
-    ):
-        raise AssertionError("macOS Python matrix must isolate setup-uv caches by interpreter")
+    if mac_block.count(setup_uv) != 1:
+        raise AssertionError("macOS Python matrix must use exactly one setup-uv action")
     test_owner = 'uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"'
     if test_owner not in mac_block:
         raise AssertionError(f"macOS Python matrix must run {test_owner}")
@@ -662,11 +659,8 @@ def _assert_github_platform_contract(text: str) -> None:
         ), f"{job_id} must use pinned setup-python"
     if windows_block.count("actions/setup-python@") != 1:
         raise AssertionError("Windows verification must use exactly one pinned setup-python action")
-    if (
-        windows_block.count(setup_uv) != 1
-        or "cache-suffix: ${{ matrix.python-version }}" not in windows_block
-    ):
-        raise AssertionError("Windows Python matrix must isolate setup-uv caches by interpreter")
+    if windows_block.count(setup_uv) != 1:
+        raise AssertionError("Windows Python matrix must use exactly one setup-uv action")
     quality_start = text.index("\n  python-quality:")
     quality_end = text.index("\n  native-assets:", quality_start)
     quality_block = text[quality_start:quality_end]
