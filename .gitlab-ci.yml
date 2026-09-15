@@ -11,8 +11,8 @@ stages:
 variables:
   DEBIAN_FRONTEND: noninteractive
   CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
-  UV_PYTHON_FLOOR_IMAGE: ghcr.io/astral-sh/uv:0.12.10-python3.12-trixie-slim@sha256:4bf11151c225e2a4d60e2a576b67d925660055199389d9a64fbdc02b6f3d43d5
-  UV_PYTHON_LATEST_IMAGE: ghcr.io/astral-sh/uv:0.12.10-python3.14-trixie-slim@sha256:d5ddd498c5a28ec77ff1c70276f8f3c4a116a303c8b5583a018ea43c2e89e366
+  UV_PYTHON_FLOOR_IMAGE: ghcr.io/astral-sh/uv:0.12.15-python3.12-trixie-slim@sha256:a87b6a9711d3b5fb5ef9d8db6d991594beb1e5bc46d002fc83ffcdc2e95c32ad
+  UV_PYTHON_LATEST_IMAGE: ghcr.io/astral-sh/uv:0.12.15-python3.14-trixie-slim@sha256:70d929693dc74ea71d4e510d79e987b5de0723d98439ca7a7196f910055438b0
   UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
   UV_PYTHON_INSTALL_DIR: $CI_PROJECT_DIR/.cache/uv/python
   CODEX_RESPONSES_PROXY_CI_TARGET: linux-arm64
@@ -31,7 +31,7 @@ source-and-governance:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
     - if: $CI_COMMIT_BRANCH == "dev"
   image:
-    name: ghcr.io/jdx/mise@sha256:812f7860a2fb911e1d5dd3375834abb2a08f8c783a23f783fcbccaf7fc7357aa
+    name: ghcr.io/jdx/mise@sha256:a88f300ef4365494b88f8eefd271bb92ba467d4a41835739a714426207215730
     entrypoint:
       - ""
   variables:

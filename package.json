@@ -2,7 +2,7 @@
   "name": "codex-responses-proxy-repository-tools",
   "private": true,
   "devDependencies": {
-    "@fission-ai/openspec": "1.12.0",
+    "@fission-ai/openspec": "1.13.0",
     "prettier": "3.9.6"
   }
 }

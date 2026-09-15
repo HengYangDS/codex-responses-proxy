@@ -1,4 +1,4 @@
-min_version = "2026.9.2"
+min_version = "2026.9.9"
 
 [settings]
 idiomatic_version_file_enable_tools = []
@@ -6,11 +6,11 @@ locked = true
 
 [tools]
 # Language runtimes
-node = "26.8.1"
+node = "26.8.2"
 python = "3.14.7"
 
 # Dependency management
-uv = "0.12.10"
+uv = "0.12.15"
 
 # Specification and CI modeling
 cue = "0.17.1"

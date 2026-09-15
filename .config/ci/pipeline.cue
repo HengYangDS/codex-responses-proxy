@@ -19,12 +19,12 @@ import "list"
 	githubActions: {
 		checkout: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"          // v7.0.1
 		python:   "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"      // v7.0.0
-		uv:       "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d"        // v10.0.1
+		uv:       "astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4"        // v10.1.0
 		mise:     "jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c"           // v4.3.0
 		upload:   "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"   // v7.0.1
 		download: "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" // v8.0.1
 	}
-	gitlabMiseImage: "ghcr.io/jdx/mise@sha256:812f7860a2fb911e1d5dd3375834abb2a08f8c783a23f783fcbccaf7fc7357aa"
+	gitlabMiseImage: "ghcr.io/jdx/mise@sha256:a88f300ef4365494b88f8eefd271bb92ba467d4a41835739a714426207215730"
 	quality:         "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
 }
 
@@ -43,8 +43,8 @@ gitlab: {
 	variables: {
 		DEBIAN_FRONTEND:                          "noninteractive"
 		CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: "origin"
-		UV_PYTHON_FLOOR_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.10-python3.12-trixie-slim@sha256:4bf11151c225e2a4d60e2a576b67d925660055199389d9a64fbdc02b6f3d43d5"
-		UV_PYTHON_LATEST_IMAGE:                   "ghcr.io/astral-sh/uv:0.12.10-python3.14-trixie-slim@sha256:d5ddd498c5a28ec77ff1c70276f8f3c4a116a303c8b5583a018ea43c2e89e366"
+		UV_PYTHON_FLOOR_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.15-python3.12-trixie-slim@sha256:a87b6a9711d3b5fb5ef9d8db6d991594beb1e5bc46d002fc83ffcdc2e95c32ad"
+		UV_PYTHON_LATEST_IMAGE:                   "ghcr.io/astral-sh/uv:0.12.15-python3.14-trixie-slim@sha256:70d929693dc74ea71d4e510d79e987b5de0723d98439ca7a7196f910055438b0"
 		UV_CACHE_DIR:                             "$CI_PROJECT_DIR/.cache/uv"
 		UV_PYTHON_INSTALL_DIR:                    "$CI_PROJECT_DIR/.cache/uv/python"
 		CODEX_RESPONSES_PROXY_CI_TARGET:          "linux-arm64"
