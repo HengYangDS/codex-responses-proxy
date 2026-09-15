@@ -18,7 +18,6 @@ from tools.git_environment import isolated_config_environment
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKSPACE_POLICY = ROOT / ".ethos/workspace.toml"
-PERSISTENT_BRANCHES = ("main", "dev")
 
 
 def command(*args: str, cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -88,22 +87,22 @@ def local_branches(root: Path, expected: frozenset[str]) -> list[str]:
     )
 
 
-def local_branch_oids(root: Path) -> dict[str, str]:
+def local_branch_oids(root: Path, branches: frozenset[str]) -> dict[str, str]:
     """Return exact local persistent branch commits."""
     return {
         branch: output("git", "rev-parse", "--verify", f"refs/heads/{branch}^{{commit}}", cwd=root)
-        for branch in PERSISTENT_BRANCHES
+        for branch in sorted(branches)
     }
 
 
-def remote_branch_oids(root: Path, remote: str) -> dict[str, str]:
+def remote_branch_oids(root: Path, remote: str, branches: frozenset[str]) -> dict[str, str]:
     """Return exact remote persistent branch commits."""
     refs = output(
         "git",
         "ls-remote",
         "--heads",
         remote,
-        *(f"refs/heads/{branch}" for branch in PERSISTENT_BRANCHES),
+        *(f"refs/heads/{branch}" for branch in sorted(branches)),
         cwd=root,
     ).splitlines()
     observed = {
@@ -112,19 +111,14 @@ def remote_branch_oids(root: Path, remote: str) -> dict[str, str]:
         if len(parts := line.split("\t", 1)) == 2
         for oid, ref in [parts]
     }
-    if set(observed) != set(PERSISTENT_BRANCHES):
-        raise RuntimeError(f"{remote} does not expose exact main and dev refs")
+    if set(observed) != branches:
+        raise RuntimeError(f"{remote} does not expose the declared persistent refs")
     return observed
 
 
-def exact_branch_parity(
-    local: dict[str, str], gitlab: dict[str, str], github: dict[str, str]
-) -> bool:
+def exact_branch_parity(local: dict[str, str], *peers: dict[str, str]) -> bool:
     """Return whether every persistent ref names one product commit."""
-    values = [
-        mapping[branch] for mapping in (local, gitlab, github) for branch in PERSISTENT_BRANCHES
-    ]
-    return len(set(values)) == 1
+    return bool(local) and len(set(local.values())) == 1 and all(peer == local for peer in peers)
 
 
 def _tag_names(repository: Path) -> list[str]:
@@ -195,17 +189,15 @@ def provider_release_evidence(
 
 def exact_tag_parity(
     local: dict[str, dict[str, object]],
-    gitlab: dict[str, dict[str, object]],
-    github: dict[str, dict[str, object]],
+    *peers: dict[str, dict[str, object]],
 ) -> bool:
     """Return whether all peers expose the same verified annotated tag objects."""
-    if not local or set(local) != set(gitlab) or set(local) != set(github):
-        return False
-    return all(
-        local[tag] == gitlab[tag] == github[tag]
-        and local[tag]["annotated"] is True
-        and local[tag]["signature_verified"] is True
-        for tag in local
+    return (
+        bool(local)
+        and all(peer == local for peer in peers)
+        and all(
+            tag["annotated"] is True and tag["signature_verified"] is True for tag in local.values()
+        )
     )
 
 
@@ -237,41 +229,40 @@ def audit(
     commit_anchor: Path,
     author_email: str,
     tag_anchor: Path,
-    gitlab_remote: str,
-    github_remote: str,
+    peers: tuple[str, ...] = (),
 ) -> dict[str, object]:
-    """Collect exact local/GitLab/GitHub parity and housekeeping evidence."""
-    local_refs = local_branch_oids(root)
-    gitlab_refs = remote_branch_oids(root, gitlab_remote)
-    github_refs = remote_branch_oids(root, github_remote)
-    branches_equal = exact_branch_parity(local_refs, gitlab_refs, github_refs)
-    local_tags = local_release_evidence(root, tag_anchor)
-    gitlab_tags = provider_release_evidence(root, gitlab_remote, tag_anchor)
-    github_tags = provider_release_evidence(root, github_remote, tag_anchor)
-    tags_equal = exact_tag_parity(local_tags, gitlab_tags, github_tags)
+    """Verify local objects and only the explicitly selected independent peers."""
+    configured = set(output("git", "remote", cwd=root).splitlines())
+    if len(set(peers)) != len(peers) or "local" in peers or not set(peers) <= configured:
+        raise RuntimeError("peer selection must name distinct configured remotes")
     local_roles, remote_roles = branches_for_audit(root / ".ethos/workspace.toml")
+    local_refs = local_branch_oids(root, remote_roles)
+    peer_refs = {peer: remote_branch_oids(root, peer, remote_roles) for peer in peers}
+    branches_equal = exact_branch_parity(local_refs, *peer_refs.values())
+    local_tags = local_release_evidence(root, tag_anchor)
+    peer_tags = {peer: provider_release_evidence(root, peer, tag_anchor) for peer in peers}
+    tags_equal = exact_tag_parity(local_tags, *peer_tags.values())
+    unexpected = {"local": local_branches(root, local_roles)} | {
+        peer: remote_branches(root, peer, remote_roles) for peer in peers
+    }
     housekeeping = {
-        "local_unexpected_branches": local_branches(root, local_roles),
-        "gitlab_unexpected_branches": remote_branches(root, gitlab_remote, remote_roles),
-        "github_unexpected_branches": remote_branches(root, github_remote, remote_roles),
+        "unexpected_branches": unexpected,
         "worktrees": output("git", "worktree", "list", "--porcelain", cwd=root).splitlines(),
     }
-    commit_verified = _verify_product_commit(root, local_refs["main"], commit_anchor, author_email)
+    commit_verified = all(
+        _verify_product_commit(root, commit, commit_anchor, author_email)
+        for commit in set(local_refs.values())
+    )
     result: dict[str, object] = {
-        "branches": {"local": local_refs, "gitlab": gitlab_refs, "github": github_refs},
+        "branches": {"local": local_refs, **peer_refs},
         "branch_object_parity": branches_equal,
         "product_commit_verified": commit_verified,
-        "tags": {"local": local_tags, "gitlab": gitlab_tags, "github": github_tags},
+        "tags": {"local": local_tags, **peer_tags},
         "tag_object_parity": tags_equal,
         "housekeeping": housekeeping,
     }
     result["ok"] = (
-        branches_equal
-        and commit_verified
-        and tags_equal
-        and not housekeeping["local_unexpected_branches"]
-        and not housekeeping["gitlab_unexpected_branches"]
-        and not housekeeping["github_unexpected_branches"]
+        branches_equal and commit_verified and tags_equal and not any(unexpected.values())
     )
     return result
 
@@ -281,8 +272,7 @@ def _command(
     commit_anchor: Path,
     author_email: str,
     tag_anchor: Path,
-    gitlab_remote: str = "origin",
-    github_remote: str = "github",
+    peers: Annotated[tuple[str, ...], Parameter(name="--peer", consume_multiple=False)] = (),
     root: Path | None = None,
     as_json: Annotated[bool, Parameter(name="--json", negative=False)] = False,
 ) -> None:
@@ -297,8 +287,7 @@ def _command(
             commit_anchor=commit_anchor,
             author_email=author_email,
             tag_anchor=tag_anchor,
-            gitlab_remote=gitlab_remote,
-            github_remote=github_remote,
+            peers=peers,
         )
     except RuntimeError as error:
         raise SystemExit(f"ERROR: {error}") from error

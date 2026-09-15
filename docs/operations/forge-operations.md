@@ -199,21 +199,29 @@ mise exec --locked -- uv run --locked --no-sync python -m tools.forge.audit \
   --commit-anchor "$PRODUCT_COMMIT_ALLOWED_SIGNERS" \
   --author-email "$PRODUCT_EMAIL" \
   --tag-anchor "$PRODUCT_TAG_ALLOWED_SIGNERS" \
+  --peer origin --peer github \
   --json
 ```
 
-| Compared                             | Required result                                                      |
-| ------------------------------------ | -------------------------------------------------------------------- |
-| Local/GitLab/GitHub `main` and `dev` | One exact commit OID                                                 |
-| Product commit                       | Expected email and trusted signature                                 |
-| Local/GitLab/GitHub tags             | Same annotated tag names and object OIDs                             |
-| Tag targets                          | Same peeled commit and tree OIDs                                     |
-| Tag signatures                       | Trusted against the supplied product anchor                          |
-| Remote branches                      | Only `main`, `dev`, and transient `proposal/*` while active          |
-| Release inventory                    | Every platform from the product SSOT plus one checksum and signature |
-| Release bytes                        | Exact equality for every asset and one trust-anchor digest           |
+Each `--peer` names one configured Git remote, not a Forge type. Supply one
+peer for single-Forge delivery or omit the option for local-only verification;
+unselected peers are not contacted. Persistent branch roles come from
+`.ethos/workspace.toml`, not hard-coded branch names.
+
+| Compared          | Required result                                      |
+| ----------------- | ---------------------------------------------------- |
+| Persistent refs   | One exact commit OID locally and on selected peers    |
+| Product commit    | Expected email and trusted signature                 |
+| Release tags      | Same annotated tag names and object OIDs              |
+| Tag targets       | Same peeled commit and tree OIDs                     |
+| Tag signatures    | Trusted against the supplied product anchor          |
+| Residual branches | None outside the declared persistent roles at closeout |
 
 Equal trees, equal messages, or a shared history suffix do not establish parity.
+An active work or proposal branch remains visible as unfinished housekeeping;
+the audit never deletes it. Forge Release records, platform assets and their
+downloaded bytes are separate publication-verification responsibilities, not
+claims made by this Git-object audit.
 
 ## Runners
 
