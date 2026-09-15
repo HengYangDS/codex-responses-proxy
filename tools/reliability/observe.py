@@ -85,6 +85,34 @@ class ObservationWindow(TypedDict):
     seconds: NotRequired[int]
 
 
+class ObservationReason(TypedDict):
+    """One policy decision and its public non-sensitive explanation."""
+
+    code: str
+    severity: str
+    detail: str
+
+
+class ObservationDeltas(TypedDict):
+    """Counts measured only between comparable runtime observations."""
+
+    counters: dict[str, int]
+    upstream_classifications: dict[str, int]
+
+
+class ObservationReport(TypedDict):
+    """The public JSON report produced by one reliability observation."""
+
+    schema_version: int
+    state: str
+    observed_at_unix: int
+    runtime: RuntimeIdentity
+    window: ObservationWindow
+    deltas: ObservationDeltas
+    reasons: list[ObservationReason]
+    limits: list[str]
+
+
 type AddReason = Callable[[str, str, str], None]
 
 
@@ -174,15 +202,22 @@ def normalize_status(value: object) -> NormalizedStatus:
 
 
 def _load_state(path: Path) -> dict[str, object] | None:
+    if path.is_symlink():
+        raise ObservationError("state path must be a regular file")
     if not path.exists():
         return None
-    if path.is_symlink() or not path.is_file():
+    if not path.is_file():
         raise ObservationError("state path must be a regular file")
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ObservationError(f"state file is unreadable: {exc}") from exc
-    if not _is_object(value) or value.get("schema_version") != SCHEMA_VERSION:
+    if (
+        not _is_object(value)
+        or not isinstance(value.get("schema_version"), int)
+        or isinstance(value.get("schema_version"), bool)
+        or value.get("schema_version") != SCHEMA_VERSION
+    ):
         raise ObservationError("state file has an unsupported schema")
     baseline = value.get("baseline")
     if not _is_object(baseline):
@@ -259,7 +294,7 @@ def _delta(current: Mapping[str, int], baseline: Mapping[str, object]) -> dict[s
     return dict(sorted(result.items()))
 
 
-def _reason(code: str, severity: str, detail: str) -> dict[str, str]:
+def _reason(code: str, severity: str, detail: str) -> ObservationReason:
     return {"code": code, "severity": severity, "detail": detail}
 
 
@@ -337,7 +372,7 @@ def _append_delta_reasons(
             "classified retryable upstream 5xx event(s) occurred in this window.",
         ),
         (
-            upstream_deltas.get("response_failed", 0),
+            upstream_deltas.get("response_failed", 0) + upstream_deltas.get("sse_server_error", 0),
             RESPONSE_FAILED_INCIDENT_THRESHOLD,
             "upstream_response_failed_burst",
             "classified upstream response_failed event(s) occurred in this window.",
@@ -392,7 +427,7 @@ def evaluate(
     *,
     allow_drain: bool = False,
     observed_at_unix: int | None = None,
-) -> tuple[dict[str, object], Baseline]:
+) -> tuple[ObservationReport, Baseline]:
     """Evaluate one snapshot and return ``(report, next_baseline)``."""
     current = normalize_status(status)
     now = (
@@ -400,7 +435,7 @@ def evaluate(
         if observed_at_unix is None
         else _integer(observed_at_unix, label="observed_at_unix")
     )
-    reasons: list[dict[str, str]] = []
+    reasons: list[ObservationReason] = []
 
     def add(code: str, severity: str, detail: str) -> None:
         reasons.append(_reason(code, severity, detail))
@@ -421,7 +456,7 @@ def evaluate(
         if "incident" in severities
         else ("observe" if "observe" in severities else "healthy")
     )
-    report = {
+    report: ObservationReport = {
         "schema_version": SCHEMA_VERSION,
         "state": state,
         "observed_at_unix": now,
