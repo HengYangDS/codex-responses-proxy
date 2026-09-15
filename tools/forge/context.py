@@ -46,7 +46,8 @@ def load(path: Path) -> PublicationContext:
         )
     except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
         raise PublicationContextError("invalid product publication context") from error
-    if value.get("schema-version") != 1:
+    version = value.get("schema-version")
+    if type(version) is not int or version != 1:
         raise PublicationContextError("unsupported publication context schema")
     if not all(isinstance(item, str) and item and "\t" not in item for item in fields):
         raise PublicationContextError("product publication identity is incomplete")

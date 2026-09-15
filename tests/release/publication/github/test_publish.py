@@ -98,7 +98,10 @@ def test_remote_annotated_tag_is_bound_to_local_objects() -> None:
         )
 
 
-def test_publish_owns_download_validation_creation_and_byte_parity(tmp_path: Path, mocker) -> None:
+@pytest.mark.parametrize("state", ["created", "matched", "digest-drift", "byte-drift"])
+def test_publish_owns_download_validation_creation_and_byte_parity(
+    state, tmp_path: Path, mocker
+) -> None:
     source, downloaded = tmp_path / "source", tmp_path / "downloaded"
     source.mkdir()
     downloaded.mkdir()
@@ -109,20 +112,33 @@ def test_publish_owns_download_validation_creation_and_byte_parity(tmp_path: Pat
     mocker.patch.object(publish, "_local_tag_identity", return_value=("b" * 40, "a" * 40))
     mocker.patch.object(publish, "_verify_source")
     mocker.patch.object(publish, "_verify_remote_identity")
-    mocker.patch.object(publish, "_release_records", return_value=[])
+    existing = {
+        "id": 7,
+        "tag_name": "v1.2.3",
+        "name": "Codex Responses Proxy v1.2.3",
+        "draft": False,
+        "prerelease": False,
+        "published_at": "2026-08-09T00:00:00Z",
+    }
+    mocker.patch.object(
+        publish, "_release_records", return_value=[existing] if state == "matched" else []
+    )
+    downloaded_digest = "changed" if state == "digest-drift" else "1"
+    if state == "byte-drift":
+        (downloaded / "SHA256SUMS").write_bytes(b"changed")
     mocker.patch.object(
         publish,
         "_verify_assets",
         side_effect=(
             {"SHA256SUMS": "1", "SHA256SUMS.sig": "2"},
-            {"SHA256SUMS": "1", "SHA256SUMS.sig": "2"},
+            {"SHA256SUMS": downloaded_digest, "SHA256SUMS.sig": "2"},
         ),
     )
     create = mocker.patch.object(publish, "_create_release")
     mocker.patch.object(publish, "_download_release_assets", return_value=downloaded)
 
-    assert (
-        publish.publish(
+    def execute():
+        return publish.publish(
             repository="team/proxy",
             tag="v1.2.3",
             commit_oid="a" * 40,
@@ -132,9 +148,13 @@ def test_publish_owns_download_validation_creation_and_byte_parity(tmp_path: Pat
             source=source,
             workspace=tmp_path / "workspace",
         )
-        == "created"
-    )
-    create.assert_called_once()
+
+    if state in {"digest-drift", "byte-drift"}:
+        with pytest.raises(publish.GitHubPublishError, match="differ after publication"):
+            execute()
+    else:
+        assert execute() == state
+    assert create.call_count == (0 if state == "matched" else 1)
     assert not hasattr(publish, "wait_for_verify")
 
 
@@ -190,3 +210,122 @@ def test_release_validation_preserves_the_active_environment(tmp_path: Path, moc
 
     assert run.call_count == 1
     assert all(call.args[0][0] == str(environment_python) for call in run.call_args_list)
+
+
+@pytest.mark.parametrize("pages", [None, [None], [[None]], [[{"tag_name": "v1.2.3"}], []]])
+def test_release_inventory_reads_all_pages_and_requires_records(pages, mocker):
+    mocker.patch.object(publish.hosted, "executable", return_value="gh")
+    api = mocker.patch.object(publish.hosted, "api_json", return_value=pages)
+    if pages == [[{"tag_name": "v1.2.3"}], []]:
+        assert publish._release_records("team/proxy") == [{"tag_name": "v1.2.3"}]
+    else:
+        with pytest.raises(publish.GitHubPublishError, match="records are malformed"):
+            publish._release_records("team/proxy")
+    assert "--paginate" in api.call_args.args[0]
+    assert "--slurp" in api.call_args.args[0]
+
+
+@pytest.mark.parametrize("value", [None, {1: "invalid"}, {"sha": "a" * 40}])
+def test_identity_api_requires_string_keyed_objects(value, mocker):
+    mocker.patch.object(publish.hosted, "api_json", return_value=value)
+    if value == {"sha": "a" * 40}:
+        assert publish._api_mapping(("gh", "api")) == value
+    else:
+        with pytest.raises(publish.GitHubPublishError, match="identity is malformed"):
+            publish._api_mapping(("gh", "api"))
+
+
+def test_remote_identity_reads_both_exact_annotated_objects(mocker):
+    tag_oid, commit_oid = "b" * 40, "a" * 40
+    mocker.patch.object(publish.hosted, "executable", return_value="gh")
+    api = mocker.patch.object(
+        publish.hosted,
+        "api_json",
+        side_effect=[
+            {"ref": "refs/tags/v1.2.3", "object": {"type": "tag", "sha": tag_oid}},
+            {"tag": "v1.2.3", "sha": tag_oid, "object": {"type": "commit", "sha": commit_oid}},
+        ],
+    )
+    publish._verify_remote_identity("team/proxy", "v1.2.3", tag_oid, commit_oid)
+    assert [call.args[0][-1] for call in api.call_args_list] == [
+        "repos/team/proxy/git/ref/tags/v1.2.3",
+        f"repos/team/proxy/git/tags/{tag_oid}",
+    ]
+
+
+@pytest.mark.parametrize("failure", [OSError("missing"), ValueError("invalid")])
+def test_asset_validation_preserves_bounded_error(tmp_path, failure, mocker):
+    mocker.patch.object(publish.assembly, "verify", side_effect=failure)
+    with pytest.raises(publish.GitHubPublishError, match="assets are invalid"):
+        publish._verify_assets(tmp_path, "trust")
+
+
+def test_asset_validation_passes_external_trust_unchanged(tmp_path, mocker):
+    verify = mocker.patch.object(publish.assembly, "verify", return_value={"asset": "digest"})
+    assert publish._verify_assets(tmp_path, "external trust") == {"asset": "digest"}
+    verify.assert_called_once_with(tmp_path, trust="external trust")
+
+
+def test_release_creation_and_download_have_explicit_asset_scope(tmp_path, mocker):
+    mocker.patch.object(publish.hosted, "executable", return_value="gh")
+    run = mocker.patch.object(publish.subprocess, "run")
+    with pytest.raises(publish.GitHubPublishError, match="asset set is empty"):
+        publish._create_release("team/proxy", "v1.2.3", tmp_path)
+    run.assert_not_called()
+    asset = tmp_path / "SHA256SUMS"
+    asset.write_bytes(b"digest")
+    publish._create_release("team/proxy", "v1.2.3", tmp_path)
+    command = run.call_args.args[0]
+    assert command[:4] == ("gh", "release", "create", "v1.2.3")
+    assert "--verify-tag" in command
+    assert command[-1] == str(asset)
+    target = tmp_path / "download"
+    assert publish._download_release_assets("team/proxy", "v1.2.3", target) == target
+    command = run.call_args.args[0]
+    assert command[:4] == ("gh", "release", "download", "v1.2.3")
+    assert "SHA256SUMS*" in command
+    assert target.is_dir()
+
+
+@pytest.mark.parametrize("failure", [OSError("offline"), subprocess.CalledProcessError(1, ["git"])])
+def test_transport_failures_are_translated_once(failure, mocker):
+    run = mocker.patch.object(publish.subprocess, "run", side_effect=failure)
+    with pytest.raises(publish.GitHubPublishError, match="publication unavailable"):
+        publish._run(("gh", "release"), "publication unavailable")
+    with pytest.raises(publish.GitHubPublishError, match="Git identity is unavailable"):
+        publish._output(("git", "rev-parse"))
+    assert run.call_count == 2
+
+
+def test_invalid_source_signature_never_runs_metadata(tmp_path, mocker):
+    mocker.patch.object(
+        publish.tag_signature,
+        "verify",
+        side_effect=publish.tag_signature.TagSignatureError("invalid"),
+    )
+    run = mocker.patch.object(publish, "_run")
+    with pytest.raises(publish.GitHubPublishError, match="signature is invalid"):
+        publish._verify_source(tmp_path, "v1.2.3", "trust")
+    run.assert_not_called()
+
+
+def test_lightweight_tag_is_not_an_annotated_release(tmp_path, mocker):
+    mocker.patch.object(publish, "_output", return_value="commit")
+    with pytest.raises(publish.GitHubPublishError, match="not annotated"):
+        publish._local_tag_identity(tmp_path, "v1.2.3", "a" * 40)
+
+
+def test_invalid_publication_never_creates_a_workspace(tmp_path):
+    workspace = tmp_path / "workspace"
+    with pytest.raises(publish.GitHubPublishError, match="inputs are invalid"):
+        publish.publish(
+            repository="",
+            tag="v1.2.3",
+            commit_oid="a" * 40,
+            checkout=tmp_path,
+            tag_trust="trust",
+            asset_trust="trust",
+            source=tmp_path,
+            workspace=workspace,
+        )
+    assert not workspace.exists()
