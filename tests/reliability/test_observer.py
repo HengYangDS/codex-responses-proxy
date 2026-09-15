@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 
 import pytest
@@ -270,7 +271,6 @@ class TestObservationBoundaries(ObserverCase):
         assert self.observer.main(["--state", str(state)]) == 0
         first = json.loads(capsys.readouterr().out)
         assert first["state"] == "observe"
-        assert state.stat().st_mode & 0o777 == 0o600
         assert "do-not-persist" not in state.read_text()
         assert not list(state.parent.glob(".baseline.json.*"))
         source = tmp_path / "status.json"
@@ -278,6 +278,14 @@ class TestObservationBoundaries(ObserverCase):
         assert self.observer.main(["--status-file", str(source), "--state", str(state)]) == 0
         second = json.loads(capsys.readouterr().out)
         assert second["state"] == "healthy"
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX permission-bit contract")
+    def test_state_has_private_posix_permissions(self, tmp_path):
+        state = tmp_path / "state" / "baseline.json"
+        _, baseline = self.observer.evaluate(_status(), observed_at_unix=10)
+        self.observer._write_state(state, baseline)
+        assert state.stat().st_mode & 0o777 == 0o600
+        assert state.parent.stat().st_mode & 0o777 == 0o700
 
     @pytest.mark.parametrize(
         "document", ["{", "[]", '{"schema_version":2}', '{"schema_version":1}']
