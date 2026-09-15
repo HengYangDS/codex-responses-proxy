@@ -1,48 +1,26 @@
-# Python
+# Python-derived files
 __pycache__/
 *.pyc
-*.pyo
-.ruff_cache/
-.pytest_cache/
-.cache/
-.lycheecache
-.venv/
 *.egg-info/
-.coverage
-coverage.xml
-htmlcov/
-build/
-dist/
-.nox/
 
-# Logs / runtime artifacts (never commit)
-#
-# Current proxy and watchdog logs are structured and secret-safe by contract.
-# Historical files and unrelated runtime artifacts are still untrusted local data,
-# so neither logs nor rejected-payload captures belong in source control.
-*.log
-log/
-body-*.json
+# Worktree-local environments and dependencies
+/.venv/
+/.nox/
+/node_modules/
 
-# Local config backups (may contain API keys)
-config.toml
-*.bak-*
+# Verification caches and disposable build output
+/.cache/
+/.ruff_cache/
+/.lycheecache
+/.coverage
+/build/
+/.release-assets/
 
-# OS cruft
+# Optional code-intelligence projections
+/.serena/
+/.code-memory/
+/.codebase-memory/
+
+# Operating-system metadata
 .DS_Store
 Thumbs.db
-
-# Local linked worktrees
-.worktrees/
-
-# ETHOS host-local coordination state
-.ethos/state/*
-!.ethos/state/.gitignore
-
-# Publication execution context (identity and trust are not product source)
-packaging/release/publication-context.toml
-packaging/release/*-allowed-signers
-packaging/release/commit-allowed-signers
-
-# Repository-local dependencies
-node_modules/

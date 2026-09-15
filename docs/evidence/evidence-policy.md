@@ -45,20 +45,27 @@ release commit.
 
 Paths below are relative to the active worktree unless a tool selects them.
 
-| Output                                              | Owner and lifetime                                                                                                                                            |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Build intermediates and release candidates          | Ignored `build/` and `dist/`; remove when superseded or published                                                                                             |
-| Raw verification output needed for an open decision | Ignored `build/verification/<source-commit>/`; retain only until that decision is resolved and its required evidence has a durable owner                      |
-| Temporary downloads, extraction, and test scratch   | One private directory per operation under `build/tmp/`, selected through the tool's temporary-directory setting; reclaim on success, failure, or interruption |
-| Dependency caches                                   | The package manager's cache; shared only where the tool supports it                                                                                           |
-| ETHOS evidence and coordination                     | The current command's native artifact reference; ETHOS owns its Git-common-dir storage and retention                                                          |
-| Published evidence                                  | The exact source revision's CI artifacts and release assets; local-only work retains required native evidence without depending on a Forge                    |
+| Output                                              | Owner and lifetime                                                                                                                         |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Build intermediates and release candidates          | Nox session `tmp/` directories, ignored `build/` and the hosted `.release-assets/` projection; remove when superseded or published         |
+| Raw verification output needed for an open decision | Ignored `build/verification/<source-commit>/`; retain only until that decision is resolved and its required evidence has a durable owner   |
+| Temporary downloads, extraction, and test scratch   | One private directory per operation under `.cache/tmp/` or the tool-owned Nox session `tmp/`; reclaim on success, failure, or interruption |
+| Dependency caches                                   | The package manager's cache; shared only where the tool supports it                                                                        |
+| ETHOS evidence and coordination                     | The current command's native artifact reference; ETHOS owns its Git-common-dir storage and retention                                       |
+| Published evidence                                  | The exact source revision's CI artifacts and release assets; local-only work retains required native evidence without depending on a Forge |
 
 Operating-system temporary storage remains suitable when a tool needs it, but
 not for long-lived handoffs. An operation owns cleanup, including after a
 failed child process; after a crash, remove only its exact stopped resources.
 Before retiring a worktree, preserve evidence still needed by a pending decision
 at its existing authoritative owner, then remove disposable output.
+
+The tracked ignore policy excludes generated state at these declared roots and
+optional code-intelligence projections. Authored configuration remains visible
+to Git; a file named `config.toml` is not inherently disposable or secret.
+Credentials, publication identity and trust inputs belong outside the checkout,
+at explicitly supplied operator paths. Ignore patterns do not provide secret
+protection; the repository's secret scan checks admitted source.
 
 Keep original command output when a consumer needs it. A handwritten
 `receipt.json`, copied verdict, or checksum of an agent summary is not another

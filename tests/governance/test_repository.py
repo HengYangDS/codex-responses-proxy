@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import ntpath
+import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -14,6 +15,7 @@ import pytest
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.runtime import config as runtime_config
+from tools.git_environment import isolated_config_environment
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -234,19 +236,34 @@ class TestGovernanceMetadata:
                 copied.append(source.relative_to(ROOT).as_posix())
         assert copied == []
 
-    def test_publication_actors_and_trust_anchors_are_execution_inputs(self):
-        tracked = (
-            ROOT / "packaging" / "release" / "publication-context.toml",
-            ROOT / "packaging" / "release" / "publication-policy.toml",
-            ROOT / "packaging" / "release" / "gitlab-allowed-signers",
-            ROOT / "packaging" / "release" / "github-allowed-signers",
-            ROOT / "packaging" / "release" / "commit-allowed-signers",
+    def test_ignore_policy_excludes_generated_state_not_authored_configuration(self, tmp_path):
+        environment = isolated_config_environment()
+        subprocess.run(["git", "init", "-q", str(tmp_path)], env=environment, check=True)
+        (tmp_path / ".gitignore").write_bytes((ROOT / ".gitignore").read_bytes())
+        generated = (
+            ".cache/pytest/cache",
+            ".nox/quality/tmp/wheel.whl",
+            ".venv/bin/python",
+            "node_modules/package/index.js",
+            "build/verification/check.json",
+            ".coverage",
+            ".release-assets/linux-x86_64/archive.tar.gz",
+            ".ruff_cache/index",
+            "src/package/__pycache__/module.pyc",
+            ".serena/project.yml",
+            ".code-memory/index",
+            ".codebase-memory/graph.db.zst",
         )
-        assert not [path for path in tracked if path.exists()]
-        ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
-        assert "packaging/release/publication-context.toml" in ignored
-        assert "packaging/release/*-allowed-signers" in ignored
-        assert "packaging/release/commit-allowed-signers" in ignored
+        authored = ("tests/fixtures/config.toml", "docs/config.toml", ".config/policy.toml")
+        result = subprocess.run(
+            ["git", "-C", str(tmp_path), "check-ignore", "--stdin", "-z"],
+            input="\0".join((*generated, *authored)).encode() + b"\0",
+            env=environment,
+            check=False,
+            capture_output=True,
+        )
+        assert result.returncode == 0
+        assert set(result.stdout.decode().rstrip("\0").split("\0")) == set(generated)
 
     def test_forge_publication_has_no_implicit_actor_or_trust_source(self):
         context = ROOT / "tools" / "forge" / "context.py"
