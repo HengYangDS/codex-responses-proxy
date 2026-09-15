@@ -208,13 +208,13 @@ peer for single-Forge delivery or omit the option for local-only verification;
 unselected peers are not contacted. Persistent branch roles come from
 `.ethos/workspace.toml`, not hard-coded branch names.
 
-| Compared          | Required result                                      |
-| ----------------- | ---------------------------------------------------- |
-| Persistent refs   | One exact commit OID locally and on selected peers    |
-| Product commit    | Expected email and trusted signature                 |
-| Release tags      | Same annotated tag names and object OIDs              |
-| Tag targets       | Same peeled commit and tree OIDs                     |
-| Tag signatures    | Trusted against the supplied product anchor          |
+| Compared          | Required result                                        |
+| ----------------- | ------------------------------------------------------ |
+| Persistent refs   | One exact commit OID locally and on selected peers     |
+| Product commit    | Expected email and trusted signature                   |
+| Release tags      | Same annotated tag names and object OIDs               |
+| Tag targets       | Same peeled commit and tree OIDs                       |
+| Tag signatures    | Trusted against the supplied product anchor            |
 | Residual branches | None outside the declared persistent roles at closeout |
 
 Equal trees, equal messages, or a shared history suffix do not establish parity.
