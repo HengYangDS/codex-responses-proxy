@@ -637,7 +637,10 @@ class TestPublishedPredecessorCompatibility:
                 predecessor_serves_new_requests,
                 timeout=COMMAND_TIMEOUT_SECONDS,
             )
-            assert len(traffic_bodies) > completed_before_rollback
+            assert wait_until(
+                lambda: len(traffic_bodies) > completed_before_rollback,
+                timeout=COMMAND_TIMEOUT_SECONDS,
+            )
             traffic_stop.set()
             traffic.join(timeout=20)
             rollback_release.set()
