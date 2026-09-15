@@ -15,6 +15,44 @@ import yaml
 
 from tests.quality.fixtures import ROOT
 from tools.ci import project
+from tools.quality import python_matrix
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_matrix_cli_projects_to_exact_selected_output(explicit, tmp_path, monkeypatch):
+    output = tmp_path / "output"
+    args = (
+        "--versions",
+        str(ROOT / ".python-versions"),
+        "--release",
+        str(ROOT / ".python-release"),
+        "--metadata",
+        str(ROOT / "pyproject.toml"),
+    )
+    if explicit:
+        monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+        python_matrix.main((*args, "--output", str(output)))
+    else:
+        monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+        python_matrix.main(args)
+    values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    assert json.loads(values["value"]) == (ROOT / ".python-versions").read_text().splitlines()
+    assert values["release"] == (ROOT / ".python-release").read_text().strip()
+
+
+def test_matrix_cli_requires_an_output_and_nonempty_unique_versions(tmp_path, monkeypatch):
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    with pytest.raises(SystemExit, match="output path is unavailable"):
+        python_matrix.main(())
+    versions = tmp_path / "versions"
+    versions.write_text("")
+    with pytest.raises(ValueError, match="matrix is unavailable"):
+        python_matrix.write(
+            versions=versions,
+            release=ROOT / ".python-release",
+            metadata=ROOT / "pyproject.toml",
+            output=tmp_path / "output",
+        )
 
 
 def _load_yaml(path: Path) -> dict[str, object]:

@@ -145,3 +145,11 @@ def test_cli_uses_selected_provider_and_serializes_evidence(provider, mocker, ca
         admission.main(("--provider", provider, "--repository", "team/repo"))
     assert stopped.value.code == 1
     assert "unavailable" in capsys.readouterr().err
+
+
+def test_cli_rejects_unknown_provider_and_reports_human_readiness(mocker, capsys):
+    with pytest.raises(SystemExit, match="unsupported Forge"):
+        admission.main(("--provider", "unknown", "--repository", "team/repo"))
+    mocker.patch.object(admission, "_github", return_value={"ready": True})
+    admission.main(("--provider", "github", "--repository", "team/repo"))
+    assert capsys.readouterr().out.strip() == "github runner admission: READY"
