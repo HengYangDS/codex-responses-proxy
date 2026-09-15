@@ -181,6 +181,20 @@ class TestVerificationContracts:
         assert f"{locked_python} python -m tools.quality.repository" in metadata_job
         assert "python -m pytest" not in metadata_job
 
+    def test_uv_cache_writers_are_scoped_to_job_and_matrix_member(self) -> None:
+        jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
+        writers = []
+        for job_value in jobs.values():
+            steps = _mapping(job_value)["steps"]
+            assert isinstance(steps, list)
+            for step_value in steps:
+                step = _mapping(step_value)
+                if str(step.get("uses", "")).startswith("astral-sh/setup-uv@"):
+                    writers.append(_mapping(step.get("with", {})))
+        assert writers
+        for settings in writers:
+            assert settings.get("cache-suffix") == "${{ github.job }}-${{ strategy.job-index }}"
+
     def test_forge_bootstrap_derives_uv_requirement_from_project_metadata(self) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         requirement = metadata["tool"]["uv"]["required-version"]

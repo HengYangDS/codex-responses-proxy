@@ -31,10 +31,6 @@ _TERMINALS = frozenset(("response.completed", "response.failed", "response.incom
 _CLEAN_TERMINALS = {"response.completed", "response.incomplete"}
 
 
-class ResponseLike(UpstreamResponse, Protocol):
-    """Minimum upstream response surface consumed by the SSE reader."""
-
-
 @runtime_checkable
 class _TimeoutSocket(Protocol):
     """Socket capability required to arm one bounded upstream read."""
@@ -74,7 +70,7 @@ def exhausted_payload(attempts: int) -> bytes:
     )
 
 
-def _set_read_timeout(response: ResponseLike, timeout: float) -> None:
+def _set_read_timeout(response: UpstreamResponse, timeout: float) -> None:
     current = response.fp
     for path in (("raw", "_sock"), ("raw", "_fp", "fp", "raw", "_sock")):
         candidate = current
@@ -87,7 +83,7 @@ def _set_read_timeout(response: ResponseLike, timeout: float) -> None:
             return
 
 
-def _release_upstream(response: ResponseLike) -> None:
+def _release_upstream(response: UpstreamResponse) -> None:
     """Release one upstream connection the relay will never read from again.
 
     A stream abandoned at its deadline, or replaced by a pre-content reconnect,
@@ -97,7 +93,9 @@ def _release_upstream(response: ResponseLike) -> None:
         response.close()
 
 
-def _arm_read_budget(response: ResponseLike, deadline: float, armed: float | None) -> float | None:
+def _arm_read_budget(
+    response: UpstreamResponse, deadline: float, armed: float | None
+) -> float | None:
     """Clamp the per-read socket timeout to the remaining total-stream budget.
 
     Returns the armed budget, or ``None`` once the total deadline has passed.
@@ -129,7 +127,7 @@ def _pop_event(buffer: bytes) -> tuple[bytes, bytes] | None:
 
 def _read_one_stream(
     handler: BaseHTTPRequestHandler,
-    response: ResponseLike,
+    response: UpstreamResponse,
     on_first_write: Callable[[], None],
     deadline: float | None = None,
 ) -> StreamResult:
@@ -200,7 +198,7 @@ def _read_one_stream(
             upstream_detail = "deadline"
             break
         try:
-            chunk = response.read(8192)
+            chunk = response.read1(8192)
         except http.client.IncompleteRead as error:
             chunk = error.partial
             upstream_detail = "incomplete_read"
@@ -218,10 +216,10 @@ def _read_one_stream(
         while split := _pop_event(buffer):
             event, buffer = split
             process_event(event)
-            if upstream_detail == "projection_failed":
+            if terminal_event is not None or upstream_detail == "projection_failed":
                 buffer = b""
                 break
-        if upstream_detail == "projection_failed":
+        if terminal_event is not None or upstream_detail == "projection_failed":
             break
     if buffer:
         process_event(buffer)
@@ -241,10 +239,10 @@ def _read_one_stream(
 
 def relay(
     handler: BaseHTTPRequestHandler,
-    response: ResponseLike,
+    response: UpstreamResponse,
     path: str,
     request_id: int,
-    reopen: Callable[[], ResponseLike] | None = None,
+    reopen: Callable[[], UpstreamResponse] | None = None,
     send_headers: Callable[[], None] | None = None,
 ) -> RelayResult:
     """Relay validated SSE with retries only before downstream commitment."""
@@ -263,8 +261,10 @@ def relay(
     result: StreamResult | None = None
     attempt = 0
     for attempt in range(max_attempts):
-        result = _read_one_stream(handler, current, on_first_write, deadline)
-        _release_upstream(current)
+        try:
+            result = _read_one_stream(handler, current, on_first_write, deadline)
+        finally:
+            _release_upstream(current)
         terminal = result["terminal"]
         if terminal == "response.failed":
             code = result.get("failure_code", "unknown")
@@ -303,9 +303,12 @@ def relay(
             )
             break
     pre_content_exhausted = not headers_sent
-    if headers_sent:
-        handler.wfile.write(b"0\r\n\r\n")
     assert result is not None
+    if headers_sent:
+        if result["terminal"] is not None:
+            handler.wfile.write(b"0\r\n\r\n")
+        else:
+            handler.close_connection = True
     if result["terminal"] == "response.completed":
         telemetry.record_counter("streams_completed")
         telemetry.record_counter("responses_completed")

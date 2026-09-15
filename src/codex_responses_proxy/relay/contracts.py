@@ -45,6 +45,10 @@ class UpstreamResponse(Protocol):
         """Read at most ``amount`` bytes."""
         ...
 
+    def read1(self, amount: int = -1) -> bytes:
+        """Return available bytes without filling the buffer across HTTP chunks."""
+        ...
+
     def close(self) -> None:
         """Release the upstream transport."""
         ...

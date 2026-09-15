@@ -136,16 +136,17 @@ def relay_sse(exchange: Exchange, response: UpstreamResponse) -> None:
         )
         stream = result["result"]
         if stream is not None and stream["detail"] == "projection_failed":
-            send_payload(
-                exchange.handler,
-                503,
-                live_response.error_payload(
-                    "Upstream stream could not be projected safely; retry the turn",
-                    "upstream_unavailable",
-                    "stream_projection_failed",
-                ),
-                retry_after="3",
-            )
+            if result["pre_content_exhausted"]:
+                send_payload(
+                    exchange.handler,
+                    503,
+                    live_response.error_payload(
+                        "Upstream stream could not be projected safely; retry the turn",
+                        "upstream_unavailable",
+                        "stream_projection_failed",
+                    ),
+                    retry_after="3",
+                )
             exchange.log("sse_projection_failed")
         elif result["pre_content_exhausted"]:
             if exchange.used_input_variant_dialogue:
