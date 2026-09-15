@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from tests.release.artifact.fixtures import native_inputs
 from tools.release.artifact import __main__ as commands
 from tools.release.artifact import assembly
@@ -43,3 +45,47 @@ class AssemblyContracts:
         monkeypatch.setenv("RELEASE_ASSET_TRUST", trust)
         commands.main(("verify", "--assets", str(tmp_path / "release")))
         assert capsys.readouterr().out.strip() == f"verified release assets: {len(digests)} files"
+
+
+@pytest.mark.parametrize(
+    "defect", ["occupied-output", "duplicate", "unknown", "missing", "no-inputs"]
+)
+def test_assembly_rejects_ambiguous_or_incomplete_inventory(tmp_path, defect):
+    inputs = native_inputs(tmp_path)
+    output = tmp_path / "release"
+    if defect == "occupied-output":
+        output.mkdir()
+        (output / "preserved").write_bytes(b"owned")
+    elif defect == "duplicate":
+        inputs = (*inputs, inputs[0])
+    elif defect == "unknown":
+        (inputs[0] / "unknown").write_bytes(b"x")
+    elif defect == "missing":
+        inputs = inputs[:1]
+    else:
+        inputs = ()
+    with pytest.raises(assets.AssetError):
+        assembly.assemble(inputs, output)
+    if defect == "occupied-output":
+        assert (output / "preserved").read_bytes() == b"owned"
+    else:
+        assert not output.exists()
+
+
+def test_assembly_preserves_missing_signer_and_signature_failures(tmp_path, mocker):
+    output = tmp_path / "release"
+    with pytest.raises(assets.AssetError, match="signing inputs"):
+        assembly.assemble_sign_verify(
+            inputs=(), output=output, key=tmp_path / "absent", trust="trust"
+        )
+    assert not output.exists()
+    key = tmp_path / "key"
+    key.touch()
+    inputs = native_inputs(tmp_path)
+    failure = assembly.signing.SignatureError("invalid")
+    mocker.patch.object(assembly.signing, "sign_and_verify", side_effect=failure)
+    with pytest.raises(assets.AssetError, match="signature is invalid"):
+        assembly.assemble_sign_verify(inputs=inputs, output=output, key=key, trust="trust")
+    mocker.patch.object(assembly.signing, "verify", side_effect=failure)
+    with pytest.raises(assets.AssetError, match="signature is invalid"):
+        assembly.verify(output, trust="trust")
