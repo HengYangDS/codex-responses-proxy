@@ -143,8 +143,10 @@ def verify_platform_archive(archive: bytes, manifest: bytes) -> dict[str, object
         raise AssetError("release asset manifest is malformed")
     expected_archive = archive_name(version, platform)
     files = document.get("files")
+    schema_version = document.get("schema_version")
     if (
-        document.get("schema_version") != 1
+        type(schema_version) is not int
+        or schema_version != 1
         or document.get("product") != product_identity.PRODUCT_SLUG
         or document.get("archive") != expected_archive
         or document.get("archive_sha256") != hashlib.sha256(archive).hexdigest()

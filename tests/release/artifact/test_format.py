@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
+import tarfile
 
 import pytest
 
 from codex_responses_proxy import product_identity
+from tests.release.artifact.fixtures import release_bundle
 from tools.release.artifact import format as assets
 
 
@@ -126,3 +129,88 @@ class FormatContracts:
         ):
             with subtests.test(manifest=manifest), pytest.raises(assets.AssetError):
                 assets.parse_checksums(manifest)
+
+
+@pytest.mark.parametrize("version", [True, 1.0, 2])
+def test_manifest_schema_uses_exact_integer_identity(version):
+    platform = assets.RELEASE_PLATFORMS[0]
+    files = release_bundle((platform,))
+    manifest = json.loads(files[assets.manifest_name(platform)])
+    manifest["schema_version"] = version
+    with pytest.raises(assets.AssetError, match="manifest"):
+        assets.verify_platform_archive(
+            files[assets.archive_name("1.2.3", platform)], json.dumps(manifest).encode()
+        )
+
+
+@pytest.mark.parametrize("manifest", [b"not-json", b"[]", b"{}"])
+def test_manifest_requires_one_complete_object(manifest):
+    with pytest.raises(assets.AssetError, match="manifest is malformed"):
+        assets.verify_platform_archive(b"", manifest)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("version", 1), ("platform", None), ("files", {"../outside": "0" * 64})]
+)
+def test_manifest_requires_portable_typed_inventory(field, value):
+    platform = assets.RELEASE_PLATFORMS[0]
+    files = release_bundle((platform,))
+    manifest = json.loads(files[assets.manifest_name(platform)])
+    manifest[field] = value
+    with pytest.raises(assets.AssetError, match="manifest"):
+        assets.verify_platform_archive(
+            files[assets.archive_name("1.2.3", platform)], json.dumps(manifest).encode()
+        )
+
+
+@pytest.mark.parametrize(
+    "defect", ["directory", "outside", "duplicate", "mode", "digest", "corrupt"]
+)
+def test_archive_members_are_bound_to_portable_manifest(defect):
+    platform = assets.RELEASE_PLATFORMS[0]
+    files = release_bundle((platform,))
+    manifest = json.loads(files[assets.manifest_name(platform)])
+    name = next(iter(manifest["files"]))
+    prefix = f"{product_identity.PRODUCT_SLUG}-1.2.3-{platform}/"
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        member = tarfile.TarInfo(("wrong/" if defect == "outside" else prefix) + name)
+        member.mode = 0o777 if defect == "mode" else 0o755
+        member.type = tarfile.DIRTYPE if defect == "directory" else tarfile.REGTYPE
+        member.size = 1
+        archive.addfile(member, io.BytesIO(b"x"))
+        if defect == "duplicate":
+            archive.addfile(member, io.BytesIO(b"x"))
+    content = b"corrupt" if defect == "corrupt" else buffer.getvalue()
+    manifest["archive_sha256"] = hashlib.sha256(content).hexdigest()
+    with pytest.raises(assets.AssetError):
+        assets.verify_platform_archive(content, json.dumps(manifest).encode())
+
+
+@pytest.mark.parametrize("platforms", [(), ("linux-x86_64", "linux-x86_64")])
+def test_platform_inventory_has_one_nonempty_identity(platforms):
+    with pytest.raises(assets.AssetError, match="unique and nonempty"):
+        assets.release_asset_names("1.2.3", platforms)
+    with pytest.raises(assets.AssetError, match="unique and nonempty"):
+        assets.release_digests({}, "1.2.3", platforms)
+
+
+def test_asset_paths_modes_and_names_must_be_canonical():
+    with pytest.raises(assets.AssetError, match="mode is invalid"):
+        assets.archive_bytes({"file": assets.ArchiveFile(b"x", 0o777)}, "1.2.3", "linux-x86_64")
+    with pytest.raises(assets.AssetError, match="identity is invalid"):
+        assets.asset_manifest(
+            version="1.2.3", platform="linux-x86_64", archive_name="wrong", archive=b"x", files={}
+        )
+    with pytest.raises(assets.AssetError, match="path escapes"):
+        assets.asset_manifest(
+            version="1.2.3",
+            platform="linux-x86_64",
+            archive_name=assets.archive_name("1.2.3", "linux-x86_64"),
+            archive=b"x",
+            files={"../escape": b"x"},
+        )
+    with pytest.raises(assets.AssetError, match="identity is invalid"):
+        assets.archive_name("not-version", "linux-x86_64")
+    with pytest.raises(assets.AssetError, match="incomplete"):
+        assets.release_platforms(set(), "1.2.3")

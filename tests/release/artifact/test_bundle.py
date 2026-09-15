@@ -17,6 +17,48 @@ from tools.release.artifact import format as assets
 ROOT = Path(__file__).resolve().parents[3]
 
 
+@pytest.mark.parametrize(
+    "defect", ["missing-distribution", "missing-record", "malformed-record", "missing-provenance"]
+)
+def test_normalization_requires_complete_installed_metadata(tmp_path, defect):
+    if defect != "missing-distribution":
+        _installed_distribution(tmp_path, "isolated")
+        metadata = next(tmp_path.glob("*.dist-info"))
+        if defect == "missing-record":
+            (metadata / "RECORD").unlink()
+        elif defect == "malformed-record":
+            (metadata / "RECORD").write_text("invalid\n")
+        else:
+            (metadata / "direct_url.json").unlink()
+    with pytest.raises(RuntimeError, match=r"distribution|provenance"):
+        asset_command.normalize(tmp_path)
+
+
+def test_bundle_rejects_directory_symlink_cycles(tmp_path):
+    (tmp_path / "cycle").symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(SystemExit, match="symlink cycle"):
+        asset_command.bundle_files(tmp_path)
+
+
+@pytest.mark.parametrize("defect", ["occupied-output", "file-input", "missing-executable"])
+def test_pack_rejects_invalid_roots_before_writing(tmp_path, defect):
+    bundle = tmp_path / "bundle"
+    output = tmp_path / "output"
+    if defect == "file-input":
+        bundle.touch()
+    else:
+        bundle.mkdir()
+    if defect == "occupied-output":
+        output.mkdir()
+        (output / "preserved").write_bytes(b"owned")
+    with pytest.raises(SystemExit):
+        asset_command.pack(bundle=bundle, platform="linux-x86_64", output=output)
+    if defect == "occupied-output":
+        assert (output / "preserved").read_bytes() == b"owned"
+    else:
+        assert not output.exists()
+
+
 def _installed_distribution(root: Path, provenance: str) -> Path:
     """Create one installed product distribution with local installer metadata."""
     metadata = root / "codex_responses_proxy-2.0.30.dist-info"
