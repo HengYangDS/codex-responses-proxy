@@ -340,7 +340,12 @@ class _DiagnosticState:
         raw_type = typed_item.get("type")
         self.item_types[_closed_label(raw_type, _KNOWN_ITEM_TYPES)] += 1
         self._observe_content(typed_item.get("content"))
-        self.relationships.observe(raw_type, typed_item.get("call_id"))
+        self.relationships.observe(
+            raw_type,
+            typed_item.get("call_id"),
+            name=typed_item.get("name"),
+            item_id=typed_item.get("id"),
+        )
 
     def _observe_content(self, content: object) -> None:
         if isinstance(content, str):

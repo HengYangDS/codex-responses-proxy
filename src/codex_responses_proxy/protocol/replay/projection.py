@@ -250,7 +250,7 @@ def _project_call(
     argument_field = _CALL_ARGUMENT_FIELD[item_type]
     argument = item.get(argument_field)
     namespace, caller = item.get("namespace"), item.get("caller")
-    if relationships.observe(item_type, call_id):
+    if relationships.observe(item_type, call_id, name=name):
         _reject("invalid_call_id")
     valid_call_id = cast(str, call_id)
     if not isinstance(name, str) or not name or not isinstance(argument, str):
@@ -348,7 +348,7 @@ def _project_output(
     )
     _unknown_fields(item, allowed_fields, "unknown_output_field")
     call_id, caller = item.get("call_id"), item.get("caller")
-    issue = relationships.observe(item_type, call_id)
+    issue = relationships.observe(item_type, call_id, name=item.get("name"), item_id=item.get("id"))
     if issue:
         _reject(
             {
@@ -388,6 +388,18 @@ def _project_output(
     }
     if caller is not None:
         projected["caller"] = caller
+    if relationships.is_delivery(item.get("id")):
+        text, _changed, _encrypted, _markers = project_assistant_text(
+            output, encrypted_marker=False
+        )
+        header: JsonObject = {
+            "type": "tool_delivery",
+            "call_id": valid_call_id,
+            "name": item["name"],
+        }
+        if caller is not None:
+            header["caller"] = caller
+        projected = _delivery_message(header, text)
     return projected, {
         "changed": int(changed or projected != item),
         "item_ids": int("id" in item),
@@ -395,6 +407,15 @@ def _project_output(
         "omission_markers": markers,
         "local_image_items": local_images,
         "empty_tool_outputs": empty_tool_outputs,
+    }
+
+
+def _delivery_message(header: JsonObject, output: str) -> JsonObject:
+    return {
+        "type": "message",
+        "role": "assistant",
+        "phase": "commentary",
+        "content": json.dumps(header, ensure_ascii=False, separators=(",", ":")) + "\n" + output,
     }
 
 
@@ -408,17 +429,9 @@ def _project_detached_delivery(item: JsonObject) -> tuple[JsonObject, dict[str, 
     output, _changed, encrypted, markers = project_assistant_text(
         item.get("output"), encrypted_marker=False
     )
-    header = json.dumps(
-        {"type": "tool_delivery", "name": name, "namespace": namespace},
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-    return {
-        "type": "message",
-        "role": "assistant",
-        "phase": "commentary",
-        "content": header + "\n" + output,
-    }, {
+    return _delivery_message(
+        {"type": "tool_delivery", "name": name, "namespace": namespace}, output
+    ), {
         "changed": 1,
         "item_ids": 1,
         "encrypted_blocks": encrypted,

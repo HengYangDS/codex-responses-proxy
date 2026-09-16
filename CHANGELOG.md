@@ -7,6 +7,16 @@ publication authority.
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-09-16
+
+### Fixed
+
+- Preserve named asynchronous tool deliveries after an initial result. Keep
+  each later result in its original position with explicit tool attribution,
+  rather than rejecting valid continuing conversations as duplicate output.
+- Share delivery admission across replay projection, diagnostics and bounded
+  recovery while retaining rejection of repeated identities and mismatched calls.
+
 ## [4.0.1] - 2026-09-15
 
 ### Fixed
