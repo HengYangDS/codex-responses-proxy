@@ -176,8 +176,13 @@ The review at source `268ce99f` established these gaps:
   Commit `6110515b` repairs that measurement with focused regression evidence;
   this does not complete structural enforcement or the quality system.
 - Top-level package admission and a complete file-role inventory did not prove
-  cohesion within a package. Lifecycle transaction and control tests, relay
-  fixtures, and native compatibility journeys remain concrete review targets.
+  cohesion within a package. Lifecycle control and CLI contracts now follow
+  their operation boundaries rather than stateless umbrella classes. CLI parsing
+  and presentation remain distinct from lifecycle observation, mutation and
+  locking; one CLI fixture owns output capture. Relocation preserves test bodies
+  and parameterization, rather than manufacturing additional tests or introducing
+  a fixture framework. Lifecycle transaction tests, relay fixtures and native
+  compatibility journeys remain concrete review targets.
 - The former Python coverage configuration omitted repository tools and Nox
   orchestration. Real coverage.py conformance now includes those sources and
   unexecuted namespace modules. The admission command consumes that same native
