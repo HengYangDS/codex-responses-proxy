@@ -508,7 +508,7 @@ class RequestSanitizationContracts:
         assert obj["input"] == [{"type": "message", "role": "user", "content": "hello"}]
         assert "reasoning.encrypted_content" not in obj["include"]
 
-    def test_projects_agent_message_and_removes_encrypted_content(self):
+    def test_preserves_native_agent_message_and_removes_reasoning(self):
         body = json.dumps(
             {
                 "input": [
@@ -535,20 +535,13 @@ class RequestSanitizationContracts:
         obj = json.loads(cast("bytes", out))
         assert len(obj["input"]) == 1
         agent = obj["input"][0]
-        assert (agent["role"], agent["phase"]) == ("assistant", "commentary")
-        header, content = agent["content"].split("\n", 1)
-        assert json.loads(header) == {
-            "type": "agent_message",
-            "author": "agent",
-            "recipient": "user",
-        }
-        assert content == "reply"
-        assert "required_agent_message_payload" not in cast("bytes", out).decode()
-        assert "encrypted_blocks=1" in note
+        assert agent == json.loads(body)["input"][1]
+        assert "required_agent_message_payload" in cast("bytes", out).decode()
+        assert "encrypted_blocks=0" in note
         assert "reasoning_items=1" in note
         assert "reasoning.encrypted_content" not in obj["include"]
 
-    def test_removes_all_agent_ciphertext_blocks(self):
+    def test_rejects_malformed_agent_ciphertext_instead_of_partial_delivery(self):
         body = json.dumps(
             {
                 "input": [
@@ -572,11 +565,8 @@ class RequestSanitizationContracts:
         _projection = rewrite.sanitize_responses_body(body)
         out = _projection.body
         note = _projection.diagnostic()
-        obj = json.loads(cast("bytes", out))
-        assert "encrypted_blocks=2" in note
-        _header, content = obj["input"][0]["content"].split("\n", 1)
-        assert content == "beforeafter"
-        assert "valid_required_payload" not in cast("bytes", out).decode()
+        assert out is None
+        assert note == "rejected invalid_encrypted_content"
 
     def test_rejects_unknown_fields_that_resemble_encrypted_content(self):
         body = json.dumps(

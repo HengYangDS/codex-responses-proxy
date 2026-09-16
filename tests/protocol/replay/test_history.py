@@ -15,6 +15,49 @@ from tests.protocol.replay.fixtures import body as _body
 class ProviderPortableHistoryTests:
     """The normal outbound path owns provider-portable history."""
 
+    @pytest.mark.parametrize("root_ciphertext", [False, True])
+    def test_preserves_encrypted_agent_payload_with_its_native_envelope(self, root_ciphertext):
+        message = {
+            "type": "agent_message",
+            "id": "agent_delivery",
+            "author": "/root",
+            "recipient": "/root/reviewer",
+            "content": [{"type": "input_text", "text": "Message Type: NEW_TASK\nPayload:\n"}],
+            "internal_chat_message_metadata_passthrough": {"opaque": True},
+        }
+        if root_ciphertext:
+            message["encrypted_content"] = "fixture-ciphertext"
+        else:
+            message["content"].append(
+                {"type": "encrypted_content", "encrypted_content": "fixture-ciphertext"}
+            )
+        result = rewrite.sanitize_responses_body(_body({"input": [message]}))
+
+        assert result.body is not None, result.diagnostic()
+        expected = {
+            k: v for k, v in message.items() if k != "internal_chat_message_metadata_passthrough"
+        }
+        assert json.loads(result.body)["input"] == [expected]
+        assert result.metrics.encrypted_blocks == 0
+        assert result.metrics.omission_markers == 0
+        assert rewrite.sanitize_responses_body(result.body).body == result.body
+
+    @pytest.mark.parametrize("ciphertext", [None, "", 1, {"nested": "value"}])
+    def test_rejects_invalid_encrypted_agent_payload_without_empty_task(self, ciphertext):
+        message = {
+            "type": "agent_message",
+            "author": "/root",
+            "recipient": "/root/reviewer",
+            "content": [
+                {"type": "input_text", "text": "Message Type: NEW_TASK\nPayload:\n"},
+                {"type": "encrypted_content", "encrypted_content": ciphertext},
+            ],
+        }
+        result = rewrite.sanitize_responses_body(_body({"input": [message]}))
+
+        assert result.body is None
+        assert result.reason == "invalid_encrypted_content"
+
     @pytest.mark.parametrize("call_type", ["function_call", "custom_tool_call"])
     def test_preserves_named_async_deliveries_at_their_original_positions(self, call_type):
         argument = "arguments" if call_type == "function_call" else "input"
@@ -154,7 +197,7 @@ class ProviderPortableHistoryTests:
         assert projected["store"] is False
         assert [item["type"] for item in projected["input"]] == [
             "message",
-            "message",
+            "agent_message",
             "function_call",
             "function_call_output",
             "custom_tool_call",
@@ -165,14 +208,14 @@ class ProviderPortableHistoryTests:
         assert assistant["phase"] == "final_answer"
         assert assistant["content"] == "visible answer"
         agent = projected["input"][1]
-        assert (agent["role"], agent["phase"]) == ("assistant", "commentary")
-        header, visible = agent["content"].split("\n", 1)
-        assert json.loads(header) == {
-            "type": "agent_message",
-            "author": "planner",
-            "recipient": "user",
+        original_agent = next(
+            item for item in json.loads(raw)["input"] if item["type"] == "agent_message"
+        )
+        assert agent == {
+            key: value
+            for key, value in original_agent.items()
+            if key != "internal_chat_message_metadata_passthrough"
         }
-        assert visible == "visible agent text"
         function_call, function_output = projected["input"][2:4]
         assert function_call["call_id"] == function_output["call_id"]
         assert function_output["output"] == [
@@ -188,7 +231,6 @@ class ProviderPortableHistoryTests:
             "rs_provider_bound",
             "rs_stored_reference",
             "opaque-reasoning",
-            "agent-secret",
             "tool-secret",
             "only-secret",
             "internal_chat_message_metadata_passthrough",

@@ -30,6 +30,24 @@ def _output(kind, call_id, payload):
 
 
 class ResponseFailedContracts:
+    def test_shrinking_recovery_cannot_discard_an_encrypted_agent_task(self):
+        task = {
+            "type": "agent_message",
+            "author": "/root",
+            "recipient": "/root/reviewer",
+            "content": [{"type": "encrypted_content", "encrypted_content": "fixture-task"}],
+        }
+        raw = _body(
+            [
+                _message("user", "older " * 200),
+                task,
+                _message("user", "Continue"),
+            ]
+        )
+
+        assert execution_recovery.compact_request(raw, COMPACTION_BUDGET) == (None, None)
+        assert execution_recovery.recover_dialogue(raw, COMPACTION_BUDGET) == (None, None)
+
     def assert_rejected(self, function, fixtures, subtests):
         for raw, budget in fixtures:
             with subtests.test(raw=raw, budget=budget):

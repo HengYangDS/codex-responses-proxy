@@ -16,6 +16,9 @@ publication authority.
   rather than rejecting valid continuing conversations as duplicate output.
 - Share delivery admission across replay projection, diagnostics and bounded
   recovery while retaining rejection of repeated identities and mismatched calls.
+- Preserve encrypted agent-task bodies and native envelopes instead of sending
+  only their visible routing headers. Reject malformed ciphertext and prevent
+  shrinking recovery from dropping required agent-control input.
 
 ## [4.0.1] - 2026-09-15
 

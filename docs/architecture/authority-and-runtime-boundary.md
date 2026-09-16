@@ -139,8 +139,10 @@ and complete tool relationships. Unknown or unsafe structures fail locally.
 
 The item policy owns ordered tool relationships as well as item classification.
 Projection, diagnostics, and recovery consume the same request-local relationship
-state: one call identity, its declared output kind, and at most one output after
-that call. A repeated call cannot replace the original identity. Recovery checks
+state: one call identity, its declared output kind, and an initial paired result.
+Later named results with distinct item identities become attributed delivery
+messages in their original positions, not duplicate pairs or replacement results.
+A repeated call cannot replace the original identity. Recovery checks
 each retained suffix through this owner rather than treating a matching ID alone
 as proof of a valid pair. Pending portable calls remain observable; a local-only
 call may be removed only with its complete output relationship.
@@ -152,9 +154,15 @@ Categorical counts, shape hashes, and relationship flags describe the original
 input without recording its values. They remain observations, not additional
 admission rules.
 
+Encrypted `agent_message` content is required control data, not disposable
+reasoning history. Preserve its native envelope and exact ciphertext for the
+selected upstream; never reduce a task to its visible routing header. The proxy
+does not decrypt messages or promise that another provider can decrypt them.
+Shrinking recovery is unavailable for a request carrying a native agent message;
+it cannot discard the task and retry an empty continuation.
+
 The live-response boundary preserves encrypted control content needed for the
-current turn. Portability is applied only if a later request replays that
-output. Empty, truncated, malformed, oversized, or non-terminal success bodies
+current turn. Empty, truncated, malformed, oversized, or non-terminal success bodies
 become a retryable local `503`; partial success bytes are not committed.
 
 ## Recovery ownership
