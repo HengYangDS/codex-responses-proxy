@@ -98,8 +98,8 @@ projections = [".github/workflows/verify.yml", ".gitlab-ci.yml"]
 [[controls]]
 id = "quality-thresholds"
 kind = "policy-parameter"
-owner = ".config/quality/policy/"
-rationale = "Coverage, complexity, performance, naming, text, and governance thresholds require explicit risk and review rationale."
+owner = ".config/quality/responsibility-map.toml"
+rationale = "The responsibility map selects one native configuration or repository policy for each threshold; it records rationale without duplicating the numeric value."
 projections = [
   ".config/quality/native/",
   "noxfile.py",

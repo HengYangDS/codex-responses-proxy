@@ -11,6 +11,9 @@ force-single-line = true
 [lint.pydocstyle]
 convention = "google"
 
+[lint.mccabe]
+max-complexity = 20
+
 [lint]
 select = [
   "E4",
@@ -62,6 +65,7 @@ select = [
   "PT",
   "UP",
   "B",
+  "C901",
   "C4",
   "PIE",
   "RET",

@@ -61,20 +61,27 @@ def _role_matches(path: str, role: tuple[tuple[str, ...], tuple[str, ...]]) -> b
     return path in files or any(path.startswith(prefix) for prefix in prefixes)
 
 
-def _declarations(value: object, *, field: str, errors: list[str]) -> list[object]:
-    """Require a nonempty declaration inventory before checking its entries."""
+def _declarations(value: object, *, field: str, errors: list[str]) -> dict[str, dict[str, object]]:
+    """Index one nonempty declaration inventory by unique textual identity."""
     if not isinstance(value, list) or not value:
         errors.append(f"responsibility_map_{field}_must_be_nonempty_list")
-        return []
-    return list[object](value)
-
-
-def _mapping(value: object, *, label: str, errors: list[str]) -> dict[str, object]:
-    """Return one string-keyed mapping or record its malformed boundary."""
-    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
-        errors.append(f"responsibility_map_{label}_must_be_table")
         return {}
-    return dict(value)
+    kind = field.removesuffix("s")
+    declarations: dict[str, dict[str, object]] = {}
+    for index, raw in enumerate(value):
+        entry: dict[str, object] = {}
+        if isinstance(raw, dict) and all(isinstance(key, str) for key in raw):
+            entry = dict(raw)
+        else:
+            errors.append(f"responsibility_map_{kind}_{index}_must_be_table")
+        identifier = entry.get("id")
+        if not isinstance(identifier, str) or not identifier.strip():
+            errors.append(f"responsibility_map_{kind}_{index}_id_must_be_nonempty_string")
+        elif identifier in declarations:
+            errors.append(f"responsibility_map_duplicate_{kind}:{identifier}")
+        else:
+            declarations[identifier] = entry
+    return declarations
 
 
 class AuditReport(TypedDict):
@@ -101,17 +108,9 @@ def audit(root: Path = ROOT, policy_path: Path = MAP) -> AuditReport:
             errors.append(f"responsibility_map_{field}_must_be_nonempty_string")
 
     roles: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
-    for index, raw_role in enumerate(
-        _declarations(policy.get("roles"), field="roles", errors=errors),
-    ):
-        role = _mapping(raw_role, label=f"role_{index}", errors=errors)
-        identifier = role.get("id")
-        if not isinstance(identifier, str) or not identifier.strip():
-            errors.append(f"responsibility_map_role_{index}_id_must_be_nonempty_string")
-            continue
-        if identifier in roles:
-            errors.append(f"responsibility_map_duplicate_role:{identifier}")
-            continue
+    for identifier, role in _declarations(
+        policy.get("roles"), field="roles", errors=errors
+    ).items():
         description = role.get("description")
         if not isinstance(description, str) or not description.strip():
             errors.append(f"responsibility_map_role_description_missing:{identifier}")
@@ -126,17 +125,9 @@ def audit(root: Path = ROOT, policy_path: Path = MAP) -> AuditReport:
         roles[identifier] = (files, prefixes)
 
     scopes: dict[str, tuple[str, ...]] = {}
-    for index, raw_scope in enumerate(
-        _declarations(policy.get("scopes"), field="scopes", errors=errors),
-    ):
-        scope = _mapping(raw_scope, label=f"scope_{index}", errors=errors)
-        identifier = scope.get("id")
-        if not isinstance(identifier, str) or not identifier.strip():
-            errors.append(f"responsibility_map_scope_{index}_id_must_be_nonempty_string")
-            continue
-        if identifier in scopes:
-            errors.append(f"responsibility_map_duplicate_scope:{identifier}")
-            continue
+    for identifier, scope in _declarations(
+        policy.get("scopes"), field="scopes", errors=errors
+    ).items():
         role_ids = _strings(scope.get("roles"), field=f"scope_{identifier}_roles", errors=errors)
         errors.extend(
             f"responsibility_map_unknown_role:{identifier}:{role_id}"
@@ -146,17 +137,9 @@ def audit(root: Path = ROOT, policy_path: Path = MAP) -> AuditReport:
         scopes[identifier] = role_ids
 
     concerns: dict[str, dict[str, object]] = {}
-    for index, raw_concern in enumerate(
-        _declarations(policy.get("concerns"), field="concerns", errors=errors),
-    ):
-        concern = _mapping(raw_concern, label=f"concern_{index}", errors=errors)
-        identifier = concern.get("id")
-        if not isinstance(identifier, str) or not identifier.strip():
-            errors.append(f"responsibility_map_concern_{index}_id_must_be_nonempty_string")
-            continue
-        if identifier in concerns:
-            errors.append(f"responsibility_map_duplicate_concern:{identifier}")
-            continue
+    for identifier, concern in _declarations(
+        policy.get("concerns"), field="concerns", errors=errors
+    ).items():
         for field in ("owner", "scope", "session", *RATIONALE_FIELDS):
             value = concern.get(field)
             if not isinstance(value, str) or not value.strip():
