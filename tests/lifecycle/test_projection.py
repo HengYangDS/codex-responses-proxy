@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -24,8 +23,10 @@ ROOT = Path(__file__).resolve().parents[2]
 class TestPayloadProjection:
     """Manifest and installed-projection contracts over opaque release bytes."""
 
-    def test_transaction_installs_complete_runtime_and_manifest(self, *, mocker) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+    def test_transaction_installs_complete_runtime_and_manifest(
+        self, *, mocker, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         install_payload(ctx, mocker=mocker)
         manifest = json.loads(
             Path(payload_projection.payload_manifest_path(ctx)).read_text(encoding="utf-8")
@@ -38,8 +39,10 @@ class TestPayloadProjection:
         assert Path(ctx.executable).is_file()
         assert (Path(ctx.payload_dir) / inventory.PROVIDER_MANIFEST).is_file()
 
-    def test_fixture_manifest_can_omit_receipt_identity(self) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+    def test_fixture_manifest_can_omit_receipt_identity(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         for blob in released_artifact().peek_blobs():
             target = Path(ctx.payload_dir, blob.path)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -48,8 +51,10 @@ class TestPayloadProjection:
         assert "release_receipt_sha256" not in json.loads(Path(path).read_text())
         assert payload_projection.verify_payload_manifest(ctx)[0]
 
-    def test_manifest_detects_payload_and_aggregate_tampering(self, *, mocker) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+    def test_manifest_detects_payload_and_aggregate_tampering(
+        self, *, mocker, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         install_payload(ctx, mocker=mocker)
         proxy = Path(ctx.executable)
         proxy.write_bytes(proxy.read_bytes() + b"# tampered\n")
@@ -57,7 +62,7 @@ class TestPayloadProjection:
         assert not ok
         assert "hash mismatch" in detail
 
-        ctx = install_context(Path(tempfile.mkdtemp()))
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         install_payload(ctx, mocker=mocker)
         manifest_path = Path(payload_projection.payload_manifest_path(ctx))
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -68,9 +73,9 @@ class TestPayloadProjection:
         assert detail == "serving payload aggregate mismatch"
 
     def test_purge_unlinks_only_manifest_owned_payload_and_preserves_unknown_content(
-        self, *, mocker
+        self, *, mocker, tmp_path_factory: pytest.TempPathFactory
     ) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         install_payload(ctx, mocker=mocker)
         install = Path(ctx.payload_dir)
         unknown = Path(ctx.install_dir) / "operator-note.txt"
@@ -86,9 +91,9 @@ class TestPayloadProjection:
             assert not (install / relative).exists()
 
     def test_purge_rejects_noncurrent_manifest_without_touching_unknown_content(
-        self,
+        self, tmp_path_factory: pytest.TempPathFactory
     ) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         install = Path(ctx.payload_dir)
         claimed = {
             "VERSION": b"1.0.8\n",
@@ -112,7 +117,9 @@ class TestPayloadProjection:
             payload_projection.owned_payload_files(ctx)
         assert (install / "operator-note.txt").read_bytes() == b"keep\n"
 
-    def test_purge_fails_closed_without_one_valid_manifest(self, subtests) -> None:
+    def test_purge_fails_closed_without_one_valid_manifest(
+        self, subtests, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
         for mutate, message in (
             (lambda _ctx: None, "manifest is required"),
             (
@@ -123,7 +130,7 @@ class TestPayloadProjection:
             ),
         ):
             with subtests.test(message=message):
-                ctx = install_context(Path(tempfile.mkdtemp()))
+                ctx = install_context(tmp_path_factory.mktemp("case"))
                 marker = Path(ctx.payload_dir, "VERSION")
                 marker.parent.mkdir(parents=True)
                 marker.write_text("1.2.3\n", encoding="utf-8")
@@ -149,8 +156,10 @@ class TestPayloadProjection:
             digests
         ) != payload_projection.manifest_serving_payload_sha256(changed)
 
-    def test_owned_directory_and_empty_root_edges_fail_closed(self, *, mocker) -> None:
-        install = Path(tempfile.mkdtemp())
+    def test_owned_directory_and_empty_root_edges_fail_closed(
+        self, *, mocker, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        install = tmp_path_factory.mktemp("case")
         payload_projection.remove_empty_owned_directories(
             install, {"absent/payload", "present/payload"}
         )
@@ -165,8 +174,10 @@ class TestPayloadProjection:
         with pytest.raises(errors.InstallError, match="root removal failed"):
             payload_projection._remaining_paths(install)
 
-    def test_purge_and_residue_inventory_report_filesystem_failures(self, *, mocker) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+    def test_purge_and_residue_inventory_report_filesystem_failures(
+        self, *, mocker, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         install_payload(ctx, mocker=mocker)
         files = payload_projection.owned_payload_files(ctx)
         mocker.patch.object(Path, "unlink", side_effect=OSError("blocked"))
@@ -174,7 +185,7 @@ class TestPayloadProjection:
             payload_projection.purge_owned_files(Path(ctx.payload_dir), files)
         mocker.stopall()
 
-        ctx = install_context(Path(tempfile.mkdtemp()))
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         install_payload(ctx, mocker=mocker)
         files = payload_projection.owned_payload_files(ctx)
         residual = mocker.patch.object(Path, "exists", return_value=True)
@@ -182,19 +193,19 @@ class TestPayloadProjection:
             payload_projection.purge_owned_files(Path(ctx.payload_dir), files)
         mocker.stop(residual)
 
-        absent = Path(tempfile.mkdtemp()) / "absent"
+        absent = tmp_path_factory.mktemp("case") / "absent"
         assert payload_projection._remaining_paths(absent) == ()
         linked = absent.with_name("linked")
         linked.symlink_to(absent.parent, target_is_directory=True)
         with pytest.raises(errors.InstallError, match="root is not a real directory"):
             payload_projection._remaining_paths(linked)
 
-        root = Path(tempfile.mkdtemp())
+        root = tmp_path_factory.mktemp("case")
         mocker.patch.object(Path, "rglob", side_effect=OSError("blocked"))
         with pytest.raises(errors.InstallError, match="residue inventory failed"):
             payload_projection._remaining_paths(root)
 
-        ctx = install_context(Path(tempfile.mkdtemp()))
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         for blob in released_artifact().peek_blobs():
             target = Path(ctx.payload_dir, blob.path)
             target.parent.mkdir(parents=True, exist_ok=True)

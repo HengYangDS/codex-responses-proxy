@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
 import urllib.error
 from pathlib import Path
 from typing import cast
@@ -133,12 +132,10 @@ class OrderedServiceAdapter(FakeServiceAdapter):
 
 
 class TestReleasedDeployment:
-    def setup_method(self) -> None:
-        self.ctx = install_context(Path(tempfile.mkdtemp()))
-
     @pytest.fixture(autouse=True)
-    def _admit_current_listener(self, mocker) -> None:
-        """Model the exact predecessor process identity used by every upgrade."""
+    def _admit_current_listener(self, tmp_path: Path, mocker) -> None:
+        """Own the isolated install root and exact predecessor identity."""
+        self.ctx = install_context(tmp_path)
         mocker.patch.object(
             process,
             "capture_executable",

@@ -72,6 +72,11 @@ def test_decision_register_requires_unique_complete_records(tmp_path, defect):
     assert any(expected[defect] in gap for gap in decision_record_gaps(tmp_path))
 
 
+def test_pytest_owns_temporary_directory_retirement(pytestconfig: pytest.Config) -> None:
+    assert pytestconfig.getini("tmp_path_retention_policy") == "none"
+    assert int(pytestconfig.getini("tmp_path_retention_count")) == 0
+
+
 class TestQualityPolicyContracts:
     """Keep the repository quality scope executable rather than documentary."""
 

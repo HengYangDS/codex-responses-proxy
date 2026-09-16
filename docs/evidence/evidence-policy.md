@@ -60,6 +60,13 @@ failed child process; after a crash, remove only its exact stopped resources.
 Before retiring a worktree, preserve evidence still needed by a pending decision
 at its existing authoritative owner, then remove disposable output.
 
+Tests use pytest-owned temporary paths. The native retention policy removes
+completed test runs instead of retaining hidden copies; required diagnostics
+belong in the source-bound verification output above. An explicit `--basetemp`
+is an operation-owned override: that operation must reclaim it. Interrupted
+processes and native services still require exact ownership checks before their
+files are removed; fixture-directory deletion does not prove service teardown.
+
 The tracked ignore policy excludes generated state at these declared roots and
 optional code-intelligence projections. Authored configuration remains visible
 to Git; a file named `config.toml` is not inherently disposable or secret.

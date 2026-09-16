@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -44,9 +43,9 @@ class TestServiceIdentity:
                 )
 
     def test_committed_identity_rejects_runtime_and_manifest_drift(
-        self, subtests, *, mocker
+        self, subtests, *, mocker, tmp_path_factory: pytest.TempPathFactory
     ) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         install_payload(ctx, "1.2.3", mocker=mocker)
 
         committed = identity.committed_payload(Path(ctx.executable))
@@ -86,8 +85,10 @@ class TestServiceIdentity:
             identity.committed_payload(Path(ctx.install_dir, inventory.PROVIDER_MANIFEST)) is None
         )
 
-    def test_loaded_identity_is_immutable_after_disk_drift(self, *, mocker) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+    def test_loaded_identity_is_immutable_after_disk_drift(
+        self, *, mocker, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         install_payload(ctx, mocker=mocker)
         loaded = identity.freeze_loaded_payload(Path(ctx.executable))
         assert loaded is not None
@@ -99,8 +100,10 @@ class TestServiceIdentity:
         assert loaded.serving_payload_sha256 == manifest["serving_payload_sha256"]
         assert loaded.release_receipt_sha256 == manifest["release_receipt_sha256"]
 
-    def test_selected_payload_executable_follows_one_verified_selector(self, *, mocker) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+    def test_selected_payload_executable_follows_one_verified_selector(
+        self, *, mocker, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         transaction = install_payload(ctx, mocker=mocker)
         candidate = transaction.context
 
@@ -183,8 +186,10 @@ class TestServiceIdentity:
         with pytest.raises(ValueError, match=message):
             identity.selected_payload_executable(executable)
 
-    def test_loaded_identity_rejects_a_manifest_for_the_other_platform(self, *, mocker) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+    def test_loaded_identity_rejects_a_manifest_for_the_other_platform(
+        self, *, mocker, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         install_payload(ctx, mocker=mocker)
         root = Path(ctx.payload_dir)
         manifest_path = Path(projection.payload_manifest_path(ctx))
