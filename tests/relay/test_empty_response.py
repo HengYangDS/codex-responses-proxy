@@ -17,7 +17,6 @@ from typing import cast
 
 import pytest
 
-from codex_responses_proxy.protocol.replay import content as portable_content
 from codex_responses_proxy.protocol.replay import projection as rewrite
 from codex_responses_proxy.providers.policies import dmxapi as policy
 from codex_responses_proxy.relay import admission
@@ -119,9 +118,7 @@ class EmptyResponseTransportTests:
                 cleanup()
 
         assert received == [sanitized, sanitized]
-        retried = received[1].decode()
-        assert portable_content.OPAQUE_CONTENT_MARKER in retried
-        assert secret not in retried
+        assert json.loads(received[1])["input"] == json.loads(request_body)["input"]
 
     @pytest.mark.parametrize(
         "image_url",
