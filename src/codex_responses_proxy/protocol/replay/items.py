@@ -142,10 +142,15 @@ class ToolRelationships:
     """Own ordered call identity and output matching for one request projection."""
 
     _calls: dict[str, str] = field(default_factory=dict)
+    _call_names: dict[str, str] = field(default_factory=dict)
     _outputs: set[str] = field(default_factory=set)
+    _output_ids: set[str] = field(default_factory=set)
+    _delivery_ids: set[str] = field(default_factory=set)
     _flags: set[str] = field(default_factory=set)
 
-    def observe(self, item_type: object, call_id: object) -> RelationshipIssue:
+    def observe(
+        self, item_type: object, call_id: object, *, name: object = None, item_id: object = None
+    ) -> RelationshipIssue:
         """Record one declared relationship and return its first structural issue."""
         if not isinstance(item_type, str):
             return ""
@@ -160,11 +165,11 @@ class ToolRelationships:
                 self._flags.add("duplicate_calls")
                 return "duplicate_call"
             self._calls[call_id] = item_type
+            if isinstance(name, str) and name:
+                self._call_names[call_id] = name
             return ""
         duplicate = call_id in self._outputs
         self._outputs.add(call_id)
-        if duplicate:
-            self._flags.add("duplicate_outputs")
         call = self._calls.get(call_id)
         if call is None:
             self._flags.add("outputs_before_calls")
@@ -172,10 +177,33 @@ class ToolRelationships:
         if ITEM_POLICIES[call].paired_output != item_type:
             self._flags.add("mismatched_output_types")
             return "mismatched_output_type"
-        if duplicate:
+        if isinstance(item_id, str) and item_id in self._output_ids:
+            self._flags.add("duplicate_outputs")
             return "duplicate_output"
+        if duplicate and not self._admit_delivery(call_id, name, item_id):
+            self._flags.add("duplicate_outputs")
+            return "duplicate_output"
+        if isinstance(item_id, str) and item_id:
+            self._output_ids.add(item_id)
         self._flags.add("matched_pairs")
         return ""
+
+    def _admit_delivery(self, call_id: str, name: object, item_id: object) -> bool:
+        if (
+            self._calls[call_id] in {"function_call", "custom_tool_call"}
+            and isinstance(name, str)
+            and name == self._call_names.get(call_id)
+            and isinstance(item_id, str)
+            and item_id
+            and item_id not in self._output_ids
+        ):
+            self._delivery_ids.add(item_id)
+            return True
+        return False
+
+    def is_delivery(self, item_id: object) -> bool:
+        """Return whether this item is an admitted later result, not a second pair."""
+        return isinstance(item_id, str) and item_id in self._delivery_ids
 
     def call_type(self, call_id: object) -> str | None:
         """Return the original declared call kind without accepting a new identity."""

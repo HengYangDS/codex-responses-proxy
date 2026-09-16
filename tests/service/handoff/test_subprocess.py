@@ -52,6 +52,52 @@ class TestRealSubprocessHandoffIntegration:
     def teardown_method(self) -> None:
         self._cleanups.close()
 
+    @pytest.mark.parametrize("call_type", ["function_call", "custom_tool_call"])
+    def test_native_listener_preserves_later_named_tool_deliveries(self, call_type):
+        upstream = ScriptedUpstream()
+        self._cleanups.callback(upstream.close)
+        completed = b'data: {"type":"response.completed"}\n\n'
+
+        def send(handler):
+            handler.send_response(200)
+            handler.send_header("Content-Type", "text/event-stream")
+            handler.send_header("Content-Length", str(len(completed)))
+            handler.end_headers()
+            handler.wfile.write(completed)
+
+        upstream.push(send)
+        port = free_port()
+        root, ctx, _owned = self._installed_fixture(
+            release="1.0.25", port=port, upstream_url=upstream.base_url()
+        )
+        child = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=root / "proxy.log")
+        self._cleanups.callback(lambda: terminate_process(child))
+        upstream.start()
+        argument = "arguments" if call_type == "function_call" else "input"
+        call = {"type": call_type, "call_id": "job", "name": "run", argument: "{}"}
+        first = {"type": f"{call_type}_output", "call_id": "job", "output": "Running"}
+        latest = {"type": "message", "role": "user", "content": "Continue"}
+        delivery = {**first, "id": "delivery", "name": "run", "output": "Complete"}
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/dmxapi/v1/responses",
+            data=json.dumps(
+                {"model": "synthetic", "stream": True, "input": [call, first, latest, delivery]}
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(request, timeout=5) as response:
+            assert response.read() == completed
+        assert len(upstream.received) == 1
+        items = json.loads(upstream.received[0])["input"]
+        assert items[:3] == [call, first, latest]
+        assert items[3] == {
+            "type": "message",
+            "role": "assistant",
+            "phase": "commentary",
+            "content": '{"type":"tool_delivery","call_id":"job","name":"run"}\nComplete',
+        }
+
     @pytest.mark.parametrize("ending", ["closed", "held_open", "malformed"])
     def test_native_listener_recovers_pre_content_failure_without_duplicate_output(self, ending):
         upstream = ScriptedUpstream()

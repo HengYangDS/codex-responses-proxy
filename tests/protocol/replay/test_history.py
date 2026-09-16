@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from codex_responses_proxy.protocol.replay import content as portable_content
 from codex_responses_proxy.protocol.replay import projection as rewrite
 from tests.protocol.replay.fixtures import HISTORY_PAYLOAD
@@ -12,6 +14,40 @@ from tests.protocol.replay.fixtures import body as _body
 
 class ProviderPortableHistoryTests:
     """The normal outbound path owns provider-portable history."""
+
+    @pytest.mark.parametrize("call_type", ["function_call", "custom_tool_call"])
+    def test_preserves_named_async_deliveries_at_their_original_positions(self, call_type):
+        argument = "arguments" if call_type == "function_call" else "input"
+        call = {"type": call_type, "call_id": "job", "name": "run", argument: "{}"}
+        initial = {
+            "type": f"{call_type}_output",
+            "call_id": "job",
+            "id": "initial",
+            "output": "Still running\n",
+        }
+        followup = {"type": "message", "role": "user", "content": "Continue independently"}
+        deliveries = [
+            {**initial, "id": "progress", "name": "run", "output": "First result\n"},
+            {**initial, "id": "final", "name": "run", "output": "Complete\n"},
+        ]
+        raw = _body({"input": [call, initial, followup, *deliveries]})
+
+        result = rewrite.sanitize_responses_body(raw)
+
+        assert result.body is not None, result.diagnostic()
+        items = json.loads(result.body)["input"]
+        assert items[:3] == [call, {k: v for k, v in initial.items() if k != "id"}, followup]
+        for item, delivery in zip(items[3:], deliveries, strict=True):
+            assert item["type"] == "message"
+            assert item["role"] == "assistant"
+            header, output = item["content"].split("\n", 1)
+            assert json.loads(header) == {
+                "type": "tool_delivery",
+                "call_id": "job",
+                "name": "run",
+            }
+            assert output == delivery["output"]
+        assert rewrite.sanitize_responses_body(result.body).body == result.body
 
     def test_drops_empty_assistant_placeholders_from_replay(self) -> None:
         raw = _body(

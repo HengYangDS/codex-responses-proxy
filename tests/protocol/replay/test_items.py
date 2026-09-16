@@ -124,3 +124,75 @@ def test_first_call_identity_survives_a_conflicting_replay() -> None:
     assert relationships.call_type("tool") == "function_call"
     assert relationships.observe("function_call_output", "tool") == ""
     assert relationships.diagnostic_flags == {"duplicate_calls", "matched_pairs"}
+
+
+@pytest.mark.parametrize("call_type", ["function_call", "custom_tool_call"])
+def test_named_distinct_deliveries_share_projection_diagnosis_and_recovery(call_type: str) -> None:
+    policy = classify_item(call_type)
+    assert policy is not None
+    assert policy.argument_field is not None
+    items = [
+        {"type": call_type, "call_id": "job", "name": "run", policy.argument_field: "{}"},
+        {"type": policy.paired_output, "call_id": "job", "id": "first", "output": "Running"},
+        {
+            "type": policy.paired_output,
+            "call_id": "job",
+            "id": "next",
+            "name": "run",
+            "output": "Complete",
+        },
+    ]
+    raw = json.dumps({"input": items}).encode()
+
+    assert sanitize_responses_body(raw).body is not None
+    diagnostic = diagnose(raw)
+    assert diagnostic.first_incompatible_reason == ""
+    assert not diagnostic.duplicate_outputs
+    assert tool_pair_boundary_is_safe(items, 0)
+    assert not tool_pair_boundary_is_safe(items, 1)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [{"id": "first"}, {"id": ""}, {"id": None}, {"name": "other"}, {"name": None}],
+)
+def test_repeated_outputs_need_distinct_identity_and_matching_name(replacement) -> None:
+    items = [
+        {"type": "custom_tool_call", "call_id": "job", "name": "run", "input": "{}"},
+        {"type": "custom_tool_call_output", "call_id": "job", "id": "first", "output": "A"},
+        {
+            "type": "custom_tool_call_output",
+            "call_id": "job",
+            "id": "next",
+            "name": "run",
+            "output": "B",
+            **replacement,
+        },
+    ]
+
+    result = sanitize_responses_body(json.dumps({"input": items}).encode())
+
+    assert result.body is None
+    assert result.diagnostic() == "rejected duplicate_output"
+
+
+def test_delivery_identity_cannot_be_reused_as_another_calls_first_result() -> None:
+    items = [
+        {"type": "custom_tool_call", "call_id": "a", "name": "run", "input": "{}"},
+        {"type": "custom_tool_call_output", "call_id": "a", "output": "Running"},
+        {
+            "type": "custom_tool_call_output",
+            "call_id": "a",
+            "id": "delivery",
+            "name": "run",
+            "output": "Done",
+        },
+        {"type": "custom_tool_call", "call_id": "b", "name": "run", "input": "{}"},
+        {"type": "custom_tool_call_output", "call_id": "b", "id": "delivery", "output": "Other"},
+    ]
+
+    result = sanitize_responses_body(json.dumps({"input": items}).encode())
+
+    assert result.body is None
+    assert result.diagnostic() == "rejected duplicate_output"
+    assert not tool_pair_boundary_is_safe(items, 0)
