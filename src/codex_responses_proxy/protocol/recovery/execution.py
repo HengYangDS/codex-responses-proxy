@@ -35,6 +35,8 @@ def _request(raw: bytes, minimum_items: int = 1) -> Request | None:
     items = payload.get("input")
     if not isinstance(items, list) or len(items) < minimum_items:
         return None
+    if any(isinstance(item, dict) and item.get("type") == "agent_message" for item in items):
+        return None
     latest_user = next(
         (
             index

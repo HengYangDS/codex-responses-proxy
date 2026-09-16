@@ -142,7 +142,7 @@ class ProviderPortableRequestEdgeTests:
         ]
         assert "provider-bound" not in projected_raw.decode()
 
-    def test_projects_root_only_ciphertext_to_explicit_portable_markers(self, subtests) -> None:
+    def test_preserves_agent_ciphertext_and_marks_opaque_tool_results(self, subtests) -> None:
         raw = _body(
             {
                 "input": [
@@ -175,18 +175,12 @@ class ProviderPortableRequestEdgeTests:
 
         assert projected_raw is not None, note
         agent, _call, output = json.loads(projected_raw)["input"]
-        header, marker = agent["content"].split("\n", 1)
-        assert json.loads(header) == {
-            "type": "agent_message",
-            "author": "planner",
-            "recipient": "user",
-        }
-        assert marker == portable_content.OPAQUE_CONTENT_MARKER
+        assert agent == json.loads(raw)["input"][0]
         assert output["output"] == [
             {"type": "input_text", "text": portable_content.OPAQUE_CONTENT_MARKER}
         ]
-        assert "encrypted_blocks=2" in note
-        assert "omission_markers=2" in note
+        assert "encrypted_blocks=1" in note
+        assert "omission_markers=1" in note
 
         for content in ("", None):
             with subtests.test(root_only_agent_content=content):
@@ -209,4 +203,6 @@ class ProviderPortableRequestEdgeTests:
                 note = _projection.diagnostic()
                 assert projected_raw is not None, note
                 projected = json.loads(projected_raw)["input"][0]
-                assert projected["content"].endswith(portable_content.OPAQUE_CONTENT_MARKER)
+                assert projected["type"] == "agent_message"
+                assert projected["content"] == content
+                assert projected["encrypted_content"] == "agent-secret"

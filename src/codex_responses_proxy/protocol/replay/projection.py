@@ -207,6 +207,22 @@ def _project_message(item: JsonObject) -> tuple[JsonObject | None, dict[str, int
     }
 
 
+def _agent_ciphertext(item: JsonObject) -> int:
+    ciphertext = []
+    if "encrypted_content" in item:
+        ciphertext.append(item["encrypted_content"])
+    blocks = item.get("content")
+    if isinstance(blocks, list):
+        for block in blocks:
+            if isinstance(block, dict) and block.get("type") == "encrypted_content":
+                if set(block) != {"type", "encrypted_content"}:
+                    _reject("invalid_encrypted_content")
+                ciphertext.append(block["encrypted_content"])
+    if any(not isinstance(value, str) or not value for value in ciphertext):
+        _reject("invalid_encrypted_content")
+    return len(ciphertext)
+
+
 def _project_agent_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
     _unknown_fields(item, _AGENT_FIELDS, "unknown_agent_message_field")
     author, recipient = item.get("author"), item.get("recipient")
@@ -215,13 +231,18 @@ def _project_agent_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]
         _reject("invalid_agent_message")
     if phase not in _VALID_PHASES:
         _reject("invalid_agent_phase")
-    root_value = item.get("encrypted_content")
-    if "encrypted_content" in item and not isinstance(root_value, str):
-        _reject("invalid_encrypted_content")
-    root_ciphertext = int(isinstance(root_value, str))
+    ciphertext = _agent_ciphertext(item)
+    root_ciphertext = int("encrypted_content" in item)
     content, _changed, encrypted, markers = project_assistant_text(
         item.get("content"), encrypted_marker=True, root_ciphertext=root_ciphertext
     )
+    if ciphertext:
+        native = {
+            key: value
+            for key, value in item.items()
+            if key not in {"internal_chat_message_metadata_passthrough", "status"}
+        }
+        return native, {"changed": int(native != item)}
     header = json.dumps(
         {"type": "agent_message", "author": author, "recipient": recipient},
         ensure_ascii=False,

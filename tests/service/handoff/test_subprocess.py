@@ -53,7 +53,7 @@ class TestRealSubprocessHandoffIntegration:
         self._cleanups.close()
 
     @pytest.mark.parametrize("call_type", ["function_call", "custom_tool_call"])
-    def test_native_listener_preserves_later_named_tool_deliveries(self, call_type):
+    def test_native_listener_preserves_tool_deliveries_and_encrypted_agent_tasks(self, call_type):
         upstream = ScriptedUpstream()
         self._cleanups.callback(upstream.close)
         completed = b'data: {"type":"response.completed"}\n\n'
@@ -78,10 +78,23 @@ class TestRealSubprocessHandoffIntegration:
         first = {"type": f"{call_type}_output", "call_id": "job", "output": "Running"}
         latest = {"type": "message", "role": "user", "content": "Continue"}
         delivery = {**first, "id": "delivery", "name": "run", "output": "Complete"}
+        task = {
+            "type": "agent_message",
+            "author": "/root",
+            "recipient": "/root/reviewer",
+            "content": [
+                {"type": "input_text", "text": "Message Type: NEW_TASK\nPayload:\n"},
+                {"type": "encrypted_content", "encrypted_content": "fixture-task"},
+            ],
+        }
         request = urllib.request.Request(
             f"http://127.0.0.1:{port}/dmxapi/v1/responses",
             data=json.dumps(
-                {"model": "synthetic", "stream": True, "input": [call, first, latest, delivery]}
+                {
+                    "model": "synthetic",
+                    "stream": True,
+                    "input": [call, first, latest, delivery, task],
+                }
             ).encode(),
             headers={"Content-Type": "application/json"},
         )
@@ -97,6 +110,7 @@ class TestRealSubprocessHandoffIntegration:
             "phase": "commentary",
             "content": '{"type":"tool_delivery","call_id":"job","name":"run"}\nComplete',
         }
+        assert items[4] == task
 
     @pytest.mark.parametrize("ending", ["closed", "held_open", "malformed"])
     def test_native_listener_recovers_pre_content_failure_without_duplicate_output(self, ending):

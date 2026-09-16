@@ -91,6 +91,164 @@ Only the existing classified pre-content recovery may reopen a request.
 
 ## MODIFIED Requirements
 
+### Requirement: Every Responses request is projected to a provider-portable form
+
+Before upstream I/O, the proxy SHALL derive portability only from the current
+request and the proved protocol grammar. It SHALL remove provider-bound
+continuation state, stored-item references, replayed reasoning items, and
+optional encrypted replay content. Required encrypted `agent_message` payloads
+SHALL retain their native envelope and exact ciphertext for the selected upstream;
+this is preservation, not a claim of cross-provider decryption. It SHALL set `store=false` and remove any request for
+`reasoning.encrypted_content` while leaving provider-neutral generation settings
+unchanged.
+
+#### Scenario: A stored conversation changes provider
+
+- **WHEN** a request contains `previous_response_id`, `conversation`,
+  `prompt_cache_key`, an `rs_*` reasoning item, optional encrypted output, or another
+  provider-owned continuation structure
+- **THEN** none of that provider-bound state is sent to the selected upstream
+- **AND** the upstream receives `store=false` with the remaining portable
+  dialogue, complete tool history, and supported controls
+- **AND** no client setting, JSONL, SQLite, history item, or model metadata is
+  read or modified.
+
+#### Scenario: A new request has no replay state
+
+- **WHEN** a valid Responses request contains only provider-neutral input and
+  generation settings
+- **THEN** the projection preserves those semantics, sets `store=false`, and
+  does not manufacture a continuation identifier, stored item, or decrypted
+  value.
+
+#### Scenario: Portable content is projected
+
+- **WHEN** canonical dialogue, complete tool relationships, payload-free
+  compaction controls, or supported non-text agent content is present
+- **THEN** the projection keeps it representable
+- **AND** every bounded recovery preserves the same projection
+- **AND** no client configuration or conversation store is consulted or changed.
+
+#### Scenario: Codex requests remote compaction
+
+- **WHEN** Codex appends the payload-free `{"type":"compaction_trigger"}`
+  request control to portable dialogue
+- **THEN** the projection preserves that exact control item for the upstream
+  Responses compaction request
+- **AND** any additional field on that control is rejected locally as an
+  unproved request shape.
+
+#### Scenario: A conversation changes providers repeatedly
+
+- **WHEN** a subsequent request switches among UCloud, DMXAPI, and AIHubMix
+- **THEN** the outbound request uses `store=false`
+- **AND** no optional reasoning or continuation binding crosses the provider boundary
+- **AND** portable user and plaintext agent content remains replayable; encrypted
+  delegation additionally requires an upstream capable of interpreting it.
+
+### Requirement: Portable dialogue and tool relationships are preserved
+
+The proxy SHALL preserve textual system, developer, user, and assistant
+dialogue; agent author, recipient, and phase context; complete
+function/custom-tool call-output pairs; and standalone cross-task tool delivery
+results whose portable provenance is explicit. Assistant, plaintext synthesized-agent,
+and standalone delivery history SHALL use provider-neutral Easy Input Message
+strings. System, developer, user, and paired tool-output lists SHALL use
+input-content grammar. Provider IDs, statuses, annotations, namespaces, and
+opaque metadata SHALL NOT be required by a paired output's outbound form.
+
+#### Scenario: Text and paired calls are replayed
+
+- **WHEN** a request contains text messages, a plaintext agent message, a function call
+  and output, and a custom-tool call and output
+- **THEN** the upstream receives equivalent role-valid portable text and both
+  complete call-output pairs
+- **AND** every paired output retains the matching `call_id` and call kind.
+
+#### Scenario: Namespaced function output is replayed
+
+- **WHEN** a valid function output follows its matching call and carries the
+  optional namespace metadata emitted by Codex
+- **THEN** the upstream receives the complete provider-portable call-output pair
+- **AND** the namespace metadata is not required or forwarded
+- **AND** any other unproved output field is still rejected before upstream I/O.
+
+#### Scenario: Standalone cross-task delivery is replayed
+
+- **WHEN** Codex replays a standalone function output with a non-empty item ID,
+  tool name, namespace, and visible output but no `call_id`
+- **THEN** the upstream receives one provider-neutral assistant message that
+  preserves the tool name, namespace, and visible output
+- **AND** the proxy does not invent a function call, call identity, or
+  provider-bound continuation.
+
+#### Scenario: Assistant content is normalized for replay
+
+- **WHEN** an assistant message or projected plaintext agent message contains
+  `input_text`, `output_text`, or refusal content from stored history
+- **THEN** its portable assistant representation uses a deterministic string
+  that preserves the visible text and phase
+- **AND** it does not require output-item ID, status, annotation, or typed
+  output content from the prior provider.
+
+#### Scenario: Instruction and user content remain input
+
+- **WHEN** a system, developer, or user message contains typed text from stored
+  history
+- **THEN** its portable representation uses `input_text`
+- **AND** no assistant-only output block is emitted for that role.
+
+#### Scenario: An agent message carries an encrypted task
+
+- **WHEN** a valid agent message contains nonempty encrypted task content,
+  with or without a visible routing header
+- **THEN** the original message kind, author, recipient, content order and
+  ciphertext remain unchanged; local bookkeeping metadata is removed
+- **AND** a missing, empty, malformed or unknown ciphertext field is rejected
+  rather than replaced by a header-only task or a fabricated plaintext result
+- **AND** shrinking recovery cannot discard this native control input.
+
+#### Scenario: An agent or tool output has only opaque ciphertext
+
+- **WHEN** an agent or ordinary paired tool output has no plaintext beyond
+  its opaque ciphertext
+- **THEN** the agent keeps its native encrypted envelope, while an ordinary
+  historical tool output keeps its explicit omission marker in input grammar
+- **AND** the proxy does not claim to decrypt or reconstruct that history. This
+  behavior does not apply to required agent-task messages.
+
+#### Scenario: Classified DMX retry preserves the projected bytes
+
+- **WHEN** the normal provider-portable request receives the exact classified
+  DMX empty-response error
+- **THEN** the proxy retries the current projected attempt bytes exactly once
+- **AND** it does not rebuild replay, restore an older request body, or recreate
+  a provider-bound assistant typed-block shape.
+
+#### Scenario: Replay contains an inline screenshot
+
+- **WHEN** image-capable input contains a nonempty, strictly Base64-encoded
+  PNG, JPEG, WebP, or GIF data URL
+- **THEN** projection retains its original URL, detail, and order in dialogue
+  and paired tool-output input, including image-only content
+- **AND** repeated projection and classified retries preserve the image bytes
+- **AND** validation performs no filesystem access, network fetch, raster
+  decoding, or image re-encoding.
+
+#### Scenario: Classified DMX retry retains replayable input images
+
+- **WHEN** the normal portable request contains a validated remote or inline
+  `input_image` in system, developer, user, or tool-output input content and
+  receives the exact classified DMX empty-response error
+- **THEN** the byte-identical retry preserves that image on input grammar
+- **AND** it does not turn valid non-text input into a local exhausted 503.
+
+#### Scenario: Recovery contains non-text agent content
+
+- **WHEN** a recoverable response contains valid non-text agent items
+- **THEN** recovery preserves their provider-portable semantic representation
+- **AND** does not fabricate text or require provider-bound identifiers.
+
 ### Requirement: Unproved replay shapes fail closed
 
 Before upstream I/O, the proxy SHALL classify each Responses input item through
