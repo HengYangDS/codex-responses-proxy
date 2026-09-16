@@ -1,0 +1,130 @@
+"""Exclusive lifecycle mutation with independent read-only observation."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from filelock import FileLock
+
+from codex_responses_proxy import errors
+from codex_responses_proxy.cli import application
+from tests.cli.fixtures import invoke
+from tests.lifecycle.fixtures import install_context
+
+
+@pytest.mark.parametrize("command", ["install", "recover", "reload", "rollback", "uninstall"])
+def test_mutating_commands_reject_a_second_lifecycle_writer(
+    tmp_path: Path,
+    command: str,
+    *,
+    mocker,
+) -> None:
+    ctx = install_context(tmp_path)
+    mocker.patch.object(application.runtime_context, "create", return_value=ctx)
+    owners = {
+        "install": mocker.patch.object(application.install, "install_asset"),
+        "recover": mocker.patch.object(application.control, "recover"),
+        "reload": mocker.patch.object(application.control, "reload"),
+        "rollback": mocker.patch.object(application.control, "rollback"),
+        "uninstall": mocker.patch.object(application.uninstall, "uninstall_product"),
+    }
+    arguments: dict[str, object] = {"port": ctx.port}
+    if command == "install":
+        arguments.update(asset=tmp_path / "release.tar.gz", trust_anchor=tmp_path / "trust")
+    elif command == "rollback":
+        arguments["to_release"] = "3.1.13"
+
+    with (
+        FileLock(
+            application._lifecycle_lock_path(ctx),
+            timeout=0,
+            fallback_to_soft=False,
+            preserve_lock_file=True,
+        ),
+        pytest.raises(errors.InstallError, match="lifecycle mutation is already in progress"),
+    ):
+        application.dispatch(command, **arguments)
+
+    for owner in owners.values():
+        owner.assert_not_called()
+
+
+def test_lifecycle_lock_is_released_after_success_and_failure(
+    tmp_path: Path,
+    *,
+    mocker,
+) -> None:
+    ctx = install_context(tmp_path)
+    mocker.patch.object(application.runtime_context, "create", return_value=ctx)
+    recover = mocker.patch.object(
+        application.control,
+        "recover",
+        side_effect=[
+            {"state": "not_required"},
+            errors.InstallError("failed"),
+            {"state": "closed"},
+        ],
+    )
+
+    assert application.dispatch("recover", port=ctx.port) == {"state": "not_required"}
+    with pytest.raises(errors.InstallError, match="failed"):
+        application.dispatch("recover", port=ctx.port)
+    assert application.dispatch("recover", port=ctx.port) == {"state": "closed"}
+    assert recover.call_count == 3
+
+
+def test_unavailable_lifecycle_lock_is_a_bounded_public_error(
+    tmp_path: Path,
+    *,
+    mocker,
+) -> None:
+    ctx = install_context(tmp_path)
+    mocker.patch.object(application.runtime_context, "create", return_value=ctx)
+    lock = mocker.patch.object(application, "FileLock").return_value
+    lock.acquire.side_effect = OSError("private host detail")
+    recover = mocker.patch.object(application.control, "recover")
+
+    code, stdout, stderr = invoke("recover", "--json", "--port", str(ctx.port))
+
+    assert code == 2
+    assert stdout == ""
+    assert json.loads(stderr) == {
+        "error": {
+            "code": "lifecycle_error",
+            "message": "lifecycle mutation lock is unavailable",
+            "next": "codex-responses-proxy doctor",
+        }
+    }
+    assert "private host detail" not in stderr
+    assert "Traceback" not in stderr
+    recover.assert_not_called()
+
+
+@pytest.mark.parametrize("command", ["status", "doctor"])
+def test_read_only_commands_remain_available_during_lifecycle_mutation(
+    tmp_path: Path,
+    command: str,
+    *,
+    mocker,
+) -> None:
+    ctx = install_context(tmp_path)
+    evidence = {"state": "not_installed", "detail": "absent"}
+    mocker.patch.object(application.runtime_context, "create", return_value=ctx)
+    status = mocker.patch.object(application.control, "status", return_value=evidence)
+
+    with FileLock(
+        application._lifecycle_lock_path(ctx),
+        timeout=0,
+        fallback_to_soft=False,
+        preserve_lock_file=True,
+    ):
+        result = application.dispatch(command, port=ctx.port)
+
+    status.assert_called_once_with(ctx)
+    assert result is not None
+    if command == "status":
+        assert result == evidence
+    else:
+        assert result["state"] == "not_installed"
