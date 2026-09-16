@@ -110,6 +110,15 @@ boundary. Catch-all packages and names such as `common`, `shared`, `utils`,
 `service` usage is decomposed by actual runtime, supervision, handoff, and
 entrypoint ownership instead of being preserved as a generic bucket.
 
+Lifecycle control tests follow status, recovery, reload, rollback and uninstall
+semantics; loopback transport belongs to runtime tests. Their shared installed
+listener evidence stays in the existing lifecycle fixture, not an umbrella test
+class or another fixture framework. Pytest owns temporary test directories and
+retires them through its native retention policy; tests do not allocate unowned
+`mkdtemp` roots. Explicit per-operation output roots retain their own cleanup
+owner, and required failure evidence is copied to source-bound verification
+output before scratch retirement.
+
 ### Positive topology is the architecture authority
 
 One declarative topology covers product source, repository tools, tests,

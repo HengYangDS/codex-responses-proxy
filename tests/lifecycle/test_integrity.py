@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-import tempfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -34,9 +33,9 @@ class TestPayloadValidation:
     """Payload admission, manifest, and rollback validation contracts."""
 
     def test_begin_rejects_existing_transaction_and_invalid_candidate_boundaries(
-        self, subtests, *, mocker
+        self, subtests, *, mocker, tmp_path_factory: pytest.TempPathFactory
     ) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         transaction_root = Path(payload_state.transaction_root(ctx))
         transaction_root.mkdir(parents=True)
         with pytest.raises(errors.RecoveryStateError, match="evidence is invalid"):
@@ -98,7 +97,9 @@ class TestPayloadValidation:
             ):
                 payload_candidate.validate(candidate_blobs, version, digest, candidate_receipt)
 
-    def test_digest_and_unowned_collision_boundaries_fail_closed(self, *, mocker) -> None:
+    def test_digest_and_unowned_collision_boundaries_fail_closed(
+        self, *, mocker, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
         valid = {
             relative: hashlib.sha256(relative.encode()).hexdigest() for relative in runtime_files()
         }
@@ -109,7 +110,7 @@ class TestPayloadValidation:
         with pytest.raises(errors.InstallError, match="invalid serving payload"):
             payload_projection.manifest_serving_payload_sha256(invalid)
 
-        ctx = install_context(Path(tempfile.mkdtemp()))
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
         collision = Path(transaction.context.payload_dir, inventory.PROVIDER_MANIFEST)
         collision.parent.mkdir(parents=True, exist_ok=True)
@@ -175,16 +176,20 @@ class TestPayloadValidation:
                 with pytest.raises(errors.InstallError, match="prewarm failed"):
                     payload_candidate.prewarm(ctx)
 
-    def test_transaction_filesystem_failures_remain_fail_closed(self, *, mocker) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+    def test_transaction_filesystem_failures_remain_fail_closed(
+        self, *, mocker, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
         mocker.patch.object(payload_digest, "sha256_file", return_value="0" * 64)
         with pytest.raises(errors.InstallError, match="installed payload digest mismatch"):
             transaction.commit_projection()
 
-    def test_manifest_verifier_reports_each_metadata_boundary(self, subtests, *, mocker) -> None:
+    def test_manifest_verifier_reports_each_metadata_boundary(
+        self, subtests, *, mocker, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
         def installed() -> tuple[runtime_context.RuntimeContext, Path, dict[str, object]]:
-            ctx = install_context(Path(tempfile.mkdtemp()))
+            ctx = install_context(tmp_path_factory.mktemp("case"))
             transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
             transaction.commit_projection()
             transaction.activate()
@@ -199,7 +204,7 @@ class TestPayloadValidation:
                 manifest[key] = value
             return transaction.context, path, manifest
 
-        ctx = install_context(Path(tempfile.mkdtemp()))
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         ok, detail = payload_projection.verify_payload_manifest(ctx)
         assert not ok
         assert detail == "installed payload manifest is unavailable"
@@ -287,8 +292,10 @@ class TestPayloadValidation:
         assert not ok
         assert detail == "installed release receipt is unavailable"
 
-    def test_canonical_state_validation_fail_closed(self) -> None:
-        ctx = install_context(Path(tempfile.mkdtemp()))
+    def test_canonical_state_validation_fail_closed(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        ctx = install_context(tmp_path_factory.mktemp("case"))
         path = Path(ctx.install_dir, "state.json")
         path.parent.mkdir(parents=True)
         path.write_text('{"value": 1}', encoding="utf-8")

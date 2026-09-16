@@ -10,9 +10,12 @@ from pathlib import PureWindowsPath
 
 from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import context as runtime_context
+from codex_responses_proxy.lifecycle import control
+from codex_responses_proxy.lifecycle import generation
 from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle import transaction as payload_transaction
 from codex_responses_proxy.service import digest as payload_digest
+from codex_responses_proxy.service import identity
 from codex_responses_proxy.service import inventory
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -156,3 +159,21 @@ def install_payload(
     transaction.finalize({"pid": 1})
     ctx.executable = transaction.context.executable
     return transaction
+
+
+def healthy_status_dependencies(ctx, *, mocker) -> None:
+    """Project verified listener and supervisor evidence for one installed generation."""
+    runtime = identity.committed_payload(Path(generation.selected_context(ctx).executable))
+    assert runtime is not None
+    runtime_evidence = {
+        "pid": 321,
+        "release": runtime.release,
+        "serving_payload_sha256": runtime.serving_payload_sha256,
+        "release_receipt_sha256": runtime.release_receipt_sha256,
+        "payload_manifest_sha256": runtime.manifest_sha256,
+        "accepting": True,
+        "draining": False,
+    }
+    mocker.patch.object(control, "adapter").return_value.status.return_value = "running"
+    mocker.patch.object(control.process, "verified_proxy_listener_pids", return_value=[321])
+    mocker.patch.object(control, "read_runtime", return_value=runtime_evidence)
