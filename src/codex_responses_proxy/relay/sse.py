@@ -13,6 +13,7 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from http.server import BaseHTTPRequestHandler
+from itertools import chain
 from typing import NotRequired
 from typing import Protocol
 from typing import TypedDict
@@ -140,31 +141,20 @@ def _read_one_stream(
     upstream_detail = "eof"
     upstream_error: BaseException | None = None
     failure_code, upstream_request_id = "unknown", "none"
-    wrote_downstream = prelude_flushed = False
+    wrote_downstream = False
     prelude: list[bytes] = []
 
-    def raw_write(data: bytes) -> None:
+    def emit(data: bytes, *, hold: bool) -> None:
         nonlocal wrote_downstream
+        if hold and not wrote_downstream:
+            prelude.append(data)
+            return
         if not wrote_downstream:
             on_first_write()
             wrote_downstream = True
-        handler.wfile.write(b"%X\r\n%s\r\n" % (len(data), data))
-
-    def flush_prelude() -> None:
-        nonlocal prelude_flushed
-        if prelude_flushed:
-            return
-        for event in prelude:
-            raw_write(event)
+        for event in chain(prelude, (data,)):
+            handler.wfile.write(b"%X\r\n%s\r\n" % (len(event), event))
         prelude.clear()
-        prelude_flushed = True
-
-    def emit(data: bytes, *, hold: bool) -> None:
-        if not prelude_flushed and hold:
-            prelude.append(data)
-            return
-        flush_prelude()
-        raw_write(data)
 
     def process_event(event: bytes) -> None:
         nonlocal event_count, terminal_event, upstream_detail, upstream_error
@@ -223,8 +213,6 @@ def _read_one_stream(
             break
     if buffer:
         process_event(buffer)
-    if terminal_event in _CLEAN_TERMINALS:
-        flush_prelude()
     detail = terminal_event.rpartition(".")[2] if terminal_event else upstream_detail
     return {
         "terminal": terminal_event,

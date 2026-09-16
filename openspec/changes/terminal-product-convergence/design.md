@@ -160,11 +160,17 @@ each retains its own explicitly declared tracked or pending-file semantics.
 
 The review at source `268ce99f` established these gaps:
 
-- Structural inventory returned measurements without size or complexity vetoes;
-  a regression explicitly required large functions to pass. Ruff did not select
-  `C901`, `PLR0912`, `PLR0913`, or `PLR0915`. A read-only probe with those native
-  rules produced 88 diagnostics across product, test, and tooling code. These
-  are candidate findings, not 88 independently established product defects.
+- Structural inventory still reports size observations without ELOC vetoes;
+  function size, arguments and statement admission remain open. McCabe complexity
+  now has one blocking Ruff `C901` policy across product, tools, tests and Nox.
+  The stream reader drops duplicated prelude state and two closure layers;
+  declaration identity validation has one owner instead of three copies.
+  Their complexity decreases from 24 to 20 and from 22 to 16 respectively.
+  The current bound of 20 is a reviewed maintainability guard, not a claim that
+  every smaller value is better. A bound of 15 identifies nine additional
+  operations, including payload validation and transaction-state admission;
+  review their semantic risk before fragmenting their state or adding facades.
+  The numeric authority remains Ruff configuration, not this explanation.
 - Function ELOC used a physical line span, while file ELOC removed entire lines
   carrying inline comments. The two measures were neither accurate nor equal.
   Commit `6110515b` repairs that measurement with focused regression evidence;
@@ -211,6 +217,16 @@ edges; moving half a function into an alias package does not satisfy either.
 Do not add another analyzer until its required metric or behavior is absent
 from the admitted tools and its maintenance cost is lower than the displaced
 custom implementation.
+
+Complexity conformance runs the locked Ruff module with the actual repository
+configuration against each Python role. Boundary and over-bound inputs differ
+by one branch; a disabled rule, test exclusion, ignored diagnostic or successful
+exit on excessive complexity fails the contract. The existing Nox static-check
+owner propagates that result through quick, quality and both CUE projections.
+SSE tests separate wire framing from pre-content recovery, retain their original
+bodies and parameterization, and cover byte-order preservation for fragmented
+input. Downstream commitment is one irreversible state; it does not need a
+second prelude-flushed flag or an extra terminal flush.
 
 Topology changes follow complete semantic operations. Review payload admission,
 generation transition, rollback/recovery, cleanup, portable replay, and streaming

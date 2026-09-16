@@ -186,10 +186,10 @@ scope = "python"
 session = "quick"
 configuration = [".config/quality/native/ruff.toml"]
 risk_model = "Python correctness, import, modernization, security, performance, and maintainability defects escape review."
-measurement = "Ruff static analysis over every Python carrier."
+measurement = "Ruff static analysis over every Python carrier, including C901 McCabe complexity at the bound declared in its native configuration; real tool probes cover product, tooling, test and Nox roles."
 false_positive_cost = "An inapplicable rule can force an obscuring rewrite, so applicability is changed only through this role contract."
 remediation = "Correct or simplify the owning implementation; change applicability only with a reviewed responsibility-map update."
-review_condition = "Reassess when Ruff adds a stable rule family relevant to a declared Python role."
+review_condition = "Reassess when Ruff adds a relevant stable rule family or repeated cohesive operations exceed the native complexity bound; review lower-bound findings semantically rather than forcing forwarding helpers."
 
 [[concerns]]
 id = "python-format"
