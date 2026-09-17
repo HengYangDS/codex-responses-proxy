@@ -28,6 +28,13 @@ import "list"
 	quality:         "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
 }
 
+#CommitEvent: {
+	CODEX_RESPONSES_PROXY_COMMIT_BASE: "${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}"
+	CODEX_RESPONSES_PROXY_COMMIT_HEAD: #Conditions.productSHA
+}
+
+#GitLabCommitEvent: "export CODEX_RESPONSES_PROXY_COMMIT_BASE=\"${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}\" CODEX_RESPONSES_PROXY_COMMIT_HEAD=\"$CI_COMMIT_SHA\"; if [ -n \"$CI_COMMIT_TAG\" ]; then export CODEX_RESPONSES_PROXY_COMMIT_BASE=\"$CI_COMMIT_SHA\"; fi; "
+
 #UvSetup: {
 	uses: #Toolchains.githubActions.uv
 	with: "cache-suffix": "${{ github.job }}-${{ strategy.job-index }}"
@@ -108,7 +115,7 @@ gitlab: {
 			"mise exec --locked -- uv sync --locked --group quality --python python --no-python-downloads",
 		]
 		script: [
-			"mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links",
+			#GitLabCommitEvent + "mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links",
 		]
 	}
 	"verify-python": {
@@ -162,7 +169,7 @@ gitlab: {
 		before_script: #qualityBootstrap
 		script: [
 			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata",
-			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository",
+			#GitLabCommitEvent + "uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository",
 		]
 	}
 	"verify-promotion": {
@@ -178,7 +185,7 @@ gitlab: {
 		script: [
 			"git merge-base --is-ancestor origin/main \"$CI_COMMIT_SHA\"",
 			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata",
-			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository",
+			#GitLabCommitEvent + "uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository",
 		]
 	}
 	"verify-release-tag": {
@@ -191,6 +198,7 @@ gitlab: {
 		script: [
 			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata --tag \"$CI_COMMIT_TAG\"",
 			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.forge.tag_signature . \"$CI_COMMIT_TAG\" \"$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST\"",
+			#GitLabCommitEvent + "uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository",
 		]
 	}
 }
@@ -272,6 +280,7 @@ githubVerify: {
 					"""
 			}, {
 				name: "Confirm source identity and repository governance"
+				env:  #CommitEvent
 				run: """
 					uv sync --locked --all-groups
 					uv run --locked --no-sync python -m tools.quality.governance --online-links
@@ -350,6 +359,7 @@ githubVerify: {
 				#UvSetup
 			}, {
 				name: "Confirm accepted source and metadata"
+				env:  #CommitEvent
 				run: """
 					uv sync --locked --all-groups
 					uv run --locked --no-sync python -m tools.release.metadata
@@ -377,6 +387,7 @@ githubVerify: {
 				#UvSetup
 			}, {
 				name: "Prove exact dev-to-main promotion"
+				env:  #CommitEvent
 				run: """
 					git fetch origin main dev --tags --force --prune --prune-tags
 					git merge-base --is-ancestor origin/main "${{ github.event.pull_request.head.sha }}"
@@ -420,7 +431,11 @@ githubVerify: {
 				run:  "uv sync --locked --all-groups"
 			}, {
 				name: "Verify exact release metadata"
-				run:  "uv run --locked --no-sync python -m tools.release.metadata --tag \"$GITHUB_REF_NAME\""
+				env:  #CommitEvent
+				run: """
+					uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"
+					uv run --locked --no-sync python -m tools.quality.repository
+					"""
 			}, {
 				name: "Verify repository governance"
 				run:  "uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/publication"
