@@ -209,7 +209,6 @@ class TestQualityPolicyContracts:
             ".config/quality/native/coverage.ini",
             ".config/quality/policy/coverage.toml",
             ".config/quality/policy/architecture.toml",
-            ".config/quality/policy/commits.toml",
             ".config/quality/policy/text.toml",
             ".config/quality/native/lychee.toml",
             ".editorconfig",
@@ -249,7 +248,6 @@ class TestQualityPolicyContracts:
         }
         for relative in (
             ".config/quality/policy/architecture.toml",
-            ".config/quality/policy/commits.toml",
             ".config/quality/policy/coverage.toml",
             ".config/quality/policy/text.toml",
         ):
@@ -409,13 +407,38 @@ class TestQualityPolicyContracts:
         assert policy["insert_final_newline"] is True
         assert policy["trim_trailing_whitespace"] is True
 
+    def test_commit_policy_is_declared_for_native_hook_enforcement(self) -> None:
+        workspace = tomllib.loads((ROOT / ".ethos/workspace.toml").read_text(encoding="utf-8"))
+
+        assert workspace["commit_policy"]["signing_required"] is True
+        assert workspace["commit_policy"]["signing_format"] == "ssh"
+        assert isinstance(workspace["commit_policy"]["subject_pattern"], str)
+
+    def test_commit_subjects_validate_an_accepted_tip(self) -> None:
+        with _test_repository(("tracked.txt",)) as root:
+            _git(
+                root,
+                "-c",
+                "user.name=Test Author",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-q",
+                "-m",
+                "invalid accepted subject",
+            )
+            tip = _git(root, "rev-parse", "HEAD").stdout.strip().decode()
+            _git(root, "update-ref", "refs/heads/candidate/dev", tip)
+
+            assert commits.commit_subject_gaps(root) == [
+                "commit_subject_invalid:invalid accepted subject"
+            ]
+
     def test_commit_subjects_consume_the_tracked_positive_grammar(self) -> None:
         assert commits.commit_subject_gaps(ROOT) == []
 
-        policy = tomllib.loads(
-            (ROOT / ".config/quality/policy/commits.toml").read_text(encoding="utf-8")
-        )
-        (subject,) = commits.commit_subject_patterns(policy)
+        policy = tomllib.loads((ROOT / ".ethos/workspace.toml").read_text(encoding="utf-8"))
+        subject = commits.commit_subject_pattern(policy["commit_policy"])
 
         assert subject.fullmatch("refactor(quality): centralize repository policy owners")
         assert subject.fullmatch("fix(ci): provision quality projection tools")
@@ -426,10 +449,8 @@ class TestQualityPolicyContracts:
         assert not subject.fullmatch("materialize quality-policy-ssot carrier")
 
     def test_commit_subject_grammar_allows_internal_semver_periods(self) -> None:
-        policy = tomllib.loads(
-            (ROOT / ".config/quality/policy/commits.toml").read_text(encoding="utf-8")
-        )
-        (subject,) = commits.commit_subject_patterns(policy)
+        policy = tomllib.loads((ROOT / ".ethos/workspace.toml").read_text(encoding="utf-8"))
+        subject = commits.commit_subject_pattern(policy["commit_policy"])
 
         assert subject.fullmatch("chore(release): prepare v2.0.22")
         assert not subject.fullmatch("chore(release): prepare v2.0.22.")

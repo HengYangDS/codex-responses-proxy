@@ -9,27 +9,15 @@ from collections.abc import Mapping
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-POLICY = ROOT / ".config/quality/policy/commits.toml"
-_SUBJECT_SUFFIX = r"[a-z](?:[^\n]*[^\s.]|[^\n\s.])"
+POLICY = ROOT / ".ethos/workspace.toml"
 
 
-def _string_list(policy: Mapping[str, object], key: str) -> tuple[str, ...]:
-    """Return one non-empty string list from the commit policy."""
-    values = policy.get(key)
-    if (
-        not isinstance(values, list)
-        or not values
-        or not all(isinstance(value, str) for value in values)
-    ):
-        raise ValueError(f"commit_policy_{key}_invalid")
-    return tuple(value for value in values if isinstance(value, str))
-
-
-def commit_subject_patterns(policy: Mapping[str, object]) -> tuple[re.Pattern[str], ...]:
-    """Compile the positive subject grammar from semantic declarations."""
-    types = "|".join(map(re.escape, _string_list(policy, "types")))
-    scopes = "|".join(map(re.escape, _string_list(policy, "scopes")))
-    return (re.compile(rf"^(?:{types})\((?:{scopes})\): {_SUBJECT_SUFFIX}$"),)
+def commit_subject_pattern(policy: Mapping[str, object]) -> re.Pattern[str]:
+    """Read the same subject expression consumed by native ETHOS hooks."""
+    value = policy.get("subject_pattern")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("commit_policy_subject_pattern_invalid")
+    return re.compile(value)
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -54,7 +42,9 @@ def _subjects(root: Path) -> tuple[tuple[str, ...], str | None]:
     base = _base_ref(root)
     args = ["log", "--format=%s"]
     if base is not None:
-        args.append(f"{base}..HEAD")
+        tip = _git(root, "rev-parse", "HEAD").stdout.strip()
+        base_tip = _git(root, "rev-parse", base).stdout.strip()
+        args.extend(("-1", "HEAD") if tip == base_tip else (f"{base}..HEAD",))
     else:
         args.append("HEAD")
     result = _git(root, *args)
@@ -66,13 +56,13 @@ def _subjects(root: Path) -> tuple[tuple[str, ...], str | None]:
 
 def commit_subject_gaps(root: Path = ROOT) -> list[str]:
     """Report lane-local subjects not admitted by one positive grammar."""
-    policy = tomllib.loads(POLICY.read_text(encoding="utf-8"))
-    patterns = commit_subject_patterns(policy)
+    policy = tomllib.loads(POLICY.read_text(encoding="utf-8"))["commit_policy"]
+    pattern = commit_subject_pattern(policy)
     subjects, error = _subjects(root)
     if error is not None:
         return [error]
     return [
         f"commit_subject_invalid:{subject}"
         for subject in subjects
-        if not any(pattern.fullmatch(subject) for pattern in patterns)
+        if not pattern.fullmatch(subject)
     ]
