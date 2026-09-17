@@ -12,7 +12,12 @@ from codex_responses_proxy.lifecycle import runtime_spec
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.service import runtime as service_runtime
 
-_RUNTIME_ROLES = {service_runtime.LISTENER_MODE, service_runtime.HANDOFF_CHILD_MODE}
+_RUNTIME_ROLES = {
+    service_runtime.LISTENER_MODE,
+    service_runtime.HANDOFF_CHILD_MODE,
+    service_runtime.WATCHDOG_MODE,
+    service_runtime.PREWARM_MODE,
+}
 
 
 class NativeServiceAdapter(Protocol):

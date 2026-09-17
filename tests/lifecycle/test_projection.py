@@ -174,6 +174,28 @@ class TestPayloadProjection:
         with pytest.raises(errors.InstallError, match="root removal failed"):
             payload_projection._remaining_paths(install)
 
+    @pytest.mark.parametrize("native_code", [None, 5, 32])
+    def test_purge_preserves_native_failure_code_without_private_os_detail(
+        self, tmp_path: Path, native_code: int | None, *, mocker
+    ) -> None:
+        target = tmp_path / "owned.pyd"
+        target.write_bytes(b"payload")
+        failure = PermissionError(13, "private operating-system detail")
+        if native_code is not None:
+            mocker.patch.object(failure, "winerror", native_code, create=True)
+        mocker.patch.object(Path, "unlink", side_effect=failure)
+
+        with pytest.raises(errors.InstallError) as stopped:
+            payload_projection.purge_owned_files(
+                tmp_path, {target.name: payload_digest.sha256_file(target)}
+            )
+
+        assert str(stopped.value) == (
+            f"installed payload purge failed: owned.pyd (OS error {native_code or 13})"
+        )
+        assert stopped.value.__cause__ is failure
+        assert target.read_bytes() == b"payload"
+
     def test_purge_and_residue_inventory_report_filesystem_failures(
         self, *, mocker, tmp_path_factory: pytest.TempPathFactory
     ) -> None:

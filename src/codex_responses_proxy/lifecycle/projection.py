@@ -63,7 +63,10 @@ def purge_owned_files(root: Path, files: Mapping[str, str]) -> tuple[str, ...]:
         try:
             owned_files.path(root, relative).unlink()
         except OSError as exc:
-            raise errors.InstallError(f"installed payload purge failed: {relative}") from exc
+            code = getattr(exc, "winerror", None) or exc.errno
+            raise errors.InstallError(
+                f"installed payload purge failed: {relative} (OS error {code})"
+            ) from exc
     remove_empty_owned_directories(root, set(files))
     if residual := [
         relative
