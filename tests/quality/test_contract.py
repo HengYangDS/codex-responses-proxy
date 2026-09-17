@@ -149,6 +149,11 @@ class TestQualityPolicyContracts:
         ):
             assert path in inventoried
 
+    def test_openspec_material_scope_covers_every_repository_carrier(self) -> None:
+        profile = tomllib.loads((ROOT / ".ethos/profile.toml").read_text(encoding="utf-8"))
+
+        assert profile["openspec"]["material_paths"] == ["**"]
+
     def test_publication_topology_has_only_declared_independent_peers(self) -> None:
         publication = tomllib.loads((ROOT / ".ethos/release.toml").read_text(encoding="utf-8"))[
             "publication"

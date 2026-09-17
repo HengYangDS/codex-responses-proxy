@@ -1,28 +1,7 @@
 profile_id = "codex-responses-proxy"
 
 [openspec]
-material_paths = [
-  ".config/**",
-  ".editorconfig",
-  ".ethos/**",
-  ".github/**",
-  ".gitlab-ci.yml",
-  "AGENTS.md",
-  "CHANGELOG.md",
-  "CONTRIBUTING.md",
-  "README.md",
-  "VERSION",
-  ".python-versions",
-  "docs/**",
-  "noxfile.py",
-  "openspec/**",
-  "packaging/**",
-  "pyproject.toml",
-  "src/**",
-  "tests/**",
-  "tools/**",
-  "uv.lock",
-]
+material_paths = ["**"]
 
 [proof]
 code_correctness_gates = ["python-quality", "python-matrix"]
