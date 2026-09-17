@@ -403,6 +403,37 @@ class ProxyOwnerBoundaryContracts:
         with pytest.raises(errors.ProductAssemblyError, match="installation is incomplete"):
             native_service.adapter()
 
+    @pytest.mark.parametrize(
+        "role",
+        [
+            "--internal-listener",
+            "--internal-handoff-child",
+            "--internal-watchdog",
+            "--internal-prewarm",
+        ],
+    )
+    def test_retired_generation_stops_each_owned_service_role(self, role: str, *, mocker) -> None:
+        ctx = mocker.Mock(executable="/installed/generations/retired/bin/proxy")
+        runtime = native_service._NativeRuntime(_NativeModuleFixture("fixture.native"))
+        live = {41}
+
+        def inventory_for(executable, *, roles):
+            assert executable == ctx.executable
+            return sorted(live) if role in roles else []
+
+        def stop(pid, executable, *, roles, timeout_seconds):
+            assert executable == ctx.executable
+            assert role in roles
+            assert timeout_seconds == 2.5
+            live.remove(pid)
+            return True
+
+        mocker.patch.object(native_service.process, "pids_naming_executable", inventory_for)
+        mocker.patch.object(native_service.process, "terminate_executable", stop)
+
+        assert runtime.terminate_runtime(ctx, timeout_seconds=2.5) == 1
+        assert live == set()
+
     def test_native_runtime_owns_exact_private_product_processes(self, subtests, *, mocker) -> None:
         ctx = mocker.Mock(executable="/installed/codex-responses-proxy")
         implementation = _NativeModuleFixture("fixture.native")
