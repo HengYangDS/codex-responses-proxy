@@ -55,6 +55,20 @@ flowchart LR
 - Do not preserve aliases, facades, or compatibility residue without a current requirement.
 - Do not write personal identity, local path, credential, key, fingerprint, or private Forge coordinate into product source.
 
+## Commit admission
+
+The `[commit_policy]` table in `.ethos/workspace.toml` owns the complete subject
+expression and SSH-signing requirement. Installed ETHOS hooks consume that
+policy before commit and push; the repository quality check reads the same
+expression without rebuilding a second grammar. Change the expression when a
+new semantic scope is justified, not a parallel type or scope list.
+
+The local quality check validates the range after an available integration
+base. When that base already equals HEAD, it still validates the tip rather
+than treating an empty range as proof. It is not a whole-history signature
+audit. Hosted event-range and signature acceptance remain separate obligations;
+a syntactically valid subject alone does not prove either.
+
 ## Decision records and names
 
 - OpenSpec authorizes a bounded change; `docs/decisions/` preserves only its
