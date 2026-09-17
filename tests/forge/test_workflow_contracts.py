@@ -469,12 +469,11 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
             "--python python --no-python-downloads"
         ),
     ]
-    assert source["script"] == [
-        (
-            "mise exec --locked -- uv run --locked --no-sync --python python "
-            "--no-python-downloads python -m tools.quality.governance --online-links"
-        )
-    ]
+    (source_command,) = _strings(source["script"])
+    assert source_command.endswith(
+        "mise exec --locked -- uv run --locked --no-sync --python python "
+        "--no-python-downloads python -m tools.quality.governance --online-links"
+    )
     assert _string(_mapping(source["variables"])["MISE_ENABLE_TOOLS"]).startswith("python,uv,")
 
 
@@ -761,3 +760,75 @@ def test_gitlab_pytest_invocations_preserve_repository_module_resolution() -> No
     if f"{GITLAB_LOCKED_PYTHON} pytest" in text:
         raise AssertionError("GitLab must not invoke the pytest console script directly")
     assert f"{GITLAB_LOCKED_PYTHON} pytest" not in text
+
+
+def test_commit_event_inputs_reach_each_governance_context() -> None:
+    github = _load_yaml(ROOT / ".github/workflows/verify.yml")
+    jobs = _mapping(github["jobs"])
+    for name in ("source-and-governance", "accepted-source", "promotion", "tag-metadata"):
+        steps = [_mapping(step) for step in _sequence(_mapping(jobs[name])["steps"])]
+        checks = [
+            step
+            for step in steps
+            if "tools.quality.governance" in str(step.get("run", ""))
+            or "tools.quality.repository" in str(step.get("run", ""))
+        ]
+        assert checks, name
+        for step in checks:
+            environment = _mapping(step["env"])
+            assert environment["CODEX_RESPONSES_PROXY_COMMIT_HEAD"] == (
+                "${{ github.event.pull_request.head.sha || github.sha }}"
+            )
+            assert environment["CODEX_RESPONSES_PROXY_COMMIT_BASE"] == (
+                "${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}"
+            )
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    for name in (
+        "source-and-governance",
+        "verify-accepted-source",
+        "verify-promotion",
+        "verify-release-tag",
+    ):
+        commands = _strings(_mapping(gitlab[name])["script"])
+        checks = [
+            command
+            for command in commands
+            if "tools.quality.governance" in command or "tools.quality.repository" in command
+        ]
+        assert checks, name
+        for command in checks:
+            assert "CODEX_RESPONSES_PROXY_COMMIT_HEAD" in command
+            assert "CODEX_RESPONSES_PROXY_COMMIT_BASE" in command
+            assert "CI_MERGE_REQUEST_DIFF_BASE_SHA" in command
+            assert "CI_COMMIT_BEFORE_SHA" in command
+            assert "CI_COMMIT_TAG" in command
+
+
+@pytest.mark.parametrize("event", ["review", "push", "tag"])
+def test_gitlab_commit_projection_executes_native_event_values(event, monkeypatch) -> None:
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    command = _strings(_mapping(gitlab["verify-accepted-source"])["script"])[-1]
+    prefix = command.split("uv run", 1)[0]
+    head, base, review = "a" * 40, "b" * 40, "c" * 40
+    for name, value in {
+        "CI_COMMIT_SHA": head,
+        "CI_COMMIT_BEFORE_SHA": base,
+        "CI_MERGE_REQUEST_DIFF_BASE_SHA": review if event == "review" else "",
+        "CI_COMMIT_TAG": "v4.0.3" if event == "tag" else "",
+    }.items():
+        monkeypatch.setenv(name, value)
+    result = subprocess.run(
+        [
+            "sh",
+            "-c",
+            prefix
+            + 'printf "%s\\n%s\\n" "$CODEX_RESPONSES_PROXY_COMMIT_BASE" "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"',
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout.splitlines() == [
+        {"review": review, "push": base, "tag": head}[event],
+        head,
+    ]

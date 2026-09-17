@@ -66,8 +66,14 @@ new semantic scope is justified, not a parallel type or scope list.
 The local quality check validates the range after an available integration
 base. When that base already equals HEAD, it still validates the tip rather
 than treating an empty range as proof. It is not a whole-history signature
-audit. Hosted event-range and signature acceptance remain separate obligations;
-a syntactically valid subject alone does not prove either.
+audit. Hosted audits receive exact event objects through `COMMIT_BASE` and
+`COMMIT_HEAD` variables under the product environment prefix. Pull requests use
+their base and head objects; branch pushes use the before and after objects;
+tag checks validate the tagged tip. Missing, malformed, unavailable or
+checkout-mismatched objects fail rather than fall back to a moving branch.
+A new branch with an all-zero before object checks its reachable history.
+These subject checks do not establish signature trust or replace native
+platform and release acceptance.
 
 ## Decision records and names
 

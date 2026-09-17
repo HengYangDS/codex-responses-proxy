@@ -68,6 +68,9 @@ jobs:
           npm ci --ignore-scripts
           npm audit signatures
       - name: Confirm source identity and repository governance
+        env:
+          CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
+          CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |-
           uv sync --locked --all-groups
           uv run --locked --no-sync python -m tools.quality.governance --online-links
@@ -136,6 +139,9 @@ jobs:
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Confirm accepted source and metadata
+        env:
+          CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
+          CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           uv sync --locked --all-groups
           uv run --locked --no-sync python -m tools.release.metadata
@@ -158,6 +164,9 @@ jobs:
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Prove exact dev-to-main promotion
+        env:
+          CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
+          CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |-
           git fetch origin main dev --tags --force --prune --prune-tags
           git merge-base --is-ancestor origin/main "${{ github.event.pull_request.head.sha }}"
@@ -192,7 +201,12 @@ jobs:
       - name: Install the complete locked tool environment
         run: uv sync --locked --all-groups
       - name: Verify exact release metadata
-        run: uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"
+        env:
+          CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
+          CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |-
+          uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"
+          uv run --locked --no-sync python -m tools.quality.repository
       - name: Verify repository governance
         run: uv run --locked --no-sync python -m pytest -q tests/quality/test_contract.py tests/forge/test_workflow_contracts.py tests/forge/test_tagging.py tests/release/publication
   python-quality:

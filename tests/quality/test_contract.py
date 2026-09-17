@@ -434,6 +434,82 @@ class TestQualityPolicyContracts:
                 "commit_subject_invalid:invalid accepted subject"
             ]
 
+    def test_event_range_rejects_invalid_middle_commit_after_refs_advance(self, monkeypatch):
+        with _test_repository(("tracked.txt",)) as root:
+            revisions = []
+            for subject in (
+                "test(quality): baseline",
+                "invalid middle subject",
+                "fix(quality): valid tip",
+            ):
+                _git(
+                    root,
+                    "-c",
+                    "user.name=Test Author",
+                    "-c",
+                    "user.email=test@example.com",
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    subject,
+                )
+                revisions.append(_git(root, "rev-parse", "HEAD").stdout.strip().decode())
+            _git(root, "update-ref", "refs/heads/candidate/dev", revisions[-1])
+            monkeypatch.setenv("CODEX_RESPONSES_PROXY_COMMIT_BASE", revisions[0])
+            monkeypatch.setenv("CODEX_RESPONSES_PROXY_COMMIT_HEAD", revisions[-1])
+
+            assert commits.commit_subject_gaps(root) == [
+                "commit_subject_invalid:invalid middle subject"
+            ]
+
+    @pytest.mark.parametrize(
+        ("base", "head", "expected"),
+        [
+            (None, "tip", "commit_event_objects_invalid"),
+            ("tip", None, "commit_event_objects_invalid"),
+            ("--all", "tip", "commit_event_objects_invalid"),
+            ("tip", "f" * 40, "commit_event_head_mismatch"),
+            ("f" * 40, "tip", "commit_event_base_unavailable"),
+            ("ahead", "tip", "commit_event_base_not_ancestor"),
+            ("tip", "tip", "commit_subject_invalid:invalid event subject"),
+            ("0" * 40, "tip", "commit_subject_invalid:invalid event subject"),
+        ],
+    )
+    def test_event_objects_are_complete_and_checkout_bound(self, base, head, expected, monkeypatch):
+        with _test_repository(("tracked.txt",)) as root:
+            _git(
+                root,
+                "-c",
+                "user.name=Test Author",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-qm",
+                "invalid event subject",
+            )
+            tip = _git(root, "rev-parse", "HEAD").stdout.strip().decode()
+            if base == "ahead":
+                _git(
+                    root,
+                    "-c",
+                    "user.name=Test Author",
+                    "-c",
+                    "user.email=test@example.com",
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    "test(quality): future base",
+                )
+                base = _git(root, "rev-parse", "HEAD").stdout.strip().decode()
+                _git(root, "checkout", "--detach", tip)
+            for suffix, value in (("BASE", base), ("HEAD", head)):
+                name = f"CODEX_RESPONSES_PROXY_COMMIT_{suffix}"
+                if value is None:
+                    monkeypatch.delenv(name, raising=False)
+                else:
+                    monkeypatch.setenv(name, tip if value == "tip" else value)
+            assert commits.commit_subject_gaps(root) == [expected]
+
     def test_commit_subjects_consume_the_tracked_positive_grammar(self) -> None:
         assert commits.commit_subject_gaps(ROOT) == []
 
