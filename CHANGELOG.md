@@ -7,6 +7,16 @@ publication authority.
 
 ## [Unreleased]
 
+## [4.0.3] - 2026-09-18
+
+### Fixed
+
+- Retire the watchdog and prewarm processes owned by an obsolete payload
+  generation before deleting its files. Windows purge and upgrade no longer
+  fail when those processes retain native modules from the retired generation.
+- Bind commit admission to the exact Forge event object and keep the commit
+  policy in its declared ETHOS profile instead of a duplicate repository file.
+
 ## [4.0.2] - 2026-09-16
 
 ### Fixed
