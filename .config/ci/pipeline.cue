@@ -5,14 +5,16 @@ import "list"
 // pipeline.cue owns the provider-neutral proof graph. Forge YAML files remain
 // projections; product behavior stays in Nox and repository-owned Python tools.
 
-#RuntimeMatrix: {
-	"python": ["3.12", "3.13", "3.14"]
-}
+#RuntimeMatrix: python: ["3.12", "3.13", "3.14"]
 
 #Conditions: {
-	productProof: "(github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')"
-	nativeProof:  #Conditions.productProof + " || github.ref_type == 'tag'"
-	productSHA:   "${{ github.event.pull_request.head.sha || github.sha }}"
+	productProof:             "(github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')"
+	tagPush:                  "github.event_name == 'push' && github.ref_type == 'tag'"
+	nativeProof:              #Conditions.productProof + " || (" + #Conditions.tagPush + ")"
+	productSHA:               "${{ github.event.pull_request.head.sha || github.sha }}"
+	publishedReleaseProof:    "github.event_name == 'release' || github.event_name == 'workflow_dispatch'"
+	publishedReleaseTag:      "${{ github.event.release.tag_name || inputs.release_tag }}"
+	publishedReleaseCheckout: "${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}"
 }
 
 #Toolchains: {
@@ -211,6 +213,12 @@ githubVerify: {
 			branches: ["dev", "main"]
 			tags: ["v*"]
 		}
+		release: types: ["published"]
+		workflow_dispatch: inputs: release_tag: {
+			description: "Published vMAJOR.MINOR.PATCH tag to verify"
+			required:    true
+			type:        "string"
+		}
 	}
 	permissions: contents: "read"
 	env: {
@@ -399,7 +407,7 @@ githubVerify: {
 		}
 		"tag-metadata": {
 			name:              "Tag metadata and governance"
-			if:                "github.ref_type == 'tag'"
+			if:                #Conditions.tagPush
 			needs:             "python-matrix"
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 15
@@ -692,7 +700,7 @@ githubVerify: {
 		}
 		"release-assets": {
 			name: "Release assets"
-			if:   "github.ref_type == 'tag'"
+			if:   #Conditions.tagPush
 			needs: ["python-matrix", "native-assets", "native-linux"]
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 10
@@ -733,6 +741,71 @@ githubVerify: {
 					"if-no-files-found": "error"
 					"retention-days":    7
 				}
+			}]
+		}
+		"published-release-compatibility": {
+			name:              "Published release lifecycle (${{ matrix.platform }})"
+			if:                #Conditions.publishedReleaseProof
+			"runs-on":         "${{ matrix.runner }}"
+			"timeout-minutes": 30
+			strategy: {
+				"fail-fast": false
+				matrix: include: [{
+					platform: "macos-arm64"
+					runner:   "macos-26"
+				}, {
+					platform: "windows-x86_64"
+					runner:   "windows-2025"
+				}, {
+					platform: "linux-x86_64"
+					runner:   "ubuntu-24.04"
+				}]
+			}
+			steps: [{
+				uses: #Toolchains.githubActions.checkout
+				with: {
+					"fetch-depth": 0
+					"fetch-tags":  true
+					ref:           #Conditions.publishedReleaseCheckout
+				}
+			}, {
+				uses: #Toolchains.githubActions.python
+				with: "python-version-file": ".python-release"
+			}, {
+				#UvSetup
+			}, {
+				name: "Install the locked release tool environment"
+				run:  "uv sync --locked --group quality"
+			}, {
+				name: "Verify the selected release uses this product runtime"
+				run:  "git diff --exit-code \"${{ github.event.release.tag_name || inputs.release_tag }}^{commit}\" HEAD -- VERSION pyproject.toml uv.lock src/codex_responses_proxy"
+			}, {
+				name: "Resolve the exact published predecessor"
+				env: GH_TOKEN: "${{ github.token }}"
+				run: "uv run --locked --no-sync python -m tools.release.publication predecessor --repository \"${{ github.repository }}\" --candidate-tag \"${{ github.event.release.tag_name || inputs.release_tag }}\" --github-environment \"${{ github.env }}\""
+			}, {
+				name: "Download the published current release"
+				env: GH_TOKEN: "${{ github.token }}"
+				run: "gh release download \"${{ github.event.release.tag_name || inputs.release_tag }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/current-release\""
+			}, {
+				name: "Download the published predecessor release"
+				env: GH_TOKEN: "${{ github.token }}"
+				run: "gh release download \"${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
+			}, {
+				name: "Materialize the release trust anchor"
+				env: RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
+				run: "python -c \"import os; from pathlib import Path; Path(r'${{ runner.temp }}/release-asset-trust').write_text(os.environ['RELEASE_ASSET_TRUST'].rstrip() + '\\n', encoding='ascii')\""
+			}, {
+				name: "Bind the exact published assets"
+				run:  "python -c \"import glob, os; current = glob.glob(r'${{ runner.temp }}/current-release/codex-responses-proxy-*-${{ matrix.platform }}.tar.gz'); previous = glob.glob(r'${{ runner.temp }}/previous-release/codex-responses-proxy-*-${{ matrix.platform }}.tar.gz'); assert len(current) == len(previous) == 1, (current, previous); open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8').write('CODEX_RESPONSES_PROXY_CURRENT_RELEASE_ASSET=' + current[0] + '\\nCODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET=' + previous[0] + '\\n')\""
+			}, {
+				name: "Start the runner user systemd manager"
+				if:   "matrix.platform == 'linux-x86_64'"
+				run:  "user_id=$(id -u); runtime_dir=\"/run/user/${user_id}\"; sudo systemctl start \"user@${user_id}.service\"; printf '%s\\n' \"XDG_RUNTIME_DIR=${runtime_dir}\" \"DBUS_SESSION_BUS_ADDRESS=unix:path=${runtime_dir}/bus\" >> \"${GITHUB_ENV}\""
+			}, {
+				name: "Prove the published release lifecycle"
+				env: CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: "${{ runner.temp }}/release-asset-trust"
+				run: "uv run --locked --no-sync nox -s published_release_compatibility"
 			}]
 		}
 	}

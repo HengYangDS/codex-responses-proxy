@@ -9,6 +9,7 @@ import venv
 from contextlib import chdir
 from pathlib import Path
 from types import ModuleType
+from types import SimpleNamespace
 
 import pytest
 from pytest_mock import MockerFixture
@@ -172,6 +173,189 @@ def test_release_compatibility_requires_real_predecessor_inputs_before_build(
         assert environment[
             nox_configuration.product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR")
         ] == str(trust)
+
+
+def test_published_release_compatibility_uses_supplied_release_bytes(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    nox_configuration: ModuleType,
+) -> None:
+    """Exercise the downloaded release instead of rebuilding its candidate."""
+    current = tmp_path / "current.tar.gz"
+    previous = tmp_path / "previous.tar.gz"
+    trust = tmp_path / "allowed-signers"
+    for suffix, path in (
+        ("CURRENT_RELEASE_ASSET", current),
+        ("PREVIOUS_RELEASE_ASSET", previous),
+        ("PREVIOUS_RELEASE_TRUST_ANCHOR", trust),
+    ):
+        path.touch()
+        monkeypatch.setenv(nox_configuration.product_identity.environment_name(suffix), str(path))
+    executable = tmp_path / "bundle" / "codex-responses-proxy"
+    materialize = mocker.patch.object(
+        nox_configuration,
+        "_materialize_published_bundle",
+        return_value=(executable.parent, executable),
+    )
+    wheel = tmp_path / "product.whl"
+    build = mocker.patch.object(nox_configuration, "_build_wheel", return_value=wheel)
+    install = mocker.patch.object(nox_configuration, "_install_wheel")
+    assert_installed = mocker.patch.object(nox_configuration, "_assert_installed_product")
+    native_build = mocker.patch.object(nox_configuration, "_build_native_candidate")
+    session = mocker.Mock()
+    session.create_tmp.return_value = str(tmp_path / "work")
+
+    nox_configuration.published_release_compatibility(session)
+
+    session.run.assert_any_call(
+        "python",
+        "-c",
+        "import platform; print(platform.python_version())",
+        env=nox_configuration._environment(),
+        silent=True,
+    )
+    build.assert_called_once_with(session, tmp_path / "work")
+    install.assert_called_once_with(session, wheel)
+    assert_installed.assert_called_once_with(session, tmp_path / "work")
+    native_build.assert_not_called()
+    materialize.assert_called_once_with(session, current, trust, tmp_path / "work")
+    proof = session.run.call_args_list[-1]
+    assert proof.args == (
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/cli/test_interface.py",
+        "tests/service/handoff/test_subprocess.py",
+        "tests/release/test_native_lifecycle.py",
+        "tests/release/test_native_compatibility.py",
+    )
+    environment = proof.kwargs["env"]
+    assert environment[nox_configuration.product_identity.environment_name("EXECUTABLE")] == str(
+        executable
+    )
+    assert environment[
+        nox_configuration.product_identity.environment_name("NATIVE_EXECUTABLE")
+    ] == str(executable)
+    assert environment[nox_configuration.product_identity.environment_name("NATIVE_BUNDLE")] == str(
+        executable.parent
+    )
+    assert environment[
+        nox_configuration.product_identity.environment_name("PREVIOUS_RELEASE_ASSET")
+    ] == str(previous)
+    assert environment[
+        nox_configuration.product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR")
+    ] == str(trust)
+
+
+def test_published_bundle_must_match_the_checked_out_release_version(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    nox_configuration: ModuleType,
+) -> None:
+    """Reject a signed asset attached to the wrong release identity."""
+    released = mocker.Mock()
+    released.version = "0.0.0"
+    released.receipt = {
+        "platform": nox_configuration.product_identity.native_release_platform(
+            nox_configuration.platform.system(), nox_configuration.platform.machine()
+        )
+    }
+    mocker.patch.object(nox_configuration.artifact, "admit", return_value=released)
+    session = mocker.Mock()
+    session.error.side_effect = lambda message: (_ for _ in ()).throw(RuntimeError(message))
+
+    with pytest.raises(RuntimeError, match="version does not match"):
+        nox_configuration._materialize_published_bundle(
+            session,
+            tmp_path / "current.tar.gz",
+            tmp_path / "allowed-signers",
+            tmp_path / "work",
+        )
+
+    released.peek_blobs.assert_not_called()
+
+
+def test_published_bundle_must_match_the_native_platform(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    nox_configuration: ModuleType,
+) -> None:
+    """Reject a signed asset for a different native platform."""
+    released = mocker.Mock(
+        version=(ROOT / "VERSION").read_text(encoding="ascii").strip(),
+        receipt={"platform": "unsupported-platform"},
+    )
+    mocker.patch.object(nox_configuration.artifact, "admit", return_value=released)
+    session = mocker.Mock()
+    session.error.side_effect = lambda message: (_ for _ in ()).throw(RuntimeError(message))
+
+    with pytest.raises(RuntimeError, match="native host"):
+        nox_configuration._materialize_published_bundle(
+            session,
+            tmp_path / "current.tar.gz",
+            tmp_path / "allowed-signers",
+            tmp_path / "work",
+        )
+
+    released.peek_blobs.assert_not_called()
+
+
+@pytest.mark.parametrize("include_executable", [False, True])
+def test_published_bundle_materializes_only_the_admitted_inventory(
+    include_executable: bool,
+    tmp_path: Path,
+    mocker: MockerFixture,
+    nox_configuration: ModuleType,
+) -> None:
+    """Preserve admitted bytes and modes while requiring the native executable."""
+    platform_id = nox_configuration.product_identity.native_release_platform(
+        nox_configuration.platform.system(), nox_configuration.platform.machine()
+    )
+    executable_name = nox_configuration.product_identity.executable_name(
+        windows=nox_configuration.os.name == "nt"
+    )
+    blobs = [SimpleNamespace(path="providers.toml", content=b"version = 1\n", mode="100644")]
+    if include_executable:
+        blobs.append(
+            SimpleNamespace(path=f"bin/{executable_name}", content=b"native", mode="100755")
+        )
+    released = mocker.Mock(
+        version=(ROOT / "VERSION").read_text(encoding="ascii").strip(),
+        receipt={"platform": platform_id},
+    )
+    released.peek_blobs.return_value = tuple(blobs)
+    mocker.patch.object(nox_configuration.artifact, "admit", return_value=released)
+    session = mocker.Mock()
+    session.error.side_effect = lambda message: (_ for _ in ()).throw(RuntimeError(message))
+    work = tmp_path / "work"
+    work.mkdir()
+
+    if not include_executable:
+        with pytest.raises(RuntimeError, match="executable was not materialized"):
+            nox_configuration._materialize_published_bundle(
+                session,
+                tmp_path / "current.tar.gz",
+                tmp_path / "allowed-signers",
+                work,
+            )
+        return
+
+    bundle, executable = nox_configuration._materialize_published_bundle(
+        session,
+        tmp_path / "current.tar.gz",
+        tmp_path / "allowed-signers",
+        work,
+    )
+
+    assert bundle == work / "published-release" / "bin"
+    assert executable == bundle / executable_name
+    assert executable.read_bytes() == b"native"
+    assert executable.stat().st_mode & 0o777 == 0o755
+    providers = work / "published-release" / "providers.toml"
+    assert providers.read_bytes() == b"version = 1\n"
+    assert providers.stat().st_mode & 0o777 == 0o644
 
 
 def test_release_runtime_uses_the_session_interpreter(

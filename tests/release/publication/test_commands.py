@@ -221,3 +221,29 @@ def test_github_predecessor_cli_projects_the_exact_tag_to_github_environment(
     assert environment.read_text(encoding="utf-8") == (
         "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG=v3.1.0\n"
     )
+
+
+def test_github_predecessor_cli_accepts_the_release_tag_as_identity(
+    *, mocker, capsys, tmp_path
+) -> None:
+    """Derive the candidate version without runner-shell command substitution."""
+    resolve = mocker.patch.object(github_observer, "published_predecessor", return_value="v3.1.0")
+    environment = tmp_path / "github-environment"
+
+    commands.main(
+        (
+            "predecessor",
+            "--repository",
+            "owner/repo",
+            "--candidate-tag",
+            "v3.1.2",
+            "--github-environment",
+            str(environment),
+        )
+    )
+
+    resolve.assert_called_once_with(repository="owner/repo", version="3.1.2")
+    assert capsys.readouterr().out == "v3.1.0\n"
+    assert environment.read_text(encoding="utf-8") == (
+        "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG=v3.1.0\n"
+    )
