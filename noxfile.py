@@ -361,6 +361,7 @@ def published_release_compatibility(session: nox.Session) -> None:
         "tests/service/handoff/test_subprocess.py",
         "tests/release/test_native_lifecycle.py",
         "tests/release/test_native_compatibility.py",
+        *session.posargs,
         env={
             **_environment(),
             product_identity.environment_name("EXECUTABLE"): str(executable),

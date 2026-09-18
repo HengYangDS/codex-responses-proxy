@@ -378,7 +378,7 @@ def test_published_release_bytes_run_the_full_native_journey_on_each_platform() 
         "VERSION pyproject.toml uv.lock src/codex_responses_proxy",
         'gh release download "${{ github.event.release.tag_name || inputs.release_tag }}"',
         "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET",
-        "nox -s published_release_compatibility",
+        'nox -s published_release_compatibility -- --basetemp="${{ runner.temp }}/proxy-test"',
     ):
         assert token in commands
     assert any(
