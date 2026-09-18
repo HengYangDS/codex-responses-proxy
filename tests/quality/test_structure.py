@@ -315,6 +315,26 @@ class TestStructuralQualityContracts:
         assert policy["source_roots"] == ["src/codex_responses_proxy", "tools"]
         assert policy["test_roots"] == ["tests"]
         assert policy["package_root"] == "src/codex_responses_proxy"
+        assert policy["product_concepts"] == {
+            "cli-presentation": "src/codex_responses_proxy/cli/presentation.py",
+            "lifecycle-transactions": "src/codex_responses_proxy/lifecycle/transaction.py",
+            "native-supervision": (
+                "src/codex_responses_proxy/lifecycle/supervision/native_service.py"
+            ),
+            "payload-generations": "src/codex_responses_proxy/lifecycle/generation.py",
+            "portable-responses": "src/codex_responses_proxy/protocol/replay/projection.py",
+            "provider-adaptation": "src/codex_responses_proxy/providers/registry.py",
+            "relay-transport": "src/codex_responses_proxy/relay/exchange.py",
+            "request-admission": "src/codex_responses_proxy/relay/admission.py",
+            "runtime-configuration": "src/codex_responses_proxy/runtime/config.py",
+        }
+        assert policy["external_responsibilities"] == {
+            "client-configuration": "client-control-plane",
+            "conversation-history": "client",
+            "credentials": "client-control-plane",
+            "model-selection": "client",
+            "provider-selection": "client-control-plane",
+        }
         assert set(policy["allowed_package_edges"]) == {
             "cli",
             "lifecycle",
@@ -337,6 +357,8 @@ class TestStructuralQualityContracts:
             "package_root_modules",
             "root_configuration_modules",
             "package_initializers",
+            "product_concepts",
+            "external_responsibilities",
             "allowed_package_edges",
         }
         assert all(
@@ -398,6 +420,10 @@ class TestStructuralQualityContracts:
                 "package_root_modules": [],
                 "root_configuration_modules": [],
                 "package_initializers": "declarations-only",
+                "product_concepts": {
+                    "native-supervision": "src/codex_responses_proxy/service/native.py"
+                },
+                "external_responsibilities": {"credentials": "client-control-plane"},
                 "allowed_package_edges": {"service": []},
             }
             gaps = architecture_gaps(root, policy)
@@ -406,6 +432,28 @@ class TestStructuralQualityContracts:
         expected = "architecture_init_behavior:src/codex_responses_proxy/service/__init__.py"
         assert expected in gaps
         assert expected not in relaxed
+
+    def test_product_concepts_require_distinct_existing_product_owners(self) -> None:
+        policy = tomllib.loads(
+            (ROOT / ".config/quality/policy/architecture.toml").read_text(encoding="utf-8")
+        )
+        duplicate = dict(policy)
+        duplicate["product_concepts"] = dict(policy["product_concepts"])
+        duplicate["product_concepts"]["relay-transport"] = duplicate["product_concepts"][
+            "request-admission"
+        ]
+        missing = dict(policy)
+        missing["product_concepts"] = dict(policy["product_concepts"])
+        missing["product_concepts"]["relay-transport"] = (
+            "src/codex_responses_proxy/relay/missing.py"
+        )
+
+        assert "architecture_concept_owner_reused:src/codex_responses_proxy/relay/admission.py" in (
+            architecture_gaps(ROOT, duplicate)
+        )
+        assert "architecture_concept_owner_missing:relay-transport" in architecture_gaps(
+            ROOT, missing
+        )
 
     def test_repository_has_standard_package_metadata_and_one_version_owner(
         self,

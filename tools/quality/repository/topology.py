@@ -24,6 +24,8 @@ _POLICY_FIELDS = frozenset(
         "package_root_modules",
         "root_configuration_modules",
         "package_initializers",
+        "product_concepts",
+        "external_responsibilities",
         "allowed_package_edges",
     }
 )
@@ -156,6 +158,26 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, object] | None = N
         if isinstance(raw_allowed_edges, dict)
         else {}
     )
+    raw_concepts = policy.get("product_concepts")
+    concepts = (
+        {
+            str(concept): str(owner)
+            for concept, owner in raw_concepts.items()
+            if isinstance(concept, str) and isinstance(owner, str)
+        }
+        if isinstance(raw_concepts, dict)
+        else {}
+    )
+    raw_external = policy.get("external_responsibilities")
+    external = (
+        {
+            str(responsibility): str(owner)
+            for responsibility, owner in raw_external.items()
+            if isinstance(responsibility, str) and isinstance(owner, str)
+        }
+        if isinstance(raw_external, dict)
+        else {}
+    )
     gaps = [
         f"architecture_root_implementation:{path.name}"
         for path in sorted(root.glob("*.py"))
@@ -163,6 +185,21 @@ def architecture_gaps(root: Path = ROOT, policy: Mapping[str, object] | None = N
     ]
     if not package.is_dir():
         return sorted([*gaps, f"architecture_package_missing:{package_root}"])
+    if not concepts:
+        gaps.append("architecture_product_concepts_empty")
+    concept_owners = list(concepts.values())
+    gaps.extend(
+        f"architecture_concept_owner_reused:{owner}"
+        for owner in sorted({owner for owner in concept_owners if concept_owners.count(owner) > 1})
+    )
+    for concept, owner in sorted(concepts.items()):
+        owner_path = root / owner
+        if not owner_path.is_file():
+            gaps.append(f"architecture_concept_owner_missing:{concept}")
+        elif not owner_path.is_relative_to(package):
+            gaps.append(f"architecture_concept_owner_outside_product:{concept}")
+    if not external:
+        gaps.append("architecture_external_responsibilities_empty")
     actual_packages = {
         child.name
         for child in package.iterdir()
