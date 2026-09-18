@@ -221,7 +221,7 @@ def test_published_release_compatibility_uses_supplied_release_bytes(
     install = mocker.patch.object(nox_configuration, "_install_wheel")
     assert_installed = mocker.patch.object(nox_configuration, "_assert_installed_product")
     native_build = mocker.patch.object(nox_configuration, "_build_native_candidate")
-    session = mocker.Mock()
+    session = mocker.Mock(posargs=["--basetemp=/short/proxy-test"])
     session.create_tmp.return_value = str(tmp_path / "work")
 
     nox_configuration.published_release_compatibility(session)
@@ -248,6 +248,7 @@ def test_published_release_compatibility_uses_supplied_release_bytes(
         "tests/service/handoff/test_subprocess.py",
         "tests/release/test_native_lifecycle.py",
         "tests/release/test_native_compatibility.py",
+        "--basetemp=/short/proxy-test",
     )
     environment = proof.kwargs["env"]
     assert environment[nox_configuration.product_identity.environment_name("EXECUTABLE")] == str(

@@ -805,7 +805,7 @@ githubVerify: {
 			}, {
 				name: "Prove the published release lifecycle"
 				env: CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: "${{ runner.temp }}/release-asset-trust"
-				run: "uv run --locked --no-sync nox -s published_release_compatibility"
+				run: "uv run --locked --no-sync nox -s published_release_compatibility -- --basetemp=\"${{ runner.temp }}/proxy-test\""
 			}]
 		}
 	}
