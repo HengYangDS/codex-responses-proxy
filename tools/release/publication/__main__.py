@@ -13,6 +13,7 @@ from cyclopts import Parameter
 
 from codex_responses_proxy import json_value
 from codex_responses_proxy import product_identity
+from tools.release import identity
 from tools.release.publication import verification
 from tools.release.publication.github import observe as github_observer
 from tools.release.publication.github import publish as github
@@ -158,9 +159,22 @@ def _verify(
         raise SystemExit(1)
 
 
-def _predecessor(*, repository: str, candidate_version: str, github_environment: Path) -> None:
-    """Print the exact published predecessor for one candidate version."""
-    tag = github_observer.published_predecessor(repository=repository, version=candidate_version)
+def _predecessor(
+    *,
+    repository: str,
+    github_environment: Path,
+    candidate_version: str | None = None,
+    candidate_tag: str | None = None,
+) -> None:
+    """Print the exact published predecessor for one candidate identity."""
+    if (candidate_version is None) == (candidate_tag is None):
+        raise ValueError("provide exactly one candidate version or candidate tag")
+    version = (
+        candidate_version
+        if candidate_version is not None
+        else identity.version_from_tag(candidate_tag or "")
+    )
+    tag = github_observer.published_predecessor(repository=repository, version=version)
     with github_environment.open("a", encoding="utf-8", newline="\n") as environment:
         environment.write(f"{product_identity.environment_name('PREVIOUS_RELEASE_TAG')}={tag}\n")
     print(tag)

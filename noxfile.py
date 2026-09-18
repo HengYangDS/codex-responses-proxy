@@ -8,10 +8,12 @@ import re
 import sys
 import tomllib
 from pathlib import Path
+from pathlib import PurePosixPath
 
 import nox
 
 from codex_responses_proxy import product_identity
+from codex_responses_proxy.lifecycle import artifact
 
 ROOT = Path(__file__).parent.resolve()
 PYTHONS = tuple((ROOT / ".python-versions").read_text(encoding="utf-8").splitlines())
@@ -325,6 +327,78 @@ def release_compatibility(session: nox.Session) -> None:
             product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR"): str(previous_trust),
         },
     )
+
+
+@nox.session(python=RELEASE_PYTHON)
+def published_release_compatibility(session: nox.Session) -> None:
+    """Exercise one downloaded release against its published predecessor."""
+    current_asset = _required_file(
+        product_identity.environment_name("CURRENT_RELEASE_ASSET"),
+        "published current release asset",
+    )
+    previous_asset = _required_file(
+        product_identity.environment_name("PREVIOUS_RELEASE_ASSET"),
+        "published predecessor asset",
+    )
+    trust = _required_file(
+        product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR"),
+        "published release trust anchor",
+    )
+    _install_tools(session, "quality")
+    _assert_release_runtime(session)
+    work = Path(session.create_tmp()).resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    wheel = _build_wheel(session, work)
+    _install_wheel(session, wheel)
+    _assert_installed_product(session, work)
+    bundle, executable = _materialize_published_bundle(session, current_asset, trust, work)
+    session.run(
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/cli/test_interface.py",
+        "tests/service/handoff/test_subprocess.py",
+        "tests/release/test_native_lifecycle.py",
+        "tests/release/test_native_compatibility.py",
+        env={
+            **_environment(),
+            product_identity.environment_name("EXECUTABLE"): str(executable),
+            product_identity.environment_name("NATIVE_EXECUTABLE"): str(executable),
+            product_identity.environment_name("NATIVE_BUNDLE"): str(bundle),
+            product_identity.environment_name("PREVIOUS_RELEASE_ASSET"): str(previous_asset),
+            product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR"): str(trust),
+        },
+    )
+
+
+def _materialize_published_bundle(
+    session: nox.Session,
+    release_asset: Path,
+    trust_anchor: Path,
+    work: Path,
+) -> tuple[Path, Path]:
+    """Materialize one verified published bundle for native execution."""
+    released = artifact.admit(release_asset, trust_anchor=trust_anchor)
+    expected_version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
+    if released.version != expected_version:
+        session.error("published release asset version does not match the checkout")
+    expected_platform = product_identity.native_release_platform(
+        platform.system(), platform.machine()
+    )
+    if released.receipt.get("platform") != expected_platform:
+        session.error("published release asset does not match the native host")
+    bundle = work / "published-release"
+    bundle.mkdir()
+    for blob in released.peek_blobs():
+        target = bundle.joinpath(*PurePosixPath(blob.path).parts)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(blob.content)
+        target.chmod(0o755 if blob.mode == "100755" else 0o644)
+    executable = bundle / "bin" / product_identity.executable_name(windows=os.name == "nt")
+    if not executable.is_file():
+        session.error("published release executable was not materialized")
+    return executable.parent, executable
 
 
 def _required_file(variable: str, label: str) -> Path:

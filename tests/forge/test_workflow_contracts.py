@@ -109,6 +109,16 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     assert github_triggers == {
         "pull_request": {"branches": ["dev", "main"]},
         "push": {"branches": ["dev", "main"], "tags": ["v*"]},
+        "release": {"types": ["published"]},
+        "workflow_dispatch": {
+            "inputs": {
+                "release_tag": {
+                    "description": "Published vMAJOR.MINOR.PATCH tag to verify",
+                    "required": "true",
+                    "type": "string",
+                }
+            }
+        },
     }
     github_jobs = _mapping(github["jobs"])
     product_proof = (
@@ -123,7 +133,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
         "performance",
     ):
         assert _mapping(github_jobs[job_id])["if"] == product_proof
-    native_proof = product_proof + " || github.ref_type == 'tag'"
+    native_proof = product_proof + " || (github.event_name == 'push' && github.ref_type == 'tag')"
     for job_id in ("native-assets", "native-linux", "native-linux-lifecycle"):
         assert _mapping(github_jobs[job_id])["if"] == native_proof
     compatibility = _mapping(github_jobs["release-compatibility"])
@@ -153,7 +163,9 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
         "github.event_name == 'pull_request' && github.base_ref == 'main' && "
         "github.head_ref == 'dev'"
     )
-    assert _mapping(github_jobs["tag-metadata"])["if"] == "github.ref_type == 'tag'"
+    assert _mapping(github_jobs["tag-metadata"])["if"] == (
+        "github.event_name == 'push' && github.ref_type == 'tag'"
+    )
     tag_steps = _sequence(_mapping(github_jobs["tag-metadata"])["steps"])
     assert any(
         re.fullmatch(r"jdx/mise-action@[0-9a-f]{40}", str(_mapping(step).get("uses", "")))
@@ -329,6 +341,51 @@ def test_release_compatibility_runs_real_published_upgrade_on_each_platform() ->
         == "${{ runner.temp }}/release-asset-trust"
     )
     assert proof["run"] == "uv run --locked --no-sync nox -s release_compatibility"
+
+
+def test_published_release_bytes_run_the_full_native_journey_on_each_platform() -> None:
+    """Re-download the released candidate before claiming platform acceptance."""
+    workflow = _load_yaml(ROOT / ".github/workflows/verify.yml")
+    triggers = _mapping(workflow["on"])
+    assert _mapping(triggers["release"])["types"] == ["published"]
+    release_input = _mapping(_mapping(triggers["workflow_dispatch"])["inputs"])["release_tag"]
+    assert _mapping(release_input) == {
+        "description": "Published vMAJOR.MINOR.PATCH tag to verify",
+        "required": "true",
+        "type": "string",
+    }
+
+    job = _mapping(_mapping(workflow["jobs"])["published-release-compatibility"])
+    assert job["if"] == (
+        "github.event_name == 'release' || github.event_name == 'workflow_dispatch'"
+    )
+    assert job["runs-on"] == "${{ matrix.runner }}"
+    assert _sequence(_mapping(_mapping(job["strategy"])["matrix"])["include"]) == [
+        {"platform": "macos-arm64", "runner": "macos-26"},
+        {"platform": "windows-x86_64", "runner": "windows-2025"},
+        {"platform": "linux-x86_64", "runner": "ubuntu-24.04"},
+    ]
+    steps = tuple(_mapping(step) for step in _sequence(job["steps"]))
+    checkout = next(
+        step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    assert _mapping(checkout["with"])["ref"] == (
+        "${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}"
+    )
+    commands = "\n".join(_string(step.get("run", "")) for step in steps)
+    for token in (
+        'git diff --exit-code "${{ github.event.release.tag_name || inputs.release_tag }}^{commit}" HEAD -- '
+        "VERSION pyproject.toml uv.lock src/codex_responses_proxy",
+        'gh release download "${{ github.event.release.tag_name || inputs.release_tag }}"',
+        "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET",
+        "nox -s published_release_compatibility",
+    ):
+        assert token in commands
+    assert any(
+        step.get("name") == "Start the runner user systemd manager"
+        and step.get("if") == "matrix.platform == 'linux-x86_64'"
+        for step in steps
+    )
 
 
 def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> None:
@@ -548,7 +605,7 @@ def _assert_github_required_tokens(text: str) -> None:
         "windows-2025",
         "actions/setup-python@",
         "fetch-tags: true",
-        "if: github.ref_type == 'tag'",
+        "if: github.event_name == 'push' && github.ref_type == 'tag'",
         "python -m tools.quality.governance --online-links",
         'uv run --locked --no-sync python -m tools.release.metadata --tag "$GITHUB_REF_NAME"',
         "uv run --locked --no-sync python -m tools.release.metadata",
@@ -649,6 +706,7 @@ def _assert_github_platform_contract(text: str) -> None:
         "python-quality",
         "native-assets",
         "release-assets",
+        "published-release-compatibility",
     )
     for job_id in host_native_jobs:
         steps = _sequence(_mapping(jobs[job_id])["steps"])
@@ -734,6 +792,16 @@ def test_github_verification_workflow_contract() -> None:
     assert workflow["on"] == {
         "pull_request": {"branches": ["dev", "main"]},
         "push": {"branches": ["dev", "main"], "tags": ["v*"]},
+        "release": {"types": ["published"]},
+        "workflow_dispatch": {
+            "inputs": {
+                "release_tag": {
+                    "description": "Published vMAJOR.MINOR.PATCH tag to verify",
+                    "required": "true",
+                    "type": "string",
+                }
+            }
+        },
     }
     text = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
     _assert_github_required_tokens(text)
