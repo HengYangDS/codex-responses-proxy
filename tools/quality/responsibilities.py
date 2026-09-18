@@ -19,6 +19,15 @@ RATIONALE_FIELDS = (
     "review_condition",
 )
 
+ROLE_GOVERNANCE_FIELDS = (
+    "owner",
+    "consumer",
+    "source_of_truth",
+    "change_condition",
+    "dependency_direction",
+    "retirement_condition",
+)
+
 
 def _strings(value: object, *, field: str, errors: list[str]) -> tuple[str, ...]:
     """Return one non-empty unique string sequence or record a precise error."""
@@ -114,6 +123,10 @@ def audit(root: Path = ROOT, policy_path: Path = MAP) -> AuditReport:
         description = role.get("description")
         if not isinstance(description, str) or not description.strip():
             errors.append(f"responsibility_map_role_description_missing:{identifier}")
+        for field in ROLE_GOVERNANCE_FIELDS:
+            value = role.get(field)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"responsibility_map_role_field_missing:{identifier}:{field}")
         files, prefixes = (
             _strings(role[field], field=f"role_{identifier}_{field}", errors=errors)
             if field in role

@@ -18,7 +18,19 @@ def policy_document():
         "schema_version": 1,
         "owner": "quality",
         "purpose": "admission",
-        "roles": [{"id": "source", "description": "Source", "prefixes": ["src/"]}],
+        "roles": [
+            {
+                "id": "source",
+                "description": "Source",
+                "owner": "product",
+                "consumer": "installed runtime",
+                "source_of_truth": "tracked source",
+                "change_condition": "the product contract changes",
+                "dependency_direction": "interfaces toward implementation",
+                "retirement_condition": "no runtime or release consumer remains",
+                "prefixes": ["src/"],
+            }
+        ],
         "scopes": [{"id": "all", "roles": ["source"]}],
         "concerns": [
             {
@@ -70,6 +82,25 @@ def test_empty_tracked_inventory_does_not_prove_coverage(policy_document, tmp_pa
 def test_map_identity_requires_meaningful_text(field, value, policy_document, tmp_path, mocker):
     policy_document[field] = value
     assert not audit_document(policy_document, tmp_path, mocker)["ok"]
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "owner",
+        "consumer",
+        "source_of_truth",
+        "change_condition",
+        "dependency_direction",
+        "retirement_condition",
+    ],
+)
+def test_each_role_declares_its_complete_lifecycle(field, policy_document, tmp_path, mocker):
+    policy_document["roles"][0].pop(field, None)
+
+    report = audit_document(policy_document, tmp_path, mocker)
+
+    assert f"responsibility_map_role_field_missing:source:{field}" in report["errors"]
 
 
 @pytest.mark.parametrize("collection", ["roles", "scopes", "concerns"])
