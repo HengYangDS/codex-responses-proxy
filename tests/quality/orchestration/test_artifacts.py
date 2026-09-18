@@ -352,10 +352,11 @@ def test_published_bundle_materializes_only_the_admitted_inventory(
     assert bundle == work / "published-release" / "bin"
     assert executable == bundle / executable_name
     assert executable.read_bytes() == b"native"
-    assert executable.stat().st_mode & 0o777 == 0o755
     providers = work / "published-release" / "providers.toml"
     assert providers.read_bytes() == b"version = 1\n"
-    assert providers.stat().st_mode & 0o777 == 0o644
+    if nox_configuration.os.name != "nt":
+        assert executable.stat().st_mode & 0o777 == 0o755
+        assert providers.stat().st_mode & 0o777 == 0o644
 
 
 def test_release_runtime_uses_the_session_interpreter(
