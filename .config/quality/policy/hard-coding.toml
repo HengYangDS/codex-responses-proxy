@@ -12,6 +12,7 @@ allowed_kinds = [
 id = "product-slug"
 kind = "domain-constant"
 owner = "src/codex_responses_proxy/product_identity.py"
+invariant = "Every public identity projection denotes one product and command namespace."
 rationale = "The package, command, service, environment namespace, asset prefix, and release title are facets of one product identity."
 projections = [
   "pyproject.toml",
@@ -31,6 +32,8 @@ projection_checks = [
 id = "runtime-policy"
 kind = "policy-parameter"
 owner = "src/codex_responses_proxy/runtime/config.py"
+invariant = "Every runtime setting is validated once before any process or service consumes it."
+surfaces = ["configuration-field", "environment-variable"]
 rationale = "Ports, time budgets, retry budgets, log retention, and portable data locations are validated runtime policy rather than call-site literals."
 projections = ["README.md", "docs/", "src/", "tests/"]
 
@@ -38,6 +41,8 @@ projections = ["README.md", "docs/", "src/", "tests/"]
 id = "provider-catalog"
 kind = "domain-constant"
 owner = "src/codex_responses_proxy/providers/manifest.toml"
+invariant = "Every supported provider route resolves explicitly without an implicit default."
+surfaces = ["network-provider-route"]
 rationale = "Provider route names, origins, and optional wire policies form one released product catalog."
 projections = ["README.md", "src/", "tests/"]
 
@@ -45,6 +50,7 @@ projections = ["README.md", "src/", "tests/"]
 id = "supported-python"
 kind = "supply-chain-pin"
 owner = ".python-versions"
+invariant = "Every supported Python series is exercised by the declared compatibility matrix."
 rationale = "The compatibility matrix has one ordered version-series owner."
 projections = [
   ".config/ci/pipeline.cue",
@@ -58,6 +64,7 @@ projections = [
 id = "release-python"
 kind = "supply-chain-pin"
 owner = ".python-release"
+invariant = "Every native release is built by one exact reproducible Python runtime."
 rationale = "Native release construction uses one exact Python patch release."
 projections = [
   "mise.toml",
@@ -71,6 +78,7 @@ projections = [
 id = "python-dependencies"
 kind = "supply-chain-pin"
 owner = "uv.lock"
+invariant = "Every Python dependency resolves from one complete hash-locked graph."
 rationale = "Resolved Python dependency versions and hashes are owned by the universal lock."
 projections = ["pyproject.toml"]
 
@@ -78,6 +86,7 @@ projections = ["pyproject.toml"]
 id = "standalone-tools"
 kind = "supply-chain-pin"
 owner = "mise.lock"
+invariant = "Every standalone repository tool resolves from one integrity-locked graph."
 rationale = "Language runtimes and standalone executable versions and integrity are owned by the mise lock."
 projections = ["mise.toml", ".config/ci/pipeline.cue"]
 
@@ -85,6 +94,7 @@ projections = ["mise.toml", ".config/ci/pipeline.cue"]
 id = "node-repository-tools"
 kind = "supply-chain-pin"
 owner = "package-lock.json"
+invariant = "Every Node repository tool resolves from one complete lockfile."
 rationale = "Repository Node tools and their complete transitive dependency graph are owned by the npm lock."
 projections = ["package.json", ".npmrc", ".config/ci/pipeline.cue"]
 
@@ -92,6 +102,7 @@ projections = ["package.json", ".npmrc", ".config/ci/pipeline.cue"]
 id = "ci-proof-graph"
 kind = "derived-projection"
 owner = ".config/ci/pipeline.cue"
+invariant = "Both Forge workflows implement the same provider-neutral verification semantics."
 rationale = "GitHub and GitLab express one provider-neutral proof graph through forge-native syntax."
 projections = [".github/workflows/verify.yml", ".gitlab-ci.yml"]
 
@@ -99,6 +110,7 @@ projections = [".github/workflows/verify.yml", ".gitlab-ci.yml"]
 id = "quality-thresholds"
 kind = "policy-parameter"
 owner = ".config/quality/responsibility-map.toml"
+invariant = "Every quality requirement has one policy owner and one executable enforcement path."
 rationale = "The responsibility map selects one native configuration or repository policy for each threshold; it records rationale without duplicating the numeric value."
 projections = [
   ".config/quality/native/",
@@ -111,5 +123,53 @@ projections = [
 id = "release-platforms"
 kind = "domain-constant"
 owner = "tools/release/artifact/format.py"
+invariant = "Every published platform has one canonical archive, manifest, checksum, and signature identity."
+surfaces = ["release-artifact"]
 rationale = "The published native platform set and asset grammar form one release-domain contract."
 projections = [".config/ci/pipeline.cue", "docs/", "tests/release/"]
+
+[[controls]]
+id = "public-cli"
+kind = "domain-constant"
+owner = "src/codex_responses_proxy/cli/application.py"
+invariant = "Every public command and result has one typed command-boundary implementation."
+surfaces = ["public-command", "public-result"]
+rationale = "Command grammar, exit status, machine result, and human presentation enter through one public application boundary."
+projections = [
+  "README.md",
+  "docs/",
+  "src/codex_responses_proxy/cli/",
+  "tests/cli/",
+]
+
+[[controls]]
+id = "control-routes"
+kind = "domain-constant"
+owner = "src/codex_responses_proxy/service/server.py"
+invariant = "Every loopback control route is explicit and remains separate from relayed Provider traffic."
+surfaces = ["network-control-route"]
+rationale = "Health, drain, and handoff are product-owned control routes rather than Provider catalog entries."
+projections = ["docs/", "src/codex_responses_proxy/service/", "tests/service/"]
+
+[[controls]]
+id = "native-resources"
+kind = "domain-constant"
+owner = "src/codex_responses_proxy/lifecycle/context.py"
+invariant = "Every installed service, process, path, listener, and payload belongs to one exact runtime context."
+surfaces = ["native-resource"]
+rationale = "Native lifecycle creation and teardown require one portable resource identity and ownership boundary."
+projections = [
+  "docs/",
+  "src/codex_responses_proxy/lifecycle/",
+  "tests/lifecycle/",
+  "tests/service/",
+]
+
+[[controls]]
+id = "documentation-entrypoint"
+kind = "derived-projection"
+owner = "docs/README.md"
+invariant = "Every current product and repository document is reachable from one intentional navigation root."
+surfaces = ["documentation-entrypoint"]
+rationale = "The documentation root is the sole reader-facing index; subordinate indexes exist only for a distinct navigation scope."
+projections = ["README.md", "docs/", "tests/quality/"]
