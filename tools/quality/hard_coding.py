@@ -12,8 +12,21 @@ from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / ".config/quality/policy/hard-coding.toml"
-REQUIRED_FIELDS = ("id", "kind", "owner", "rationale", "projections")
+REQUIRED_FIELDS = ("id", "kind", "owner", "invariant", "rationale", "projections")
 PROJECTION_MATCHES = {"toml-key", "toml-value"}
+PUBLIC_SURFACES = frozenset(
+    {
+        "configuration-field",
+        "documentation-entrypoint",
+        "environment-variable",
+        "native-resource",
+        "network-control-route",
+        "network-provider-route",
+        "public-command",
+        "public-result",
+        "release-artifact",
+    }
+)
 
 
 class AuditReport(TypedDict):
@@ -23,6 +36,7 @@ class AuditReport(TypedDict):
     errors: list[str]
     kinds: list[str]
     controls: list[str]
+    surfaces: list[str]
 
 
 def _exists(root: Path, value: str) -> bool:
@@ -123,6 +137,27 @@ def _projection_errors(
     return errors
 
 
+def _register_surfaces(
+    identifier: str,
+    value: object,
+    owners: dict[str, str],
+) -> list[str]:
+    """Register one control's public surfaces and return ownership gaps."""
+    if not isinstance(value, list) or not all(
+        isinstance(surface, str) and surface for surface in value
+    ):
+        return [f"hard_coding_control_surfaces_invalid:{identifier}"]
+    errors: list[str] = []
+    for surface in value:
+        if surface not in PUBLIC_SURFACES:
+            errors.append(f"hard_coding_surface_unknown:{identifier}:{surface}")
+        elif surface in owners:
+            errors.append(f"hard_coding_surface_multiple_owners:{surface}")
+        else:
+            owners[surface] = identifier
+    return errors
+
+
 def audit(root: Path = ROOT, policy_path: Path = POLICY) -> AuditReport:
     """Return ownership and projection gaps in the controlled-value registry."""
     errors: list[str] = []
@@ -134,6 +169,7 @@ def audit(root: Path = ROOT, policy_path: Path = POLICY) -> AuditReport:
             "errors": [f"hard_coding_policy_invalid:{error}"],
             "kinds": [],
             "controls": [],
+            "surfaces": [],
         }
     version = policy.get("schema_version")
     if not isinstance(version, int) or isinstance(version, bool) or version != 1:
@@ -155,6 +191,7 @@ def audit(root: Path = ROOT, policy_path: Path = POLICY) -> AuditReport:
         declarations = []
     controls: dict[str, dict[str, object]] = {}
     owners: dict[str, str] = {}
+    surface_owners: dict[str, str] = {}
     for index, raw in enumerate(declarations):
         if not isinstance(raw, dict):
             errors.append(f"hard_coding_control_must_be_table:{index}")
@@ -188,6 +225,10 @@ def audit(root: Path = ROOT, policy_path: Path = POLICY) -> AuditReport:
         rationale = control.get("rationale")
         if not isinstance(rationale, str) or not rationale.strip():
             errors.append(f"hard_coding_control_rationale_missing:{identifier}")
+        invariant = control.get("invariant")
+        if not isinstance(invariant, str) or not invariant.strip():
+            errors.append(f"hard_coding_control_invariant_missing:{identifier}")
+        errors.extend(_register_surfaces(identifier, control.get("surfaces", []), surface_owners))
         projections = control.get("projections")
         if not isinstance(projections, list) or not projections:
             errors.append(f"hard_coding_control_projections_invalid:{identifier}")
@@ -202,11 +243,16 @@ def audit(root: Path = ROOT, policy_path: Path = POLICY) -> AuditReport:
                     checks=control.get("projection_checks"),
                 )
             )
+    errors.extend(
+        f"hard_coding_surface_unowned:{surface}"
+        for surface in sorted(PUBLIC_SURFACES - surface_owners.keys())
+    )
     return {
         "ok": not errors,
         "errors": sorted(errors),
         "kinds": sorted(allowed_kinds),
         "controls": sorted(controls),
+        "surfaces": sorted(surface_owners),
     }
 
 

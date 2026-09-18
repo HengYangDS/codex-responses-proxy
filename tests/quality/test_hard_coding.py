@@ -35,6 +35,47 @@ class TestHardCodingResponsibility:
             "policy-parameter",
             "supply-chain-pin",
         }
+        assert set(report["surfaces"]) == {
+            "configuration-field",
+            "documentation-entrypoint",
+            "environment-variable",
+            "native-resource",
+            "network-control-route",
+            "network-provider-route",
+            "public-command",
+            "public-result",
+            "release-artifact",
+        }
+
+    @pytest.mark.parametrize(
+        ("field", "error"), [("surfaces", "surface"), ("invariant", "invariant")]
+    )
+    def test_public_surface_mapping_requires_complete_contract(
+        self, field: str, error: str, tmp_path: Path
+    ) -> None:
+        source = (ROOT / ".config/quality/policy/hard-coding.toml").read_text(encoding="utf-8")
+        policy = tmp_path / "hard-coding.toml"
+        policy.write_text(source.replace(f"{field} = ", f"removed_{field} = ", 1), encoding="utf-8")
+
+        report = checker.audit(policy_path=policy)
+
+        assert any(error in item for item in report["errors"])
+
+    def test_public_surface_has_one_authoritative_mapping(self, tmp_path: Path) -> None:
+        source = (ROOT / ".config/quality/policy/hard-coding.toml").read_text(encoding="utf-8")
+        policy = tmp_path / "hard-coding.toml"
+        policy.write_text(
+            source.replace(
+                'projections = ["pyproject.toml"]',
+                'surfaces = ["public-command"]\nprojections = ["pyproject.toml"]',
+                1,
+            ),
+            encoding="utf-8",
+        )
+
+        report = checker.audit(policy_path=policy)
+
+        assert "hard_coding_surface_multiple_owners:public-command" in report["errors"]
 
     def test_hard_coding_policy_rejects_duplicate_owners(self, tmp_path: Path) -> None:
         source = (ROOT / ".config/quality/policy/hard-coding.toml").read_text(encoding="utf-8")
