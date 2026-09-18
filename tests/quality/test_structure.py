@@ -172,6 +172,45 @@ class TestStructuralQualityContracts:
         assert "architecture_disallowed_edge:relay->runtime" not in gaps
         assert "architecture_disallowed_edge:extra->relay" in gaps
 
+    def test_architecture_gate_rejects_semantic_package_cycles(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "src" / "codex_responses_proxy"
+            for owner, target in (("relay", "runtime"), ("runtime", "relay")):
+                module = package / owner / "owner.py"
+                module.parent.mkdir(parents=True)
+                module.write_text(
+                    f"from codex_responses_proxy.{target} import owner\n",
+                    encoding="utf-8",
+                )
+            policy = {
+                "owner": "quality",
+                "risk_model": "cycles erase package ownership",
+                "measurement": "parse semantic package imports",
+                "false_positive_cost": "a legitimate cycle requires architecture review",
+                "remediation": "restore one-way ownership",
+                "review_condition": "reassess when the product topology changes",
+                "source_roots": ["src/codex_responses_proxy"],
+                "test_roots": ["tests"],
+                "package_root": "src/codex_responses_proxy",
+                "package_root_modules": [],
+                "root_configuration_modules": [],
+                "package_initializers": "ordinary-modules",
+                "product_concepts": {
+                    "relay": "src/codex_responses_proxy/relay/owner.py",
+                    "runtime": "src/codex_responses_proxy/runtime/owner.py",
+                },
+                "external_responsibilities": {"credentials": "client-control-plane"},
+                "allowed_package_edges": {
+                    "relay": ["runtime"],
+                    "runtime": ["relay"],
+                },
+            }
+
+            gaps = architecture_gaps(root, policy)
+
+        assert gaps == ["architecture_cycle:relay,runtime"]
+
     @pytest.mark.parametrize(
         "source",
         ["value = call(first, second)\n", "value = call(\n first,\n second,\n)\n"],

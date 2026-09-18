@@ -26,7 +26,7 @@ import "list"
 		upload:   "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"   // v7.0.1
 		download: "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" // v8.0.1
 	}
-	gitlabMiseImage: "ghcr.io/jdx/mise@sha256:a88f300ef4365494b88f8eefd271bb92ba467d4a41835739a714426207215730"
+	gitlabMiseImage: "ghcr.io/jdx/mise@sha256:f01b88463f3a8396b2273d88469bd09d097aa3cacfe343177eb5457f1d8d2a92"
 	quality:         "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
 }
 
