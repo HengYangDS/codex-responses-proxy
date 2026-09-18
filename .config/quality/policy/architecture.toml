@@ -11,6 +11,24 @@ root_configuration_modules = ["noxfile.py"]
 package_root_modules = ["errors", "json_value", "product_identity"]
 package_initializers = "declarations-only"
 
+[product_concepts]
+request-admission = "src/codex_responses_proxy/relay/admission.py"
+portable-responses = "src/codex_responses_proxy/protocol/replay/projection.py"
+provider-adaptation = "src/codex_responses_proxy/providers/registry.py"
+relay-transport = "src/codex_responses_proxy/relay/exchange.py"
+runtime-configuration = "src/codex_responses_proxy/runtime/config.py"
+payload-generations = "src/codex_responses_proxy/lifecycle/generation.py"
+lifecycle-transactions = "src/codex_responses_proxy/lifecycle/transaction.py"
+native-supervision = "src/codex_responses_proxy/lifecycle/supervision/native_service.py"
+cli-presentation = "src/codex_responses_proxy/cli/presentation.py"
+
+[external_responsibilities]
+provider-selection = "client-control-plane"
+credentials = "client-control-plane"
+client-configuration = "client-control-plane"
+model-selection = "client"
+conversation-history = "client"
+
 [allowed_package_edges]
 cli = ["errors", "lifecycle", "product_identity", "service"]
 lifecycle = [
