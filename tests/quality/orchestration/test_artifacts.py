@@ -17,6 +17,24 @@ from pytest_mock import MockerFixture
 from tests.quality.fixtures import ROOT
 
 
+def _select_released_host(
+    mocker: MockerFixture,
+    nox_configuration: ModuleType,
+) -> str:
+    """Bind artifact-unit tests to the released host for this OS family."""
+    if nox_configuration.os.name == "nt":
+        system, machine = "Windows", "AMD64"
+    elif nox_configuration.platform.system() == "Darwin":
+        system, machine = "Darwin", "arm64"
+    else:
+        system, machine = "Linux", "x86_64"
+    mocker.patch.object(nox_configuration.platform, "system", return_value=system)
+    mocker.patch.object(nox_configuration.platform, "machine", return_value=machine)
+    platform_id = nox_configuration.product_identity.native_release_platform(system, machine)
+    assert isinstance(platform_id, str)
+    return platform_id
+
+
 @pytest.mark.parametrize("source_checkout", [False, True])
 def test_installed_product_probe_distinguishes_environment_from_source_checkout(
     source_checkout: bool,
@@ -257,11 +275,7 @@ def test_published_bundle_must_match_the_checked_out_release_version(
     """Reject a signed asset attached to the wrong release identity."""
     released = mocker.Mock()
     released.version = "0.0.0"
-    released.receipt = {
-        "platform": nox_configuration.product_identity.native_release_platform(
-            nox_configuration.platform.system(), nox_configuration.platform.machine()
-        )
-    }
+    released.receipt = {"platform": _select_released_host(mocker, nox_configuration)}
     mocker.patch.object(nox_configuration.artifact, "admit", return_value=released)
     session = mocker.Mock()
     session.error.side_effect = lambda message: (_ for _ in ()).throw(RuntimeError(message))
@@ -283,6 +297,7 @@ def test_published_bundle_must_match_the_native_platform(
     nox_configuration: ModuleType,
 ) -> None:
     """Reject a signed asset for a different native platform."""
+    _select_released_host(mocker, nox_configuration)
     released = mocker.Mock(
         version=(ROOT / "VERSION").read_text(encoding="ascii").strip(),
         receipt={"platform": "unsupported-platform"},
@@ -310,9 +325,7 @@ def test_published_bundle_materializes_only_the_admitted_inventory(
     nox_configuration: ModuleType,
 ) -> None:
     """Preserve admitted bytes and modes while requiring the native executable."""
-    platform_id = nox_configuration.product_identity.native_release_platform(
-        nox_configuration.platform.system(), nox_configuration.platform.machine()
-    )
+    platform_id = _select_released_host(mocker, nox_configuration)
     executable_name = nox_configuration.product_identity.executable_name(
         windows=nox_configuration.os.name == "nt"
     )
