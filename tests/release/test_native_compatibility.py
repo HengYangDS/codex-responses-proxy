@@ -167,6 +167,11 @@ def test_upgrade_drain_waits_through_materialization(tmp_path: Path, *, mocker) 
             },
         ],
     )
+    mocker.patch(
+        "tests.service.handoff.fixtures.time.monotonic",
+        side_effect=[0.0, 0.0, 0.2],
+    )
+    mocker.patch("tests.service.handoff.fixtures.time.sleep")
 
     assert _wait_for_upgrade_drain(
         future,

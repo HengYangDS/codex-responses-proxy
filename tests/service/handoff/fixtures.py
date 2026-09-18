@@ -245,11 +245,12 @@ def free_port() -> int:
 def wait_until(predicate: Callable[[], object], timeout: float, interval: float = 0.05) -> bool:
     """Poll a predicate until it becomes truthy or the bounded timeout expires."""
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    while True:
         if predicate():
             return True
+        if time.monotonic() >= deadline:
+            return False
         time.sleep(interval)
-    return False
 
 
 def proxy_is_up(port: int) -> bool:
