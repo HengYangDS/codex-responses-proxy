@@ -1,4 +1,4 @@
-min_version = "2026.9.9"
+min_version = "2026.9.11"
 
 [settings]
 idiomatic_version_file_enable_tools = []
@@ -6,7 +6,7 @@ locked = true
 
 [tools]
 # Language runtimes
-node = "26.8.2"
+node = "26.9.0"
 python = "3.14.7"
 
 # Dependency management

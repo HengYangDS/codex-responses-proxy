@@ -31,7 +31,7 @@ source-and-governance:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
     - if: $CI_COMMIT_BRANCH == "dev"
   image:
-    name: ghcr.io/jdx/mise@sha256:a88f300ef4365494b88f8eefd271bb92ba467d4a41835739a714426207215730
+    name: ghcr.io/jdx/mise@sha256:f01b88463f3a8396b2273d88469bd09d097aa3cacfe343177eb5457f1d8d2a92
     entrypoint:
       - ""
   variables:
