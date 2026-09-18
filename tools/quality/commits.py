@@ -9,10 +9,19 @@ import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 
-from codex_responses_proxy.product_identity import environment_name
-
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / ".ethos/workspace.toml"
+PROJECT = ROOT / "pyproject.toml"
+
+
+def _environment_name(suffix: str) -> str:
+    """Derive the product-scoped CI variable from repository metadata."""
+    metadata = tomllib.loads(PROJECT.read_text(encoding="utf-8"))
+    project = metadata.get("project")
+    name = project.get("name") if isinstance(project, dict) else None
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("project_name_invalid")
+    return f"{name.replace('-', '_').upper()}_{suffix}"
 
 
 def commit_subject_pattern(policy: Mapping[str, object]) -> re.Pattern[str]:
@@ -43,8 +52,8 @@ def _base_ref(root: Path) -> str | None:
 
 def _event_revisions(root: Path) -> tuple[str, ...] | None:
     """Validate explicit event objects independently of movable branch refs."""
-    base = os.environ.get(environment_name("COMMIT_BASE"))
-    head = os.environ.get(environment_name("COMMIT_HEAD"))
+    base = os.environ.get(_environment_name("COMMIT_BASE"))
+    head = os.environ.get(_environment_name("COMMIT_HEAD"))
     if base is None and head is None:
         return None
     if (

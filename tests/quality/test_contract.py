@@ -462,6 +462,12 @@ class TestQualityPolicyContracts:
                 "commit_subject_invalid:invalid middle subject"
             ]
 
+    def test_commit_checker_derives_event_namespace_without_product_import(self, monkeypatch):
+        source = (ROOT / "tools/quality/commits.py").read_text(encoding="utf-8")
+        assert "from codex_responses_proxy" not in source
+        monkeypatch.setattr(commits, "PROJECT", ROOT / "pyproject.toml")
+        assert commits._environment_name("COMMIT_HEAD") == ("CODEX_RESPONSES_PROXY_COMMIT_HEAD")
+
     @pytest.mark.parametrize(
         ("base", "head", "expected"),
         [
