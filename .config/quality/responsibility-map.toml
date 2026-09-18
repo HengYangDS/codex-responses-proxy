@@ -5,80 +5,170 @@ purpose = "Classify every repository carrier once and assign each quality concer
 [[roles]]
 id = "product-python"
 description = "Installed product implementation."
+owner = "product-runtime"
+consumer = "installed executable and release artifacts"
+source_of_truth = "tracked product source and public product contracts"
+change_condition = "a product invariant or supported platform behavior changes"
+dependency_direction = "public interfaces point inward to product implementation"
+retirement_condition = "no supported runtime, artifact, or product contract consumes the carrier"
 prefixes = ["src/"]
 
 [[roles]]
 id = "repository-python"
 description = "Repository-owned build, verification, publication, and operations tooling."
+owner = "repository-engineering"
+consumer = "developers, CI, release automation, and maintainers"
+source_of_truth = "tracked repository tooling and its executable contracts"
+change_condition = "a build, verification, publication, or maintenance invariant changes"
+dependency_direction = "repository automation depends on product contracts, never the reverse"
+retirement_condition = "the owning workflow is removed or a native tool fully replaces the carrier"
 files = ["noxfile.py"]
 prefixes = ["tools/"]
 
 [[roles]]
 id = "test-python"
 description = "Executable product and repository contract tests."
+owner = "product-assurance"
+consumer = "developers, CI, and release acceptance"
+source_of_truth = "executable behavior and failure-path contracts"
+change_condition = "a protected invariant, supported environment, or evidence boundary changes"
+dependency_direction = "tests depend on public or intentionally exposed internal owners"
+retirement_condition = "the protected invariant or supported evidence scope no longer exists"
 prefixes = ["tests/"]
 
 [[roles]]
 id = "agent-guidance"
 description = "Repository entry instructions for coding agents."
+owner = "repository-governance"
+consumer = "coding agents operating in this repository"
+source_of_truth = "the repository entry contract and its linked authoritative policies"
+change_condition = "agent authority, workflow, or repository entry requirements change"
+dependency_direction = "guidance points to OpenSpec, ETHOS, and repository-owned authorities"
+retirement_condition = "the repository no longer admits coding-agent work"
 files = ["AGENTS.md"]
 
 [[roles]]
 id = "product-documentation"
 description = "Human-facing product, contribution, and operating documentation."
+owner = "product-documentation"
+consumer = "users, operators, contributors, and maintainers"
+source_of_truth = "released product behavior and durable architecture decisions"
+change_condition = "a user journey, public concept, operation, or durable decision changes"
+dependency_direction = "documentation points to executable product and governance authorities"
+retirement_condition = "the documented surface is removed and no current reader path references it"
 files = ["CONTRIBUTING.md", "README.md"]
 prefixes = ["docs/"]
 
 [[roles]]
 id = "release-history"
 description = "Chronological public release history."
+owner = "release-management"
+consumer = "users, operators, and release tooling"
+source_of_truth = "published release identity and accepted change summaries"
+change_condition = "a formal release is prepared or published"
+dependency_direction = "release history derives from accepted product changes and version identity"
+retirement_condition = "never for published entries; superseded development-only entries may be removed before release"
 files = ["CHANGELOG.md"]
 
 [[roles]]
 id = "openspec"
 description = "OpenSpec workspace, active changes, and immutable archived specifications."
+owner = "product-change-governance"
+consumer = "implementers, reviewers, ETHOS, and release acceptance"
+source_of_truth = "official OpenSpec schemas, active Changes, and archived Changes"
+change_condition = "product intent, acceptance, or Change lifecycle state changes"
+dependency_direction = "implementation and evidence conform to OpenSpec intent"
+retirement_condition = "active Change carriers retire only through official archive; archived records remain immutable"
 prefixes = ["openspec/"]
 
 [[roles]]
 id = "ethos-adoption"
 description = "Tracked ETHOS adoption declarations owned by this repository."
+owner = "repository-governance"
+consumer = "ETHOS runtime, hooks, and governed repository operations"
+source_of_truth = "tracked adopter profile, workspace, and release declarations"
+change_condition = "repository governance or lifecycle policy changes"
+dependency_direction = "ETHOS consumes repository declarations without becoming product authority"
+retirement_condition = "ETHOS adoption is explicitly removed and every governed consumer is retired"
 prefixes = [".ethos/"]
 
 [[roles]]
 id = "ci-model"
 description = "Provider-neutral continuous-integration model."
+owner = "continuous-integration"
+consumer = "GitHub and GitLab workflow projections"
+source_of_truth = "provider-neutral CUE pipeline model"
+change_condition = "CI semantics, stages, triggers, or evidence requirements change"
+dependency_direction = "Forge-specific workflows derive from the provider-neutral model"
+retirement_condition = "CI is retired or replaced by one equivalent provider-neutral authority"
 prefixes = [".config/ci/"]
 
 [[roles]]
 id = "github-ci"
 description = "GitHub Actions projection of the provider-neutral CI model."
+owner = "github-projection"
+consumer = "GitHub Actions"
+source_of_truth = "generated projection of the provider-neutral CI model"
+change_condition = "the CI model or unavoidable GitHub-native syntax changes"
+dependency_direction = "projection depends on the CI model and GitHub runner capabilities"
+retirement_condition = "GitHub ceases to be a supported Forge and its projection has no consumer"
 prefixes = [".github/"]
 
 [[roles]]
 id = "gitlab-ci"
 description = "GitLab CI projection of the provider-neutral CI model."
+owner = "gitlab-projection"
+consumer = "GitLab CI"
+source_of_truth = "generated projection of the provider-neutral CI model"
+change_condition = "the CI model or unavoidable GitLab-native syntax changes"
+dependency_direction = "projection depends on the CI model and GitLab runner capabilities"
+retirement_condition = "GitLab ceases to be a supported Forge and its projection has no consumer"
 files = [".gitlab-ci.yml"]
 
 [[roles]]
 id = "quality-policy"
 description = "Repository-owned quality responsibilities and product-semantic policy."
+owner = "repository-quality"
+consumer = "quality gates, developers, CI, and reviewers"
+source_of_truth = "repository-owned responsibility and semantic quality policy"
+change_condition = "a protected risk, scope, threshold rationale, or ownership boundary changes"
+dependency_direction = "native tools and orchestration implement the declared policy"
+retirement_condition = "the protected concern disappears or a higher authority fully owns it"
 files = [".config/quality/responsibility-map.toml"]
 prefixes = [".config/quality/policy/"]
 
 [[roles]]
 id = "quality-tool-configuration"
 description = "Native quality-tool configuration without product rationale."
+owner = "repository-quality"
+consumer = "locked native quality tools and their orchestration"
+source_of_truth = "tool-native configuration projected from repository quality policy"
+change_condition = "tool capability or the policy it implements changes"
+dependency_direction = "configuration depends on policy and is consumed by its native tool"
+retirement_condition = "the native tool is removed or its configuration becomes unnecessary"
 files = [".gitleaks.toml", "pytest.ini"]
 prefixes = [".config/quality/native/"]
 
 [[roles]]
 id = "editor-configuration"
 description = "Cross-editor text defaults."
+owner = "developer-experience"
+consumer = "editors and text-producing tools"
+source_of_truth = "cross-editor text conventions supported by repository format gates"
+change_condition = "portable text-layout conventions change"
+dependency_direction = "editor defaults conform to formatter-owned syntax"
+retirement_condition = "all consuming editors and format checks cease to use the carrier"
 files = [".editorconfig"]
 
 [[roles]]
 id = "toolchain"
 description = "Locked language, dependency, build, and development toolchain declarations."
+owner = "development-environment"
+consumer = "developers, CI, build, test, and release sessions"
+source_of_truth = "locked runtime, dependency, and tool declarations"
+change_condition = "a supported runtime or verified stable dependency changes"
+dependency_direction = "bootstrap and automation consume the lock-backed declarations"
+retirement_condition = "the declared tool or dependency loses its final verified consumer"
 files = [
   ".python-release",
   ".python-versions",
@@ -94,11 +184,23 @@ files = [
 [[roles]]
 id = "source-control-configuration"
 description = "Source-control behavior declared by this repository."
+owner = "repository-governance"
+consumer = "Git, developers, automation, and cleanup checks"
+source_of_truth = "tracked source-control inclusion and exclusion policy"
+change_condition = "a durable generated path or tracked artifact class changes"
+dependency_direction = "source-control policy follows repository ownership and evidence retention"
+retirement_condition = "Git is no longer the repository transport or an entry has no matching artifact class"
 files = [".gitignore"]
 
 [[roles]]
 id = "product-identity"
 description = "Canonical product version and licensing identity."
+owner = "product-release"
+consumer = "runtime, packaging, documentation, and release automation"
+source_of_truth = "canonical product name, version, and licence declarations"
+change_condition = "product identity, version, or licensing changes"
+dependency_direction = "all identity projections derive from these canonical declarations"
+retirement_condition = "the product is retired and no release, installation, or legal consumer remains"
 files = ["LICENSE", "VERSION"]
 
 [[scopes]]
