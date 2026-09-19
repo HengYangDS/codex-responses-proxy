@@ -7,6 +7,23 @@ publication authority.
 
 ## [Unreleased]
 
+## [4.0.4] - 2026-09-19
+
+### Changed
+
+- Refresh the locked Python, Node, uv, OpenSpec, formatting, linting, packaging,
+  CI action, and container-image dependency graph to the latest compatible
+  stable releases verified by the repository supply-chain checks.
+- Bind product, quality, configuration, and release responsibilities to their
+  canonical semantic owners, removing duplicated repository policy carriers.
+
+### Fixed
+
+- Observe the terminal process state after bounded lifecycle waits, preventing
+  a completed child from being reported as still running.
+- Verify published native release assets on macOS, Linux, and Windows through
+  the shared release lifecycle contract.
+
 ## [4.0.3] - 2026-09-18
 
 ### Fixed
