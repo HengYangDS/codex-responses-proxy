@@ -1,5 +1,35 @@
 ## ADDED Requirements
 
+### Requirement: Changelog is a release-history contract
+
+`CHANGELOG.md` SHALL follow Keep a Changelog 1.1.0 with one leading
+`Unreleased` section, canonical change categories, and released sections in
+descending SemVer order. Every local product tag SHALL appear exactly once.
+Every released section SHALL have a tag, except for at most one first section
+matching the current untagged `VERSION` during release preparation. The exact
+tag, `VERSION`, first released section, and `HEAD` SHALL agree before
+publication.
+
+#### Scenario: Development continues between releases
+
+- **WHEN** `VERSION` advances beyond the latest product tag
+- **THEN** user-visible work SHALL remain under `Unreleased`
+- **AND** ordinary development SHALL NOT manufacture dated release history.
+
+#### Scenario: Release history and Git disagree
+
+- **WHEN** a product tag lacks a released section, a historical released
+  section lacks its tag, or the selected tag differs from `VERSION`, the first
+  released section, or `HEAD`
+- **THEN** release admission SHALL fail before construction or publication.
+
+#### Scenario: A release commit is prepared before its tag
+
+- **WHEN** the current untagged `VERSION` has a dated release section
+- **THEN** it SHALL be the only untagged released section and the first section
+  after `Unreleased`
+- **AND** every older released section SHALL already correspond to a product tag.
+
 ### Requirement: One CI model covers every integration path
 
 CUE SHALL own the semantic CI graph, including jobs, dependencies, triggers,

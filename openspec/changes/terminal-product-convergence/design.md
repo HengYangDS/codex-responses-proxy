@@ -410,7 +410,13 @@ configuration are formatted and verified.
 
 `VERSION` is the sole release identity. Public incompatibility determines the
 next SemVer value; internal restructuring alone does not force a major release.
-Changelog retains every formal release. Published releases are immutable.
+The existing release-metadata owner binds `VERSION`, local product tags, and a
+Keep a Changelog 1.1.0 document. It permits one current pending release during
+release preparation, rejects every historical untagged heading, and requires
+canonical change categories. Unpublished historical headings are folded into
+the later tagged release that actually carried their changes, preserving the
+user-visible account without preserving fictional releases. Published releases
+are immutable.
 Merged proposal branches, failed unpublished intermediates, retired Work Lanes,
 old hooks, orphaned runtimes, temporary services, caches, and generated residue
 are removed once exact ownership and lack of consumers are proved. Deletion is a

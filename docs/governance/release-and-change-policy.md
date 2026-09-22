@@ -157,9 +157,14 @@ equal complete inventories and bytes, and the same product trust-anchor digest.
 
 ## Release identity
 
-`VERSION` owns the version. `CHANGELOG.md` records forward release history.
-Failed tags and runs are retained; a repair uses a later version and never
-rewrites published provenance.
+`VERSION` owns the strict SemVer release identity. `CHANGELOG.md` follows Keep
+a Changelog 1.1.0 with one leading `Unreleased` section, canonical change
+categories, and released sections in descending SemVer order. Every local
+product tag appears once in the Changelog, and every released section names a
+real product tag except for the current version while its release commit is
+being prepared. The exact tag, `VERSION`, first released section, and `HEAD`
+must agree before publication. Failed tags and runs are retained; a repair uses
+a later version and never rewrites published provenance.
 
 Commit and tag identity is one protected product execution input. Each selected
 Forge must accept its public key and verified email. Transport credentials and
