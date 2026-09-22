@@ -1,11 +1,18 @@
 # Changelog
 
-This project follows [Semantic Versioning](https://semver.org/). It preserves
+This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and [Semantic Versioning](https://semver.org/). It preserves
 all released, user-visible changes. GitLab and GitHub keep independent signed
 tags and Releases for the same product versions; neither Forge is the other's
 publication authority.
 
 ## [Unreleased]
+
+### Changed
+
+- Bind `VERSION`, local product tags, and this Changelog as one release
+  identity; enforce Keep a Changelog structure and fold unpublished historical
+  headings into the releases that actually carried their changes.
 
 ## [4.0.4] - 2026-09-19
 
@@ -131,17 +138,17 @@ publication authority.
 
 ## [3.1.12] - 2026-09-01
 
+### Changed
+
+- Use one Ruff configuration for source and docstring policy instead of a
+  parallel docstring-only configuration.
+
 ### Fixed
 
 - Classify Responses input items through one authority so valid Codex-local
   shell call/output history is removed as a complete pair while current
   dialogue continues, and report recognized unsupported items as schema drift
   rather than unknown input.
-
-### Changed
-
-- Use one Ruff configuration for source and docstring policy instead of a
-  parallel docstring-only configuration.
 
 ## [3.1.11] - 2026-08-31
 
@@ -176,17 +183,17 @@ publication authority.
 
 ## [3.1.7] - 2026-08-30
 
+### Changed
+
+- Remove obsolete root and archived-change Commitment carriers now that
+  official OpenSpec artifacts are the sole repository intent source.
+
 ### Fixed
 
 - Isolate native handoff diagnostics so lifecycle tests cannot leak logs into
   the repository or another test's state.
 - Correct macOS launchd override guidance without introducing unsafe
   domain-wide cleanup behavior.
-
-### Changed
-
-- Remove obsolete root and archived-change Commitment carriers now that
-  official OpenSpec artifacts are the sole repository intent source.
 
 ## [3.1.6] - 2026-08-29
 
@@ -199,15 +206,15 @@ publication authority.
 
 ## [3.1.5] - 2026-08-29
 
-### Fixed
-
-- Make published-predecessor downloads shell-independent so the same release
-  compatibility path runs on macOS, Linux, and Windows.
-
 ### Changed
 
 - Remove unconsumed OpenSpec summary, scope, capability, and index carriers so
   the official OpenSpec artifacts remain the sole repository intent model.
+
+### Fixed
+
+- Make published-predecessor downloads shell-independent so the same release
+  compatibility path runs on macOS, Linux, and Windows.
 
 ## [3.1.4] - 2026-08-28
 
@@ -627,26 +634,11 @@ publication authority.
 
 - Publish the Linux native asset from a workspace path shared by the GitHub
   job container and host-side artifact uploader.
-
-## [2.0.28] - 2026-08-11
-
-### Fixed
-
 - Treat an exact-generation Linux zombie retained by a non-reaping container
   parent as exited after handoff teardown, while preserving PID-reuse and
   inaccessible-process safeguards.
-
-## [2.0.27] - 2026-08-11
-
-### Fixed
-
 - Trust only the exact GitHub Actions workspace while the Linux release
   container archives the checked-out release commit.
-
-## [2.0.26] - 2026-08-11
-
-### Fixed
-
 - Build the common Linux asset in one immutable runtime on both independent Forges.
 - Materialize the release commit at the same canonical build root on both Forges.
 - Remove checkout paths and installer timestamps from native release payloads.
@@ -668,128 +660,20 @@ publication authority.
   provider-native release on GitLab and GitHub.
 - Keep release identity, installation, and runtime acceptance bound to one
   verified source tree while preserving the failed v2.0.23 records.
-
-## [2.0.23] - 2026-08-11
-
-### Fixed
-
-- Bind native handoff teardown to the PID generation captured at authenticated
-  health. Windows now releases every mapped bundle module before payload
-  removal even when argv becomes unreadable during exit, while PID reuse remains
-  fail-safe.
-
-## [2.0.22] - 2026-08-10
-
-### Fixed
-
-- Make hosted Git fixtures independent of the machine's default branch.
-- Retain and terminate every authenticated native handoff successor before
-  releasing its temporary payload, including when process inventory misses it.
-
-## [2.0.21] - 2026-08-10
-
-### Fixed
-
-- Derive commit-subject verification from the first integration ref available as a HEAD ancestor in
-  the current checkout. Local Work Lanes still prefer `candidate/dev`, while
-  GitLab and GitHub tag checkouts no longer require a forbidden remote candidate
-  ref.
-
-## [2.0.20] - 2026-08-10
-
-### Fixed
-
-- Tolerate only transient Windows mapped-module locks while native handoff
-  fixtures remove their verified temporary payload, preserving bounded failure
-  when a lock persists.
-
-## [2.0.19] - 2026-08-10
-
-### Fixed
-
-- Normalize the host `commonpath` result before Windows bundle containment
-  comparison and keep POSIX symlink materialization on compatible filesystems.
-
-## [2.0.18] - 2026-08-10
-
-### Fixed
-
-- Compare resolved native-bundle containment through the host filesystem's
-  canonical path identity. Windows no longer rejects an internal member whose
-  resolved path differs only by case, while real escapes remain fail-closed.
-
-### Changed
-
 - Replace the repeatedly extracted one-file executable with one complete,
   manifest-bound native bundle. Installation prewarms the staged bundle before
   payload mutation, and handoff, rollback, recovery, purge, and signed assets
   now share its exact recursive inventory.
-
-## [2.0.17] - 2026-08-09
-
-### Fixed
-
-- Preserve the terminal newline when GitHub materializes an OpenSSH private-key
-  text secret, and report the actionable OpenSSH rejection without a Python
-  traceback.
-
-## [2.0.16] - 2026-08-09
-
-### Fixed
-
-- Validate release preparation from each Forge's own tag namespace. A GitLab
-  tag pipeline no longer executes a GitHub-history assertion; cross-Forge
-  consistency remains a read-only post-publication audit.
-
-## [2.0.15] - 2026-08-08
-
-### Changed
-
 - Install a fresh payload or hand off from one verified current-native runtime;
   reject every incompatible installation before mutation.
 - Keep one manifest-owned rollback and recovery model. Remove version-specific
   inventories, interpreter entrypoints, migration paths, and bypass switches.
 - Keep specifications, tests, documentation, and the executable on the same
   provider-portable runtime contract.
-
-### Fixed
-
-- Preserve live Responses bytes, including encrypted reasoning and collaboration
-  control data, until Codex completes the current turn. Strip provider-bound
-  ciphertext and identifiers only when a later request replays prior output,
-  restoring non-empty subagent task delivery without weakening `store=false`.
-- Bundle every native service adapter and keep expected failures concise, with
-  no traceback, warning, module path, or private path.
-- Discover process identity through bundled `psutil`, not host command parsers.
-- Commit a prepared handoff before returning HTTP 202, so controller loss cannot
-  strand the successor.
-- Keep repository hooks portable and Python package coverage above 95 percent.
-
-## [2.0.12] - 2026-08-05
-
-### Fixed
-
-- Reject an upstream stream whose replay envelope cannot be projected safely,
-  returning one bounded retryable error instead of forwarding an unproved
-  provider-portable structure into the client conversation.
-- Publish GitLab assets and its formal Release without querying GitHub. Each
-  Forge now completes its own build, signature, asset, and Release workflow
-  independently.
-- Give a packaged successor up to 60 seconds to assume the listener during
-  native handoff acceptance, removing the Windows startup false failure while
-  preserving a bounded deadline.
-
-### Changed
-
 - Present human CLI status, diagnosis, installation, reload, and uninstall
   results as concise aligned pages while retaining the stable JSON interface.
 - Require statement and branch coverage above 95 percent for every semantic
   runtime package, and keep successful Git admission hooks silent.
-
-## [2.0.11] - 2026-08-05
-
-### Changed
-
 - Remove proxy-owned ordinary-request concurrency ceilings, provider-route queues,
   and route serialization. Codex owns per-session fan-out and each provider owns
   its actual quota; the proxy retains only lifecycle drain accounting and
@@ -800,11 +684,6 @@ publication authority.
   tooling is no longer shipped as product runtime.
 - Retain exact read-only provider model-catalog routes and close connections for
   local rejections emitted before a request body is consumed.
-
-## [2.0.10] - 2026-08-04
-
-### Changed
-
 - Stop serializing a healthy provider route. Per-route admission was fixed at
   one exchange since the UCloud upstream was returning HTTP 429; that upstream no
   longer rate-limits, and on the live listener every route acquisition reported
@@ -824,10 +703,52 @@ publication authority.
   newly rate-limiting provider before the first failure closes the cooldown for
   the rest.
 
-## [2.0.9] - 2026-08-04
-
 ### Fixed
 
+- Bind native handoff teardown to the PID generation captured at authenticated
+  health. Windows now releases every mapped bundle module before payload
+  removal even when argv becomes unreadable during exit, while PID reuse remains
+  fail-safe.
+- Make hosted Git fixtures independent of the machine's default branch.
+- Retain and terminate every authenticated native handoff successor before
+  releasing its temporary payload, including when process inventory misses it.
+- Derive commit-subject verification from the first integration ref available as a HEAD ancestor in
+  the current checkout. Local Work Lanes still prefer `candidate/dev`, while
+  GitLab and GitHub tag checkouts no longer require a forbidden remote candidate
+  ref.
+- Tolerate only transient Windows mapped-module locks while native handoff
+  fixtures remove their verified temporary payload, preserving bounded failure
+  when a lock persists.
+- Normalize the host `commonpath` result before Windows bundle containment
+  comparison and keep POSIX symlink materialization on compatible filesystems.
+- Compare resolved native-bundle containment through the host filesystem's
+  canonical path identity. Windows no longer rejects an internal member whose
+  resolved path differs only by case, while real escapes remain fail-closed.
+- Preserve the terminal newline when GitHub materializes an OpenSSH private-key
+  text secret, and report the actionable OpenSSH rejection without a Python
+  traceback.
+- Validate release preparation from each Forge's own tag namespace. A GitLab
+  tag pipeline no longer executes a GitHub-history assertion; cross-Forge
+  consistency remains a read-only post-publication audit.
+- Preserve live Responses bytes, including encrypted reasoning and collaboration
+  control data, until Codex completes the current turn. Strip provider-bound
+  ciphertext and identifiers only when a later request replays prior output,
+  restoring non-empty subagent task delivery without weakening `store=false`.
+- Bundle every native service adapter and keep expected failures concise, with
+  no traceback, warning, module path, or private path.
+- Discover process identity through bundled `psutil`, not host command parsers.
+- Commit a prepared handoff before returning HTTP 202, so controller loss cannot
+  strand the successor.
+- Keep repository hooks portable and Python package coverage above 95 percent.
+- Reject an upstream stream whose replay envelope cannot be projected safely,
+  returning one bounded retryable error instead of forwarding an unproved
+  provider-portable structure into the client conversation.
+- Publish GitLab assets and its formal Release without querying GitHub. Each
+  Forge now completes its own build, signature, asset, and Release workflow
+  independently.
+- Give a packaged successor up to 60 seconds to assume the listener during
+  native handoff acceptance, removing the Windows startup false failure while
+  preserving a bounded deadline.
 - End the connection on a local response the listener emits before it reads the
   request body. Because the listener speaks HTTP/1.1, a closed-route rejection,
   an unsupported-method rejection, or the drain toggle previously left the
@@ -842,11 +763,6 @@ publication authority.
   which the admitted read-only `GET /<provider>/v1/models` route had made false.
   Routing is now owned by the route requirement alone, so a future admitted path
   cannot recreate the contradiction.
-
-## [2.0.8] - 2026-08-04
-
-### Fixed
-
 - Name the provider route and both admission limits in the local queue-timeout
   error instead of the process-wide concurrency gauge. A saturated
   single-flight route now reports which route is busy and that its own limit is
@@ -881,6 +797,12 @@ publication authority.
 
 ## [2.0.7] - 2026-08-02
 
+### Changed
+
+- Retain the signed `v2.0.6` tags and failed hosted GitLab jobs as immutable
+  evidence. `v2.0.6` was not eligible for installation; `v2.0.7` is the
+  forward-only publication candidate carrying the portable coverage repair.
+
 ### Fixed
 
 - Exercise the successful Darwin native-argument parser with a synthetic
@@ -893,11 +815,6 @@ publication authority.
   handoff verification no longer launches one PowerShell/CIM query per host PID,
   while Darwin retains native argv identity and every signal path still
   revalidates the live PID immediately before mutation.
-
-## [2.0.6] - 2026-08-02
-
-### Fixed
-
 - Serialize active Responses exchanges within each configured provider route
   while preserving cross-route concurrency inside the existing global bound.
   A queued request rechecks provider cooldown before remote I/O, closing the
@@ -905,12 +822,6 @@ publication authority.
 - Run the native Darwin process-argument integration contract only on Darwin;
   Linux CI no longer invokes a nonexistent `sysctl` symbol through a mocked
   platform value.
-
-### Release history
-
-- Retain the signed `v2.0.6` tags and failed hosted GitLab jobs as immutable
-  evidence. `v2.0.6` was not eligible for installation; `v2.0.7` is the
-  forward-only publication candidate carrying the portable coverage repair.
 
 ## [2.0.5] - 2026-08-02
 
@@ -957,50 +868,11 @@ publication authority.
 
 ## [2.0.2] - 2026-08-02
 
-### Fixed
-
-- Select GitHub's provider-native release chronology in every metadata-test
-  branch, including an already-tagged release checkout. This preserves strict
-  canonical GitLab history checks while preventing the `v2.0.1` GitHub tag job
-  from misclassifying provider-external tags and emitting a traceback.
-
-### Release history
+### Changed
 
 - Retain the signed `v2.0.1` tags and their failed hosted jobs as immutable
   evidence. No `v2.0.1` provider Release was published or installed; `v2.0.2`
   is the forward-only publication candidate carrying the repair.
-
-## [2.0.1] - 2026-08-02
-
-### Fixed
-
-- Bind the loopback listener without a reverse-DNS/FQDN lookup. Listener
-  admission no longer stalls on hosts whose local DNS is slow or unavailable,
-  including hosted macOS verification runners.
-- Select supported Python 3.12, 3.13, and 3.14 lines in hosted CI instead of
-  pinning platform-specific patch builds that are not published for every
-  runner image.
-- Project successful non-stream Responses atomically with the same
-  provider-neutral ciphertext rules as SSE, and fail locally before downstream
-  commitment on empty, truncated, malformed, failed, or otherwise non-terminal
-  HTTP 2xx bodies.
-- Reject empty Responses request bodies and ambiguous provider request targets
-  before upstream I/O. Only exact `/<provider>/v1/responses` routes with an
-  optional query are admitted.
-- Replace the DMX-shaped registry interface with one optional `WirePolicy`
-  boundary and admit request-changing `response_failed` recovery only from
-  structured error fields, never incidental human-readable prose.
-- Relay an upstream HTTP 429 after exactly one upstream call, preserve its body
-  and eligible headers, and apply a bounded process-local cooldown only to that
-  provider instead of multiplying throttling through the generic retry loop.
-- Reduce the default Responses concurrency from 64 to 8 as a conservative burst
-  guardrail. The validated environment override remains available; this default
-  does not claim any provider's unpublished quota.
-
-## [2.0.0] - 2026-08-02
-
-### Changed
-
 - Rename the product and Python namespace from the DMX-specific Codex DMX
   Proxy to Codex Responses Proxy. The data plane now serves ordinary Responses
   endpoints through a provider manifest, so adding a gateway is a bounded
@@ -1023,6 +895,32 @@ publication authority.
 
 ### Fixed
 
+- Select GitHub's provider-native release chronology in every metadata-test
+  branch, including an already-tagged release checkout. This preserves strict
+  canonical GitLab history checks while preventing the `v2.0.1` GitHub tag job
+  from misclassifying provider-external tags and emitting a traceback.
+- Bind the loopback listener without a reverse-DNS/FQDN lookup. Listener
+  admission no longer stalls on hosts whose local DNS is slow or unavailable,
+  including hosted macOS verification runners.
+- Select supported Python 3.12, 3.13, and 3.14 lines in hosted CI instead of
+  pinning platform-specific patch builds that are not published for every
+  runner image.
+- Project successful non-stream Responses atomically with the same
+  provider-neutral ciphertext rules as SSE, and fail locally before downstream
+  commitment on empty, truncated, malformed, failed, or otherwise non-terminal
+  HTTP 2xx bodies.
+- Reject empty Responses request bodies and ambiguous provider request targets
+  before upstream I/O. Only exact `/<provider>/v1/responses` routes with an
+  optional query are admitted.
+- Replace the DMX-shaped registry interface with one optional `WirePolicy`
+  boundary and admit request-changing `response_failed` recovery only from
+  structured error fields, never incidental human-readable prose.
+- Relay an upstream HTTP 429 after exactly one upstream call, preserve its body
+  and eligible headers, and apply a bounded process-local cooldown only to that
+  provider instead of multiplying throttling through the generic retry loop.
+- Reduce the default Responses concurrency from 64 to 8 as a conservative burst
+  guardrail. The validated environment override remains available; this default
+  does not claim any provider's unpublished quota.
 - Preserve the payload-free Codex 0.146 `compaction_trigger` request control
   through provider-portable replay projection, while continuing to reject
   unknown control fields before upstream I/O. This prevents short conversations
@@ -1119,11 +1017,6 @@ publication authority.
   from failing release metadata verification.
 - Run GitLab Debian dependency bootstrap explicitly noninteractively and
   quietly, eliminating debconf frontend fallback warnings from release logs.
-
-## [1.0.37] - 2026-07-30
-
-### Fixed
-
 - Validate protocol-v2 upgrade requests against the complete committed
   successor payload rather than the old listener's frozen runtime identity, so
   a real cross-version handoff no longer fails with HTTP 409.
@@ -1173,11 +1066,6 @@ publication authority.
 - Align real handoff successor observation with the runtime contract: an exact
   positive-PID successor remains valid after it advances from the transient
   `serving` state to the stable `finalized` state.
-
-## [1.0.33] - 2026-07-29
-
-### Fixed
-
 - Move GitHub's dependency wait to a bounded read-only hosted gate so the
   repository's sole trusted runner remains available for tag verification.
 - Keep Git tag proof authentication provider-neutral: isolated fetches now use
@@ -1192,24 +1080,6 @@ publication authority.
   peeled commit before tag verification or Release publication.
 
 ## [1.0.31] - 2026-07-29
-
-### Fixed
-
-- Give every GitLab release-stage checkout complete provider history, so exact
-  tag verification and Release publication enforce the same chronology as the
-  main metadata gate.
-
-## [1.0.30] - 2026-07-29
-
-### Fixed
-
-- Normalize canonical tag creation timestamps to UTC before comparing them
-  with Changelog release dates, so a signed tag created across local midnight
-  preserves the repository's UTC release chronology.
-- Give the real rolling-handoff integration proof enough hosted-runner margin
-  to observe the successor without weakening its exact identity checks.
-
-## [1.0.29] - 2026-07-29
 
 ### Changed
 
@@ -1238,46 +1108,29 @@ publication authority.
   date, and committer date while re-signing every commit. Dual-Forge parity now
   rejects an unsigned commit or a non-provider author/committer anywhere in the
   reachable history.
-
-### Quality
-
 - Enforce combined, statement-only, and branch-only coverage independently at
   95%, derive the Python quality scope from one source inventory, and remove
   installed-control legacy bootstrap residue.
 
+### Fixed
+
+- Give every GitLab release-stage checkout complete provider history, so exact
+  tag verification and Release publication enforce the same chronology as the
+  main metadata gate.
+- Normalize canonical tag creation timestamps to UTC before comparing them
+  with Changelog release dates, so a signed tag created across local midnight
+  preserves the repository's UTC release chronology.
+- Give the real rolling-handoff integration proof enough hosted-runner margin
+  to observe the successor without weakening its exact identity checks.
+
 ## [1.0.28] - 2026-07-29
 
-### Fixed
-
-- Install Git and OpenSSH in every GitLab Python and quality job that executes
-  signed-release-source tests, and accept both supported `ty 0.0.56` version
-  output forms. This closes the hosted-only gap exposed by the failed
-  `v1.0.27` tag pipeline without weakening or skipping the signing tests.
-
-## [1.0.27] - 2026-07-29
-
-### Fixed
-
-- Recover only the exact third-party Responses `Invalid 'input'` union
-  validation contract with one strictly smaller, network-only current-dialogue
-  request. The recovery retains the latest system, developer, and user
-  messages in their original order, preserves top-level instructions, removes
-  stale provider bindings, and never chains into another retry policy.
-- Isolate this compatibility policy behind a dedicated pure-policy module, with
-  bounded value-free diagnostics, exact call/output pairing checks, and stable
-  terminal counters. Structural diagnostics erase unknown labels and values and
-  bucket collection sizes before hashing; recovery events still report exact
-  byte lengths and retained/dropped item counts without recording their values.
-
-### Quality
+### Changed
 
 - Establish `pyproject.toml` as the Python metadata and quality configuration
   carrier while keeping `VERSION` as the sole release-version owner. Add one
   repository-owned Ruff, formatting, type, public-docstring, code-size, and
   product branch-coverage gate plus Python 3.12/3.13/3.14 regression matrices.
-
-### Changed
-
 - Make source-side `install.py` the sole payload-mutation entry. It now requires
   an in-repository proof of both provider-native signed tags, required CI, and
   formal Release records, then independently admits the clean exact signed tag
@@ -1297,6 +1150,23 @@ publication authority.
 - Restrict `--allow-legacy-bootstrap` and `--force-legacy-bootstrap` to the
   source-side first replacement of a verified pre-v2 listener. Neither flag is
   an installed-control reload or a normal protocol-v2 operating mode.
+
+### Fixed
+
+- Install Git and OpenSSH in every GitLab Python and quality job that executes
+  signed-release-source tests, and accept both supported `ty 0.0.56` version
+  output forms. This closes the hosted-only gap exposed by the failed
+  `v1.0.27` tag pipeline without weakening or skipping the signing tests.
+- Recover only the exact third-party Responses `Invalid 'input'` union
+  validation contract with one strictly smaller, network-only current-dialogue
+  request. The recovery retains the latest system, developer, and user
+  messages in their original order, preserves top-level instructions, removes
+  stale provider bindings, and never chains into another retry policy.
+- Isolate this compatibility policy behind a dedicated pure-policy module, with
+  bounded value-free diagnostics, exact call/output pairing checks, and stable
+  terminal counters. Structural diagnostics erase unknown labels and values and
+  bucket collection sizes before hashing; recovery events still report exact
+  byte lengths and retained/dropped item counts without recording their values.
 
 ## [1.0.26] - 2026-07-27
 
@@ -1345,6 +1215,26 @@ publication authority.
   empty-response, upstream 5xx, and `response_failed` bursts from local stream
   failures, drain rejections, listener integrity, and restart boundaries;
   thresholds are explicit, bounded, and tested.
+
+### Changed
+
+- Add deterministic fake-upstream and real-subprocess coverage for first-body
+  fidelity, one-shot 477 recovery, cooldown isolation, state transitions,
+  rollback, active-flow completion, lease expiry, and repeated POSIX handoff.
+- Validate the Windows watchdog lifecycle on a real host: a killed watchdog
+  relaunches from the repeating time trigger, uninstall stops the running
+  watchdog, and the task runs windowless. Under a real standard-user interactive
+  logon the watchdog auto-starts and runs with a non-elevated least-privilege
+  token. See [docs/evidence/windows-real-machine-validation.md](docs/evidence/windows-real-machine-validation.md).
+- Add deterministic offline transport coverage for exhausted pre-content SSE,
+  bounded/redacted logging, drain admission rejection, in-flight completion,
+  timeout rollback, and fail-open drain-lease expiry.
+- Add lifecycle regression coverage for quiet-window admission, busy-window
+  refusal without drain, and listener identity changes at the final handoff.
+- Add regression coverage for legacy bootstrap admission and its no-downgrade
+  boundary when a current listener's atomic drain fails.
+- Add regression coverage that the emergency compatibility path still refuses
+  unverified payloads.
 
 ### Fixed
 
@@ -1413,26 +1303,6 @@ publication authority.
   values, remove query values from logged request paths, and retire macOS
   launchd stdout/stderr sinks that created unbounded parallel logs.
 
-### Verified
-
-- Add deterministic fake-upstream and real-subprocess coverage for first-body
-  fidelity, one-shot 477 recovery, cooldown isolation, state transitions,
-  rollback, active-flow completion, lease expiry, and repeated POSIX handoff.
-- Validate the Windows watchdog lifecycle on a real host: a killed watchdog
-  relaunches from the repeating time trigger, uninstall stops the running
-  watchdog, and the task runs windowless. Under a real standard-user interactive
-  logon the watchdog auto-starts and runs with a non-elevated least-privilege
-  token. See [docs/evidence/windows-real-machine-validation.md](docs/evidence/windows-real-machine-validation.md).
-- Add deterministic offline transport coverage for exhausted pre-content SSE,
-  bounded/redacted logging, drain admission rejection, in-flight completion,
-  timeout rollback, and fail-open drain-lease expiry.
-- Add lifecycle regression coverage for quiet-window admission, busy-window
-  refusal without drain, and listener identity changes at the final handoff.
-- Add regression coverage for legacy bootstrap admission and its no-downgrade
-  boundary when a current listener's atomic drain fails.
-- Add regression coverage that the emergency compatibility path still refuses
-  unverified payloads.
-
 ## [1.0.15] - 2026-07-18
 
 ### Fixed
@@ -1451,29 +1321,52 @@ publication authority.
 - Add a read-only dual-forge parity auditor that verifies tree parity,
   provider-specific identities and signatures, and branch/worktree hygiene.
 
+### Changed
+
+- Add bounded local-hop coverage for pre-content `response.failed` recovery,
+  premature EOF recovery, and the no-retry-after-commit boundary.
+
 ### Fixed
 
 - Remove request-body, header, and rejected-payload capture paths so local
   diagnostics retain only bounded classifications, identifiers, and byte counts.
 
-### Verified
-
-- Add bounded local-hop coverage for pre-content `response.failed` recovery,
-  premature EOF recovery, and the no-retry-after-commit boundary.
-
 ## [1.0.13] - 2026-07-17
+
+### Changed
+
+- Added regression coverage that proves GitHub tag creation invokes the
+  configured SSH signing program instead of calling `ssh-keygen` directly.
 
 ### Fixed
 
 - Make the GitHub-native tag command use the workstation's configured SSH
   signing program rather than bypassing its Keychain-aware signing bridge.
 
-### Verified
-
-- Added regression coverage that proves GitHub tag creation invokes the
-  configured SSH signing program instead of calling `ssh-keygen` directly.
-
 ## [1.0.12] - 2026-07-17
+
+### Changed
+
+- Added transport regression coverage for dialogue-only recovery, its exact
+  retained-message boundary, response telemetry, and retryable exhaustion.
+- Added transport-level regression coverage that proves a 477 `empty_response`
+  is retried with byte-identical request data before a successful response is
+  relayed, and is normalized to 503 only when the bounded retry budget is
+  exhausted.
+- Added regression coverage for sub-budget failures, impossible target budgets,
+  staged reduction, pair integrity, latest-user retention, and fallback-only
+  cache-key removal.
+- Added independent GitLab and GitHub CI/CD contracts, provider-specific source
+  projection, and formal release records. The project is now distributed under
+  the MIT License.
+- Make every GitLab release-metadata and tag gate force-refresh and prune the
+  provider tag namespace before checking release chronology. This prevents a
+  shared runner's deleted local tag from creating a false Changelog failure.
+- Added an isolated regression fixture that proves `git fetch --tags --force
+--prune --prune-tags origin` removes a tag deleted from the remote.
+- Require the GitLab release-metadata gate to use complete history before it
+  tests an intentionally untagged release fixture, preventing shallow-clone
+  history from masking the fixture's historical-release premise.
 
 ### Fixed
 
@@ -1497,30 +1390,13 @@ publication authority.
 - Preserve a compacted request during a pre-content SSE reconnect instead of
   reopening the original rejected replay body.
 
-### Verified
+## [1.0.8] - 2026-07-14
 
-- Added transport regression coverage for dialogue-only recovery, its exact
-  retained-message boundary, response telemetry, and retryable exhaustion.
-- Added transport-level regression coverage that proves a 477 `empty_response`
-  is retried with byte-identical request data before a successful response is
-  relayed, and is normalized to 503 only when the bounded retry budget is
-  exhausted.
+### Changed
+
 - Added regression coverage for sub-budget failures, impossible target budgets,
   staged reduction, pair integrity, latest-user retention, and fallback-only
   cache-key removal.
-- Added independent GitLab and GitHub CI/CD contracts, provider-specific source
-  projection, and formal release records. The project is now distributed under
-  the MIT License.
-- Make every GitLab release-metadata and tag gate force-refresh and prune the
-  provider tag namespace before checking release chronology. This prevents a
-  shared runner's deleted local tag from creating a false Changelog failure.
-- Added an isolated regression fixture that proves `git fetch --tags --force
---prune --prune-tags origin` removes a tag deleted from the remote.
-- Require the GitLab release-metadata gate to use complete history before it
-  tests an intentionally untagged release fixture, preventing shallow-clone
-  history from masking the fixture's historical-release premise.
-
-## [1.0.8] - 2026-07-14
 
 ### Fixed
 
@@ -1531,13 +1407,13 @@ publication authority.
 - Preserve a compacted request during a pre-content SSE reconnect instead of
   reopening the original rejected replay body.
 
-### Verified
-
-- Added regression coverage for sub-budget failures, impossible target budgets,
-  staged reduction, pair integrity, latest-user retention, and fallback-only
-  cache-key removal.
-
 ## [1.0.7] - 2026-07-14
+
+### Changed
+
+- Added regression coverage for pair integrity, latest-user retention,
+  fallback-only cache-key removal, no-safe-suffix behavior, and unrelated HTTP
+  400 rejections.
 
 ### Fixed
 
@@ -1547,12 +1423,6 @@ publication authority.
   complete tool call/output pairs, and remove the stale `prompt_cache_key` only
   from fallback requests. Ordinary client-side 400 errors
   remain non-retryable.
-
-### Verified
-
-- Added regression coverage for pair integrity, latest-user retention,
-  fallback-only cache-key removal, no-safe-suffix behavior, and unrelated HTTP
-  400 rejections.
 
 ## [1.0.6] - 2026-07-14
 

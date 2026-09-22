@@ -45,6 +45,16 @@ def require_tokens(source: str, tokens: tuple[str, ...], context: str) -> None:
     assert not missing, f"{context} is missing {missing[0] if missing else ''}"
 
 
+def changelog_document(sections: str) -> str:
+    """Return one minimal Keep a Changelog document."""
+    return (
+        "# Changelog\n\n"
+        "This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) "
+        "and [Semantic Versioning](https://semver.org/).\n\n"
+        f"{sections}"
+    )
+
+
 def test_release_identity_has_one_strict_semver_and_tag_contract() -> None:
     """Keep release versions and annotated tag names on one exact grammar."""
     for version in ("0.0.0", "1.2.3", "20.56.300"):
@@ -69,6 +79,8 @@ def test_product_release_history_is_provider_neutral(*, mocker) -> None:
     ]
     known = mocker.patch.object(metadata, "known_release_versions", return_value=["1.0.2", "1.0.1"])
     metadata.check_changelog_provenance(releases, pending_version="1.0.3")
+    with pytest.raises(ValueError, match="has no product tag"):
+        metadata.check_changelog_provenance(releases)
     known.return_value = ["1.0.2"]
     with pytest.raises(ValueError, match="must appear once"):
         metadata.check_changelog_provenance([("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")])
@@ -156,22 +168,68 @@ def test_release_train_admission_uses_exact_local_chronology(
 
 
 @pytest.mark.parametrize(
-    ("headings", "diagnostic"),
+    ("source", "diagnostic"),
     [
         ("", "must start"),
-        ("## [1.0.0] - 2026-07-01\n", "must start"),
-        ("## [Unreleased]\n## [Unreleased]\n", "exactly one"),
-        ("## [Unreleased]\n## [1.0.0]\n", "must be dated"),
-        ("## [Unreleased]\n## [1.0.0] - 2026-07-01\n## [2.0.0] - 2026-07-02\n", "descending"),
+        ("# Changelog\n\n## [Unreleased]\n", "Keep a Changelog"),
+        (changelog_document("## [1.0.0] - 2026-07-01\n"), "must start"),
+        (changelog_document("## [Unreleased]\n## [Unreleased]\n"), "exactly one"),
+        (changelog_document("## [Unreleased]\n## [1.0.0]\n"), "must be dated"),
+        (
+            changelog_document(
+                "## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Fixed\n\n- Fix.\n\n"
+                "## [2.0.0] - 2026-07-02\n\n### Fixed\n\n- Fix.\n"
+            ),
+            "descending",
+        ),
+        (
+            changelog_document(
+                "## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Quality\n\n- Improve.\n"
+            ),
+            "canonical category",
+        ),
+        (
+            changelog_document(
+                "## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Fixed\n\n- One.\n\n"
+                "### Fixed\n\n- Two.\n"
+            ),
+            "duplicate category",
+        ),
+        (
+            changelog_document(
+                "## [Unreleased]\n\n## [1.0.0] - 2026-02-30\n\n### Fixed\n\n- Fix.\n"
+            ),
+            "valid date",
+        ),
+        (
+            changelog_document("## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Fixed\n"),
+            "change item",
+        ),
     ],
 )
 def test_changelog_requires_ordered_dated_release_sections(
-    tmp_path: Path, headings: str, diagnostic: str
+    tmp_path: Path, source: str, diagnostic: str
 ) -> None:
     path = tmp_path / "CHANGELOG.md"
-    path.write_text(headings, encoding="utf-8")
+    path.write_text(source, encoding="utf-8")
     with pytest.raises(ValueError, match=diagnostic):
         metadata.changelog_releases(path)
+
+
+def test_changelog_accepts_unreleased_only_and_canonical_categories(tmp_path: Path) -> None:
+    initial = tmp_path / "initial.md"
+    initial.write_text(changelog_document("## [Unreleased]\n"), encoding="utf-8")
+    assert metadata.changelog_releases(initial) == []
+
+    released = tmp_path / "released.md"
+    released.write_text(
+        changelog_document(
+            "## [Unreleased]\n\n### Changed\n\n- Pending.\n\n"
+            "## [1.0.0] - 2026-07-01\n\n### Added\n\n- Initial release.\n"
+        ),
+        encoding="utf-8",
+    )
+    assert metadata.changelog_releases(released) == [("1.0.0", "2026-07-01")]
 
 
 def test_exact_release_tag_contract(*, mocker) -> None:
@@ -423,9 +481,11 @@ def test_current_release_metadata_chronology(
         with pytest.raises((ValueError, SystemExit)):
             metadata.main(("--prepare-release",))
     tagged_version = metadata.known_release_versions()[0]
-    heading = re.compile(rf"(?m)^## \[{re.escape(tagged_version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$")
+    release_section = re.compile(
+        rf"(?ms)^## \[{re.escape(tagged_version)}\] - \d{{4}}-\d{{2}}-\d{{2}}\n.*?(?=^## \[|\Z)"
+    )
     incomplete = tmp_path / "CHANGELOG.md"
-    incomplete.write_text(heading.sub("", source, count=1), encoding="utf-8")
+    incomplete.write_text(release_section.sub("", source, count=1), encoding="utf-8")
     with pytest.raises(ValueError, match="must appear once"):
         metadata.main(("--changelog", str(incomplete)))
     metadata.main(())

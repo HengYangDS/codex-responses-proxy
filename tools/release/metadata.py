@@ -22,6 +22,9 @@ ROOT = Path(__file__).resolve().parents[2]
 CHANGELOG_HEADING = re.compile(
     r"^## \[(?P<version>Unreleased|(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))\](?: - (?P<date>\d{4}-\d{2}-\d{2}))?$"
 )
+CHANGELOG_CATEGORIES = frozenset({"Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"})
+KEEP_A_CHANGELOG_URL = "https://keepachangelog.com/en/1.1.0/"
+SEMVER_URL = "https://semver.org/"
 
 
 def read_version() -> str:
@@ -63,23 +66,73 @@ def known_release_versions() -> list[str]:
 
 def changelog_releases(path: Path | None = None) -> list[tuple[str, str]]:
     """Return dated Changelog releases after validating section structure."""
-    headings: list[tuple[str, str | None]] = []
     changelog = path or ROOT / "CHANGELOG.md"
-    for line in changelog.read_text(encoding="utf-8").splitlines():
+    lines = changelog.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0] != "# Changelog":
+        raise ValueError("CHANGELOG.md must start with # Changelog")
+    preamble = "\n".join(
+        lines[: next((i for i, line in enumerate(lines) if line.startswith("## ")), len(lines))]
+    )
+    if KEEP_A_CHANGELOG_URL not in preamble or SEMVER_URL not in preamble:
+        raise ValueError(
+            "CHANGELOG.md must identify Keep a Changelog 1.1.0 and Semantic Versioning"
+        )
+
+    headings: list[tuple[int, str, str | None]] = []
+    for line_number, line in enumerate(lines, start=1):
+        if not line.startswith("## "):
+            continue
         match = CHANGELOG_HEADING.match(line)
-        if match:
-            headings.append((match.group("version"), match.group("date")))
-    if not headings or headings[0][0] != "Unreleased":
+        if match is None:
+            raise ValueError(f"CHANGELOG.md release heading at line {line_number} must be dated")
+        headings.append((line_number - 1, match.group("version"), match.group("date")))
+    if not headings or headings[0][1] != "Unreleased":
         raise ValueError("CHANGELOG.md must start its release sections with ## [Unreleased]")
-    if sum(1 for version, _ in headings if version == "Unreleased") != 1:
+    if sum(1 for _, version, _ in headings if version == "Unreleased") != 1:
         raise ValueError("CHANGELOG.md must contain exactly one Unreleased section")
-    released = headings[1:]
-    if any(version == "Unreleased" or date is None for version, date in released):
+    released = [(version, item_date) for _, version, item_date in headings[1:]]
+    if any(version == "Unreleased" or item_date is None for version, item_date in released):
         raise ValueError("released CHANGELOG headings must be dated and follow Unreleased")
+    for version, item_date in released:
+        try:
+            date.fromisoformat(item_date or "")
+        except ValueError as error:
+            raise ValueError(
+                f"released CHANGELOG heading for {version} must use a valid date"
+            ) from error
     versions = [version for version, _ in released]
     if versions != sorted(versions, key=_version_key, reverse=True):
         raise ValueError("released CHANGELOG headings must be in descending SemVer order")
+    for index, (start, version, _) in enumerate(headings):
+        end = headings[index + 1][0] if index + 1 < len(headings) else len(lines)
+        _validate_changelog_section(lines[start + 1 : end], version)
     return [(version, date) for version, date in released if date is not None]
+
+
+def _validate_changelog_section(lines: list[str], version: str) -> None:
+    categories: set[str] = set()
+    item_count = 0
+    for line in lines:
+        if line.startswith("### "):
+            category = line.removeprefix("### ")
+            if category not in CHANGELOG_CATEGORIES:
+                raise ValueError(
+                    f"CHANGELOG.md section {version} uses a non-canonical category: {category}"
+                )
+            if category in categories:
+                raise ValueError(
+                    f"CHANGELOG.md section {version} has a duplicate category: {category}"
+                )
+            categories.add(category)
+            continue
+        if line.startswith("- "):
+            if not categories:
+                raise ValueError(
+                    f"CHANGELOG.md section {version} has a change item outside a category"
+                )
+            item_count += 1
+    if version != "Unreleased" and item_count == 0:
+        raise ValueError(f"CHANGELOG.md release {version} must contain a categorized change item")
 
 
 def _git(*args: str) -> str:
@@ -102,8 +155,16 @@ def check_changelog_provenance(
             "locally available release tags must appear once in CHANGELOG.md: "
             + ", ".join(missing_headings)
         )
-    if pending_version in expected_versions:
-        raise ValueError(f"release tag v{pending_version} already exists")
+    allowed_pending = pending_version if pending_version not in expected_versions else None
+    untagged_headings = [
+        version
+        for version in actual_versions
+        if version not in expected_versions and version != allowed_pending
+    ]
+    if untagged_headings:
+        raise ValueError(
+            "released CHANGELOG heading has no product tag: " + ", ".join(untagged_headings)
+        )
 
 
 def check_active_release_train(
@@ -265,7 +326,7 @@ def _command(
     releases = changelog_releases(changelog)
     check_changelog_provenance(
         releases,
-        pending_version=version if prepare_release else None,
+        pending_version=version,
     )
     if prepare_release:
         if version in known_release_versions():
