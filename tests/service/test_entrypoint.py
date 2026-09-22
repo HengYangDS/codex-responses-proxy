@@ -156,8 +156,12 @@ class TestListenerEntrypoint:
             side_effect=entrypoint.runtime_config.ConfigurationError("invalid port"),
         )
         create_server = mocker.patch.object(entrypoint, "create_server")
+        log = mocker.patch.object(entrypoint.operational_log, "log")
+
         assert entrypoint.run() == 2
+
         create_server.assert_not_called()
+        log.assert_called_once_with("configuration_error exception=ConfigurationError")
 
     def test_invalid_payload_exits_without_reading_runtime_configuration(self, *, mocker) -> None:
         mocker.patch.object(entrypoint, "bootstrap", side_effect=RuntimeError("untrusted"))
