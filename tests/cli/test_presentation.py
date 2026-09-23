@@ -13,8 +13,35 @@ from tests.cli.fixtures import invoke
 from tests.lifecycle.fixtures import install_context
 
 
+@pytest.mark.parametrize(
+    ("command", "result"),
+    [
+        ("install", {}),
+        ("status", {"state": "running"}),
+        ("doctor", {"ok": True}),
+        ("reload", {"state": "reloaded"}),
+        ("rollback", {"state": "unknown"}),
+        ("recover", {"state": "unknown"}),
+        ("uninstall", {"state": "unknown"}),
+    ],
+)
+def test_malformed_success_cannot_be_presented_as_completed(
+    command: str, result: dict[str, object], *, mocker, capsys
+) -> None:
+    mocker.patch.object(application, "dispatch", return_value=result)
+
+    code = application._execute(command, as_json=True)
+    captured = capsys.readouterr()
+
+    assert code == 2
+    assert captured.out == ""
+    assert json.loads(captured.err)["error"]["code"] == "internal_error"
+
+
 def test_status_human_output_is_aligned_and_not_serialized_json(*, mocker) -> None:
     evidence = {
+        "state": "running",
+        "detail": "healthy",
         "release": "2.0.8",
         "payload_integrity": {"ok": True, "detail": "verified"},
         "service": "running",
@@ -227,10 +254,9 @@ def test_expected_lifecycle_failures_are_rendered_once(*, mocker) -> None:
     }
 
 
-def test_rendering_none_and_unknown_dispatch_have_explicit_boundaries(*, mocker) -> None:
-    rendered = mocker.patch.object(application, "print")
-    application._render("status", None, as_json=False)
-    rendered.assert_not_called()
+def test_invalid_result_and_unknown_dispatch_have_explicit_boundaries() -> None:
+    with pytest.raises(ValueError, match="not an object"):
+        application.outcome.admit("status", None)
 
     with pytest.raises(ValueError, match="not implemented"):
         application.dispatch("future", port=8792)

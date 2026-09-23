@@ -23,6 +23,7 @@ from rich.console import Console
 
 from codex_responses_proxy import errors
 from codex_responses_proxy import product_identity
+from codex_responses_proxy.cli import outcome
 from codex_responses_proxy.cli import presentation
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import control
@@ -301,18 +302,34 @@ def _doctor(evidence: Mapping[str, object]) -> DoctorReport:
     }
 
 
-def _render(command: str, result: CommandResult, *, as_json: bool) -> None:
-    if as_json:
-        print(json.dumps(result, sort_keys=True))
+def _render(result: outcome.PublicOutcome, *, as_json: bool) -> None:
+    if isinstance(result, outcome.Failure):
+        if as_json:
+            print(
+                json.dumps(
+                    {
+                        "error": {
+                            "code": result.code,
+                            "message": result.problem,
+                            "next": result.next_command,
+                        }
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+        else:
+            print(
+                presentation.error(result.problem, next_command=result.next_command),
+                file=sys.stderr,
+            )
         return
-    rendered = presentation.render(command, result)
+    if as_json:
+        print(json.dumps(result.evidence, sort_keys=True))
+        return
+    rendered = presentation.render(result.command, result.evidence)
     if rendered:
         print(rendered)
-
-
-def _result_code(command: str, result: CommandResult) -> int:
-    """Return a stable nonzero diagnostic status without treating it as an exception."""
-    return 1 if command == "doctor" and isinstance(result, dict) and not result.get("ok") else 0
 
 
 def _error(
@@ -321,38 +338,26 @@ def _error(
     as_json: bool,
     next_command: str = product_identity.command("doctor"),
     code: str = "usage_error",
-) -> None:
-    if as_json:
-        print(
-            json.dumps(
-                {"error": {"code": code, "message": message, "next": next_command}},
-                sort_keys=True,
-            ),
-            file=sys.stderr,
-        )
-    else:
-        print(
-            presentation.error(message, next_command=next_command),
-            file=sys.stderr,
-        )
+) -> int:
+    failure = outcome.Failure(code, message, next_command)
+    _render(failure, as_json=as_json)
+    return failure.exit_code
 
 
 def _execute(command: str, *, as_json: bool = False, **arguments: object) -> int:
     try:
-        result = dispatch(command, **arguments)
-        _render(command, result, as_json=as_json)
-        return _result_code(command, result)
+        result = outcome.admit(command, dispatch(command, **arguments))
+        _render(result, as_json=as_json)
+        return result.exit_code
     except errors.ProductError as error:
-        _error(
+        return _error(
             str(error),
             as_json=as_json,
             next_command=error.next_command,
             code=error.code,
         )
-        return 2
     except Exception:
-        _error("product command failed unexpectedly", as_json=as_json, code="internal_error")
-        return 2
+        return _error("product command failed unexpectedly", as_json=as_json, code="internal_error")
 
 
 def _app() -> App:
@@ -465,32 +470,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments and arguments[0].startswith("--internal-"):
         return _run_internal(arguments)
     if arguments and not arguments[0].startswith("-") and arguments[0] not in PUBLIC_COMMANDS:
-        _error(
+        return _error(
             f"unknown command: {arguments[0]}",
             as_json="--json" in arguments,
             next_command=product_identity.command("--help"),
         )
-        return 2
     try:
         result = _app()(arguments, console=Console(), error_console=Console(stderr=True))
     except CycloptsError as error:
         command = arguments[0] if arguments and arguments[0] in PUBLIC_COMMANDS else None
-        _error(
+        return _error(
             str(error),
             as_json="--json" in arguments,
             next_command=product_identity.command(command, "--help")
             if command
             else product_identity.command("--help"),
         )
-        return 2
     return result if isinstance(result, int) else 0
 
 
 def _run_internal(arguments: list[str]) -> int:
     """Dispatch one exact private service role without adding it to public help."""
     if len(arguments) != 1:
-        _error("internal service mode accepts no additional arguments", as_json=False)
-        return 2
+        return _error("internal service mode accepts no additional arguments", as_json=False)
     mode = arguments[0]
     if mode == service_runtime.PREWARM_MODE:
         return 0
@@ -508,5 +510,4 @@ def _run_internal(arguments: list[str]) -> int:
 
         watchdog.run()
         return 0
-    _error("unknown internal service mode", as_json=False)
-    return 2
+    return _error("unknown internal service mode", as_json=False)
