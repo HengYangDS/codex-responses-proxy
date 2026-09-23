@@ -110,18 +110,42 @@ def test_release_packaging_requires_a_supported_native_platform(
     session.run.assert_not_called()
 
 
-def test_wheel_build_preserves_the_tool_owned_dependency_cache(
+def test_wheel_build_uses_an_external_ephemeral_cache(
     tmp_path: Path, mocker: MockerFixture, nox_configuration: ModuleType
 ) -> None:
     session = mocker.Mock()
     wheelhouse = tmp_path / "wheelhouse"
     wheel = wheelhouse / "product.whl"
-    session.run_install.side_effect = lambda *_args, **_kwargs: wheel.touch()
+    observed_cache: Path | None = None
+
+    def build(*args: str, **_kwargs: object) -> None:
+        nonlocal observed_cache
+        if "--cache-dir" in args:
+            observed_cache = Path(args[args.index("--cache-dir") + 1])
+            assert observed_cache.is_dir()
+        wheel.touch()
+
+    session.run_install.side_effect = build
 
     assert nox_configuration._build_wheel(session, tmp_path) == wheel
-    session.run_install.assert_called_once_with(
-        "uv", "build", "--wheel", "--out-dir", str(wheelhouse), str(ROOT), external=True
-    )
+    assert observed_cache is not None
+    assert not observed_cache.is_relative_to(ROOT)
+    assert not observed_cache.exists()
+    call = list(session.run_install.call_args.args)
+    del call[call.index("--cache-dir") : call.index("--cache-dir") + 2]
+    assert call == [
+        "uv",
+        "build",
+        "--wheel",
+        "--offline",
+        "--no-build-isolation",
+        "--python",
+        "python",
+        "--out-dir",
+        str(wheelhouse),
+        str(ROOT),
+    ]
+    assert session.run_install.call_args.kwargs == {"external": True}
 
 
 @pytest.mark.parametrize("wheel_count", [0, 2])

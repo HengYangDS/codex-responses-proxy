@@ -9,6 +9,7 @@ import sys
 import tomllib
 from pathlib import Path
 from pathlib import PurePosixPath
+from tempfile import TemporaryDirectory
 
 import nox
 
@@ -446,9 +447,24 @@ def _build_wheel(session: nox.Session, work: Path) -> Path:
     """Build the exact wheel exercised by behavior and quality sessions."""
     wheelhouse = work / "wheelhouse"
     wheelhouse.mkdir()
-    session.run_install(
-        "uv", "build", "--wheel", "--out-dir", str(wheelhouse), str(ROOT), external=True
-    )
+    with TemporaryDirectory(prefix="wheel-build-cache-", dir=ROOT.parent) as cache:
+        if Path(cache).resolve().is_relative_to(ROOT):
+            raise RuntimeError("wheel build cache must be outside the source checkout")
+        session.run_install(
+            "uv",
+            "build",
+            "--wheel",
+            "--offline",
+            "--no-build-isolation",
+            "--python",
+            "python",
+            "--cache-dir",
+            cache,
+            "--out-dir",
+            str(wheelhouse),
+            str(ROOT),
+            external=True,
+        )
     wheels = tuple(wheelhouse.glob("*.whl"))
     if len(wheels) != 1:
         session.error(f"expected one wheel, found {len(wheels)}")
