@@ -8,13 +8,6 @@ publication authority.
 
 ## [Unreleased]
 
-### Fixed
-
-- Recover a provider switch that explicitly rejects encrypted replay content by
-  retrying once with only the provider-bound ciphertext removed; preserve visible
-  agent context, tool relationships, local history, and the initial native
-  encrypted attempt.
-
 ### Changed
 
 - Bind `VERSION`, local product tags, and this Changelog as one release

@@ -69,16 +69,6 @@ validation and execution failures; it does not own another replay grammar.
 projection, content, history, admission, and recovery instead of suffix families;
 shared request encoding belongs to their fixture, not another test module.
 
-Encrypted agent control content now follows a two-stage boundary. The initial
-attempt preserves its native envelope because the producing Provider may need it
-to complete the current collaboration action. An exact upstream
-`invalid_encrypted_content` response proves that ciphertext unusable for the
-selected Provider, so one bounded retry reuses the same projector in portable
-mode, retains visible agent text and relationships, inserts an omission marker
-only for opaque-only content, and leaves Codex history untouched. Requests with
-no encrypted replay content and second rejections are never retried by this
-policy.
-
 The release publication package owns one command tree and one subpackage per
 Forge. Within each Forge, publication writes and hosted observations are distinct
 operations. Cross-Forge verification consumes observations; artifact assembly
