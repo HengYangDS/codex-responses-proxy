@@ -85,11 +85,86 @@ class ResponseFailedContracts:
                 b'{"error":{"type":"invalid_request_error","code":"invalid_payload"}}',
                 "once",
             ),
+            (
+                400,
+                b'{"error":{"message":"Encrypted function output content could not be decrypted or decoded. (request id: fixture)","type":"invalid_request_error","param":"","code":"invalid_encrypted_content"}}',
+                "encrypted",
+            ),
+            (
+                400,
+                b'{"error":{"type":"invalid_request_error","code":"invalid_encrypted_content"}}',
+                "encrypted",
+            ),
+            (
+                400,
+                b'{"error":{"type":"provider_error","code":"invalid_encrypted_content"}}',
+                "",
+            ),
         )
         for status, payload, expected in cases:
             with subtests.test(status=status, payload=payload):
                 assert execution_recovery.retry_disposition(status, payload) == expected
         assert json.loads(execution_recovery.exhausted_payload(4))["error"]["attempts"] == 4
+
+    def test_encrypted_replay_recovery_removes_only_provider_bound_content(self):
+        raw = _body(
+            [
+                {
+                    "type": "agent_message",
+                    "author": "/root/reviewer",
+                    "recipient": "/root",
+                    "content": [
+                        {"type": "input_text", "text": "review complete"},
+                        {"type": "encrypted_content", "encrypted_content": "provider-bound"},
+                    ],
+                },
+                _message("user", "continue"),
+            ],
+            store=False,
+        )
+
+        recovered, metrics = execution_recovery.recover_encrypted_content(raw)
+
+        assert recovered is not None
+        assert metrics is not None
+        assert len(recovered) < len(raw)
+        assert metrics["encrypted_blocks"] == 1
+        assert metrics["omission_markers"] == 0
+        assert b"provider-bound" not in recovered
+        items = json.loads(recovered)["input"]
+        assert items[0]["type"] == "message"
+        assert "review complete" in items[0]["content"]
+        assert items[1] == _message("user", "continue")
+
+    def test_encrypted_replay_recovery_requires_actual_ciphertext(self):
+        raw = _body([_message("user", "continue")], store=False)
+
+        assert execution_recovery.recover_encrypted_content(raw) == (None, None)
+
+    def test_encrypted_replay_recovery_marks_ciphertext_only_agent_content(self):
+        raw = _body(
+            [
+                {
+                    "type": "agent_message",
+                    "author": "/root",
+                    "recipient": "/root/reviewer",
+                    "content": [
+                        {"type": "encrypted_content", "encrypted_content": "provider-bound"}
+                    ],
+                }
+            ],
+            store=False,
+        )
+
+        recovered, metrics = execution_recovery.recover_encrypted_content(raw)
+
+        assert recovered is not None
+        assert metrics is not None
+        item = json.loads(recovered)["input"][0]
+        assert item["type"] == "message"
+        assert "opaque provider content omitted" in item["content"]
+        assert metrics["encrypted_blocks"] == 1
+        assert metrics["omission_markers"] == 1
 
     def test_recovery_is_not_triggered_by_incidental_error_prose(self) -> None:
         prose_only = b'{"error":{"message":"response_failed and request blocked are documentation text","type":"invalid_request_error","code":"ordinary_error"}}'

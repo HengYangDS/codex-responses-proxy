@@ -42,6 +42,34 @@ class ProviderPortableHistoryTests:
         assert result.metrics.omission_markers == 0
         assert rewrite.sanitize_responses_body(result.body).body == result.body
 
+    def test_provider_rejection_projects_encrypted_agent_payload_to_portable_text(self):
+        message = {
+            "type": "agent_message",
+            "id": "agent_delivery",
+            "author": "/root/reviewer",
+            "recipient": "/root",
+            "phase": "commentary",
+            "content": [
+                {"type": "input_text", "text": "Message Type: FINAL_ANSWER\nPayload:\ncomplete"},
+                {"type": "encrypted_content", "encrypted_content": "provider-bound"},
+            ],
+            "internal_chat_message_metadata_passthrough": {"opaque": True},
+        }
+
+        result = rewrite.sanitize_responses_body(
+            _body({"input": [message]}), preserve_agent_ciphertext=False
+        )
+
+        assert result.body is not None, result.diagnostic()
+        projected = json.loads(result.body)["input"][0]
+        assert projected["type"] == "message"
+        assert projected["role"] == "assistant"
+        assert projected["phase"] == "commentary"
+        assert "Message Type: FINAL_ANSWER" in projected["content"]
+        assert "provider-bound" not in result.body.decode()
+        assert result.metrics.encrypted_blocks == 1
+        assert result.metrics.omission_markers == 0
+
     @pytest.mark.parametrize("ciphertext", [None, "", 1, {"nested": "value"}])
     def test_rejects_invalid_encrypted_agent_payload_without_empty_task(self, ciphertext):
         message = {

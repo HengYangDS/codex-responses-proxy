@@ -223,7 +223,9 @@ def _agent_ciphertext(item: JsonObject) -> int:
     return len(ciphertext)
 
 
-def _project_agent_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
+def _project_agent_message(
+    item: JsonObject, *, preserve_ciphertext: bool
+) -> tuple[JsonObject, dict[str, int]]:
     _unknown_fields(item, _AGENT_FIELDS, "unknown_agent_message_field")
     author, recipient = item.get("author"), item.get("recipient")
     phase = item.get("phase", "commentary")
@@ -236,7 +238,7 @@ def _project_agent_message(item: JsonObject) -> tuple[JsonObject, dict[str, int]
     content, _changed, encrypted, markers = project_assistant_text(
         item.get("content"), encrypted_marker=True, root_ciphertext=root_ciphertext
     )
-    if ciphertext:
+    if ciphertext and preserve_ciphertext:
         native = {
             key: value
             for key, value in item.items()
@@ -473,7 +475,9 @@ def _project_compaction_trigger(item: JsonObject) -> tuple[JsonObject, dict[str,
     }
 
 
-def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
+def _project_input(
+    items: list[object], *, preserve_agent_ciphertext: bool
+) -> tuple[list[object], dict[str, int]]:
     relationships = item_policy.ToolRelationships()
     projected: list[object] = []
     metrics = {
@@ -519,7 +523,7 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
         if strategy is item_policy.ProjectionStrategy.MESSAGE:
             projection = _project_message(item)
         elif strategy is item_policy.ProjectionStrategy.AGENT_MESSAGE:
-            projection = _project_agent_message(item)
+            projection = _project_agent_message(item, preserve_ciphertext=preserve_agent_ciphertext)
         elif strategy is item_policy.ProjectionStrategy.CALL:
             projection = _project_call(item, relationships)
         elif (
@@ -551,7 +555,9 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
     return projected, metrics
 
 
-def sanitize_responses_body(raw: bytes) -> ProjectionResult:
+def sanitize_responses_body(
+    raw: bytes, *, preserve_agent_ciphertext: bool = True
+) -> ProjectionResult:
     """Return portable request data and typed secret-free projection metrics."""
     try:
         payload = json.loads(raw)
@@ -593,7 +599,10 @@ def sanitize_responses_body(raw: bytes) -> ProjectionResult:
             if not raw_input:
                 _reject("empty_input")
         elif isinstance(raw_input, list):
-            candidate["input"], metrics = _project_input(cast("list[object]", raw_input))
+            candidate["input"], metrics = _project_input(
+                cast("list[object]", raw_input),
+                preserve_agent_ciphertext=preserve_agent_ciphertext,
+            )
         else:
             _reject("invalid_input")
     except (ProjectionRejectedError, RecursionError) as exc:
