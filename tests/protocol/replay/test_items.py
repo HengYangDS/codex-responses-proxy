@@ -34,7 +34,6 @@ def test_recognized_unimplemented_standard_item_is_schema_drift() -> None:
 @pytest.mark.parametrize(
     ("item_type", "strategy"),
     [
-        ("additional_tools", ProjectionStrategy.DROP_AUXILIARY),
         ("context_compaction", ProjectionStrategy.DROP_REFERENCE),
         ("image_generation_call", ProjectionStrategy.DROP_AUXILIARY),
         ("local_shell_call", ProjectionStrategy.DROP_LOCAL_TOOL),
@@ -49,6 +48,13 @@ def test_current_codex_auxiliary_items_have_portable_dispositions(
     assert policy is not None
     assert policy.projection is strategy
     assert policy.rejection_reason == ""
+
+
+def test_current_turn_tool_catalog_is_not_auxiliary_replay_history() -> None:
+    policy = classify_item("additional_tools")
+
+    assert policy is not None
+    assert policy.projection is ProjectionStrategy.TOOL_CATALOG
 
 
 @pytest.mark.parametrize("value", [None, "future_item", 1, {}])

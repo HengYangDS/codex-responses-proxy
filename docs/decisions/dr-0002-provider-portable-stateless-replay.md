@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-07
-- Last amended: 2026-09-23
+- Last amended: 2026-09-24
 
 ## Context
 
@@ -22,6 +22,10 @@ provider history: preserve their original envelope and ciphertext for the
 selected upstream. An upstream rejection cannot prove that the visible routing
 header contains the task, so it is relayed without a ciphertext-free retry.
 Unknown or structurally unproved replay material fails locally.
+Current-turn `additional_tools` declarations and payload-free compaction
+triggers are controls, not disposable replay history. Projection and shrinking
+recovery retain them; a recovery that cannot retain them declines rather than
+silently changing tool availability or compaction intent.
 
 Recovery consumes only the already-projected representation or a strictly
 smaller derivation of it. No recovery path restores an earlier provider-bound

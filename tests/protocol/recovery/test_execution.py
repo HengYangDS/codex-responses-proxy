@@ -30,6 +30,30 @@ def _output(kind, call_id, payload):
 
 
 class ResponseFailedContracts:
+    def test_bounded_recoveries_retain_current_turn_controls(self) -> None:
+        catalog = {
+            "type": "additional_tools",
+            "role": "developer",
+            "tools": [{"type": "namespace", "name": "functions", "tools": []}],
+        }
+        trigger = {"type": "compaction_trigger"}
+        latest = _message("user", "latest request")
+        raw = _body([catalog, _message("user", "old" + "x" * 10000), latest, trigger])
+
+        compact, compact_metrics = execution_recovery.compact_request(raw, COMPACTION_BUDGET)
+        dialogue, dialogue_metrics = execution_recovery.recover_dialogue(raw, COMPACTION_BUDGET)
+
+        assert compact is not None
+        assert dialogue is not None
+        assert json.loads(compact)["input"] == [catalog, latest, trigger]
+        assert json.loads(dialogue)["input"] == [catalog, latest, trigger]
+        assert compact_metrics is not None
+        assert compact_metrics["removed_inputs"] == 1
+        assert compact_metrics["retained_inputs"] == 3
+        assert dialogue_metrics is not None
+        assert dialogue_metrics["dropped_input_items"] == 1
+        assert dialogue_metrics["retained_messages"] == 1
+
     def test_shrinking_recovery_cannot_discard_an_encrypted_agent_task(self):
         task = {
             "type": "agent_message",

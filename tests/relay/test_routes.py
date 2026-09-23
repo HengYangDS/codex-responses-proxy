@@ -53,6 +53,12 @@ class ProviderRouteTests:
                 "include": ["reasoning.encrypted_content"],
                 "input": [
                     {
+                        "type": "additional_tools",
+                        "id": "current-tools",
+                        "role": "developer",
+                        "tools": [{"type": "namespace", "name": "functions", "tools": []}],
+                    },
+                    {
                         "type": "reasoning",
                         "id": "rs_old",
                         "encrypted_content": "opaque",
@@ -105,7 +111,13 @@ class ProviderRouteTests:
             payload = json.loads(forwarded)
             assert "previous_response_id" not in payload
             assert payload["include"] == []
-            assistant, user, call, output, trigger = payload["input"]
+            catalog, assistant, user, call, output, trigger = payload["input"]
+            assert catalog == {
+                "type": "additional_tools",
+                "id": "current-tools",
+                "role": "developer",
+                "tools": [{"type": "namespace", "name": "functions", "tools": []}],
+            }
             assert assistant == {
                 "type": "message",
                 "role": "assistant",
