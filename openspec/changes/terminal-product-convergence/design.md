@@ -390,6 +390,14 @@ CI, Release records, and asset transport. A missing GitLab Windows runner does
 not erase Windows evidence already proved by the GitHub native runner, but the
 GitLab projection must state that it does not provide that platform proof.
 
+At source `93aecba5`, GitHub Verify run `35885350727` executed its Windows
+Server 2025 native asset job (45 passed, one skip), Python 3.12–3.14 jobs, and
+published-predecessor compatibility. GitLab MR pipeline `8003` completed six
+Linux ARM64 jobs on project runner `35`. Its active tag and project variable
+match CUE's `linux-arm64` target; the macOS ARM64 Docker host is not presented
+as a Linux x86_64 or Windows runner. No unavailable runner gates this review,
+and GitLab does not claim Windows proof it did not execute.
+
 ### Evidence and documentation are reader paths, not residue stores
 
 Current acceptance is reconstructed from exact Git state, test and quality
