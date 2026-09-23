@@ -32,6 +32,8 @@ from codex_responses_proxy.runtime.process_environment import native_process_env
 from codex_responses_proxy.service.handoff import transaction as handoff_transaction
 from tests.release.fixtures import COMMAND_TIMEOUT_SECONDS
 from tests.release.fixtures import cleanup_runtime
+from tests.release.fixtures import native_service_projection
+from tests.release.fixtures import owned_runtime_contexts
 from tests.release.fixtures import post_response
 from tests.release.fixtures import run_command
 from tests.release.fixtures import runtime_context_for
@@ -761,6 +763,7 @@ class TestPublishedPredecessorCompatibility:
                 "--json",
             )
             assert reloaded["new_pid"] != after_runtime.get("pid")
+            owned_contexts = (*owned_runtime_contexts(ctx), ctx)
             removed = run_command(
                 current_executable,
                 environment,
@@ -773,7 +776,15 @@ class TestPublishedPredecessorCompatibility:
             assert set(removed) == {"command_removed", "state", "stopped"}
             assert removed["command_removed"] is True
             assert removed["state"] == "purged"
-            assert removed["stopped"] in {0, 1}
+            assert type(removed["stopped"]) is int
+            assert removed["stopped"] >= 0
+            projection = native_service_projection(ctx)
+            assert projection["status"] == "absent"
+            assert projection["configured_executable"] is None
+            assert all(
+                native_service_projection(owned_ctx)["processes"] == []
+                for owned_ctx in owned_contexts
+            )
             assert not install.exists()
             assert not payload_state.transaction_root(ctx).exists()
             assert process.listener_pids(port) == []
