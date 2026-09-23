@@ -40,6 +40,8 @@ def test_status_uses_the_read_only_lifecycle_owner(*, mocker) -> None:
 
 def test_status_returns_bounded_current_runtime_evidence(*, mocker) -> None:
     evidence = {
+        "state": "running",
+        "detail": "healthy",
         "release": "2.0.10",
         "payload_integrity": {
             "ok": True,
@@ -49,6 +51,7 @@ def test_status_returns_bounded_current_runtime_evidence(*, mocker) -> None:
         "listener_pids": [321],
         "runtime": {"pid": 321, "accepting": True},
         "payload_transaction": None,
+        "command": {"state": "owned", "path": "/commands/codex-responses-proxy"},
     }
     mocker.patch.object(application.control, "status", return_value=evidence)
     code, stdout, stderr = invoke("status", "--json")

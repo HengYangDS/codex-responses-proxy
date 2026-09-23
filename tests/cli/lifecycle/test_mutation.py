@@ -24,7 +24,9 @@ def test_install_delegates_exact_asset_trust_anchor_and_port(tmp_path: Path, *, 
         return_value=ctx,
     )
     install = mocker.patch.object(
-        application.install, "install_asset", return_value={"release": "2.0.8"}
+        application.install,
+        "install_asset",
+        return_value={"state": "installed", "release": "2.0.8"},
     )
     code, stdout, stderr = invoke(
         "install",
@@ -104,7 +106,7 @@ def test_unexpected_presentation_failure_has_a_bounded_public_result(
 def test_reload_delegates_transactionally_with_an_explicit_timeout(
     tmp_path: Path, *, mocker
 ) -> None:
-    result = {"old_pid": 321, "new_pid": 654}
+    result = {"state": "reloaded", "old_pid": 321, "new_pid": 654}
     ctx = install_context(tmp_path)
     mocker.patch.object(application.runtime_context, "create", return_value=ctx)
     reload = mocker.patch.object(application.control, "reload", return_value=result)
@@ -124,7 +126,11 @@ def test_install_delegates_with_an_explicit_timeout(tmp_path: Path, *, mocker) -
         "create",
         return_value=ctx,
     )
-    install = mocker.patch.object(application.install, "install_asset", return_value={})
+    install = mocker.patch.object(
+        application.install,
+        "install_asset",
+        return_value={"state": "installed", "release": "2.0.8"},
+    )
 
     invoke(
         "install",
@@ -166,14 +172,18 @@ def test_recover_restores_only_the_runtime_bound_retained_transaction(
     recover = mocker.patch.object(
         application.control,
         "recover",
-        return_value={"version": "2.0.13", "state": "rolled_back"},
+        return_value={"version": "2.0.13", "state": "rolled_back", "transaction_id": "tx"},
     )
 
     code, stdout, stderr = invoke("recover", "--json", "--port", "8801")
 
     assert code == 0
     assert stderr == ""
-    assert json.loads(stdout) == {"state": "rolled_back", "version": "2.0.13"}
+    assert json.loads(stdout) == {
+        "state": "rolled_back",
+        "version": "2.0.13",
+        "transaction_id": "tx",
+    }
     context.assert_called_once_with(port=8801)
     recover.assert_called_once_with(ctx)
 

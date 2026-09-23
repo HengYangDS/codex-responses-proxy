@@ -85,12 +85,25 @@ class ProductInterfaceContracts:
 
     def test_every_public_command_can_emit_stable_json(self, *, mocker) -> None:
         results = {
-            "install": {"release": "2.0.48"},
-            "status": {"release": "2.0.48"},
-            "doctor": {"ok": True, "checks": {}},
-            "rollback": {"state": "unavailable"},
-            "recover": {"state": "closed", "version": "2.0.48"},
-            "reload": {"old_pid": 41, "new_pid": 42},
+            "install": {"state": "unchanged", "release": "2.0.48"},
+            "status": {
+                "state": "not_installed",
+                "detail": "not installed",
+                "release": None,
+                "payload_integrity": {"ok": False, "detail": "not installed"},
+                "command": {"state": "absent"},
+                "service": "absent",
+                "listener_pids": [],
+            },
+            "doctor": {
+                "ok": True,
+                "state": "running",
+                "checks": {"payload": {"status": "passed", "detail": "verified"}},
+                "next": None,
+            },
+            "rollback": {"state": "unavailable", "detail": "no verified predecessor"},
+            "recover": {"state": "closed", "version": "2.0.48", "transaction_id": "tx"},
+            "reload": {"state": "reloaded", "old_pid": 41, "new_pid": 42},
             "uninstall": {"state": "uninstalled", "stopped": 1, "command_removed": True},
         }
         arguments = {
@@ -458,6 +471,8 @@ class ProductInterfaceContracts:
             application,
             "dispatch",
             return_value={
+                "state": "not_installed",
+                "detail": "not installed",
                 "command": {"state": "absent", "kind": None},
                 "listener_pids": [],
                 "payload_integrity": {"ok": False},
