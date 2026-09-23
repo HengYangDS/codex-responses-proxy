@@ -68,8 +68,9 @@ def test_projection_replaces_only_absent_or_exact_owned_link(tmp_path: Path) -> 
     foreign.write_text("foreign", encoding="utf-8")
     command_path.unlink()
     command_path.symlink_to(foreign)
-    with pytest.raises(errors.InstallError, match="occupied by another owner"):
+    with pytest.raises(errors.InstallError, match="occupied by another owner") as raised:
         command.project(command_path, target)
+    assert str(command_path) not in str(raised.value)
     assert command_path.resolve() == foreign.resolve()
 
 
@@ -186,8 +187,9 @@ def test_project_rejects_invalid_target_and_reports_native_failures(
         raise OSError("projection unavailable")
 
     monkeypatch.setattr(command.os, "symlink", fail_projection)
-    with pytest.raises(errors.InstallError, match="native command projection failed"):
+    with pytest.raises(errors.InstallError, match="native command projection failed") as raised:
         command.project(command_path, target)
+    assert str(command_path) not in str(raised.value)
     assert not list(command_path.parent.glob(".*.tmp-*"))
 
 
@@ -324,8 +326,9 @@ def test_detach_handles_absence_snapshot_ownership_and_unlink_failure(
     assert not command_path.exists()
 
     command_path.write_text("changed owner", encoding="utf-8")
-    with pytest.raises(errors.InstallError, match="changed ownership"):
+    with pytest.raises(errors.InstallError, match="changed ownership") as raised:
         command.detach(command_path, target, replace(prior, device=-1))
+    assert str(command_path) not in str(raised.value)
 
     command_path.unlink()
     command.project(command_path, target)
@@ -337,8 +340,9 @@ def test_detach_handles_absence_snapshot_ownership_and_unlink_failure(
         real_unlink(self, missing_ok=missing_ok)
 
     monkeypatch.setattr(Path, "unlink", fail_owned_unlink)
-    with pytest.raises(errors.InstallError, match="native command removal failed"):
+    with pytest.raises(errors.InstallError, match="native command removal failed") as raised:
         command.detach(command_path, target, command.snapshot(command_path, target))
+    assert str(command_path) not in str(raised.value)
 
 
 def test_restore_and_remove_cover_owned_absent_and_unlink_failure(

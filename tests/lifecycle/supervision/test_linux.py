@@ -202,11 +202,15 @@ class TestLinuxLifecycle:
             mocker.patch.object(
                 linux.subprocess,
                 "run",
-                side_effect=[_completed(), _completed(returncode=1, stderr=" denied ")],
+                side_effect=[
+                    _completed(),
+                    _completed(returncode=1, stderr="denied at /home/private/unit"),
+                ],
             )
 
-            with pytest.raises(errors.InstallError, match="systemctl enable failed: denied"):
+            with pytest.raises(errors.InstallError, match="systemctl enable failed") as raised:
                 linux._install_systemd(ctx)
+            assert "/home/private/unit" not in str(raised.value)
 
     def test_uninstall_and_status(self, *, mocker):
         with _temporary_context("log_dir") as ctx:
@@ -275,11 +279,12 @@ class TestLinuxLifecycle:
                 "run",
                 side_effect=[
                     _completed(stdout="LoadState=loaded\nActiveState=inactive\n"),
-                    _completed(returncode=1, stderr="denied"),
+                    _completed(returncode=1, stderr="denied at /home/private/unit"),
                 ],
             )
-            with pytest.raises(errors.InstallError, match="systemctl disable failed"):
+            with pytest.raises(errors.InstallError, match="systemctl disable failed") as raised:
                 linux.uninstall(ctx)
+            assert "/home/private/unit" not in str(raised.value)
             assert unit.exists()
 
             _set_file(unit, "unit")

@@ -168,7 +168,7 @@ def expected_metadata(root: str) -> RuntimeSnapshot:
         manifest_sha256 = digest.sha256_file(Path(manifest_path))
     except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise errors.InstallError(
-            f"payload files are unavailable for a handoff transaction: {exc}"
+            "payload files are unavailable for a handoff transaction"
         ) from exc
     if not isinstance(release, str) or not release:
         raise errors.InstallError("payload manifest has no release version")

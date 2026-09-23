@@ -106,18 +106,22 @@ class TestWindowsLifecycle:
             assert not imported.exists()
             for completed, error in (
                 (
-                    _completed(returncode=1, stderr=" denied ", stdout="fallback"),
-                    "denied",
+                    _completed(returncode=1, stderr="denied at C:/Users/private/secret"),
+                    "schtasks create failed",
                 ),
-                (_completed(returncode=1, stdout=" fallback "), "fallback"),
+                (
+                    _completed(returncode=1, stdout="failed at C:/Users/private/secret"),
+                    "schtasks create failed",
+                ),
             ):
                 mocker.patch.object(
                     windows.subprocess,
                     "run",
                     side_effect=[_completed(returncode=1), _completed(), completed],
                 )
-                with pytest.raises(errors.InstallError, match=error):
+                with pytest.raises(errors.InstallError, match=error) as raised:
                     windows.install(ctx)
+                assert "C:/Users/private/secret" not in str(raised.value)
 
     def test_install_replaces_only_a_proved_predecessor_generation(self, *, mocker) -> None:
         ctx = platform_context(windows=True)
@@ -157,10 +161,10 @@ class TestWindowsLifecycle:
         ("started", "configured", "successor", "message"),
         [
             (
-                _completed(returncode=1, stderr="denied"),
+                _completed(returncode=1, stderr="denied at C:/Users/private/secret"),
                 "expected",
                 object(),
-                "run failed: denied",
+                "run failed",
             ),
             (_completed(), "other", object(), "task executable is unproved"),
             (
@@ -184,8 +188,9 @@ class TestWindowsLifecycle:
             side_effect=[_completed(), _completed(), started],
         )
 
-        with pytest.raises(errors.InstallError, match=message):
+        with pytest.raises(errors.InstallError, match=message) as raised:
             windows.install(ctx)
+        assert "C:/Users/private/secret" not in str(raised.value)
 
     def test_watchdog_wait_is_bounded_and_requires_one_live_identity(self, *, mocker) -> None:
         ctx = platform_context(windows=True)
@@ -277,15 +282,19 @@ class TestWindowsLifecycle:
         ctx = platform_context(windows=True)
         for results, message in (
             (
-                [_completed(returncode=1, stderr="denied"), _completed()],
+                [
+                    _completed(returncode=1, stderr="denied at C:/Users/private/secret"),
+                    _completed(),
+                ],
                 "delete failed",
             ),
             ([_completed(), _completed(stdout="Ready")], "remains registered"),
         ):
             mocker.patch.object(windows.subprocess, "run", side_effect=results)
             inventory = mocker.patch.object(windows, "_running_watchdog_pids")
-            with pytest.raises(errors.InstallError, match=message):
+            with pytest.raises(errors.InstallError, match=message) as raised:
                 windows.uninstall(ctx)
+            assert "C:/Users/private/secret" not in str(raised.value)
             inventory.assert_not_called()
 
     def test_uninstall_refuses_watchdog_residue_when_task_is_absent(self, *, mocker) -> None:

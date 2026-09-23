@@ -88,12 +88,13 @@ class TestMacosLifecycle:
                 "run",
                 side_effect=[
                     _completed(stdout=_service(41)),
-                    _completed(returncode=1, stderr=" denied "),
+                    _completed(returncode=1, stderr="denied at /Users/private/LaunchAgents"),
                 ],
             )
 
-            with pytest.raises(errors.InstallError, match="launchctl bootout failed: denied"):
+            with pytest.raises(errors.InstallError, match="launchctl bootout failed") as raised:
                 macos.install(ctx)
+            assert "/Users/private/LaunchAgents" not in str(raised.value)
 
     @pytest.mark.parametrize(
         ("configured", "captured", "message"),
@@ -320,12 +321,13 @@ class TestMacosLifecycle:
                 side_effect=[
                     _completed(returncode=113),
                     _completed(),
-                    _completed(returncode=1, stderr=" denied "),
+                    _completed(returncode=1, stderr="denied at /Users/private/LaunchAgents"),
                 ],
             )
 
-            with pytest.raises(errors.InstallError, match="launchctl bootstrap failed: denied"):
+            with pytest.raises(errors.InstallError, match="launchctl bootstrap failed") as raised:
                 macos.install(ctx)
+            assert "/Users/private/LaunchAgents" not in str(raised.value)
 
     def test_plist_executes_the_installed_binary_in_private_watchdog_mode(self):
         with _temporary_context("log_dir") as ctx:
@@ -407,11 +409,12 @@ class TestMacosLifecycle:
                 "run",
                 side_effect=[
                     _completed(stdout=_service(73)),
-                    _completed(returncode=1, stderr="denied"),
+                    _completed(returncode=1, stderr="denied at /Users/private/LaunchAgents"),
                 ],
             )
-            with pytest.raises(errors.InstallError, match="launchctl bootout failed"):
+            with pytest.raises(errors.InstallError, match="launchctl bootout failed") as raised:
                 macos.uninstall(ctx)
+            assert "/Users/private/LaunchAgents" not in str(raised.value)
             assert plist.exists()
             wait_for_executable.assert_called_once_with(
                 73,

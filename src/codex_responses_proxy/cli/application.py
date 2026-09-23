@@ -340,6 +340,8 @@ def _error(
 def _execute(command: str, *, as_json: bool = False, **arguments: object) -> int:
     try:
         result = dispatch(command, **arguments)
+        _render(command, result, as_json=as_json)
+        return _result_code(command, result)
     except errors.ProductError as error:
         _error(
             str(error),
@@ -348,8 +350,9 @@ def _execute(command: str, *, as_json: bool = False, **arguments: object) -> int
             code=error.code,
         )
         return 2
-    _render(command, result, as_json=as_json)
-    return _result_code(command, result)
+    except Exception:
+        _error("product command failed unexpectedly", as_json=as_json, code="internal_error")
+        return 2
 
 
 def _app() -> App:

@@ -93,7 +93,7 @@ def _install_systemd(ctx: runtime_spec.NativeServiceContext) -> None:
         text=True,
     )
     if enabled.returncode != 0:
-        raise errors.InstallError(f"systemctl enable failed: {enabled.stderr.strip()}")
+        raise errors.InstallError(f"systemctl enable failed (exit {enabled.returncode})")
     restarted = subprocess.run(
         ["systemctl", "--user", "restart", service],
         capture_output=True,
@@ -101,8 +101,7 @@ def _install_systemd(ctx: runtime_spec.NativeServiceContext) -> None:
         text=True,
     )
     if restarted.returncode != 0:
-        detail = restarted.stderr.strip() or restarted.stdout.strip()
-        raise errors.InstallError(f"systemctl restart failed: {detail}")
+        raise errors.InstallError(f"systemctl restart failed (exit {restarted.returncode})")
     observed = subprocess.run(
         ["systemctl", "--user", "show", service, "--property=MainPID", "--value"],
         capture_output=True,
@@ -152,8 +151,7 @@ def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
             text=True,
         )
         if disabled.returncode and registered:
-            detail = disabled.stderr.strip() or disabled.stdout.strip()
-            raise errors.InstallError(f"systemctl disable failed: {detail}")
+            raise errors.InstallError(f"systemctl disable failed (exit {disabled.returncode})")
         unit.unlink(missing_ok=True)
         reloaded = subprocess.run(
             ["systemctl", "--user", "daemon-reload"],

@@ -85,10 +85,6 @@ def _service_target(ctx: runtime_spec.NativeServiceContext) -> str:
     return f"{_domain_target()}/{ctx.service_id}"
 
 
-def _detail(completed: subprocess.CompletedProcess[str]) -> str:
-    return completed.stderr.strip() or completed.stdout.strip() or f"exit {completed.returncode}"
-
-
 def _service(ctx: runtime_spec.NativeServiceContext) -> _Service:
     completed = subprocess.run(
         [_native_tool("launchctl"), "print", _service_target(ctx)],
@@ -99,7 +95,7 @@ def _service(ctx: runtime_spec.NativeServiceContext) -> _Service:
     if completed.returncode == _SERVICE_ABSENT:
         return _Service(False, None)
     if completed.returncode:
-        msg = f"launchctl print failed: {_detail(completed)}"
+        msg = f"launchctl print failed (exit {completed.returncode})"
         raise errors.InstallError(msg)
     match = _PID.search(completed.stdout)
     return _Service(True, int(match.group("pid")) if match else None)
@@ -107,7 +103,7 @@ def _service(ctx: runtime_spec.NativeServiceContext) -> _Service:
 
 def _require_success(completed: subprocess.CompletedProcess[str], operation: str) -> None:
     if completed.returncode:
-        msg = f"launchctl {operation} failed: {_detail(completed)}"
+        msg = f"launchctl {operation} failed (exit {completed.returncode})"
         raise errors.InstallError(msg)
 
 

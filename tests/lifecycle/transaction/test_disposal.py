@@ -438,14 +438,37 @@ def test_finalize_reports_cleanup_failure_without_erasing_success_state(
     transaction.commit_projection()
     transaction.activate()
     mocker.patch.object(
-        payload_transaction.shutil, "rmtree", side_effect=OSError("cleanup blocked")
+        payload_transaction.shutil,
+        "rmtree",
+        side_effect=OSError("cleanup blocked at /Users/private/transaction"),
     )
 
-    with pytest.raises(errors.InstallError, match="cleanup failed"):
+    with pytest.raises(errors.InstallError, match="cleanup failed") as raised:
         transaction.finalize({"pid": 123})
+    assert "/Users/private/transaction" not in str(raised.value)
 
     assert Path(payload_state.installed_path(ctx)).is_file()
     assert Path(payload_state.journal_path(ctx)).is_file()
+
+
+def test_finalization_journal_omits_private_failure_details(tmp_path: Path, *, mocker) -> None:
+    ctx = install_context(tmp_path)
+    transaction = begin_transaction(ctx, released_artifact(), mocker=mocker)
+    transaction.commit_projection()
+    transaction.activate()
+    mocker.patch.object(
+        payload_generation,
+        "select",
+        side_effect=errors.InstallError("selection failed at /Users/private/payload"),
+    )
+
+    with pytest.raises(errors.InstallError, match="selection failed"):
+        transaction.finalize({"pid": 123})
+
+    journal = payload_state.read_journal(ctx)
+    assert journal["state"] == "recovery_required"
+    assert journal["reason"] == "finalization failed"
+    assert "/Users/private/payload" not in Path(payload_state.journal_path(ctx)).read_text()
 
 
 def test_commit_and_cleanup_fail_closed_on_unproved_terminal_state(
@@ -478,16 +501,16 @@ def test_commit_and_cleanup_fail_closed_on_unproved_terminal_state(
     mocker.patch.object(
         payload_transaction.PayloadTransaction,
         "rollback",
-        side_effect=errors.InstallError("restore failed"),
+        side_effect=errors.InstallError("restore failed at /Users/private/rollback"),
     )
     with (
         subtests.test("rollback"),
         pytest.raises(
-            errors.InstallError,
-            match="payload commit failed and rollback failed: restore failed",
-        ),
+            errors.InstallError, match="payload commit failed and rollback failed"
+        ) as raised,
     ):
         transaction.commit_projection()
+    assert "/Users/private/rollback" not in str(raised.value)
     mocker.stopall()
 
     ctx = install_context(tmp_path / "cleanup")
