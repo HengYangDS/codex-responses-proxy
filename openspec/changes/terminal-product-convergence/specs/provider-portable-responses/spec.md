@@ -123,6 +123,17 @@ unchanged.
   does not manufacture a continuation identifier, stored item, or decrypted
   value.
 
+#### Scenario: Codex declares tools for the current turn
+
+- **WHEN** a request contains a valid `additional_tools` control with a nonempty
+  tool catalog
+- **THEN** the projection preserves that current-turn control, including its
+  declared role, catalog, and client item identity, rather than deleting it as
+  auxiliary replay history
+- **AND** malformed outer controls are rejected before upstream I/O
+- **AND** shrinking recovery retains the tool catalog and compaction intent or
+  declines recovery instead of silently changing the available tools.
+
 #### Scenario: Portable content is projected
 
 - **WHEN** canonical dialogue, complete tool relationships, payload-free

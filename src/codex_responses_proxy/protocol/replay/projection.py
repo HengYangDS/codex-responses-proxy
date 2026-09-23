@@ -97,6 +97,7 @@ _DETACHED_DELIVERY_FIELDS = frozenset(
         "internal_chat_message_metadata_passthrough",
     )
 )
+_TOOL_CATALOG_FIELDS = frozenset(("type", "id", "role", "tools"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -473,6 +474,29 @@ def _project_compaction_trigger(item: JsonObject) -> tuple[JsonObject, dict[str,
     }
 
 
+def _project_tool_catalog(item: JsonObject) -> tuple[JsonObject, dict[str, int]]:
+    """Preserve the current turn's declared tools, not replay history."""
+    _unknown_fields(item, _TOOL_CATALOG_FIELDS, "unknown_additional_tools_field")
+    role, tools = item.get("role"), item.get("tools")
+    item_id = item.get("id")
+    if (
+        not isinstance(role, str)
+        or not role
+        or not isinstance(tools, list)
+        or not tools
+        or any(not isinstance(tool, dict) or not tool for tool in tools)
+        or ("id" in item and (not isinstance(item_id, str) or not item_id))
+    ):
+        _reject("invalid_additional_tools")
+    return dict(item), {
+        "changed": 0,
+        "item_ids": 0,
+        "encrypted_blocks": 0,
+        "omission_markers": 0,
+        "local_image_items": 0,
+    }
+
+
 def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
     relationships = item_policy.ToolRelationships()
     projected: list[object] = []
@@ -537,6 +561,8 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
             projection = _project_output(item, relationships)
         elif strategy is item_policy.ProjectionStrategy.COMPACTION_TRIGGER:
             projection = _project_compaction_trigger(item)
+        elif strategy is item_policy.ProjectionStrategy.TOOL_CATALOG:
+            projection = _project_tool_catalog(item)
         else:
             _reject(policy.rejection_reason)
         value, item_metrics = projection

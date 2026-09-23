@@ -357,7 +357,25 @@ class TestInputDiagnostic:
 
 
 class TestDialogueRecovery:
-    """Build one strictly smaller, text-only current-dialogue request."""
+    """Build one smaller current-dialogue request without losing turn controls."""
+
+    def test_recovery_retains_current_turn_controls_with_latest_dialogue(self) -> None:
+        catalog = {
+            "type": "additional_tools",
+            "role": "developer",
+            "tools": [{"type": "namespace", "name": "functions", "tools": []}],
+        }
+        trigger = {"type": "compaction_trigger"}
+        current = {"type": "message", "role": "user", "content": "current request"}
+        old = {"type": "message", "role": "user", "content": "old request"}
+
+        _, recovery, metrics = _recover({"input": [catalog, old, current, trigger]}, 0)
+
+        assert recovery is not None
+        assert json.loads(recovery)["input"] == [catalog, current, trigger]
+        assert metrics is not None
+        assert metrics.dropped_input_items == 1
+        assert metrics.retained_messages == 1
 
     def test_preserves_envelope_and_reports_exact_reduction(self) -> None:
         payload: dict[str, object] = {

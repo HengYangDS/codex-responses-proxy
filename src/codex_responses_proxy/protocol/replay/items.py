@@ -17,6 +17,7 @@ class ProjectionStrategy(StrEnum):
     AGENT_MESSAGE = "agent_message"
     CALL = "call"
     OUTPUT = "output"
+    TOOL_CATALOG = "tool_catalog"
     COMPACTION_TRIGGER = "compaction_trigger"
     DROP_REASONING = "drop_reasoning"
     DROP_REFERENCE = "drop_reference"
@@ -74,7 +75,7 @@ ITEM_POLICIES: Final = MappingProxyType(
     {
         "message": _policy(ProjectionStrategy.MESSAGE),
         "agent_message": _policy(ProjectionStrategy.AGENT_MESSAGE),
-        "additional_tools": _policy(ProjectionStrategy.DROP_AUXILIARY),
+        "additional_tools": _policy(ProjectionStrategy.TOOL_CATALOG),
         "reasoning": _policy(ProjectionStrategy.DROP_REASONING),
         "item_reference": _policy(ProjectionStrategy.DROP_REFERENCE),
         "compaction": _policy(ProjectionStrategy.DROP_REFERENCE),
@@ -111,6 +112,17 @@ ITEM_POLICIES: Final = MappingProxyType(
 def classify_item(item_type: object) -> ItemPolicy | None:
     """Return the policy for a recognized string item type."""
     return ITEM_POLICIES.get(item_type) if isinstance(item_type, str) else None
+
+
+def is_current_turn_control(item: object) -> bool:
+    """Keep active tool availability and compaction intent through recovery."""
+    if not isinstance(item, dict):
+        return False
+    policy = classify_item(item.get("type"))
+    return policy is not None and policy.projection in {
+        ProjectionStrategy.TOOL_CATALOG,
+        ProjectionStrategy.COMPACTION_TRIGGER,
+    }
 
 
 def item_type_label(item_type: object) -> str:

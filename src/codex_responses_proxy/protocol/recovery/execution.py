@@ -124,8 +124,13 @@ def compact_request(raw: bytes, budget: int) -> Recovery:
     for start in range(1, latest_user_index + 1):
         if not tool_pair_boundary_is_safe(input_items, start):
             continue
+        retained = [
+            item
+            for index, item in enumerate(input_items)
+            if index >= start or item_policy.is_current_turn_control(item)
+        ]
         candidate = dict(payload)
-        candidate["input"] = input_items[start:]
+        candidate["input"] = retained
         candidate["store"] = False
         candidate.pop("prompt_cache_key", None)
         compact = json.dumps(candidate, separators=(",", ":")).encode("utf-8")
@@ -133,8 +138,8 @@ def compact_request(raw: bytes, budget: int) -> Recovery:
             "original_bytes": len(raw),
             "budget_bytes": bounded_budget,
             "compact_bytes": len(compact),
-            "removed_inputs": start,
-            "retained_inputs": len(input_items) - start,
+            "removed_inputs": len(input_items) - len(retained),
+            "retained_inputs": len(retained),
             "prompt_cache_key_removed": "prompt_cache_key" in payload,
         }
         if len(compact) <= bounded_budget:
@@ -149,7 +154,7 @@ def compact_request(raw: bytes, budget: int) -> Recovery:
 
 
 def recover_dialogue(raw: bytes, budget: int) -> Recovery:
-    """Build the final instruction-and-user-only recovery request."""
+    """Keep current instructions, user request, and turn controls in the final recovery."""
     bounded_budget = _budget(raw, budget)
     request = _request(raw)
     if bounded_budget is None or request is None:
@@ -167,10 +172,11 @@ def recover_dialogue(raw: bytes, budget: int) -> Recovery:
             start = index
             break
 
-    dialogue = []
-    if start != latest_user_index:
-        dialogue.append(input_items[start])
-    dialogue.append(input_items[latest_user_index])
+    retained = {start, latest_user_index}
+    retained.update(
+        index for index, item in enumerate(input_items) if item_policy.is_current_turn_control(item)
+    )
+    dialogue = [input_items[index] for index in sorted(retained)]
 
     candidate = dict(payload)
     candidate["input"] = dialogue
@@ -183,7 +189,7 @@ def recover_dialogue(raw: bytes, budget: int) -> Recovery:
         "original_bytes": len(raw),
         "recovery_bytes": len(recovery),
         "budget_bytes": bounded_budget,
-        "retained_messages": len(dialogue),
+        "retained_messages": 1 + int(start != latest_user_index),
         "dropped_input_items": len(input_items) - len(dialogue),
         "prompt_cache_key_removed": "prompt_cache_key" in payload,
     }

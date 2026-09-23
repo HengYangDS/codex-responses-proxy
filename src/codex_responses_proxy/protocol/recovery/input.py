@@ -161,7 +161,7 @@ def format_diagnostic(diagnostic: InputDiagnostic | dict[str, object]) -> str:
 
 
 def build_recovery(raw: bytes, budget: int) -> tuple[bytes | None, RecoveryMetrics | None]:
-    """Build one instructions-plus-current-dialogue request, or reject safely."""
+    """Keep current dialogue and turn controls in one smaller request."""
     if isinstance(budget, bool) or budget <= 0:
         return None, None
     payload = _load_json(raw)
@@ -191,7 +191,7 @@ def build_recovery(raw: bytes, budget: int) -> tuple[bytes | None, RecoveryMetri
     return recovery, RecoveryMetrics(
         original_bytes=len(raw),
         recovery_bytes=len(recovery),
-        retained_messages=len(dialogue),
+        retained_messages=sum(item.get("type") == "message" for item in dialogue),
         dropped_input_items=dropped_items,
         provider_bindings_removed=removed_bindings,
         reasoning_include_removed=include_removed,
@@ -220,9 +220,16 @@ def _current_dialogue(items: Sequence[object]) -> list[JsonObject] | None:
                 latest[role] = index
     if "user" not in latest:
         return None
+    retained = set(latest.values())
+    retained.update(
+        index for index, item in enumerate(items) if item_policy.is_current_turn_control(item)
+    )
     dialogue: list[JsonObject] = []
-    for index in sorted(latest.values()):
+    for index in sorted(retained):
         item = items[index]
+        if item_policy.is_current_turn_control(item):
+            dialogue.append(cast(JsonObject, item))
+            continue
         match item:
             case {"role": str(role), "content": value} if content := _text_content(value):
                 dialogue.append({"type": "message", "role": role, "content": content})
