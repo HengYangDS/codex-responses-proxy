@@ -660,6 +660,10 @@ class TestControllerHandoffWiring:
         root = Path(self.tempdir.name)
         manifest_path = root / inventory.MANIFEST_FILENAME
 
+        with pytest.raises(errors.InstallError, match="payload files are unavailable") as raised:
+            handoff.expected_metadata(str(root))
+        assert str(root) not in str(raised.value)
+
         for payload in (
             b"not-json",
             b"{}",

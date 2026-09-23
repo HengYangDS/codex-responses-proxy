@@ -52,7 +52,7 @@ def snapshot(command_path: Path, target: Path) -> Snapshot:
     """Prove the command path is absent or owned before payload mutation."""
     state, kind = _classify(command_path, target)
     if state == "foreign":
-        raise errors.InstallError(f"command path is occupied by another owner: {command_path}")
+        raise errors.InstallError("command path is occupied by another owner")
     if state == "absent":
         return Snapshot(state="absent", path=str(command_path), target=str(target))
     metadata = command_path.lstat()
@@ -133,7 +133,7 @@ def project(command_path: Path, target: Path, previous: Snapshot | None = None) 
     if state == "owned":
         return
     if state == "foreign" and not _matches_snapshot(command_path, previous):
-        raise errors.InstallError(f"command path is occupied by another owner: {command_path}")
+        raise errors.InstallError("command path is occupied by another owner")
     command_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = command_path.with_name(f".{command_path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}")
     try:
@@ -145,7 +145,7 @@ def project(command_path: Path, target: Path, previous: Snapshot | None = None) 
     except OSError as exc:
         if previous is not None and previous_path != command_path and previous.state == "owned":
             _restore_snapshot(previous_path, Path(previous.target), previous)
-        raise errors.InstallError(f"native command projection failed: {command_path}") from exc
+        raise errors.InstallError("native command projection failed") from exc
     finally:
         temporary.unlink(missing_ok=True)
     if _classify(command_path, target)[0] != "owned":
@@ -158,11 +158,11 @@ def detach(command_path: Path, target: Path, previous: Snapshot) -> None:
     if state == "absent":
         return
     if state == "foreign" and not _matches_snapshot(command_path, previous):
-        raise errors.InstallError(f"command path changed ownership: {command_path}")
+        raise errors.InstallError("command path changed ownership")
     try:
         command_path.unlink()
     except OSError as exc:
-        raise errors.InstallError(f"native command removal failed: {command_path}") from exc
+        raise errors.InstallError("native command removal failed") from exc
 
 
 def restore(command_path: Path, target: Path, previous: Snapshot) -> None:
@@ -172,7 +172,7 @@ def restore(command_path: Path, target: Path, previous: Snapshot) -> None:
         return
     state, _kind = _classify(command_path, target)
     if state == "foreign":
-        raise errors.InstallError(f"command path changed ownership: {command_path}")
+        raise errors.InstallError("command path changed ownership")
     if state == "owned":
         command_path.unlink()
     if previous.state == "owned":
@@ -185,11 +185,11 @@ def remove(command_path: Path, target: Path) -> bool:
     if state == "absent":
         return False
     if state == "foreign":
-        raise errors.InstallError(f"command path changed ownership: {command_path}")
+        raise errors.InstallError("command path changed ownership")
     try:
         command_path.unlink()
     except OSError as exc:
-        raise errors.InstallError(f"native command removal failed: {command_path}") from exc
+        raise errors.InstallError("native command removal failed") from exc
     return True
 
 
@@ -234,11 +234,11 @@ def windows_launcher(target: Path) -> bytes:
 
 def _remove_snapshot(command_path: Path, previous: Snapshot) -> None:
     if not _matches_snapshot(command_path, previous):
-        raise errors.InstallError(f"command path changed ownership: {command_path}")
+        raise errors.InstallError("command path changed ownership")
     try:
         command_path.unlink()
     except OSError as exc:
-        raise errors.InstallError(f"native command removal failed: {command_path}") from exc
+        raise errors.InstallError("native command removal failed") from exc
 
 
 def _restore_snapshot(command_path: Path, target: Path, previous: Snapshot) -> None:
@@ -255,7 +255,7 @@ def _restore_snapshot(command_path: Path, target: Path, previous: Snapshot) -> N
             raise errors.InstallError("command snapshot kind is invalid")
         os.replace(temporary, command_path)
     except OSError as exc:
-        raise errors.InstallError(f"native command restoration failed: {command_path}") from exc
+        raise errors.InstallError("native command restoration failed") from exc
     finally:
         temporary.unlink(missing_ok=True)
 

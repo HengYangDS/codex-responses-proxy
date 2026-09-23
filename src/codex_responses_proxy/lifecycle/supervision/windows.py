@@ -144,8 +144,7 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
             text=True,
         )
         if created.returncode:
-            detail = created.stderr.strip() or created.stdout.strip()
-            raise errors.InstallError(f"schtasks create failed: {detail}")
+            raise errors.InstallError(f"schtasks create failed (exit {created.returncode})")
     finally:
         os.unlink(xml_path)
     started = subprocess.run(
@@ -155,8 +154,7 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
         text=True,
     )
     if started.returncode:
-        detail = started.stderr.strip() or started.stdout.strip()
-        raise errors.InstallError(f"schtasks run failed: {detail}")
+        raise errors.InstallError(f"schtasks run failed (exit {started.returncode})")
     if configured_executable(ctx) != ctx.executable:
         raise errors.InstallError("scheduled watchdog task executable is unproved")
     if _wait_for_watchdog(ctx) is None:
@@ -199,8 +197,7 @@ def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
     )
     if deleted.returncode:
         if status(ctx) != "absent":
-            detail = deleted.stderr.strip() or deleted.stdout.strip()
-            raise errors.InstallError(f"schtasks delete failed: {detail}")
+            raise errors.InstallError(f"schtasks delete failed (exit {deleted.returncode})")
     elif status(ctx) != "absent":
         raise errors.InstallError("scheduled watchdog task remains registered after deletion")
     # PID discovery and termination are separate observations. Re-read every

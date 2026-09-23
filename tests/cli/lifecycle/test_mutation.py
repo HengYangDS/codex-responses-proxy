@@ -49,6 +49,58 @@ def test_install_delegates_exact_asset_trust_anchor_and_port(tmp_path: Path, *, 
     create.assert_called_once_with(port=8801)
 
 
+@pytest.mark.parametrize("json_output", [False, True])
+def test_unexpected_install_failure_has_a_bounded_public_result(
+    tmp_path: Path, json_output: bool, *, mocker
+) -> None:
+    mocker.patch.object(
+        application.runtime_context, "create", return_value=install_context(tmp_path)
+    )
+    mocker.patch.object(
+        application.install,
+        "install_asset",
+        side_effect=OSError("cannot write /Users/private/payload"),
+    )
+    arguments = ["install", "--asset", "release.tar.gz", "--trust-anchor", "trust.json"]
+    if json_output:
+        arguments.append("--json")
+
+    code, stdout, stderr = invoke(*arguments)
+
+    assert code == 2
+    assert stdout == ""
+    assert "/Users/private/payload" not in stderr
+    assert "Traceback" not in stderr
+    if json_output:
+        assert json.loads(stderr)["error"]["code"] == "internal_error"
+    else:
+        assert "Action required" in stderr
+
+
+def test_unexpected_presentation_failure_has_a_bounded_public_result(
+    tmp_path: Path, *, mocker
+) -> None:
+    mocker.patch.object(
+        application.runtime_context, "create", return_value=install_context(tmp_path)
+    )
+    mocker.patch.object(application.install, "install_asset", return_value={"release": "4.0.4"})
+    mocker.patch.object(
+        application.presentation,
+        "render",
+        side_effect=RuntimeError("renderer at /Users/private/module.py"),
+    )
+
+    code, stdout, stderr = invoke(
+        "install", "--asset", "release.tar.gz", "--trust-anchor", "trust.json"
+    )
+
+    assert code == 2
+    assert stdout == ""
+    assert "Action required" in stderr
+    assert "/Users/private/module.py" not in stderr
+    assert "Traceback" not in stderr
+
+
 def test_reload_delegates_transactionally_with_an_explicit_timeout(
     tmp_path: Path, *, mocker
 ) -> None:

@@ -225,7 +225,7 @@ def _select_retention(
             selection = generation.Selection(active, previous)
         generation.select(ctx, active=selection.active, predecessor=selection.predecessor)
         return selection
-    except errors.InstallError as exc:
+    except errors.InstallError:
         state.write_journal(
             ctx,
             transaction_id=str(journal["transaction_id"]),
@@ -244,7 +244,7 @@ def _select_retention(
                 else None
             ),
             phase="activated",
-            reason=f"finalization failed: {exc}",
+            reason="finalization failed",
         )
         raise
 
@@ -521,7 +521,7 @@ class PayloadTransaction:
             payload_candidate.prewarm(self._candidate_ctx)
             self._state = "materialized"
             self._write_journal()
-        except BaseException as exc:
+        except BaseException:
             if not mutated:
                 _complete_transaction(self._ctx, self._owned_journal(), outcome="closed")
                 self._state = "rolled_back"
@@ -530,8 +530,8 @@ class PayloadTransaction:
                     self.rollback()
                 except errors.InstallError as rollback_exc:
                     raise errors.InstallError(
-                        f"payload commit failed and rollback failed: {rollback_exc}"
-                    ) from exc
+                        "payload commit failed and rollback failed"
+                    ) from rollback_exc
             raise
 
     def activate(self) -> None:
@@ -878,7 +878,7 @@ def _finish_cleanup(
     try:
         state.journal_path(ctx).unlink()
     except OSError as exc:
-        raise errors.InstallError(f"payload transaction cleanup failed: {exc}") from exc
+        raise errors.InstallError("payload transaction cleanup failed") from exc
     return {
         "transaction_id": journal["transaction_id"],
         "version": journal["version"],
@@ -893,6 +893,6 @@ def _remove_transaction_root(ctx: runtime_context.RuntimeContext) -> None:
     try:
         shutil.rmtree(root)
     except OSError as exc:
-        raise errors.InstallError(f"payload transaction cleanup failed: {exc}") from exc
+        raise errors.InstallError("payload transaction cleanup failed") from exc
     if root.exists():
         raise errors.InstallError("payload transaction cleanup did not remove the transaction")
