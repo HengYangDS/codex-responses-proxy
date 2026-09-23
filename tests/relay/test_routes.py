@@ -28,6 +28,24 @@ class ProviderRouteTests:
         telemetry.reset_for_test()
         cooldown.reset_for_test()
 
+    def test_new_provider_uses_the_existing_responses_path(self) -> None:
+        body = _body(
+            {
+                "input": [{"type": "message", "role": "user", "content": "hello"}],
+                "store": False,
+            }
+        )
+        success = b'{"id":"resp_new","status":"completed"}'
+
+        with (
+            running_proxy([(200, success)], extra_provider="new-gateway") as (port, received),
+            request(port, body, path="/new-gateway/v1/responses") as response,
+        ):
+            assert response.status == 200
+            assert response.read() == success
+
+        assert received == [body]
+
     def test_all_three_routes_forward_the_same_portable_body(self, subtests) -> None:
         raw = _body(
             {

@@ -29,6 +29,7 @@ def serve_proxy(
     log_dir: str | Path,
     *,
     captures: list[dict[str, object]] | None = None,
+    extra_provider: str | None = None,
 ) -> tuple[int, list[bytes], Callable[[], None]]:
     """Start scripted loopback servers and return port, bodies, and cleanup."""
     scripted = list(responses)
@@ -119,17 +120,18 @@ def serve_proxy(
     upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
     upstream_thread.start()
     test_upstream = f"http://127.0.0.1:{upstream.server_address[1]}"
-    providers = provider_registry.Registry(
-        profiles={
-            "dmxapi": provider_registry.Profile(
-                "dmxapi",
-                test_upstream,
-                cast(provider_registry.WirePolicy, dmxapi_policy),
-            ),
-            "ucloud": provider_registry.Profile("ucloud", test_upstream),
-            "aihubmix": provider_registry.Profile("aihubmix", test_upstream),
-        },
-    )
+    profiles = {
+        "dmxapi": provider_registry.Profile(
+            "dmxapi",
+            test_upstream,
+            cast(provider_registry.WirePolicy, dmxapi_policy),
+        ),
+        "ucloud": provider_registry.Profile("ucloud", test_upstream),
+        "aihubmix": provider_registry.Profile("aihubmix", test_upstream),
+    }
+    if extra_provider is not None:
+        profiles[extra_provider] = provider_registry.Profile(extra_provider, test_upstream)
+    providers = provider_registry.Registry(profiles)
     old_log_path = operational_log.LOG_PATH
     operational_log.LOG_PATH = str(Path(log_dir) / "proxy.log")
     server = proxy.create_server(("127.0.0.1", 0), providers=providers)
@@ -154,10 +156,13 @@ def running_proxy(
     responses: Sequence[ScriptedResponse],
     *,
     captures: list[dict[str, object]] | None = None,
+    extra_provider: str | None = None,
 ):
     """Yield a scripted loopback proxy and always release both servers."""
     with tempfile.TemporaryDirectory() as log_dir:
-        port, received, cleanup = serve_proxy(responses, log_dir, captures=captures)
+        port, received, cleanup = serve_proxy(
+            responses, log_dir, captures=captures, extra_provider=extra_provider
+        )
         try:
             yield port, received
         finally:
