@@ -14,6 +14,7 @@ from typing import cast
 
 from codex_responses_proxy.protocol import response
 from codex_responses_proxy.protocol.replay import items as item_policy
+from codex_responses_proxy.protocol.replay import projection as replay_projection
 
 type JsonObject = dict[str, object]
 type Request = tuple[JsonObject, list[object], int]
@@ -59,7 +60,7 @@ def _budget(raw: bytes, budget: int) -> int | None:
 
 
 def retry_disposition(code: int, err_body: bytes) -> str:
-    """Return ``full``, ``once``, or an empty non-retry disposition."""
+    """Classify an upstream failure for bounded request-local recovery."""
     if code in (500, 502, 503, 504, 524):
         return "full"
     if code != 400:
@@ -83,9 +84,28 @@ def retry_disposition(code: int, err_body: bytes) -> str:
         and message.startswith("Request blocked.")
     ):
         return "full"
+    if error_code == "invalid_encrypted_content" and error_type == "invalid_request_error":
+        return "encrypted"
     if error_code == "invalid_payload":
         return "once"
     return ""
+
+
+def recover_encrypted_content(raw: bytes) -> Recovery:
+    """Remove rejected provider-bound ciphertext from this request only."""
+    projection = replay_projection.sanitize_responses_body(raw, preserve_agent_ciphertext=False)
+    if (
+        projection.body is None
+        or projection.metrics.encrypted_blocks == 0
+        or projection.body == raw
+    ):
+        return None, None
+    return projection.body, {
+        "original_bytes": len(raw),
+        "recovery_bytes": len(projection.body),
+        "encrypted_blocks": projection.metrics.encrypted_blocks,
+        "omission_markers": projection.metrics.omission_markers,
+    }
 
 
 def exhausted_payload(attempts: int) -> bytes:

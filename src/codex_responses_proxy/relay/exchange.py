@@ -30,6 +30,7 @@ RESPONSE_FAILED_COMPACTION_BUDGET = _SETTINGS.response_failed_compaction_budget
 RESPONSE_FAILED_MAX_STAGES = _SETTINGS.response_failed_max_stages
 RESPONSE_FAILED_DIALOGUE_SLOTS = 1
 INPUT_VARIANT_DIALOGUE_SLOTS = 1
+ENCRYPTED_REPLAY_RECOVERY_SLOTS = 1
 _MAX_ATTEMPTS = 4
 _BACKOFFS = (0.4, 1.0, 2.0)
 
@@ -114,6 +115,8 @@ class Exchange:
     dialogue_metrics: execution_recovery.RecoveryMetrics | None = None
     used_input_variant_dialogue: bool = False
     input_variant_metrics: InputVariantMetrics | None = None
+    used_encrypted_replay_recovery: bool = False
+    encrypted_replay_metrics: execution_recovery.RecoveryMetrics | None = None
     response: UpstreamResponse | None = None
 
     def upstream(self, body: bytes | None = None) -> UpstreamResponse:
@@ -137,7 +140,16 @@ class Exchange:
 
     def accepted_recovery(self) -> None:
         """Record the response-failure recovery strategy accepted upstream."""
-        if (
+        if self.used_encrypted_replay_recovery and self.encrypted_replay_metrics:
+            telemetry.record_counter("encrypted_replay_recovery_accepted")
+            m = self.encrypted_replay_metrics
+            self.log(
+                "encrypted_replay_recovery_accepted",
+                f"bytes={m['original_bytes']}->{m['recovery_bytes']} "
+                f"encrypted_blocks={m['encrypted_blocks']} "
+                f"omission_markers={m['omission_markers']} ",
+            )
+        elif (
             not self.used_input_variant_dialogue
             and self.used_response_failed_dialogue
             and self.dialogue_metrics
@@ -193,10 +205,39 @@ def _classification(
         (True, 400, "", False): "input_variant_validation_error",
         (False, 400, "full", False): "response_failed",
         (False, 400, "full", True): "blocked_invalid_prompt",
+        (False, 400, "encrypted", False): "invalid_encrypted_content",
     }.get((exact, status_code, disposition, blocked))
     if wire_failure:
         return "wire_policy_failure"
     return special or "_".join(filter(None, (f"http_{status_code}", disposition)))
+
+
+def _recover_encrypted_replay(exchange: Exchange, status_code: int, disposition: str) -> bool:
+    if not (exchange.is_responses and status_code == 400 and disposition == "encrypted"):
+        return False
+    if exchange.used_encrypted_replay_recovery:
+        telemetry.record_counter("encrypted_replay_recovery_exhausted")
+        telemetry.record_failure("invalid_encrypted_content")
+        exchange.log("encrypted_replay_recovery_exhausted")
+        return False
+    recovery, metrics = execution_recovery.recover_encrypted_content(exchange.attempt_body)
+    if recovery is None or metrics is None:
+        return False
+    telemetry.record_counter("encrypted_replay_recovery_attempts")
+    telemetry.record_counter(
+        "encrypted_replay_content_blocks_stripped", int(metrics["encrypted_blocks"])
+    )
+    exchange.used_encrypted_replay_recovery = True
+    exchange.encrypted_replay_metrics = metrics
+    previous_bytes = len(exchange.attempt_body)
+    exchange.attempt_body = recovery
+    exchange.log(
+        "encrypted_replay_recovery",
+        f"bytes={previous_bytes}->{metrics['recovery_bytes']} "
+        f"encrypted_blocks={metrics['encrypted_blocks']} "
+        f"omission_markers={metrics['omission_markers']} ",
+    )
+    return True
 
 
 def _recover_input_variant(exchange: Exchange) -> bool:
@@ -374,6 +415,8 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
         return "terminal"
     if exact and _recover_input_variant(exchange):
         return "retry"
+    if _recover_encrypted_replay(exchange, status_code, disposition):
+        return "retry"
     if _recover_response_failed(exchange, status_code, disposition):
         return "retry"
     if exchange.is_responses and status_code == 400 and portable == "full":
@@ -443,8 +486,13 @@ def open_upstream(exchange: Exchange) -> UpstreamResponse | None:
     stages = RESPONSE_FAILED_MAX_STAGES if exchange.is_responses else 0
     dialogue_slots = RESPONSE_FAILED_DIALOGUE_SLOTS if exchange.is_responses else 0
     input_slots = INPUT_VARIANT_DIALOGUE_SLOTS if exchange.is_responses else 0
+    encrypted_slots = ENCRYPTED_REPLAY_RECOVERY_SLOTS if exchange.is_responses else 0
     for attempt in range(
-        (_MAX_ATTEMPTS if exchange.is_responses else 1) + stages + dialogue_slots + input_slots
+        (_MAX_ATTEMPTS if exchange.is_responses else 1)
+        + stages
+        + dialogue_slots
+        + input_slots
+        + encrypted_slots
     ):
         try:
             response = exchange.upstream()

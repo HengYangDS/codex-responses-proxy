@@ -168,17 +168,22 @@ class TestRateLimitTransport(InputTransportFixture):
         assert handler.statuses == [503]
         assert b"dmx_empty_response_exhausted" in handler.output()
 
-    def test_direct_relay_reaches_terminal_transport_after_cooldown(self, *, mocker) -> None:
+    def test_direct_relay_exhausts_transport_retries(self, *, mocker) -> None:
         body = json.dumps({"input": []}).encode()
         handler = MemoryHandler(body)
         admission.reset_for_test()
         telemetry.reset_for_test()
         cooldown.reset_for_test()
-        mocker.patch.object(upstream_exchange, "_MAX_ATTEMPTS", 0)
-        mocker.patch.object(upstream_exchange, "INPUT_VARIANT_DIALOGUE_SLOTS", 0)
-        mocker.patch.object(upstream_exchange, "RESPONSE_FAILED_DIALOGUE_SLOTS", 0)
-        mocker.patch.object(upstream_exchange, "RESPONSE_FAILED_MAX_STAGES", 0)
+        open_ = mocker.patch.object(
+            upstream_exchange,
+            "urlopen_direct",
+            side_effect=OSError("fixture transport failure"),
+        )
+        sleep = mocker.patch.object(upstream_exchange.time, "sleep", return_value=None)
         responses.relay(handler, "POST", PROVIDERS)
+
+        assert open_.call_count == upstream_exchange._MAX_ATTEMPTS
+        assert sleep.call_count == upstream_exchange._MAX_ATTEMPTS - 1
         assert handler.statuses == [502]
         assert b"upstream_transport_error" in handler.output()
 

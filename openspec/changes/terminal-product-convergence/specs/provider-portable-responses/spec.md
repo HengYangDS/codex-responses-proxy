@@ -97,8 +97,14 @@ Before upstream I/O, the proxy SHALL derive portability only from the current
 request and the proved protocol grammar. It SHALL remove provider-bound
 continuation state, stored-item references, replayed reasoning items, and
 optional encrypted replay content. Required encrypted `agent_message` payloads
-SHALL retain their native envelope and exact ciphertext for the selected upstream;
-this is preservation, not a claim of cross-provider decryption. It SHALL set `store=false` and remove any request for
+SHALL retain their native envelope and exact ciphertext on the initial attempt so
+the producing Provider can complete the current collaboration action. If the
+selected upstream returns HTTP 400 with error type `invalid_request_error` and
+code `invalid_encrypted_content`, the proxy SHALL retry once with
+provider-bound ciphertext removed, visible agent content projected to portable
+text, and an explicit omission marker wherever no plaintext remains. This is
+bounded request-local recovery, not decryption. The proxy SHALL set
+`store=false` and remove any request for
 `reasoning.encrypted_content` while leaving provider-neutral generation settings
 unchanged.
 
@@ -202,8 +208,8 @@ opaque metadata SHALL NOT be required by a paired output's outbound form.
 
 - **WHEN** a valid agent message contains nonempty encrypted task content,
   with or without a visible routing header
-- **THEN** the original message kind, author, recipient, content order and
-  ciphertext remain unchanged; local bookkeeping metadata is removed
+- **THEN** the initial attempt retains the original message kind, author,
+  recipient, content order and ciphertext; local bookkeeping metadata is removed
 - **AND** a missing, empty, malformed or unknown ciphertext field is rejected
   rather than replaced by a header-only task or a fabricated plaintext result
 - **AND** shrinking recovery cannot discard this native control input.
@@ -212,10 +218,23 @@ opaque metadata SHALL NOT be required by a paired output's outbound form.
 
 - **WHEN** an agent or ordinary paired tool output has no plaintext beyond
   its opaque ciphertext
-- **THEN** the agent keeps its native encrypted envelope, while an ordinary
-  historical tool output keeps its explicit omission marker in input grammar
-- **AND** the proxy does not claim to decrypt or reconstruct that history. This
-  behavior does not apply to required agent-task messages.
+- **THEN** the initial agent attempt keeps its native encrypted envelope, while
+  an ordinary historical tool output keeps its explicit omission marker in input
+  grammar
+- **AND** an exact upstream ciphertext rejection replaces the agent envelope
+  with a portable message carrying the same explicit omission marker
+- **AND** the proxy does not claim to decrypt or reconstruct that history.
+
+#### Scenario: A selected Provider rejects replay ciphertext
+
+- **WHEN** the initial request receives HTTP 400 with
+  `type=invalid_request_error` and `code=invalid_encrypted_content`
+- **THEN** the proxy retries exactly once after removing only provider-bound
+  ciphertext from the already-projected request
+- **AND** visible agent content, message order, tool relationships, client state,
+  and local conversation history remain unchanged
+- **AND** a request with no ciphertext is not retried under this policy
+- **AND** a second rejection is relayed without another retry.
 
 #### Scenario: Classified DMX retry preserves the projected bytes
 

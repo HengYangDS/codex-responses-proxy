@@ -217,6 +217,110 @@ class TestProxyTransport:
 
         assert json.loads(received[0]) == {**json.loads(body), "store": False}
 
+    def test_recovers_provider_bound_encrypted_agent_content_once(self):
+        invalid_encrypted = (
+            b'{"error":{"message":"Encrypted function output content could not be decrypted or decoded. '
+            b'(request id: fixture)","type":"invalid_request_error","param":"",'
+            b'"code":"invalid_encrypted_content"}}'
+        )
+        success = b'{"id":"resp_recovered","status":"completed"}'
+        body = json.dumps(
+            {
+                "model": "gpt-5.6-terra",
+                "stream": False,
+                "input": [
+                    {
+                        "type": "agent_message",
+                        "author": "/root/reviewer",
+                        "recipient": "/root",
+                        "content": [
+                            {"type": "input_text", "text": "review complete"},
+                            {
+                                "type": "encrypted_content",
+                                "encrypted_content": "provider-bound",
+                            },
+                        ],
+                    },
+                    {"type": "message", "role": "user", "content": "continue"},
+                ],
+            },
+            separators=(",", ":"),
+        ).encode()
+
+        received, payload = self.exchange([(400, invalid_encrypted), (200, success)], body)
+
+        assert payload == success
+        assert len(received) == 2
+        first = json.loads(received[0])
+        second = json.loads(received[1])
+        assert first["input"][0]["type"] == "agent_message"
+        assert "provider-bound" in received[0].decode()
+        assert second["input"][0]["type"] == "message"
+        assert "review complete" in second["input"][0]["content"]
+        assert "provider-bound" not in received[1].decode()
+        counters = cast("dict[str, int]", self.p.runtime_status()["counters"])
+        assert counters["encrypted_replay_recovery_attempts"] == 1
+        assert counters["encrypted_replay_recovery_accepted"] == 1
+        assert counters["encrypted_replay_recovery_exhausted"] == 0
+
+    def test_encrypted_replay_recovery_is_bounded_and_requires_ciphertext(self, subtests):
+        invalid_encrypted = (
+            b'{"error":{"message":"Encrypted function output content could not be decrypted or decoded. '
+            b'(request id: fixture)","type":"invalid_request_error","param":"",'
+            b'"code":"invalid_encrypted_content"}}'
+        )
+        encrypted_body = json.dumps(
+            {
+                "stream": False,
+                "input": [
+                    {
+                        "type": "agent_message",
+                        "author": "/root/reviewer",
+                        "recipient": "/root",
+                        "content": [
+                            {"type": "input_text", "text": "review complete"},
+                            {
+                                "type": "encrypted_content",
+                                "encrypted_content": "provider-bound",
+                            },
+                        ],
+                    }
+                ],
+            },
+            separators=(",", ":"),
+        ).encode()
+        plain_body = json.dumps(
+            {
+                "stream": False,
+                "input": [{"type": "message", "role": "user", "content": "continue"}],
+            },
+            separators=(",", ":"),
+        ).encode()
+
+        for name, body, expected_requests in (
+            ("second rejection", encrypted_body, 2),
+            ("no ciphertext", plain_body, 1),
+        ):
+            with subtests.test(name=name):
+                telemetry.reset_for_test()
+                with running_proxy([(400, invalid_encrypted)] * expected_requests) as (
+                    port,
+                    received,
+                ):
+                    with pytest.raises(urllib.error.HTTPError) as raised:
+                        request(port, body)
+                    with raised.value:
+                        assert raised.value.code == 400
+                        assert raised.value.read() == invalid_encrypted
+                assert len(received) == expected_requests
+                counters = cast("dict[str, int]", self.p.runtime_status()["counters"])
+                assert counters["encrypted_replay_recovery_attempts"] == int(
+                    name == "second rejection"
+                )
+                assert counters["encrypted_replay_recovery_exhausted"] == int(
+                    name == "second rejection"
+                )
+
     def test_recovers_response_failed_with_dialogue_only_last_resort(self, *, mocker):
         response_failed = (
             b'{"error":{"message":"OpenAI responses stream failed: '

@@ -156,10 +156,12 @@ admission rules.
 
 Encrypted `agent_message` content is required control data, not disposable
 reasoning history. Preserve its native envelope and exact ciphertext for the
-selected upstream; never reduce a task to its visible routing header. The proxy
-does not decrypt messages or promise that another provider can decrypt them.
-Shrinking recovery is unavailable for a request carrying a native agent message;
-it cannot discard the task and retry an empty continuation.
+initial upstream attempt; never pre-emptively reduce a current task to its
+visible routing header. If that upstream explicitly reports
+`invalid_encrypted_content`, retry once using the existing replay projector in
+portable mode: remove only ciphertext, preserve visible agent content, and use
+the stable omission marker when no plaintext exists. The proxy never decrypts,
+edits stored history, or retries the unchanged invalid bytes.
 
 The live-response boundary preserves encrypted control content needed for the
 current turn. Empty, truncated, malformed, oversized, or non-terminal success bodies
@@ -172,6 +174,7 @@ become a retryable local `503`; partial success bytes are not committed.
 | DMXAPI `477 empty_response`     | Retry the already-projected bytes once                                        |
 | `response_failed`               | Strictly shrinking pair-safe attempts, then at most one dialogue-only attempt |
 | Invalid `input` union           | One smaller current-dialogue attempt                                          |
+| Invalid encrypted replay        | One ciphertext-free projection of the current request                         |
 | Pre-content stream interruption | Retry only before substantive downstream commitment                           |
 | `429`                           | Relay once; provider-scoped cooldown; no global queue                         |
 
