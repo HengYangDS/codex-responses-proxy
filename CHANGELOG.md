@@ -8,11 +8,22 @@ publication authority.
 
 ## [Unreleased]
 
+## [4.0.5] - 2026-09-23
+
 ### Changed
 
 - Bind `VERSION`, local product tags, and this Changelog as one release
   identity; enforce Keep a Changelog structure and fold unpublished historical
   headings into the releases that actually carried their changes.
+
+### Fixed
+
+- Preserve current-turn tool catalogs and compaction controls during Responses
+  projection and recovery, restoring Codex tool invocation through the Proxy.
+- Preserve encrypted delegated task bodies when an upstream rejects ciphertext;
+  do not retry with a header-only task.
+- Reject incomplete lifecycle results instead of presenting false success, and
+  keep native failure diagnostics free of private host details.
 
 ## [4.0.4] - 2026-09-19
 
