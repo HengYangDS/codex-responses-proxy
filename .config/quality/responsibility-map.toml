@@ -105,7 +105,7 @@ prefixes = [".config/ci/"]
 
 [[roles]]
 id = "github-ci"
-description = "GitHub Actions projection of the provider-neutral CI model."
+description = "GitHub Actions workflows projected from the provider-neutral CI model."
 owner = "github-projection"
 consumer = "GitHub Actions"
 source_of_truth = "generated projection of the provider-neutral CI model"
@@ -481,11 +481,14 @@ id = "github-workflow-syntax"
 owner = "actionlint"
 scope = "github-ci"
 session = "governance"
-configuration = [".github/workflows/verify.yml"]
+configuration = [
+  ".github/workflows/admission.yml",
+  ".github/workflows/verify.yml",
+]
 risk_model = "Invalid GitHub workflow syntax can make the public proof plane silently unavailable."
-measurement = "Actionlint validates the tracked GitHub Actions projection."
+measurement = "Actionlint validates every tracked GitHub Actions projection."
 false_positive_cost = "Provider-specific syntax must remain distinct from product-semantic CI behavior."
-remediation = "Correct the GitHub projection without changing the shared CI model."
+remediation = "Correct the CUE owner, regenerate its workflows, and rerun Actionlint."
 review_condition = "Reassess when GitHub Actions syntax or the projection generator changes."
 
 [[concerns]]

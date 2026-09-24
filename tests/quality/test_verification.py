@@ -158,6 +158,7 @@ class TestVerificationContracts:
         direct_test_commands = []
         for relative in (
             ".gitlab-ci.yml",
+            ".github/workflows/admission.yml",
             ".github/workflows/verify.yml",
             "noxfile.py",
         ):

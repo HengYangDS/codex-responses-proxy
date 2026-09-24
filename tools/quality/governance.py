@@ -72,7 +72,7 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
             "--strict",
             "--no-interactive",
         ),
-        ("actionlint", ".github/workflows/verify.yml"),
+        ("actionlint",),
         (
             "deptry",
             "src/codex_responses_proxy",

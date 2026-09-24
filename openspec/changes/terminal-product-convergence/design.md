@@ -402,6 +402,15 @@ have explicit coverage. Equivalent exact-SHA evidence may be reused through a
 revision-bound attestation; repeated jobs that prove no additional fact are
 removed.
 
+GitHub branch admission is a generated branch-only workflow that invokes the
+shared Verify graph once. Its stable `Admission` job fails unless the reusable
+run succeeds; the graph itself rejects failed or skipped jobs required by the
+exact branch event. Tag, release, and dispatch runs cannot emit that required
+branch check. Enable branch protection only after a hosted review proves the
+check identity, failure behavior, and signed fast-forward path on the exact
+candidate. GitLab keeps its native successful-pipeline admission rather than a
+copy of GitHub's check mechanism.
+
 GitHub and GitLab are optional peer publication planes. Local source remains
 fully buildable and installable without either. The same signed local commit and
 tag object are pushed unchanged; each Forge supplies independent authentication,

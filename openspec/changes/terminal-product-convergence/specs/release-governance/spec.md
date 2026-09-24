@@ -52,6 +52,14 @@ without duplicating jobs that prove no additional fact.
 - **THEN** the target consumes that revision-bound evidence
 - **AND** any changed proof input triggers only the newly required jobs.
 
+#### Scenario: A required branch job is skipped
+
+- **WHEN** a `dev` or `main` review or accepted-branch event lacks any job
+  required for that event, including a skipped or cancelled job
+- **THEN** its stable branch admission check SHALL fail for the exact revision
+- **AND** tag, release, and manual verification events SHALL NOT emit that
+  required branch check.
+
 ### Requirement: Publication closes source, Forge, and branch state
 
 A release SHALL create one signed local commit and annotated tag object, project
