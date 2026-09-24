@@ -13,6 +13,25 @@ payload, local listener, native supervisor, transaction state, and bounded
 operational output. It does not own client configuration, model choice,
 credentials, conversations, repository governance, or Forge identity.
 
+## Product Positioning and Name
+
+The terminal data-plane contract is OpenAI Responses, not every API commonly
+called "OpenAI-compatible". Provider admission is declarative and independent of
+provider brand; a Chat Completions-only endpoint does not qualify. Codex is the
+first qualified client, but generic request admission must not require Codex
+identity. Codex-specific historical replay belongs to a narrow compatibility
+policy rather than the common Responses grammar. Other clients require their
+own real request, replay, stream, error, and installed-client acceptance before
+the product claims support.
+
+The target public name is **Responses Proxy**, not `openai-proxy`. Change the
+package, command, service, and release identity together at a major release
+only after a non-Codex Responses client passes that bar; remove the old identity
+in the same transition rather than maintain aliases. Until then, retain the
+truthful shipped name **Codex Responses Proxy**. Naming does not expand the
+protocol surface or move Account, credential, model, or client-projection
+authority out of AIGW or another control plane.
+
 ## Goals / Non-Goals
 
 **Goals:**

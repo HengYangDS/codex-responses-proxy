@@ -2,7 +2,7 @@
 
 ### Requirement: The product boundary remains a narrow optional data plane
 
-Codex Responses Proxy SHALL accept and translate supported Responses traffic,
+The Proxy SHALL accept and translate supported Responses traffic,
 own its loopback listener and installed lifecycle, and expose bounded operational
 commands. It SHALL NOT own Provider selection, credentials, client installation,
 client configuration, model selection, conversation history, repository
@@ -20,6 +20,19 @@ one ordinary endpoint, but the Proxy SHALL install and operate independently.
 - **WHEN** an external control plane selects the Proxy loopback endpoint
 - **THEN** the Proxy receives an ordinary supported request
 - **AND** neither product imports, installs, starts, stops, or mutates the other.
+
+### Requirement: Responses admission follows protocol rather than brand
+
+Generic request admission SHALL depend on the declared Responses contract, not
+on Codex identity or a Provider brand. A Chat Completions-only endpoint SHALL
+NOT be admitted as a Responses Provider.
+
+#### Scenario: A second Responses client uses the same data plane
+
+- **WHEN** a non-Codex client sends a supported Responses request to a declared
+  Provider route without Codex installed or configured
+- **THEN** the same admission, response, streaming, and error contracts apply
+- **AND** no Codex identity or history is required for that request.
 
 ### Requirement: Public operations have one precise result contract
 
