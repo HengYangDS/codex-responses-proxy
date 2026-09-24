@@ -102,9 +102,13 @@ projections = ["package.json", ".npmrc", ".config/ci/pipeline.cue"]
 id = "ci-proof-graph"
 kind = "derived-projection"
 owner = ".config/ci/pipeline.cue"
-invariant = "Both Forge workflows implement the same provider-neutral verification semantics."
+invariant = "Generated Forge CI artifacts implement the same provider-neutral verification semantics."
 rationale = "GitHub and GitLab express one provider-neutral proof graph through forge-native syntax."
-projections = [".github/workflows/verify.yml", ".gitlab-ci.yml"]
+projections = [
+  ".github/workflows/admission.yml",
+  ".github/workflows/verify.yml",
+  ".gitlab-ci.yml",
+]
 
 [[controls]]
 id = "quality-thresholds"

@@ -71,7 +71,14 @@ def github_ready(
 ) -> bool:
     """Return whether active Actions workflows may use GitHub-hosted runners."""
     paths = {workflow.get("path") for workflow in workflows if workflow.get("state") == "active"}
-    return permissions.get("enabled") is True and ".github/workflows/verify.yml" in paths
+    return (
+        permissions.get("enabled") is True
+        and {
+            ".github/workflows/admission.yml",
+            ".github/workflows/verify.yml",
+        }
+        <= paths
+    )
 
 
 def _gitlab(project: str, runner_tag: str | None) -> dict[str, object]:

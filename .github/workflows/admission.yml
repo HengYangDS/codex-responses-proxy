@@ -1,0 +1,26 @@
+name: Branch admission
+"on":
+  pull_request:
+    branches:
+      - dev
+      - main
+  push:
+    branches:
+      - dev
+      - main
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: Verify branch source
+    uses: ./.github/workflows/verify.yml
+  admission:
+    name: Admission
+    needs: verify
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require completed branch verification
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: test "$VERIFY_RESULT" = success

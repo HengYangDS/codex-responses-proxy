@@ -34,14 +34,20 @@ def test_gitlab_requires_an_online_unpaused_eligible_runner() -> None:
     assert not admission.gitlab_ready([ready], "windows")
 
 
-def test_github_requires_actions_and_the_active_verification_workflow() -> None:
-    workflows = [{"path": ".github/workflows/verify.yml", "state": "active"}]
+def test_github_requires_actions_and_both_active_verification_workflows() -> None:
+    workflows = [
+        {"path": ".github/workflows/admission.yml", "state": "active"},
+        {"path": ".github/workflows/verify.yml", "state": "active"},
+    ]
     assert admission.github_ready(workflows, {"enabled": True})
     assert not admission.github_ready(workflows, {"enabled": False})
-    assert not admission.github_ready(
-        [{**workflows[0], "state": "disabled_manually"}],
-        {"enabled": True},
-    )
+    for index in range(len(workflows)):
+        assert not admission.github_ready(
+            workflows[:index] + workflows[index + 1 :], {"enabled": True}
+        )
+        disabled = [*workflows]
+        disabled[index] = {**workflows[index], "state": "disabled_manually"}
+        assert not admission.github_ready(disabled, {"enabled": True})
 
 
 def test_gitlab_encodes_namespaced_project_coordinates(monkeypatch) -> None:
@@ -111,7 +117,12 @@ def test_github_observation_checks_both_workflow_and_permission(enabled, mocker)
         admission,
         "_command",
         side_effect=[
-            {"workflows": [{"path": ".github/workflows/verify.yml", "state": "active"}]},
+            {
+                "workflows": [
+                    {"path": ".github/workflows/admission.yml", "state": "active"},
+                    {"path": ".github/workflows/verify.yml", "state": "active"},
+                ]
+            },
             {"enabled": enabled},
         ],
     )
@@ -119,7 +130,7 @@ def test_github_observation_checks_both_workflow_and_permission(enabled, mocker)
         assert admission._github("team/repo") == {
             "provider": "github",
             "ready": True,
-            "workflow_count": 1,
+            "workflow_count": 2,
         }
     else:
         with pytest.raises(admission.AdmissionError, match="disabled"):

@@ -334,7 +334,7 @@ class TestQualityPolicyContracts:
                 "--strict",
                 "--no-interactive",
             ),
-            ("actionlint", ".github/workflows/verify.yml"),
+            ("actionlint",),
             (
                 "deptry",
                 "src/codex_responses_proxy",

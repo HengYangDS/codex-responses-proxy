@@ -1,11 +1,27 @@
 package ci
 
-import "list"
+import (
+	"list"
+	"strings"
+)
 
 // pipeline.cue owns the provider-neutral proof graph. Forge YAML files remain
 // projections; product behavior stays in Nox and repository-owned Python tools.
 
 #RuntimeMatrix: python: ["3.12", "3.13", "3.14"]
+
+#ProductProofJobs: [
+	"source-and-governance",
+	"python-matrix",
+	"python",
+	"python-windows",
+	"python-quality",
+	"performance",
+	"native-assets",
+	"native-linux",
+	"native-linux-lifecycle",
+	"release-compatibility",
+]
 
 #Conditions: {
 	productProof:             "(github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')"
@@ -205,14 +221,37 @@ gitlab: {
 	}
 }
 
+githubAdmission: {
+	name: "Branch admission"
+	on: {
+		pull_request: branches: ["dev", "main"]
+		push: branches: ["dev", "main"]
+	}
+	permissions: contents: "read"
+	jobs: {
+		verify: {
+			name: "Verify branch source"
+			uses: "./.github/workflows/verify.yml"
+		}
+		admission: {
+			name:      "Admission"
+			needs:     "verify"
+			if:        "always()"
+			"runs-on": "ubuntu-24.04"
+			steps: [{
+				name: "Require completed branch verification"
+				env: VERIFY_RESULT: "${{ needs.verify.result }}"
+				run: "test \"$VERIFY_RESULT\" = success"
+			}]
+		}
+	}
+}
+
 githubVerify: {
 	name: "Verify"
 	on: {
-		pull_request: branches: ["dev", "main"]
-		push: {
-			branches: ["dev", "main"]
-			tags: ["v*"]
-		}
+		workflow_call: {}
+		push: tags: ["v*"]
 		release: types: ["published"]
 		workflow_dispatch: inputs: release_tag: {
 			description: "Published vMAJOR.MINOR.PATCH tag to verify"
@@ -806,6 +845,55 @@ githubVerify: {
 				name: "Prove the published release lifecycle"
 				env: CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: "${{ runner.temp }}/release-asset-trust"
 				run: "uv run --locked --no-sync nox -s published_release_compatibility -- --basetemp=\"${{ runner.temp }}/proxy-test\""
+			}]
+		}
+		"branch-proof": {
+			name: "Branch proof"
+			if:   "always()"
+			needs: list.Concat([#ProductProofJobs, ["accepted-source", "promotion"]])
+			"runs-on":         "ubuntu-24.04"
+			"timeout-minutes": 5
+			steps: [{
+				uses: #Toolchains.githubActions.checkout
+			}, {
+				uses: #Toolchains.githubActions.python
+				with: "python-version-file": ".python-release"
+			}, {
+				name: "Reject missing branch proof"
+				env: {
+					NEEDS_JSON:         "${{ toJSON(needs) }}"
+					PRODUCT_PROOF_JOBS: strings.Join(#ProductProofJobs, " ")
+				}
+				run: """
+					python - <<'PY'
+					import json
+					import os
+					product = tuple(os.environ["PRODUCT_PROOF_JOBS"].split())
+					event = os.environ["GITHUB_EVENT_NAME"]
+					ref = os.environ["GITHUB_REF"]
+					if event == "pull_request":
+					    required = {"dev": product, "main": ("promotion",)}.get(
+					        os.environ.get("GITHUB_BASE_REF", "")
+					    )
+					elif event == "push" and ref.startswith("refs/heads/"):
+					    required = {
+					        "dev": (*product, "accepted-source"),
+					        "main": ("accepted-source",),
+					    }.get(ref.removeprefix("refs/heads/"))
+					elif event == "push" and ref.startswith("refs/tags/"):
+					    required = ()
+					elif event in {"release", "workflow_dispatch"}:
+					    required = ()
+					else:
+					    required = None
+					if required is None:
+					    raise SystemExit("unsupported verification event")
+					needs = json.loads(os.environ["NEEDS_JSON"])
+					missing = [job for job in required if needs.get(job, {}).get("result") != "success"]
+					if missing:
+					    raise SystemExit("required branch proof failed: " + ", ".join(missing))
+					PY
+					"""
 			}]
 		}
 	}

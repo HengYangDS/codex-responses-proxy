@@ -277,6 +277,7 @@ def check_governance_contract() -> None:
         "tools/release/publication/github/publish.py",
         "tools/release/publication/gitlab/publish.py",
         "tools/reliability/observe.py",
+        ".github/workflows/admission.yml",
         ".github/workflows/verify.yml",
     )
     missing = [relative for relative in required if not (ROOT / relative).is_file()]
