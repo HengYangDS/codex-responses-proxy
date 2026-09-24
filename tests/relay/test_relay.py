@@ -252,6 +252,16 @@ class TestProxyTransport:
 
         assert len(received) == 1
         assert b"task-payload" in received[0]
+        assert (
+            telemetry.status(
+                release="test",
+                serving_payload_sha256=None,
+                release_receipt_sha256=None,
+                admission={},
+                runtime_identity={},
+            )["upstream_classifications"]["provider_bound_encrypted_content"]
+            == 1
+        )
 
     def test_recovers_response_failed_with_dialogue_only_last_resort(self, *, mocker):
         response_failed = (

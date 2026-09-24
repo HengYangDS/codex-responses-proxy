@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import ssl
 import time
 import urllib.error
@@ -187,6 +188,18 @@ def _classification(
     exact: bool,
     wire_failure: bool,
 ) -> str:
+    if status_code == 400:
+        try:
+            document = json.loads(payload)
+        except (TypeError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
+            document = None
+        error = document.get("error") if isinstance(document, dict) else None
+        if (
+            isinstance(error, dict)
+            and error.get("type") == "invalid_request_error"
+            and error.get("code") == "invalid_encrypted_content"
+        ):
+            return "provider_bound_encrypted_content"
     lower = payload.lower()
     blocked = all(map(lower.__contains__, (b'"code":"invalid_prompt"', b"request blocked")))
     special = {
