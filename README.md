@@ -1,6 +1,8 @@
 # Codex Responses Proxy
 
-A local compatibility gateway for third-party OpenAI Responses APIs.
+A local OpenAI Responses compatibility data plane for declared third-party
+Responses providers. Codex is its first qualified client, not a required client
+identity.
 
 Licensed under [MIT](LICENSE). Forge coordinates and publication actors are
 deployment context, not product identity.
@@ -27,6 +29,10 @@ flowchart LR
 
 The proxy does not configure or restart clients. A client control plane does
 not manage the proxy process. Each product is installed and verified independently.
+"OpenAI-compatible" alone is not an admission contract: Chat Completions,
+Embeddings, and other OpenAI API families are outside this product's current
+scope. Another Responses client is supported only after its request, replay,
+streaming, error, and installed-client journeys pass the same conformance bar.
 
 ## Requirements
 
