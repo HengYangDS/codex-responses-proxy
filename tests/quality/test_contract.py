@@ -462,6 +462,29 @@ class TestQualityPolicyContracts:
                 "commit_subject_invalid:invalid middle subject"
             ]
 
+    def test_zero_event_base_checks_current_commit_not_historical_subjects(self, monkeypatch):
+        with _test_repository(("tracked.txt",)) as root:
+            for subject in (
+                "invalid historical subject",
+                "fix(quality): accepted current subject",
+            ):
+                _git(
+                    root,
+                    "-c",
+                    "user.name=Test Author",
+                    "-c",
+                    "user.email=test@example.com",
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    subject,
+                )
+            head = _git(root, "rev-parse", "HEAD").stdout.strip().decode()
+            monkeypatch.setenv("CODEX_RESPONSES_PROXY_COMMIT_BASE", "0" * len(head))
+            monkeypatch.setenv("CODEX_RESPONSES_PROXY_COMMIT_HEAD", head)
+
+            assert commits.commit_subject_gaps(root) == []
+
     def test_commit_checker_derives_event_namespace_without_product_import(self, monkeypatch):
         source = (ROOT / "tools/quality/commits.py").read_text(encoding="utf-8")
         assert "from codex_responses_proxy" not in source

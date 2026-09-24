@@ -1010,16 +1010,18 @@ def test_commit_event_inputs_reach_each_governance_context() -> None:
             assert "CI_COMMIT_TAG" in command
 
 
-@pytest.mark.parametrize("event", ["review", "push", "tag"])
+@pytest.mark.parametrize("event", ["review", "push", "api", "tag"])
 def test_gitlab_commit_projection_executes_native_event_values(event, monkeypatch) -> None:
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
     command = _strings(_mapping(gitlab["verify-accepted-source"])["script"])[-1]
     prefix = command.split("uv run", 1)[0]
     head, base, review = "a" * 40, "b" * 40, "c" * 40
+    zero = "0" * 40
     for name, value in {
         "CI_COMMIT_SHA": head,
-        "CI_COMMIT_BEFORE_SHA": base,
+        "CI_COMMIT_BEFORE_SHA": zero if event == "api" else base,
         "CI_MERGE_REQUEST_DIFF_BASE_SHA": review if event == "review" else "",
+        "CI_PIPELINE_SOURCE": "merge_request_event" if event == "review" else event,
         "CI_COMMIT_TAG": "v4.0.3" if event == "tag" else "",
     }.items():
         monkeypatch.setenv(name, value)
@@ -1035,6 +1037,6 @@ def test_gitlab_commit_projection_executes_native_event_values(event, monkeypatc
         check=True,
     )
     assert result.stdout.splitlines() == [
-        {"review": review, "push": base, "tag": head}[event],
+        {"review": review, "push": base, "api": zero, "tag": head}[event],
         head,
     ]
