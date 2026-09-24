@@ -69,8 +69,8 @@ def _static_checks(session: nox.Session) -> None:
         env=environment,
     )
     session.run("python", "tools/quality/text_layout.py", env=environment)
-    session.run("python", "-m", "tools.quality.responsibilities", env=environment)
-    session.run("python", "-m", "tools.quality.hard_coding", env=environment)
+    session.run("python", "-m", "tools.quality.responsibilities", env=environment, silent=True)
+    session.run("python", "-m", "tools.quality.hard_coding", env=environment, silent=True)
     session.run("python", "-m", "tools.quality.repository", env=environment)
     session.run(
         "ty",

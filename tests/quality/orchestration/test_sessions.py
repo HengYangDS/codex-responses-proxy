@@ -237,6 +237,11 @@ def test_static_checks_cover_the_same_source_and_configuration_scope(
     assert set(typing[-4:]) == {"src/codex_responses_proxy", "tools", "tests", "noxfile.py"}
     assert typing[typing.index("--python-platform") + 1] == "all"
     assert typing[typing.index("--python-version") + 1] == nox_configuration.MIN_PYTHON
+    for module in ("tools.quality.responsibilities", "tools.quality.hard_coding"):
+        (audit,) = (
+            call for call in session.run.call_args_list if call.args[:3] == ("python", "-m", module)
+        )
+        assert audit.kwargs["silent"] is True
 
 
 @pytest.mark.parametrize("session_name", ["quick", "quality"])
