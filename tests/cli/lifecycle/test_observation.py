@@ -211,18 +211,21 @@ def test_doctor_uses_one_state_level_next_action() -> None:
 
     assert invalid_rollback["checks"]["rollback"] == {
         "status": "failed",
-        "detail": "binding mismatch",
+        "detail": "invalid",
     }
 
 
 def test_doctor_requires_integrity_service_and_exact_listener_identity(subtests) -> None:
     healthy = {
+        "state": "running",
+        "detail": "healthy",
         "release": "2.0.8",
         "payload_integrity": {"ok": True, "detail": "verified"},
         "service": "running",
         "listener_pids": [321],
         "runtime": {"pid": 321, "accepting": True},
         "payload_transaction": None,
+        "rollback": {"state": "available"},
         "command": {
             "path": "/commands/codex-responses-proxy",
             "state": "owned",
