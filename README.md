@@ -205,17 +205,18 @@ path. Automation should use `--json` where the command supports it.
 Every request is projected to a provider-portable Responses grammar before it
 leaves the loopback listener.
 
-| Concern                     | Behavior                                                                                        |
-| --------------------------- | ----------------------------------------------------------------------------------------------- |
-| Storage                     | Sends `store=false`; continuity comes from replayed dialogue and complete tool relationships    |
-| Provider IDs                | Removes response, conversation, cache, stored-item, and provider-issued item bindings           |
-| Encrypted replay            | Removes reasoning history; preserves required native agent payloads without claiming decryption |
-| Tool replay                 | Keeps complete function/custom-tool call pairs; rejects unsafe structure locally                |
-| Empty upstream response     | Returns a retryable local `503` instead of committing false success                             |
-| DMXAPI `477 empty_response` | Retries the already-projected bytes once                                                        |
-| Upstream `429`              | Relays the first response and applies a provider-scoped bounded cooldown                        |
-| `response_failed`           | Uses strictly shrinking, pair-safe recovery; one final dialogue-only attempt is bounded         |
-| Invalid `input` union       | Uses one smaller current-dialogue fallback, then stops                                          |
+| Concern                     | Behavior                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------ |
+| Storage                     | Sends `store=false`; continuity comes from replayed dialogue and complete tool relationships     |
+| Provider IDs                | Removes response, conversation, cache, stored-item, and provider-issued item bindings            |
+| Encrypted replay            | Removes reasoning history; preserves required native agent payloads without claiming decryption  |
+| Tool replay                 | Keeps complete function/custom-tool call pairs; rejects unsafe structure locally                 |
+| Empty upstream response     | Returns a retryable local `503` instead of committing false success                              |
+| DMXAPI `477 empty_response` | Retries the already-projected bytes once                                                         |
+| Upstream `429`              | Relays the first response and applies a provider-scoped bounded cooldown                         |
+| Exhausted upstream `503`    | Relays the original error; subsequent turns briefly cool only that provider before probing again |
+| `response_failed`           | Uses strictly shrinking, pair-safe recovery; one final dialogue-only attempt is bounded          |
+| Invalid `input` union       | Uses one smaller current-dialogue fallback, then stops                                           |
 
 The proxy never rewrites conversation storage to obtain portability.
 

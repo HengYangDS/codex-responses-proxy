@@ -171,14 +171,15 @@ become a retryable local `503`; partial success bytes are not committed.
 
 ## Recovery ownership
 
-| Condition                       | Bounded behavior                                                              |
-| ------------------------------- | ----------------------------------------------------------------------------- |
-| DMXAPI `477 empty_response`     | Retry the already-projected bytes once                                        |
-| `response_failed`               | Strictly shrinking pair-safe attempts, then at most one dialogue-only attempt |
-| Invalid `input` union           | One smaller current-dialogue attempt                                          |
-| Undecryptable agent content     | Relay the upstream rejection without replacing the task                       |
-| Pre-content stream interruption | Retry only before substantive downstream commitment                           |
-| `429`                           | Relay once; provider-scoped cooldown; no global queue                         |
+| Condition                       | Bounded behavior                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| DMXAPI `477 empty_response`     | Retry the already-projected bytes once                                         |
+| `response_failed`               | Strictly shrinking pair-safe attempts, then at most one dialogue-only attempt  |
+| Invalid `input` union           | One smaller current-dialogue attempt                                           |
+| Undecryptable agent content     | Relay the upstream rejection without replacing the task                        |
+| Pre-content stream interruption | Retry only before substantive downstream commitment                            |
+| `429`                           | Relay once; provider-scoped cooldown; no global queue                          |
+| Exhausted upstream `503`        | Relay the original error; briefly cool only that provider before probing again |
 
 Each recovery consumes the same provider-portable request owner. No recovery
 path restores provider IDs, ciphertext, or an older request body.

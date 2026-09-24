@@ -79,6 +79,11 @@ def provider_key(provider: str) -> str:
     return f"provider:{provider}"
 
 
+def unavailable_key(provider: str) -> str:
+    """Keep upstream unavailability separate from rate-limit cooldowns."""
+    return f"unavailable:{provider}"
+
+
 def failure_count_for_test() -> int:
     """Expose only cache cardinality for bounded-state tests."""
     with _FAILURES_LOCK:
