@@ -46,6 +46,94 @@ def test_non_json_nested_evidence_is_rejected_before_projection(value: object) -
         )
 
 
+@pytest.mark.parametrize("placement", ["result", "command", "payload_integrity"])
+def test_status_rejects_undeclared_public_evidence(placement: str, *, mocker, capsys) -> None:
+    marker = "private-evidence-marker"
+    status: dict[str, object] = {
+        "state": "running",
+        "detail": "healthy",
+        "release": "4.0.5",
+        "payload_integrity": {"ok": True, "detail": "verified"},
+        "command": {"state": "owned", "kind": "symlink", "path": "/bin/proxy"},
+        "service": "running",
+        "listener_pids": [321],
+        "runtime": {"pid": 321},
+        "payload_transaction": None,
+    }
+    target = status if placement == "result" else status[placement]
+    assert isinstance(target, dict)
+    target["undeclared"] = marker
+    mocker.patch.object(application, "dispatch", return_value=status)
+
+    assert application._execute("status", as_json=True) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert marker not in captured.err
+    assert json.loads(captured.err)["error"]["code"] == "internal_error"
+
+
+@pytest.mark.parametrize(
+    ("command", "result"),
+    [
+        ("install", {"state": "installed", "release": "4.0.5"}),
+        (
+            "doctor",
+            {
+                "state": "running",
+                "ok": True,
+                "next": None,
+                "checks": {"payload": {"status": "passed", "detail": "verified"}},
+            },
+        ),
+        ("reload", {"state": "reloaded", "old_pid": 1, "new_pid": 2}),
+        ("rollback", {"state": "unavailable", "detail": "no predecessor"}),
+        ("recover", {"state": "not_required"}),
+        ("uninstall", {"state": "not_installed", "stopped": 0, "command_removed": False}),
+    ],
+)
+def test_other_commands_reject_undeclared_public_evidence(
+    command: str, result: dict[str, object], *, mocker, capsys
+) -> None:
+    marker = "private-evidence-marker"
+    mocker.patch.object(application, "dispatch", return_value={**result, "undeclared": marker})
+
+    assert application._execute(command, as_json=True) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert marker not in captured.err
+    assert json.loads(captured.err)["error"]["code"] == "internal_error"
+
+
+def test_doctor_rejects_undeclared_check_evidence(*, mocker, capsys) -> None:
+    marker = "private-evidence-marker"
+    report = {
+        "state": "running",
+        "ok": True,
+        "next": None,
+        "checks": {"payload": {"status": "passed", "detail": "verified", "undeclared": marker}},
+    }
+    mocker.patch.object(application, "dispatch", return_value=report)
+
+    assert application._execute("doctor", as_json=True) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert marker not in captured.err
+    assert json.loads(captured.err)["error"]["code"] == "internal_error"
+
+
+def test_doctor_rejects_mistyped_check_status() -> None:
+    with pytest.raises(ValueError, match="doctor result is invalid"):
+        application.outcome.admit(
+            "doctor",
+            {
+                "state": "degraded",
+                "ok": False,
+                "next": "codex-responses-proxy status --json",
+                "checks": {"payload": {"status": ["failed"], "detail": "invalid"}},
+            },
+        )
+
+
 @pytest.mark.parametrize(
     "override",
     [

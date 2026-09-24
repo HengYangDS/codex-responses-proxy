@@ -55,6 +55,23 @@ class Failure:
 type PublicOutcome = Success | Failure
 
 
+def _valid_doctor_checks(checks: Mapping[str, object]) -> bool:
+    """Admit only named, categorical diagnostics to the public result."""
+    names = {"installation", "payload", "service", "listener", "command", "transaction", "rollback"}
+    return (
+        bool(checks)
+        and set(checks) <= names
+        and all(
+            isinstance(check, Mapping)
+            and set(check) == {"status", "detail"}
+            and isinstance(check["status"], str)
+            and check["status"] in {"passed", "failed"}
+            and isinstance(check["detail"], str)
+            for check in checks.values()
+        )
+    )
+
+
 def admit(command: str, raw: Mapping[str, object] | None) -> Success:
     """Reject malformed internal results instead of presenting false success."""
     if not isinstance(raw, Mapping):
@@ -68,47 +85,101 @@ def admit(command: str, raw: Mapping[str, object] | None) -> Success:
             "state": ("running" | "degraded" | "invalid" | "not_installed" | "recovery_required"),
             "detail": str(),
             "release": (str() | None),
-            "payload_integrity": {"ok": bool(), "detail": str()},
+            "payload_integrity": {"ok": bool(), "detail": str()} as integrity,
             "command": {
                 "state": ("owned" | "absent" | "foreign"),
                 "kind": (str() | None),
                 "path": str() as command_path,
-            },
+            } as command_state,
             "service": str(),
             "listener_pids": list() as listeners,
             "runtime": (dict() | None),
             "payload_transaction": (dict() | None),
-        } if command_path and all(type(pid) is int and pid > 0 for pid in listeners):
-            pass
-        case "doctor", {"state": _, "ok": bool(), "checks": Mapping() as checks} if (
-            state in {"running", "degraded", "invalid", "not_installed", "recovery_required"}
-            and checks
+            **rest,
+        } if (
+            command_path
+            and all(type(pid) is int and pid > 0 for pid in listeners)
+            and set(integrity) == {"ok", "detail"}
+            and set(command_state) == {"state", "kind", "path"}
+            and (
+                not rest
+                or (
+                    set(rest) == {"rollback"}
+                    and isinstance(rest["rollback"], dict)
+                    and set(rest["rollback"]) <= {"state", "from_release", "to_release", "detail"}
+                    and isinstance(rest["rollback"].get("state"), str)
+                    and all(isinstance(value, str) for value in rest["rollback"].values())
+                )
+            )
         ):
             pass
-        case "install", {"state": ("installed" | "upgraded" | "unchanged"), "release": str()}:
+        case "doctor", {
+            "state": _,
+            "ok": bool() as healthy,
+            "next": (str() | None) as next_command,
+            "checks": Mapping() as checks,
+            **rest,
+        } if (
+            state in {"running", "degraded", "invalid", "not_installed", "recovery_required"}
+            and not rest
+            and _valid_doctor_checks(checks)
+            and healthy == all(check["status"] == "passed" for check in checks.values())
+            and (next_command is None) == healthy
+        ):
+            pass
+        case "install", {
+            "state": ("installed" | "upgraded" | "unchanged"),
+            "release": str(),
+            **rest,
+        } if not rest:
             pass
         case "install", {
             "state": ("installed" | "upgraded"),
             "runtime": {"release": str()},
-        }:
+            **rest,
+        } if not rest:
             pass
-        case "reload", {"state": "reloaded", "old_pid": old_pid, "new_pid": new_pid} if (
-            type(old_pid) is int and type(new_pid) is int
+        case "reload", {
+            "state": "reloaded",
+            "old_pid": old_pid,
+            "new_pid": new_pid,
+            **rest,
+        } if (
+            type(old_pid) is int
+            and type(new_pid) is int
+            and (
+                not rest
+                or (
+                    set(rest) == {"transaction_id", "recovered_after_controller_failure"}
+                    and isinstance(rest["transaction_id"], str)
+                    and rest["recovered_after_controller_failure"] is True
+                )
+            )
         ):
             pass
-        case "rollback", {"state": "unavailable", "detail": str()}:
+        case "rollback", {"state": "unavailable", "detail": str(), **rest} if not rest:
             pass
-        case "rollback", {"state": "unchanged", "release": str()}:
+        case "rollback", {"state": "unchanged", "release": str(), **rest} if not rest:
             pass
-        case "rollback", {"state": "rolled_back", "from_release": str(), "to_release": str()}:
+        case "rollback", {
+            "state": "rolled_back",
+            "from_release": str(),
+            "to_release": str(),
+            **rest,
+        } if not rest or (set(rest) == {"runtime"} and isinstance(rest["runtime"], dict)):
             pass
-        case "recover", {"state": "not_required"}:
+        case "recover", {"state": "not_required", **rest} if not rest:
             pass
         case "recover", {
             "state": ("closed" | "rolled_back" | "finalized" | "purged"),
             "transaction_id": str(),
             "version": str(),
-        }:
+            **rest,
+        } if not rest or (
+            set(rest) == {"stopped", "command_removed"}
+            and type(rest["stopped"]) is int
+            and isinstance(rest["command_removed"], bool)
+        ):
             pass
         case "uninstall", {
             "state": (
@@ -116,7 +187,15 @@ def admit(command: str, raw: Mapping[str, object] | None) -> Success:
             ),
             "stopped": stopped,
             "command_removed": bool(),
-        } if type(stopped) is int:
+            **rest,
+        } if type(stopped) is int and (
+            not rest
+            or (
+                set(rest) == {"transaction_id", "version"}
+                and isinstance(rest["transaction_id"], str)
+                and isinstance(rest["version"], str)
+            )
+        ):
             pass
         case _:
             raise ValueError(f"{command} result is invalid")
