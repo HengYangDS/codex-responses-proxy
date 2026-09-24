@@ -85,6 +85,15 @@ class GitHubObservationContracts:
         with pytest.raises(github.GitHubProofError):
             self._normalize_github(commit, (runs, jobs, release, assets))
 
+    def test_github_tag_push_remains_unique_after_release_event(self) -> None:
+        commit = "a" * 40
+        runs, jobs, release, assets = self._github_fixture(commit)
+        runs.append(dict(runs[0], id=2, event="release"))
+
+        result = self._normalize_github(commit, (runs, jobs, release, assets))
+
+        assert cast(dict[str, object], result["ci"])["id"] == 1
+
     def test_github_selects_the_newest_published_ancestor_before_the_candidate(
         self, *, mocker
     ) -> None:
