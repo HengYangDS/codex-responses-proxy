@@ -122,7 +122,9 @@ def normalize(
     tagged_runs = [
         run
         for run in runs
-        if run.get("path") == ".github/workflows/verify.yml" and run.get("head_branch") == tag
+        if run.get("path") == ".github/workflows/verify.yml"
+        and run.get("head_branch") == tag
+        and run.get("event") == "push"
     ]
     run = _one(tagged_runs, "GitHub Verify run is missing or ambiguous")
     if (
