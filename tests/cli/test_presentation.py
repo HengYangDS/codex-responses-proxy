@@ -135,6 +135,79 @@ def test_doctor_rejects_mistyped_check_status() -> None:
 
 
 @pytest.mark.parametrize(
+    ("check", "expected_exit"),
+    [("command", 0), ("payload", 1), ("rollback", 1)],
+)
+def test_doctor_json_reports_categories_without_private_paths(
+    check: str, expected_exit: int, *, mocker
+) -> None:
+    private = "/private/operator/recovery"
+    status: dict[str, object] = {
+        "state": "running",
+        "payload_integrity": {"ok": True, "detail": "verified"},
+        "service": "running",
+        "runtime": {"pid": 321, "accepting": True},
+        "command": {"state": "owned", "path": private},
+        "payload_transaction": None,
+        "rollback": {"state": "available"},
+    }
+    if check == "payload":
+        status["state"] = "degraded"
+        status["payload_integrity"] = {"ok": False, "detail": f"manifest at {private} is invalid"}
+    elif check == "rollback":
+        status["state"] = "invalid"
+        status["rollback"] = {"state": "invalid", "detail": f"snapshot {private} is invalid"}
+    mocker.patch.object(application.control, "status", return_value=status)
+
+    code, stdout, stderr = invoke("doctor", "--json")
+
+    assert code == expected_exit
+    assert stderr == ""
+    assert private not in stdout
+    report = json.loads(stdout)
+    assert report["checks"][check]["status"] == ("passed" if expected_exit == 0 else "failed")
+
+
+@pytest.mark.parametrize(
+    ("source_state", "public_state"),
+    [("degraded", "degraded"), ("invalid", "invalid"), ("unexpected", "invalid")],
+)
+def test_doctor_preserves_lifecycle_failure_when_component_checks_pass(
+    source_state: str, public_state: str, *, mocker
+) -> None:
+    private = "/private/operator/installation"
+    status: dict[str, object] = {
+        "state": source_state,
+        "detail": f"installed receipt at {private} does not match selected payload",
+        "payload_integrity": {"ok": True, "detail": "verified"},
+        "service": "running",
+        "runtime": {"pid": 321, "accepting": True},
+        "command": {"state": "owned", "path": private},
+        "payload_transaction": None,
+        "rollback": {"state": "available"},
+    }
+    mocker.patch.object(application.control, "status", return_value=status)
+
+    code, stdout, stderr = invoke("doctor", "--json")
+
+    assert code == 1
+    assert stderr == ""
+    assert private not in stdout
+    report = json.loads(stdout)
+    assert report["state"] == public_state
+    assert report["ok"] is False
+    assert report["checks"]["installation"] == {"status": "failed", "detail": public_state}
+    assert report["next"] == application.product_identity.command("status", "--json")
+
+    human_code, human_stdout, human_stderr = invoke("doctor")
+
+    assert human_code == code
+    assert human_stderr == ""
+    assert report["next"] in human_stdout
+    assert private not in human_stdout
+
+
+@pytest.mark.parametrize(
     "override",
     [
         {"listener_pids": ["/private/operator"]},

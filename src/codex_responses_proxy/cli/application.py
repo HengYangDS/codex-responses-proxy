@@ -37,6 +37,7 @@ PUBLIC_COMMANDS = frozenset(
 )
 _FAILURE_STATUS = "failed"
 _RECOVERY_NEXT = product_identity.command("reload")
+type DoctorState = Literal["running", "degraded", "invalid", "not_installed", "recovery_required"]
 _JSON = Annotated[
     bool,
     Parameter(
@@ -75,15 +76,15 @@ _PURGE = Annotated[
 class DoctorCheck(TypedDict):
     """One named diagnostic check."""
 
-    status: str
-    detail: object
+    status: Literal["passed", "failed"]
+    detail: str
 
 
 class DoctorReport(TypedDict):
     """Stable doctor result consumed by humans and automation."""
 
     ok: bool
-    state: object
+    state: DoctorState
     next: str | None
     checks: dict[str, DoctorCheck]
 
@@ -231,6 +232,11 @@ def _doctor(evidence: Mapping[str, object]) -> DoctorReport:
     integrity = evidence.get("payload_integrity")
     integrity_ok = isinstance(integrity, dict) and integrity.get("ok") is True
     service = evidence.get("service")
+    service_detail = (
+        service
+        if isinstance(service, str) and service in {"running", "installed", "absent", "unknown"}
+        else "unknown"
+    )
     runtime = evidence.get("runtime")
     listener_ok = (
         isinstance(runtime, dict)
@@ -241,18 +247,43 @@ def _doctor(evidence: Mapping[str, object]) -> DoctorReport:
     command_ok = isinstance(command, dict) and command.get("state") == "owned"
     transaction_state = evidence.get("payload_transaction")
     transaction_ok = transaction_state is None
+    transaction_value = (
+        transaction_state.get("state") if isinstance(transaction_state, dict) else None
+    )
+    transaction_detail = (
+        transaction_value
+        if isinstance(transaction_value, str)
+        and transaction_value
+        in {
+            "prepared",
+            "materialized",
+            "activated",
+            "recovery_required",
+            "closed",
+            "rolled_back",
+            "finalized",
+            "purged",
+            "invalid",
+        }
+        else "invalid"
+    )
     rollback = evidence.get("rollback")
-    rollback_ok = not isinstance(rollback, dict) or rollback.get("state") != "invalid"
+    rollback_value = rollback.get("state") if isinstance(rollback, dict) else "unavailable"
+    rollback_detail = (
+        rollback_value
+        if isinstance(rollback_value, str)
+        and rollback_value in {"available", "unavailable", "deferred", "invalid"}
+        else "invalid"
+    )
+    rollback_ok = rollback_detail != "invalid"
     checks: dict[str, DoctorCheck] = {
         "payload": {
             "status": "passed" if integrity_ok else _FAILURE_STATUS,
-            "detail": integrity.get("detail", "unavailable")
-            if isinstance(integrity, dict)
-            else "unavailable",
+            "detail": "verified" if integrity_ok else "unavailable or invalid",
         },
         "service": {
             "status": "passed" if service == "running" else _FAILURE_STATUS,
-            "detail": str(service or "unknown"),
+            "detail": service_detail,
         },
         "listener": {
             "status": "passed" if listener_ok else _FAILURE_STATUS,
@@ -260,43 +291,53 @@ def _doctor(evidence: Mapping[str, object]) -> DoctorReport:
         },
         "command": {
             "status": "passed" if command_ok else _FAILURE_STATUS,
-            "detail": str(command.get("path", "unavailable"))
-            if isinstance(command, dict)
-            else "unavailable",
+            "detail": "owned" if command_ok else "absent or foreign",
         },
         "transaction": {
             "status": "passed" if transaction_ok else _FAILURE_STATUS,
-            "detail": "none"
-            if transaction_ok
-            else str(transaction_state.get("state", "invalid"))
-            if isinstance(transaction_state, dict)
-            else "invalid",
+            "detail": "none" if transaction_ok else transaction_detail,
         },
         "rollback": {
             "status": "passed" if rollback_ok else _FAILURE_STATUS,
-            "detail": str(rollback.get("detail") or rollback.get("state", "unavailable"))
-            if isinstance(rollback, dict)
-            else "unavailable",
+            "detail": rollback_detail,
         },
     }
-    next_command = (
-        product_identity.command("status", "--json")
-        if state == "invalid"
-        else product_identity.command("recover")
-        if state == "recovery_required"
-        else product_identity.command("install", "--help")
-        if not integrity_ok or not command_ok
-        else _RECOVERY_NEXT
-        if service != "running" or not listener_ok
-        else None
-    )
+    checks_passed = all(check["status"] == "passed" for check in checks.values())
+    if state != "running" and checks_passed:
+        installation_detail = (
+            state
+            if isinstance(state, str) and state in {"degraded", "invalid", "recovery_required"}
+            else "invalid"
+        )
+        checks["installation"] = {
+            "status": _FAILURE_STATUS,
+            "detail": installation_detail,
+        }
+        checks_passed = False
+    next_command: str | None
+    if state == "invalid":
+        next_command = product_identity.command("status", "--json")
+    elif state == "recovery_required":
+        next_command = product_identity.command("recover")
+    elif not integrity_ok or not command_ok:
+        next_command = product_identity.command("install", "--help")
+    elif service_detail != "running" or not listener_ok:
+        next_command = _RECOVERY_NEXT
+    elif not checks_passed:
+        next_command = product_identity.command("status", "--json")
+    else:
+        next_command = None
+    report_state: DoctorState
+    match state:
+        case "recovery_required":
+            report_state = "recovery_required"
+        case "running" | "degraded":
+            report_state = "running" if checks_passed else "degraded"
+        case _:
+            report_state = "invalid"
     return {
-        "ok": all(check["status"] == "passed" for check in checks.values()),
-        "state": state
-        if state in {"invalid", "recovery_required"}
-        else "running"
-        if all(check["status"] == "passed" for check in checks.values())
-        else "degraded",
+        "ok": checks_passed,
+        "state": report_state,
         "next": next_command,
         "checks": checks,
     }
