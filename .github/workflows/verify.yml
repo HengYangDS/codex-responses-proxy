@@ -1,6 +1,11 @@
 name: Verify
 "on":
-  workflow_call: {}
+  workflow_call:
+    secrets:
+      CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST:
+        required: true
+      CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY:
+        required: false
   push:
     tags:
       - v*

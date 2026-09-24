@@ -89,7 +89,10 @@ def test_branch_admission_rejects_any_incomplete_reusable_verification(
     }
     jobs = _mapping(branch["jobs"])
     assert set(jobs) == {"verify", "admission"}
-    assert _mapping(jobs["verify"])["uses"] == "./.github/workflows/verify.yml"
+    caller = _mapping(jobs["verify"])
+    assert caller["uses"] == "./.github/workflows/verify.yml"
+    trust = "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST"
+    assert _mapping(caller["secrets"]) == {trust: "${{ secrets." + trust + " }}"}
     admission = _mapping(jobs["admission"])
     assert admission["name"] == "Admission"
     assert admission["needs"] == "verify"
@@ -110,6 +113,10 @@ def test_branch_admission_rejects_any_incomplete_reusable_verification(
     assert "workflow_call" in verify_triggers
     assert "pull_request" not in verify_triggers
     assert verify_triggers["push"] == {"tags": ["v*"]}
+    assert _mapping(_mapping(verify_triggers["workflow_call"])["secrets"]) == {
+        trust: {"required": "true"},
+        "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY": {"required": "false"},
+    }
 
 
 _PRODUCT_PROOF_JOBS = (
@@ -249,7 +256,12 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     github = _load_yaml(ROOT / ".github/workflows/verify.yml")
     github_triggers = github["on"]
     assert github_triggers == {
-        "workflow_call": {},
+        "workflow_call": {
+            "secrets": {
+                "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST": {"required": "true"},
+                "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY": {"required": "false"},
+            }
+        },
         "push": {"tags": ["v*"]},
         "release": {"types": ["published"]},
         "workflow_dispatch": {
@@ -929,21 +941,6 @@ def _assert_github_native_and_forbidden_contract(text: str) -> None:
 
 
 def test_github_verification_workflow_contract() -> None:
-    workflow = _load_yaml(ROOT / ".github/workflows/verify.yml")
-    assert workflow["on"] == {
-        "workflow_call": {},
-        "push": {"tags": ["v*"]},
-        "release": {"types": ["published"]},
-        "workflow_dispatch": {
-            "inputs": {
-                "release_tag": {
-                    "description": "Published vMAJOR.MINOR.PATCH tag to verify",
-                    "required": "true",
-                    "type": "string",
-                }
-            }
-        },
-    }
     text = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
     _assert_github_required_tokens(text)
     _assert_github_matrix_contract(text)
