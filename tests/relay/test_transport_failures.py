@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Protocol
 from typing import cast
 
+import pytest
+
 from codex_responses_proxy.protocol.replay import projection as rewrite
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.relay import admission
@@ -83,6 +85,7 @@ class TestTransportFailures(InputTransportFixture):
         responses.relay(handler, "POST", PROVIDERS)
         assert handler.statuses == [200]
         assert b"resp_ok" in handler.output()
+        assert cooldown.remaining(cooldown.unavailable_key("dmxapi")) == 0
 
         empty = (
             b'{"error":{"message":"official provider returned an empty response",'
@@ -99,6 +102,42 @@ class TestTransportFailures(InputTransportFixture):
         responses.relay(handler, "POST", PROVIDERS)
         assert handler.statuses == [503]
         assert b"dmx_empty_response_exhausted" in handler.output()
+
+    @pytest.mark.parametrize("provider", ["dmxapi", "ucloud", "aihubmix"])
+    def test_exhausted_503_cools_only_the_failed_provider(self, provider: str, *, mocker) -> None:
+        payload = b'{"error":{"type":"server_error","code":"overloaded"}}'
+        failures = [http_error(503, "unavailable", payload) for _ in range(4)]
+        other_success = DirectResponse(b'{"id":"resp_other","status":"completed"}')
+        recovered = DirectResponse(b'{"id":"resp_recovered","status":"completed"}')
+        open_ = mocker.patch.object(
+            upstream_exchange, "urlopen_direct", side_effect=[*failures, other_success, recovered]
+        )
+        mocker.patch.object(upstream_exchange.time, "sleep", return_value=None)
+        now = [100.0]
+        mocker.patch.object(cooldown.time, "monotonic", side_effect=lambda: now[0])
+        body = json.dumps({"input": []}).encode()
+        peer = "ucloud" if provider != "ucloud" else "aihubmix"
+        first = MemoryHandler(body, path=f"/{provider}/v1/responses")
+        second = MemoryHandler(body, path=f"/{provider}/v1/responses")
+        other = MemoryHandler(body, path=f"/{peer}/v1/responses")
+        after_expiry = MemoryHandler(body, path=f"/{provider}/v1/responses")
+
+        responses.relay(first, "POST", PROVIDERS)
+        responses.relay(second, "POST", PROVIDERS)
+        responses.relay(other, "POST", PROVIDERS)
+        now[0] += 5.0
+        responses.relay(after_expiry, "POST", PROVIDERS)
+
+        assert first.statuses == [503]
+        assert first.output() == payload
+        assert second.statuses == [503]
+        assert b"provider_unavailable_cooldown" in second.output()
+        assert ("Retry-After", "5") in second.sent_headers
+        assert other.statuses == [200]
+        assert b"resp_other" in other.output()
+        assert after_expiry.statuses == [200]
+        assert b"resp_recovered" in after_expiry.output()
+        assert open_.call_count == 6
 
     def test_response_failed_recovery_stops_after_dialogue_and_transport_retries(
         self, *, mocker

@@ -55,6 +55,25 @@ SHALL NOT branch on Provider names.
   error, retry, cooldown, and redaction behavior
 - **AND** no existing generic product module requires Provider-specific code.
 
+### Requirement: Sustained upstream unavailability does not amplify demand
+
+Responses SHALL retain bounded request-local recovery for a transient upstream
+`503`. When that recovery ends in `503`, the proxy SHALL relay the upstream
+status and body and remember a bounded cooldown for that Provider only.
+During the cooldown, another Responses request for that Provider SHALL receive
+a typed local `503` with `Retry-After` before upstream I/O. The cooldown SHALL
+not block another Provider or non-Responses resource, and a request after expiry
+SHALL probe the upstream again.
+
+#### Scenario: A Provider remains unavailable across turns
+
+- **WHEN** one Responses turn exhausts its bounded retries with upstream `503`
+- **THEN** that turn receives the original terminal `503`
+- **AND** an immediate subsequent turn for the same Provider receives a local
+  `provider_unavailable_cooldown` response without upstream I/O
+- **AND** another Provider remains usable; after expiry the first Provider is
+  probed again.
+
 ### Requirement: HTTP event-stream commitment and release are irreversible
 
 Each HTTP Responses stream SHALL forward validated available events without

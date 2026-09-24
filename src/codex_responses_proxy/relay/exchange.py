@@ -405,6 +405,12 @@ def _http_error(exchange: Exchange, error: urllib.error.HTTPError, attempt: int)
         return "retry"
     if wire_failure:
         return "terminal" if _retry_wire_failure(exchange) else "accepted"
+    if status_code == 503:
+        seconds = cooldown.retry_after_seconds(headers)
+        cooldown.remember_failure(
+            cooldown.unavailable_key(exchange.profile.name), cooldown_seconds=seconds
+        )
+        exchange.log("provider_unavailable_cooldown_started", f"seconds={seconds} ")
     downstream.relay_error(exchange.handler, status_code, headers, payload)
     telemetry.record_failure(classification)
     exchange.log(

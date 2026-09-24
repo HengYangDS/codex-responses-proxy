@@ -62,6 +62,23 @@ def _cooldown_active(exchange: upstream_exchange.Exchange) -> bool:
             downstream.send_wire_failure_exhausted(exchange.handler, policy, 0)
             exchange.log("wire_failure_cooldown_hit", f"remaining_seconds={remaining:.1f} ")
             return True
+    remaining = cooldown.remaining(cooldown.unavailable_key(exchange.profile.name))
+    if remaining > 0:
+        seconds = max(1, int(remaining + 0.999))
+        telemetry.record_counter("provider_unavailable_cooldown_hits")
+        telemetry.record_failure("provider_unavailable_cooldown")
+        downstream.send_payload(
+            exchange.handler,
+            503,
+            replay_response.error_payload(
+                "provider is temporarily unavailable; retry the turn shortly",
+                "server_busy",
+                "provider_unavailable_cooldown",
+            ),
+            retry_after=str(seconds),
+        )
+        exchange.log("provider_unavailable_cooldown", f"remaining_seconds={seconds} ")
+        return True
     remaining = cooldown.remaining(cooldown.provider_key(exchange.profile.name))
     if remaining <= 0:
         return False

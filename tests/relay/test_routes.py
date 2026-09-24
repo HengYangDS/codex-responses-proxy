@@ -252,6 +252,31 @@ class ProviderRouteTests:
 
         assert len(received) == 3
 
+    def test_exhausted_503_cooldown_is_provider_scoped_over_loopback(self) -> None:
+        unavailable = _body({"error": {"type": "server_error", "code": "overloaded"}})
+        success = b'{"id":"resp_other","status":"completed"}'
+        body = _body({"input": [{"type": "message", "role": "user", "content": "same"}]})
+
+        with running_proxy([*[(503, unavailable)] * 4, (200, success)]) as (port, received):
+            with pytest.raises(urllib.error.HTTPError) as first:
+                request(port, body, path="/ucloud/v1/responses")
+            with first.value as error:
+                assert error.code == 503
+                assert error.read() == unavailable
+
+            with pytest.raises(urllib.error.HTTPError) as second:
+                request(port, body, path="/ucloud/v1/responses")
+            with second.value as error:
+                assert error.code == 503
+                assert error.headers["Retry-After"] == "5"
+                assert json.loads(error.read())["error"]["code"] == "provider_unavailable_cooldown"
+
+            with request(port, body, path="/aihubmix/v1/responses") as response:
+                assert response.status == 200
+                assert response.read() == success
+
+        assert len(received) == 5
+
     def test_non_dmx_http_477_is_not_given_dmx_recovery(self) -> None:
         empty = _body(
             {
