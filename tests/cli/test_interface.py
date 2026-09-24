@@ -170,8 +170,8 @@ class ProductInterfaceContracts:
         assert code == 0
         assert stderr == ""
         assert "Native release archive" in install_help
-        assert "sibling manifest, checksums," in install_help
-        assert "and signature required" in install_help
+        assert "sibling manifest" in install_help
+        assert "checksums, and signature required" in install_help
         assert "Trusted SSH allowed-signers file" in install_help
         assert "Loopback listener port" in install_help
         assert "Native lifecycle deadline" in install_help
