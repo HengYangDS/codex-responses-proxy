@@ -38,6 +38,53 @@ def test_malformed_success_cannot_be_presented_as_completed(
     assert json.loads(captured.err)["error"]["code"] == "internal_error"
 
 
+@pytest.mark.parametrize("value", [Path("/private/operator"), float("nan")])
+def test_non_json_nested_evidence_is_rejected_before_projection(value: object) -> None:
+    with pytest.raises(ValueError, match="finite JSON object"):
+        application.outcome.admit(
+            "install", {"state": "installed", "release": "4.0.5", "extra": value}
+        )
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"listener_pids": ["/private/operator"]},
+        {"payload_integrity": {"ok": "true", "detail": "verified"}},
+        {"command": {"state": 1}},
+        {"command": {"state": "owned", "kind": 1, "path": "/bin/proxy"}},
+        {"release": 405},
+        {"runtime": []},
+        {"payload_transaction": []},
+    ],
+)
+def test_status_rejects_mistyped_nested_evidence(
+    override: dict[str, object], *, mocker, capsys
+) -> None:
+    status: dict[str, object] = {
+        "state": "running",
+        "detail": "healthy",
+        "release": "4.0.5",
+        "payload_integrity": {"ok": True, "detail": "verified"},
+        "command": {"state": "owned", "kind": "symlink", "path": "/bin/proxy"},
+        "service": "running",
+        "listener_pids": [321],
+        "runtime": {"pid": 321},
+        "payload_transaction": None,
+    }
+    status.update(override)
+
+    with pytest.raises(ValueError, match="status result is invalid"):
+        application.outcome.admit("status", status)
+    mocker.patch.object(application, "dispatch", return_value=status)
+
+    assert application._execute("status") == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Action required" in captured.err
+    assert "/private/operator" not in captured.err
+
+
 def test_status_human_output_is_aligned_and_not_serialized_json(*, mocker) -> None:
     evidence = {
         "state": "running",

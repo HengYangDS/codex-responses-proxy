@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Literal
 from typing import cast
 
+from codex_responses_proxy import json_value
+
 type PublicCommand = Literal[
     "install", "status", "doctor", "recover", "reload", "rollback", "uninstall"
 ]
@@ -58,16 +60,25 @@ def admit(command: str, raw: Mapping[str, object] | None) -> Success:
     if not isinstance(raw, Mapping):
         raise ValueError("public command result is not an object")
     evidence = dict(raw)
+    if not json_value.is_json_object(evidence):
+        raise ValueError("public command result is not a finite JSON object")
     state = evidence.get("state")
     match command, evidence:
         case "status", {
             "state": ("running" | "degraded" | "invalid" | "not_installed" | "recovery_required"),
             "detail": str(),
-            "payload_integrity": Mapping(),
-            "command": Mapping(),
+            "release": (str() | None),
+            "payload_integrity": {"ok": bool(), "detail": str()},
+            "command": {
+                "state": ("owned" | "absent" | "foreign"),
+                "kind": (str() | None),
+                "path": str() as command_path,
+            },
             "service": str(),
-            "listener_pids": list(),
-        }:
+            "listener_pids": list() as listeners,
+            "runtime": (dict() | None),
+            "payload_transaction": (dict() | None),
+        } if command_path and all(type(pid) is int and pid > 0 for pid in listeners):
             pass
         case "doctor", {"state": _, "ok": bool(), "checks": Mapping() as checks} if (
             state in {"running", "degraded", "invalid", "not_installed", "recovery_required"}

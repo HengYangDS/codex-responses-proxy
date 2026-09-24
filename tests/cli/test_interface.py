@@ -91,9 +91,11 @@ class ProductInterfaceContracts:
                 "detail": "not installed",
                 "release": None,
                 "payload_integrity": {"ok": False, "detail": "not installed"},
-                "command": {"state": "absent"},
+                "command": {"state": "absent", "kind": None, "path": "/commands/proxy"},
                 "service": "absent",
                 "listener_pids": [],
+                "runtime": None,
+                "payload_transaction": None,
             },
             "doctor": {
                 "ok": True,
@@ -473,11 +475,13 @@ class ProductInterfaceContracts:
             return_value={
                 "state": "not_installed",
                 "detail": "not installed",
-                "command": {"state": "absent", "kind": None},
+                "command": {"state": "absent", "kind": None, "path": "C:\\proxy.cmd"},
                 "listener_pids": [],
-                "payload_integrity": {"ok": False},
+                "payload_integrity": {"ok": False, "detail": "not installed"},
                 "release": None,
                 "service": "absent",
+                "runtime": None,
+                "payload_transaction": None,
             },
         )
 
