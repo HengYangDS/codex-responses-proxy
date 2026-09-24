@@ -51,7 +51,11 @@ def test_status_returns_bounded_current_runtime_evidence(*, mocker) -> None:
         "listener_pids": [321],
         "runtime": {"pid": 321, "accepting": True},
         "payload_transaction": None,
-        "command": {"state": "owned", "path": "/commands/codex-responses-proxy"},
+        "command": {
+            "state": "owned",
+            "kind": "symlink",
+            "path": "/commands/codex-responses-proxy",
+        },
     }
     mocker.patch.object(application.control, "status", return_value=evidence)
     code, stdout, stderr = invoke("status", "--json")
