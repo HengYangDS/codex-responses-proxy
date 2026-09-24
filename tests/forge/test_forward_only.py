@@ -166,6 +166,28 @@ def test_main_and_dev_advance_atomically_without_rewriting(
     run("git", "merge-base", "--is-ancestor", first, second, cwd=forge_fixture["source"])
 
 
+def test_main_publication_batches_peer_observation_and_skips_noop_push(
+    forge_fixture: ForgeFixture, mocker
+) -> None:
+    """One peer snapshot and fetch cover both protected refs per publication."""
+    publish(forge_fixture, "gitlab", "origin")
+    next_commit = signed_commit(forge_fixture["source"], "next.txt", "two\n")
+    run("git", "branch", "-f", "dev", next_commit, cwd=forge_fixture["source"])
+    git = mocker.spy(projector, "_git")
+
+    assert publish(forge_fixture, "gitlab", "origin") == next_commit
+    observations = [call.args for call in git.call_args_list if call.args[1] == "ls-remote"]
+    assert len(observations) == 2
+    assert all({"refs/heads/main", "refs/heads/dev"} <= set(call) for call in observations)
+    assert sum(call.args[1] == "fetch" for call in git.call_args_list) == 1
+    assert sum(call.args[1] == "push" for call in git.call_args_list) == 1
+
+    git.reset_mock()
+    assert publish(forge_fixture, "gitlab", "origin") == next_commit
+    assert sum(call.args[1] == "ls-remote" for call in git.call_args_list) == 1
+    assert not any(call.args[1] in {"fetch", "push"} for call in git.call_args_list)
+
+
 def test_divergent_peer_fails_without_partial_ref_updates(
     forge_fixture: ForgeFixture,
 ) -> None:
@@ -289,7 +311,10 @@ def test_expected_tips_require_unique_branch_values(value):
 def test_observation_and_ancestry_failures_remain_errors(tmp_path, mocker):
     output = mocker.patch.object(projector, "_output", return_value="a refs/heads/wrong")
     with pytest.raises(ProjectionError, match="malformed"):
-        projector._remote_tip(tmp_path, "peer", "main")
+        projector._remote_tips(tmp_path, "peer", ("main",))
+    output.return_value = "a refs/heads/main\nb refs/heads/main"
+    with pytest.raises(ProjectionError, match="malformed"):
+        projector._remote_tips(tmp_path, "peer", ("main",))
     output.return_value = "refs/tags/main"
     with pytest.raises(ProjectionError, match="not a local branch"):
         projector._local_branch(tmp_path, "main")
@@ -307,8 +332,10 @@ def test_selected_runner_admission_precedes_ref_publication(provider, tmp_path, 
     mocker.patch.object(projector, "_output", return_value="")
     mocker.patch.object(projector, "_local_branch", return_value=("refs/heads/main", "a" * 40))
     mocker.patch.object(projector, "_verify_local_identity")
-    tip = mocker.patch.object(projector, "_remote_tip", return_value="a" * 40)
-    mocker.patch.object(projector, "_git")
+    tips = mocker.patch.object(
+        projector, "_remote_tips", return_value={"main": "a" * 40, "dev": "a" * 40}
+    )
+    git = mocker.patch.object(projector, "_git")
     admission = mocker.patch.object(projector.runner_admission, f"_{provider}")
     assert (
         projector.project(
@@ -323,7 +350,8 @@ def test_selected_runner_admission_precedes_ref_publication(provider, tmp_path, 
         == "a" * 40
     )
     assert admission.call_count == 1
-    assert tip.call_count == 4
+    assert tips.call_count == 1
+    git.assert_not_called()
 
 
 @pytest.mark.parametrize("cutover", [False, True])
@@ -331,8 +359,15 @@ def test_divergent_cutover_and_post_push_readback_are_exact(cutover, tmp_path, m
     mocker.patch.object(projector, "_output", return_value="")
     mocker.patch.object(projector, "_local_branch", return_value=("refs/heads/main", "a" * 40))
     mocker.patch.object(projector, "_verify_local_identity")
-    mocker.patch.object(projector, "_remote_tip", side_effect=["b" * 40, "b" * 40, "c" * 40])
-    mocker.patch.object(projector, "_fetch_remote_branch")
+    mocker.patch.object(
+        projector,
+        "_remote_tips",
+        side_effect=[
+            {"main": "b" * 40, "dev": "b" * 40},
+            {"main": "c" * 40, "dev": "c" * 40},
+        ],
+    )
+    mocker.patch.object(projector, "_fetch_remote_branches")
     mocker.patch.object(projector, "_is_ancestor", return_value=False)
     git = mocker.patch.object(projector, "_git")
     with pytest.raises(ProjectionError, match="does not equal" if cutover else "diverges"):

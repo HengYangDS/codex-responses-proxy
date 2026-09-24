@@ -78,20 +78,30 @@ def _verify_local_identity(root: Path, commit: str, email: str, allowed_signers:
         raise ProjectionError("local commit does not have a trusted signature")
 
 
-def _remote_tip(root: Path, remote: str, branch: str) -> str | None:
-    """Read one remote branch without creating a tracking ref."""
-    result = _output(root, "ls-remote", "--heads", remote, f"refs/heads/{branch}")
-    if not result:
-        return None
-    fields = result.split()
-    if len(fields) != 2 or fields[1] != f"refs/heads/{branch}":
-        raise ProjectionError(f"remote branch observation is malformed: {branch}")
-    return fields[0]
+def _remote_tips(root: Path, remote: str, branches: tuple[str, ...]) -> dict[str, str]:
+    """Observe the selected peer's branches in one request."""
+    requested = {f"refs/heads/{branch}": branch for branch in branches}
+    result = _output(root, "ls-remote", "--heads", remote, *requested)
+    observed: dict[str, str] = {}
+    for line in result.splitlines():
+        fields = line.split()
+        branch = requested.get(fields[1]) if len(fields) == 2 else None
+        if branch is None or branch in observed:
+            raise ProjectionError("remote branch observation is malformed")
+        observed[branch] = fields[0]
+    return observed
 
 
-def _fetch_remote_branch(root: Path, remote: str, branch: str) -> None:
-    """Materialize one observed remote branch object for an ancestry check."""
-    _git(root, "fetch", "--quiet", "--no-tags", remote, f"refs/heads/{branch}")
+def _fetch_remote_branches(root: Path, remote: str, branches: tuple[str, ...]) -> None:
+    """Materialize the observed peer objects in one fetch for ancestry checks."""
+    _git(
+        root,
+        "fetch",
+        "--quiet",
+        "--no-tags",
+        remote,
+        *(f"refs/heads/{branch}" for branch in branches),
+    )
 
 
 def _is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
@@ -135,15 +145,21 @@ def project(
             runner_admission._github(repository_coordinate)
 
     refspecs = _refspecs(source, source_ref)
+    branches = tuple(branch for branch, _ in refspecs)
+    remote_tips = _remote_tips(root, remote, branches)
+    pending = tuple(branch for branch in branches if remote_tips.get(branch) != source)
+    if not pending:
+        return source
+    existing = tuple(branch for branch in pending if remote_tips.get(branch) is not None)
+    if existing:
+        _fetch_remote_branches(root, remote, existing)
+
     arguments = ["push", "--atomic"]
-    for branch, _ in refspecs:
-        remote_tip = _remote_tip(root, remote, branch)
+    for branch in pending:
+        remote_tip = remote_tips.get(branch)
         if not remote_tip:
             arguments.append(f"--force-with-lease=refs/heads/{branch}:{'0' * 40}")
             continue
-        if remote_tip == source:
-            continue
-        _fetch_remote_branch(root, remote, branch)
         if _is_ancestor(root, remote_tip, source):
             continue
         expected = (expected_remote_tips or {}).get(branch)
@@ -156,8 +172,9 @@ def project(
     arguments.extend(f"{commit}:refs/heads/{branch}" for branch, commit in refspecs)
     _git(root, *arguments)
 
-    for branch, _ in refspecs:
-        if _remote_tip(root, remote, branch) != source:
+    observed = _remote_tips(root, remote, branches)
+    for branch in branches:
+        if observed.get(branch) != source:
             raise ProjectionError(f"remote {branch} does not equal the local product commit")
     return source
 
