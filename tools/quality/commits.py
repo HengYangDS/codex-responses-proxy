@@ -66,7 +66,7 @@ def _event_revisions(root: Path) -> tuple[str, ...] | None:
     if actual.returncode or actual.stdout.strip() != head:
         raise ValueError("commit_event_head_mismatch")
     if set(base) == {"0"}:
-        return (head,)
+        return ("-1", head)
     if _git(root, "cat-file", "-e", f"{base}^{{commit}}").returncode:
         raise ValueError("commit_event_base_unavailable")
     if _git(root, "merge-base", "--is-ancestor", base, head).returncode:
