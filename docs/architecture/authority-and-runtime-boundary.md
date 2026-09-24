@@ -159,8 +159,11 @@ reasoning history. Preserve its native envelope and exact ciphertext for the
 selected upstream; never reduce a task to its visible routing header. The proxy
 does not decrypt messages or promise that another provider can decrypt them.
 An upstream `invalid_encrypted_content` response is relayed without replacing
-the task body. Shrinking recovery is unavailable for a request carrying a native
-agent message; it cannot discard the task and retry an empty continuation.
+the task body and classified as `provider_bound_encrypted_content` in secret-free
+telemetry. This identifies the upstream refusal, not the origin of the ciphertext
+or a safe migration target. Shrinking recovery is unavailable for a request
+carrying a native agent message; it cannot discard the task and retry an empty
+continuation.
 
 The live-response boundary preserves encrypted control content needed for the
 current turn. Empty, truncated, malformed, oversized, or non-terminal success bodies
