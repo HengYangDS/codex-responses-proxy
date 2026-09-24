@@ -43,7 +43,7 @@ jobs:
       linux-release-image: ${{ steps.versions.outputs.linux-release-image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Install the locked matrix tool environment
@@ -65,7 +65,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version-file: .python-release
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c
@@ -102,7 +102,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ matrix.python-version }}
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Compile and test
@@ -126,7 +126,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ matrix.python-version }}
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Compile and test
@@ -144,7 +144,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version-file: .python-release
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Confirm accepted source and metadata
@@ -169,7 +169,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version-file: .python-release
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Prove exact dev-to-main promotion
@@ -196,7 +196,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ needs.python-matrix.outputs.latest }}
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c
@@ -233,7 +233,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ needs.python-matrix.outputs.floor }}
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c
@@ -257,7 +257,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ needs.python-matrix.outputs.release }}
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Measure deterministic product overhead
@@ -291,7 +291,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ needs.python-matrix.outputs.release }}
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Install the locked release tool environment
@@ -317,7 +317,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Materialize the canonical release source root
@@ -349,7 +349,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ needs.python-matrix.outputs.release }}
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -399,7 +399,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ needs.python-matrix.outputs.release }}
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Install the locked release tool environment
@@ -439,7 +439,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ needs.python-matrix.outputs.latest }}
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Download native release assets
@@ -489,7 +489,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version-file: .python-release
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Install the locked release tool environment
