@@ -228,12 +228,15 @@ The proxy never rewrites conversation storage to obtain portability.
 
 ## Request boundary
 
-Only exact paths matching this grammar are admitted:
+Only these exact provider-scoped requests are admitted:
 
 ```text
-/<provider>/v1/responses
+POST /<provider>/v1/responses
+GET  /<provider>/v1/models
 ```
 
+Responses requests receive portable projection and bounded recovery. Model
+catalog reads are relayed once without Responses-specific transformations.
 Encoded path material, dot segments, duplicate separators, absolute targets,
 fragments, and unrelated endpoints are rejected before remote I/O. Provider
 origins come from the product manifest; headers, bodies, and query parameters
