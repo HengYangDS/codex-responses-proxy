@@ -64,12 +64,11 @@ unchanged.
 
 The proxy SHALL preserve textual system, developer, user, and assistant
 dialogue; agent author, recipient, and phase context; complete
-function/custom-tool call-output pairs; and standalone cross-task tool delivery
-results whose portable provenance is explicit. Assistant, synthesized-agent,
-and standalone delivery history SHALL use provider-neutral Easy Input Message
-strings. System, developer, user, and paired tool-output lists SHALL use
-input-content grammar. Provider IDs, statuses, annotations, namespaces, and
-opaque metadata SHALL NOT be required by a paired output's outbound form.
+function/custom-tool call-output pairs; and standalone cross-task tool
+delivery results whose portable provenance is explicit. Assistant,
+synthesized-agent, and standalone delivery history SHALL use provider-neutral
+Easy Input Message strings. System, developer, user, and paired tool-output
+lists SHALL use input-content grammar.
 
 #### Scenario: Text and paired calls are replayed
 
@@ -78,14 +77,6 @@ opaque metadata SHALL NOT be required by a paired output's outbound form.
 - **THEN** the upstream receives equivalent role-valid portable text and both
   complete call-output pairs
 - **AND** every paired output retains the matching `call_id` and call kind.
-
-#### Scenario: Namespaced function output is replayed
-
-- **WHEN** a valid function output follows its matching call and carries the
-  optional namespace metadata emitted by Codex
-- **THEN** the upstream receives the complete provider-portable call-output pair
-- **AND** the namespace metadata is not required or forwarded
-- **AND** any other unproved output field is still rejected before upstream I/O.
 
 #### Scenario: Standalone cross-task delivery is replayed
 
@@ -153,6 +144,19 @@ opaque metadata SHALL NOT be required by a paired output's outbound form.
 - **THEN** recovery preserves their provider-portable semantic representation
 - **AND** does not fabricate text or require provider-bound identifiers.
 
+### Requirement: Paired tool output has a provider-neutral form
+
+Provider IDs, statuses, annotations, namespaces, and opaque metadata SHALL NOT
+be required by a paired output's outbound form.
+
+#### Scenario: Namespaced function output is replayed
+
+- **WHEN** a valid function output follows its matching call and carries the
+  optional namespace metadata emitted by Codex
+- **THEN** the upstream receives the complete provider-portable call-output pair
+- **AND** the namespace metadata is not required or forwarded
+- **AND** any other unproved output field is still rejected before upstream I/O.
+
 ### Requirement: Paired empty tool results remain explicit
 
 A correctly paired function or custom-tool result whose exact output is the
@@ -187,28 +191,18 @@ than forwarded or rejected.
 
 ### Requirement: Unproved replay shapes fail closed
 
-Before upstream I/O, the proxy SHALL classify each Responses input item through
-one authoritative item policy shared by diagnostics and provider-portable
-projection. Malformed JSON, invalid input containers, genuinely unknown replay
-item types, unknown content block types, orphaned or mismatched tool outputs,
-duplicate call/output identities, invalid required fields, and incomplete local
-shell pairs SHALL be rejected locally. The error SHALL identify a bounded
-structural reason without returning request text, credentials, or encrypted
-payloads.
+Before upstream I/O, the proxy SHALL classify each Responses input item
+through one authoritative item policy shared by diagnostics and
+provider-portable projection. Malformed JSON, invalid input containers,
+genuinely unknown replay item types, unknown content block types, orphaned or
+mismatched tool outputs, duplicate call/output identities, invalid required
+fields, and incomplete local shell pairs SHALL be rejected locally.
 
 #### Scenario: A future client introduces an unknown replay item
 
 - **WHEN** the input list contains a replay item not recognized by the
   authoritative item policy
 - **THEN** the proxy returns a local client error identified as an unknown item
-- **AND** no configured provider receives the request.
-
-#### Scenario: A recognized client item lacks portable semantics
-
-- **WHEN** the authoritative policy recognizes an item emitted by a supported
-  client but does not define a safe provider-portable projection for it
-- **THEN** the proxy returns a local client error identified as bounded schema
-  drift rather than an unknown item
 - **AND** no configured provider receives the request.
 
 #### Scenario: A tool output is not safely paired
@@ -233,6 +227,19 @@ payloads.
 - **WHEN** the proxy diagnoses and projects the same Responses input item
 - **THEN** both operations consume the same authoritative item classification
 - **AND** a recognized item cannot fall through projection as an unknown type.
+
+### Requirement: Replay errors disclose only bounded structure
+
+The error SHALL identify a bounded structural reason without returning request
+text, credentials, or encrypted payloads.
+
+#### Scenario: A recognized client item lacks portable semantics
+
+- **WHEN** the authoritative policy recognizes an item emitted by a supported
+  client but does not define a safe provider-portable projection for it
+- **THEN** the proxy returns a local client error identified as bounded schema
+  drift rather than an unknown item
+- **AND** no configured provider receives the request.
 
 ### Requirement: Provider routes admit only exact Responses and model-catalog targets
 

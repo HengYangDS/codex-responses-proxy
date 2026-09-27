@@ -371,6 +371,7 @@ class TestVerificationContracts:
             "pytest-subtests",
             "pyyaml",
             "ruff",
+            "semver",
             "ty",
             "vulture",
         }

@@ -232,6 +232,89 @@ def test_changelog_accepts_unreleased_only_and_canonical_categories(tmp_path: Pa
     assert metadata.changelog_releases(released) == [("1.0.0", "2026-07-01")]
 
 
+@pytest.mark.parametrize(
+    ("heading", "version"),
+    [
+        ("## [2.0.0] - 2026-07-03 [YANKED]", "2.0.0"),
+        ("## [2.0.0-rc.1] - 2026-07-03", "2.0.0-rc.1"),
+        ("## [2.0.0+build.7] - 2026-07-03", "2.0.0+build.7"),
+        ("## [2.0.0-rc.1+build.7] - 2026-07-03", "2.0.0-rc.1+build.7"),
+    ],
+)
+def test_changelog_accepts_official_release_headings(
+    tmp_path: Path, heading: str, version: str
+) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        changelog_document(f"## [Unreleased]\n\n{heading}\n\n### Fixed\n\n- A fix.\n"),
+        encoding="utf-8",
+    )
+    assert metadata.changelog_releases(path) == [(version, "2026-07-03")]
+
+
+def test_changelog_orders_prereleases_below_the_release(tmp_path: Path) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        changelog_document(
+            "## [Unreleased]\n\n"
+            "## [1.0.0-rc.1] - 2026-07-02\n\n### Fixed\n\n- Candidate.\n\n"
+            "## [1.0.0] - 2026-07-01\n\n### Added\n\n- Release.\n"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="descending SemVer"):
+        metadata.changelog_releases(path)
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "## [01.0.0] - 2026-07-01",
+        "## [1.0.0-01] - 2026-07-01",
+        "## [1.0.0+build..7] - 2026-07-01",
+    ],
+)
+def test_changelog_rejects_invalid_semver_identifiers(tmp_path: Path, heading: str) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        changelog_document(f"## [Unreleased]\n\n{heading}\n\n### Fixed\n\n- A fix.\n"),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="SemVer"):
+        metadata.changelog_releases(path)
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "## [Unreleased] - 2026-07-01",
+        "## [Unreleased] - 2026-07-01 [YANKED]",
+    ],
+)
+def test_changelog_unreleased_cannot_be_dated_or_yanked(tmp_path: Path, heading: str) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        changelog_document(f"{heading}\n"),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Unreleased"):
+        metadata.changelog_releases(path)
+
+
+def test_changelog_rejects_duplicate_released_version(tmp_path: Path) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        changelog_document(
+            "## [Unreleased]\n\n"
+            "## [1.0.0] - 2026-07-02\n\n### Fixed\n\n- First.\n\n"
+            "## [1.0.0] - 2026-07-01\n\n### Fixed\n\n- Again.\n"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate released version"):
+        metadata.changelog_releases(path)
+
+
 def test_exact_release_tag_contract(*, mocker) -> None:
     """Reject lightweight, misnamed, nested, and wrong-target release tags."""
     cases = (
