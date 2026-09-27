@@ -14,13 +14,14 @@ from typing import Annotated
 
 from cyclopts import App
 from cyclopts import Parameter
+from semver import Version as SemVerVersion
 
 from codex_responses_proxy import product_identity
 from tools.release import identity
 
 ROOT = Path(__file__).resolve().parents[2]
 CHANGELOG_HEADING = re.compile(
-    r"^## \[(?P<version>Unreleased|(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))\](?: - (?P<date>\d{4}-\d{2}-\d{2}))?$"
+    r"^## \[(?P<version>Unreleased|[^\[\]]+)\](?: - (?P<date>\d{4}-\d{2}-\d{2})(?: (?P<yanked>\[YANKED\]))?)?$"
 )
 CHANGELOG_CATEGORIES = frozenset({"Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"})
 KEEP_A_CHANGELOG_URL = "https://keepachangelog.com/en/1.1.0/"
@@ -52,9 +53,8 @@ def check_python_metadata() -> None:
         raise ValueError("the product distribution must be the native executable")
 
 
-def _version_key(version: str) -> tuple[int, int, int]:
-    major, minor, patch = version.split(".")
-    return int(major), int(minor), int(patch)
+def _version_key(version: str) -> SemVerVersion:
+    return SemVerVersion.parse(version)
 
 
 def known_release_versions() -> list[str]:
@@ -84,8 +84,19 @@ def changelog_releases(path: Path | None = None) -> list[tuple[str, str]]:
             continue
         match = CHANGELOG_HEADING.match(line)
         if match is None:
-            raise ValueError(f"CHANGELOG.md release heading at line {line_number} must be dated")
-        headings.append((line_number - 1, match.group("version"), match.group("date")))
+            raise ValueError(f"CHANGELOG.md release heading at line {line_number} is not canonical")
+        version = match.group("version")
+        if version == "Unreleased":
+            if match.group("date") is not None:
+                raise ValueError("CHANGELOG.md Unreleased section cannot be dated or yanked")
+        else:
+            try:
+                _version_key(version)
+            except ValueError as error:
+                raise ValueError(
+                    f"CHANGELOG.md release heading at line {line_number} has invalid SemVer"
+                ) from error
+        headings.append((line_number - 1, version, match.group("date")))
     if not headings or headings[0][1] != "Unreleased":
         raise ValueError("CHANGELOG.md must start its release sections with ## [Unreleased]")
     if sum(1 for _, version, _ in headings if version == "Unreleased") != 1:
@@ -101,6 +112,8 @@ def changelog_releases(path: Path | None = None) -> list[tuple[str, str]]:
                 f"released CHANGELOG heading for {version} must use a valid date"
             ) from error
     versions = [version for version, _ in released]
+    if len(versions) != len(set(versions)):
+        raise ValueError("CHANGELOG.md has a duplicate released version")
     if versions != sorted(versions, key=_version_key, reverse=True):
         raise ValueError("released CHANGELOG headings must be in descending SemVer order")
     for index, (start, version, _) in enumerate(headings):

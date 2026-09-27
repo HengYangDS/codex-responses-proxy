@@ -13,11 +13,10 @@ authority.
 The admitted native builder for each supported platform SHALL produce that
 platform's asset pair. The release owner SHALL admit those assets into exactly
 one complete release-bundle identity and sign it once. Each selected Forge
-SHALL publish and re-download the exact same files, and dual-Forge parity SHALL
-require equal complete inventories, bytes, checksum manifest, signature, and
-trust-anchor digest. Provider adapters SHALL only transport and verify the
-bundle. Release-source verification SHALL inspect the annotated tag and its
-target without changing the caller's symbolic ref, `HEAD`, index, or worktree.
+SHALL publish and re-download the exact same files, and dual-Forge parity
+SHALL require equal complete inventories, bytes, checksum manifest, signature,
+and trust-anchor digest. Provider adapters SHALL only transport and verify the
+bundle.
 
 #### Scenario: Physical build execution
 
@@ -41,20 +40,6 @@ target without changing the caller's symbolic ref, `HEAD`, index, or worktree.
   or re-signing any file
 - **AND** the re-downloaded result SHALL match that bundle byte for byte.
 
-#### Scenario: Release source is verified
-
-- **WHEN** publication verifies an annotated release tag against an expected
-  commit in an attached branch checkout
-- **THEN** the tag object and dereferenced commit SHALL be validated exactly
-- **AND** the symbolic ref, `HEAD`, index, and worktree SHALL remain unchanged.
-
-#### Scenario: Release source identity differs
-
-- **WHEN** the tag is absent, is not annotated, or resolves to a commit other
-  than the expected commit
-- **THEN** publication SHALL fail closed before provider I/O
-- **AND** the caller checkout SHALL remain unchanged.
-
 #### Scenario: Incomplete or independently signed projection
 
 - **WHEN** either Forge omits a platform, changes any file, regenerates a
@@ -70,6 +55,25 @@ target without changing the caller's symbolic ref, `HEAD`, index, or worktree.
 - **AND** the result SHALL be reported as one-sided publication rather than
   dual-Forge parity.
 
+### Requirement: Release-source inspection preserves caller state
+
+Release-source verification SHALL inspect the annotated tag and its target
+without changing the caller's symbolic ref, `HEAD`, index, or worktree.
+
+#### Scenario: Release source is verified
+
+- **WHEN** publication verifies an annotated release tag against an expected
+  commit in an attached branch checkout
+- **THEN** the tag object and dereferenced commit SHALL be validated exactly
+- **AND** the symbolic ref, `HEAD`, index, and worktree SHALL remain unchanged.
+
+#### Scenario: Release source identity differs
+
+- **WHEN** the tag is absent, is not annotated, or resolves to a commit other
+  than the expected commit
+- **THEN** publication SHALL fail closed before provider I/O
+- **AND** the caller checkout SHALL remain unchanged.
+
 ### Requirement: Validation follows authorization and lifecycle state
 
 The repository SHALL expose one provider-neutral CI graph for the checks that
@@ -77,16 +81,7 @@ GitLab and GitHub actually schedule. Developer and Maintainer authorization,
 guarded ref admission, publication, and parity SHALL remain in their existing
 repository-lifecycle owners rather than being redeclared as unconsumed CI
 fields. GitLab and GitHub SHALL project the same required proof nodes from the
-CI graph. A provider projection MAY omit only a native platform whose runner
-capability is explicitly unavailable; that omission SHALL remain visible and
-SHALL NOT be interpreted as product-level platform evidence.
-
-Each supported Python version SHALL have an independently observable test node.
-Independent nodes SHALL be schedulable in parallel and one failed version or
-platform SHALL be identifiable without inspecting a combined multi-version
-job. A Forge SHALL NOT collapse source governance, quality, the supported
-Python matrix, native product acceptance, or publication into one aggregate
-verification node.
+CI graph.
 
 #### Scenario: Ordinary test in an untagged checkout
 
@@ -205,12 +200,14 @@ verification node.
 - **AND** the result SHALL state its exact local or one-Forge scope
 - **AND** it SHALL NOT claim absent dual-Forge evidence.
 
-#### Scenario: Forge verifies the product tag
+### Requirement: Platform and Python proof nodes remain visible
 
-- **WHEN** a Forge tag pipeline verifies the published product object
-- **THEN** it SHALL supply only the repository, exact tag, and external trust
-  anchor
-- **AND** it SHALL NOT add a Forge identity to the verifier grammar.
+A provider projection MAY omit only a native platform whose runner capability
+is explicitly unavailable; that omission SHALL remain visible and SHALL NOT be
+interpreted as product-level platform evidence. Each supported Python version
+SHALL have an independently observable test node. Independent nodes SHALL be
+schedulable in parallel and one failed version or platform SHALL be
+identifiable without inspecting a combined multi-version job.
 
 #### Scenario: Platform runner is unavailable on one Forge
 
@@ -222,16 +219,28 @@ verification node.
 - **AND** the selected provider adapter SHALL still verify the complete
   immutable bundle before claiming provider-local publication.
 
+### Requirement: Forge verification cannot collapse required concerns
+
+A Forge SHALL NOT collapse source governance, quality, the supported Python
+matrix, native product acceptance, or publication into one aggregate
+verification node.
+
+#### Scenario: Forge verifies the product tag
+
+- **WHEN** a Forge tag pipeline verifies the published product object
+- **THEN** it SHALL supply only the repository, exact tag, and external trust
+  anchor
+- **AND** it SHALL NOT add a Forge identity to the verifier grammar.
+
 ### Requirement: CI projects the complete repository quality contract
 
 The repository SHALL own one explicit quality graph whose concerns cover every
 tracked carrier and whose commands are composed once in repository-owned Nox
 sessions. Local development, repository hooks, GitHub, and GitLab SHALL invoke
 those sessions as projections rather than duplicate their command bodies. CUE
-SHALL validate the semantic equivalence of both Forge projections while allowing
-only runner-native setup and capability-specific platform differences. A green
-subset, repeated equivalent jobs, or success on one Forge SHALL NOT be
-represented as complete repository quality.
+SHALL validate the semantic equivalence of both Forge projections while
+allowing only runner-native setup and capability-specific platform
+differences.
 
 #### Scenario: A proposal revision is pushed
 
@@ -251,12 +260,6 @@ represented as complete repository quality.
 - **THEN** both projections contain the same named semantic gates and consume the same Nox owners
 - **AND** provider YAML contains no independent quality-policy implementation.
 
-#### Scenario: A tag is evaluated
-
-- **WHEN** an annotated release tag is proposed
-- **THEN** the tag pipeline proves source identity, the complete quality graph, supported runtimes, native assets, and release metadata for the tagged commit
-- **AND** no branch result or other Forge result substitutes for the tag's own evidence.
-
 #### Scenario: Python quality is evaluated
 
 - **WHEN** repository Python is admitted
@@ -269,6 +272,17 @@ represented as complete repository quality.
 - **WHEN** repository quality executes
 - **THEN** TOML, YAML, JSON/schema, Markdown, prose, links, workflow syntax, secrets, OpenSpec, generated projections, semantic names, commit subjects, decision records, dependency direction, dependency hygiene, package build, installed artifact behavior, and text-byte invariants SHALL each have an explicit owner or an explicit product-irrelevance decision
 - **AND** each admitted concern SHALL run over its complete declared inventory.
+
+### Requirement: Partial green checks do not establish complete quality
+
+A green subset, repeated equivalent jobs, or success on one Forge SHALL NOT be
+represented as complete repository quality.
+
+#### Scenario: A tag is evaluated
+
+- **WHEN** an annotated release tag is proposed
+- **THEN** the tag pipeline proves source identity, the complete quality graph, supported runtimes, native assets, and release metadata for the tagged commit
+- **AND** no branch result or other Forge result substitutes for the tag's own evidence.
 
 #### Scenario: A stricter rule is proposed
 

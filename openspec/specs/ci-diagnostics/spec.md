@@ -15,9 +15,7 @@ documentation-link, architecture, test, release, and platform verification
 graph. The committed uv lock SHALL own Python tool resolution, and project
 metadata SHALL declare the exact current stable uv bootstrap used by local and
 hosted verification. Warnings, tracebacks, skipped required platforms, and
-missing runners SHALL NOT be represented as success. A pending release heading
-SHALL match `VERSION` and the current UTC date before either Forge prepares a
-release.
+missing runners SHALL NOT be represented as success.
 
 #### Scenario: A clean checkout is verified
 
@@ -27,20 +25,6 @@ release.
 - **AND** Nox resolves the Python matrix from `.python-versions`
 - **AND** no ambient user site, another repository environment, or unpinned
   package resolution contributes to success.
-
-#### Scenario: Release preparation crosses a UTC date boundary
-
-- **WHEN** a pending version has not been tagged and its Changelog date is no longer the current UTC date
-- **THEN** release preparation fails closed
-- **AND** the heading is advanced before proof, tagging, or publication.
-
-#### Scenario: Product tags are checked
-
-- **WHEN** local or hosted verification validates release history
-- **THEN** it checks the reachable product SemVer tags and corresponding
-  Changelog headings from the exact source checkout
-- **AND** tag creation time is not required to equal the Changelog date
-- **AND** no Forge name or provider-specific tag namespace enters product metadata.
 
 #### Scenario: GitLab runs a repository Python tool
 
@@ -62,6 +46,25 @@ release.
 - **WHEN** the current stable uv patch is available
 - **THEN** project metadata and its executable contract name that same exact version
 - **AND** the dependency lock and product runtime semantics remain unchanged.
+
+### Requirement: Release heading matches version and UTC date
+
+A pending release heading SHALL match `VERSION` and the current UTC date
+before either Forge prepares a release.
+
+#### Scenario: Release preparation crosses a UTC date boundary
+
+- **WHEN** a pending version has not been tagged and its Changelog date is no longer the current UTC date
+- **THEN** release preparation fails closed
+- **AND** the heading is advanced before proof, tagging, or publication.
+
+#### Scenario: Product tags are checked
+
+- **WHEN** local or hosted verification validates release history
+- **THEN** it checks the reachable product SemVer tags and corresponding
+  Changelog headings from the exact source checkout
+- **AND** tag creation time is not required to equal the Changelog date
+- **AND** no Forge name or provider-specific tag namespace enters product metadata.
 
 ### Requirement: Successful verification output is pristine
 
@@ -205,14 +208,12 @@ entrypoint.
 
 ### Requirement: Supply-chain pins are current and reproducible
 
-Supported runtimes, direct quality and packaging dependencies, hosted
-Actions, CI images, and release tools SHALL use current stable releases through
-one repository-owned declaration for each ecosystem. The committed uv lock SHALL
-own transitive closure, hosted Actions SHALL use immutable revisions, and GitLab
-Python images SHALL bind both the supported Python minor and the exact UV
-version declared by project metadata to immutable registry digests. CI SHALL
-consume those authorities rather than duplicate version literals or retain
-obsolete compatibility fallbacks.
+Supported runtimes, direct quality and packaging dependencies, hosted Actions,
+CI images, and release tools SHALL use current stable releases through one
+repository-owned declaration for each ecosystem. The committed uv lock SHALL
+own transitive closure, hosted Actions SHALL use immutable revisions, and
+GitLab Python images SHALL bind both the supported Python minor and the exact
+UV version declared by project metadata to immutable registry digests.
 
 #### Scenario: A GitLab Python image is selected
 
@@ -227,13 +228,6 @@ obsolete compatibility fallbacks.
 - **THEN** the job fails before dependency synchronization
 - **AND** the diagnostic states both the expected and observed versions.
 
-#### Scenario: A GitLab job runs a Python repository tool
-
-- **WHEN** verification or publication invokes Nox, pytest, or a repository module
-- **THEN** UV selects the Python executable synchronized for that job
-- **AND** the repository-local Python install and cache directories remain in use
-- **AND** no ambient interpreter or implicit Python download contributes to success.
-
 #### Scenario: The supply chain advances
 
 - **WHEN** an audited stable dependency, hosted Action release, or CI base image
@@ -247,6 +241,18 @@ obsolete compatibility fallbacks.
 - **THEN** the repository SHALL update only `uv.lock`
 - **AND** a repeated resolution SHALL produce no further diff
 - **AND** the complete locked verification graph SHALL pass before integration.
+
+### Requirement: CI consumes declared supply-chain authorities
+
+CI SHALL consume those authorities rather than duplicate version literals or
+retain obsolete compatibility fallbacks.
+
+#### Scenario: A GitLab job runs a Python repository tool
+
+- **WHEN** verification or publication invokes Nox, pytest, or a repository module
+- **THEN** UV selects the Python executable synchronized for that job
+- **AND** the repository-local Python install and cache directories remain in use
+- **AND** no ambient interpreter or implicit Python download contributes to success.
 
 ### Requirement: Hosted setup is deterministic and contention-free
 
