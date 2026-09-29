@@ -77,19 +77,19 @@
 - [x] 8.1 Define `mise` as the sole cross-platform developer entrypoint and provide minimal `bootstrap`, `check`, `native`, and `release` tasks that call existing ecosystem owners rather than shell wrappers.
 - [ ] 8.2 Prove a clean Work Lane reconstructs independent `.venv`, `.nox`, `node_modules`, build, coverage, and temporary state from locks while sharing only content-addressed mise, uv, npm, and Python caches.
 - [ ] 8.3 Remove ambient interpreter, user-site, global mise configuration, system package, and another repository environment from local and hosted success paths; verify empty-HOME and empty-project-cache bootstrap.
-- [ ] 8.4 Online-audit every direct runtime, development, OpenSpec, Python,
+- [x] 8.4 Online-audit every direct runtime, development, OpenSpec, Python,
       Node, mise, uv, Nox, packaging, documentation, CI Action, and release dependency;
       advance each to its latest compatible stable version in the existing SSOT.
       The 2026-09-29 official audit advanced Node 26.10.0, uv 0.12.20, five
       direct and three transitive Python packages, mise-action 5.0.0, and current
       OCI digests. Other authored pins have no newer compatible stable release.
-      Both locks are byte-stable on a second resolution; bootstrap and quick
-      pass. Recheck releases and hosted compatibility at final freeze.
+      Bootstrap, full source verification, and the native release asset pass.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no duplicate
-      version literal controls behavior. The 2026-09-24 offline uv/npm rerun preserved
-      all three lockfile hashes; `mise run bootstrap` verified 71 npm signatures,
-      22 attestations, and zero known npm vulnerabilities. `mise run quick` passed.
+      version literal controls behavior. The 2026-09-29 refresh left
+      `package-lock.json` unchanged; second mise and uv resolutions preserved
+      their new hashes. Bootstrap verified 71 npm signatures, 22 attestations,
+      and zero known npm vulnerabilities; quick verification passed.
 - [ ] 8.6 Configure one dependency update proposal owner with release-age policy, grouping, vulnerability priority, auto-merge criteria, and dual-Forge projection; verify it cannot open competing GitHub and GitLab updates for the same change.
 - [ ] 8.7 Produce and verify SBOM, vulnerability, license, checksum, signature, and provenance outputs from the exact locked candidate without embedding checkout paths, timestamps, credentials, or installer metadata.
 - [ ] 8.8 Evaluate PyInstaller and current alternatives against startup, size, reproducibility, platform support, lifecycle integration, and maintenance cost; retain or replace it based on measured total value, then delete the rejected path.
