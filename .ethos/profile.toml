@@ -13,6 +13,7 @@ static-analysis = "python-quality"
 [[proof.gates]]
 id = "python-quality"
 kind = "static"
+verification_providers = ["ethos.adapters.gates.code_quality:static_report"]
 command = [
   "mise",
   "exec",
@@ -39,6 +40,7 @@ writes_files = true
 [[proof.gates]]
 id = "python-matrix"
 kind = "test"
+verification_providers = ["ethos.adapters.gates.code_quality:behavior_report"]
 command = [
   "mise",
   "exec",
