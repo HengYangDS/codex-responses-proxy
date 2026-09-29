@@ -146,7 +146,7 @@ source_of_truth = "tool-native configuration projected from repository quality p
 change_condition = "tool capability or the policy it implements changes"
 dependency_direction = "configuration depends on policy and is consumed by its native tool"
 retirement_condition = "the native tool is removed or its configuration becomes unnecessary"
-files = [".gitleaks.toml", "pytest.ini"]
+files = [".gitleaks.toml", "pytest.toml"]
 prefixes = [".config/quality/native/"]
 
 [[roles]]
@@ -346,7 +346,7 @@ id = "python-tests"
 owner = "pytest"
 scope = "python"
 session = "tests"
-configuration = ["pytest.ini"]
+configuration = ["pytest.toml"]
 risk_model = "Product behavior can regress without executable contracts across every supported Python runtime."
 measurement = "Warnings-as-errors pytest execution against installed artifacts on Python 3.12, 3.13, and 3.14."
 false_positive_cost = "Host-native capabilities cannot be proved by emulation and remain separate explicit evidence."
@@ -359,7 +359,7 @@ owner = "coverage.py"
 scope = "production-python"
 session = "quality"
 configuration = [
-  ".config/quality/native/coverage.ini",
+  ".config/quality/native/coverage.toml",
   ".config/quality/policy/coverage.toml",
 ]
 risk_model = "Unobserved lifecycle, protocol, release, and verification branches permit silent regressions or false acceptance."

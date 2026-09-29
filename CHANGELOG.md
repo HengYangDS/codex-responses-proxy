@@ -8,6 +8,11 @@ publication authority.
 
 ## [Unreleased]
 
+### Changed
+
+- Use native TOML for pytest and Coverage configuration, preserving direct test
+  discovery, warning policy, and explicit coverage scope without parallel INI files.
+
 ## [4.0.5] - 2026-09-23
 
 ### Changed

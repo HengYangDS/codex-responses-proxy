@@ -1,0 +1,10 @@
+[tool.coverage.run]
+branch = true
+source_pkgs = ["codex_responses_proxy", "noxfile"]
+source_dirs = ["tools"]
+
+[tool.coverage.report]
+show_missing = true
+precision = 2
+include_namespace_packages = true
+exclude_also = ["if __name__ == .__main__.:"]
