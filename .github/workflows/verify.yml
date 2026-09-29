@@ -71,7 +71,7 @@ jobs:
         with:
           install: true
           cache: true
-          minimum_release_age: 0s
+          version: 2026.9.16
       - name: Install and audit locked Node repository tools
         run: |-
           npm ci --ignore-scripts
@@ -203,7 +203,7 @@ jobs:
         with:
           install: true
           cache: true
-          minimum_release_age: 0s
+          version: 2026.9.16
       - name: Install and audit locked Node repository tools
         run: |-
           npm ci --ignore-scripts
@@ -241,7 +241,7 @@ jobs:
         with:
           install: true
           cache: true
-          minimum_release_age: 0s
+          version: 2026.9.16
       - name: Verify lint, format, types, structure, docstrings, and product branch coverage
         run: uv run --locked --group quality nox -s quality
   performance:

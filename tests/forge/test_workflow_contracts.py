@@ -737,8 +737,11 @@ def test_github_python_quality_installs_its_declared_projection_toolchain() -> N
         if str((step := _mapping(raw_step)).get("uses", "")).startswith("jdx/mise-action@")
     )
     assert {str(step["uses"]) for step in mise_steps} == {mise["uses"]}
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    image = _string(_mapping(_mapping(gitlab["source-and-governance"])["image"])["name"])
+    mise_version = image.split(":", 1)[1].split("-debian@", 1)[0]
     assert all(
-        _mapping(step["with"]) == {"install": "true", "cache": "true", "minimum_release_age": "0s"}
+        _mapping(step["with"]) == {"install": "true", "cache": "true", "version": mise_version}
         for step in mise_steps
     )
 
