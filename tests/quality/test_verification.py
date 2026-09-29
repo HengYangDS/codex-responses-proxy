@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -146,15 +147,22 @@ class TestVerificationContracts:
         quality = metadata["dependency-groups"]["quality"]
         assert any(requirement.startswith("pytest==") for requirement in quality)
         assert any(requirement.startswith("pytest-mock==") for requirement in quality)
-        pytest_config = (ROOT / "pytest.ini").read_text(encoding="utf-8")
-        assert "addopts = --import-mode=importlib --strict-config --strict-markers" in pytest_config
-        assert "cache_dir = .cache/pytest" in pytest_config
-        assert "filterwarnings = error" in pytest_config
+        pytest_config = tomllib.loads((ROOT / "pytest.toml").read_text(encoding="utf-8"))["pytest"]
+        assert pytest_config["addopts"] == [
+            "--import-mode=importlib",
+            "--strict-config",
+            "--strict-markers",
+        ]
+        assert pytest_config["cache_dir"] == ".cache/pytest"
+        assert pytest_config["tmp_path_retention_policy"] == "none"
+        assert pytest_config["tmp_path_retention_count"] == "0"
+        assert pytest_config["filterwarnings"] == ["error"]
         assert (
-            "native_distribution: requires the self-contained released executable" in pytest_config
+            "native_distribution: requires the self-contained released executable"
+            in pytest_config["markers"]
         )
-        assert "python_classes = Test* *Tests *Contracts" in pytest_config
-        assert "testpaths = tests" in pytest_config
+        assert pytest_config["python_classes"] == ["Test*", "*Tests", "*Contracts"]
+        assert pytest_config["testpaths"] == ["tests"]
         direct_test_commands = []
         for relative in (
             ".gitlab-ci.yml",
@@ -320,10 +328,36 @@ class TestVerificationContracts:
                     offenders.append(f"{relative}:{node.lineno}:direct_test_entrypoint")
         assert offenders == []
 
+    def test_root_pytest_toml_is_discovered_without_invocation_flags(self, tmp_path: Path) -> None:
+        config = tmp_path / "pytest.toml"
+        config.write_bytes((ROOT / "pytest.toml").read_bytes())
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_discovery.py").write_text(
+            "class SampleContracts:\n    def test_native_discovery(self):\n        assert True\n",
+            encoding="utf-8",
+        )
+        command = [sys.executable, "-m", "pytest", "--collect-only", "-vv"]
+        environment = {**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
+        discovered = subprocess.run(
+            command,
+            cwd=tmp_path,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        assert discovered.returncode == 0, discovered.stderr
+        assert f"rootdir: {tmp_path}" in discovered.stdout
+        assert "configfile: pytest.toml" in discovered.stdout
+        assert "1 test collected" in discovered.stdout
+
     def test_native_distribution_tests_are_explicit_and_release_owned(self) -> None:
-        pytest_config = (ROOT / "pytest.ini").read_text(encoding="utf-8")
+        pytest_config = tomllib.loads((ROOT / "pytest.toml").read_text(encoding="utf-8"))["pytest"]
         assert (
-            "native_distribution: requires the self-contained released executable" in pytest_config
+            "native_distribution: requires the self-contained released executable"
+            in pytest_config["markers"]
         )
         source = (ROOT / "tests/service/handoff/test_subprocess.py").read_text(encoding="utf-8")
         tree = ast.parse(source)

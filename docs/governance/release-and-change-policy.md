@@ -97,7 +97,8 @@ platform and release acceptance.
 
 Each tool-native configuration is the sole policy owner for its concern. Root
 placement is preferred when the tool and IDEs discover that file natively;
-`pytest.ini` therefore owns test discovery and warning policy. Explicitly
+`pytest.toml` therefore owns test discovery and warning policy. Coverage reads
+its TOML through one explicit path under `.config/quality/native/`. Explicitly
 addressed reusable policies live under `.config/quality/policy/`. Nox executes
 those owners, `.ethos/profile.toml` registers gates, and CI/hooks only project
 them.

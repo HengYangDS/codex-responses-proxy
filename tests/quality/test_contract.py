@@ -219,9 +219,9 @@ class TestQualityPolicyContracts:
 
         for path in (
             ".config/quality/native/ruff.toml",
-            "pytest.ini",
+            "pytest.toml",
             ".config/quality/native/ty.toml",
-            ".config/quality/native/coverage.ini",
+            ".config/quality/native/coverage.toml",
             ".config/quality/policy/coverage.toml",
             ".config/quality/policy/architecture.toml",
             ".config/quality/policy/text.toml",
@@ -229,6 +229,8 @@ class TestQualityPolicyContracts:
             ".editorconfig",
         ):
             assert (ROOT / path).is_file(), path
+        assert not (ROOT / "pytest.ini").exists()
+        assert not (ROOT / ".config/quality/native/coverage.ini").exists()
 
         for duplicate in ("ruff", "pytest", "ty", "coverage"):
             assert duplicate not in tool
@@ -238,7 +240,7 @@ class TestQualityPolicyContracts:
         governance = (ROOT / "docs/governance/release-and-change-policy.md").read_text(
             encoding="utf-8"
         )
-        assert "`pytest.ini` therefore owns test discovery and warning policy" in governance
+        assert "`pytest.toml` therefore owns test discovery and warning policy" in governance
         assert "`.config/quality/policy/` owns quality policy" not in governance
 
         ruff = tomllib.loads(

@@ -23,7 +23,7 @@ RELEASE_PYTHON = (ROOT / ".python-release").read_text(encoding="utf-8").strip()
 ROOTS = ("src/codex_responses_proxy", "tools", "tests", "noxfile.py")
 RUFF_CONFIG = ROOT / ".config/quality/native/ruff.toml"
 TY_CONFIG = ROOT / ".config/quality/native/ty.toml"
-COVERAGE_CONFIG = ROOT / ".config/quality/native/coverage.ini"
+COVERAGE_CONFIG = ROOT / ".config/quality/native/coverage.toml"
 PERFORMANCE_POLICY = ROOT / ".config/quality/policy/performance.toml"
 
 nox.options.default_venv_backend = "uv"
