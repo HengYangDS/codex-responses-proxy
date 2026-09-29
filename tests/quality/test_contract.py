@@ -154,6 +154,21 @@ class TestQualityPolicyContracts:
 
         assert profile["openspec"]["material_paths"] == ["**"]
 
+    def test_default_proof_gates_bind_product_verifiers(self) -> None:
+        profile = tomllib.loads((ROOT / ".ethos/profile.toml").read_text(encoding="utf-8"))
+        proof = profile["proof"]
+        selected = set(proof["code_correctness_gates"])
+        providers = {
+            gate["id"]: gate.get("verification_providers")
+            for gate in proof["gates"]
+            if gate["id"] in selected
+        }
+
+        assert providers == {
+            "python-quality": ["ethos.adapters.gates.code_quality:static_report"],
+            "python-matrix": ["ethos.adapters.gates.code_quality:behavior_report"],
+        }
+
     def test_publication_topology_has_only_declared_independent_peers(self) -> None:
         publication = tomllib.loads((ROOT / ".ethos/release.toml").read_text(encoding="utf-8"))[
             "publication"
