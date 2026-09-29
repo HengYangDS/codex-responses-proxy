@@ -38,11 +38,11 @@ import (
 		checkout: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"          // v7.0.1
 		python:   "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"      // v7.0.0
 		uv:       "astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7"        // v10.2.0
-		mise:     "jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c"           // v4.3.0
+		mise:     "jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5"           // v5.0.0
 		upload:   "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"   // v7.0.1
 		download: "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" // v8.0.1
 	}
-	gitlabMiseImage: "ghcr.io/jdx/mise@sha256:f01b88463f3a8396b2273d88469bd09d097aa3cacfe343177eb5457f1d8d2a92"
+	gitlabMiseImage: "ghcr.io/jdx/mise:2026.9.16-debian@sha256:686fe914b791c761637be4a13494d45d2b92b3c3979e46ea61b1ca51df472de6"
 	quality:         "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
 }
 
@@ -56,6 +56,15 @@ import (
 #UvSetup: {
 	uses: #Toolchains.githubActions.uv
 	with: "cache-suffix": "${{ github.job }}-${{ strategy.job-index }}"
+}
+
+#MiseSetup: {
+	uses: #Toolchains.githubActions.mise
+	with: {
+		install:             true
+		cache:               true
+		minimum_release_age: "0s"
+	}
 }
 
 gitlab: {
@@ -73,8 +82,8 @@ gitlab: {
 	variables: {
 		DEBIAN_FRONTEND:                          "noninteractive"
 		CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: "origin"
-		UV_PYTHON_FLOOR_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.18-python3.12-trixie-slim@sha256:38f41574703989d6e5f02be80a3d687b00f98744cce86908097bcd34bcb7eb98"
-		UV_PYTHON_LATEST_IMAGE:                   "ghcr.io/astral-sh/uv:0.12.18-python3.14-trixie-slim@sha256:00facf17b58b02b725155862c5cd637f688f906bf7eb5b5194647886d8805cf3"
+		UV_PYTHON_FLOOR_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.20-python3.12-trixie-slim@sha256:ca99e1db564ab49c1b93e39007d7c1f39e9184c4b26b15c9f826095dfe59f40b"
+		UV_PYTHON_LATEST_IMAGE:                   "ghcr.io/astral-sh/uv:0.12.20-python3.14-trixie-slim@sha256:6ee77524d145f48dcdede4d64411334bb426a0ad9835009215a69ff17e4d0e7e"
 		UV_CACHE_DIR:                             "$CI_PROJECT_DIR/.cache/uv"
 		UV_PYTHON_INSTALL_DIR:                    "$CI_PROJECT_DIR/.cache/uv/python"
 		CODEX_RESPONSES_PROXY_CI_TARGET:          "linux-arm64"
@@ -318,11 +327,7 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
-				uses: #Toolchains.githubActions.mise
-				with: {
-					install: true
-					cache:   true
-				}
+				#MiseSetup
 			}, {
 				name: "Install and audit locked Node repository tools"
 				run: """
@@ -466,11 +471,7 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
-				uses: #Toolchains.githubActions.mise
-				with: {
-					install: true
-					cache:   true
-				}
+				#MiseSetup
 			}, {
 				name: "Install and audit locked Node repository tools"
 				run: """
@@ -511,11 +512,7 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
-				uses: #Toolchains.githubActions.mise
-				with: {
-					install: true
-					cache:   true
-				}
+				#MiseSetup
 			}, {
 				name: "Verify lint, format, types, structure, docstrings, and product branch coverage"
 				run:  "uv run --locked --group quality nox -s quality"

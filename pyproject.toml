@@ -12,7 +12,7 @@ license = "MIT"
 dependencies = [
   "certifi==2026.7.22",
   "cyclopts==5.0.0",
-  "filelock==4.0.3",
+  "filelock==4.0.6",
   "psutil==7.2.2",
   "rich==15.0.0",
 ]
@@ -22,28 +22,28 @@ codex-responses-proxy = "codex_responses_proxy.cli.application:main"
 
 [tool.codex-responses-proxy]
 distribution = "native-executable"
-linux-release-image = "python:3.14.7-bookworm@sha256:ecac9e212daacda8a702eae372fceebc0ee36f5805abe087880367e8d061fa5b"
+linux-release-image = "python:3.14.7-bookworm@sha256:bfb689a7986adc6d5f16722e06c78e755efe4062e56276715fef450cbad09436"
 
 [dependency-groups]
 quality = [
-  "coverage==7.16.1",
+  "coverage==7.16.2",
   "deptry==0.25.1",
   "hatchling==1.32.4",
   "nox==2026.8.17",
   "pyperf==2.10.0",
   "pytest==9.1.1",
-  "pytest-mock==3.15.1",
+  "pytest-mock==3.16.0",
   "pytest-subtests==0.15.0",
   "pyyaml==6.0.3",
-  "ruff==0.16.8",
+  "ruff==0.16.9",
   "semver==3.1.0",
-  "ty==0.0.83",
+  "ty==0.0.84",
   "vulture==2.16",
 ]
 release = ["pyinstaller==6.22.3"]
 
 [tool.uv]
-required-version = "==0.12.18"
+required-version = "==0.12.20"
 link-mode = "copy"
 
 [tool.deptry]
