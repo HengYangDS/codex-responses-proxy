@@ -80,9 +80,11 @@
 - [ ] 8.4 Online-audit every direct runtime, development, OpenSpec, Python,
       Node, mise, uv, Nox, packaging, documentation, CI Action, and release dependency;
       advance each to its latest compatible stable version in the existing SSOT.
-      Current mise, npm, and Python registries report no outdated installed package,
-      and uv's upgrade dry-run changes no lock entry. Recheck authored CI Actions,
-      images, and release inputs against official sources at final freeze.
+      The 2026-09-29 official audit advanced Node 26.10.0, uv 0.12.20, five
+      direct and three transitive Python packages, mise-action 5.0.0, and current
+      OCI digests. Other authored pins have no newer compatible stable release.
+      Both locks are byte-stable on a second resolution; bootstrap and quick
+      pass. Recheck releases and hosted compatibility at final freeze.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no duplicate
       version literal controls behavior. The 2026-09-24 offline uv/npm rerun preserved

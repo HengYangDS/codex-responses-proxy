@@ -661,7 +661,10 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
     source = _mapping(gitlab["source-and-governance"])
 
     image = _mapping(source["image"])
-    assert re.fullmatch(r"ghcr.io/jdx/mise@sha256:[0-9a-f]{64}", _string(image["name"]))
+    assert re.fullmatch(
+        r"ghcr.io/jdx/mise:[0-9]{4}\.[0-9]+\.[0-9]+-debian@sha256:[0-9a-f]{64}",
+        _string(image["name"]),
+    )
     assert image["entrypoint"] == [""]
     assert _mapping(source["variables"]) == {
         "GIT_DEPTH": "0",
@@ -727,17 +730,17 @@ def test_github_python_quality_installs_its_declared_projection_toolchain() -> N
     mise = next(step for step in steps if str(step.get("uses", "")).startswith("jdx/mise-action@"))
 
     assert re.fullmatch(r"jdx/mise-action@[0-9a-f]{40}", _string(mise["uses"]))
-    mise_actions = {
-        str(step["uses"])
+    mise_steps = tuple(
+        step
         for job in jobs.values()
         for raw_step in _sequence(_mapping(job)["steps"])
         if str((step := _mapping(raw_step)).get("uses", "")).startswith("jdx/mise-action@")
-    }
-    assert mise_actions == {mise["uses"]}
-    assert _mapping(mise["with"]) == {
-        "install": "true",
-        "cache": "true",
-    }
+    )
+    assert {str(step["uses"]) for step in mise_steps} == {mise["uses"]}
+    assert all(
+        _mapping(step["with"]) == {"install": "true", "cache": "true", "minimum_release_age": "0s"}
+        for step in mise_steps
+    )
 
 
 def _assert_github_required_tokens(text: str) -> None:
