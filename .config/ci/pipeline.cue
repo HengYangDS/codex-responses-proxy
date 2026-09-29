@@ -42,7 +42,8 @@ import (
 		upload:   "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"   // v7.0.1
 		download: "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" // v8.0.1
 	}
-	gitlabMiseImage: "ghcr.io/jdx/mise:2026.9.16-debian@sha256:686fe914b791c761637be4a13494d45d2b92b3c3979e46ea61b1ca51df472de6"
+	miseVersion:     "2026.9.16"
+	gitlabMiseImage: "ghcr.io/jdx/mise:\(miseVersion)-debian@sha256:686fe914b791c761637be4a13494d45d2b92b3c3979e46ea61b1ca51df472de6"
 	quality:         "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
 }
 
@@ -61,9 +62,9 @@ import (
 #MiseSetup: {
 	uses: #Toolchains.githubActions.mise
 	with: {
-		install:             true
-		cache:               true
-		minimum_release_age: "0s"
+		install: true
+		cache:   true
+		version: #Toolchains.miseVersion
 	}
 }
 
