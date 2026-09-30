@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import platform
 import re
 import sys
 import tomllib
@@ -247,11 +246,8 @@ def release_asset(session: nox.Session) -> None:
         product_identity.environment_name("EXECUTABLE"): str(executable),
         product_identity.environment_name("NATIVE_EXECUTABLE"): str(executable),
     }
-    session.run(
-        "python",
-        "-m",
-        "pytest",
-        "-q",
+    _run_native_tests(
+        session,
         "tests/cli/test_interface.py",
         "tests/service/handoff/test_subprocess.py",
         env=environment,
@@ -268,17 +264,29 @@ def release(session: nox.Session) -> None:
         product_identity.environment_name("EXECUTABLE"): str(executable),
         product_identity.environment_name("NATIVE_EXECUTABLE"): str(executable),
     }
-    session.run(
-        "python",
-        "-m",
-        "pytest",
-        "-q",
+    _run_native_tests(
+        session,
         "tests/cli/test_interface.py",
         "tests/release/test_native_lifecycle.py",
         "tests/service/handoff/test_subprocess.py",
         env=environment,
     )
     _package_release_asset(session, bundle, work)
+
+
+def _run_native_tests(session: nox.Session, *paths: str, env: dict[str, str]) -> None:
+    """Own a short native temporary root and retire it after test teardown."""
+    with TemporaryDirectory(prefix="proxy-native-") as temporary:
+        session.run(
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "--basetemp",
+            str(Path(temporary) / "tests"),
+            *paths,
+            env=env,
+        )
 
 
 def _build_native_candidate(session: nox.Session) -> tuple[Path, Path, Path]:
@@ -314,11 +322,8 @@ def release_compatibility(session: nox.Session) -> None:
         "published predecessor trust anchor",
     )
     _work, bundle, executable = _build_native_candidate(session)
-    session.run(
-        "python",
-        "-m",
-        "pytest",
-        "-q",
+    _run_native_tests(
+        session,
         "tests/cli/test_interface.py",
         "tests/service/handoff/test_subprocess.py",
         "tests/release/test_native_lifecycle.py",
@@ -357,11 +362,8 @@ def published_release_compatibility(session: nox.Session) -> None:
     _install_wheel(session, wheel)
     _assert_installed_product(session, work)
     bundle, executable = _materialize_published_bundle(session, current_asset, trust, work)
-    session.run(
-        "python",
-        "-m",
-        "pytest",
-        "-q",
+    _run_native_tests(
+        session,
         "tests/cli/test_interface.py",
         "tests/service/handoff/test_subprocess.py",
         "tests/release/test_native_lifecycle.py",
@@ -389,9 +391,7 @@ def _materialize_published_bundle(
     expected_version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
     if released.version != expected_version:
         session.error("published release asset version does not match the checkout")
-    expected_platform = product_identity.native_release_platform(
-        platform.system(), platform.machine()
-    )
+    expected_platform = product_identity.current_native_release_platform()
     if released.receipt.get("platform") != expected_platform:
         session.error("published release asset does not match the native host")
     bundle = work / "published-release"
@@ -589,9 +589,7 @@ def _package_release_asset(session: nox.Session, bundle: Path, work: Path) -> No
     """Export one manifest-bound native asset set after black-box acceptance."""
     output = Path(session.posargs[0]).resolve() if session.posargs else work / "release-assets"
     try:
-        platform_id = product_identity.native_release_platform(
-            platform.system(), platform.machine()
-        )
+        platform_id = product_identity.current_native_release_platform()
     except ValueError as error:
         session.error(str(error))
     session.run(

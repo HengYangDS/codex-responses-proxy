@@ -234,10 +234,10 @@ The CUE model assigns Linux merge-request work to
 `CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG` and accepted `dev`,
 promotion, and tag checks to `CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG`.
 These variables must identify different project-locked, tagged-only Runners.
-The latter requires GitLab's `ref_protected` access. The pipeline selector
-`CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG` is derived by workflow event rules
-before Runner scheduling, not by a job-rule alias. It is
-not a fleet registration input. Runner-native access restrictions enforce
+The latter requires GitLab's `ref_protected` access. Linux review and protected jobs share one CUE-owned body and reference their
+native scheduling variable directly. There is no intermediate workflow or
+job-rule tag alias: GitLab does not recursively resolve those aliases before
+Runner assignment. Runner-native access restrictions enforce
 the boundary even when a proposal changes its YAML. Only protected tag checks
 receive `CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST`; review jobs receive no release
 signing key or publication credential.
@@ -270,7 +270,12 @@ x64 Mise executable so native lock selection resolves the declared
 the Python selected afterward. It then runs the locked x64 Python and uv under
 emulation and exercises a Windows x64
 candidate. Record host architecture and process architecture separately:
-this proves Windows behavior on that host, not a native ARM64 release asset.
+the physical CPU observation does not determine the executable ABI. The
+interpreter must report `win-amd64`; native payload identity follows that ABI.
+Complete lifecycle execution may qualify the Windows x64 asset under emulation,
+never a native ARM64 asset. Native pytest sessions own a short, unique temporary
+root outside the checkout so deep Runner paths do not exhaust Windows path
+capacity; that root is removed after process teardown, including test failure.
 The supported release inventory remains authoritative. A Linux container has
 no systemd user manager and proves only its declared source checks; native
 Linux service acceptance still requires a separate real user-service context.

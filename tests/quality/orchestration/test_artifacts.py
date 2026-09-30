@@ -24,14 +24,21 @@ def _select_released_host(
     """Bind artifact-unit tests to the released host for this OS family."""
     if nox_configuration.os.name == "nt":
         system, machine = "Windows", "AMD64"
-    elif nox_configuration.platform.system() == "Darwin":
+    elif nox_configuration.product_identity.platform.system() == "Darwin":
         system, machine = "Darwin", "arm64"
     else:
         system, machine = "Linux", "x86_64"
-    mocker.patch.object(nox_configuration.platform, "system", return_value=system)
-    mocker.patch.object(nox_configuration.platform, "machine", return_value=machine)
+    mocker.patch.object(nox_configuration.product_identity.platform, "system", return_value=system)
+    mocker.patch.object(
+        nox_configuration.product_identity.platform, "machine", return_value=machine
+    )
     platform_id = nox_configuration.product_identity.native_release_platform(system, machine)
     assert isinstance(platform_id, str)
+    mocker.patch.object(
+        nox_configuration.product_identity,
+        "current_native_release_platform",
+        return_value=platform_id,
+    )
     return platform_id
 
 
@@ -104,7 +111,9 @@ def test_release_packaging_requires_a_supported_native_platform(
 ) -> None:
     session = mocker.Mock(posargs=[])
     session.error.side_effect = RuntimeError
-    mocker.patch.object(nox_configuration.platform, "system", return_value="unsupported")
+    mocker.patch.object(
+        nox_configuration.product_identity.platform, "system", return_value="unsupported"
+    )
     with pytest.raises(RuntimeError):
         nox_configuration._package_release_asset(session, tmp_path / "bundle", tmp_path)
     session.run.assert_not_called()
@@ -201,11 +210,9 @@ def test_release_compatibility_requires_real_predecessor_inputs_before_build(
     else:
         nox_configuration.release_compatibility(session)
         session.run.assert_called_once()
-        assert session.run.call_args.args == (
-            "python",
-            "-m",
-            "pytest",
-            "-q",
+        assert session.run.call_args.args[:4] == ("python", "-m", "pytest", "-q")
+        assert session.run.call_args.args[4] == "--basetemp"
+        assert session.run.call_args.args[6:] == (
             "tests/cli/test_interface.py",
             "tests/service/handoff/test_subprocess.py",
             "tests/release/test_native_lifecycle.py",
@@ -269,11 +276,9 @@ def test_published_release_compatibility_uses_supplied_release_bytes(
     native_build.assert_not_called()
     materialize.assert_called_once_with(session, current, trust, tmp_path / "work")
     proof = session.run.call_args_list[-1]
-    assert proof.args == (
-        "python",
-        "-m",
-        "pytest",
-        "-q",
+    assert proof.args[:4] == ("python", "-m", "pytest", "-q")
+    assert proof.args[4] == "--basetemp"
+    assert proof.args[6:] == (
         "tests/cli/test_interface.py",
         "tests/service/handoff/test_subprocess.py",
         "tests/release/test_native_lifecycle.py",
@@ -423,3 +428,29 @@ def test_release_runtime_uses_the_session_interpreter(
     session.error.side_effect = RuntimeError
     with pytest.raises(RuntimeError):
         nox_configuration._assert_release_runtime(session)
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_native_test_paths_do_not_inherit_checkout_depth(
+    failure: bool, tmp_path: Path, mocker: MockerFixture, nox_configuration: ModuleType
+) -> None:
+    """Long Runner checkout paths must not consume Windows payload capacity."""
+    session = mocker.Mock()
+    seen: list[Path] = []
+
+    def observe(*arguments: str, **_kwargs: object) -> None:
+        temporary = Path(arguments[arguments.index("--basetemp") + 1])
+        assert temporary.parent.is_dir()
+        assert not temporary.is_relative_to(tmp_path)
+        seen.append(temporary.parent)
+        if failure:
+            raise RuntimeError("native test failed")
+
+    session.run.side_effect = observe
+    if failure:
+        with pytest.raises(RuntimeError, match="native test failed"):
+            nox_configuration._run_native_tests(session, "tests/cli/test_interface.py", env={})
+    else:
+        nox_configuration._run_native_tests(session, "tests/cli/test_interface.py", env={})
+    assert len(seen) == 1
+    assert not seen[0].exists()

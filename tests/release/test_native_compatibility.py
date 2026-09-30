@@ -211,7 +211,7 @@ def _materialize_native_bundle(candidate: artifact.VerifiedArtifact, output: Pat
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(blob.content)
         target.chmod(0o755 if blob.mode == "100755" else 0o644)
-    platform_id = product_identity.native_release_platform(platform.system(), platform.machine())
+    platform_id = product_identity.current_native_release_platform()
     executable = output / product_identity.executable_name(
         windows=platform_id.startswith("windows-")
     )

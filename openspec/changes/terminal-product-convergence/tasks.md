@@ -226,8 +226,12 @@
       the old repository sidecars retire through that producer. Native lock
       format 3 retains all 68 existing platform inputs and adds 11 discovered
       entries; the minimum reader and actual host/CI Mise are 2026.9.18.
-      Source regressions separate workflow-time Linux scheduling from job-rule
-      aliases and Windows host architecture from Python's executable ABI.
+      Actual pipeline 9025 disproved recursive workflow-variable tag expansion;
+      Linux review and protected jobs now share one CUE body and use direct
+      native scheduling variables with no intermediate alias. Windows native
+      release selection uses the running interpreter ABI, not the host CPU,
+      and native tests own short disposable roots independent of checkout depth.
+      These repairs require fresh hosted acceptance, not old-source results.
       Real native Mac lifecycle still requires a separate GUI user domain;
       signature and package acquisition alone do not qualify it.
 - [ ] 11.6 Remove toy examples, private workstation paths, stale versions, obsolete commands, WCP references, AIGW coupling, empty evidence shells, claims, chronicles, parity directories, and historical instructions from current reader paths.

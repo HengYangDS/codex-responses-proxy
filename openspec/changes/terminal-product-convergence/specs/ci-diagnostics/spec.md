@@ -70,3 +70,12 @@ contracts, and release verification on macOS, Linux, and Windows.
 - **THEN** the executable cannot resolve Python through `PATH`
 - **AND** the operating-system execution substrate remains available
 - **AND** no platform allow-list or Windows-only environment exception is used.
+
+#### Scenario: Native tests run from a deep checkout
+
+- **WHEN** the native release session executes from a long Runner checkout path
+- **THEN** pytest SHALL use a uniquely owned temporary root outside that checkout
+- **AND** teardown SHALL remove that root after native process cleanup, including
+  failed test control flow
+- **AND** the session SHALL NOT infer payload compatibility from physical CPU
+  naming when a different executable ABI runs under emulation.
