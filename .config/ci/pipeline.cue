@@ -43,8 +43,8 @@ import (
 		upload:   "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"   // v7.0.1
 		download: "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" // v8.0.1
 	}
-	miseVersion:     "2026.9.17"
-	gitlabMiseImage: "ghcr.io/jdx/mise:\(miseVersion)-debian@sha256:96b00319506c7ae46d2a561ba7da60723c723327d796334847c2802827cc6ec5"
+	miseVersion:     "2026.9.18"
+	gitlabMiseImage: "ghcr.io/jdx/mise:\(miseVersion)-debian@sha256:33d301fd5929d6960c102f947e97f08c671ad936573b375fcf4f13a90466f710"
 	quality:         "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
 }
 
