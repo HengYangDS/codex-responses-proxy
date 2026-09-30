@@ -52,6 +52,42 @@ class TestRealSubprocessHandoffIntegration:
     def teardown_method(self) -> None:
         self._cleanups.close()
 
+    def test_native_listener_admits_optional_message_type_without_unknown_fallback(self) -> None:
+        upstream = ScriptedUpstream()
+        self._cleanups.callback(upstream.close)
+        success = b'{"id":"resp_standard","status":"completed"}'
+        upstream.push((200, success))
+        port = free_port()
+        root, ctx, _owned = self._installed_fixture(
+            release="1.0.25", port=port, upstream_url=upstream.base_url()
+        )
+        child = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=root / "proxy.log")
+        self._cleanups.callback(lambda: terminate_process(child))
+        upstream.start()
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+        def post(item):
+            return urllib.request.Request(
+                f"http://127.0.0.1:{port}/dmxapi/v1/responses",
+                data=json.dumps({"model": "synthetic", "input": [item]}).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+
+        with pytest.raises(urllib.error.HTTPError) as rejected:
+            opener.open(post({"type": None, "role": "user", "content": "hello"}), timeout=5)
+        with rejected.value as error:
+            assert error.code == 400
+        assert upstream.received == []
+
+        content = [{"type": "input_text", "text": "hello"}]
+        with opener.open(post({"role": "user", "content": content}), timeout=5) as response:
+            assert response.status == 200
+            assert response.read() == success
+        assert len(upstream.received) == 1
+        assert json.loads(upstream.received[0])["input"] == [
+            {"type": "message", "role": "user", "content": content}
+        ]
+
     @pytest.mark.parametrize("call_type", ["function_call", "custom_tool_call"])
     def test_native_listener_preserves_tool_deliveries_and_encrypted_agent_tasks(self, call_type):
         upstream = ScriptedUpstream()
