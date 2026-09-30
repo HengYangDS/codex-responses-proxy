@@ -2,7 +2,10 @@ min_version = "2026.9.11"
 
 [settings]
 idiomatic_version_file_enable_tools = []
+legacy_version_file = false
 locked = true
+not_found_system_fallback = false
+use_versions_host = false
 
 [tools]
 # Language runtimes
@@ -31,8 +34,23 @@ PYTHONHOME = false
 PYTHONPATH = false
 PYTHONNOUSERSITE = "1"
 
+[tasks."toolchain:verify"]
+description = "Reject missing locked tools before any repository task runs"
+run = [
+  "mise which node",
+  "mise which python",
+  "mise which uv",
+  "mise which npm",
+  "mise which cue",
+  "mise which taplo",
+  "mise which gitleaks",
+  "mise which actionlint",
+  "mise which lychee",
+]
+
 [tasks.bootstrap]
 description = "Install the locked Python and Node development dependencies"
+depends = ["toolchain:verify"]
 run = [
   'uv sync --locked --all-groups --python "{{tools.python.path}}"',
   "npm ci --ignore-scripts",
@@ -41,16 +59,20 @@ run = [
 
 [tasks.quick]
 description = "Run the editing feedback loop"
+depends = ["toolchain:verify"]
 run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s quick'
 
 [tasks.check]
 description = "Run repository governance, quality, and Python compatibility gates"
+depends = ["toolchain:verify"]
 run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s full'
 
 [tasks.native]
 description = "Verify the native artifact and real host service lifecycle"
+depends = ["toolchain:verify"]
 run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s release'
 
 [tasks.release]
 description = "Build and verify the native release asset without service registration"
+depends = ["toolchain:verify"]
 run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s release_asset'
