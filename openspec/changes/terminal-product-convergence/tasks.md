@@ -100,6 +100,14 @@
       releases. The repository retains Python 3.12 compatibility. The shared
       host's Homebrew Mise 2026.9.15 remains outside this project pin: the
       official formula has not yet advanced, so no parallel installer was added.
+      A second current-source audit checks 299 unique npm, PyPI, standalone-tool,
+      and Action identities. It advances the now-published stable Mise 2026.9.18
+      and its verified multi-platform OCI index. Every direct dependency,
+      Python package, and Action matches stable upstream; the npm resolver
+      produces no Proxy lock change. Thirteen npm transitive identities remain
+      behind upstream latest because the latest official parents constrain
+      their versions. No unsupported major override or upstream fork is added;
+      those constraints are disclosed, not called fully upgraded.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no duplicate
       version literal controls behavior. Native Mise verified seven uv platform
