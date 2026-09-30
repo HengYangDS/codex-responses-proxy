@@ -244,6 +244,41 @@ url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_
 url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924919"
 provenance = "github-attestations"
 
+[[tools.glab]]
+version = "1.120.0"
+backend = "gitlab:gitlab-org/cli"
+specifiers = ["1.120.0"]
+
+[tools.glab."platforms.linux-arm64"]
+checksum = "sha256:c60ebb4cb36f276714847a118845b9b4e69f46a8080c68b21ca63f158722cdea"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.120.0/downloads/glab_1.120.0_linux_arm64.tar.gz"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E120%2E0/glab_1%2E120%2E0_linux_arm64%2Etar%2Egz"
+
+[tools.glab."platforms.linux-x64"]
+checksum = "sha256:4e6c59de9f7ed2f304bf93aad01ea8f8a69584f0450ce90ad696ef81f69c69aa"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.120.0/downloads/glab_1.120.0_linux_amd64.tar.gz"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E120%2E0/glab_1%2E120%2E0_linux_amd64%2Etar%2Egz"
+
+[tools.glab."platforms.macos-arm64"]
+checksum = "sha256:8769650c49bb5d5ac52156d46e448e87f5570a868fe4e7bfcbd8cc66693c7afb"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.120.0/downloads/glab_1.120.0_darwin_arm64.tar.gz"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E120%2E0/glab_1%2E120%2E0_darwin_arm64%2Etar%2Egz"
+
+[tools.glab."platforms.macos-x64"]
+checksum = "sha256:62d66e9bc898612c3c017e1cfba9e2c4a4662fec8453b5aa46bb3ec02e94340f"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.120.0/downloads/glab_1.120.0_darwin_amd64.tar.gz"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E120%2E0/glab_1%2E120%2E0_darwin_amd64%2Etar%2Egz"
+
+[tools.glab."platforms.windows-arm64"]
+checksum = "sha256:0af7fd9e8ef4635c7482a1fda26b67da83689b38812f7062178d14f6382f0641"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.120.0/downloads/glab_1.120.0_windows_arm64.zip"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E120%2E0/glab_1%2E120%2E0_windows_arm64%2Ezip"
+
+[tools.glab."platforms.windows-x64"]
+checksum = "sha256:4240365e23ac7cb5ce09aa0f5892cd66b0da103963fe01954c8d64727039a3f6"
+url = "https://gitlab.com/gitlab-org/cli/-/releases/v1.120.0/downloads/glab_1.120.0_windows_amd64.zip"
+url_api = "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/1%2E120%2E0/glab_1%2E120%2E0_windows_amd64%2Ezip"
+
 [[tools.node]]
 version = "26.10.0"
 backend = "core:node"

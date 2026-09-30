@@ -148,6 +148,17 @@
       Evidence is retained by the coordinating AIGW owner under
       `build/verification/supply-chain-20260930/proxy-linux-npm12-libatomic.*`;
       this records a source-independent tool probe, not full Proxy lifecycle.
+      A complete executable-consumer inventory leaves one actual Forge tool
+      gap: GitLab observation and Runner admission call `glab`. It is now
+      bound to stable 1.120.0 by the same Mise owner and required before tasks;
+      the official GitLab release was rechecked on September 30. Native Git,
+      SSH, supervision, archive, and platform-build commands keep their OS
+      contracts. No unconsumed dependency updater or second installer is added.
+      The npm closure is signed at `68cbbd4b`, after a passing five-session
+      full graph: 1,788 tests on each supported Python with five skips and
+      44 declared deselections. Native lock bytes, Mac and Linux package-manager
+      precedence, and isolated cleanup pass; Windows hosted acceptance remains
+      open.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no duplicate
       version literal controls behavior. Native Mise verified seven uv platform
