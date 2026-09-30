@@ -158,15 +158,27 @@ class TestQualityPolicyContracts:
         profile = tomllib.loads((ROOT / ".ethos/profile.toml").read_text(encoding="utf-8"))
         proof = profile["proof"]
         selected = set(proof["code_correctness_gates"])
-        providers = {
-            gate["id"]: gate.get("verification_providers")
+        bindings = {
+            gate["id"]: (
+                gate.get("verification_providers"),
+                gate.get("execution_mode"),
+                gate.get("tool_adapter"),
+            )
             for gate in proof["gates"]
             if gate["id"] in selected
         }
 
-        assert providers == {
-            "python-quality": ["ethos.adapters.gates.code_quality:static_report"],
-            "python-matrix": ["ethos.adapters.gates.code_quality:behavior_report"],
+        assert bindings == {
+            "python-quality": (
+                ["ethos.adapters.gates.code_quality:static_report"],
+                "verified-command",
+                "ethos",
+            ),
+            "python-matrix": (
+                ["ethos.adapters.gates.code_quality:behavior_report"],
+                "verified-command",
+                "ethos",
+            ),
         }
 
     def test_publication_topology_has_only_declared_independent_peers(self) -> None:

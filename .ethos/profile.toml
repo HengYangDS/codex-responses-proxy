@@ -30,10 +30,10 @@ command = [
   "quality",
 ]
 dimensions = ["static-analysis", "types", "structure", "coverage"]
-execution_mode = "subprocess"
+execution_mode = "verified-command"
 evidence_class = "proof"
 trust_bearing = true
-tool_adapter = "repository-native"
+tool_adapter = "ethos"
 network_policy = "offline"
 writes_files = true
 
@@ -57,9 +57,9 @@ command = [
   "tests",
 ]
 dimensions = ["behavior", "test"]
-execution_mode = "subprocess"
+execution_mode = "verified-command"
 evidence_class = "proof"
 trust_bearing = true
-tool_adapter = "repository-native"
+tool_adapter = "ethos"
 network_policy = "offline"
 writes_files = true
