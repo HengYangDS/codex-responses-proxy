@@ -229,3 +229,50 @@ A runner belongs to one `Forge × repository × platform × executor × purpose`
 boundary. Tags describe capability, jobs prove the actual platform, and release
 privileges remain separate from ordinary verification. Missing runner capacity
 is an infrastructure fact, never permission to weaken product gates.
+
+The CUE model assigns Linux merge-request work to
+`CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG` and accepted `dev`,
+promotion, and tag checks to `CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG`.
+These variables must identify different project-locked, tagged-only Runners.
+The latter requires GitLab's `ref_protected` access. The job-local selector
+`CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG` is derived by event rules; it is
+not a fleet registration input. Runner-native access restrictions enforce
+the boundary even when a proposal changes its YAML. Only protected tag checks
+receive `CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST`; review jobs receive no release
+signing key or publication credential.
+
+macOS and Windows use `verify-macos-native` and `verify-windows-native` on
+protected `dev`; their `-review` jobs run only for merge requests to `dev`.
+The existing platform Runner-tag variables and their `_REVIEW` variants must
+select separate accounts, workspaces, caches, and credential reachability.
+Each job runs the locked release interpreter and uv, builds one candidate,
+and executes `nox -s release_compatibility`. This session checks the packaged
+commands, loopback traffic, fresh install, reload, recovery, cleanup, and
+upgrade and rollback from a real signed predecessor. It does not repeat the
+platform-independent Python compatibility or full quality matrix.
+
+Before scheduling either native job, its account must have an immutable,
+read-only predecessor asset set from this project's published GitLab Release:
+the exact platform archive, platform manifest, `SHA256SUMS`, and
+`SHA256SUMS.sig`. The public trust anchor lives outside the checkout. Supply
+absolute destination-local paths through
+`CODEX_RESPONSES_PROXY_GITLAB_MACOS_PREVIOUS_RELEASE_ASSET` or
+`CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_PREVIOUS_RELEASE_ASSET`, and
+`CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR`. Resolve them on the
+Runner; no workstation path belongs in source. Missing inputs fail before
+the candidate is built. Both review and protected accounts may read these
+public verification inputs; neither may alter the immutable supply.
+
+Darwin ARM64 runs the locked ARM64 Python and uv. Windows ARM64 must invoke an
+x64 Mise executable so native lock selection resolves the declared
+`windows-x64` assets. Mise derives architecture from its executable, not from
+the Python selected afterward. It then runs the locked x64 Python and uv under
+emulation and exercises a Windows x64
+candidate. Record host architecture and process architecture separately:
+this proves Windows behavior on that host, not a native ARM64 release asset.
+The supported release inventory remains authoritative. A Linux container has
+no systemd user manager and proves only its declared source checks; native
+Linux service acceptance still requires a separate real user-service context.
+Native jobs have a 20-minute deadline. Their lifecycle fixtures remove owned
+services, listeners, payloads, and transactions and verify that unrelated
+canonical resources remain unchanged.

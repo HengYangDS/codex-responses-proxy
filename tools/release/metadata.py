@@ -304,8 +304,8 @@ def check_governance_contract() -> None:
         raise ValueError("GitLab CI must execute the release and governance checker")
     if "verify-release-tag:" not in ci or "tools.forge.tag_signature" not in ci:
         raise ValueError("GitLab CI must verify the exact trusted product tag")
-    if "publish-gitlab-release:" in ci or "nox -s release" in ci:
-        raise ValueError("GitLab CI must not rebuild or republish the signed product bundle")
+    if "tools.release.publication " in ci or "tools.release.artifact assemble" in ci:
+        raise ValueError("GitLab CI must not sign or republish the formal product bundle")
     operations = (ROOT / "docs" / "operations" / "forge-operations.md").read_text(encoding="utf-8")
     if "tools.forge.audit" not in operations or "--json" not in operations:
         raise ValueError("forge operations must document the read-only parity audit")

@@ -336,12 +336,10 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     } in rules
     for job_id in ("verify-python", "verify-python-quality", "verify-performance"):
         job = _mapping(gitlab[job_id])
-        assert job["rules"] == [
-            {
-                "if": '$CI_PIPELINE_SOURCE == "merge_request_event" && '
-                '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
-            },
-            {"if": '$CI_COMMIT_BRANCH == "dev"'},
+        assert [_mapping(rule)["if"] for rule in _sequence(job["rules"])] == [
+            '$CI_PIPELINE_SOURCE == "merge_request_event" && '
+            '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"',
+            '$CI_COMMIT_BRANCH == "dev"',
         ]
     python = _mapping(gitlab["verify-python"])
     matrix_values = _sequence(_mapping(python["parallel"])["matrix"])
@@ -371,7 +369,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
 
 
 def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> None:
-    """Keep Python versions, OS function, and native trust routes distinct."""
+    """Keep Python compatibility and native lifecycle on distinct trust routes."""
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
     linux = _mapping(gitlab["verify-python"])
     expected_matrix = _mapping(_sequence(_mapping(linux["parallel"])["matrix"])[0])
@@ -380,9 +378,9 @@ def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> Non
     release_python = (ROOT / ".python-release").read_text(encoding="utf-8").strip()
     assert release_python.startswith(expected_python_versions[-1] + ".")
 
-    for target, tag, variable, shell_version in (
-        ("macos-arm64", "verify-macos-python", "MACOS", "$PYTHON_VERSION"),
-        ("windows-arm64", "verify-windows-python", "WINDOWS", "$env:PYTHON_VERSION"),
+    for target, tag, variable in (
+        ("macos-arm64", "verify-macos-native", "MACOS"),
+        ("windows-arm64", "verify-windows-native", "WINDOWS"),
     ):
         for name, rules, tag_suffix in (
             (tag, _sequence(linux["rules"])[1:], variable),
@@ -390,8 +388,10 @@ def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> Non
         ):
             job = _mapping(gitlab[name])
             assert job["stage"] == "verify"
-            assert job["timeout"] == "15m"
-            assert job["rules"] == rules
+            assert job["timeout"] == "20m"
+            assert [_mapping(rule)["if"] for rule in _sequence(job["rules"])] == [
+                _mapping(rule)["if"] for rule in rules
+            ]
             assert "parallel" not in job
             assert "cache" not in job
             assert _mapping(job["inherit"]) == {"default": "false"}
@@ -401,7 +401,13 @@ def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> Non
             variables = _mapping(job["variables"])
             assert variables["CODEX_RESPONSES_PROXY_CI_TARGET"] == target
             assert variables["GIT_DEPTH"] == "0"
-            assert variables["PYTHON_VERSION"] == expected_python_versions[-1]
+            assert "PYTHON_VERSION" not in variables
+            assert variables["CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET"] == (
+                f"$CODEX_RESPONSES_PROXY_GITLAB_{variable}_PREVIOUS_RELEASE_ASSET"
+            )
+            assert variables["CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR"] == (
+                "$CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR"
+            )
             before = "\n".join(_strings(job["before_script"]))
             script = "\n".join(_strings(job["script"]))
             assert "mise install --locked" in before
@@ -410,9 +416,39 @@ def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> Non
             assert "git fetch --tags --force --prune --prune-tags origin" in before
             assert "platform.system()" in script
             assert "platform.machine()" in script
-            assert f'nox -s "tests-{shell_version}"' in script
-            assert "release_asset" not in script
+            assert "assert platform.system()" in script
+            assert "assert platform.machine()" in script
+            assert "nox -s release_compatibility" in script
+            assert "nox -s tests" not in script
+            assert "nox -s full" not in script
             assert "windows-x86_64" not in script
+
+
+def test_gitlab_linux_review_and_protected_jobs_use_disjoint_capabilities() -> None:
+    """An untrusted merge request cannot choose the protected Linux runner."""
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    assert _mapping(gitlab["default"])["tags"] == ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG"]
+    assert _mapping(_mapping(gitlab["default"])["cache"])["key"] == (
+        "uv-$CODEX_RESPONSES_PROXY_CI_TARGET-$CI_COMMIT_REF_PROTECTED"
+    )
+    protected = "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
+    for name in (
+        "source-and-governance",
+        "verify-python",
+        "verify-python-quality",
+        "verify-performance",
+    ):
+        rules = _sequence(_mapping(gitlab[name])["rules"])
+        assert _mapping(rules[0])["variables"] == {
+            "CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG": (
+                "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"
+            )
+        }
+        assert _mapping(rules[1])["variables"] == {
+            "CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG": protected
+        }
+    for name in ("verify-accepted-source", "verify-promotion", "verify-release-tag"):
+        assert _mapping(gitlab[name])["tags"] == [protected]
 
 
 def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:
@@ -688,7 +724,9 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     assert variables["UV_CACHE_DIR"] == "$CI_PROJECT_DIR/.cache/uv"
     assert variables["UV_PYTHON_INSTALL_DIR"] == "$CI_PROJECT_DIR/.cache/uv/python"
     assert variables["CODEX_RESPONSES_PROXY_CI_TARGET"] == "linux-arm64"
-    assert _mapping(default["cache"])["key"] == "uv-$CODEX_RESPONSES_PROXY_CI_TARGET"
+    assert _mapping(default["cache"])["key"] == (
+        "uv-$CODEX_RESPONSES_PROXY_CI_TARGET-$CI_COMMIT_REF_PROTECTED"
+    )
     assert _mapping(default["cache"])["paths"] == [".cache/uv/"]
     assert _mapping(quality["image"]) == {"name": "$UV_PYTHON_FLOOR_IMAGE"}
     assert "python -m pip install" not in text

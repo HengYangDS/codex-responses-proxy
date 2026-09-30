@@ -441,6 +441,33 @@ verify the same signed publication inventory independently. Project-453
 macOS and Windows review and protected runners must be admitted before the
 stricter graph is landed or made a required remote check.
 
+The native GitLab jobs now consume the existing `release_compatibility` Nox
+session instead of repeating a Python test session. That session builds one
+candidate, checks commands, loopback traffic and fresh lifecycle, then exercises
+real predecessor upgrade and rollback. The Runner supplies immutable public
+predecessor assets and an external trust anchor from its own GitLab publication
+plane; source contains only destination-resolved input variable names. Missing
+supply fails before building. Windows ARM64 remains an x64 process and asset
+under emulation until the locked runtime and release inventory support ARM64.
+No new release target is inferred from a Runner host name.
+The Windows account must invoke x64 Mise because upstream selects lock
+architecture from its compiled executable; an ARM64 Mise cannot consume the
+current `windows-x64` lock entries by assumption.
+
+Linux source jobs select an event-derived tag: merge requests use a low-trust
+review capability; accepted `dev` uses a separate protected capability.
+Accepted-source, promotion, and tag checks explicitly use the protected Runner.
+Fleet admission must verify project locking, tagged-only scheduling,
+`ref_protected` enforcement, and separate accounts and caches. YAML selectors
+cannot establish those external facts. Local verification now covers 166
+focused contracts, the complete three-version Python graph, and 50 combined
+macOS native cases including authentic predecessor upgrade and rollback. The
+native session leaves only the original product watchdog and listener running.
+Official GitLab dry-run validation accepts the nine-job dev graph without
+errors or warnings. These results prove candidate source and local behavior,
+not Runner registration or hosted execution; those remain unfinished until
+observed at the accepted source.
+
 At source `93aecba5`, GitHub Verify run `35885350727` executed its Windows
 Server 2025 native asset job (45 passed, one skip), Python 3.12–3.14 jobs, and
 published-predecessor compatibility. GitLab MR pipeline `8003` completed six

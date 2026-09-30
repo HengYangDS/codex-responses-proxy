@@ -20,16 +20,20 @@ default:
   image:
     name: $UV_PYTHON_LATEST_IMAGE
   tags:
-    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG
   cache:
-    key: uv-$CODEX_RESPONSES_PROXY_CI_TARGET
+    key: uv-$CODEX_RESPONSES_PROXY_CI_TARGET-$CI_COMMIT_REF_PROTECTED
     paths:
       - .cache/uv/
 source-and-governance:
   stage: verify
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+      variables:
+        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
     - if: $CI_COMMIT_BRANCH == "dev"
+      variables:
+        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   image:
     name: ghcr.io/jdx/mise:2026.9.17-debian@sha256:96b00319506c7ae46d2a561ba7da60723c723327d796334847c2802827cc6ec5
     entrypoint:
@@ -49,7 +53,11 @@ verify-python:
   stage: verify
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+      variables:
+        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
     - if: $CI_COMMIT_BRANCH == "dev"
+      variables:
+        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   parallel:
     matrix:
       - PYTHON_VERSION:
@@ -79,95 +87,103 @@ verify-python:
   script:
     - python --version
     - uv run --locked --no-sync --python python --no-python-downloads nox -s "tests-$PYTHON_VERSION"
-verify-macos-python:
+verify-macos-native:
   rules:
     - if: $CI_COMMIT_BRANCH == "dev"
   stage: verify
   tags:
     - $CODEX_RESPONSES_PROXY_GITLAB_MACOS_RUNNER_TAG
-  timeout: 15m
+  timeout: 20m
   inherit:
     default: false
   variables:
     CODEX_RESPONSES_PROXY_CI_TARGET: macos-arm64
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: $CODEX_RESPONSES_PROXY_GITLAB_MACOS_PREVIOUS_RELEASE_ASSET
     GIT_DEPTH: "0"
     MISE_ENABLE_TOOLS: python,uv
-    PYTHON_VERSION: "3.14"
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: $CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin
     - mise exec --locked -- uv sync --locked --group quality --python python
   script:
-    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import platform; print(platform.system(), platform.machine())"
-    - mise exec --locked -- uv run --locked --no-sync --python python nox -s "tests-$PYTHON_VERSION"
-verify-macos-python-review:
+    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())"
+    - mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility
+verify-macos-native-review:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
   stage: verify
   tags:
     - $CODEX_RESPONSES_PROXY_GITLAB_MACOS_REVIEW_RUNNER_TAG
-  timeout: 15m
+  timeout: 20m
   inherit:
     default: false
   variables:
     CODEX_RESPONSES_PROXY_CI_TARGET: macos-arm64
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: $CODEX_RESPONSES_PROXY_GITLAB_MACOS_PREVIOUS_RELEASE_ASSET
     GIT_DEPTH: "0"
     MISE_ENABLE_TOOLS: python,uv
-    PYTHON_VERSION: "3.14"
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: $CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin
     - mise exec --locked -- uv sync --locked --group quality --python python
   script:
-    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import platform; print(platform.system(), platform.machine())"
-    - mise exec --locked -- uv run --locked --no-sync --python python nox -s "tests-$PYTHON_VERSION"
-verify-windows-python:
+    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())"
+    - mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility
+verify-windows-native:
   rules:
     - if: $CI_COMMIT_BRANCH == "dev"
   stage: verify
   tags:
     - $CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_RUNNER_TAG
-  timeout: 15m
+  timeout: 20m
   inherit:
     default: false
   variables:
     CODEX_RESPONSES_PROXY_CI_TARGET: windows-arm64
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: $CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_PREVIOUS_RELEASE_ASSET
     GIT_DEPTH: "0"
     MISE_ENABLE_TOOLS: python,uv
-    PYTHON_VERSION: "3.14"
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: $CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin
     - mise exec --locked -- uv sync --locked --group quality --python python
   script:
-    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import platform; print(platform.system(), platform.machine())"
-    - mise exec --locked -- uv run --locked --no-sync --python python nox -s "tests-$env:PYTHON_VERSION"
-verify-windows-python-review:
+    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import os, platform; assert platform.system() == 'Windows'; assert platform.machine() == 'AMD64'; print(platform.system(), platform.machine(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
+    - mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility
+verify-windows-native-review:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
   stage: verify
   tags:
     - $CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_REVIEW_RUNNER_TAG
-  timeout: 15m
+  timeout: 20m
   inherit:
     default: false
   variables:
     CODEX_RESPONSES_PROXY_CI_TARGET: windows-arm64
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: $CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_PREVIOUS_RELEASE_ASSET
     GIT_DEPTH: "0"
     MISE_ENABLE_TOOLS: python,uv
-    PYTHON_VERSION: "3.14"
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: $CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin
     - mise exec --locked -- uv sync --locked --group quality --python python
   script:
-    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import platform; print(platform.system(), platform.machine())"
-    - mise exec --locked -- uv run --locked --no-sync --python python nox -s "tests-$env:PYTHON_VERSION"
+    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import os, platform; assert platform.system() == 'Windows'; assert platform.machine() == 'AMD64'; print(platform.system(), platform.machine(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
+    - mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility
 verify-python-quality:
   stage: verify
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+      variables:
+        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
     - if: $CI_COMMIT_BRANCH == "dev"
+      variables:
+        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   image:
     name: $UV_PYTHON_FLOOR_IMAGE
   variables:
@@ -195,7 +211,11 @@ verify-performance:
   stage: verify
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+      variables:
+        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
     - if: $CI_COMMIT_BRANCH == "dev"
+      variables:
+        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   variables:
     GIT_DEPTH: "0"
   before_script:
@@ -222,6 +242,8 @@ verify-performance:
       - .performance/memory.json
 verify-accepted-source:
   stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   rules:
     - if: $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"
   variables:
@@ -247,6 +269,8 @@ verify-accepted-source:
     - export CODEX_RESPONSES_PROXY_COMMIT_BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" CODEX_RESPONSES_PROXY_COMMIT_HEAD="$CI_COMMIT_SHA"; if [ -n "$CI_COMMIT_TAG" ]; then export CODEX_RESPONSES_PROXY_COMMIT_BASE="$CI_COMMIT_SHA"; fi; uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
 verify-promotion:
   stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == "dev" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
   variables:
@@ -273,6 +297,8 @@ verify-promotion:
     - export CODEX_RESPONSES_PROXY_COMMIT_BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" CODEX_RESPONSES_PROXY_COMMIT_HEAD="$CI_COMMIT_SHA"; if [ -n "$CI_COMMIT_TAG" ]; then export CODEX_RESPONSES_PROXY_COMMIT_BASE="$CI_COMMIT_SHA"; fi; uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
 verify-release-tag:
   stage: release
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   rules:
     - if: $CI_COMMIT_TAG
   variables:

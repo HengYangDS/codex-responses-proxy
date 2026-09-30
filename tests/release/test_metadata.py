@@ -547,7 +547,8 @@ def test_native_bundle_has_one_runtime_and_one_signer() -> None:
     )
     assert github.count("python -m tools.release.artifact assemble") == 1, "bundle assembled twice"
     assert github.count("--sign") == 1, "bundle signed more than once"
-    assert "nox -s release" not in gitlab, "GitLab independently rebuilds product assets"
+    assert "nox -s release_compatibility" in gitlab
+    assert "python -m tools.release.artifact assemble" not in gitlab
 
 
 def test_current_release_metadata_chronology(
@@ -648,7 +649,12 @@ def test_missing_tag_is_a_release_identity_error(mocker):
             "release and governance checker",
         ),
         (".gitlab-ci.yml", "verify-release-tag:", "other-tag:", "exact trusted product tag"),
-        (".gitlab-ci.yml", "", "\npublish-gitlab-release:\n", "must not rebuild"),
+        (
+            ".gitlab-ci.yml",
+            "",
+            "\npublish-gitlab-release:\n  script:\n    - python -m tools.release.publication gitlab\n",
+            "must not sign or republish",
+        ),
         (
             "docs/operations/forge-operations.md",
             "tools.forge.audit",
@@ -689,3 +695,29 @@ def test_governance_requires_real_repository_carriers(tmp_path, mocker):
     mocker.patch.object(metadata, "ROOT", tmp_path)
     with pytest.raises(ValueError, match="missing governance documents"):
         metadata.check_governance_contract()
+
+
+@pytest.mark.parametrize(
+    ("command", "allowed"),
+    [
+        ("nox -s release_compatibility", True),
+        ("nox -s release_asset", True),
+        ("python -m tools.release.artifact assemble --sign", False),
+        ("python -m tools.release.publication gitlab", False),
+    ],
+)
+def test_gitlab_candidate_verification_does_not_grant_release_publication(command, allowed, mocker):
+    original = Path.read_text
+
+    def read(path, *args, **kwargs):
+        content = original(path, *args, **kwargs)
+        if path == ROOT / ".gitlab-ci.yml":
+            return content + f"\nprobe:\n  script:\n    - {command}\n"
+        return content
+
+    mocker.patch.object(Path, "read_text", read)
+    if allowed:
+        metadata.check_governance_contract()
+    else:
+        with pytest.raises(ValueError, match="must not sign or republish"):
+            metadata.check_governance_contract()

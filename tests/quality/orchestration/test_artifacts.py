@@ -206,9 +206,15 @@ def test_release_compatibility_requires_real_predecessor_inputs_before_build(
             "-m",
             "pytest",
             "-q",
+            "tests/cli/test_interface.py",
+            "tests/service/handoff/test_subprocess.py",
+            "tests/release/test_native_lifecycle.py",
             "tests/release/test_native_compatibility.py",
         )
         environment = session.run.call_args.kwargs["env"]
+        assert environment[
+            nox_configuration.product_identity.environment_name("EXECUTABLE")
+        ] == str(tmp_path / "proxy")
         assert environment[
             nox_configuration.product_identity.environment_name("PREVIOUS_RELEASE_ASSET")
         ] == str(asset)
