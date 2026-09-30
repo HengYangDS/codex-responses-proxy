@@ -107,7 +107,19 @@ SHALL be schedulable in parallel, and one failed or missing version or platform
 SHALL be identifiable without inspecting a combined multi-version job. The
 platform nodes MAY use the release interpreter; a Python-version-by-platform
 Cartesian matrix is not required. CPU architecture and native asset ABI
-qualification SHALL remain explicit, separate facts.
+qualification SHALL remain explicit, separate facts. Native review and
+protected-source nodes SHALL use distinct project-bound Runner identities,
+accounts, workspaces, and caches; a tag variable or local lint SHALL NOT
+establish that operational separation.
+
+#### Scenario: Native review and accepted-source routes differ
+
+- **WHEN** a GitLab merge request targets `dev`
+- **THEN** its macOS and Windows functional nodes select review capabilities
+- **AND WHEN** accepted `dev` is pushed
+- **THEN** its macOS and Windows functional nodes select protected capabilities
+- **AND** neither route shares a persistent native account, working root, or
+  cache with the other.
 
 #### Scenario: Platform runner is unavailable on one Forge
 

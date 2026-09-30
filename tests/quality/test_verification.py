@@ -237,7 +237,9 @@ class TestVerificationContracts:
             if job in {
                 "source-and-governance",
                 "verify-macos-python",
+                "verify-macos-python-review",
                 "verify-windows-python",
+                "verify-windows-python-review",
             }:
                 assert metadata_checks == 0
                 assert scripts[0] == "mise install --locked"

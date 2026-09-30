@@ -80,24 +80,40 @@ verify-python:
     - python --version
     - uv run --locked --no-sync --python python --no-python-downloads nox -s "tests-$PYTHON_VERSION"
 verify-macos-python:
-  stage: verify
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
     - if: $CI_COMMIT_BRANCH == "dev"
+  stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_MACOS_RUNNER_TAG
   timeout: 15m
   inherit:
     default: false
-  tags:
-    - $CODEX_RESPONSES_PROXY_GITLAB_MACOS_RUNNER_TAG
   variables:
-    GIT_DEPTH: "0"
     CODEX_RESPONSES_PROXY_CI_TARGET: macos-arm64
+    GIT_DEPTH: "0"
     MISE_ENABLE_TOOLS: python,uv
     PYTHON_VERSION: "3.14"
-  cache:
-    key: uv-macos-arm64-$PYTHON_VERSION
-    paths:
-      - .cache/uv/
+  before_script:
+    - mise install --locked
+    - git fetch --tags --force --prune --prune-tags origin
+    - mise exec --locked -- uv sync --locked --group quality --python python
+  script:
+    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import platform; print(platform.system(), platform.machine())"
+    - mise exec --locked -- uv run --locked --no-sync --python python nox -s "tests-$PYTHON_VERSION"
+verify-macos-python-review:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+  stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_MACOS_REVIEW_RUNNER_TAG
+  timeout: 15m
+  inherit:
+    default: false
+  variables:
+    CODEX_RESPONSES_PROXY_CI_TARGET: macos-arm64
+    GIT_DEPTH: "0"
+    MISE_ENABLE_TOOLS: python,uv
+    PYTHON_VERSION: "3.14"
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin
@@ -106,24 +122,40 @@ verify-macos-python:
     - mise exec --locked -- uv run --locked --no-sync --python python python -c "import platform; print(platform.system(), platform.machine())"
     - mise exec --locked -- uv run --locked --no-sync --python python nox -s "tests-$PYTHON_VERSION"
 verify-windows-python:
-  stage: verify
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
     - if: $CI_COMMIT_BRANCH == "dev"
+  stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_RUNNER_TAG
   timeout: 15m
   inherit:
     default: false
-  tags:
-    - $CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_RUNNER_TAG
   variables:
-    GIT_DEPTH: "0"
     CODEX_RESPONSES_PROXY_CI_TARGET: windows-arm64
+    GIT_DEPTH: "0"
     MISE_ENABLE_TOOLS: python,uv
     PYTHON_VERSION: "3.14"
-  cache:
-    key: uv-windows-arm64-$PYTHON_VERSION
-    paths:
-      - .cache/uv/
+  before_script:
+    - mise install --locked
+    - git fetch --tags --force --prune --prune-tags origin
+    - mise exec --locked -- uv sync --locked --group quality --python python
+  script:
+    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import platform; print(platform.system(), platform.machine())"
+    - mise exec --locked -- uv run --locked --no-sync --python python nox -s "tests-$env:PYTHON_VERSION"
+verify-windows-python-review:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+  stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_REVIEW_RUNNER_TAG
+  timeout: 15m
+  inherit:
+    default: false
+  variables:
+    CODEX_RESPONSES_PROXY_CI_TARGET: windows-arm64
+    GIT_DEPTH: "0"
+    MISE_ENABLE_TOOLS: python,uv
+    PYTHON_VERSION: "3.14"
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin
