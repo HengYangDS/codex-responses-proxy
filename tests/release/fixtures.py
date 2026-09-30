@@ -132,7 +132,7 @@ def signed_asset(
     trust: str,
 ) -> Path:
     """Build one route-controlled asset from exact native bundle bytes."""
-    platform_id = product_identity.native_release_platform(platform.system(), platform.machine())
+    platform_id = product_identity.current_native_release_platform()
     executable_name = product_identity.executable_name(windows=platform_id.startswith("windows-"))
     executable = bundle / executable_name
     files: dict[str, bytes | product_assets.ArchiveFile] = {

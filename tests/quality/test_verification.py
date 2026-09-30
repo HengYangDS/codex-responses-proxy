@@ -234,7 +234,7 @@ class TestVerificationContracts:
         assert job_scripts
         for job, scripts in job_scripts.items():
             metadata_checks = sum('["tool"]["uv"]["required-version"]' in item for item in scripts)
-            if job in {
+            if job.removesuffix("-review") in {
                 "source-and-governance",
                 "verify-macos-native",
                 "verify-macos-native-review",
@@ -242,7 +242,7 @@ class TestVerificationContracts:
                 "verify-windows-native-review",
             }:
                 assert metadata_checks == 0
-                if job == "source-and-governance":
+                if job.removesuffix("-review") == "source-and-governance":
                     assert scripts[:3] == (
                         "apt-get update -qq",
                         "apt-get install -qq -y --no-install-recommends libatomic1",
@@ -660,3 +660,24 @@ def test_operator_forge_cli_is_bound_to_the_existing_toolchain() -> None:
     configuration = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
     assert configuration["tools"]["glab"] == "1.120.0"
     assert "mise which glab" in configuration["tasks"]["toolchain:verify"]["run"]
+
+
+def test_gitlab_linux_tags_bind_directly_without_recursive_aliases() -> None:
+    """Each event selects a single-level native scheduling variable."""
+    pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
+    for name in (
+        "source-and-governance",
+        "verify-python",
+        "verify-python-quality",
+        "verify-performance",
+    ):
+        for suffix, selector in (
+            ("", "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"),
+            ("-review", "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"),
+        ):
+            job = _mapping(pipeline[name + suffix])
+            assert job["tags"] == [selector]
+            assert "CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG" not in str(job["rules"])
+            event = str(job["rules"])
+            assert ("merge_request_event" in event) == bool(suffix)
+    assert "CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG" not in str(pipeline)

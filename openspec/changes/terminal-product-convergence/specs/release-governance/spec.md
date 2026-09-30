@@ -134,4 +134,14 @@ establish that operational separation.
 - **WHEN** a selected peer runs general Windows checks on an ARM64 VM
 - **THEN** those checks MAY satisfy the declared Windows functional outcome
 - **AND** their evidence SHALL retain the ARM64 architecture
-- **AND** they SHALL NOT establish native Windows x86_64 ABI or asset proof.
+- **AND** the physical host observation alone SHALL NOT establish the program ABI
+- **AND** asset acceptance MAY separately qualify `windows-x86_64` when the
+  actual built executable and interpreter use `win-amd64` and the full native
+  lifecycle passes; native ARM64 execution SHALL NOT be claimed.
+
+#### Scenario: Linux review tags resolve without recursive aliases
+
+- **WHEN** GitLab selects a Linux merge-request or accepted-source proof node
+- **THEN** each job SHALL reference its review or protected native scheduling
+  variable directly, with no workflow-to-job alias expansion
+- **AND** both routes SHALL share the same CUE-owned functional job body.

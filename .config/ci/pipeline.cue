@@ -72,13 +72,10 @@ import (
 gitlab: {
 	workflow: rules: [{
 		if: "$CI_COMMIT_TAG"
-		variables: CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
 	}, {
 		if: "$CI_PIPELINE_SOURCE == \"merge_request_event\""
-		variables: CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"
 	}, {
 		if: "$CI_COMMIT_BRANCH == \"dev\" || $CI_COMMIT_BRANCH == \"main\""
-		variables: CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
 	}, {
 		if:   "$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS"
 		when: "never"
@@ -95,7 +92,7 @@ gitlab: {
 	}
 	default: {
 		image: name: "$UV_PYTHON_LATEST_IMAGE"
-		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG"]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		cache: {
 			key: "uv-$CODEX_RESPONSES_PROXY_CI_TARGET-$CI_COMMIT_REF_PROTECTED"
 			paths: [".cache/uv/"]
@@ -109,10 +106,7 @@ gitlab: {
 		if: "$CI_COMMIT_BRANCH == \"dev\""
 		...
 	}]
-	#productRules: [
-		#productEvents[0],
-		#productEvents[1],
-	]
+	#productRules: [#productEvents[1]]
 	#nativeReviewRules: [#productEvents[0]]
 	#nativeProtectedRules: [#productEvents[1]]
 	#uvContract: """
@@ -136,9 +130,10 @@ gitlab: {
 		"uv sync --locked --group quality --python python --no-python-downloads",
 	]])
 
-	"source-and-governance": {
+	#LinuxSource: {
+		rules: _
+		tags:  _
 		stage: "verify"
-		rules: #productRules
 		image: {
 			name: #Toolchains.gitlabMiseImage
 			entrypoint: [""]
@@ -160,9 +155,18 @@ gitlab: {
 			#GitLabCommitEvent + "mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links",
 		]
 	}
-	"verify-python": {
-		stage: "verify"
+	"source-and-governance": #LinuxSource & {
 		rules: #productRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+	}
+	"source-and-governance-review": #LinuxSource & {
+		rules: [#productEvents[0]]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
+	}
+	#LinuxPython: {
+		rules: _
+		tags:  _
+		stage: "verify"
 		parallel: matrix: [{PYTHON_VERSION: #RuntimeMatrix.python}]
 		variables: GIT_DEPTH: "0"
 		before_script: list.Concat([#systemBootstrap, [
@@ -175,6 +179,14 @@ gitlab: {
 			"python --version",
 			"uv run --locked --no-sync --python python --no-python-downloads nox -s \"tests-$PYTHON_VERSION\"",
 		]
+	}
+	"verify-python": #LinuxPython & {
+		rules: #productRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+	}
+	"verify-python-review": #LinuxPython & {
+		rules: [#productEvents[0]]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
 	}
 	#NativeBootstrap: [
 		"mise install --locked",
@@ -232,9 +244,10 @@ gitlab: {
 		rules: #nativeReviewRules
 		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_REVIEW_RUNNER_TAG"]
 	}
-	"verify-python-quality": {
+	#LinuxQuality: {
+		rules: _
+		tags:  _
 		stage: "verify"
-		rules: #productRules
 		image: name:          "$UV_PYTHON_FLOOR_IMAGE"
 		variables: GIT_DEPTH: "0"
 		before_script: list.Concat([#systemBootstrap, [
@@ -246,9 +259,18 @@ gitlab: {
 			"uv run --locked --no-sync --python python --no-python-downloads nox -s quality",
 		]
 	}
-	"verify-performance": {
-		stage: "verify"
+	"verify-python-quality": #LinuxQuality & {
 		rules: #productRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+	}
+	"verify-python-quality-review": #LinuxQuality & {
+		rules: [#productEvents[0]]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
+	}
+	#LinuxPerformance: {
+		rules: _
+		tags:  _
+		stage: "verify"
 		variables: GIT_DEPTH: "0"
 		before_script: #systemBootstrap
 		script: [
@@ -259,6 +281,14 @@ gitlab: {
 			when: "always"
 			paths: [".performance/latency.json", ".performance/memory.json"]
 		}
+	}
+	"verify-performance": #LinuxPerformance & {
+		rules: #productRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+	}
+	"verify-performance-review": #LinuxPerformance & {
+		rules: [#productEvents[0]]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
 	}
 	"verify-accepted-source": {
 		stage: "verify"

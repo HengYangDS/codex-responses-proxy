@@ -214,3 +214,29 @@ def test_asset_paths_modes_and_names_must_be_canonical():
         assets.archive_name("not-version", "linux-x86_64")
     with pytest.raises(assets.AssetError, match="incomplete"):
         assets.release_platforms(set(), "1.2.3")
+
+
+@pytest.mark.parametrize("machine", ["AMD64", "ARM64"])
+def test_windows_release_identity_uses_executable_abi(machine: str) -> None:
+    """The x64 process ABI, not physical CPU naming, owns the payload."""
+    assert (
+        product_identity.native_release_platform("Windows", machine, process_platform="win-amd64")
+        == "windows-x86_64"
+    )
+
+
+@pytest.mark.parametrize("process_platform", ["win32", "win-arm64"])
+def test_windows_release_rejects_an_unreleased_process_abi(process_platform: str) -> None:
+    """An x64 host cannot certify an incompatible running executable."""
+    with pytest.raises(ValueError, match="unsupported native release platform"):
+        product_identity.native_release_platform(
+            "Windows", "AMD64", process_platform=process_platform
+        )
+
+
+def test_current_release_identity_reads_the_actual_process_platform(mocker) -> None:
+    """The real consumer forwards the interpreter ABI with its host observation."""
+    mocker.patch.object(product_identity.platform, "system", return_value="Windows")
+    mocker.patch.object(product_identity.platform, "machine", return_value="ARM64")
+    mocker.patch.object(product_identity.sysconfig, "get_platform", return_value="win-amd64")
+    assert product_identity.current_native_release_platform() == "windows-x86_64"

@@ -255,24 +255,19 @@ def test_github_actions_consume_one_immutable_toolchain_catalog() -> None:
     assert projected == set(catalog)
 
 
-def test_gitlab_capability_tags_resolve_at_workflow_not_job_scope() -> None:
-    """Runner scheduling cannot consume a job-rule variable alias."""
+def test_gitlab_capability_tags_use_no_recursive_scheduling_alias() -> None:
+    """Native tags are direct project-variable references, not aliases."""
     pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
-    workflow_rules = [_mapping(rule) for rule in _sequence(_mapping(pipeline["workflow"])["rules"])]
-    for condition, variable in (
-        ('$CI_PIPELINE_SOURCE == "merge_request_event"', "LINUX_REVIEW"),
-        ('$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"', "LINUX"),
-        ("$CI_COMMIT_TAG", "LINUX"),
+    assert "CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG" not in str(pipeline)
+    for name in (
+        "source-and-governance",
+        "verify-python",
+        "verify-python-quality",
+        "verify-performance",
     ):
-        rule = next(rule for rule in workflow_rules if rule["if"] == condition)
-        assert _mapping(rule["variables"])["CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG"] == (
-            f"$CODEX_RESPONSES_PROXY_GITLAB_{variable}_RUNNER_TAG"
-        )
-    for name, job in pipeline.items():
-        if name != "workflow" and isinstance(job, dict) and "rules" in job:
-            for rule in _sequence(job["rules"]):
-                variables = _mapping(_mapping(rule).get("variables", {}))
-                assert "CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG" not in variables
+        for suffix, variable in (("", "LINUX"), ("-review", "LINUX_REVIEW")):
+            job = _mapping(pipeline[name + suffix])
+            assert _strings(job["tags"]) == [f"$CODEX_RESPONSES_PROXY_GITLAB_{variable}_RUNNER_TAG"]
 
 
 def test_windows_native_ci_separates_host_architecture_and_python_abi() -> None:
@@ -372,9 +367,12 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     for job_id in ("verify-python", "verify-python-quality", "verify-performance"):
         job = _mapping(gitlab[job_id])
         assert [_mapping(rule)["if"] for rule in _sequence(job["rules"])] == [
+            '$CI_COMMIT_BRANCH == "dev"',
+        ]
+        review = _mapping(gitlab[job_id + "-review"])
+        assert [_mapping(rule)["if"] for rule in _sequence(review["rules"])] == [
             '$CI_PIPELINE_SOURCE == "merge_request_event" && '
             '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"',
-            '$CI_COMMIT_BRANCH == "dev"',
         ]
     python = _mapping(gitlab["verify-python"])
     matrix_values = _sequence(_mapping(python["parallel"])["matrix"])
@@ -418,8 +416,12 @@ def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> Non
         ("windows-arm64", "verify-windows-native", "WINDOWS"),
     ):
         for name, rules, tag_suffix in (
-            (tag, _sequence(linux["rules"])[1:], variable),
-            (f"{tag}-review", _sequence(linux["rules"])[:1], f"{variable}_REVIEW"),
+            (tag, _sequence(linux["rules"]), variable),
+            (
+                f"{tag}-review",
+                _sequence(_mapping(gitlab["verify-python-review"])["rules"]),
+                f"{variable}_REVIEW",
+            ),
         ):
             job = _mapping(gitlab[name])
             assert job["stage"] == "verify"
@@ -466,7 +468,7 @@ def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> Non
 def test_gitlab_linux_review_and_protected_jobs_use_disjoint_capabilities() -> None:
     """An untrusted merge request cannot choose the protected Linux runner."""
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
-    assert _mapping(gitlab["default"])["tags"] == ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG"]
+    assert _mapping(gitlab["default"])["tags"] == ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
     assert _mapping(_mapping(gitlab["default"])["cache"])["key"] == (
         "uv-$CODEX_RESPONSES_PROXY_CI_TARGET-$CI_COMMIT_REF_PROTECTED"
     )
@@ -479,7 +481,8 @@ def test_gitlab_linux_review_and_protected_jobs_use_disjoint_capabilities() -> N
     ):
         rules = _sequence(_mapping(gitlab[name])["rules"])
         assert "variables" not in _mapping(rules[0])
-        assert "variables" not in _mapping(rules[1])
+        review_rules = _sequence(_mapping(gitlab[name + "-review"])["rules"])
+        assert "variables" not in _mapping(review_rules[0])
     for name in ("verify-accepted-source", "verify-promotion", "verify-release-tag"):
         assert _mapping(gitlab[name])["tags"] == [protected]
 
