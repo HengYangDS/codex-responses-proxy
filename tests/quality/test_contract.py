@@ -970,7 +970,7 @@ def test_native_ignore_resolves_from_its_actual_configuration_directory() -> Non
             "--",
             "prettier",
             "--file-info",
-            ".mise/locks/npm/12.1.0/aube-lock.yaml",
+            ".mise/locks/npm/12.2.0/aube-lock.yaml",
             "--ignore-path",
             ".config/quality/native/prettier.ignore",
         ],

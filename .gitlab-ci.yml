@@ -1,8 +1,14 @@
 workflow:
   rules:
     - if: $CI_COMMIT_TAG
+      variables:
+        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
     - if: $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"
+      variables:
+        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
 stages:
@@ -29,11 +35,7 @@ source-and-governance:
   stage: verify
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
-      variables:
-        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
     - if: $CI_COMMIT_BRANCH == "dev"
-      variables:
-        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   image:
     name: ghcr.io/jdx/mise:2026.9.18-debian@sha256:33d301fd5929d6960c102f947e97f08c671ad936573b375fcf4f13a90466f710
     entrypoint:
@@ -55,11 +57,7 @@ verify-python:
   stage: verify
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
-      variables:
-        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
     - if: $CI_COMMIT_BRANCH == "dev"
-      variables:
-        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   parallel:
     matrix:
       - PYTHON_VERSION:
@@ -153,7 +151,7 @@ verify-windows-native:
     - git fetch --tags --force --prune --prune-tags origin
     - mise exec --locked -- uv sync --locked --group quality --python python
   script:
-    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import os, platform; assert platform.system() == 'Windows'; assert platform.machine() == 'AMD64'; print(platform.system(), platform.machine(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
+    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
     - mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility
 verify-windows-native-review:
   rules:
@@ -175,17 +173,13 @@ verify-windows-native-review:
     - git fetch --tags --force --prune --prune-tags origin
     - mise exec --locked -- uv sync --locked --group quality --python python
   script:
-    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import os, platform; assert platform.system() == 'Windows'; assert platform.machine() == 'AMD64'; print(platform.system(), platform.machine(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
+    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
     - mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility
 verify-python-quality:
   stage: verify
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
-      variables:
-        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
     - if: $CI_COMMIT_BRANCH == "dev"
-      variables:
-        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   image:
     name: $UV_PYTHON_FLOOR_IMAGE
   variables:
@@ -213,11 +207,7 @@ verify-performance:
   stage: verify
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
-      variables:
-        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
     - if: $CI_COMMIT_BRANCH == "dev"
-      variables:
-        CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   variables:
     GIT_DEPTH: "0"
   before_script:

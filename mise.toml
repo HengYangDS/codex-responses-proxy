@@ -1,4 +1,4 @@
-min_version = "2026.9.11"
+min_version = "2026.9.18"
 
 [settings]
 idiomatic_version_file_enable_tools = []
@@ -14,7 +14,7 @@ npm = "npm:npm"
 [tools]
 # Language runtimes
 node = "26.10.0"
-npm = "12.1.0"
+npm = "12.2.0"
 python = "3.14.7"
 
 # Dependency management

@@ -72,10 +72,13 @@ import (
 gitlab: {
 	workflow: rules: [{
 		if: "$CI_COMMIT_TAG"
+		variables: CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
 	}, {
 		if: "$CI_PIPELINE_SOURCE == \"merge_request_event\""
+		variables: CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"
 	}, {
 		if: "$CI_COMMIT_BRANCH == \"dev\" || $CI_COMMIT_BRANCH == \"main\""
+		variables: CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
 	}, {
 		if:   "$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS"
 		when: "never"
@@ -107,8 +110,8 @@ gitlab: {
 		...
 	}]
 	#productRules: [
-		#productEvents[0] & {variables: CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"},
-		#productEvents[1] & {variables: CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"},
+		#productEvents[0],
+		#productEvents[1],
 	]
 	#nativeReviewRules: [#productEvents[0]]
 	#nativeProtectedRules: [#productEvents[1]]
@@ -208,7 +211,7 @@ gitlab: {
 			CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: "$CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_PREVIOUS_RELEASE_ASSET"
 		}
 		script: [
-			"mise exec --locked -- uv run --locked --no-sync --python python python -c \"import os, platform; assert platform.system() == 'Windows'; assert platform.machine() == 'AMD64'; print(platform.system(), platform.machine(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))\"",
+			"mise exec --locked -- uv run --locked --no-sync --python python python -c \"import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))\"",
 			"mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility",
 		]
 		...

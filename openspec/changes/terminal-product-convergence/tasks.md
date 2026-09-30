@@ -222,6 +222,14 @@
       Pytest and Coverage use native TOML; direct discovery, explicit `--rcfile`, three Python Nox sessions, and the macOS native asset passed locally.
       Git attributes keep text at LF under `core.autocrlf=true` without changing binary bytes; EditorConfig and Taplo agree on two-space TOML indentation.
       Hosted CI and the remaining root-carrier audit stay open.
+      Stable npm 12.2.0 uses the native Mise backend and generated AUBE graph;
+      the old repository sidecars retire through that producer. Native lock
+      format 3 retains all 68 existing platform inputs and adds 11 discovered
+      entries; the minimum reader and actual host/CI Mise are 2026.9.18.
+      Source regressions separate workflow-time Linux scheduling from job-rule
+      aliases and Windows host architecture from Python's executable ABI.
+      Real native Mac lifecycle still requires a separate GUI user domain;
+      signature and package acquisition alone do not qualify it.
 - [ ] 11.6 Remove toy examples, private workstation paths, stale versions, obsolete commands, WCP references, AIGW coupling, empty evidence shells, claims, chronicles, parity directories, and historical instructions from current reader paths.
 - [ ] 11.7 Verify source, config, specs, docs, help, schemas, generated workflows, and release metadata use the same public vocabulary and that a renamed concept leaves no stale reference.
 
