@@ -442,6 +442,10 @@ def test_native_test_paths_do_not_inherit_checkout_depth(
         temporary = Path(arguments[arguments.index("--basetemp") + 1])
         assert temporary.parent.is_dir()
         assert not temporary.is_relative_to(tmp_path)
+        environment = _kwargs["env"]
+        assert isinstance(environment, dict)
+        for name in ("TMPDIR", "TEMP", "TMP"):
+            assert environment[name] == str(temporary.parent)
         seen.append(temporary.parent)
         if failure:
             raise RuntimeError("native test failed")

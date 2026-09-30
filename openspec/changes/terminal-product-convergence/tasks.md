@@ -231,7 +231,12 @@
       native scheduling variables with no intermediate alias. Windows native
       release selection uses the running interpreter ABI, not the host CPU,
       and native tests own short disposable roots independent of checkout depth.
-      These repairs require fresh hosted acceptance, not old-source results.
+      Pipeline 9030 proves direct Linux Runner assignment, source, Python matrix,
+      and performance at signed a52f66c6. Its native Mac job rejects missing
+      gui/510; its Windows job exposes deep service-account TEMP and inherited
+      Nox TMPDIR. Native child temporary variables now share the same owned
+      root; the Runner owner must provide a short isolated native TEMP input.
+      Fresh hosted acceptance of that correction remains required.
       Real native Mac lifecycle still requires a separate GUI user domain;
       signature and package acquisition alone do not qualify it.
 - [ ] 11.6 Remove toy examples, private workstation paths, stale versions, obsolete commands, WCP references, AIGW coupling, empty evidence shells, claims, chronicles, parity directories, and historical instructions from current reader paths.

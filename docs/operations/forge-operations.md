@@ -275,7 +275,11 @@ interpreter must report `win-amd64`; native payload identity follows that ABI.
 Complete lifecycle execution may qualify the Windows x64 asset under emulation,
 never a native ARM64 asset. Native pytest sessions own a short, unique temporary
 root outside the checkout so deep Runner paths do not exhaust Windows path
-capacity; that root is removed after process teardown, including test failure.
+capacity. `TMPDIR`, `TEMP`, and `TMP` point to that same root, not Nox's
+checkout-local build directory. The Runner owner must configure a short,
+account-isolated native temporary parent in its deployment environment. No
+private host path belongs in repository source. The test root is removed after
+process teardown, including test failure.
 The supported release inventory remains authoritative. A Linux container has
 no systemd user manager and proves only its declared source checks; native
 Linux service acceptance still requires a separate real user-service context.

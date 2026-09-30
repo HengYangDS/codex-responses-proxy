@@ -285,7 +285,7 @@ def _run_native_tests(session: nox.Session, *paths: str, env: dict[str, str]) ->
             "--basetemp",
             str(Path(temporary) / "tests"),
             *paths,
-            env=env,
+            env={**env, **dict.fromkeys(("TMPDIR", "TEMP", "TMP"), temporary)},
         )
 
 
