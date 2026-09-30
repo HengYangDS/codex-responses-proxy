@@ -1,4 +1,4 @@
-"""Persist the watchdog as one launchd user agent."""
+"""Persist one Background watchdog in the current user's launchd domain."""
 
 from __future__ import annotations
 
@@ -21,37 +21,9 @@ from codex_responses_proxy.service import runtime as service_runtime
 if TYPE_CHECKING:
     from codex_responses_proxy.lifecycle import runtime_spec
 
-PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>{label}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>{executable}</string>
-    <string>{watchdog_mode}</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>ThrottleInterval</key>
-  <integer>5</integer>
-  <key>StandardOutPath</key>
-  <string>/dev/null</string>
-  <key>StandardErrorPath</key>
-  <string>{stderr_log}</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>HOME</key>
-    <string>{home}</string>
-  </dict>
-</dict>
-</plist>
-"""
 _SERVICE_ABSENT = 113
 _PID = re.compile(r"(?m)^\s*pid = (?P<pid>[1-9][0-9]*)\s*$")
+_GUI_ASID = re.compile(r"(?m)^\tgui asid = [1-9][0-9]*\s*$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,16 +50,39 @@ def _domain_target() -> str:
     if not callable(getuid):
         raise errors.InstallError("macOS user identity is unavailable")
     uid = cast(Callable[[], int], getuid)()
-    return f"gui/{uid}"
+    return f"user/{uid}"
 
 
-def _service_target(ctx: runtime_spec.NativeServiceContext) -> str:
-    return f"{_domain_target()}/{ctx.service_id}"
+def _service_target(ctx: runtime_spec.NativeServiceContext, domain: str) -> str:
+    return f"{domain}/{ctx.service_id}"
 
 
-def _service(ctx: runtime_spec.NativeServiceContext) -> _Service:
+def _domains() -> tuple[str, ...]:
+    """Prove the user domain and observe GUI services only for an associated login."""
+    domain = _domain_target()
     completed = subprocess.run(
-        [_native_tool("launchctl"), "print", _service_target(ctx)],
+        [_native_tool("launchctl"), "print", domain],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if completed.returncode:
+        raise errors.NativeServiceUnavailableError(
+            "a reachable launchd user domain is required for macOS installation"
+        )
+    if (
+        not completed.stdout.startswith(f"{domain} = {{\n")
+        or "\ttype = user\n" not in completed.stdout
+    ):
+        raise errors.InstallError("launchd user-domain identity is unproved")
+    if _GUI_ASID.search(completed.stdout):
+        return domain, domain.replace("user/", "gui/", 1)
+    return (domain,)
+
+
+def _service(ctx: runtime_spec.NativeServiceContext, domain: str) -> _Service:
+    completed = subprocess.run(
+        [_native_tool("launchctl"), "print", _service_target(ctx, domain)],
         capture_output=True,
         check=False,
         text=True,
@@ -101,6 +96,19 @@ def _service(ctx: runtime_spec.NativeServiceContext) -> _Service:
     return _Service(True, int(match.group("pid")) if match else None)
 
 
+def _registered_service(
+    ctx: runtime_spec.NativeServiceContext,
+) -> tuple[str, _Service]:
+    """Observe every applicable domain and reject competing registrations."""
+    domains = _domains()
+    registered = [
+        (domain, current) for domain in domains if (current := _service(ctx, domain)).registered
+    ]
+    if len(registered) > 1:
+        raise errors.InstallError("launchd watchdog is registered in both user and GUI domains")
+    return registered[0] if registered else (domains[0], _Service(False, None))
+
+
 def _require_success(completed: subprocess.CompletedProcess[str], operation: str) -> None:
     if completed.returncode:
         msg = f"launchctl {operation} failed (exit {completed.returncode})"
@@ -112,6 +120,7 @@ def render_plist(ctx: runtime_spec.NativeServiceContext) -> str:
     payload = {
         "Label": ctx.service_id,
         "ProgramArguments": [ctx.executable, service_runtime.WATCHDOG_MODE],
+        "LimitLoadToSessionType": "Background",
         "RunAtLoad": True,
         "KeepAlive": True,
         "ThrottleInterval": 5,
@@ -145,7 +154,7 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
     """Replace and prove one exact launchd watchdog process generation."""
     plist = _plist_path(ctx)
     previous_executable = configured_executable(ctx)
-    previous = _service(ctx)
+    previous_domain, previous = _registered_service(ctx)
     generation = None
     if previous.pid is not None:
         if previous_executable is None:
@@ -161,7 +170,7 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
             raise errors.InstallError(msg)
     if previous.registered:
         bootout = subprocess.run(
-            [_native_tool("launchctl"), "bootout", _service_target(ctx)],
+            [_native_tool("launchctl"), "bootout", _service_target(ctx, previous_domain)],
             capture_output=True,
             check=False,
             text=True,
@@ -170,6 +179,8 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
     if generation is not None and not process.wait_for_exit(generation):
         msg = f"launchd watchdog generation {generation.pid} remains after bootout"
         raise errors.InstallError(msg)
+    if previous.registered and _service(ctx, previous_domain).registered:
+        raise errors.InstallError("launchd watchdog remains registered after bootout")
 
     Path(ctx.log_dir).mkdir(mode=0o700, parents=True, exist_ok=True)
     Path(plist).parent.mkdir(parents=True, exist_ok=True)
@@ -187,7 +198,7 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
     )
     _require_success(bootstrap, "bootstrap")
     kickstart = subprocess.run(
-        [_native_tool("launchctl"), "kickstart", "-p", _service_target(ctx)],
+        [_native_tool("launchctl"), "kickstart", "-p", _service_target(ctx, _domain_target())],
         capture_output=True,
         check=False,
         text=True,
@@ -198,7 +209,7 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
     except ValueError as error:
         msg = "launchctl kickstart returned no watchdog pid"
         raise errors.InstallError(msg) from error
-    observed = _service(ctx)
+    observed = _service(ctx, _domain_target())
     if observed.pid != successor_pid:
         msg = "launchd watchdog pid was not re-observed for the exact service"
         raise errors.InstallError(msg)
@@ -218,7 +229,7 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
 def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
     """Boot out and remove only this installation's launchd service."""
     plist = _plist_path(ctx)
-    current = _service(ctx)
+    domain, current = _registered_service(ctx)
     generation = None
     if current.pid is not None:
         executable = configured_executable(ctx)
@@ -235,7 +246,7 @@ def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
             raise errors.InstallError(msg)
     if current.registered:
         bootout = subprocess.run(
-            [_native_tool("launchctl"), "bootout", _service_target(ctx)],
+            [_native_tool("launchctl"), "bootout", _service_target(ctx, domain)],
             capture_output=True,
             check=False,
             text=True,
@@ -244,7 +255,7 @@ def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
     if generation is not None and not process.wait_for_exit(generation):
         msg = f"launchd watchdog generation {generation.pid} remains after bootout"
         raise errors.InstallError(msg)
-    if _service(ctx).registered:
+    if _service(ctx, domain).registered:
         msg = "launchd watchdog remains registered after bootout"
         raise errors.InstallError(msg)
     Path(plist).unlink(missing_ok=True)
@@ -253,6 +264,7 @@ def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
 def status(ctx: runtime_spec.NativeServiceContext) -> str:
     """Return the macOS launchd service's read-only status classification."""
     plist = _plist_path(ctx)
-    if not Path(plist).exists():
-        return "absent"
-    return "running" if _service(ctx).pid is not None else "installed"
+    _domain, current = _registered_service(ctx)
+    if current.pid is not None:
+        return "running"
+    return "installed" if current.registered or Path(plist).exists() else "absent"

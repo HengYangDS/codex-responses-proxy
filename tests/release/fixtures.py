@@ -43,47 +43,64 @@ _SERVICE_ROLES = frozenset(
 
 
 def _macos_service_projection() -> tuple[
-    frozenset[str], frozenset[tuple[str, str]], tuple[tuple[str, str], ...]
+    frozenset[tuple[str, str]], frozenset[tuple[str, str, str]], tuple[tuple[str, str], ...]
 ]:
     """Return every persistent launchd surface owned by this product."""
-    completed = subprocess.run(
-        ["/bin/launchctl", "list"],
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-    labels = frozenset(
-        fields[2]
-        for line in completed.stdout.splitlines()[1:]
-        if len(fields := line.split("\t")) >= 3 and fields[2].startswith(runtime_context.SERVICE_ID)
-    )
     getuid: object = getattr(os, "getuid", None)
     if not callable(getuid):
         raise TypeError("macOS user identity is unavailable")
-    disabled = subprocess.run(
-        [
-            "/bin/launchctl",
-            "print-disabled",
-            f"gui/{cast(Callable[[], int], getuid)()}",
-        ],
+    uid = cast(Callable[[], int], getuid)()
+    domain = f"user/{uid}"
+    completed = subprocess.run(
+        ["/bin/launchctl", "print", domain],
         capture_output=True,
-        check=True,
+        check=False,
         text=True,
     )
-    overrides: frozenset[tuple[str, str]] = frozenset(
-        (str(match.group("label")), str(match.group("state")))
-        for match in re.finditer(
-            rf'"(?P<label>{re.escape(runtime_context.SERVICE_ID)}(?:\.[0-9a-f]{{12}})?)"'
-            r"\s*=>\s*(?P<state>enabled|disabled)",
-            disabled.stdout,
+    if completed.returncode:
+        raise RuntimeError("launchd user-domain observation failed")
+    domains = [(domain, completed.stdout)]
+    if re.search(r"(?m)^\tgui asid = [1-9][0-9]*\s*$", completed.stdout):
+        gui = f"gui/{uid}"
+        observed = subprocess.run(
+            ["/bin/launchctl", "print", gui],
+            capture_output=True,
+            check=True,
+            text=True,
         )
-    )
+        domains.append((gui, observed.stdout))
+    labels: set[tuple[str, str]] = set()
+    overrides: set[tuple[str, str, str]] = set()
+    for domain, observation in domains:
+        services = re.search(r"(?ms)^\tservices = \{\n(.*?)^\t\}", observation)
+        if services is None:
+            raise RuntimeError("launchd domain service inventory is unproved")
+        labels.update(
+            (domain, fields[-1])
+            for line in services.group(1).splitlines()
+            if len(fields := line.split()) >= 3
+            and fields[-1].startswith(runtime_context.SERVICE_ID)
+        )
+        disabled = subprocess.run(
+            ["/bin/launchctl", "print-disabled", domain],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        overrides.update(
+            (domain, str(match.group("label")), str(match.group("state")))
+            for match in re.finditer(
+                rf'"(?P<label>{re.escape(runtime_context.SERVICE_ID)}(?:\.[0-9a-f]{{12}})?)"'
+                r"\s*=>\s*(?P<state>enabled|disabled)",
+                disabled.stdout,
+            )
+        )
     launch_agents = Path.home() / "Library" / "LaunchAgents"
     plists = tuple(
         (path.name, hashlib.sha256(path.read_bytes()).hexdigest())
         for path in sorted(launch_agents.glob(f"{runtime_context.SERVICE_ID}*.plist"))
     )
-    return labels, overrides, plists
+    return frozenset(labels), frozenset(overrides), plists
 
 
 @pytest.fixture(scope="module")

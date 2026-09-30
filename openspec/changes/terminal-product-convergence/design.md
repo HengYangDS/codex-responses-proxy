@@ -353,6 +353,27 @@ generation, and transaction. Successful, failed, timed-out, and interrupted
 tests prove no net native-resource growth and preserve unrelated canonical
 installations.
 
+macOS supervision belongs to the current UID's `user/<uid>` domain, which can
+exist without a graphical login. The launch-agent carrier restricts loading to
+the `Background` session. The installer neither creates a login domain nor
+enables a disabled service. Before mutation, a successful native user-domain
+observation determines whether an associated GUI login exists; only then is
+the exact legacy GUI service observed. These domains share lookup names but
+not service registrations. Concurrent registrations, unavailable observations,
+or an unproved watchdog identity reject mutation rather than select a fallback.
+Replacement proves the prior process and registration absent before rewriting
+the carrier, then proves a distinct successor in the canonical user domain.
+Status and teardown observe the same targets, including a registered service
+whose carrier has disappeared.
+
+The published 4.0.4 predecessor's own installer requires a GUI domain. Its
+authentic installation, health, upgrade and rollback obligation remains a
+separate supported-context qualification; headless candidate success cannot
+replace it. Native host conservation covers both domain registrations, their
+disabled-state overrides and product plist bytes. No protected console user,
+synthetic Aqua session, source-built predecessor or skipped predecessor test
+may manufacture that evidence.
+
 The transaction journal is one sibling file outside the disposable transaction
 directory. After projection and required supervisor binding finish, the
 transaction persists its terminal outcome before removing any candidate,

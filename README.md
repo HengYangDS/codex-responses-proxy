@@ -45,6 +45,13 @@ End users need only:
 Python, a source checkout, Git, and Forge credentials are not runtime
 requirements.
 
+macOS installation requires the current user's reachable launchd user domain,
+not a graphical login. The watchdog runs in its Background session; the product
+does not create a login session or override a disabled service. Upgrading an
+existing GUI-domain watchdog verifies and removes that exact predecessor before
+binding the user-domain successor. An ambiguous or unavailable service
+observation is an error, not proof that a service is absent.
+
 Linux installation requires a reachable systemd user manager. A container without
 that user session is not a supported service host. Installation reports
 `native_service_unavailable` and rolls back its payload and command projection;
