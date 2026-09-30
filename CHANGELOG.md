@@ -13,6 +13,14 @@ publication authority.
 - Use native TOML for pytest and Coverage configuration, preserving direct test
   discovery, warning policy, and explicit coverage scope without parallel INI files.
 
+### Fixed
+
+- Run the macOS watchdog in the native user Background domain without requiring
+  a graphical login; verify legacy GUI service removal and preserve unrelated
+  registrations, disabled-state overrides and launch-agent files.
+- Observe registered macOS services even when their plist is missing, and
+  reject ambiguous domain observations before reporting lifecycle success.
+
 ## [4.0.5] - 2026-09-23
 
 ### Changed

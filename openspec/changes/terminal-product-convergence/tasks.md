@@ -44,7 +44,27 @@
 
 - [ ] 5.1 Converge install, upgrade, reload, rollback, recovery, and uninstall on one transaction state machine and mutation lock; verify preconditions, durable transitions, and terminal states through failure injection, including same-controller cleanup retry and cross-process recovery after partial directory removal.
 - [ ] 5.2 Make payload generation, manifest, command projection, transaction journal, rollback snapshot, service declaration, listener, watchdog, and handoff child each have exact ownership identity and one cleanup owner.
-- [x] 5.3 Prove macOS launchd creation and teardown share the exact label and plist path; remove every suffixed test service, process, and plist while preserving the canonical installed service.
+- [ ] 5.3 Bind macOS supervision to the native user Background domain; prove
+      exact legacy GUI migration, unique registration, predecessor exit and
+      successor identity. Observe registered services even without a carrier;
+      conserve both domains, disabled overrides and unrelated plist bytes.
+      Prior GUI-only native evidence does not qualify the new boundary.
+      The actual review UID 510 has a reachable user Background domain and no
+      GUI ASID; its exact GUI service probe returns unsupported, not service
+      absence. Its LaunchAgents directory is absent. These read-only receipts
+      establish the environmental root cause, not candidate acceptance.
+      Eleven falsifying cases fail on the exact old implementation and pass
+      after repair; 104 supervision cases and 31 subtests also pass. The locked
+      full source graph passes 1,811 tests per Python 3.12/3.13/3.14, with 97.83%
+      statements and 95.51% branches; all 1,219 tracked hashes remain unchanged
+      during that run. Official OpenSpec and native format/type gates pass.
+      Real macOS native qualification passes 49 cases and one Linux-only skip,
+      including authentic published 4.0.4 installation, health, upgrade and
+      rollback. Canonical listener and watchdog generations, both domain
+      registrations, disabled overrides and plist hashes remain unchanged;
+      isolated scratch is absent. Evidence: `build/verification/`
+      `native-supply-gitlab-20261001/mac-domain-*`. Actual headless UID 510
+      candidate qualification and same-source hosted acceptance remain open.
 - [x] 5.4 Prove Linux systemd behavior on a real supported user service and in the declared container boundary, including explicit behavior when no user bus exists; remove session-only fallback processes.
 - [x] 5.5 Prove current-user Windows Task Scheduler install, status, handoff, recovery, rollback, uninstall, command projection, and process-generation ownership from the native artifact.
 - [ ] 5.6 Verify bounded teardown after success, assertion failure, exception, timeout, and interruption on every supported platform; compare exact owned services, processes, journals, payloads, commands, and temporary files before and after, preserving unrelated canonical installations. Replaced every unowned mkdtemp call in the current test inventory with pytest-owned temporary paths; the five affected modules previously left 76 directories after 120 passing tests and now leave zero. Native pytest retention is none/0, with a RED/GREEN configuration regression and zero retained runs after passing and assertion-failing focused suites. Platform service/process interruption proof remains separate and open.
@@ -241,8 +261,10 @@
       a locked module at cleanup. That invocation-only contract now runs in the
       non-native suite with a synthetic manifest and a bounded mock scope; its
       assertions remain intact. Fresh native suite acceptance remains required.
-      Real native Mac lifecycle still requires a separate GUI user domain;
-      signature and package acquisition alone do not qualify it.
+      The current candidate's GUI-only dependency is reopened in 5.3. The
+      published 4.0.4 predecessor still requires its supported GUI context;
+      signature, package acquisition or headless candidate success cannot
+      replace that authentic predecessor qualification.
 - [ ] 11.6 Remove toy examples, private workstation paths, stale versions, obsolete commands, WCP references, AIGW coupling, empty evidence shells, claims, chronicles, parity directories, and historical instructions from current reader paths.
 - [ ] 11.7 Verify source, config, specs, docs, help, schemas, generated workflows, and release metadata use the same public vocabulary and that a renamed concept leaves no stale reference.
 

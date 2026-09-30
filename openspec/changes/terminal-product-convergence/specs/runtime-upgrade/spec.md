@@ -119,3 +119,57 @@ bypass, and tests SHALL be deleted.
 - **AND** fresh installation creates only its command rollback record, while
   current-layout upgrade and rollback reuse the selected immutable generations
   without a parallel payload snapshot or layout migration.
+
+## MODIFIED Requirements
+
+### Requirement: macOS launchd replacement proves the exact watchdog PID
+
+On macOS, supervision SHALL bind the current UID's native user domain without
+requiring a graphical login. Replacement SHALL prove the exact predecessor
+process and registration absent before changing its carrier, then prove a
+distinct successor PID in that domain. A legacy GUI service is a migration
+subject, never an alternate current supervision target. Command success or
+an unavailable domain SHALL NOT prove convergence or service absence.
+
+#### Scenario: A user has no graphical login
+
+- **WHEN** the native user domain is reachable and has no associated GUI login
+- **THEN** installation binds a Background-session launch agent in that domain
+- **AND** status and teardown use its exact user-domain service target
+- **AND** no login domain, protected user, or disabled-state override changes.
+
+#### Scenario: An installed macOS watchdog is replaced during upgrade
+
+- **WHEN** candidate payload bytes have committed while an earlier watchdog
+  generation is registered and listener handoff proves terminal admission
+- **AND** that watchdog is the unique user-domain service or exact legacy GUI
+  service identified through a proved associated GUI login
+- **THEN** replacement verifies its executable and watchdog process identity
+- **AND** proves both process exit and exact registration absence before
+  rewriting the carrier and bootstrapping the canonical user-domain successor
+- **AND** a distinct PID returned by kickstart is re-observed and owned
+- **AND** the independent terminal listener keeps serving throughout.
+
+#### Scenario: Launchd cannot prove generation replacement
+
+- **WHEN** both domains register the exact label, a required observation fails,
+  or bootout, predecessor identity or exit, registration removal, bootstrap,
+  kickstart or successor PID observation fails or is ambiguous
+- **THEN** installation reports an actionable lifecycle error
+- **AND** does not guess a domain, report absence or claim convergence
+- **AND** a carrier remains unchanged until predecessor removal is proved.
+
+#### Scenario: A registered watchdog has no carrier
+
+- **WHEN** the exact service remains registered after its plist disappears
+- **THEN** status does not report it absent merely because the file is missing
+- **AND** teardown proves its exact registration and owned process absent
+  before reporting success.
+
+#### Scenario: A published predecessor requires a graphical login
+
+- **WHEN** the authentic published predecessor is GUI-only
+- **THEN** its real installation, health, upgrade and rollback are qualified
+  in a supported native context with the exact candidate artifact
+- **AND** headless candidate tests do not substitute for that obligation
+- **AND** isolated journeys conserve both domains and unrelated plist bytes.

@@ -221,6 +221,17 @@ transfer and runtime identity; it does not mutate launchd, systemd, or Task
 Scheduler state. A failed supervisor rebind preserves the transaction for
 recovery; recovery cannot delete that authority until the terminal generation's
 supervisor binding is proved.
+
+On macOS, the canonical watchdog belongs to `user/<uid>` and its Background
+session, independently of graphical login. A native user-domain observation
+determines whether the associated legacy GUI domain must also be checked.
+Exactly one registration may own the service label. Replacement proves the
+prior watchdog process and registration absent before changing the plist,
+then re-observes a distinct owned successor in the user domain. Missing plist
+bytes do not prove service absence. Unavailable domain observations remain
+errors; the adapter never creates a GUI session, guesses another UID, or
+enables a disabled service.
+
 The same transaction projects one native user-command link and records its
 exact path in installed state. Rollback and uninstall therefore do not re-derive
 ownership from a later shell environment. Installation finalizes only after one

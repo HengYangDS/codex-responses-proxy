@@ -177,6 +177,13 @@ one-sided topology; neither result alone is dual-Forge parity.
 
 ## Historical macOS override records
 
+Current supervision uses the native user Background domain. Native qualification
+records user-domain and associated GUI-domain registrations separately, along
+with their disabled-state overrides and product plist hashes. A GUI-only
+published predecessor must still be tested in its supported login context;
+headless current-artifact success is different evidence. Neither qualification
+nor ordinary installation creates a login session or borrows a protected user.
+
 Current native lifecycle acceptance snapshots the exact registered labels,
 launchd override entries, and plist hashes before and after successful and
 interrupted isolated installations. Equality proves that current lifecycle code
