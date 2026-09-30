@@ -87,16 +87,22 @@
 - [x] 8.4 Online-audit every direct runtime, development, OpenSpec, Python,
       Node, mise, uv, Nox, packaging, documentation, CI Action, and release dependency;
       advance each to its latest compatible stable version in the existing SSOT.
-      The 2026-09-29 official audit advanced Node 26.10.0, uv 0.12.20, five
-      direct and three transitive Python packages, mise-action 5.0.0, and current
-      OCI digests. Other authored pins have no newer compatible stable release.
-      Bootstrap, full source verification, and the native release asset pass.
+      The 2026-09-30 official-source audit advanced uv to 0.12.21, Cyclopts to
+      5.1.0, filelock to 4.0.7, three Python and three npm transitive packages,
+      the GitLab Mise image to 2026.9.17, and both uv image digests. Other pins,
+      including Node 26.10.0 and the GitHub Action SHAs, match current stable
+      releases. The repository retains Python 3.12 compatibility. The shared
+      host's Homebrew Mise 2026.9.15 remains outside this project pin: the
+      official formula has not yet advanced, so no parallel installer was added.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no duplicate
-      version literal controls behavior. The 2026-09-29 refresh left
-      `package-lock.json` unchanged; second mise and uv resolutions preserved
-      their new hashes. Bootstrap verified 71 npm signatures, 22 attestations,
-      and zero known npm vulnerabilities; quick verification passed.
+      version literal controls behavior. Native Mise verified seven uv platform
+      assets and attestations; uv resolved 50 packages; npm updated three
+      compatible transitive entries. Second resolutions left all three locks
+      unchanged. Bootstrap verified 71 npm signatures and 22 attestations with
+      zero known vulnerabilities; quick passed 56 tests, the full five-session
+      graph passed, official OpenSpec passed 10/10, and the native release asset
+      passed 40 interface and handoff tests without touching the live service.
 - [ ] 8.6 Configure one dependency update proposal owner with release-age policy, grouping, vulnerability priority, auto-merge criteria, and dual-Forge projection; verify it cannot open competing GitHub and GitLab updates for the same change.
 - [ ] 8.7 Produce and verify SBOM, vulnerability, license, checksum, signature, and provenance outputs from the exact locked candidate without embedding checkout paths, timestamps, credentials, or installer metadata.
 - [ ] 8.8 Evaluate PyInstaller and current alternatives against startup, size, reproducibility, platform support, lifecycle integration, and maintenance cost; retain or replace it based on measured total value, then delete the rejected path.
