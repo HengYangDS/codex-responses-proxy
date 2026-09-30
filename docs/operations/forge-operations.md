@@ -234,8 +234,9 @@ The CUE model assigns Linux merge-request work to
 `CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG` and accepted `dev`,
 promotion, and tag checks to `CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG`.
 These variables must identify different project-locked, tagged-only Runners.
-The latter requires GitLab's `ref_protected` access. The job-local selector
-`CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG` is derived by event rules; it is
+The latter requires GitLab's `ref_protected` access. The pipeline selector
+`CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG` is derived by workflow event rules
+before Runner scheduling, not by a job-rule alias. It is
 not a fleet registration input. Runner-native access restrictions enforce
 the boundary even when a proposal changes its YAML. Only protected tag checks
 receive `CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST`; review jobs receive no release

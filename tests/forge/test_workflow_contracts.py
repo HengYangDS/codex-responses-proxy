@@ -155,7 +155,11 @@ def test_reusable_branch_proof_fails_if_any_required_job_is_skipped(
     assert "branch-proof" in jobs, "reusable branch proof job is missing"
     proof = _mapping(jobs["branch-proof"])
     assert proof["if"] == "always()"
-    assert set(_strings(proof["needs"])) == {*_PRODUCT_PROOF_JOBS, "accepted-source", "promotion"}
+    assert set(_strings(proof["needs"])) == {
+        *_PRODUCT_PROOF_JOBS,
+        "accepted-source",
+        "promotion",
+    }
     steps = _sequence(proof["steps"])
     step = _mapping(steps[-1])
     script = _string(step["run"])
@@ -251,6 +255,36 @@ def test_github_actions_consume_one_immutable_toolchain_catalog() -> None:
     assert projected == set(catalog)
 
 
+def test_gitlab_capability_tags_resolve_at_workflow_not_job_scope() -> None:
+    """Runner scheduling cannot consume a job-rule variable alias."""
+    pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
+    workflow_rules = [_mapping(rule) for rule in _sequence(_mapping(pipeline["workflow"])["rules"])]
+    for condition, variable in (
+        ('$CI_PIPELINE_SOURCE == "merge_request_event"', "LINUX_REVIEW"),
+        ('$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"', "LINUX"),
+        ("$CI_COMMIT_TAG", "LINUX"),
+    ):
+        rule = next(rule for rule in workflow_rules if rule["if"] == condition)
+        assert _mapping(rule["variables"])["CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG"] == (
+            f"$CODEX_RESPONSES_PROXY_GITLAB_{variable}_RUNNER_TAG"
+        )
+    for name, job in pipeline.items():
+        if name != "workflow" and isinstance(job, dict) and "rules" in job:
+            for rule in _sequence(job["rules"]):
+                variables = _mapping(_mapping(rule).get("variables", {}))
+                assert "CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG" not in variables
+
+
+def test_windows_native_ci_separates_host_architecture_and_python_abi() -> None:
+    pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
+    for name in ("verify-windows-native", "verify-windows-native-review"):
+        command = _strings(_mapping(pipeline[name])["script"])[0]
+        assert "sysconfig.get_platform() == 'win-amd64'" in command
+        assert "assert platform.machine() == 'AMD64'" not in command
+        assert "platform.machine()" in command
+        assert "PROCESSOR_ARCHITEW6432" in command
+
+
 def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     """Project the same lifecycle contexts without duplicate proposal pipelines."""
     github = _load_yaml(ROOT / ".github/workflows/verify.yml")
@@ -328,8 +362,9 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
 
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
     rules = _sequence(_mapping(gitlab["workflow"])["rules"])
-    assert {"if": '$CI_PIPELINE_SOURCE == "merge_request_event"'} in rules
-    assert {"if": '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"'} in rules
+    conditions = [_mapping(rule)["if"] for rule in rules]
+    assert '$CI_PIPELINE_SOURCE == "merge_request_event"' in conditions
+    assert '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"' in conditions
     assert {
         "if": "$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS",
         "when": "never",
@@ -417,7 +452,11 @@ def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> Non
             assert "platform.system()" in script
             assert "platform.machine()" in script
             assert "assert platform.system()" in script
-            assert "assert platform.machine()" in script
+            assert (
+                "assert sysconfig.get_platform()"
+                if variable == "WINDOWS"
+                else "assert platform.machine()"
+            ) in script
             assert "nox -s release_compatibility" in script
             assert "nox -s tests" not in script
             assert "nox -s full" not in script
@@ -439,14 +478,8 @@ def test_gitlab_linux_review_and_protected_jobs_use_disjoint_capabilities() -> N
         "verify-performance",
     ):
         rules = _sequence(_mapping(gitlab[name])["rules"])
-        assert _mapping(rules[0])["variables"] == {
-            "CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG": (
-                "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"
-            )
-        }
-        assert _mapping(rules[1])["variables"] == {
-            "CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG": protected
-        }
+        assert "variables" not in _mapping(rules[0])
+        assert "variables" not in _mapping(rules[1])
     for name in ("verify-accepted-source", "verify-promotion", "verify-release-tag"):
         assert _mapping(gitlab[name])["tags"] == [protected]
 
@@ -1062,7 +1095,12 @@ def test_gitlab_pytest_invocations_preserve_repository_module_resolution() -> No
 def test_commit_event_inputs_reach_each_governance_context() -> None:
     github = _load_yaml(ROOT / ".github/workflows/verify.yml")
     jobs = _mapping(github["jobs"])
-    for name in ("source-and-governance", "accepted-source", "promotion", "tag-metadata"):
+    for name in (
+        "source-and-governance",
+        "accepted-source",
+        "promotion",
+        "tag-metadata",
+    ):
         steps = [_mapping(step) for step in _sequence(_mapping(jobs[name])["steps"])]
         checks = [
             step

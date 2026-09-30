@@ -651,7 +651,7 @@ class TestVerificationContracts:
 def test_package_manager_has_native_precedence_over_bundled_npm() -> None:
     configuration = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
     assert configuration["tool_alias"]["npm"] == "npm:npm"
-    assert configuration["tools"]["npm"] == "12.1.0"
+    assert configuration["tools"]["npm"] == "12.2.0"
     model = (ROOT / ".config/ci/pipeline.cue").read_text(encoding="utf-8")
     assert 'quality:         "python,uv,node,npm,' in model
 
