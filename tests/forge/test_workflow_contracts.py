@@ -370,6 +370,46 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     assert any("tools.forge.tag_signature" in command for command in tag_script)
 
 
+def test_gitlab_python_versions_and_platform_functions_are_independent() -> None:
+    """Prove all Python versions without multiplying every OS job by that matrix."""
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    linux = _mapping(gitlab["verify-python"])
+    expected_matrix = _mapping(_sequence(_mapping(linux["parallel"])["matrix"])[0])
+    assert expected_matrix == {"PYTHON_VERSION": ["3.12", "3.13", "3.14"]}
+    expected_python_versions = _strings(expected_matrix["PYTHON_VERSION"])
+    release_python = (ROOT / ".python-release").read_text(encoding="utf-8").strip()
+    assert release_python.startswith(expected_python_versions[-1] + ".")
+
+    for target, tag, variable, shell_version in (
+        ("macos-arm64", "verify-macos-python", "MACOS", "$PYTHON_VERSION"),
+        ("windows-arm64", "verify-windows-python", "WINDOWS", "$env:PYTHON_VERSION"),
+    ):
+        job = _mapping(gitlab[tag])
+        assert job["stage"] == "verify"
+        assert job["timeout"] == "15m"
+        assert job["rules"] == linux["rules"]
+        assert "parallel" not in job
+        assert _mapping(job["inherit"]) == {"default": "false"}
+        assert _strings(job["tags"]) == [f"$CODEX_RESPONSES_PROXY_GITLAB_{variable}_RUNNER_TAG"]
+        variables = _mapping(job["variables"])
+        assert variables["CODEX_RESPONSES_PROXY_CI_TARGET"] == target
+        assert variables["GIT_DEPTH"] == "0"
+        assert variables["PYTHON_VERSION"] == expected_python_versions[-1]
+        before = "\n".join(_strings(job["before_script"]))
+        script = "\n".join(_strings(job["script"]))
+        assert "mise install --locked" in before
+        assert "uv sync --locked --group quality" in before
+        assert "uv python install" not in before
+        assert "git fetch --tags --force --prune --prune-tags origin" in before
+        assert "platform.system()" in script
+        assert "platform.machine()" in script
+        assert "nox -s" in script
+        assert "tests-" in script
+        assert f'nox -s "tests-{shell_version}"' in script
+        assert "release_asset" not in script
+        assert "windows-x86_64" not in script
+
+
 def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:
     """Make the source package importable while Nox loads its release sessions."""
     jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])

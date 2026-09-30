@@ -104,9 +104,10 @@ exact revision, with equivalent triggers, quality thresholds, artifact
 contracts, and evidence boundaries. Each supported Python version SHALL have
 an independently observable test node on each selected peer. Independent nodes
 SHALL be schedulable in parallel, and one failed or missing version or platform
-SHALL be identifiable
-without inspecting a combined multi-version job. CPU architecture and native
-asset ABI qualification SHALL remain explicit, separate facts.
+SHALL be identifiable without inspecting a combined multi-version job. The
+platform nodes MAY use the release interpreter; a Python-version-by-platform
+Cartesian matrix is not required. CPU architecture and native asset ABI
+qualification SHALL remain explicit, separate facts.
 
 #### Scenario: Platform runner is unavailable on one Forge
 

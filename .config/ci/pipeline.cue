@@ -9,6 +9,7 @@ import (
 // projections; product behavior stays in Nox and repository-owned Python tools.
 
 #RuntimeMatrix: python: ["3.12", "3.13", "3.14"]
+#FunctionalPython: #RuntimeMatrix.python[len(#RuntimeMatrix.python)-1]
 
 #ProductProofJobs: [
 	"source-and-governance",
@@ -160,6 +161,55 @@ gitlab: {
 		script: [
 			"python --version",
 			"uv run --locked --no-sync --python python --no-python-downloads nox -s \"tests-$PYTHON_VERSION\"",
+		]
+	}
+	#NativePythonBootstrap: [
+		"mise install --locked",
+		"git fetch --tags --force --prune --prune-tags origin",
+		"mise exec --locked -- uv sync --locked --group quality --python python",
+	]
+	"verify-macos-python": {
+		stage:   "verify"
+		rules:   #productRules
+		timeout: "15m"
+		inherit: default: false
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_MACOS_RUNNER_TAG"]
+		variables: {
+			GIT_DEPTH:                       "0"
+			CODEX_RESPONSES_PROXY_CI_TARGET: "macos-arm64"
+			MISE_ENABLE_TOOLS:               "python,uv"
+			PYTHON_VERSION:                  #FunctionalPython
+		}
+		cache: {
+			key: "uv-macos-arm64-$PYTHON_VERSION"
+			paths: [".cache/uv/"]
+		}
+		before_script: #NativePythonBootstrap
+		script: [
+			"mise exec --locked -- uv run --locked --no-sync --python python python -c \"import platform; print(platform.system(), platform.machine())\"",
+			"mise exec --locked -- uv run --locked --no-sync --python python nox -s \"tests-$PYTHON_VERSION\"",
+		]
+	}
+	"verify-windows-python": {
+		stage:   "verify"
+		rules:   #productRules
+		timeout: "15m"
+		inherit: default: false
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_RUNNER_TAG"]
+		variables: {
+			GIT_DEPTH:                       "0"
+			CODEX_RESPONSES_PROXY_CI_TARGET: "windows-arm64"
+			MISE_ENABLE_TOOLS:               "python,uv"
+			PYTHON_VERSION:                  #FunctionalPython
+		}
+		cache: {
+			key: "uv-windows-arm64-$PYTHON_VERSION"
+			paths: [".cache/uv/"]
+		}
+		before_script: #NativePythonBootstrap
+		script: [
+			"mise exec --locked -- uv run --locked --no-sync --python python python -c \"import platform; print(platform.system(), platform.machine())\"",
+			"mise exec --locked -- uv run --locked --no-sync --python python nox -s \"tests-$env:PYTHON_VERSION\"",
 		]
 	}
 	"verify-python-quality": {
