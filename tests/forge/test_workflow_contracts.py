@@ -1129,3 +1129,35 @@ def test_gitlab_commit_projection_executes_native_event_values(event, monkeypatc
         {"review": review, "push": base, "api": zero, "tag": head}[event],
         head,
     ]
+
+
+def test_release_downloads_use_the_locked_security_updated_github_cli() -> None:
+    metadata = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert metadata["tools"]["gh"] == "2.102.0"
+    assert "mise which gh" in metadata["tasks"]["toolchain:verify"]["run"]
+    workflow = _load_yaml(ROOT / ".github/workflows/verify.yml")
+    jobs = _mapping(workflow["jobs"])
+    consumers = 0
+    for value in jobs.values():
+        job = _mapping(value)
+        steps = [_mapping(step) for step in _sequence(job.get("steps", []))]
+        downloads = [
+            (index, step)
+            for index, step in enumerate(steps)
+            if re.search(r"\bgh (?:release|run) download\b", _string(step.get("run", "")))
+        ]
+        if not downloads:
+            continue
+        consumers += 1
+        setup = [
+            index
+            for index, step in enumerate(steps)
+            if _string(step.get("uses", "")).startswith("jdx/mise-action@")
+            and _mapping(step.get("env", {})).get("MISE_ENABLE_TOOLS") == "gh"
+        ]
+        assert len(setup) == 1
+        for index, step in downloads:
+            assert setup[0] < index
+            assert _string(step["run"]).startswith("mise exec --locked -- gh ")
+            assert _mapping(step["env"])["GH_PROMPT_DISABLED"] == "1"
+    assert consumers == 3

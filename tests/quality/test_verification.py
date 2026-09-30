@@ -475,6 +475,7 @@ class TestVerificationContracts:
                 "gitleaks",
                 "actionlint",
                 "lychee",
+                "gh",
             )
         ]
         for task in ("bootstrap", "quick", "check", "native", "release"):

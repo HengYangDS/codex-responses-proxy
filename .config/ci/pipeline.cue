@@ -780,6 +780,9 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
+				#MiseSetup
+				env: MISE_ENABLE_TOOLS: "gh"
+			}, {
 				name: "Install the locked release tool environment"
 				run:  "uv sync --locked --group quality"
 			}, {
@@ -788,8 +791,11 @@ githubVerify: {
 				run: "uv run --locked --no-sync python -m tools.release.publication predecessor --repository \"${{ github.repository }}\" --candidate-version \"$(cat VERSION)\" --github-environment \"${{ github.env }}\""
 			}, {
 				name: "Download the published predecessor release"
-				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh release download \"${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
+				env: {
+					GH_TOKEN:           "${{ github.token }}"
+					GH_PROMPT_DISABLED: "1"
+				}
+				run: "mise exec --locked -- gh release download \"${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
 			}, {
 				name: "Materialize the release trust anchor"
 				env: RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
@@ -821,9 +827,15 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
+				#MiseSetup
+				env: MISE_ENABLE_TOOLS: "gh"
+			}, {
 				name: "Download native release assets"
-				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh run download \"$GITHUB_RUN_ID\" --pattern 'native-*' --dir \"$RUNNER_TEMP/native\""
+				env: {
+					GH_TOKEN:           "${{ github.token }}"
+					GH_PROMPT_DISABLED: "1"
+				}
+				run: "mise exec --locked -- gh run download \"$GITHUB_RUN_ID\" --pattern 'native-*' --dir \"$RUNNER_TEMP/native\""
 			}, {
 				name: "Install the complete locked tool environment"
 				run:  "uv sync --locked --all-groups"
@@ -883,6 +895,9 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
+				#MiseSetup
+				env: MISE_ENABLE_TOOLS: "gh"
+			}, {
 				name: "Install the locked release tool environment"
 				run:  "uv sync --locked --group quality"
 			}, {
@@ -894,12 +909,18 @@ githubVerify: {
 				run: "uv run --locked --no-sync python -m tools.release.publication predecessor --repository \"${{ github.repository }}\" --candidate-tag \"${{ github.event.release.tag_name || inputs.release_tag }}\" --github-environment \"${{ github.env }}\""
 			}, {
 				name: "Download the published current release"
-				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh release download \"${{ github.event.release.tag_name || inputs.release_tag }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/current-release\""
+				env: {
+					GH_TOKEN:           "${{ github.token }}"
+					GH_PROMPT_DISABLED: "1"
+				}
+				run: "mise exec --locked -- gh release download \"${{ github.event.release.tag_name || inputs.release_tag }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/current-release\""
 			}, {
 				name: "Download the published predecessor release"
-				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh release download \"${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
+				env: {
+					GH_TOKEN:           "${{ github.token }}"
+					GH_PROMPT_DISABLED: "1"
+				}
+				run: "mise exec --locked -- gh release download \"${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
 			}, {
 				name: "Materialize the release trust anchor"
 				env: RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
