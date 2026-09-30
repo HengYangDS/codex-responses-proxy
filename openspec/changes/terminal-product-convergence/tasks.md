@@ -115,6 +115,23 @@
 
 ## 9. CI and Forge Projection
 
+- [ ] 9.11 Replace repeated GitLab Mac/Windows Python sessions with the existing
+      native lifecycle and real-predecessor session, isolate Linux review and
+      protected routes, verify generated projections and negative contracts,
+      and admit and execute the exact-source Runner jobs. Related local
+      contracts pass 166 focused tests. The final full graph passes governance
+      and all three Python versions; each executes 1,784 tests with five skips
+      and 43 declared deselections. Statement and branch coverage remain
+      97.81% and 95.49%, above the unchanged independent floors. The combined
+      macOS native session passes 50 tests with one Linux-only skip, including
+      the signed published 4.0.4 predecessor-to-candidate upgrade and rollback.
+      Its isolated processes exit; canonical listener PID 2450 and watchdog
+      remain unchanged. Evidence: `build/verification/native-ci-full-final.log`,
+      `native-ci-lifecycle-final.log`, and `native-ci-gitlab-lint.json`; the
+      official GitLab dry-run is valid with nine dev jobs and no warnings.
+      Hosted platform execution and fleet admission remain open; Windows ARM64
+      requires x64 Mise to select the locked x64 tool assets.
+
 - [ ] 9.1 Define the complete CI graph in CUE—quality, Python matrix, native assets, platform lifecycle, release metadata, publication, and parity—with explicit facts proved by each job.
 - [ ] 9.2 Generate GitHub Actions and GitLab CI from the CUE model, verify semantic parity and provider-specific deltas, and reject hand-edited projection drift.
 - [ ] 9.3 Cover proposal creation and update, review SHA, maintainer fast-forward, `dev`, `main`, and tag events; verify every admissible integration path triggers the required exact-SHA evidence. Accepted source `a3ef6f7e` passes GitHub review 34989825588 and GitLab review 6779, including native Windows/macOS/Linux qualification and authentic-predecessor journeys. PR 45 and MR 63 merged without changing the reviewed object; both remote proposal refs are absent. Tests now distinguish POSIX permissions from portable persistence, parameterize declared release targets, and wait for actual traffic completion rather than another thread's readiness observation. ETHOS source acceptance permits the active delivery-inclusive Change without premature archive. Remaining path coverage and native required-status enforcement stay open.

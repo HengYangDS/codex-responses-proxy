@@ -236,10 +236,10 @@ class TestVerificationContracts:
             metadata_checks = sum('["tool"]["uv"]["required-version"]' in item for item in scripts)
             if job in {
                 "source-and-governance",
-                "verify-macos-python",
-                "verify-macos-python-review",
-                "verify-windows-python",
-                "verify-windows-python-review",
+                "verify-macos-native",
+                "verify-macos-native-review",
+                "verify-windows-native",
+                "verify-windows-native-review",
             }:
                 assert metadata_checks == 0
                 assert scripts[0] == "mise install --locked"

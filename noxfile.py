@@ -319,9 +319,13 @@ def release_compatibility(session: nox.Session) -> None:
         "-m",
         "pytest",
         "-q",
+        "tests/cli/test_interface.py",
+        "tests/service/handoff/test_subprocess.py",
+        "tests/release/test_native_lifecycle.py",
         "tests/release/test_native_compatibility.py",
         env={
             **_environment(),
+            product_identity.environment_name("EXECUTABLE"): str(executable),
             product_identity.environment_name("NATIVE_EXECUTABLE"): str(executable),
             product_identity.environment_name("NATIVE_BUNDLE"): str(bundle),
             product_identity.environment_name("PREVIOUS_RELEASE_ASSET"): str(previous_asset),

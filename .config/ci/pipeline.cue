@@ -92,20 +92,26 @@ gitlab: {
 	}
 	default: {
 		image: name: "$UV_PYTHON_LATEST_IMAGE"
-		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG"]
 		cache: {
-			key: "uv-$CODEX_RESPONSES_PROXY_CI_TARGET"
+			key: "uv-$CODEX_RESPONSES_PROXY_CI_TARGET-$CI_COMMIT_REF_PROTECTED"
 			paths: [".cache/uv/"]
 		}
 	}
 
-	#productRules: [{
+	#productEvents: [{
 		if: "$CI_PIPELINE_SOURCE == \"merge_request_event\" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == \"dev\""
+		...
 	}, {
 		if: "$CI_COMMIT_BRANCH == \"dev\""
+		...
 	}]
-	#nativeReviewRules: [#productRules[0]]
-	#nativeProtectedRules: [#productRules[1]]
+	#productRules: [
+		#productEvents[0] & {variables: CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"},
+		#productEvents[1] & {variables: CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"},
+	]
+	#nativeReviewRules: [#productEvents[0]]
+	#nativeProtectedRules: [#productEvents[1]]
 	#uvContract: """
 		UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
 		UV_VERSION="$(uv --version)"
@@ -165,53 +171,59 @@ gitlab: {
 			"uv run --locked --no-sync --python python --no-python-downloads nox -s \"tests-$PYTHON_VERSION\"",
 		]
 	}
-	#NativePythonBootstrap: [
+	#NativeBootstrap: [
 		"mise install --locked",
 		"git fetch --tags --force --prune --prune-tags origin",
 		"mise exec --locked -- uv sync --locked --group quality --python python",
 	]
-	#nativePythonCommon: {
+	#nativeCommon: {
 		stage:   "verify"
-		timeout: "15m"
+		timeout: "20m"
 		inherit: default: false
 		variables: {
-			GIT_DEPTH:         "0"
-			MISE_ENABLE_TOOLS: "python,uv"
-			PYTHON_VERSION:    #FunctionalPython
+			GIT_DEPTH:                                           "0"
+			MISE_ENABLE_TOOLS:                                   "python,uv"
+			CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: "$CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR"
 			...
 		}
-		before_script: #NativePythonBootstrap
+		before_script: #NativeBootstrap
 		...
 	}
-	#macNativePython: #nativePythonCommon & {
-		variables: CODEX_RESPONSES_PROXY_CI_TARGET: "macos-arm64"
+	#macNative: #nativeCommon & {
+		variables: {
+			CODEX_RESPONSES_PROXY_CI_TARGET:              "macos-arm64"
+			CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: "$CODEX_RESPONSES_PROXY_GITLAB_MACOS_PREVIOUS_RELEASE_ASSET"
+		}
 		script: [
-			"mise exec --locked -- uv run --locked --no-sync --python python python -c \"import platform; print(platform.system(), platform.machine())\"",
-			"mise exec --locked -- uv run --locked --no-sync --python python nox -s \"tests-$PYTHON_VERSION\"",
+			"mise exec --locked -- uv run --locked --no-sync --python python python -c \"import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())\"",
+			"mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility",
 		]
 		...
 	}
-	#windowsNativePython: #nativePythonCommon & {
-		variables: CODEX_RESPONSES_PROXY_CI_TARGET: "windows-arm64"
+	#windowsNative: #nativeCommon & {
+		variables: {
+			CODEX_RESPONSES_PROXY_CI_TARGET:              "windows-arm64"
+			CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: "$CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_PREVIOUS_RELEASE_ASSET"
+		}
 		script: [
-			"mise exec --locked -- uv run --locked --no-sync --python python python -c \"import platform; print(platform.system(), platform.machine())\"",
-			"mise exec --locked -- uv run --locked --no-sync --python python nox -s \"tests-$env:PYTHON_VERSION\"",
+			"mise exec --locked -- uv run --locked --no-sync --python python python -c \"import os, platform; assert platform.system() == 'Windows'; assert platform.machine() == 'AMD64'; print(platform.system(), platform.machine(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))\"",
+			"mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility",
 		]
 		...
 	}
-	"verify-macos-python": #macNativePython & {
+	"verify-macos-native": #macNative & {
 		rules: #nativeProtectedRules
 		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_MACOS_RUNNER_TAG"]
 	}
-	"verify-macos-python-review": #macNativePython & {
+	"verify-macos-native-review": #macNative & {
 		rules: #nativeReviewRules
 		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_MACOS_REVIEW_RUNNER_TAG"]
 	}
-	"verify-windows-python": #windowsNativePython & {
+	"verify-windows-native": #windowsNative & {
 		rules: #nativeProtectedRules
 		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_RUNNER_TAG"]
 	}
-	"verify-windows-python-review": #windowsNativePython & {
+	"verify-windows-native-review": #windowsNative & {
 		rules: #nativeReviewRules
 		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_REVIEW_RUNNER_TAG"]
 	}
@@ -245,6 +257,7 @@ gitlab: {
 	}
 	"verify-accepted-source": {
 		stage: "verify"
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		rules: [{if: "$CI_COMMIT_BRANCH == \"dev\" || $CI_COMMIT_BRANCH == \"main\""}]
 		variables: GIT_DEPTH: "0"
 		before_script: #qualityBootstrap
@@ -255,6 +268,7 @@ gitlab: {
 	}
 	"verify-promotion": {
 		stage: "verify"
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		rules: [{
 			if: "$CI_PIPELINE_SOURCE == \"merge_request_event\" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == \"dev\" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == \"main\""
 		}]
@@ -271,6 +285,7 @@ gitlab: {
 	}
 	"verify-release-tag": {
 		stage: "release"
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		rules: [{if: "$CI_COMMIT_TAG"}]
 		variables: GIT_DEPTH: "0"
 		before_script: list.Concat([#qualityBootstrap, [
