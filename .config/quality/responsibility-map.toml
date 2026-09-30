@@ -180,6 +180,7 @@ files = [
   "pyproject.toml",
   "uv.lock",
 ]
+prefixes = [".mise/locks/"]
 
 [[roles]]
 id = "source-control-configuration"
@@ -409,9 +410,12 @@ id = "markdown-yaml-format"
 owner = "prettier"
 scope = "prettier-formatted"
 session = "governance"
-configuration = [".config/quality/native/prettier.json"]
+configuration = [
+  ".config/quality/native/prettier.json",
+  ".config/quality/native/prettier.ignore",
+]
 risk_model = "Inconsistent Markdown and YAML structure raises review cost and can obscure semantic drift across documentation and generated Forge projections."
-measurement = "Locked Prettier checks every current Markdown and YAML authority while immutable OpenSpec archives remain byte-stable."
+measurement = "Locked Prettier checks current Markdown and YAML authorities; digest-bound native AUBE locks and immutable OpenSpec archives retain their native bytes."
 false_positive_cost = "Formatting must preserve authored prose wrapping and must not rewrite immutable historical evidence."
 remediation = "Apply the locked Prettier version to current Markdown and YAML carriers through the repository governance session."
 review_condition = "Reassess when Prettier changes supported syntax or a new current Markdown or YAML role is introduced."

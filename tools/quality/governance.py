@@ -48,6 +48,8 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
             "--check",
             "--config",
             ".config/quality/native/prettier.json",
+            "--ignore-path",
+            ".config/quality/native/prettier.ignore",
             *markdown_yaml,
         ),
         (

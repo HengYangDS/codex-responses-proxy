@@ -121,6 +121,33 @@
       `2026-09-30T15:46:14.731213+00:00`. This is the security release that fixes
       unsafe download traversal and attestation identity comparisons; hosted
       execution of the new locked CLI remains separate from source checks.
+      The consumed package manager was also checked, not inferred from host
+      PATH: locked Node initially selected bundled npm 11.19.1 while official
+      stable is 12.1.0. The native Mise npm backend and precedence now bind
+      the current npm without a wrapper or second package-manager owner.
+      The language runtime remains Node 26.10.0; repository npm dependencies
+      keep their unchanged official-parent contracts.
+      npm's native AUBE package material is retained under `.mise/locks/`,
+      bound by Mise's digest. Two resolutions preserve those exact bytes.
+      One explicit Prettier ignore pattern defers only AUBE lock formatting
+      to that native owner; repository JSON, other YAML, and text checks remain
+      active. A RED/GREEN contract prevents formatter rewrites from invalidating
+      the native digest. The frozen scoped checks pass 130 tests; platform
+      execution and the final full source graph are verified separately.
+      The first tracked-AUBE full run exposed an ignore-root mismatch and is
+      not counted as passing. The native Prettier file-info test now verifies
+      both the actual excluded AUBE carrier and an included authored YAML file.
+      A cold exact-image Linux probe also found Node's missing `libatomic1`;
+      the existing source job declares that runtime prerequisite before Mise.
+      Both failures are repaired at their actual owners, not hidden by caches.
+      A read-only exact-Mise-image Linux ARM64 probe passes with that native
+      library prerequisite: Node 26.10.0 selects the AUBE npm 12.1.0 executable,
+      `npm ci` and all 71 signatures and 22 attestations pass, and six input
+      hashes remain unchanged. Its container and scratch are removed. macOS
+      bootstrap passes independently; Windows execution remains unqualified.
+      Evidence is retained by the coordinating AIGW owner under
+      `build/verification/supply-chain-20260930/proxy-linux-npm12-libatomic.*`;
+      this records a source-independent tool probe, not full Proxy lifecycle.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no duplicate
       version literal controls behavior. Native Mise verified seven uv platform
