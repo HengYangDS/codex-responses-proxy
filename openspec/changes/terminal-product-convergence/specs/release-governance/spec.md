@@ -37,7 +37,11 @@ matrices, platform claims, evidence reuse, release admission, and generated
 projection inventory. GitHub Actions and GitLab CI SHALL be checked projections
 of that graph. Proposal review, proposal update, maintainer fast-forward, `dev`,
 `main`, and tag events SHALL each produce or consume exact-revision evidence
-without duplicating jobs that prove no additional fact.
+without duplicating jobs that prove no additional fact. When both peers are
+selected, each SHALL schedule the same required macOS, Linux, and Windows
+functional proof outcomes with equivalent triggers, gates, thresholds,
+artifacts, and exact-revision evidence. An unavailable runner blocks that
+peer's completion rather than borrowing the other peer's result.
 
 #### Scenario: A developer updates a proposal
 
@@ -60,13 +64,28 @@ without duplicating jobs that prove no additional fact.
 - **AND** tag, release, and manual verification events SHALL NOT emit that
   required branch check.
 
+#### Scenario: A selected peer lacks a required operating-system runner
+
+- **WHEN** GitLab and GitHub are both selected and one cannot schedule a
+  required macOS, Linux, or Windows functional proof node
+- **THEN** that peer's required proof SHALL remain incomplete
+- **AND** the other peer's successful job SHALL NOT satisfy it.
+
+#### Scenario: Windows ARM64 executes general functional checks
+
+- **WHEN** a Windows ARM64 runner executes the declared Windows functional gate
+- **THEN** the evidence SHALL identify Windows ARM64 and the exact revision
+- **AND** it SHALL NOT claim native Windows x86_64 ABI or asset qualification.
+
 ### Requirement: Publication closes source, Forge, and branch state
 
 A release SHALL create one signed local commit and annotated tag object, project
 those exact objects independently to selected Forges, publish complete matching
 asset inventories, and retire merged proposal and delivery refs. GitHub and
-GitLab MAY supply different native runner sets, but each projection SHALL state
-the facts it proves and SHALL NOT relabel another platform's evidence.
+GitLab MAY use different runner architectures, but neither selected peer may
+omit a required operating-system functional gate. Each projection SHALL state
+the architecture it actually proves and SHALL NOT relabel another platform's
+evidence.
 
 #### Scenario: A release is complete
 
@@ -74,3 +93,32 @@ the facts it proves and SHALL NOT relabel another platform's evidence.
 - **THEN** local and remote `main` and `dev` identify the accepted object
 - **AND** merged proposal branches, remote `work/*`, draft releases, and failed
   unpublished intermediates have been removed.
+
+## MODIFIED Requirements
+
+### Requirement: Platform and Python proof nodes remain visible
+
+When GitLab and GitHub are both selected, each provider projection SHALL expose
+the same required macOS, Linux, and Windows functional proof outcomes for the
+exact revision, with equivalent triggers, quality thresholds, artifact
+contracts, and evidence boundaries. Each supported Python version SHALL have
+an independently observable test node on each selected peer. Independent nodes
+SHALL be schedulable in parallel, and one failed or missing version or platform
+SHALL be identifiable
+without inspecting a combined multi-version job. CPU architecture and native
+asset ABI qualification SHALL remain explicit, separate facts.
+
+#### Scenario: Platform runner is unavailable on one Forge
+
+- **WHEN** a selected peer cannot schedule a required operating-system node
+- **THEN** its CI proof SHALL remain incomplete rather than silently omit it
+- **AND** another peer's success SHALL NOT substitute for that peer-local proof
+- **AND** a one-peer or local-only configuration MAY report its actual narrower
+  scope without claiming absent dual-peer evidence.
+
+#### Scenario: Windows ARM64 runs functional proof
+
+- **WHEN** a selected peer runs general Windows checks on an ARM64 VM
+- **THEN** those checks MAY satisfy the declared Windows functional outcome
+- **AND** their evidence SHALL retain the ARM64 architecture
+- **AND** they SHALL NOT establish native Windows x86_64 ABI or asset proof.

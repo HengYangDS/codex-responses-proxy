@@ -416,17 +416,26 @@ mechanism.
 GitHub and GitLab are optional peer publication planes. Local source remains
 fully buildable and installable without either. The same signed local commit and
 tag object are pushed unchanged; each Forge supplies independent authentication,
-CI, Release records, and asset transport. A missing GitLab Windows runner does
-not erase Windows evidence already proved by the GitHub native runner, but the
-GitLab projection must state that it does not provide that platform proof.
+CI, Release records, and asset transport. Once both peers are selected, each
+must run the same required macOS, Linux, and Windows functional proof semantics
+for the exact revision: triggers, gates, thresholds, produced evidence, and
+artifact contracts. A missing runner holds that peer's proof; another peer's
+success cannot fill the gap. Provider-native setup may differ without changing
+the product obligation.
+
+Architecture remains part of the evidence. A Windows ARM64 VM can prove general
+Windows behavior but cannot establish a native Windows x86_64 ABI or asset
+claim, even when x86 emulation runs there. Release asset qualification keeps
+that distinct architecture-specific boundary; both selected peers still
+verify the same signed publication inventory independently. Project-453
+macOS and Windows runners must be admitted before the stricter graph is landed
+or made a required remote check.
 
 At source `93aecba5`, GitHub Verify run `35885350727` executed its Windows
 Server 2025 native asset job (45 passed, one skip), Python 3.12–3.14 jobs, and
 published-predecessor compatibility. GitLab MR pipeline `8003` completed six
-Linux ARM64 jobs on project runner `35`. Its active tag and project variable
-match CUE's `linux-arm64` target; the macOS ARM64 Docker host is not presented
-as a Linux x86_64 or Windows runner. No unavailable runner gates this review,
-and GitLab does not claim Windows proof it did not execute.
+Linux ARM64 jobs on project runner `35`. Those are valid observations of the
+earlier graph, not proof of the newly required peer-local three-OS graph.
 
 ### Evidence and documentation are reader paths, not residue stores
 
