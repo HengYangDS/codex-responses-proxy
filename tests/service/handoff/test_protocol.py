@@ -518,3 +518,45 @@ class TestHandoffPlatformHelpers:
         assert result == 1
         failed.shutdown.assert_called_once()
         failed.server_close.assert_called_once()
+
+
+def test_initial_proxy_spawn_avoids_multithreaded_posix_fork(tmp_path, mocker) -> None:
+    """A mocked launch contract must not build or prewarm a real native payload."""
+    from codex_responses_proxy.lifecycle import context as runtime_context
+    from tests.service.handoff import fixtures
+
+    payload = tmp_path / "generation"
+    payload.mkdir()
+    executable = payload / "bin" / "proxy"
+    upstream = "http://127.0.0.1:43123"
+    (payload / "providers.toml").write_text(
+        f'version = 1\n\n[providers.dmxapi]\nbase_url = "{upstream}"\npolicy = "dmxapi"\n',
+        encoding="utf-8",
+    )
+    ctx = runtime_context.RuntimeContext(
+        install_dir=str(tmp_path / "payload"),
+        executable=str(executable),
+        command=str(tmp_path / "command"),
+        log_dir=str(tmp_path / "state"),
+        user_home=str(tmp_path),
+        port=43124,
+    )
+    build = mocker.patch.object(fixtures, "write_installed_payload")
+    mocker.patch.dict(fixtures.os.environ, {"CODEX_RESPONSES_PROXY_EXECUTABLE": "foreign"})
+    child = mocker.Mock()
+    child.poll.return_value = None
+    mocker.patch.object(fixtures, "proxy_is_up", return_value=True)
+    popen = mocker.patch.object(fixtures.subprocess, "Popen", return_value=child)
+    try:
+        started = fixtures.start_real_proxy(
+            ctx, upstream_url=upstream, log_path=tmp_path / "proxy.log"
+        )
+    finally:
+        mocker.stop(popen)
+    assert started is child
+    build.assert_not_called()
+    assert popen.call_args.kwargs["close_fds"] is True
+    environment = popen.call_args.kwargs["env"]
+    assert environment["CODEX_RESPONSES_PROXY_HOME"] == ctx.install_dir
+    assert environment["CODEX_RESPONSES_PROXY_STATE_HOME"] == str(tmp_path / "state")
+    assert environment["CODEX_RESPONSES_PROXY_EXECUTABLE"] == ctx.executable

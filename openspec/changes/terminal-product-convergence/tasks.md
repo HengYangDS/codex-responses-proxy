@@ -236,7 +236,11 @@
       gui/510; its Windows job exposes deep service-account TEMP and inherited
       Nox TMPDIR. Native child temporary variables now share the same owned
       root; the Runner owner must provide a short isolated native TEMP input.
-      Fresh hosted acceptance of that correction remains required.
+      Pipeline 9032 passes all Linux nodes and 49 Windows native checks, but
+      one mocked-launch test unnecessarily prewarms a real bundle and leaves
+      a locked module at cleanup. That invocation-only contract now runs in the
+      non-native suite with a synthetic manifest and a bounded mock scope; its
+      assertions remain intact. Fresh native suite acceptance remains required.
       Real native Mac lifecycle still requires a separate GUI user domain;
       signature and package acquisition alone do not qualify it.
 - [ ] 11.6 Remove toy examples, private workstation paths, stale versions, obsolete commands, WCP references, AIGW coupling, empty evidence shells, claims, chronicles, parity directories, and historical instructions from current reader paths.
