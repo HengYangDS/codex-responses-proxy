@@ -15,6 +15,9 @@ python = "3.14.7"
 # Dependency management
 uv = "0.12.21"
 
+# Forge acquisition and security-sensitive artifact downloads
+gh = "2.102.0"
+
 # Specification and CI modeling
 cue = "0.17.1"
 
@@ -46,6 +49,7 @@ run = [
   "mise which gitleaks",
   "mise which actionlint",
   "mise which lychee",
+  "mise which gh",
 ]
 
 [tasks.bootstrap]

@@ -108,6 +108,19 @@
       behind upstream latest because the latest official parents constrain
       their versions. No unsupported major override or upstream fork is added;
       those constraints are disclosed, not called fully upgraded.
+      A consumer audit then found unpinned hosted `gh` download commands. The
+      existing Mise authority now pins the security-updated GitHub CLI 2.102.0;
+      all three consuming job families install only that locked tool before
+      acquisition and invoke it through Mise with prompting disabled. No
+      Renovate dependency is introduced: this repository has no such consumer.
+      The two native six-platform `gh` resolutions have identical lock SHA-256
+      `510bc78ba64acfdf6c8a3e53d4e64cc0023b09f38a987b12829e0c8d1cd000e1`,
+      with official artifact attestations and checksums. Locked macOS execution
+      reports 2.102.0; 72 focused tests, repository-configured Ruff, formatting,
+      Ty, and strict governance pass. The direct metadata was rechecked at
+      `2026-09-30T15:46:14.731213+00:00`. This is the security release that fixes
+      unsafe download traversal and attestation identity comparisons; hosted
+      execution of the new locked CLI remains separate from source checks.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no duplicate
       version literal controls behavior. Native Mise verified seven uv platform
