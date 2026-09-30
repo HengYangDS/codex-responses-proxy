@@ -223,6 +223,8 @@ class TestVerificationContracts:
         gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
         uv_version = requirement.removeprefix("==")
         assert gitlab.count(f"ghcr.io/astral-sh/uv:{uv_version}-python") == 2
+        toolchain = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+        assert toolchain["tools"]["uv"] == uv_version
         pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
         job_scripts = {
             job: tuple(value.get("before_script", ()))
@@ -232,13 +234,20 @@ class TestVerificationContracts:
         assert job_scripts
         for job, scripts in job_scripts.items():
             metadata_checks = sum('["tool"]["uv"]["required-version"]' in item for item in scripts)
-            if job == "source-and-governance":
+            if job in {
+                "source-and-governance",
+                "verify-macos-python",
+                "verify-windows-python",
+            }:
                 assert metadata_checks == 0
-                assert scripts[:3] == (
-                    "mise install --locked",
-                    "npm ci --ignore-scripts",
-                    "npm audit signatures",
-                )
+                assert scripts[0] == "mise install --locked"
+                if job == "source-and-governance":
+                    assert scripts[1:3] == ("npm ci --ignore-scripts", "npm audit signatures")
+                else:
+                    assert (
+                        "mise exec --locked -- uv sync --locked --group quality --python python"
+                        in scripts
+                    )
                 continue
             assert metadata_checks == 1
         assert 'UV_VERSION="${UV_VERSION#uv }"' in gitlab

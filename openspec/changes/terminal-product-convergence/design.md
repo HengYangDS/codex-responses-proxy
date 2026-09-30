@@ -421,7 +421,10 @@ must run the same required macOS, Linux, and Windows functional proof semantics
 for the exact revision: triggers, gates, thresholds, produced evidence, and
 artifact contracts. A missing runner holds that peer's proof; another peer's
 success cannot fill the gap. Provider-native setup may differ without changing
-the product obligation.
+the product obligation. Python-version compatibility and operating-system
+function are orthogonal obligations: each peer runs every supported Python
+version in a distinct node and proves function on each declared operating
+system at the release interpreter. Their Cartesian product is not required.
 
 Architecture remains part of the evidence. A Windows ARM64 VM can prove general
 Windows behavior but cannot establish a native Windows x86_64 ABI or asset
