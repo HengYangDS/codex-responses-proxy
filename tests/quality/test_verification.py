@@ -434,7 +434,10 @@ class TestVerificationContracts:
         toolchain = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
         assert toolchain["settings"] == {
             "idiomatic_version_file_enable_tools": [],
+            "legacy_version_file": False,
             "locked": True,
+            "not_found_system_fallback": False,
+            "use_versions_host": False,
         }
 
     def test_native_release_tools_are_isolated_from_quality(self) -> None:
@@ -460,6 +463,22 @@ class TestVerificationContracts:
             "npm ci --ignore-scripts",
             "npm audit signatures",
         ]
+        assert toolchain["tasks"]["toolchain:verify"]["run"] == [
+            f"mise which {name}"
+            for name in (
+                "node",
+                "python",
+                "uv",
+                "npm",
+                "cue",
+                "taplo",
+                "gitleaks",
+                "actionlint",
+                "lychee",
+            )
+        ]
+        for task in ("bootstrap", "quick", "check", "native", "release"):
+            assert toolchain["tasks"][task]["depends"] == ["toolchain:verify"]
         for relative in ("AGENTS.md", "CONTRIBUTING.md", "README.md"):
             source = (ROOT / relative).read_text(encoding="utf-8")
             assert "mise run bootstrap" in source

@@ -77,6 +77,13 @@
 - [x] 8.1 Define `mise` as the sole cross-platform developer entrypoint and provide minimal `bootstrap`, `check`, `native`, and `release` tasks that call existing ecosystem owners rather than shell wrappers.
 - [ ] 8.2 Prove a clean Work Lane reconstructs independent `.venv`, `.nox`, `node_modules`, build, coverage, and temporary state from locks while sharing only content-addressed mise, uv, npm, and Python caches.
 - [ ] 8.3 Remove ambient interpreter, user-site, global mise configuration, system package, and another repository environment from local and hosted success paths; verify empty-HOME and empty-project-cache bootstrap.
+      The native settings now disable legacy version files and version-host
+      lookup. A missing-tool probe showed that `mise exec` could still run host
+      Node even with `not_found_system_fallback = false`; one shared native
+      `mise which` prerequisite now fails before any of the five repository
+      tasks. An empty installed-tool probe rejects `quick` before it starts;
+      locked bootstrap and quick pass with installed tools. Empty-HOME,
+      empty-cache, and hosted qualification remain open.
 - [x] 8.4 Online-audit every direct runtime, development, OpenSpec, Python,
       Node, mise, uv, Nox, packaging, documentation, CI Action, and release dependency;
       advance each to its latest compatible stable version in the existing SSOT.
