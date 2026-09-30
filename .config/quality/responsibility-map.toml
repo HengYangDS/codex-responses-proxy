@@ -190,7 +190,7 @@ source_of_truth = "tracked source-control inclusion and exclusion policy"
 change_condition = "a durable generated path or tracked artifact class changes"
 dependency_direction = "source-control policy follows repository ownership and evidence retention"
 retirement_condition = "Git is no longer the repository transport or an entry has no matching artifact class"
-files = [".gitignore"]
+files = [".gitattributes", ".gitignore"]
 
 [[roles]]
 id = "product-identity"
