@@ -103,6 +103,10 @@ addressed reusable policies live under `.config/quality/policy/`. Nox executes
 those owners, `.ethos/profile.toml` registers gates, and CI/hooks only project
 them.
 
+Git's root `.gitattributes` keeps tracked text at LF across hosts without
+changing binary files. `.editorconfig` agrees with the native formatters on
+indentation; neither replaces a language formatter.
+
 Required local evidence includes:
 
 ```bash

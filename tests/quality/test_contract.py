@@ -411,6 +411,9 @@ class TestQualityPolicyContracts:
 
     def test_editor_defaults_and_text_layout_policy_are_aligned(self) -> None:
         editor = (ROOT / ".editorconfig").read_text(encoding="utf-8")
+        taplo = tomllib.loads(
+            (ROOT / ".config/quality/native/taplo.toml").read_text(encoding="utf-8")
+        )
         policy = tomllib.loads(
             (ROOT / ".config/quality/policy/text.toml").read_text(encoding="utf-8")
         )
@@ -419,10 +422,46 @@ class TestQualityPolicyContracts:
         assert "end_of_line = lf" in editor
         assert "insert_final_newline = true" in editor
         assert "trim_trailing_whitespace = true" in editor
+        assert "[*.toml]\nindent_size = 2\n" in editor
+        assert taplo["formatting"]["indent_string"] == "  "
         assert policy["encoding"] == "utf-8"
         assert policy["line_ending"] == "lf"
         assert policy["insert_final_newline"] is True
         assert policy["trim_trailing_whitespace"] is True
+
+    def test_git_checkout_preserves_lf_text_and_binary_bytes(self) -> None:
+        attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        policy = tomllib.loads(
+            (ROOT / ".config/quality/policy/text.toml").read_text(encoding="utf-8")
+        )
+        roles = tomllib.loads(
+            (ROOT / ".config/quality/responsibility-map.toml").read_text(encoding="utf-8")
+        )["roles"]
+        source_control = next(
+            role for role in roles if role["id"] == "source-control-configuration"
+        )
+        assert attributes == "* text=auto eol=lf\n"
+        assert ".gitattributes" in policy["tracked_names"]
+        assert ".gitattributes" in source_control["files"]
+
+        with _test_repository(("note.md", "payload.bin")) as root:
+            (root / ".gitattributes").write_text(attributes, encoding="utf-8")
+            (root / "note.md").write_bytes(b"one\ntwo\n")
+            binary = b"\x00one\r\ntwo\n"
+            (root / "payload.bin").write_bytes(binary)
+            _git(root, "add", "--", ".gitattributes", "note.md", "payload.bin")
+            _git(
+                root,
+                "-c",
+                "core.autocrlf=true",
+                "checkout-index",
+                "-f",
+                "--",
+                "note.md",
+                "payload.bin",
+            )
+            assert (root / "note.md").read_bytes() == b"one\ntwo\n"
+            assert (root / "payload.bin").read_bytes() == binary
 
     def test_commit_policy_is_declared_for_native_hook_enforcement(self) -> None:
         workspace = tomllib.loads((ROOT / ".ethos/workspace.toml").read_text(encoding="utf-8"))
