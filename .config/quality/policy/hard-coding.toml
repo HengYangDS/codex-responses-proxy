@@ -88,7 +88,7 @@ kind = "supply-chain-pin"
 owner = "mise.lock"
 invariant = "Every standalone repository tool resolves from one integrity-locked graph."
 rationale = "Language runtimes and standalone executable versions and integrity are owned by the mise lock."
-projections = ["mise.toml", ".config/ci/pipeline.cue"]
+projections = ["mise.toml", ".mise/locks/", ".config/ci/pipeline.cue"]
 
 [[controls]]
 id = "node-repository-tools"

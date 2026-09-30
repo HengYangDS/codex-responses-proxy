@@ -338,6 +338,8 @@ class TestQualityPolicyContracts:
                 "--check",
                 "--config",
                 ".config/quality/native/prettier.json",
+                "--ignore-path",
+                ".config/quality/native/prettier.ignore",
                 "README.md",
                 ".gitlab-ci.yml",
             ),
@@ -402,7 +404,10 @@ class TestQualityPolicyContracts:
             "owner": "prettier",
             "scope": "prettier-formatted",
             "session": "governance",
-            "configuration": [".config/quality/native/prettier.json"],
+            "configuration": [
+                ".config/quality/native/prettier.json",
+                ".config/quality/native/prettier.ignore",
+            ],
             "risk_model": concerns["markdown-yaml-format"]["risk_model"],
             "measurement": concerns["markdown-yaml-format"]["measurement"],
             "false_positive_cost": concerns["markdown-yaml-format"]["false_positive_cost"],
@@ -942,3 +947,54 @@ class TestQualityPolicyContracts:
             "relay/test_routes.py",
         )
         assert all((tests / owner).is_file() for owner in owners)
+
+
+def test_formatter_defers_digest_bound_aube_bytes_to_the_native_owner() -> None:
+    commands = governance._commands(online_links=False)
+    prettier = commands[0]
+    assert "--ignore-path" in prettier
+    ignore = prettier[prettier.index("--ignore-path") + 1]
+    assert ignore == ".config/quality/native/prettier.ignore"
+    patterns = (ROOT / ignore).read_text(encoding="utf-8")
+    assert "../../../.mise/locks/**/aube-lock.yaml" in patterns
+    assert len([line for line in patterns.splitlines() if line and not line.startswith("#")]) == 1
+
+
+@pytest.mark.repository_toolchain
+def test_native_ignore_resolves_from_its_actual_configuration_directory() -> None:
+    ignored = subprocess.run(
+        [
+            "npm",
+            "exec",
+            "--offline",
+            "--",
+            "prettier",
+            "--file-info",
+            ".mise/locks/npm/12.1.0/aube-lock.yaml",
+            "--ignore-path",
+            ".config/quality/native/prettier.ignore",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert '"ignored": true' in ignored.stdout
+    authored = subprocess.run(
+        [
+            "npm",
+            "exec",
+            "--offline",
+            "--",
+            "prettier",
+            "--file-info",
+            ".gitlab-ci.yml",
+            "--ignore-path",
+            ".config/quality/native/prettier.ignore",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert '"ignored": false' in authored.stdout

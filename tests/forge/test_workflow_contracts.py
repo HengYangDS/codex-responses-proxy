@@ -752,11 +752,13 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
     assert _mapping(source["variables"]) == {
         "GIT_DEPTH": "0",
         "MISE_ENABLE_TOOLS": (
-            "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,"
+            "python,uv,node,npm,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,"
             "github:rhysd/actionlint,github:lycheeverse/lychee"
         ),
     }
     assert source["before_script"] == [
+        "apt-get update -qq",
+        "apt-get install -qq -y --no-install-recommends libatomic1",
         "mise install --locked",
         "npm ci --ignore-scripts",
         "npm audit signatures",
@@ -1161,3 +1163,10 @@ def test_release_downloads_use_the_locked_security_updated_github_cli() -> None:
             assert _string(step["run"]).startswith("mise exec --locked -- gh ")
             assert _mapping(step["env"])["GH_PROMPT_DISABLED"] == "1"
     assert consumers == 3
+
+
+def test_mise_linux_bootstrap_declares_node_atomic_runtime_before_install() -> None:
+    source = _mapping(_load_yaml(ROOT / ".gitlab-ci.yml")["source-and-governance"])
+    steps = _strings(source["before_script"])
+    dependency = "apt-get install -qq -y --no-install-recommends libatomic1"
+    assert steps.index(dependency) < steps.index("mise install --locked")

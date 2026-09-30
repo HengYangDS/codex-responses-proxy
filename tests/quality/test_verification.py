@@ -242,10 +242,15 @@ class TestVerificationContracts:
                 "verify-windows-native-review",
             }:
                 assert metadata_checks == 0
-                assert scripts[0] == "mise install --locked"
                 if job == "source-and-governance":
-                    assert scripts[1:3] == ("npm ci --ignore-scripts", "npm audit signatures")
+                    assert scripts[:3] == (
+                        "apt-get update -qq",
+                        "apt-get install -qq -y --no-install-recommends libatomic1",
+                        "mise install --locked",
+                    )
+                    assert scripts[3:5] == ("npm ci --ignore-scripts", "npm audit signatures")
                 else:
+                    assert scripts[0] == "mise install --locked"
                     assert (
                         "mise exec --locked -- uv sync --locked --group quality --python python"
                         in scripts
@@ -640,3 +645,11 @@ class TestVerificationContracts:
         )
         assert "verify-performance" in gitlab
         assert "nox -s performance" in str(gitlab["verify-performance"])
+
+
+def test_package_manager_has_native_precedence_over_bundled_npm() -> None:
+    configuration = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert configuration["tool_alias"]["npm"] == "npm:npm"
+    assert configuration["tools"]["npm"] == "12.1.0"
+    model = (ROOT / ".config/ci/pipeline.cue").read_text(encoding="utf-8")
+    assert 'quality:         "python,uv,node,npm,' in model
