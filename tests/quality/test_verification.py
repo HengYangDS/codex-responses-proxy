@@ -481,6 +481,7 @@ class TestVerificationContracts:
                 "actionlint",
                 "lychee",
                 "gh",
+                "glab",
             )
         ]
         for task in ("bootstrap", "quick", "check", "native", "release"):
@@ -653,3 +654,9 @@ def test_package_manager_has_native_precedence_over_bundled_npm() -> None:
     assert configuration["tools"]["npm"] == "12.1.0"
     model = (ROOT / ".config/ci/pipeline.cue").read_text(encoding="utf-8")
     assert 'quality:         "python,uv,node,npm,' in model
+
+
+def test_operator_forge_cli_is_bound_to_the_existing_toolchain() -> None:
+    configuration = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert configuration["tools"]["glab"] == "1.120.0"
+    assert "mise which glab" in configuration["tasks"]["toolchain:verify"]["run"]
