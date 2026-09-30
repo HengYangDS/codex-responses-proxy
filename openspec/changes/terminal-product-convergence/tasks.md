@@ -62,9 +62,22 @@
       including authentic published 4.0.4 installation, health, upgrade and
       rollback. Canonical listener and watchdog generations, both domain
       registrations, disabled overrides and plist hashes remain unchanged;
-      isolated scratch is absent. Evidence: `build/verification/`
-      `native-supply-gitlab-20261001/mac-domain-*`. Actual headless UID 510
-      candidate qualification and same-source hosted acceptance remain open.
+      isolated scratch is absent. Actual VM UID 510 then passes the existing
+      native `release` session: 45 cases and one Linux-only skip, Background
+      domain with no GUI ASID, all 1,219 source hashes unchanged and no net
+      registrations, overrides or plist growth. Its native assets and eight
+      producer records are individually hash-verified before the exact guest
+      work root is removed; foreign build roots remain. The very same VM-built
+      candidate archive also passes the authentic 4.0.4 upgrade/rollback case
+      in its supported local GUI context, without rebuilding candidate bytes.
+      Evidence: `build/verification/native-supply-gitlab-20261001/mac-domain-*`.
+      Source `aede284e` is published to both existing proposal refs; GitHub
+      PR 77 and GitLab MR 93 remain open. GitLab pipeline 9069 passes all seven
+      Linux/Windows jobs; its macOS job passes 48 current cases but fails when
+      the unchanged GUI-only 4.0.4 installer runs on the headless account.
+      Peer-local admission of supported-context predecessor evidence, exact
+      installed ETHOS proof and final hosted acceptance remain open; local
+      proof is not relabeled as GitLab execution or a transferable Attestation.
 - [x] 5.4 Prove Linux systemd behavior on a real supported user service and in the declared container boundary, including explicit behavior when no user bus exists; remove session-only fallback processes.
 - [x] 5.5 Prove current-user Windows Task Scheduler install, status, handoff, recovery, rollback, uninstall, command projection, and process-generation ownership from the native artifact.
 - [ ] 5.6 Verify bounded teardown after success, assertion failure, exception, timeout, and interruption on every supported platform; compare exact owned services, processes, journals, payloads, commands, and temporary files before and after, preserving unrelated canonical installations. Replaced every unowned mkdtemp call in the current test inventory with pytest-owned temporary paths; the five affected modules previously left 76 directories after 120 passing tests and now leave zero. Native pytest retention is none/0, with a RED/GREEN configuration regression and zero retained runs after passing and assertion-failing focused suites. Platform service/process interruption proof remains separate and open.
