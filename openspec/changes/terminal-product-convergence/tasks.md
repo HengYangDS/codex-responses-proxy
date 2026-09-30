@@ -36,8 +36,9 @@
 
 - [ ] 4.8 Admit the standard role/content Responses message without an
       explicit `type` through the shared item policy, without accepting unknown
-      replay shapes. Source RED/GREEN, diagnosis, and local HTTP loopback tests pass;
-      installed-release Hermes acceptance remains open.
+      replay shapes. Source RED/GREEN, diagnosis, local HTTP loopback, and the
+      41-test native candidate suite pass. Published-release Hermes acceptance
+      remains open.
 
 ## 5. Native Lifecycle and Resource Ownership
 
