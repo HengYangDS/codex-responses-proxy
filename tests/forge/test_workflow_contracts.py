@@ -370,8 +370,8 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     assert any("tools.forge.tag_signature" in command for command in tag_script)
 
 
-def test_gitlab_python_versions_and_platform_functions_are_independent() -> None:
-    """Prove all Python versions without multiplying every OS job by that matrix."""
+def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> None:
+    """Keep Python versions, OS function, and native trust routes distinct."""
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
     linux = _mapping(gitlab["verify-python"])
     expected_matrix = _mapping(_sequence(_mapping(linux["parallel"])["matrix"])[0])
@@ -384,30 +384,35 @@ def test_gitlab_python_versions_and_platform_functions_are_independent() -> None
         ("macos-arm64", "verify-macos-python", "MACOS", "$PYTHON_VERSION"),
         ("windows-arm64", "verify-windows-python", "WINDOWS", "$env:PYTHON_VERSION"),
     ):
-        job = _mapping(gitlab[tag])
-        assert job["stage"] == "verify"
-        assert job["timeout"] == "15m"
-        assert job["rules"] == linux["rules"]
-        assert "parallel" not in job
-        assert _mapping(job["inherit"]) == {"default": "false"}
-        assert _strings(job["tags"]) == [f"$CODEX_RESPONSES_PROXY_GITLAB_{variable}_RUNNER_TAG"]
-        variables = _mapping(job["variables"])
-        assert variables["CODEX_RESPONSES_PROXY_CI_TARGET"] == target
-        assert variables["GIT_DEPTH"] == "0"
-        assert variables["PYTHON_VERSION"] == expected_python_versions[-1]
-        before = "\n".join(_strings(job["before_script"]))
-        script = "\n".join(_strings(job["script"]))
-        assert "mise install --locked" in before
-        assert "uv sync --locked --group quality" in before
-        assert "uv python install" not in before
-        assert "git fetch --tags --force --prune --prune-tags origin" in before
-        assert "platform.system()" in script
-        assert "platform.machine()" in script
-        assert "nox -s" in script
-        assert "tests-" in script
-        assert f'nox -s "tests-{shell_version}"' in script
-        assert "release_asset" not in script
-        assert "windows-x86_64" not in script
+        for name, rules, tag_suffix in (
+            (tag, _sequence(linux["rules"])[1:], variable),
+            (f"{tag}-review", _sequence(linux["rules"])[:1], f"{variable}_REVIEW"),
+        ):
+            job = _mapping(gitlab[name])
+            assert job["stage"] == "verify"
+            assert job["timeout"] == "15m"
+            assert job["rules"] == rules
+            assert "parallel" not in job
+            assert "cache" not in job
+            assert _mapping(job["inherit"]) == {"default": "false"}
+            assert _strings(job["tags"]) == [
+                f"$CODEX_RESPONSES_PROXY_GITLAB_{tag_suffix}_RUNNER_TAG"
+            ]
+            variables = _mapping(job["variables"])
+            assert variables["CODEX_RESPONSES_PROXY_CI_TARGET"] == target
+            assert variables["GIT_DEPTH"] == "0"
+            assert variables["PYTHON_VERSION"] == expected_python_versions[-1]
+            before = "\n".join(_strings(job["before_script"]))
+            script = "\n".join(_strings(job["script"]))
+            assert "mise install --locked" in before
+            assert "uv sync --locked --group quality" in before
+            assert "uv python install" not in before
+            assert "git fetch --tags --force --prune --prune-tags origin" in before
+            assert "platform.system()" in script
+            assert "platform.machine()" in script
+            assert f'nox -s "tests-{shell_version}"' in script
+            assert "release_asset" not in script
+            assert "windows-x86_64" not in script
 
 
 def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:

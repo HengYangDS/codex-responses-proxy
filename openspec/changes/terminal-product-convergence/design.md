@@ -425,14 +425,21 @@ the product obligation. Python-version compatibility and operating-system
 function are orthogonal obligations: each peer runs every supported Python
 version in a distinct node and proves function on each declared operating
 system at the release interpreter. Their Cartesian product is not required.
+Native GitLab Shell jobs for merge requests and accepted `dev` use separate
+project-bound Runner identities, accounts, working roots, and caches. The
+source graph selects review or protected capabilities with mutually exclusive
+rules and carries no shared native CI cache; a selector alone does not prove
+the fleet isolation. Windows ARM64 qualification must run the locked Windows
+x64 Python and uv tools under emulation or replace them with an officially
+supported lock path before the job becomes required.
 
 Architecture remains part of the evidence. A Windows ARM64 VM can prove general
 Windows behavior but cannot establish a native Windows x86_64 ABI or asset
 claim, even when x86 emulation runs there. Release asset qualification keeps
 that distinct architecture-specific boundary; both selected peers still
 verify the same signed publication inventory independently. Project-453
-macOS and Windows runners must be admitted before the stricter graph is landed
-or made a required remote check.
+macOS and Windows review and protected runners must be admitted before the
+stricter graph is landed or made a required remote check.
 
 At source `93aecba5`, GitHub Verify run `35885350727` executed its Windows
 Server 2025 native asset job (45 passed, one skip), Python 3.12–3.14 jobs, and
