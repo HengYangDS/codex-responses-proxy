@@ -302,6 +302,16 @@ and matching original call SHALL retain its explicit delivery semantics rather
 than become a second paired output. The error SHALL identify a bounded
 structural reason without returning request text, credentials, or ciphertext.
 
+#### Scenario: Standard client omits the optional message type
+
+- **WHEN** a Responses input item has a valid message `role` and `content` but
+  omits the optional root `type`
+- **THEN** the shared policy classifies it as a message and projection sends the
+  same typed portable input as its explicit `type: message` counterpart
+- **AND** diagnosis identifies a message rather than an unknown item
+- **AND** an explicit unknown or null type, invalid role, or unknown field is
+  still rejected before upstream I/O.
+
 #### Scenario: A future client introduces an unknown replay item
 
 - **WHEN** the input list contains an item not recognized by the item policy

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field
 from enum import StrEnum
@@ -112,6 +113,13 @@ ITEM_POLICIES: Final = MappingProxyType(
 def classify_item(item_type: object) -> ItemPolicy | None:
     """Return the policy for a recognized string item type."""
     return ITEM_POLICIES.get(item_type) if isinstance(item_type, str) else None
+
+
+def input_item_type(item: Mapping[str, object]) -> object:
+    """Resolve the optional discriminator of a role-bearing input message."""
+    if "type" not in item and "role" in item:
+        return "message"
+    return item.get("type")
 
 
 def is_current_turn_control(item: object) -> bool:

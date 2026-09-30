@@ -46,6 +46,28 @@ class ProviderRouteTests:
 
         assert received == [body]
 
+    def test_role_only_user_message_reaches_provider_as_typed_input(self) -> None:
+        raw = _body(
+            {"input": [{"role": "user", "content": [{"type": "input_text", "text": "hello"}]}]}
+        )
+        success = b'{"id":"resp_role_only","status":"completed"}'
+
+        with (
+            running_proxy([(200, success)]) as (port, received),
+            request(port, raw, path="/dmxapi/v1/responses") as response,
+        ):
+            assert response.status == 200
+            assert response.read() == success
+
+        assert len(received) == 1
+        assert json.loads(received[0])["input"] == [
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "hello"}],
+            }
+        ]
+
     def test_all_three_routes_forward_the_same_portable_body(self, subtests) -> None:
         raw = _body(
             {
