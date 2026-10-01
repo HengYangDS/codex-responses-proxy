@@ -16,6 +16,18 @@ class ProductError(RuntimeError):
         self.next_command = next_command
 
 
+def failure_summary(error: BaseException) -> str:
+    """Return a bounded public cause without paths or arbitrary exception text."""
+    if isinstance(error, ProductError):
+        return str(error)
+    if isinstance(error, OSError):
+        native = getattr(error, "winerror", None)
+        code = native if type(native) is int else error.errno
+        detail = f" (OS error {code})" if type(code) is int else ""
+        return f"operating-system operation failed{detail}"
+    return "operation failed"
+
+
 class UnsupportedPlatformError(ProductError):
     """Report that no service adapter exists for the current operating system."""
 

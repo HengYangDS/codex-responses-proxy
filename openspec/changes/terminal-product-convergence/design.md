@@ -169,6 +169,19 @@ when there was no live listener to stop. The existing outcome owner rejects
 inconsistent evidence before either human or machine rendering, without adding
 a second result schema or changing valid lifecycle output.
 
+Fresh-install failure retains its initial boundary when native cleanup or payload
+rollback also fails. Public causes remain readable; arbitrary exception messages
+become bounded operation labels, not paths, types or secret-bearing native output. Unavailable
+service admission still triggers only payload rollback, never native cleanup.
+Unconfirmed runtime cleanup preserves the existing recovery journal. Generation
+removal reports the operating system's numeric error without its absolute path;
+a compensation error cannot hide the startup failure that required it.
+Failed recovery-record persistence is reported as unconfirmed, never as a retained
+transaction whose write did not succeed.
+The outer install entrypoint retains the original public code and next command
+when prepared cleanup fails. Both layers use the existing shared error owner;
+there is no second cause formatter or exception vocabulary.
+
 The quality system has four distinct obligations: a useful policy, a correct
 measurement, a complete execution path, and a working product. Passing one does
 not establish the others. The responsibility map assigns concerns; native tool

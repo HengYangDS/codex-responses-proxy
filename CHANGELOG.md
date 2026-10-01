@@ -15,6 +15,10 @@ publication authority.
 
 ### Fixed
 
+- Preserve the initial installation failure when native cleanup or payload
+  rollback also fails, and report numeric generation-removal errors without
+  exposing private paths.
+
 - Run the macOS watchdog in the native user Background domain without requiring
   a graphical login; verify legacy GUI service removal and preserve unrelated
   registrations, disabled-state overrides and launch-agent files.
