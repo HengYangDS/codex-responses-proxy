@@ -236,7 +236,12 @@ roles = ["product-python", "repository-python"]
 
 [[scopes]]
 id = "documentation"
-roles = ["agent-guidance", "product-documentation", "release-history"]
+roles = [
+  "agent-guidance",
+  "product-documentation",
+  "release-history",
+  "openspec",
+]
 
 [[scopes]]
 id = "prettier-formatted"
@@ -244,6 +249,7 @@ roles = [
   "agent-guidance",
   "product-documentation",
   "release-history",
+  "openspec",
   "ci-model",
   "github-ci",
   "gitlab-ci",
@@ -418,9 +424,21 @@ configuration = [
 ]
 risk_model = "Inconsistent Markdown YAML and JSON structure raises review cost and can obscure semantic drift across documentation configuration and generated Forge projections."
 measurement = "Locked Prettier checks every tracked current Markdown YAML JSON and JSONC carrier; digest-bound native AUBE locks and immutable OpenSpec archives retain their native bytes."
-false_positive_cost = "Formatting must preserve authored prose wrapping and must not rewrite immutable historical evidence."
+false_positive_cost = "Native prose wrapping may change line layout but must preserve rendered text, links, code, and immutable historical evidence."
 remediation = "Apply the locked Prettier version to current structured-text carriers through the repository governance session."
 review_condition = "Reassess when Prettier changes supported syntax or a new current structured-text role is introduced."
+
+[[concerns]]
+id = "markdown-lint"
+owner = "markdownlint-cli2"
+scope = "documentation"
+session = "governance"
+configuration = [".config/quality/native/markdownlint-cli2.yaml"]
+risk_model = "Broken heading, link, list, code-fence, spacing, or table structure obscures requirements and raises navigation and review cost."
+measurement = "The locked native linter checks every tracked current Markdown carrier with default rules, eighty-column prose, and sibling-only heading uniqueness; official OpenSpec templates retain their native title."
+false_positive_cost = "Line length is a prose readability rule, not a limit on code, tables, headings, or indivisible native tokens; repeated release-section headings are valid under different parent versions."
+remediation = "Correct the Markdown structure or apply native prose wrapping; do not add inline suppression, an ignored current document, or a baseline."
+review_condition = "Reassess when the official Markdown or OpenSpec carrier contract changes; immutable archived Changes remain byte-stable."
 
 [[concerns]]
 id = "toml-format"

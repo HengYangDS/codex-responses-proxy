@@ -1,3 +1,5 @@
+# Spec Delta
+
 ## ADDED Requirements
 
 ### Requirement: Native resource ownership is exact and symmetric
@@ -10,8 +12,8 @@ created and SHALL preserve unrelated and canonical installations.
 
 #### Scenario: A native lifecycle test exits by any path
 
-- **WHEN** the test succeeds, fails an assertion, raises an exception, times out,
-  or is interrupted
+- **WHEN** the test succeeds, fails an assertion, raises an exception, times
+  out, or is interrupted
 - **THEN** teardown addresses only the exact test-owned service, process
   generations, transaction, payload, command projection, and platform carrier
 - **AND** the native host contains no net test-owned resource growth.
@@ -26,8 +28,8 @@ created and SHALL preserve unrelated and canonical installations.
 #### Scenario: A macOS launch-agent carrier is unowned or indirect
 
 - **WHEN** its home-relative path has a symbolic-link ancestor or leaf, the leaf
-  is not a regular file, or its label, watchdog arguments, user home or executable
-  ownership disagree with this installation
+  is not a regular file, or its label, watchdog arguments, user home or
+  executable ownership disagree with this installation
 - **THEN** installation and teardown reject the carrier before service mutation
 - **AND** preserve the carrier and all unrelated target bytes
 - **AND** current source reuses the existing safe owned-file I/O boundary.

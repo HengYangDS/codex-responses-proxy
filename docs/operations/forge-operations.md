@@ -23,8 +23,9 @@ flowchart LR
 | Audit             | Read-only comparison after publication                                               |
 
 The commit and annotated tag are signed once locally. The public signing key and
-product email must be accepted by each selected Forge. SSH keys or tokens used to
-push may differ per Forge; transport authentication never changes a Git object.
+product email must be accepted by each selected Forge. SSH keys or tokens used
+to push may differ per Forge; transport authentication never changes a Git
+object.
 
 ## Product publication context
 
@@ -45,9 +46,9 @@ no personal key, private credential, local checkout path, or Forge token.
 ## Branches
 
 Publishing local `main` atomically advances the selected peer's protected `main`
-and `dev` to the same commit. A `proposal/*` publication advances only that exact
-proposal. `dev`, `candidate/*`, `work/*`, and arbitrary feature refs are not
-publication sources.
+and `dev` to the same commit. A `proposal/*` publication advances only that
+exact proposal. `dev`, `candidate/*`, `work/*`, and arbitrary feature refs are
+not publication sources.
 
 ```bash
 mise exec --locked -- uv run --locked --group quality python -m tools.forge.project \
@@ -78,8 +79,8 @@ mise exec --locked -- uv run --locked --group quality python -m tools.forge.proj
 ```
 
 The projector uses an atomic push and per-ref `--force-with-lease`. Any remote
-drift rejects the whole operation. It never creates a commit, maps histories,
-or reads the other peer.
+drift rejects the whole operation. It never creates a commit, maps histories, or
+reads the other peer.
 
 ## Tags and releases
 
@@ -123,8 +124,8 @@ Publication success covers both the verified bundle and its user-facing Release
 links. GitLab publication compares every link's name, URL, and type with the
 requested bundle, independent of ordering and server-assigned fields. It reads
 the persisted Release after asset verification and creation or a concurrent
-creation conflict; a POST acknowledgement alone is not publication evidence.
-An existing mismatched Release fails without rewriting its metadata.
+creation conflict; a POST acknowledgement alone is not publication evidence. An
+existing mismatched Release fails without rewriting its metadata.
 
 The read-only dual-Forge verifier accepts explicit `--gitlab-git-url` and
 `--github-git-url` values. These are fetchable Git URLs, not checkout-local
@@ -170,10 +171,10 @@ mise exec --locked -- uv run --locked --group quality python -m tools.release.pu
 execution inputs. `--gitlab-credential-kind job-token` reads `CI_JOB_TOKEN` and
 sends `JOB-TOKEN`; `--gitlab-credential-kind private-token` reads
 `CODEX_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN` and sends `PRIVATE-TOKEN`. The
-selected kind never falls through to the other variable or header. The command attempts both peers,
-reports every failure, and returns nonzero unless both provider-local
-publications complete. The provider-specific subcommands support an explicitly
-one-sided topology; neither result alone is dual-Forge parity.
+selected kind never falls through to the other variable or header. The command
+attempts both peers, reports every failure, and returns nonzero unless both
+provider-local publications complete. The provider-specific subcommands support
+an explicitly one-sided topology; neither result alone is dual-Forge parity.
 
 ## Historical macOS override records
 
@@ -215,8 +216,8 @@ mise exec --locked -- uv run --locked --group quality python -m tools.forge.audi
   --json
 ```
 
-Each `--peer` names one configured Git remote, not a Forge type. Supply one
-peer for single-Forge delivery or omit the option for local-only verification;
+Each `--peer` names one configured Git remote, not a Forge type. Supply one peer
+for single-Forge delivery or omit the option for local-only verification;
 unselected peers are not contacted. Persistent branch roles come from
 `.ethos/workspace.toml`, not hard-coded branch names.
 
@@ -245,23 +246,23 @@ is an infrastructure fact, never permission to weaken product gates.
 The CUE model assigns Linux merge-request work to
 `CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG` and accepted `dev`,
 promotion, and tag checks to `CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG`.
-These variables must identify different project-locked, tagged-only Runners.
-The latter requires GitLab's `ref_protected` access. Linux review and protected jobs share one CUE-owned body and reference their
-native scheduling variable directly. There is no intermediate workflow or
-job-rule tag alias: GitLab does not recursively resolve those aliases before
-Runner assignment. Runner-native access restrictions enforce
-the boundary even when a proposal changes its YAML. Only protected tag checks
-receive `CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST`; review jobs receive no release
-signing key or publication credential.
+These variables must identify different project-locked, tagged-only Runners. The
+latter requires GitLab's `ref_protected` access. Linux review and protected jobs
+share one CUE-owned body and reference their native scheduling variable
+directly. There is no intermediate workflow or job-rule tag alias: GitLab does
+not recursively resolve those aliases before Runner assignment. Runner-native
+access restrictions enforce the boundary even when a proposal changes its YAML.
+Only protected tag checks receive `CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST`;
+review jobs receive no release signing key or publication credential.
 
 macOS and Windows use `verify-macos-native` and `verify-windows-native` on
-protected `dev`; their `-review` jobs run only for merge requests to `dev`.
-The existing platform Runner-tag variables and their `_REVIEW` variants must
-select separate accounts, workspaces, caches, and credential reachability.
-Each job runs the locked release interpreter and uv, builds one candidate,
-and executes `nox -s release_compatibility`. This session checks the packaged
-commands, loopback traffic, fresh install, reload, recovery, cleanup, and
-upgrade and rollback from a real signed predecessor. It does not repeat the
+protected `dev`; their `-review` jobs run only for merge requests to `dev`. The
+existing platform Runner-tag variables and their `_REVIEW` variants must select
+separate accounts, workspaces, caches, and credential reachability. Each job
+runs the locked release interpreter and uv, builds one candidate, and executes
+`nox -s release_compatibility`. This session checks the packaged commands,
+loopback traffic, fresh install, reload, recovery, cleanup, and upgrade and
+rollback from a real signed predecessor. It does not repeat the
 platform-independent Python compatibility or full quality matrix.
 
 Before scheduling either native job, its account must have an immutable,
@@ -272,29 +273,27 @@ absolute destination-local paths through
 `CODEX_RESPONSES_PROXY_GITLAB_MACOS_PREVIOUS_RELEASE_ASSET` or
 `CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_PREVIOUS_RELEASE_ASSET`, and
 `CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR`. Resolve them on the
-Runner; no workstation path belongs in source. Missing inputs fail before
-the candidate is built. Both review and protected accounts may read these
-public verification inputs; neither may alter the immutable supply.
+Runner; no workstation path belongs in source. Missing inputs fail before the
+candidate is built. Both review and protected accounts may read these public
+verification inputs; neither may alter the immutable supply.
 
 Darwin ARM64 runs the locked ARM64 Python and uv. Windows ARM64 must invoke an
-x64 Mise executable so native lock selection resolves the declared
-`windows-x64` assets. Mise derives architecture from its executable, not from
-the Python selected afterward. It then runs the locked x64 Python and uv under
-emulation and exercises a Windows x64
-candidate. Record host architecture and process architecture separately:
-the physical CPU observation does not determine the executable ABI. The
-interpreter must report `win-amd64`; native payload identity follows that ABI.
-Complete lifecycle execution may qualify the Windows x64 asset under emulation,
-never a native ARM64 asset. Native pytest sessions own a short, unique temporary
-root outside the checkout so deep Runner paths do not exhaust Windows path
-capacity. `TMPDIR`, `TEMP`, and `TMP` point to that same root, not Nox's
-checkout-local build directory. The Runner owner must configure a short,
+x64 Mise executable so native lock selection resolves the declared `windows-x64`
+assets. Mise derives architecture from its executable, not from the Python
+selected afterward. It then runs the locked x64 Python and uv under emulation
+and exercises a Windows x64 candidate. Record host architecture and process
+architecture separately: the physical CPU observation does not determine the
+executable ABI. The interpreter must report `win-amd64`; native payload identity
+follows that ABI. Complete lifecycle execution may qualify the Windows x64 asset
+under emulation, never a native ARM64 asset. Native pytest sessions own a short,
+unique temporary root outside the checkout so deep Runner paths do not exhaust
+Windows path capacity. `TMPDIR`, `TEMP`, and `TMP` point to that same root, not
+Nox's checkout-local build directory. The Runner owner must configure a short,
 account-isolated native temporary parent in its deployment environment. No
 private host path belongs in repository source. The test root is removed after
-process teardown, including test failure.
-The supported release inventory remains authoritative. A Linux container has
-no systemd user manager and proves only its declared source checks; native
-Linux service acceptance still requires a separate real user-service context.
-Native jobs have a 20-minute deadline. Their lifecycle fixtures remove owned
-services, listeners, payloads, and transactions and verify that unrelated
-canonical resources remain unchanged.
+process teardown, including test failure. The supported release inventory
+remains authoritative. A Linux container has no systemd user manager and proves
+only its declared source checks; native Linux service acceptance still requires
+a separate real user-service context. Native jobs have a 20-minute deadline.
+Their lifecycle fixtures remove owned services, listeners, payloads, and
+transactions and verify that unrelated canonical resources remain unchanged.

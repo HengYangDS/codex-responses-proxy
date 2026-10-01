@@ -21,11 +21,11 @@ Required encrypted agent messages are native control data, not removable
 provider history: preserve their original envelope and ciphertext for the
 selected upstream. An upstream rejection cannot prove that the visible routing
 header contains the task, so it is relayed without a ciphertext-free retry.
-Unknown or structurally unproved replay material fails locally.
-Current-turn `additional_tools` declarations and payload-free compaction
-triggers are controls, not disposable replay history. Projection and shrinking
-recovery retain them; a recovery that cannot retain them declines rather than
-silently changing tool availability or compaction intent.
+Unknown or structurally unproved replay material fails locally. Current-turn
+`additional_tools` declarations and payload-free compaction triggers are
+controls, not disposable replay history. Projection and shrinking recovery
+retain them; a recovery that cannot retain them declines rather than silently
+changing tool availability or compaction intent.
 
 Recovery consumes only the already-projected representation or a strictly
 smaller derivation of it. No recovery path restores an earlier provider-bound
@@ -34,10 +34,10 @@ Requests carrying encrypted agent messages cannot use shrinking recovery.
 
 ## Consequences
 
-A portable conversation can switch among admitted providers without server-side state.
-Continuity depends on client-replayed portable dialogue rather than a provider
-store. The proxy may reject an input that lacks a proved portable meaning
-instead of guessing or silently dropping a required tool relationship.
+A portable conversation can switch among admitted providers without server-side
+state. Continuity depends on client-replayed portable dialogue rather than a
+provider store. The proxy may reject an input that lacks a proved portable
+meaning instead of guessing or silently dropping a required tool relationship.
 Encrypted delegation requires an upstream able to interpret its native control
 payload; cross-provider decryption is not guaranteed. A visible message envelope
 is not proof that its task body survived transport.
@@ -52,4 +52,5 @@ parallel replay implementation.
 
 Revisit when native control-message semantics change, or when the ecosystem
 provides a documented interoperable encrypted transport. Require a real
-sender-to-recipient content witness, not merely accepted JSON or a healthy listener.
+sender-to-recipient content witness, not merely accepted JSON or a healthy
+listener.

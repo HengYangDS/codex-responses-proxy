@@ -35,16 +35,17 @@ mise run bootstrap
 ```
 
 `mise.toml` and `mise.lock` own language runtimes and standalone executables.
-`package.json` and `package-lock.json` own OpenSpec, Prettier, and their complete
-npm graph. Governance invokes Node tools through `npm exec --offline`, so local,
-GitHub, GitLab, POSIX, and Windows use the same repository installation.
-The `mise.toml` tasks pass the exact mise Python installation to uv and bind the
-project environment to this worktree's `.venv`. An activated environment or
-inherited Python override does not select the development interpreter. Nox owns
-disposable `.nox/<session>` environments and selects compatibility interpreters
-independently. Download caches may be shared; mutable environments are local to
-their worktree or Nox session. Repeat bootstrap after dependency locks change;
-editing checks do not reinstall Node dependencies.
+`package.json` and `package-lock.json` own OpenSpec, Prettier, Markdown lint,
+and their complete npm graph. Governance invokes Node tools through
+`npm exec --offline`, so local, GitHub, GitLab, POSIX, and Windows use the same
+repository installation. The `mise.toml` tasks pass the exact mise Python
+installation to uv and bind the project environment to this worktree's `.venv`.
+An activated environment or inherited Python override does not select the
+development interpreter. Nox owns disposable `.nox/<session>` environments and
+selects compatibility interpreters independently. Download caches may be shared;
+mutable environments are local to their worktree or Nox session. Repeat
+bootstrap after dependency locks change; editing checks do not reinstall Node
+dependencies.
 
 Run the repository-owned gates:
 
@@ -53,9 +54,9 @@ mise run quick
 mise run check
 ```
 
-`quick` is the editing feedback loop. `check` calls Nox's `full` admission and avoids
-rerunning `quick` or the Python 3.12 behavior inventory already exercised by
-strict branch-aware coverage.
+`quick` is the editing feedback loop. `check` calls Nox's `full` admission and
+avoids rerunning `quick` or the Python 3.12 behavior inventory already exercised
+by strict branch-aware coverage.
 
 If a prerequisite fails, Nox stops before starting dependent quality or
 compatibility sessions. Fix the failed boundary before running the full graph
@@ -63,8 +64,8 @@ again; partial output is not successful admission.
 
 Cold environment checks must include the project's configuration and complete
 release tags while excluding inherited host configuration. Mise's native
-configuration-directory and ceiling controls establish that test boundary;
-an empty scope cannot pass. Signing tests own disposable keys and a foreground
+configuration-directory and ceiling controls establish that test boundary; an
+empty scope cannot pass. Signing tests own disposable keys and a foreground
 agent with a short native socket path, independent of the operator's home or
 authentication agent.
 
@@ -74,11 +75,22 @@ lifecycle; run it only on an explicitly authorized test host. Neither task
 publishes a release or upgrades an installed product.
 
 Nox installs a non-editable wheel in isolated environments. Do not add
-`PYTHONPATH`, user-site fallback, or another repository's virtual environment
-to make a test pass.
+`PYTHONPATH`, user-site fallback, or another repository's virtual environment to
+make a test pass.
+
+Governance formats and lints every tracked current Markdown page, including
+OpenSpec. Prettier wraps Markdown prose at eighty columns without reflowing
+other file types. Markdown lint retains its default rules, permits repeated
+section names only under different parents, and rejects inline suppression.
+Code, tables, headings, and indivisible tokens are excluded from prose-width
+checks. Official OpenSpec templates keep their native title. Archived Changes
+retain their exact bytes. The same governance entry executes real formatter and
+lint counterexamples; Python-only native lifecycle jobs do not need Node for
+them.
 
 Build output, verification results, temporary files, and their cleanup follow
-the [evidence storage policy](docs/evidence/evidence-policy.md#storage-and-retention).
+the
+[evidence storage policy](docs/evidence/evidence-policy.md#storage-and-retention).
 Mutable output stays local to this worktree; ETHOS selects the shared storage
 for its own evidence and coordination.
 
@@ -94,10 +106,10 @@ flowchart LR
 
 - Add a failing regression before changing behavior.
 - Keep expected failures free of traceback and warning noise.
-- Keep statement and measured branch coverage at least 95% independently for
-  the product package, repository tools, and Nox orchestration. Native coverage
-  configuration owns those roots, including unexecuted namespace modules;
-  one root's coverage cannot compensate for another. Branchless roots require
+- Keep statement and measured branch coverage at least 95% independently for the
+  product package, repository tools, and Nox orchestration. Native coverage
+  configuration owns those roots, including unexecuted namespace modules; one
+  root's coverage cannot compensate for another. Branchless roots require
   statement evidence without inventing a branch denominator.
 - Use `type(scope): imperative subject`; the `[commit_policy]` table in
   [.ethos/workspace.toml](.ethos/workspace.toml) owns the subject grammar and
@@ -109,8 +121,7 @@ flowchart LR
 
 ## Provider extension
 
-The provider registry is
-`src/codex_responses_proxy/providers/manifest.toml`.
+The provider registry is `src/codex_responses_proxy/providers/manifest.toml`.
 
 | Extension                                     | Required change                                         |
 | --------------------------------------------- | ------------------------------------------------------- |
@@ -144,10 +155,10 @@ compatibility aliases, and one-caller abstractions require an independently
 proved invariant; otherwise delete them.
 
 Design deep modules: a small intent-oriented interface owns the corresponding
-invariants, effects, rollback, and cleanup. Callers should not coordinate private
-steps or repeat its policy. Split at independent responsibilities, not arbitrary
-file-size targets; merge layers that only forward arguments without hiding
-meaningful complexity.
+invariants, effects, rollback, and cleanup. Callers should not coordinate
+private steps or repeat its policy. Split at independent responsibilities, not
+arbitrary file-size targets; merge layers that only forward arguments without
+hiding meaningful complexity.
 
 Before adding any file, directory, schema, carrier, helper, abstraction, state,
 or compatibility path, establish all three conditions:
@@ -184,7 +195,8 @@ the other. See [Forge operations](docs/operations/forge-operations.md).
 
 - [ ] Product and developer interfaces remain separate.
 - [ ] Human and JSON output derive from the same result model.
-- [ ] No personal identity, local path, credential, or private Forge coordinate is tracked.
+- [ ] No personal identity, local path, credential, or private Forge coordinate
+      is tracked.
 - [ ] No provider identity drives generic behavior.
 - [ ] Current docs match code, tests, CLI help, and release assets.
 - [ ] Focused tests and all affected gates pass.

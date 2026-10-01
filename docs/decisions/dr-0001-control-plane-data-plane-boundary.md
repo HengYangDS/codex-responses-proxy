@@ -6,10 +6,10 @@
 
 ## Context
 
-A client control plane projects provider configuration. The proxy provides
-local Responses compatibility and a loopback service. Letting both write the
-same configuration or manage each other's lifecycle causes drift, unsafe
-recovery, and ambiguous rollback responsibility.
+A client control plane projects provider configuration. The proxy provides local
+Responses compatibility and a loopback service. Letting both write the same
+configuration or manage each other's lifecycle causes drift, unsafe recovery,
+and ambiguous rollback responsibility.
 
 ## Decision
 
@@ -22,8 +22,8 @@ writes client configuration or invokes a particular control-plane product.
 ## Consequences
 
 The products evolve independently and each mutation has one owner. Runtime
-repair rebuilds the proxy projection; route repair remains a client control-plane
-operation. Neither path permits session-history mutation.
+repair rebuilds the proxy projection; route repair remains a client
+control-plane operation. Neither path permits session-history mutation.
 
 ## Alternatives Considered
 
@@ -40,6 +40,6 @@ recovery, and a native lifecycle with no client-state authority.
 
 ## Revisit Trigger
 
-Revisit only if the proxy becomes an explicit client configuration control
-plane or a client control plane adopts proxy transport and native service
-lifecycle ownership.
+Revisit only if the proxy becomes an explicit client configuration control plane
+or a client control plane adopts proxy transport and native service lifecycle
+ownership.

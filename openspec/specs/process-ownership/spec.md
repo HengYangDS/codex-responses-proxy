@@ -2,7 +2,9 @@
 
 ## Purpose
 
-Define how the proxy proves, captures, and terminates only the exact operating-system process generation that owns a runtime role across handoff and cleanup.
+Define how the proxy proves, captures, and terminates only the exact
+operating-system process generation that owns a runtime role across handoff and
+cleanup.
 
 ## Requirements
 
@@ -15,7 +17,8 @@ same PID generation without depending on a second command-line projection.
 #### Scenario: Windows launcher projection differs
 
 - **Given** exact successor health has proved a positive PID
-- **And** the native process command line is inaccessible or projected through a launcher
+- **And** the native process command line is inaccessible or projected through a
+  launcher
 - **When** cleanup captures the successor generation
 - **Then** it records the PID and creation time
 - **And** termination signals only that exact generation

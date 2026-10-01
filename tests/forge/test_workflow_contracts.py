@@ -818,7 +818,7 @@ def test_node_repository_tools_have_one_locked_owner() -> None:
     dev_dependencies = package["packages"][""]["devDependencies"]
     manifest = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     assert dev_dependencies == manifest["devDependencies"]
-    assert set(dev_dependencies) == {"@fission-ai/openspec", "prettier"}
+    assert set(dev_dependencies) == {"@fission-ai/openspec", "markdownlint-cli2", "prettier"}
     for name, version in dev_dependencies.items():
         assert re.fullmatch(r"\d+\.\d+\.\d+", version)
         assert package["packages"][f"node_modules/{name}"]["version"] == version

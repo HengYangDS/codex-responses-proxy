@@ -17,14 +17,17 @@ bounded result rather than an independent carrier.
 
 #### Scenario: A result is evaluated
 
-- **WHEN** a local, hosted, publication, installation, or runtime result is evaluated
-- **THEN** its exact source revision, verifier, scope, evidence, and limit are explicit
+- **WHEN** a local, hosted, publication, installation, or runtime result is
+  evaluated
+- **THEN** its exact source revision, verifier, scope, evidence, and limit are
+  explicit
 - **AND** no tracked Claim or Chronicle is required.
 
 #### Scenario: Historical explanation is retained
 
 - **WHEN** historical rationale remains useful
-- **THEN** it is retained by OpenSpec archive, decision record, Changelog, or Git history
+- **THEN** it is retained by OpenSpec archive, decision record, Changelog, or
+  Git history
 - **AND** it never becomes current acceptance authority.
 
 ### Requirement: Forge comparison has one semantic owner
