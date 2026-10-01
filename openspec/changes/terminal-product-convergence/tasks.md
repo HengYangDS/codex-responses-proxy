@@ -216,6 +216,15 @@
       DMXAPI-selected historical thread still fails; recovery of that
       conversation and full release acceptance remain open. Evidence:
       `build/verification/2ab49b21f2b2b589e8414996d01cb6db091e6ebc/encrypted-*`.
+      October 1 native envelope inspection finds six of seven DDWG children
+      failing before their first tool call. Their inherited histories contain
+      234 plain messages and no encrypted function outputs; all seven receive a
+      native encrypted task, including the successful child. Nine current
+      encrypted-task preservation tests pass. Exact transmitted endpoints were
+      not captured; current direct UCloud configuration does not prove Proxy
+      participation. No task payload, history or model was rewritten. Metadata
+      evidence: `subagent-decode-shapes-20261001.json` under
+      `build/verification/a36a45c965b08a0ebff0650518f190641f906e5c/`.
 - [x] 4.4 Ensure Provider-specific wire differences live only in narrow adapters
       selected from one manifest and policy contract; verify generic relay,
       lifecycle, CLI, and tests do not branch on Provider names. The product
