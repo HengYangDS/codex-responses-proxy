@@ -38,7 +38,7 @@ cue = "0.17.1"
 [env]
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
 VIRTUAL_ENV = false
-UV_PYTHON = false
+UV_PYTHON = { value = "{{tools.python.path}}", tools = true }
 PYTHONHOME = false
 PYTHONPATH = false
 PYTHONNOUSERSITE = "1"
@@ -63,7 +63,7 @@ run = [
 description = "Install the locked Python and Node development dependencies"
 depends = ["toolchain:verify"]
 run = [
-  'uv sync --locked --all-groups --python "{{tools.python.path}}"',
+  "uv sync --locked --all-groups",
   "npm ci --ignore-scripts",
   "npm audit signatures",
 ]
@@ -71,19 +71,19 @@ run = [
 [tasks.quick]
 description = "Run the editing feedback loop"
 depends = ["toolchain:verify"]
-run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s quick'
+run = "uv run --locked --group quality nox -s quick"
 
 [tasks.check]
 description = "Run repository governance, quality, and Python compatibility gates"
 depends = ["toolchain:verify"]
-run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s full'
+run = "uv run --locked --group quality nox -s full"
 
 [tasks.native]
 description = "Verify the native artifact and real host service lifecycle"
 depends = ["toolchain:verify"]
-run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s release'
+run = "uv run --locked --group quality nox -s release"
 
 [tasks.release]
 description = "Build and verify the native release asset without service registration"
 depends = ["toolchain:verify"]
-run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s release_asset'
+run = "uv run --locked --group quality nox -s release_asset"

@@ -159,10 +159,11 @@ verify-macos-native:
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin
-    - mise exec --locked -- uv sync --locked --group quality --python python
+    - mise exec --locked -- uv sync --locked --group quality
   script:
-    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())"
-    - mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility
+    - mise exec --locked -- uv run --locked --group quality python -c "import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())"
+    - mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py
+    - mise exec --locked -- uv run --locked --group quality nox -s release_compatibility
 verify-macos-native-review:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
@@ -181,10 +182,11 @@ verify-macos-native-review:
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin
-    - mise exec --locked -- uv sync --locked --group quality --python python
+    - mise exec --locked -- uv sync --locked --group quality
   script:
-    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())"
-    - mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility
+    - mise exec --locked -- uv run --locked --group quality python -c "import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())"
+    - mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py
+    - mise exec --locked -- uv run --locked --group quality nox -s release_compatibility
 verify-windows-native:
   rules:
     - if: $CI_COMMIT_BRANCH == "dev"
@@ -203,10 +205,11 @@ verify-windows-native:
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin
-    - mise exec --locked -- uv sync --locked --group quality --python python
+    - mise exec --locked -- uv sync --locked --group quality
   script:
-    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
-    - mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility
+    - mise exec --locked -- uv run --locked --group quality python -c "import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
+    - mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py
+    - mise exec --locked -- uv run --locked --group quality nox -s release_compatibility
 verify-windows-native-review:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
@@ -225,10 +228,11 @@ verify-windows-native-review:
   before_script:
     - mise install --locked
     - git fetch --tags --force --prune --prune-tags origin
-    - mise exec --locked -- uv sync --locked --group quality --python python
+    - mise exec --locked -- uv sync --locked --group quality
   script:
-    - mise exec --locked -- uv run --locked --no-sync --python python python -c "import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
-    - mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility
+    - mise exec --locked -- uv run --locked --group quality python -c "import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
+    - mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py
+    - mise exec --locked -- uv run --locked --group quality nox -s release_compatibility
 verify-python-quality:
   rules:
     - if: $CI_COMMIT_BRANCH == "dev"

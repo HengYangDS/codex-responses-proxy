@@ -50,14 +50,14 @@ proposal. `dev`, `candidate/*`, `work/*`, and arbitrary feature refs are not
 publication sources.
 
 ```bash
-mise exec --locked -- uv run --locked --no-sync python -m tools.forge.project \
+mise exec --locked -- uv run --locked --group quality python -m tools.forge.project \
   --provider gitlab \
   --email "$PRODUCT_EMAIL" \
   --allowed-signers "$GITLAB_COMMIT_ALLOWED_SIGNERS" \
   --repository "$GITLAB_REPOSITORY" \
   --runner-tag "$GITLAB_RUNNER_TAG"
 
-mise exec --locked -- uv run --locked --no-sync python -m tools.forge.project \
+mise exec --locked -- uv run --locked --group quality python -m tools.forge.project \
   --provider github \
   --email "$PRODUCT_EMAIL" \
   --allowed-signers "$GITHUB_COMMIT_ALLOWED_SIGNERS" \
@@ -69,7 +69,7 @@ old provider-specific history requires exact observed tips for every divergent
 remote ref:
 
 ```bash
-mise exec --locked -- uv run --locked --no-sync python -m tools.forge.project \
+mise exec --locked -- uv run --locked --group quality python -m tools.forge.project \
   --provider <gitlab-or-github> \
   --email "$PRODUCT_EMAIL" \
   --allowed-signers <peer-commit-anchor> \
@@ -87,12 +87,12 @@ The first invocation creates and signs the local annotated tag. Each invocation
 then verifies and publishes that exact local tag object to one selected peer:
 
 ```bash
-mise exec --locked -- uv run --locked --no-sync python -m tools.release.tag \
+mise exec --locked -- uv run --locked --group quality python -m tools.release.tag \
   --provider gitlab --tag v<VERSION> \
   --publication-context "$PUBLICATION_CONTEXT" \
   --anchor "$GITLAB_TAG_ALLOWED_SIGNERS"
 
-mise exec --locked -- uv run --locked --no-sync python -m tools.release.tag \
+mise exec --locked -- uv run --locked --group quality python -m tools.release.tag \
   --provider github --tag v<VERSION> \
   --publication-context "$PUBLICATION_CONTEXT" \
   --anchor "$GITHUB_TAG_ALLOWED_SIGNERS"
@@ -136,7 +136,7 @@ transport credentials do not create different release identities.
 Example:
 
 ```bash
-mise exec --locked -- uv run --locked --no-sync python -m tools.release.publication verify \
+mise exec --locked -- uv run --locked --group quality python -m tools.release.publication verify \
   --tag "v$VERSION" \
   --gitlab-git-url "$GITLAB_GIT_URL" \
   --gitlab-api-base "$GITLAB_API_BASE" \
@@ -155,7 +155,7 @@ without exposing a credential or transport error body.
 Publish the same bundle to both peers with the single composition root:
 
 ```bash
-mise exec --locked -- uv run --locked --no-sync python -m tools.release.publication both \
+mise exec --locked -- uv run --locked --group quality python -m tools.release.publication both \
   --github-repository "$GITHUB_REPOSITORY" \
   --gitlab-api-base "$GITLAB_API_BASE" \
   --gitlab-project-id "$GITLAB_PROJECT_ID" \
@@ -207,7 +207,7 @@ not add compatibility logic to the product.
 ## Read-only parity audit
 
 ```bash
-mise exec --locked -- uv run --locked --no-sync python -m tools.forge.audit \
+mise exec --locked -- uv run --locked --group quality python -m tools.forge.audit \
   --commit-anchor "$PRODUCT_COMMIT_ALLOWED_SIGNERS" \
   --author-email "$PRODUCT_EMAIL" \
   --tag-anchor "$PRODUCT_TAG_ALLOWED_SIGNERS" \

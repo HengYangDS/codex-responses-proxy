@@ -79,3 +79,13 @@ contracts, and release verification on macOS, Linux, and Windows.
   failed test control flow
 - **AND** the session SHALL NOT infer payload compatibility from physical CPU
   naming when a different executable ABI runs under emulation.
+
+#### Scenario: Native CI selects the locked interpreter
+
+- **WHEN** native macOS or Windows CI reconstructs its local environment
+- **THEN** the existing Mise tool-aware environment directive binds the exact locked interpreter
+- **AND** native locked synchronization restores a missing or stale generated environment before execution
+- **AND** an out-of-date dependency lock fails without rewriting source
+- **AND** the local tasks, direct proof commands, and native CI consume the same binding
+- **AND** each native platform executes the environment conformance before constructing its candidate
+- **AND** neither an executable-name ambiguity, no-sync execution, nor warning suppression establishes acceptance.

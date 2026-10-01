@@ -180,6 +180,22 @@ class TestQualityPolicyContracts:
                 "ethos",
             ),
         }
+        for gate in proof["gates"]:
+            if gate["id"] in selected:
+                command = gate["command"]
+                assert command[:8] == [
+                    "mise",
+                    "exec",
+                    "--locked",
+                    "--",
+                    "uv",
+                    "run",
+                    "--locked",
+                    "--group",
+                ]
+                assert command[8] == "quality"
+                assert "--no-sync" not in command
+                assert "--python" not in command
 
     def test_publication_topology_has_only_declared_independent_peers(self) -> None:
         publication = tomllib.loads((ROOT / ".ethos/release.toml").read_text(encoding="utf-8"))[
@@ -191,6 +207,8 @@ class TestQualityPolicyContracts:
             "local_installation_command",
             "peers",
         }
+        assert publication["local_verification_command"] == "mise run check"
+        assert publication["local_installation_command"] == "mise run native"
         assert publication["peers"] == [
             {
                 "id": "gitlab",
@@ -326,7 +344,7 @@ class TestQualityPolicyContracts:
         run = mocker.patch.object(
             governance.subprocess,
             "run",
-            side_effect=[tracked, tracked, *([completed] * 14)],
+            side_effect=[tracked, tracked, *([completed] * 15)],
         )
 
         governance.audit(online_links=False)
@@ -360,6 +378,15 @@ class TestQualityPolicyContracts:
             ("cue", "fmt", "--check", "--files", ".config/ci/pipeline.cue"),
             ("cue", "vet", ".config/ci/pipeline.cue"),
             (governance.sys.executable, "-m", "tools.ci.project"),
+            (
+                governance.sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-m",
+                "repository_toolchain",
+                "tests/quality/test_verification.py",
+            ),
             (
                 "npm",
                 "exec",

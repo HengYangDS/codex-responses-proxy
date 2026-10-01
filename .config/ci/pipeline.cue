@@ -191,7 +191,7 @@ gitlab: {
 	#NativeBootstrap: [
 		"mise install --locked",
 		"git fetch --tags --force --prune --prune-tags origin",
-		"mise exec --locked -- uv sync --locked --group quality --python python",
+		"mise exec --locked -- uv sync --locked --group quality",
 	]
 	#nativeCommon: {
 		stage:   "verify"
@@ -212,8 +212,9 @@ gitlab: {
 			CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: "$CODEX_RESPONSES_PROXY_GITLAB_MACOS_PREVIOUS_RELEASE_ASSET"
 		}
 		script: [
-			"mise exec --locked -- uv run --locked --no-sync --python python python -c \"import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())\"",
-			"mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility",
+			"mise exec --locked -- uv run --locked --group quality python -c \"import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())\"",
+			"mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py",
+			"mise exec --locked -- uv run --locked --group quality nox -s release_compatibility",
 		]
 		...
 	}
@@ -223,8 +224,9 @@ gitlab: {
 			CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: "$CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_PREVIOUS_RELEASE_ASSET"
 		}
 		script: [
-			"mise exec --locked -- uv run --locked --no-sync --python python python -c \"import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))\"",
-			"mise exec --locked -- uv run --locked --no-sync --python python nox -s release_compatibility",
+			"mise exec --locked -- uv run --locked --group quality python -c \"import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))\"",
+			"mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py",
+			"mise exec --locked -- uv run --locked --group quality nox -s release_compatibility",
 		]
 		...
 	}
