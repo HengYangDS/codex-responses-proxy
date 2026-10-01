@@ -283,7 +283,6 @@
       `build/verification/c20b086e9095d0666ab194a886eb320434a265d3/`. Real
       historical-thread replay and broader performance/cancellation obligations
       remain open.
-
 - [ ] 4.8 Admit the standard role/content Responses message without an explicit
       `type` through the shared item policy, without accepting unknown replay
       shapes. Source RED/GREEN, diagnosis, local HTTP loopback, and the 41-test
@@ -485,7 +484,13 @@
       thirty-eight prose pages and fifty online links pass. Formal distributed
       ETHOS, mixed-language installed proof, native peers, and publication
       remain open. Evidence:
-      `build/verification/native-python-binding-089f940d/`.
+      `build/verification/native-python-binding-089f940d/`. Single-paragraph
+      list spacing now uses the existing native Markdown rule API. Five
+      separating RED cases pass after repair; all 44 native rule tests and 75
+      marked quality siblings pass, with 100% rule coverage. Current formatting,
+      38 Markdown pages, prose, links and official OpenSpec checks pass.
+      Archived files remain unchanged; evidence is under
+      `build/verification/a36a45c965b08a0ebff0650518f190641f906e5c/`.
 - [ ] 7.5 Close structural measurement and enforcement together: verify
       file/function ELOC, logical statements, nesting and complexity semantics;
       classify the native-rule findings by product, tooling and test behavior;
@@ -589,7 +594,6 @@
       3.1.17 listener and sole formal LaunchAgent remain intact.
       Published-predecessor upgrade, successor publication, original-thread
       recovery, security and measured performance acceptance remain open.
-
 - [x] 7.12 Eliminate current canonical OpenSpec INFO length findings by
       splitting oversized requirements at semantic boundaries without dropping
       obligations or scenarios; require official strict validation with no
@@ -734,7 +738,6 @@
       official GitLab dry-run is valid with nine dev jobs and no warnings.
       Hosted platform execution and fleet admission remain open; Windows ARM64
       requires x64 Mise to select the locked x64 tool assets.
-
 - [ ] 9.1 Define the complete CI graph in CUE—quality, Python matrix, native
       assets, platform lifecycle, release metadata, publication, and parity—with
       explicit facts proved by each job.
