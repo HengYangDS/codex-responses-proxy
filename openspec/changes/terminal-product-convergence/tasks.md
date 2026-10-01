@@ -288,6 +288,12 @@
       and stale environments plus changed locks; the governance graph and
       each native platform execute them before dependent work. Local native
       acceptance passed; fresh Windows service-consumer acceptance stays open.
+      The new Windows conformance exposed a locale-dependent subprocess
+      decoder: native UTF-8 diagnostics were read as GBK and lost behind
+      thread warnings. The test owner now decodes UTF-8 strictly, with a
+      distinguishing real-byte regression. The hidden native return-code
+      cause still requires the same service-consumer replay; it is not fixed
+      by local decoding success.
       Hosted CI and the remaining root-carrier audit stay open.
       Stable npm 12.2.0 uses the native Mise backend and generated AUBE graph;
       the old repository sidecars retire through that producer. Native lock
