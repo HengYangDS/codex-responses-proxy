@@ -19,6 +19,51 @@ from tools.ci import project
 from tools.quality import python_matrix
 
 
+@pytest.mark.parametrize("failed", [None, "governance", "quality"])
+def test_full_verification_stops_before_failed_prerequisite_dependents(
+    failed: str | None, tmp_path: Path
+) -> None:
+    fixture = tmp_path / "noxfile.py"
+    marker = tmp_path / "observed.log"
+    fixture.write_text(
+        "import pathlib, runpy, nox, nox.registry\n"
+        f"runpy.run_path({str(ROOT / 'noxfile.py')!r})\n"
+        "nox.options.default_venv_backend = 'none'\n"
+        f"marker = pathlib.Path({str(marker)!r})\n"
+        "def observe(session):\n"
+        "    with marker.open('a') as stream:\n"
+        "        stream.write(session.name + '\\n')\n"
+        f"    if session.name == {failed!r}:\n"
+        "        session.error('required prerequisite failed')\n"
+        "for name in ('governance', 'quality'):\n"
+        "    registered = nox.registry.get()[name]\n"
+        "    registered.func = observe\n"
+        "    registered.venv_backend = 'none'\n"
+        "for version in ('3.13', '3.14'):\n"
+        "    nox.session(python=False, name='tests-' + version)(observe)\n",
+        encoding="utf-8",
+    )
+    completed = subprocess.run(
+        [sys.executable, "-m", "nox", "-f", str(fixture), "-s", "full"],
+        cwd=tmp_path,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert (completed.returncode == 0) is (failed is None), completed.stderr
+    expected = (
+        ["governance"]
+        if failed == "governance"
+        else ["governance", "quality"]
+        if failed == "quality"
+        else ["governance", "quality", "tests-3.13", "tests-3.14"]
+    )
+    assert marker.read_text().splitlines() == expected
+
+
 @pytest.mark.parametrize("explicit", [False, True])
 def test_matrix_cli_projects_to_exact_selected_output(explicit, tmp_path, monkeypatch):
     output = tmp_path / "output"

@@ -24,6 +24,10 @@ publication authority.
   mutation; write accepted carriers atomically and preserve changed replacements.
 - Reject reload results without distinct positive process IDs and cleanup
   results with invalid process counts instead of reporting false success.
+- Stop the full verification graph at its first failed prerequisite instead
+  of running dependent expensive checks after admission has already failed.
+- Give isolated signing tests their own short native agent socket and bounded
+  process teardown, preserving cold development checks under deeply nested homes.
 
 ## [4.0.5] - 2026-09-23
 

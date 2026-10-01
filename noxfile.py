@@ -28,6 +28,7 @@ PERFORMANCE_POLICY = ROOT / ".config/quality/policy/performance.toml"
 nox.options.default_venv_backend = "uv"
 nox.options.error_on_missing_interpreters = True
 nox.options.reuse_existing_virtualenvs = False
+nox.options.stop_on_first_error = True
 
 
 @nox.session(python=MAX_PYTHON)

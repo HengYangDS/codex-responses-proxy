@@ -176,6 +176,25 @@ configuration defines their executable rules; Nox invokes them; CUE projects the
 same obligations into each Forge. No second checker, registry, or workflow may
 independently define the same rule.
 
+Nox's native fail-fast option stops the ordered full graph at the first failed
+prerequisite. Governance failure cannot start quality or compatibility work;
+quality failure cannot start later interpreter sessions. A valid full run still
+executes every declared session. Failure diagnostics remain evidence, not a
+reason to continue dependent work or report partial acceptance.
+
+Cold development verification starts with a complete immutable local checkout,
+including release tags required by Changelog provenance. Native Mise config-dir
+and ceiling selection excludes ambient host and parent configuration while
+retaining the exact project config. A missing project config is failed input,
+not isolation success. Package caches and mutable environments remain private.
+
+Native signing fixtures retain deeply nested HOME as a real input. OpenSSH's
+default HOME-relative socket can exceed the Unix path limit; the fixture uses
+standard-library native temporary storage for an explicit short socket and owns
+one foreground agent. It waits for that exact process to exit before removing
+its socket directory, including failed key setup and assertion exits. Operator
+credentials and authentication agents remain outside the fixture.
+
 Quality inventory binds Git's directory and working tree to the requested
 checkout, rather than treating the command's current directory as repository
 identity. Native Git resolves both regular `.git` directories and linked-lane
