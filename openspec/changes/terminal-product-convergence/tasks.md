@@ -1027,7 +1027,20 @@
 - [ ] 13.5 Freeze the complete candidate and run strict OpenSpec validation, all
       focused gates, full quality, Python matrix, three-platform native
       acceptance, reproducible build, security, performance, documentation, and
-      repository-residue audits exactly once at final scope.
+      repository-residue audits exactly once at final scope. Signed f4131ecd
+      passes the full local quality graph; its exact-HEAD installed ETHOS proof
+      does not pass. The python-quality command succeeds, but the native static
+      provider rejects Python with
+      `quality_static-analysis_python_native_evidence_unavailable`; the
+      dependent python-matrix is not executed. Read-only inspection confirms
+      that both installed and current ETHOS source reject NativeExecution with
+      Python subjects before invoking their existing Python verifier. This
+      product-owner defect is reported; unchanged proof retries and provider
+      removal are not remedies. Required raw evidence remains under
+      `build/verification/native-python-binding-089f940d/`. No peer publication,
+      new ETHOS distribution, or final native acceptance is inferred. Completed
+      local quality and matrix scratch is retired with source and evidence
+      hashes conserved.
 - [ ] 13.6 Complete every task from evidence, archive this Change through the
       current ETHOS public command, land the signed candidate, synchronize local
       `main/dev` and both Forge `main/dev`, and verify final tag CI and Releases
