@@ -5,7 +5,9 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -27,13 +29,17 @@ def _run(*args: str, cwd: Path, environment: dict[str, str] | None = None) -> st
     ).stdout.strip()
 
 
-@pytest.fixture
-def tag_fixture(monkeypatch):
+@pytest.fixture(params=[False, True], ids=["native-home", "deep-home"])
+def tag_fixture(request, monkeypatch):
     """Create one signed source and two independent peers without personal state."""
     if os.name == "nt" or any(shutil.which(name) is None for name in ("ssh-agent", "ssh-add")):
         pytest.skip("OpenSSH agent integration is unavailable")
     with tempfile.TemporaryDirectory() as name:
         root = Path(name)
+        if request.param:
+            home = root / ("isolated-home-" * 10)
+            home.mkdir()
+            monkeypatch.setenv("HOME", str(home))
         source, gitlab, github, key = (
             root / "source",
             root / "gitlab.git",
@@ -71,22 +77,53 @@ def tag_fixture(monkeypatch):
         _run("git", "commit", "-qm", "release", cwd=source)
         _run("git", "remote", "add", "gitlab", str(gitlab), cwd=source)
         _run("git", "remote", "add", "github", str(github), cwd=source)
-        agent = _run("ssh-agent", "-s", cwd=root)
-        environment = {
-            key: next(
-                line.split("=", 1)[1].split(";", 1)[0]
-                for line in agent.splitlines()
-                if line.startswith(f"{key}=")
+        native_temp = subprocess.run(
+            [sys.executable, "-I", "-c", "import tempfile; print(tempfile.gettempdir())"],
+            env={
+                key: value
+                for key, value in os.environ.items()
+                if key not in {"TMPDIR", "TEMP", "TMP"}
+            },
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        ).stdout.strip()
+        with tempfile.TemporaryDirectory(dir=native_temp) as socket_root:
+            socket = Path(socket_root) / "agent"
+            agent = subprocess.Popen(
+                ["ssh-agent", "-D", "-a", str(socket)],
+                cwd=root,
+                env=isolated_config_environment(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
             )
-            for key in ("SSH_AUTH_SOCK", "SSH_AGENT_PID")
-        }
-        _run("ssh-add", str(key), cwd=root, environment=environment)
-        monkeypatch.setenv("SSH_AUTH_SOCK", environment["SSH_AUTH_SOCK"])
-        monkeypatch.setenv("SSH_AGENT_PID", environment["SSH_AGENT_PID"])
-        try:
-            yield source, gitlab, github, publication, anchor
-        finally:
-            _run("ssh-agent", "-k", cwd=root, environment=environment)
+            environment = {
+                "SSH_AUTH_SOCK": str(socket),
+                "SSH_AGENT_PID": str(agent.pid),
+            }
+            try:
+                deadline = time.monotonic() + 5
+                while not socket.exists() and agent.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                assert socket.exists()
+                assert agent.poll() is None
+                _run("ssh-add", str(key), cwd=root, environment=environment)
+                monkeypatch.setenv("SSH_AUTH_SOCK", environment["SSH_AUTH_SOCK"])
+                monkeypatch.setenv("SSH_AGENT_PID", environment["SSH_AGENT_PID"])
+                yield source, gitlab, github, publication, anchor
+            finally:
+                if agent.poll() is None:
+                    agent.terminate()
+                try:
+                    agent.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    agent.kill()
+                    agent.communicate(timeout=5)
+                assert not socket.exists()
 
 
 def test_local_tag_is_signed_once_and_identical_on_both_peers(tag_fixture) -> None:

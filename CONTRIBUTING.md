@@ -57,6 +57,17 @@ mise run check
 rerunning `quick` or the Python 3.12 behavior inventory already exercised by
 strict branch-aware coverage.
 
+If a prerequisite fails, Nox stops before starting dependent quality or
+compatibility sessions. Fix the failed boundary before running the full graph
+again; partial output is not successful admission.
+
+Cold environment checks must include the project's configuration and complete
+release tags while excluding inherited host configuration. Mise's native
+configuration-directory and ceiling controls establish that test boundary;
+an empty scope cannot pass. Signing tests own disposable keys and a foreground
+agent with a short native socket path, independent of the operator's home or
+authentication agent.
+
 `mise run release` builds and verifies a native release asset without service
 registration. `mise run native` additionally exercises the real host service
 lifecycle; run it only on an explicitly authorized test host. Neither task

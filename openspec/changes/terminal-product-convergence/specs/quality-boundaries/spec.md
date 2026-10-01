@@ -47,3 +47,23 @@ thresholds, and unexplained disabled rules SHALL fail admission.
   becomes blocking
 - **THEN** the threshold derives from an explicit risk and observed distribution
 - **AND** a stricter number is not accepted merely because it is smaller.
+
+#### Scenario: A full verification prerequisite fails
+
+- **WHEN** governance or quality fails in the ordered Nox full graph
+- **THEN** native Nox stops before starting its dependent sessions
+- **AND** preserves the failed result without claiming partial admission.
+
+#### Scenario: Every full verification prerequisite passes
+
+- **WHEN** the ordered full graph has successful prerequisites
+- **THEN** every remaining declared Python session executes
+- **AND** no required session is skipped to reduce verification time.
+
+#### Scenario: Cold development uses a deeply nested home
+
+- **WHEN** a clean checkout reconstructs its environment without operator state
+- **THEN** the exact project configuration and complete release tags remain inputs
+- **AND** isolated signing tests use a fixture-owned short native socket rather
+  than the operator's authentication agent or a HOME-relative socket
+- **AND** the exact foreground agent exits before its temporary files are removed.
