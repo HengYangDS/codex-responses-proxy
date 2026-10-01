@@ -35,8 +35,8 @@ class GovernanceError(RuntimeError):
 def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
     """Return the single ordered governance graph for this repository."""
     link_mode = () if online_links else ("--offline",)
-    markdown_yaml = _tracked_current((".md", ".yaml", ".yml"))
-    markdown = tuple(path for path in markdown_yaml if path.endswith(".md"))
+    structured_text = _tracked_current((".md", ".yaml", ".yml", ".json", ".jsonc"))
+    markdown = tuple(path for path in structured_text if path.endswith(".md"))
     toml = _tracked_current((".toml",))
     return (
         (
@@ -50,7 +50,7 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
             ".config/quality/native/prettier.json",
             "--ignore-path",
             ".config/quality/native/prettier.ignore",
-            *markdown_yaml,
+            *structured_text,
         ),
         (
             "taplo",

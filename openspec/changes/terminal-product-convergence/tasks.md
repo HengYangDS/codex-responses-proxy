@@ -274,6 +274,8 @@
       Git attributes keep text at LF under `core.autocrlf=true` without changing binary bytes; EditorConfig and Taplo agree on two-space TOML indentation.
       Contributor guidance now links the native workspace commit policy;
       coverage guidance uses the configured at-least comparison.
+      Current JSON and JSONC configuration now joins the existing native
+      formatter and text-byte scope; editor defaults use the same indentation.
       Hosted CI and the remaining root-carrier audit stay open.
       Stable npm 12.2.0 uses the native Mise backend and generated AUBE graph;
       the old repository sidecars retire through that producer. Native lock

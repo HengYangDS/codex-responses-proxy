@@ -247,6 +247,8 @@ roles = [
   "ci-model",
   "github-ci",
   "gitlab-ci",
+  "quality-tool-configuration",
+  "toolchain",
 ]
 
 [[scopes]]
@@ -406,7 +408,7 @@ remediation = "Format with the native owner or correct the carrier role."
 review_condition = "Reassess when a supported platform cannot preserve a declared invariant."
 
 [[concerns]]
-id = "markdown-yaml-format"
+id = "structured-text-format"
 owner = "prettier"
 scope = "prettier-formatted"
 session = "governance"
@@ -414,11 +416,11 @@ configuration = [
   ".config/quality/native/prettier.json",
   ".config/quality/native/prettier.ignore",
 ]
-risk_model = "Inconsistent Markdown and YAML structure raises review cost and can obscure semantic drift across documentation and generated Forge projections."
-measurement = "Locked Prettier checks current Markdown and YAML authorities; digest-bound native AUBE locks and immutable OpenSpec archives retain their native bytes."
+risk_model = "Inconsistent Markdown YAML and JSON structure raises review cost and can obscure semantic drift across documentation configuration and generated Forge projections."
+measurement = "Locked Prettier checks every tracked current Markdown YAML JSON and JSONC carrier; digest-bound native AUBE locks and immutable OpenSpec archives retain their native bytes."
 false_positive_cost = "Formatting must preserve authored prose wrapping and must not rewrite immutable historical evidence."
-remediation = "Apply the locked Prettier version to current Markdown and YAML carriers through the repository governance session."
-review_condition = "Reassess when Prettier changes supported syntax or a new current Markdown or YAML role is introduced."
+remediation = "Apply the locked Prettier version to current structured-text carriers through the repository governance session."
+review_condition = "Reassess when Prettier changes supported syntax or a new current structured-text role is introduced."
 
 [[concerns]]
 id = "toml-format"
