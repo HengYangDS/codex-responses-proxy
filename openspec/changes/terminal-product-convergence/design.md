@@ -162,6 +162,13 @@ would replace.
 
 ### Quality acceptance protects product invariants, not a green dashboard
 
+Public outcome admission validates the operation, not only its JSON shape.
+A completed reload requires distinct positive predecessor and successor process
+IDs. Cleanup reports a nonnegative integer process count; zero remains valid
+when there was no live listener to stop. The existing outcome owner rejects
+inconsistent evidence before either human or machine rendering, without adding
+a second result schema or changing valid lifecycle output.
+
 The quality system has four distinct obligations: a useful policy, a correct
 measurement, a complete execution path, and a working product. Passing one does
 not establish the others. The responsibility map assigns concerns; native tool
