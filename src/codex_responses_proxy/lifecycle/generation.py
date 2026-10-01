@@ -181,7 +181,10 @@ def remove(ctx: runtime_context.RuntimeContext, generation: str) -> None:
         try:
             shutil.rmtree(target)
         except OSError as exc:
-            raise errors.InstallError("payload generation removal failed") from exc
+            native = getattr(exc, "winerror", None)
+            code = native if type(native) is int else exc.errno
+            detail = f" (OS error {code})" if type(code) is int else ""
+            raise errors.InstallError(f"payload generation removal failed{detail}") from exc
     generations = root(ctx)
     try:
         if generations.is_dir() and not any(generations.iterdir()):

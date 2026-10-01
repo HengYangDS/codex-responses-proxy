@@ -56,6 +56,15 @@ command.
 - **THEN** the public outcome boundary rejects the result before either renderer
 - **AND** emits one bounded failure instead of successful operation output.
 
+#### Scenario: Installation fails and compensation also fails
+
+- **WHEN** a fresh install fails and native cleanup or payload rollback cannot finish
+- **THEN** the public failure retains both the initial and compensation boundaries
+- **AND** native generation removal reports its numeric operating-system error
+  without private paths or arbitrary exception text
+- **AND** unavailable service admission does not trigger native cleanup
+- **AND** existing recovery authority remains intact until exact cleanup succeeds.
+
 #### Scenario: Cleanup has no live process to stop
 
 - **WHEN** valid cleanup evidence reports zero stopped processes
