@@ -34,6 +34,58 @@ const noProseControl = {
   },
 };
 
+// Upstream blank-line rules leave single-paragraph peer spacing unconstrained.
+const spacingTokens = new Set([
+  "lineEnding",
+  "lineEndingBlank",
+  "listItemIndent",
+  "blockQuotePrefix",
+  "linePrefix",
+]);
+/** @type {import("markdownlint").Rule} */
+const singleParagraphListSpacing = {
+  names: ["single-paragraph-list-spacing"],
+  description: "Single-paragraph list items have no blank separators",
+  tags: ["blank_lines"],
+  parser: "micromark",
+  function(params, onError) {
+    const pending = [...params.parsers.micromark.tokens];
+    while (pending.length) {
+      const list = pending.pop();
+      pending.push(...list.children);
+      if (list.type !== "listOrdered" && list.type !== "listUnordered")
+        continue;
+      const items = [];
+      for (const child of list.children) {
+        if (child.type === "listItemPrefix") items.push([]);
+        else if (items.length && !spacingTokens.has(child.type))
+          items.at(-1).push(child);
+      }
+      if (
+        items.length < 2 ||
+        !items.every(
+          (item) =>
+            item.length === 1 &&
+            item[0].type === "content" &&
+            item[0].children.length === 1 &&
+            item[0].children[0].type === "paragraph",
+        )
+      )
+        continue;
+      for (let index = 1; index < items.length; index++) {
+        const lineNumber = items[index - 1][0].endLine + 1;
+        if (lineNumber < items[index][0].startLine)
+          onError({
+            lineNumber,
+            detail:
+              "Remove the blank separator between single-paragraph items.",
+            fixInfo: { lineNumber, deleteCount: -1 },
+          });
+      }
+    }
+  },
+};
+
 export default {
   config: {
     MD013: {
@@ -45,5 +97,5 @@ export default {
     MD024: { siblings_only: true },
   },
   noInlineConfig: true,
-  customRules: [noProseControl],
+  customRules: [noProseControl, singleParagraphListSpacing],
 };

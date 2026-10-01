@@ -88,6 +88,14 @@ retain their exact bytes. The same governance entry executes real formatter and
 lint counterexamples; Python-only native lifecycle jobs do not need Node for
 them.
 
+Keep one blank line between distinct paragraphs, headings, lists, tables and
+fences. Peer list items remain contiguous when each contains only one paragraph,
+including wrapped tasks. Complex items may retain one blank separator; do not
+remove internal paragraph boundaries or alter literal code. Upstream rules do
+not constrain single-paragraph peer spacing, so the existing
+[Markdown policy](.config/quality/native/markdownlint-cli2.mjs) adds that narrow
+check through native list and paragraph tokens, not another parser or formatter.
+
 The same governance entry uses locked Vale for English spelling, repeated words,
 canonical terminology, and needless phrases. Its native parser checks headings,
 paragraphs, quotes, and tables without treating code or link destinations as

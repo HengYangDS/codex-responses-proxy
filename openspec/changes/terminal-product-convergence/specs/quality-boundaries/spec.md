@@ -72,6 +72,28 @@ thresholds, and unexplained disabled rules SHALL fail admission.
 - **AND** formatter reflow preserves prose, code bytes, link targets, and
   immutable archived Change bytes.
 
+#### Scenario: Single-paragraph peer items contain blank separators
+
+- **WHEN** a current list or task list inserts blank lines between peer items
+  that each contain only one paragraph
+- **THEN** the native Markdown gate SHALL reject that spacing
+- **AND** nested and quoted lists SHALL follow the same paragraph-level rule
+- **AND** inline suppression SHALL leave the rule active.
+
+#### Scenario: List items contain distinct semantic blocks
+
+- **WHEN** a list contains multiple paragraphs, a nested block, a table or a
+  fenced example
+- **THEN** the native gate SHALL preserve valid blank-line separation
+- **AND** literal code and immutable archives SHALL remain unchanged.
+
+#### Scenario: Adjacent blocks lack their required separation
+
+- **WHEN** headings, lists, tables or fenced blocks lack required blank lines,
+  or prose contains consecutive extra blank lines
+- **THEN** the existing native block-spacing rules SHALL reject the defect
+- **AND** the read-only gate SHALL leave source bytes unchanged.
+
 #### Scenario: Current English prose is defective
 
 - **WHEN** tracked current Markdown contains a misspelling, repeated word,

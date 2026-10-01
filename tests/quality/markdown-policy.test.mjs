@@ -67,3 +67,75 @@ for (const [name, source, forbidden] of cases) {
     }
   });
 }
+
+const spacingCases = [
+  ["tight list", "- First.\n- Second.\n", ""],
+  [
+    "wrapped tasks",
+    "- [ ] First action\n      and check.\n- [ ] Second.\n",
+    "",
+  ],
+  [
+    "isolated task separator",
+    "- [ ] First.\n- [ ] Second.\n\n- [ ] Third.\n",
+    "single-paragraph-list-spacing",
+  ],
+  [
+    "loose ordered list",
+    "1. First.\n\n2. Second.\n",
+    "single-paragraph-list-spacing",
+  ],
+  [
+    "nested list",
+    "- Parent.\n  - First.\n\n  - Second.\n- Next parent.\n",
+    "single-paragraph-list-spacing",
+  ],
+  [
+    "quoted list",
+    "> - First.\n>\n> - Second.\n",
+    "single-paragraph-list-spacing",
+  ],
+  [
+    "multi-paragraph list",
+    "- First paragraph.\n\n  Second paragraph.\n\n- Next item.\n",
+    "",
+  ],
+  [
+    "fenced example in list",
+    "- Command.\n\n  ```sh\n  command\n\n\n  command\n  ```\n\n- Next item.\n",
+    "",
+  ],
+  ["list-looking code", "```markdown\n- First.\n\n- Second.\n```\n", ""],
+  ["independent lists", "- First.\n\nParagraph.\n\n- Second.\n", ""],
+  ["repeated blank lines", "Text.\n\n\nParagraph.\n", "MD012"],
+  ["missing heading separator", "## Detail\nText.\n", "MD022"],
+  ["missing fence separator", "Text.\n```sh\ncommand\n```\n", "MD031"],
+  ["missing list separator", "Text.\n- Item.\n", "MD032"],
+  [
+    "missing table separator",
+    "Text.\n| Field |\n| ----- |\n| Value |\n",
+    "MD058",
+  ],
+  [
+    "inline spacing suppression",
+    "<!-- markdownlint-disable blank_lines -->\n- First.\n\n- Second.\n",
+    "single-paragraph-list-spacing",
+  ],
+];
+
+for (const [name, source, expectedRule] of spacingCases) {
+  test(`spacing: ${name}`, () => {
+    const errors = lint({
+      strings: { fixture: `# Document\n\n${source}` },
+      config: policy.config,
+      noInlineConfig: policy.noInlineConfig,
+      customRules: policy.customRules,
+    }).fixture;
+    if (expectedRule)
+      assert.ok(
+        errors.some((error) => error.ruleNames.includes(expectedRule)),
+        JSON.stringify(errors),
+      );
+    else assert.deepEqual(errors, []);
+  });
+}
