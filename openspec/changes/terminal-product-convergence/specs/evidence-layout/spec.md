@@ -15,7 +15,7 @@ records tree, Claim family, Chronicle family, or compatibility taxonomy.
 - **WHEN** terminal convergence audits tracked and host-local evidence
 - **THEN** every retained carrier names its current consumer and exact source
   revision
-- **AND** duplicate, superseded, environment-bound, or consumerless carriers are
+- **AND** duplicate, superseded, environment-bound, or unconsumed carriers are
   removed.
 
 #### Scenario: A transient verification completes

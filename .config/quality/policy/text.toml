@@ -13,8 +13,10 @@ tracked_suffixes = [
   ".json",
   ".jsonc",
   ".md",
+  ".mjs",
   ".py",
   ".toml",
+  ".txt",
   ".yaml",
   ".yml",
 ]

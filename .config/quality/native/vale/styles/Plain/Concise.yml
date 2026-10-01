@@ -1,0 +1,10 @@
+extends: substitution
+message: Use '%s' instead of '%s'.
+level: error
+ignorecase: true
+scope: text
+swap:
+  in order to: to
+  due to the fact that: because
+  at this point in time: now
+  utilize: use

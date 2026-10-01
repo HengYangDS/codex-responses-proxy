@@ -193,6 +193,36 @@ configuration defines their executable rules; Nox invokes them; CUE projects the
 same obligations into each Forge. No second checker, registry, or workflow may
 independently define the same rule.
 
+English quality uses one native Vale CLI for spelling, repeated words, canonical
+terms, and concise prose. Its native configuration and vocabulary belong under
+the existing quality configuration owner. The governance graph selects all
+tracked current Markdown once, including OpenSpec, without archived or private
+inputs. Real command probes cover paragraphs, quotes, and table cells and leave
+code, identifiers, and link destinations untouched. Rules cannot silently remove
+an actor, obligation, qualification, or evidence limit to make prose pass. Style
+checks do not prove semantic completeness or factual correctness.
+
+Vale supports document-level disabling comments; `--no-global` does not prevent
+them. Native ignore-pattern trials changed paragraph boundaries and missed a
+repeated word across an inline comment, so they are rejected. The existing
+Markdown linter instead uses one native micromark rule to reject actual Vale
+control comments in all current documents. It preserves literal code and normal
+comments and runs native Node tests through the same governance entry. The
+Markdown linter configuration is one native module. Native HTML callbacks
+identify actual comments, and the native entity decoder matches Vale's comment
+interpretation without treating attribute or escaped example text as a control.
+Its code and the vocabulary retain the existing tracked text-byte policy.
+
+The initial textlint/write-good candidate was rejected after real quote and
+table counterexamples exposed its native plain-paragraph-only scope. Copying
+DDWG's custom adapter would retain another parser and linguistic implementation.
+Vale's built-in spelling, repetition and vocabulary checks cover those same
+inputs; one small native substitution rule removes specific needless phrases
+without a new NLP engine. The rejected npm dependencies and draft configurations
+are retired, not kept as fallback or a second command plane. General policy will
+be reconciled at the accepted ETHOS quality owner; repository-native prose
+checks do not grant lifecycle proof.
+
 Prettier owns current Markdown, YAML, JSON and JSONC formatting through the
 existing governance command. Git's exact tracked inventory includes hidden
 configuration and package-manager inputs; an untracked private file or immutable
@@ -606,16 +636,16 @@ proved. Deletion is a first-class task, not deferred housekeeping.
 
 ## Risks / Trade-offs
 
-- **The broad Change becomes an excuse for an unreviewable patch** → keep one
-  Change but use ordered atomic commits, focused proofs, and task-level
+- **The broad Change becomes an excuse for a patch too broad to review** → keep
+  one Change but use ordered atomic commits, focused proofs, and task-level
   acceptance; never combine unrelated mutations in one commit.
 - **Topology work destabilizes the working service** → preserve the accepted
   installed release until a signed candidate passes native lifecycle proof;
   source restructuring does not mutate the active service.
 - **Strict quality expansion creates arbitrary vetoes** → every rule records
   risk, scope, measurement, false-positive cost, remediation, and review
-  condition; unsupported or redundant rules are rejected rather than enabled
-  performatively.
+  condition; unsupported or redundant rules are rejected rather than enabled for
+  appearances.
 - **Latest dependencies introduce regressions** → update one authority at a
   time, regenerate locks, run clean-room and affected-platform proof, and keep
   published assets immutable.
@@ -644,5 +674,6 @@ proved. Deletion is a first-class task, not deferred housekeeping.
    optional Forges, publish immutable assets, and prove installed upgrade,
    no-op, rollback, recovery, re-upgrade, uninstall, and reinstall.
 7. Remove proposal branches, the Work Lane, superseded local and remote
-   artifacts, native test resources, caches, and consumerless records; then
-   archive this Change and verify the repository family is terminal.
+   artifacts, native test resources, caches, and records with no current
+   consumer; then archive this Change and verify the repository family is
+   terminal.

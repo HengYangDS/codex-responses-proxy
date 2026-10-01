@@ -37,7 +37,7 @@ source-and-governance:
       - ""
   variables:
     GIT_DEPTH: "0"
-    MISE_ENABLE_TOOLS: python,uv,node,npm,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee
+    MISE_ENABLE_TOOLS: python,uv,node,npm,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee,aqua:vale-cli/vale
   before_script:
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends libatomic1
@@ -60,7 +60,7 @@ source-and-governance-review:
       - ""
   variables:
     GIT_DEPTH: "0"
-    MISE_ENABLE_TOOLS: python,uv,node,npm,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee
+    MISE_ENABLE_TOOLS: python,uv,node,npm,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee,aqua:vale-cli/vale
   before_script:
     - apt-get update -qq
     - apt-get install -qq -y --no-install-recommends libatomic1

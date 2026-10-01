@@ -116,11 +116,11 @@ the complete predecessor projection.
 
 ### Requirement: Recovery binds candidate, rollback, and live runtime
 
-Recovery SHALL distinguish no transaction, an unmutated `prepared` transaction,
-a `recovery_required` payload transition, and an invalid retained transaction.
-No transaction SHALL be an idempotent successful no-op. A prepared transaction
-SHALL be closed only when its canonical journal is the sole transaction-root
-entry.
+Recovery SHALL distinguish no transaction, a `prepared` transaction that changed
+no payload, a `recovery_required` payload transition, and an invalid retained
+transaction. No transaction SHALL be an idempotent successful no-op. A prepared
+transaction SHALL be closed only when its canonical journal is the sole
+transaction-root entry.
 
 #### Scenario: No transaction exists
 
