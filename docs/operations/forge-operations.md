@@ -184,6 +184,11 @@ published predecessor must still be tested in its supported login context;
 headless current-artifact success is different evidence. Neither qualification
 nor ordinary installation creates a login session or borrows a protected user.
 
+If a launch-agent file becomes malformed, unowned or indirect, preserve it and
+inspect the exact file before repair. The product refuses to follow a symbolic
+link, replace unrelated content or remove a carrier changed during teardown.
+Only the verified installation's native watchdog declaration is mutation input.
+
 Current native lifecycle acceptance snapshots the exact registered labels,
 launchd override entries, and plist hashes before and after successful and
 interrupted isolated installations. Equality proves that current lifecycle code

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from xml.dom import minidom
+
+import pytest
 
 from codex_responses_proxy.lifecycle.supervision import linux
 from codex_responses_proxy.lifecycle.supervision import macos
 from codex_responses_proxy.lifecycle.supervision import windows
 from tests.lifecycle.fixtures import platform_context
 from tests.lifecycle.supervision.fixtures import assert_fragments as _assert_fragments
+from tests.lifecycle.supervision.fixtures import temporary_context as _temporary_context
 
 POSIX_CONTEXT = platform_context()
 WINDOWS_CONTEXT = platform_context(windows=True)
@@ -40,6 +44,16 @@ WINDOWS_TASK_CONTAINS = f"""<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
 
 
 class TestServiceDefinitions:
+    @pytest.mark.parametrize("windows", [False, True])
+    def test_temporary_context_owns_every_native_path(self, windows) -> None:
+        with _temporary_context("log_dir", windows=windows) as ctx:
+            root = Path(ctx.user_home)
+            for name in ("install_dir", "log_dir", "executable", "command"):
+                target = Path(getattr(ctx, name))
+                assert target.is_absolute()
+                assert target.is_relative_to(root)
+            assert Path(ctx.executable).parent.name == "bin"
+
     def test_macos_plist(self):
         xml = macos.render_plist(platform_context())
         minidom.parseString(xml)

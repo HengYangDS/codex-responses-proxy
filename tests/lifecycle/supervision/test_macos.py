@@ -275,7 +275,8 @@ class TestMacosLifecycle:
         self, *, configured, captured, message, mocker
     ) -> None:
         with _temporary_context("log_dir") as ctx:
-            mocker.patch.object(macos, "configured_executable", return_value=configured)
+            carrier = None if configured is None else (b"verified carrier", configured)
+            mocker.patch.object(macos, "_carrier", return_value=carrier)
             mocker.patch.object(macos, "_service", return_value=macos._Service(True, 41))
             capture = mocker.patch.object(
                 macos.process,
@@ -463,9 +464,12 @@ class TestMacosLifecycle:
         with _temporary_context("log_dir") as ctx:
             plist = Path(macos._plist_path(ctx))
             plist.parent.mkdir(parents=True, exist_ok=True)
-            prior = macos.render_plist(ctx).replace(ctx.executable, "/previous/proxy")
+            previous_executable = str(
+                Path(ctx.install_dir, "generations", "a" * 32, "bin", Path(ctx.executable).name)
+            )
+            prior = macos.render_plist(ctx).replace(ctx.executable, previous_executable)
             plist.write_text(prior, encoding="utf-8")
-            predecessor = macos.process.OwnedProcess(41, "/previous/proxy", 1.0)
+            predecessor = macos.process.OwnedProcess(41, previous_executable, 1.0)
             mocker.patch.object(macos.process, "capture_executable", return_value=predecessor)
             mocker.patch.object(macos.process, "wait_for_exit", return_value=False)
             mocker.patch.object(
@@ -521,7 +525,8 @@ class TestMacosLifecycle:
             _set_file(plist, macos.render_plist(ctx))
             assert macos.configured_executable(ctx) == ctx.executable
             _set_file(plist, "not a plist")
-            assert macos.configured_executable(ctx) is None
+            with pytest.raises(errors.InstallError, match="carrier is invalid"):
+                macos.configured_executable(ctx)
 
     def test_rendered_plist_captures_watchdog_stderr(self):
         with _temporary_context("log_dir") as ctx:
@@ -538,11 +543,11 @@ class TestMacosLifecycle:
                 (True, _completed(returncode=113), "installed"),
                 (True, _completed(stdout=_service(73)), "running"),
             ):
-                _set_file(plist, "plist" if exists else None)
+                _set_file(plist, macos.render_plist(ctx) if exists else None)
                 mocker.patch.object(macos.subprocess, "run", return_value=result)
                 assert macos.status(ctx) == expected
             for exists in (False, True):
-                _set_file(plist, "plist" if exists else None)
+                _set_file(plist, macos.render_plist(ctx) if exists else None)
                 invoked = mocker.patch.object(
                     macos.subprocess,
                     "run",
@@ -615,7 +620,7 @@ class TestMacosLifecycle:
 
     def test_uninstall_keeps_plist_when_launchd_remains_registered(self, *, mocker) -> None:
         with _temporary_context("log_dir") as ctx:
-            plist = _set_file(macos._plist_path(ctx), "plist")
+            plist = _set_file(macos._plist_path(ctx), macos.render_plist(ctx))
             mocker.patch.object(
                 macos.subprocess,
                 "run",

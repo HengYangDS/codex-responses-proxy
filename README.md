@@ -51,6 +51,8 @@ does not create a login session or override a disabled service. Upgrading an
 existing GUI-domain watchdog verifies and removes that exact predecessor before
 binding the user-domain successor. An ambiguous or unavailable service
 observation is an error, not proof that a service is absent.
+The launch-agent file must remain a regular file owned by this installation;
+unrelated, malformed or symbolic-link replacements are preserved and rejected.
 
 Linux installation requires a reachable systemd user manager. A container without
 that user session is not a supported service host. Installation reports

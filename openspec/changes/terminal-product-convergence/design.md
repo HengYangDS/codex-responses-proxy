@@ -366,6 +366,15 @@ the carrier, then proves a distinct successor in the canonical user domain.
 Status and teardown observe the same targets, including a registered service
 whose carrier has disappeared.
 
+The launch-agent carrier uses the existing owned-file boundary, not direct
+path reads or writes. Its home-relative ancestors and leaf must be real
+directories and a regular file; its label, native watchdog arguments, user home
+and executable inside this installation must agree. An absent carrier is not
+an invalid carrier. Installation rejects unowned content before any service
+mutation, writes the accepted successor atomically, and teardown rechecks the
+exact prior bytes before removing the file. A symbolic link or changed carrier
+never grants permission to overwrite or delete its target.
+
 The published 4.0.4 predecessor's own installer requires a GUI domain. Its
 authentic installation, health, upgrade and rollback obligation remains a
 separate supported-context qualification; headless candidate success cannot
