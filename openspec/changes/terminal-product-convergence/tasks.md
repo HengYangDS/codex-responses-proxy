@@ -281,6 +281,13 @@
       coverage guidance uses the configured at-least comparison.
       Current JSON and JSONC configuration now joins the existing native
       formatter and text-byte scope; editor defaults use the same indentation.
+      Native interpreter selection now has one Mise tool-aware environment
+      owner. Direct proof, local tasks, and native CI synchronize the locked
+      environment before execution, without executable-name ambiguity or
+      no-sync false acceptance. Actual nested-path regressions cover missing
+      and stale environments plus changed locks; the governance graph and
+      each native platform execute them before dependent work. Local native
+      acceptance passed; fresh Windows service-consumer acceptance stays open.
       Hosted CI and the remaining root-carrier audit stay open.
       Stable npm 12.2.0 uses the native Mise backend and generated AUBE graph;
       the old repository sidecars retire through that producer. Native lock

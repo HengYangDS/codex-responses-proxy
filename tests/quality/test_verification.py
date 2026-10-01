@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tomllib
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,60 @@ def _required_uv_version() -> str:
     if not isinstance(requirement, str) or not re.fullmatch(r"==\d+\.\d+\.\d+", requirement):
         raise AssertionError("uv must use an exact semantic version")
     return requirement.removeprefix("==")
+
+
+def _native_run(
+    root: Path, environment: dict[str, str], command: Sequence[str]
+) -> subprocess.CompletedProcess[str]:
+    """Exercise the real selected toolchain without inheriting project discovery."""
+    return subprocess.run(
+        command,
+        cwd=root,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+@pytest.fixture
+def native_python_project(tmp_path: Path) -> tuple[Path, dict[str, str]]:
+    """Own a dependency-free native project under a nested path containing spaces."""
+    root = tmp_path / "project with spaces" / "nested"
+    root.mkdir(parents=True)
+    for name in ("mise.toml", "mise.lock"):
+        (root / name).write_bytes((ROOT / name).read_bytes())
+    (root / "pyproject.toml").write_text(
+        '[project]\nname = "native-environment-contract"\nversion = "0.0.0"\n'
+        'requires-python = ">=3.12"\ndependencies = []\n\n'
+        "[dependency-groups]\nquality = []\n\n"
+        f'[tool.uv]\nrequired-version = "=={_required_uv_version()}"\n',
+        encoding="utf-8",
+    )
+    global_config = tmp_path / "global.toml"
+    global_config.write_text("", encoding="utf-8")
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith(("MISE_CONFIG", "MISE_GLOBAL", "MISE_CEILING", "UV_"))
+        and name not in {"VIRTUAL_ENV", "PYTHONHOME", "PYTHONPATH"}
+    }
+    environment.update(
+        MISE_GLOBAL_CONFIG_FILE=str(global_config),
+        MISE_SYSTEM_CONFIG_DIR=str(tmp_path / "absent-system"),
+        MISE_CEILING_PATHS=str(tmp_path),
+        MISE_TRUSTED_CONFIG_PATHS=str(tmp_path),
+        MISE_AUTO_INSTALL="0",
+        MISE_OFFLINE="1",
+        UV_OFFLINE="true",
+        UV_PYTHON_DOWNLOADS="never",
+    )
+    locked = _native_run(root, environment, ("mise", "exec", "--locked", "--", "uv", "lock"))
+    assert locked.returncode == 0, locked.stderr
+    assert "warning" not in locked.stderr.lower(), locked.stderr
+    return root, environment
 
 
 class TestVerificationContracts:
@@ -296,10 +351,7 @@ class TestVerificationContracts:
                     assert scripts[3:5] == ("npm ci --ignore-scripts", "npm audit signatures")
                 else:
                     assert scripts[0] == "mise install --locked"
-                    assert (
-                        "mise exec --locked -- uv sync --locked --group quality --python python"
-                        in scripts
-                    )
+                    assert "mise exec --locked -- uv sync --locked --group quality" in scripts
                 continue
             assert metadata_checks == 1
         assert 'UV_VERSION="${UV_VERSION#uv }"' in gitlab
@@ -504,12 +556,15 @@ class TestVerificationContracts:
         environment = toolchain["env"]
         assert environment["UV_PROJECT_ENVIRONMENT"] == "{{config_root}}/.venv"
         assert environment["VIRTUAL_ENV"] is False
-        assert environment["UV_PYTHON"] is False
+        assert environment["UV_PYTHON"] == {
+            "value": "{{tools.python.path}}",
+            "tools": True,
+        }
         assert environment["PYTHONHOME"] is False
         assert environment["PYTHONPATH"] is False
         assert environment["PYTHONNOUSERSITE"] == "1"
         assert toolchain["tasks"]["bootstrap"]["run"] == [
-            'uv sync --locked --all-groups --python "{{tools.python.path}}"',
+            "uv sync --locked --all-groups",
             "npm ci --ignore-scripts",
             "npm audit signatures",
         ]
@@ -550,7 +605,7 @@ class TestVerificationContracts:
     ) -> None:
         toolchain = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
         assert toolchain["tasks"][task]["run"] == (
-            'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s ' + session
+            "uv run --locked --group quality nox -s " + session
         )
 
     @pytest.mark.parametrize(
@@ -726,3 +781,107 @@ def test_gitlab_linux_tags_bind_directly_without_recursive_aliases() -> None:
             event = str(job["rules"])
             assert ("merge_request_event" in event) == bool(suffix)
     assert "CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG" not in str(pipeline)
+
+
+@pytest.mark.parametrize(
+    "job_name",
+    [
+        "verify-macos-native",
+        "verify-macos-native-review",
+        "verify-windows-native",
+        "verify-windows-native-review",
+    ],
+)
+def test_native_ci_uses_the_single_tool_bound_environment(job_name: str) -> None:
+    pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
+    job = _mapping(pipeline[job_name])
+    bootstrap = job["before_script"]
+    scripts = job["script"]
+    assert isinstance(bootstrap, list)
+    assert isinstance(scripts, list)
+    sync = [entry for entry in bootstrap if isinstance(entry, str) and "uv sync" in entry]
+    assert sync == ["mise exec --locked -- uv sync --locked --group quality"]
+    assert all(
+        isinstance(entry, str) and "uv run --locked --group quality" in entry for entry in scripts
+    )
+    assert "--no-sync" not in str(scripts)
+    assert "--python" not in str(scripts)
+    assert (
+        "mise exec --locked -- uv run --locked --group quality python -m pytest -q "
+        "-m repository_toolchain tests/quality/test_verification.py"
+    ) in scripts
+
+
+@pytest.mark.repository_toolchain
+def test_native_environment_resolves_the_locked_python_owner(
+    native_python_project: tuple[Path, dict[str, str]],
+) -> None:
+    root, environment = native_python_project
+    discovered = _native_run(root, environment, ("mise", "config", "--json"))
+    assert discovered.returncode == 0, discovered.stderr
+    assert {Path(item["path"]) for item in json.loads(discovered.stdout)} == {
+        root / "mise.toml",
+        root.parents[1] / "global.toml",
+    }
+    selected = _native_run(root, environment, ("mise", "env", "--json"))
+    assert selected.returncode == 0, selected.stderr
+    assert selected.stderr == ""
+    native = json.loads(selected.stdout)
+    assert Path(native["UV_PROJECT_ENVIRONMENT"]) == root / ".venv"
+    assert Path(native.get("UV_PYTHON", "")).is_absolute(), native.get("UV_PYTHON")
+    toolchain = tomllib.loads((root / "mise.toml").read_text(encoding="utf-8"))
+    assert Path(native["UV_PYTHON"]).name == toolchain["tools"]["python"]
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize("consumer", ["proof", "native-ci"])
+@pytest.mark.parametrize("state", ["ready", "missing", "stale", "stale-lock"])
+def test_native_uv_execution_normalizes_only_its_owned_environment(
+    native_python_project: tuple[Path, dict[str, str]], consumer: str, state: str
+) -> None:
+    root, environment = native_python_project
+    profile = tomllib.loads((ROOT / ".ethos/profile.toml").read_text(encoding="utf-8"))
+    if consumer == "proof":
+        command = profile["proof"]["gates"][0]["command"]
+        prefix = tuple(command[: command.index("nox")])
+    else:
+        pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
+        scripts = _mapping(pipeline["verify-windows-native"])["script"]
+        assert isinstance(scripts, list)
+        command = next(item for item in scripts if isinstance(item, str) and "nox -s" in item)
+        prefix = tuple(command.split(" nox -s", 1)[0].split())
+    local = root / ".venv"
+    if state != "missing":
+        created = _native_run(
+            root, environment, ("mise", "exec", "--locked", "--", "uv", "venv", str(local))
+        )
+        assert created.returncode == 0, created.stderr
+    if state == "stale":
+        config = local / "pyvenv.cfg"
+        config.write_text(
+            re.sub(r"version_info = [^\n]+", "version_info = 0.0.0", config.read_text()),
+            encoding="utf-8",
+        )
+    if state == "stale-lock":
+        metadata = root / "pyproject.toml"
+        metadata.write_text(metadata.read_text().replace('version = "0.0.0"', 'version = "0.0.1"'))
+    preserved = {
+        name: (root / name).read_bytes()
+        for name in ("mise.toml", "mise.lock", "pyproject.toml", "uv.lock")
+    }
+    probe = (
+        "import json, sys; "
+        "print(json.dumps({'version': list(sys.version_info[:3]), 'prefix': sys.prefix}))"
+    )
+    observed = _native_run(root, environment, (*prefix, "python", "-c", probe))
+    if state == "stale-lock":
+        assert observed.returncode != 0, observed.stdout
+        assert observed.stdout == ""
+    else:
+        assert observed.returncode == 0, observed.stderr
+        assert "warning" not in observed.stderr.lower(), observed.stderr
+        actual = json.loads(observed.stdout)
+        expected = tomllib.loads(preserved["mise.toml"].decode())["tools"]["python"]
+        assert actual["version"] == [int(part) for part in expected.split(".")]
+        assert Path(actual["prefix"]) == local
+    assert {name: (root / name).read_bytes() for name in preserved} == preserved

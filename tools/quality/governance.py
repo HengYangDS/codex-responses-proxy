@@ -64,6 +64,15 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
         ("cue", "vet", ".config/ci/pipeline.cue"),
         (sys.executable, "-m", "tools.ci.project"),
         (
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-m",
+            "repository_toolchain",
+            "tests/quality/test_verification.py",
+        ),
+        (
             "npm",
             "exec",
             "--offline",

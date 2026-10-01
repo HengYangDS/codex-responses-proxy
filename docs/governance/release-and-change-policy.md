@@ -110,13 +110,20 @@ indentation; neither replaces a language formatter.
 Required local evidence includes:
 
 ```bash
-mise exec --locked -- uv run --locked --no-sync nox -s full
-mise exec --locked -- uv run --locked --no-sync nox -s release
+mise run check
+mise run native
 ```
 
 The explicit `mise exec --locked --` boundary makes the repository-selected
 toolchain authoritative in interactive shells, agents, and other non-login
 processes alike.
+
+Mise's tool-aware environment directive binds uv to the locked interpreter.
+The local tasks and direct proof commands use native locked synchronization:
+a missing or stale generated environment is reconstructed before execution,
+while an out-of-date dependency lock fails without rewriting source. The
+governance graph exercises those actual commands under nested paths containing
+spaces. It does not treat an interpreter warning or a no-sync run as acceptance.
 
 `quick` is optional feedback, not a second admission graph. `full` composes the
 locked governance tools, strict Python 3.12 quality and coverage owner, and the

@@ -209,6 +209,18 @@ and ceiling selection excludes ambient host and parent configuration while
 retaining the exact project config. A missing project config is failed input,
 not isolation success. Package caches and mutable environments remain private.
 
+Mise's tool-aware late `UV_PYTHON` directive is the single locked interpreter
+binding for local tasks, direct proof commands, and native CI. Native locked
+synchronization reconstructs a missing or stale generated `.venv` before
+execution and rejects an out-of-date dependency lock without changing source.
+No-sync execution, an executable-name request, and a private interpreter checker
+are not substitute acceptance. The governance graph exercises the actual
+consumer commands under nested paths containing spaces. Image-owned Linux
+commands keep their explicit runtime selection; neither policy changes a
+supported Python version or suppresses a mismatched-environment warning.
+Native macOS and Windows jobs execute the same conformance before constructing
+their release candidate, rather than inferring portability from local success.
+
 Native signing fixtures retain deeply nested HOME as a real input. OpenSSH's
 default HOME-relative socket can exceed the Unix path limit; the fixture uses
 standard-library native temporary storage for an explicit short socket and owns
