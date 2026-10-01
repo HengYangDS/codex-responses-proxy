@@ -317,7 +317,11 @@ class TestQualityPolicyContracts:
         completed = mocker.Mock(returncode=0)
         tracked = mocker.Mock(
             returncode=0,
-            stdout=b"README.md\0.gitlab-ci.yml\0mise.toml\0openspec/changes/archive/old.md\0",
+            stdout=(
+                b"README.md\0.gitlab-ci.yml\0package.json\0"
+                b".config/quality/native/prettier.json\0mise.toml\0"
+                b"openspec/changes/archive/old.md\0"
+            ),
         )
         run = mocker.patch.object(
             governance.subprocess,
@@ -342,6 +346,8 @@ class TestQualityPolicyContracts:
                 ".config/quality/native/prettier.ignore",
                 "README.md",
                 ".gitlab-ci.yml",
+                "package.json",
+                ".config/quality/native/prettier.json",
             ),
             (
                 "taplo",
@@ -399,8 +405,8 @@ class TestQualityPolicyContracts:
         )
         concerns = {concern["id"]: concern for concern in policy["concerns"]}
 
-        assert concerns["markdown-yaml-format"] == {
-            "id": "markdown-yaml-format",
+        assert concerns["structured-text-format"] == {
+            "id": "structured-text-format",
             "owner": "prettier",
             "scope": "prettier-formatted",
             "session": "governance",
@@ -408,11 +414,11 @@ class TestQualityPolicyContracts:
                 ".config/quality/native/prettier.json",
                 ".config/quality/native/prettier.ignore",
             ],
-            "risk_model": concerns["markdown-yaml-format"]["risk_model"],
-            "measurement": concerns["markdown-yaml-format"]["measurement"],
-            "false_positive_cost": concerns["markdown-yaml-format"]["false_positive_cost"],
-            "remediation": concerns["markdown-yaml-format"]["remediation"],
-            "review_condition": concerns["markdown-yaml-format"]["review_condition"],
+            "risk_model": concerns["structured-text-format"]["risk_model"],
+            "measurement": concerns["structured-text-format"]["measurement"],
+            "false_positive_cost": concerns["structured-text-format"]["false_positive_cost"],
+            "remediation": concerns["structured-text-format"]["remediation"],
+            "review_condition": concerns["structured-text-format"]["review_condition"],
         }
         assert concerns["toml-format"]["owner"] == "taplo"
         assert concerns["toml-format"]["scope"] == "toml-formatted"
@@ -425,6 +431,7 @@ class TestQualityPolicyContracts:
         assert set(scopes["prettier-formatted"]).isdisjoint(scopes["python"])
         assert set(scopes["toml-formatted"]).isdisjoint(scopes["python"])
         assert scopes["cue-formatted"] == ["ci-model"]
+        assert {"quality-tool-configuration", "toolchain"} <= set(scopes["prettier-formatted"])
 
     def test_editor_defaults_and_text_layout_policy_are_aligned(self) -> None:
         editor = (ROOT / ".editorconfig").read_text(encoding="utf-8")
@@ -440,11 +447,13 @@ class TestQualityPolicyContracts:
         assert "insert_final_newline = true" in editor
         assert "trim_trailing_whitespace = true" in editor
         assert "[*.toml]\nindent_size = 2\n" in editor
+        assert "[*.{json,jsonc}]\nindent_style = space\nindent_size = 2\n" in editor
         assert taplo["formatting"]["indent_string"] == "  "
         assert policy["encoding"] == "utf-8"
         assert policy["line_ending"] == "lf"
         assert policy["insert_final_newline"] is True
         assert policy["trim_trailing_whitespace"] is True
+        assert {".json", ".jsonc"} <= set(policy["tracked_suffixes"])
 
     def test_git_checkout_preserves_lf_text_and_binary_bytes(self) -> None:
         attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
@@ -958,6 +967,55 @@ def test_formatter_defers_digest_bound_aube_bytes_to_the_native_owner() -> None:
     patterns = (ROOT / ignore).read_text(encoding="utf-8")
     assert "../../../.mise/locks/**/aube-lock.yaml" in patterns
     assert len([line for line in patterns.splitlines() if line and not line.startswith("#")]) == 1
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize("suffix", [".json", ".jsonc"])
+@pytest.mark.parametrize("state", ["formatted", "unformatted", "malformed"])
+def test_governance_formatter_checks_tracked_current_json_without_writes(
+    suffix: str, state: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    current = f".config/settings{suffix}"
+    archived = f"openspec/changes/archive/old/settings{suffix}"
+    ignored = f"private{suffix}"
+    with _test_repository(("README.md", current, archived, ".gitignore")) as root:
+        (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
+        (root / ".gitignore").write_text(f"{ignored}\n", encoding="utf-8")
+        (root / ignored).write_text("untracked invalid data\n", encoding="utf-8")
+        comma = "," if suffix == ".jsonc" else ""
+        source = {
+            "formatted": f'{{\n  "enabled": true{comma}\n}}\n',
+            "unformatted": '{"enabled":true}\n',
+            "malformed": '{"enabled":}\n',
+        }[state]
+        (root / current).write_text(source, encoding="utf-8")
+        _git(root, "add", "--", ".gitignore")
+        monkeypatch.setattr(governance, "ROOT", root)
+        command = governance._commands(online_links=False)[0]
+        config = command.index("--config") + 1
+        ignore = command.index("--ignore-path") + 1
+        native = (
+            *command[:config],
+            str(ROOT / command[config]),
+            *command[config + 1 : ignore],
+            str(ROOT / command[ignore]),
+            *(str(root / path) for path in command[ignore + 1 :]),
+        )
+        before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+        completed = subprocess.run(
+            native,
+            cwd=ROOT,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+        )
+        assert (completed.returncode == 0) is (state == "formatted"), completed.stdout
+        assert str(root / current) in native
+        assert str(root / archived) not in native
+        assert str(root / ignored) not in native
+        assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
 
 
 @pytest.mark.repository_toolchain

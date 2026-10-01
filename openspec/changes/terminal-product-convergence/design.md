@@ -176,6 +176,14 @@ configuration defines their executable rules; Nox invokes them; CUE projects the
 same obligations into each Forge. No second checker, registry, or workflow may
 independently define the same rule.
 
+Prettier owns current Markdown, YAML, JSON and JSONC formatting through the
+existing governance command. Git's exact tracked inventory includes hidden
+configuration and package-manager inputs; an untracked private file or immutable
+OpenSpec archive is not a current formatting input. The same native check rejects
+malformed or unformatted JSON without rewriting source. Editor defaults and
+text-byte validation cover those carriers too. Adding a format does not add a
+second formatter, schema, executor or dependency.
+
 Nox's native fail-fast option stops the ordered full graph at the first failed
 prerequisite. Governance failure cannot start quality or compatibility work;
 quality failure cannot start later interpreter sessions. A valid full run still

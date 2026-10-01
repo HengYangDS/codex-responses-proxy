@@ -48,6 +48,14 @@ thresholds, and unexplained disabled rules SHALL fail admission.
 - **THEN** the threshold derives from an explicit risk and observed distribution
 - **AND** a stricter number is not accepted merely because it is smaller.
 
+#### Scenario: Current tracked structured text is evaluated
+
+- **WHEN** repository governance selects tracked Markdown, YAML, JSON or JSONC
+- **THEN** the existing locked native formatter checks every current carrier,
+  including hidden configuration and package-manager metadata
+- **AND** malformed or unformatted JSON fails without source writes
+- **AND** immutable archived Changes and untracked private files remain untouched.
+
 #### Scenario: A full verification prerequisite fails
 
 - **WHEN** governance or quality fails in the ordered Nox full graph
