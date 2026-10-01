@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Define one repository-owned verification graph whose successful output is
-quiet, reproducible, cross-platform, and sufficient to reject incomplete
-product or release candidates.
+Define one repository-owned verification graph whose successful output is quiet,
+reproducible, cross-platform, and sufficient to reject incomplete product or
+release candidates.
 
 ## Requirements
 
@@ -44,17 +44,19 @@ missing runners SHALL NOT be represented as success.
 #### Scenario: The uv bootstrap advances
 
 - **WHEN** the current stable uv patch is available
-- **THEN** project metadata and its executable contract name that same exact version
+- **THEN** project metadata and its executable contract name that same exact
+  version
 - **AND** the dependency lock and product runtime semantics remain unchanged.
 
 ### Requirement: Release heading matches version and UTC date
 
-A pending release heading SHALL match `VERSION` and the current UTC date
-before either Forge prepares a release.
+A pending release heading SHALL match `VERSION` and the current UTC date before
+either Forge prepares a release.
 
 #### Scenario: Release preparation crosses a UTC date boundary
 
-- **WHEN** a pending version has not been tagged and its Changelog date is no longer the current UTC date
+- **WHEN** a pending version has not been tagged and its Changelog date is no
+  longer the current UTC date
 - **THEN** release preparation fails closed
 - **AND** the heading is advanced before proof, tagging, or publication.
 
@@ -64,7 +66,8 @@ before either Forge prepares a release.
 - **THEN** it checks the reachable product SemVer tags and corresponding
   Changelog headings from the exact source checkout
 - **AND** tag creation time is not required to equal the Changelog date
-- **AND** no Forge name or provider-specific tag namespace enters product metadata.
+- **AND** no Forge name or provider-specific tag namespace enters product
+  metadata.
 
 ### Requirement: Successful verification output is pristine
 
@@ -89,9 +92,9 @@ disconnects MAY be suppressed only by the fixture that creates them.
 
 ### Requirement: Python compatibility and native release prove distinct facts
 
-Each supported Python minor line SHALL build and install the wheel, then run
-the complete non-native behavior inventory. The release session SHALL be the
-only native executable build owner and SHALL black-box test the target-platform
+Each supported Python minor line SHALL build and install the wheel, then run the
+complete non-native behavior inventory. The release session SHALL be the only
+native executable build owner and SHALL black-box test the target-platform
 executable with Python absent from the product `PATH`.
 
 #### Scenario: The supported matrix runs
@@ -114,9 +117,9 @@ executable with Python absent from the product `PATH`.
 
 The complete behavior suite SHALL keep aggregate and every semantic package's
 statement and branch ratios above the floor declared by the canonical coverage
-policy. The policy SHALL state its risk model, exact measurement,
-false-positive cost, remediation path, and review condition. File-level ratios
-MAY be reported for diagnosis but SHALL NOT independently block promotion.
+policy. The policy SHALL state its risk model, exact measurement, false-positive
+cost, remediation path, and review condition. File-level ratios MAY be reported
+for diagnosis but SHALL NOT independently block promotion.
 
 #### Scenario: a quality gate succeeds
 
@@ -127,8 +130,10 @@ MAY be reported for diagnosis but SHALL NOT independently block promotion.
 #### Scenario: A quality gate succeeds
 
 - **WHEN** coverage is reported for the exact candidate tree
-- **THEN** every aggregate and semantic-package ratio satisfies the canonical policy
-- **AND** no required test is skipped merely because the quality host differs from the modeled platform.
+- **THEN** every aggregate and semantic-package ratio satisfies the canonical
+  policy
+- **AND** no required test is skipped merely because the quality host differs
+  from the modeled platform.
 
 #### Scenario: platform behavior contributes coverage
 
@@ -139,8 +144,8 @@ MAY be reported for diagnosis but SHALL NOT independently block promotion.
 ### Requirement: Forge jobs are portable projections
 
 Hosted jobs SHALL use supported native shells and filesystem semantics, install
-their explicit operating-system prerequisites, and reach a terminal result on
-an admitted project runner. A reused self-hosted checkout SHALL preserve Git
+their explicit operating-system prerequisites, and reach a terminal result on an
+admitted project runner. A reused self-hosted checkout SHALL preserve Git
 diagnostic integrity without changing runner-global configuration. A container
 whose user does not own the GitHub checkout SHALL grant Git trust only to the
 exact workflow workspace for the one archive command.
@@ -148,7 +153,8 @@ exact workflow workspace for the one archive command.
 #### Scenario: Windows verifies the product
 
 - **WHEN** the Windows matrix executes
-- **THEN** it uses native PowerShell and Git index metadata for executable intent
+- **THEN** it uses native PowerShell and Git index metadata for executable
+  intent
 - **AND** POSIX-only shell fixtures are excluded without disabling Windows
   product behavior.
 
@@ -201,7 +207,8 @@ entrypoint.
 
 #### Scenario: GitLab executes repository release tests
 
-- **WHEN** the GitLab metadata job runs repository-only tests under importlib mode
+- **WHEN** the GitLab metadata job runs repository-only tests under importlib
+  mode
 - **THEN** it invokes pytest through the selected interpreter
 - **AND** repository `tools` modules remain importable without `PYTHONPATH`
   injection or a compatibility package.
@@ -210,15 +217,16 @@ entrypoint.
 
 Supported runtimes, direct quality and packaging dependencies, hosted Actions,
 CI images, and release tools SHALL use current stable releases through one
-repository-owned declaration for each ecosystem. The committed uv lock SHALL
-own transitive closure, hosted Actions SHALL use immutable revisions, and
-GitLab Python images SHALL bind both the supported Python minor and the exact
-UV version declared by project metadata to immutable registry digests.
+repository-owned declaration for each ecosystem. The committed uv lock SHALL own
+transitive closure, hosted Actions SHALL use immutable revisions, and GitLab
+Python images SHALL bind both the supported Python minor and the exact UV
+version declared by project metadata to immutable registry digests.
 
 #### Scenario: A GitLab Python image is selected
 
 - **WHEN** a GitLab job selects the supported floor or latest Python image
-- **THEN** the reference contains the project UV version, supported Python minor, and a SHA-256 digest
+- **THEN** the reference contains the project UV version, supported Python
+  minor, and a SHA-256 digest
 - **AND** both versions match their repository-owned declarations
 - **AND** tests derive these relations instead of duplicating the concrete pins.
 
@@ -249,10 +257,13 @@ retain obsolete compatibility fallbacks.
 
 #### Scenario: A GitLab job runs a Python repository tool
 
-- **WHEN** verification or publication invokes Nox, pytest, or a repository module
+- **WHEN** verification or publication invokes Nox, pytest, or a repository
+  module
 - **THEN** UV selects the Python executable synchronized for that job
-- **AND** the repository-local Python install and cache directories remain in use
-- **AND** no ambient interpreter or implicit Python download contributes to success.
+- **AND** the repository-local Python install and cache directories remain in
+  use
+- **AND** no ambient interpreter or implicit Python download contributes to
+  success.
 
 ### Requirement: Hosted setup is deterministic and contention-free
 
@@ -291,7 +302,8 @@ compare-and-swap authority bound to the complete accumulated lane delta.
 #### Scenario: The candidate remains the observed ancestor
 
 - **WHEN** full proof passes for the clean archived work-lane HEAD
-- **THEN** ETHOS SHALL move `candidate/dev` only from the previously observed ref
+- **THEN** ETHOS SHALL move `candidate/dev` only from the previously observed
+  ref
 - **AND** any candidate, Lease, tree, or proof drift SHALL fail closed
 - **AND** no remote Forge SHALL be queried or mutated.
 
@@ -332,14 +344,15 @@ secret provider. Tests MUST model these platform contracts independently.
 - **WHEN** a Windows private-key file lacks its terminal newline
 - **THEN** the signer does not copy or rewrite the file
 - **AND** OpenSSH rejects invalid input through the concise signing diagnostic
-- **AND** the Windows regression proves fail-closed behavior rather than POSIX repair.
+- **AND** the Windows regression proves fail-closed behavior rather than POSIX
+  repair.
 
 ### Requirement: Native bundle containment uses filesystem identity
 
 Release assembly MUST accept a resolved member inside the resolved bundle under
-the host filesystem's canonical path identity, MUST reject external members,
-and MUST exercise symlink behavior only on hosts that provide the modeled
-filesystem semantics.
+the host filesystem's canonical path identity, MUST reject external members, and
+MUST exercise symlink behavior only on hosts that provide the modeled filesystem
+semantics.
 
 #### Scenario: Windows canonicalization rewrites separators
 
@@ -392,8 +405,8 @@ remains locked.
 
 ### Requirement: Quality policy has explicit owners
 
-The repository SHALL keep tool-native and repository-level quality policy in
-one explicit owner per concern, while ETHOS registers executable gates.
+The repository SHALL keep tool-native and repository-level quality policy in one
+explicit owner per concern, while ETHOS registers executable gates.
 
 #### Scenario: A quality gate is planned
 
@@ -436,8 +449,10 @@ Each Forge SHALL run and publish independently without consuming the other.
 #### Scenario: A release asset is installed
 
 - **WHEN** an operator installs the platform archive for the value in `VERSION`
-- **THEN** the installer verifies the complete release set and external trust anchor before mutation
-- **AND** the installed executable reports that exact version and passes runtime acceptance.
+- **THEN** the installer verifies the complete release set and external trust
+  anchor before mutation
+- **AND** the installed executable reports that exact version and passes runtime
+  acceptance.
 
 #### Scenario: Accepted source advances after a release
 
@@ -467,14 +482,16 @@ Forge checkout.
 
 #### Scenario: A Forge tag checkout has no candidate ref
 
-- **WHEN** the checkout exposes `origin/dev` or `origin/main` but no `candidate/dev`
+- **WHEN** the checkout exposes `origin/dev` or `origin/main` but no
+  `candidate/dev`
 - **THEN** the available remote integration ref is used as the boundary
 - **AND** an invalid subject after that boundary is rejected
 - **AND** no candidate or Work Lane ref is published to satisfy the checker.
 
 #### Scenario: No integration boundary is available
 
-- **WHEN** the repository has Git history but none of the declared integration refs
+- **WHEN** the repository has Git history but none of the declared integration
+  refs
 - **THEN** all available history is checked
 - **AND** history unavailability remains a fail-closed diagnostic.
 
@@ -522,8 +539,10 @@ owners.
 #### Scenario: GitLab and GitHub are both available
 
 - **WHEN** publication readiness compiles the repository release declaration
-- **THEN** GitLab and GitHub appear as independent peers with their own Git remote and CI surface
-- **AND** neither peer supplies credentials, jobs, tags, Releases, or assets for the other.
+- **THEN** GitLab and GitHub appear as independent peers with their own Git
+  remote and CI surface
+- **AND** neither peer supplies credentials, jobs, tags, Releases, or assets for
+  the other.
 
 #### Scenario: A retired scalar field returns
 
@@ -547,9 +566,9 @@ builder and publisher.
 ### Requirement: Native release payloads are reproducible
 
 Native release payloads SHALL contain only runtime-required bytes and portable
-metadata. The release build SHALL remove installer-local metadata and repair
-its inventory before native executable freezing. Every platform built by both
-Forge planes from the same accepted source and locked toolchain SHALL publish
+metadata. The release build SHALL remove installer-local metadata and repair its
+inventory before native executable freezing. Every platform built by both Forge
+planes from the same accepted source and locked toolchain SHALL publish
 byte-identical archives, manifests, and checksum entries.
 
 #### Scenario: Equivalent source is built from distinct checkout roots
@@ -576,12 +595,16 @@ byte-identical archives, manifests, and checksum entries.
 
 ### Requirement: Hosted native asset jobs preserve path identity
 
-A hosted native asset job SHALL write each accepted platform bundle to the exact directory consumed by its artifact uploader across every process, container, and host boundary.
+A hosted native asset job SHALL write each accepted platform bundle to the exact
+directory consumed by its artifact uploader across every process, container, and
+host boundary.
 
 #### Scenario: Linux build runs in a job container
 
-- **WHEN** the pinned Linux release container builds and accepts the native asset
-- **THEN** the output directory is mounted into both the container and host action
+- **WHEN** the pinned Linux release container builds and accepts the native
+  asset
+- **THEN** the output directory is mounted into both the container and host
+  action
 - **AND** the upload action reads that exact directory without path translation
 - **AND** GitLab and GitHub continue to build and publish independently
 
@@ -600,8 +623,8 @@ runtime `GITHUB_WORKSPACE` path. The upload action SHALL read the equivalent
 ### Requirement: Dependency-minimal verification
 
 Hosted verification MUST install only the locked tools required to execute its
-declared checks. Native release builders MUST remain in a distinct release
-group and MUST be installed only by the native release session.
+declared checks. Native release builders MUST remain in a distinct release group
+and MUST be installed only by the native release session.
 
 #### Scenario: Quality verification runs without PyInstaller
 
@@ -655,8 +678,8 @@ authority for project and quality dependencies.
 
 - **WHEN** GitLab runs all Python compatibility sessions
 - **THEN** `.python-versions` remains the only supported-version inventory
-- **AND** additional matrix interpreters may be acquired by UV and stored in
-  the declared target-platform cache
+- **AND** additional matrix interpreters may be acquired by UV and stored in the
+  declared target-platform cache
 - **AND** their patch versions and installation paths do not become a second
   repository authority.
 
@@ -670,7 +693,8 @@ SHALL NOT substitute for exact object identity.
 
 - **WHEN** GitLab and GitHub point to different commit OIDs with equal trees
 - **THEN** parity fails
-- **AND** publication remains incomplete until both refs equal the local source OID.
+- **AND** publication remains incomplete until both refs equal the local source
+  OID.
 
 ### Requirement: Release publication uses the immutable repository runtime
 
@@ -696,5 +720,7 @@ and peer-local Release records SHALL remain outside that product semantic.
 #### Scenario: Either Forge validates the same source object
 
 - **WHEN** GitLab or GitHub runs release metadata validation for the same commit
-- **THEN** both invoke the same provider-free command and observe the same result
-- **AND** no provider flag, provider tag namespace, or compatibility alias exists.
+- **THEN** both invoke the same provider-free command and observe the same
+  result
+- **AND** no provider flag, provider tag namespace, or compatibility alias
+  exists.

@@ -18,8 +18,8 @@ or Git history; Chronicle is not a separate evidence primitive.
 - **User-visible evidence:** a successful response in the original failing
   conversation is distinct from transport health.
 
-Provider-portability acceptance requires the unchanged original conversation
-to complete at least two turns on each leg of
+Provider-portability acceptance requires the unchanged original conversation to
+complete at least two turns on each leg of
 `DMXAPI -> UCloud -> AIHubMix -> DMXAPI`. Before the sequence, record the exact
 JSONL length and SHA-256 of that immutable prefix plus metadata for the relevant
 SQLite stores and per-conversation model selection. After every leg, verify the
@@ -35,8 +35,8 @@ grep as proof that an historical conversation recovered. Keep transient 429,
 Use `codex-responses-proxy status --json` for current loopback diagnostics. Logs
 are bounded secondary material and must not preserve request bodies, prompts,
 credentials, headers, tokens, query strings, or raw upstream errors. Process
-counters reset with the listener and prove neither an earlier conversation nor
-a future request.
+counters reset with the listener and prove neither an earlier conversation nor a
+future request.
 
 Historical context never substitutes for fresh acceptance bound to the exact
 release commit.
@@ -55,10 +55,10 @@ Paths below are relative to the active worktree unless a tool selects them.
 | Published evidence                                  | The exact source revision's CI artifacts and release assets; local-only work retains required native evidence without depending on a Forge |
 
 Operating-system temporary storage remains suitable when a tool needs it, but
-not for long-lived handoffs. An operation owns cleanup, including after a
-failed child process; after a crash, remove only its exact stopped resources.
-Before retiring a worktree, preserve evidence still needed by a pending decision
-at its existing authoritative owner, then remove disposable output.
+not for long-lived handoffs. An operation owns cleanup, including after a failed
+child process; after a crash, remove only its exact stopped resources. Before
+retiring a worktree, preserve evidence still needed by a pending decision at its
+existing authoritative owner, then remove disposable output.
 
 Tests use pytest-owned temporary paths. The native retention policy removes
 completed test runs instead of retaining hidden copies; required diagnostics

@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Provide one fail-closed Responses compatibility boundary that makes stored
-Codex dialogue replayable across the governed DMXAPI, UCloud, and
-AIHubMix routes without changing the conversation record itself.
+Provide one fail-closed Responses compatibility boundary that makes stored Codex
+dialogue replayable across the governed DMXAPI, UCloud, and AIHubMix routes
+without changing the conversation record itself.
 
 ## Requirements
 
@@ -57,18 +57,19 @@ unchanged.
 
 - **WHEN** a subsequent request switches among UCloud, DMXAPI, and AIHubMix
 - **THEN** the outbound request uses `store=false`
-- **AND** no `rs_*`, provider item identifier, or unproved provider-specific replay structure crosses the provider boundary
+- **AND** no `rs_*`, provider item identifier, or unproved provider-specific
+  replay structure crosses the provider boundary
 - **AND** portable user and agent content remains replayable.
 
 ### Requirement: Portable dialogue and tool relationships are preserved
 
 The proxy SHALL preserve textual system, developer, user, and assistant
 dialogue; agent author, recipient, and phase context; complete
-function/custom-tool call-output pairs; and standalone cross-task tool
-delivery results whose portable provenance is explicit. Assistant,
-synthesized-agent, and standalone delivery history SHALL use provider-neutral
-Easy Input Message strings. System, developer, user, and paired tool-output
-lists SHALL use input-content grammar.
+function/custom-tool call-output pairs; and standalone cross-task tool delivery
+results whose portable provenance is explicit. Assistant, synthesized-agent, and
+standalone delivery history SHALL use provider-neutral Easy Input Message
+strings. System, developer, user, and paired tool-output lists SHALL use
+input-content grammar.
 
 #### Scenario: Text and paired calls are replayed
 
@@ -122,8 +123,8 @@ lists SHALL use input-content grammar.
 
 #### Scenario: Replay contains an inline screenshot
 
-- **WHEN** image-capable input contains a nonempty, strictly Base64-encoded
-  PNG, JPEG, WebP, or GIF data URL
+- **WHEN** image-capable input contains a nonempty, strictly Base64-encoded PNG,
+  JPEG, WebP, or GIF data URL
 - **THEN** projection retains its original URL, detail, and order in dialogue
   and paired tool-output input, including image-only content
 - **AND** repeated projection and classified retries preserve the image bytes
@@ -191,12 +192,12 @@ than forwarded or rejected.
 
 ### Requirement: Unproved replay shapes fail closed
 
-Before upstream I/O, the proxy SHALL classify each Responses input item
-through one authoritative item policy shared by diagnostics and
-provider-portable projection. Malformed JSON, invalid input containers,
-genuinely unknown replay item types, unknown content block types, orphaned or
-mismatched tool outputs, duplicate call/output identities, invalid required
-fields, and incomplete local shell pairs SHALL be rejected locally.
+Before upstream I/O, the proxy SHALL classify each Responses input item through
+one authoritative item policy shared by diagnostics and provider-portable
+projection. Malformed JSON, invalid input containers, genuinely unknown replay
+item types, unknown content block types, orphaned or mismatched tool outputs,
+duplicate call/output identities, invalid required fields, and incomplete local
+shell pairs SHALL be rejected locally.
 
 #### Scenario: A future client introduces an unknown replay item
 
@@ -209,14 +210,14 @@ fields, and incomplete local shell pairs SHALL be rejected locally.
 
 - **WHEN** an output precedes its call, names an unknown `call_id`, duplicates
   an earlier output, or does not match the call kind
-- **THEN** the request is rejected rather than silently deleting, reordering,
-  or inventing tool history.
+- **THEN** the request is rejected rather than silently deleting, reordering, or
+  inventing tool history.
 
 #### Scenario: Codex local shell history is provider-local
 
 - **WHEN** replay contains a `local_shell_call` with a valid closed `exec`
-  action, a supported status, exactly one matching `function_call_output`, and
-  a current dialogue item
+  action, a supported status, exactly one matching `function_call_output`, and a
+  current dialogue item
 - **THEN** the proxy removes the complete local shell pair before upstream I/O
 - **AND** it preserves the current dialogue item
 - **AND** an unpaired call, invalid status, unknown action field, or invalid
@@ -252,10 +253,9 @@ request SHALL NOT supply or override an upstream URL or host.
 #### Scenario: A client selects each governed provider
 
 - **WHEN** a client sends otherwise equivalent Responses traffic to
-  `/dmxapi/v1/responses`, `/ucloud/v1/responses`, or
-  `/aihubmix/v1/responses`
-- **THEN** the proxy sends it only to the matching DMXAPI, UCloud, or
-  AIHubMix HTTPS upstream
+  `/dmxapi/v1/responses`, `/ucloud/v1/responses`, or `/aihubmix/v1/responses`
+- **THEN** the proxy sends it only to the matching DMXAPI, UCloud, or AIHubMix
+  HTTPS upstream
 - **AND** credentials continue to come from that client request.
 
 #### Scenario: A caller uses an unknown namespace
@@ -282,8 +282,8 @@ request SHALL NOT supply or override an upstream URL or host.
 
 #### Scenario: A rejected route carries an unread body
 
-- **WHEN** an unknown route or unsupported method is rejected before its body
-  is consumed
+- **WHEN** an unknown route or unsupported method is rejected before its body is
+  consumed
 - **THEN** the response closes the connection
 - **AND** the unread body is not parsed as another request.
 
@@ -291,9 +291,8 @@ request SHALL NOT supply or override an upstream URL or host.
 
 The exact DMXAPI HTTP 477 `empty_response` recovery and cooldown SHALL apply
 only to the DMXAPI route. A failure or cooldown key from DMXAPI SHALL NOT block,
-rewrite, or classify a UCloud or AIHubMix request. Generic transient and
-schema recovery MAY remain shared only where its trigger is provider-neutral
-and exact.
+rewrite, or classify a UCloud or AIHubMix request. Generic transient and schema
+recovery MAY remain shared only where its trigger is provider-neutral and exact.
 
 #### Scenario: DMXAPI enters empty-response cooldown
 
@@ -310,8 +309,10 @@ and exact.
 
 #### Scenario: DMXAPI exhausts empty-response recovery
 
-- **WHEN** DMXAPI yields the exact classified empty response through the bounded retry policy
-- **THEN** the proxy emits a typed terminal error only after the budget is exhausted
+- **WHEN** DMXAPI yields the exact classified empty response through the bounded
+  retry policy
+- **THEN** the proxy emits a typed terminal error only after the budget is
+  exhausted
 - **AND** UCloud and AIHubMix remain independently usable.
 
 ### Requirement: Live response control data survives the current turn
@@ -335,10 +336,10 @@ atomically before downstream commitment.
 
 Successful non-stream Responses SHALL be buffered within an eight-MiB limit
 before downstream HTTP commitment, required to be a valid `completed` or
-`incomplete` Response JSON document, and preserved byte-for-byte for the
-current turn. Empty, truncated, oversized, malformed,
-failed, or otherwise non-terminal HTTP 2xx bodies SHALL produce a local
-retryable failure without committing partial upstream bytes.
+`incomplete` Response JSON document, and preserved byte-for-byte for the current
+turn. Empty, truncated, oversized, malformed, failed, or otherwise non-terminal
+HTTP 2xx bodies SHALL produce a local retryable failure without committing
+partial upstream bytes.
 
 #### Scenario: A successful JSON response contains provider ciphertext
 
@@ -379,14 +380,14 @@ activate compaction, dialogue recovery, or schema fallback.
 The compatibility path SHALL NOT edit Codex JSONL, SQLite, transcript history,
 archived conversations, hidden resume pointers, or per-conversation model
 metadata. Success SHALL require an unchanged original conversation to complete
-multiple turns after the provider sequence DMXAPI, UCloud, AIHubMix, and
-DMXAPI again.
+multiple turns after the provider sequence DMXAPI, UCloud, AIHubMix, and DMXAPI
+again.
 
 #### Scenario: The proxy fix is accepted
 
 - **WHEN** the released proxy is installed, an external client selects each
-  route, and the same original conversation completes at least two turns on each leg of
-  DMXAPI to UCloud to AIHubMix to DMXAPI
+  route, and the same original conversation completes at least two turns on each
+  leg of DMXAPI to UCloud to AIHubMix to DMXAPI
 - **THEN** no turn reports missing `rs_` items, encrypted-content decode or
   decrypt failure, or proxy-generated empty-response 503
 - **AND** acceptance evidence confirms that the exact pre-acceptance JSONL byte
@@ -402,16 +403,16 @@ execute a client-control command or persist consumer route state.
 
 #### Scenario: A consumer selects a provider endpoint
 
-- **WHEN** a client selects `/dmxapi/v1`, `/ucloud/v1`, or
-  `/aihubmix/v1` through its own control plane
+- **WHEN** a client selects `/dmxapi/v1`, `/ucloud/v1`, or `/aihubmix/v1`
+  through its own control plane
 - **THEN** the proxy serves that data-plane request without depending on the
   consumer package, configuration path, credential store, or projection model.
 
 #### Scenario: The proxy is installed or removed
 
 - **WHEN** installation, status, reload, or uninstall runs
-- **THEN** only the proxy's released payload, product-owned state, listener,
-  and native supervision are observed or mutated
+- **THEN** only the proxy's released payload, product-owned state, listener, and
+  native supervision are observed or mutated
 - **AND** consumer endpoint configuration is unchanged.
 
 ### Requirement: Responses admission is closed at the HTTP boundary
@@ -510,8 +511,10 @@ undocumented provider quota.
 
 #### Scenario: One provider is rate-limited
 
-- **WHEN** UCloud, DMXAPI, or AIHubMix records an active provider-scoped cooldown
-- **THEN** no other provider inherits that cooldown or loses ordinary concurrency
+- **WHEN** UCloud, DMXAPI, or AIHubMix records an active provider-scoped
+  cooldown
+- **THEN** no other provider inherits that cooldown or loses ordinary
+  concurrency
 - **AND** client-owned per-session concurrency remains outside the proxy.
 
 ### Requirement: Active provider cooldown deadlines do not move backward
@@ -539,13 +542,13 @@ and isolate unrelated provider and request-fingerprint keys.
 
 ### Requirement: Ordinary concurrency remains outside the proxy
 
-The proxy SHALL NOT serialize a provider route, queue ordinary traffic, or own
-a fixed or configurable ordinary-request concurrency ceiling. Codex owns
+The proxy SHALL NOT serialize a provider route, queue ordinary traffic, or own a
+fixed or configurable ordinary-request concurrency ceiling. Codex owns
 per-session concurrency and each provider owns its actual quota. Each request
 SHALL check that provider's cooldown and the lifecycle drain barrier before
 remote I/O. HTTP 429 SHALL remain terminal for the current request and SHALL NOT
-introduce an upstream retry. Active-request accounting exists only for
-lifecycle handoff and observation.
+introduce an upstream retry. Active-request accounting exists only for lifecycle
+handoff and observation.
 
 #### Scenario: Concurrent requests target one provider route
 
@@ -564,8 +567,8 @@ lifecycle handoff and observation.
 
 #### Scenario: One request establishes cooldown
 
-- **WHEN** a later request arrives after a preceding request recorded a
-  provider rate-limit cooldown
+- **WHEN** a later request arrives after a preceding request recorded a provider
+  rate-limit cooldown
 - **THEN** the later request receives the existing local HTTP 429 response
 - **AND** the proxy makes no upstream call for that later request.
 

@@ -1,14 +1,15 @@
+# Spec Delta
+
 ## ADDED Requirements
 
 ### Requirement: Changelog is a release-history contract
 
-`CHANGELOG.md` SHALL follow Keep a Changelog 1.1.0 with one leading
-`Unreleased` section, canonical change categories, and released sections in
-descending SemVer order. Every local product tag SHALL appear exactly once.
-Every released section SHALL have a tag, except for at most one first section
-matching the current untagged `VERSION` during release preparation. The exact
-tag, `VERSION`, first released section, and `HEAD` SHALL agree before
-publication.
+`CHANGELOG.md` SHALL follow Keep a Changelog 1.1.0 with one leading `Unreleased`
+section, canonical change categories, and released sections in descending SemVer
+order. Every local product tag SHALL appear exactly once. Every released section
+SHALL have a tag, except for at most one first section matching the current
+untagged `VERSION` during release preparation. The exact tag, `VERSION`, first
+released section, and `HEAD` SHALL agree before publication.
 
 #### Scenario: Development continues between releases
 
@@ -18,9 +19,9 @@ publication.
 
 #### Scenario: Release history and Git disagree
 
-- **WHEN** a product tag lacks a released section, a historical released
-  section lacks its tag, or the selected tag differs from `VERSION`, the first
-  released section, or `HEAD`
+- **WHEN** a product tag lacks a released section, a historical released section
+  lacks its tag, or the selected tag differs from `VERSION`, the first released
+  section, or `HEAD`
 - **THEN** release admission SHALL fail before construction or publication.
 
 #### Scenario: A release commit is prepared before its tag
@@ -28,7 +29,8 @@ publication.
 - **WHEN** the current untagged `VERSION` has a dated release section
 - **THEN** it SHALL be the only untagged released section and the first section
   after `Unreleased`
-- **AND** every older released section SHALL already correspond to a product tag.
+- **AND** every older released section SHALL already correspond to a product
+  tag.
 
 ### Requirement: One CI model covers every integration path
 
@@ -40,8 +42,8 @@ of that graph. Proposal review, proposal update, maintainer fast-forward, `dev`,
 without duplicating jobs that prove no additional fact. When both peers are
 selected, each SHALL schedule the same required macOS, Linux, and Windows
 functional proof outcomes with equivalent triggers, gates, thresholds,
-artifacts, and exact-revision evidence. An unavailable runner blocks that
-peer's completion rather than borrowing the other peer's result.
+artifacts, and exact-revision evidence. An unavailable runner blocks that peer's
+completion rather than borrowing the other peer's result.
 
 #### Scenario: A developer updates a proposal
 
@@ -89,7 +91,8 @@ evidence.
 
 #### Scenario: A release is complete
 
-- **WHEN** both selected Forge publications and installed-product acceptance pass
+- **WHEN** both selected Forge publications and installed-product acceptance
+  pass
 - **THEN** local and remote `main` and `dev` identify the accepted object
 - **AND** merged proposal branches, remote `work/*`, draft releases, and failed
   unpublished intermediates have been removed.
@@ -101,8 +104,8 @@ evidence.
 When GitLab and GitHub are both selected, each provider projection SHALL expose
 the same required macOS, Linux, and Windows functional proof outcomes for the
 exact revision, with equivalent triggers, quality thresholds, artifact
-contracts, and evidence boundaries. Each supported Python version SHALL have
-an independently observable test node on each selected peer. Independent nodes
+contracts, and evidence boundaries. Each supported Python version SHALL have an
+independently observable test node on each selected peer. Independent nodes
 SHALL be schedulable in parallel, and one failed or missing version or platform
 SHALL be identifiable without inspecting a combined multi-version job. The
 platform nodes MAY use the release interpreter; a Python-version-by-platform
@@ -134,7 +137,8 @@ establish that operational separation.
 - **WHEN** a selected peer runs general Windows checks on an ARM64 VM
 - **THEN** those checks MAY satisfy the declared Windows functional outcome
 - **AND** their evidence SHALL retain the ARM64 architecture
-- **AND** the physical host observation alone SHALL NOT establish the program ABI
+- **AND** the physical host observation alone SHALL NOT establish the program
+  ABI
 - **AND** asset acceptance MAY separately qualify `windows-x86_64` when the
   actual built executable and interpreter use `win-amd64` and the full native
   lifecycle passes; native ARM64 execution SHALL NOT be claimed.

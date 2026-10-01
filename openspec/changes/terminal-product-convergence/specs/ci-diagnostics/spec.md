@@ -1,14 +1,16 @@
+# Spec Delta
+
 ## MODIFIED Requirements
 
 ### Requirement: Python compatibility and native release prove distinct facts
 
-Each supported Python minor line SHALL build and install the wheel, then run
-the complete non-native behavior inventory. The release session SHALL be the
-only native executable build owner and SHALL black-box test the
-target-platform executable through one portable process-environment contract.
-That contract SHALL preserve the native host execution substrate, redirect
-Proxy-owned user, payload, state, and command roots to test-owned locations,
-and make Python undiscoverable through the product `PATH`.
+Each supported Python minor line SHALL build and install the wheel, then run the
+complete non-native behavior inventory. The release session SHALL be the only
+native executable build owner and SHALL black-box test the target-platform
+executable through one portable process-environment contract. That contract
+SHALL preserve the native host execution substrate, redirect Proxy-owned user,
+payload, state, and command roots to test-owned locations, and make Python
+undiscoverable through the product `PATH`.
 
 #### Scenario: The supported matrix runs
 
@@ -41,11 +43,11 @@ and make Python undiscoverable through the product `PATH`.
 
 ### Requirement: Clean-room verification follows the locked repository environment
 
-The repository SHALL expose one cross-platform developer entrypoint that
-selects locked tools, reconstructs Work-Lane-local mutable environments, and
-runs the same semantic verification graph consumed by both Forges. Ambient
-interpreters, user-site packages, global tool configuration, another checkout's
-environment, and mutable unpinned resolution SHALL NOT contribute to success.
+The repository SHALL expose one cross-platform developer entrypoint that selects
+locked tools, reconstructs Work-Lane-local mutable environments, and runs the
+same semantic verification graph consumed by both Forges. Ambient interpreters,
+user-site packages, global tool configuration, another checkout's environment,
+and mutable unpinned resolution SHALL NOT contribute to success.
 
 #### Scenario: A fresh checkout is bootstrapped
 
@@ -74,18 +76,32 @@ contracts, and release verification on macOS, Linux, and Windows.
 #### Scenario: Native tests run from a deep checkout
 
 - **WHEN** the native release session executes from a long Runner checkout path
-- **THEN** pytest SHALL use a uniquely owned temporary root outside that checkout
-- **AND** teardown SHALL remove that root after native process cleanup, including
-  failed test control flow
+- **THEN** pytest SHALL use a uniquely owned temporary root outside that
+  checkout
+- **AND** teardown SHALL remove that root after native process cleanup,
+  including failed test control flow
 - **AND** the session SHALL NOT infer payload compatibility from physical CPU
   naming when a different executable ABI runs under emulation.
 
 #### Scenario: Native CI selects the locked interpreter
 
 - **WHEN** native macOS or Windows CI reconstructs its local environment
-- **THEN** the existing Mise tool-aware environment directive binds the exact locked interpreter
-- **AND** native locked synchronization restores a missing or stale generated environment before execution
+- **THEN** the existing Mise tool-aware environment directive binds the exact
+  locked interpreter
+- **AND** native locked synchronization restores a missing or stale generated
+  environment before execution
 - **AND** an out-of-date dependency lock fails without rewriting source
-- **AND** the local tasks, direct proof commands, and native CI consume the same binding
-- **AND** each native platform executes the environment conformance before constructing its candidate
-- **AND** neither an executable-name ambiguity, no-sync execution, nor warning suppression establishes acceptance.
+- **AND** the local tasks, direct proof commands, and native CI consume the same
+  binding
+- **AND** each native platform executes the environment conformance before
+  constructing its candidate
+- **AND** neither an executable-name ambiguity, no-sync execution, nor warning
+  suppression establishes acceptance.
+
+#### Scenario: A native job selects only acquisition tools
+
+- **WHEN** a job enables a declared tool subset without Python
+- **THEN** native environment resolution does not require an unselected Python
+  installation or reference an unavailable tool field
+- **AND** that subset does not replace the job's separately owned interpreter
+- **AND** selecting the Python tool plane still binds the locked interpreter.

@@ -14,8 +14,8 @@ graph, and release burden without replacing the product's difficult behavior.
 The difficult boundaries are byte-preserving Responses and SSE relay, inherited
 listener transfer during a rolling native handoff, bounded drain and recovery,
 and one frozen executable on macOS, Linux, and Windows. OpenAPI generation,
-general application routing, browser sessions, and public web deployment are
-not product responsibilities.
+general application routing, browser sessions, and public web deployment are not
+product responsibilities.
 
 ## Decision
 
@@ -68,9 +68,9 @@ of owned complexity. No speculative dependency or parallel fallback is admitted.
 - **Keep `urllib` without a replacement criterion:** rejected; the current path
   is retained only while it is the smallest proven implementation, and its
   private timeout traversal remains a named revisit trigger.
-- **Rewrite the entire service as asynchronous code:** rejected as an
-  unbounded migration without evidence that concurrency, rather than upstream
-  latency and provider behavior, is the limiting product risk.
+- **Rewrite the entire service as asynchronous code:** rejected as an unbounded
+  migration without evidence that concurrency, rather than upstream latency and
+  provider behavior, is the limiting product risk.
 
 ## Revisit Trigger
 

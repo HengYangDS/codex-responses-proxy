@@ -572,7 +572,7 @@ class TestVerificationContracts:
         assert environment["UV_PROJECT_ENVIRONMENT"] == "{{config_root}}/.venv"
         assert environment["VIRTUAL_ENV"] is False
         assert environment["UV_PYTHON"] == {
-            "value": "{{tools.python.path}}",
+            "value": "{% if tools.python is defined %}{{tools.python.path}}{% endif %}",
             "tools": True,
         }
         assert environment["PYTHONHOME"] is False
@@ -846,6 +846,25 @@ def test_native_environment_resolves_the_locked_python_owner(
     assert Path(native.get("UV_PYTHON", "")).is_absolute(), native.get("UV_PYTHON")
     toolchain = tomllib.loads((root / "mise.toml").read_text(encoding="utf-8"))
     assert Path(native["UV_PYTHON"]).name == toolchain["tools"]["python"]
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize("tools", ["python,uv", "gh"])
+def test_native_environment_binding_applies_only_to_the_selected_tool_plane(
+    native_python_project: tuple[Path, dict[str, str]], tools: str
+) -> None:
+    root, environment = native_python_project
+    observed = _native_run(
+        root, {**environment, "MISE_ENABLE_TOOLS": tools}, ("mise", "env", "--json")
+    )
+    assert observed.returncode == 0, observed.stderr
+    assert observed.stderr == ""
+    selected = json.loads(observed.stdout)
+    if tools == "gh":
+        assert not selected.get("UV_PYTHON"), selected.get("UV_PYTHON")
+    else:
+        assert Path(selected["UV_PYTHON"]).is_absolute()
+    assert Path(selected["UV_PROJECT_ENVIRONMENT"]) == root / ".venv"
 
 
 @pytest.mark.repository_toolchain

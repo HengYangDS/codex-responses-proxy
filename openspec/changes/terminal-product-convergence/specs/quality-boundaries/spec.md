@@ -1,3 +1,5 @@
+# Spec Delta
+
 ## ADDED Requirements
 
 ### Requirement: Logical and physical topology are one positive model
@@ -21,7 +23,8 @@ admission without a historical forbidden-name list.
 - **WHEN** files are distinguished by Provider, platform, action, or vague role
   suffixes instead of a semantic package boundary
 - **THEN** convergence absorbs, precisely renames, splits, or deletes the owner
-- **AND** no wrapper, alias, re-export, or forwarding compatibility path remains.
+- **AND** no wrapper, alias, re-export, or forwarding compatibility path
+  remains.
 
 ### Requirement: Quality rules are complete, rational, and singly owned
 
@@ -36,15 +39,16 @@ thresholds, and unexplained disabled rules SHALL fail admission.
 
 #### Scenario: A quality rule is reviewed
 
-- **WHEN** maintainers inspect the responsibility map and native tool configuration
+- **WHEN** maintainers inspect the responsibility map and native tool
+  configuration
 - **THEN** the rule has one authority and a proportionate evidence model
 - **AND** custom code exists only where no mature tool can express the required
   repository or product semantic.
 
 #### Scenario: A numeric threshold is proposed
 
-- **WHEN** source size, complexity, nesting, parameters, coverage, or performance
-  becomes blocking
+- **WHEN** source size, complexity, nesting, parameters, coverage, or
+  performance becomes blocking
 - **THEN** the threshold derives from an explicit risk and observed distribution
 - **AND** a stricter number is not accepted merely because it is smaller.
 
@@ -54,7 +58,19 @@ thresholds, and unexplained disabled rules SHALL fail admission.
 - **THEN** the existing locked native formatter checks every current carrier,
   including hidden configuration and package-manager metadata
 - **AND** malformed or unformatted JSON fails without source writes
-- **AND** immutable archived Changes and untracked private files remain untouched.
+- **AND** immutable archived Changes and untracked private files remain
+  untouched.
+
+#### Scenario: Current Markdown structure is invalid
+
+- **WHEN** a current Markdown carrier has malformed headings, links, lists,
+  tables, fences, repeated blank lines, or prose beyond the native width
+- **THEN** the locked official Markdown linter fails repository governance
+- **AND** inline suppression does not change that result
+- **AND** official OpenSpec carriers use their native template title without a
+  private carrier exception
+- **AND** formatter reflow preserves prose, code bytes, link targets, and
+  immutable archived Change bytes.
 
 #### Scenario: A full verification prerequisite fails
 
@@ -71,7 +87,9 @@ thresholds, and unexplained disabled rules SHALL fail admission.
 #### Scenario: Cold development uses a deeply nested home
 
 - **WHEN** a clean checkout reconstructs its environment without operator state
-- **THEN** the exact project configuration and complete release tags remain inputs
+- **THEN** the exact project configuration and complete release tags remain
+  inputs
 - **AND** isolated signing tests use a fixture-owned short native socket rather
   than the operator's authentication agent or a HOME-relative socket
-- **AND** the exact foreground agent exits before its temporary files are removed.
+- **AND** the exact foreground agent exits before its temporary files are
+  removed.

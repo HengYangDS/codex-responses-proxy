@@ -6,15 +6,15 @@ provider selection.
 
 ## Product position
 
-The proxy is a narrow compatibility edge for proven Responses gaps. It is not
-a general AI gateway, provider catalog, configuration switcher, billing plane,
-or agent runtime. Direct provider access remains the default whenever the
-client and provider already share a sound protocol.
+The proxy is a narrow compatibility edge for proven Responses gaps. It is not a
+general AI gateway, provider catalog, configuration switcher, billing plane, or
+agent runtime. Direct provider access remains the default whenever the client
+and provider already share a sound protocol.
 
 Its value is the combination of a small authority surface and strong replay
-semantics: provider selection stays in the client control plane, while the
-proxy makes only the minimum transport changes needed for stateless,
-provider-portable Responses traffic.
+semantics: provider selection stays in the client control plane, while the proxy
+makes only the minimum transport changes needed for stateless, provider-portable
+Responses traffic.
 
 ## Product graph
 
@@ -107,14 +107,14 @@ flowchart TD
   product decision.
 
 A provider name never creates behavior. The released manifest selects a route
-and, when necessary, an explicitly declared policy. This keeps ordinary
-Provider admission data-driven and makes a new policy pay for its permanent
-maintenance cost with exact evidence.
+and, when necessary, an explicitly declared policy. This keeps ordinary Provider
+admission data-driven and makes a new policy pay for its permanent maintenance
+cost with exact evidence.
 
 AWS Bedrock illustrates the distinction. A Mantle endpoint that already speaks
 OpenAI Responses can be admitted as an ordinary route. Native IAM/SigV4 or
-Converse/InvokeModel would require explicit authentication and protocol work;
-it must not be represented as a Bearer-compatible route.
+Converse/InvokeModel would require explicit authentication and protocol work; it
+must not be represented as a Bearer-compatible route.
 
 ## Responses projection
 
@@ -134,40 +134,40 @@ sequenceDiagram
 ```
 
 The request projection removes response, conversation, cache, provider-issued
-item, search, and encrypted-reasoning bindings. It retains portable dialogue
-and complete tool relationships. Unknown or unsafe structures fail locally.
+item, search, and encrypted-reasoning bindings. It retains portable dialogue and
+complete tool relationships. Unknown or unsafe structures fail locally.
 
 The item policy owns ordered tool relationships as well as item classification.
-Projection, diagnostics, and recovery consume the same request-local relationship
-state: one call identity, its declared output kind, and an initial paired result.
-Later named results with distinct item identities become attributed delivery
-messages in their original positions, not duplicate pairs or replacement results.
-A repeated call cannot replace the original identity. Recovery checks
-each retained suffix through this owner rather than treating a matching ID alone
-as proof of a valid pair. Pending portable calls remain observable; a local-only
-call may be removed only with its complete output relationship.
+Projection, diagnostics, and recovery consume the same request-local
+relationship state: one call identity, its declared output kind, and an initial
+paired result. Later named results with distinct item identities become
+attributed delivery messages in their original positions, not duplicate pairs or
+replacement results. A repeated call cannot replace the original identity.
+Recovery checks each retained suffix through this owner rather than treating a
+matching ID alone as proof of a valid pair. Pending portable calls remain
+observable; a local-only call may be removed only with its complete output
+relationship.
 
-Input diagnostics report the request projection's rejection reason, not a
-second content validator. An empty reason means the request is locally
-projectable; it does not claim that an upstream Provider will accept it.
-Categorical counts, shape hashes, and relationship flags describe the original
-input without recording its values. They remain observations, not additional
-admission rules.
+Input diagnostics report the request projection's rejection reason, not a second
+content validator. An empty reason means the request is locally projectable; it
+does not claim that an upstream Provider will accept it. Categorical counts,
+shape hashes, and relationship flags describe the original input without
+recording its values. They remain observations, not additional admission rules.
 
 Encrypted `agent_message` content is required control data, not disposable
 reasoning history. Preserve its native envelope and exact ciphertext for the
 selected upstream; never reduce a task to its visible routing header. The proxy
-does not decrypt messages or promise that another provider can decrypt them.
-An upstream `invalid_encrypted_content` response is relayed without replacing
-the task body and classified as `provider_bound_encrypted_content` in secret-free
-telemetry. This identifies the upstream refusal, not the origin of the ciphertext
-or a safe migration target. Shrinking recovery is unavailable for a request
-carrying a native agent message; it cannot discard the task and retry an empty
-continuation.
+does not decrypt messages or promise that another provider can decrypt them. An
+upstream `invalid_encrypted_content` response is relayed without replacing the
+task body and classified as `provider_bound_encrypted_content` in secret-free
+telemetry. This identifies the upstream refusal, not the origin of the
+ciphertext or a safe migration target. Shrinking recovery is unavailable for a
+request carrying a native agent message; it cannot discard the task and retry an
+empty continuation.
 
 The live-response boundary preserves encrypted control content needed for the
-current turn. Empty, truncated, malformed, oversized, or non-terminal success bodies
-become a retryable local `503`; partial success bytes are not committed.
+current turn. Empty, truncated, malformed, oversized, or non-terminal success
+bodies become a retryable local `503`; partial success bytes are not committed.
 
 ## Recovery ownership
 
@@ -215,8 +215,8 @@ Artifact admission verifies the release asset, complete bundle inventory, and
 external trust anchor. The installer commits the verified projection, then
 prewarms that exact executable and requests listener handoff while rollback
 remains available. Only after the successor proves ownership of admission does
-the transaction rebind native supervision to that generation and prove both
-the configured and running executable identity. The handoff child owns listener
+the transaction rebind native supervision to that generation and prove both the
+configured and running executable identity. The handoff child owns listener
 transfer and runtime identity; it does not mutate launchd, systemd, or Task
 Scheduler state. A failed supervisor rebind preserves the transaction for
 recovery; recovery cannot delete that authority until the terminal generation's
@@ -225,12 +225,12 @@ supervisor binding is proved.
 On macOS, the canonical watchdog belongs to `user/<uid>` and its Background
 session, independently of graphical login. A native user-domain observation
 determines whether the associated legacy GUI domain must also be checked.
-Exactly one registration may own the service label. Replacement proves the
-prior watchdog process and registration absent before changing the plist,
-then re-observes a distinct owned successor in the user domain. Missing plist
-bytes do not prove service absence. Unavailable domain observations remain
-errors; the adapter never creates a GUI session, guesses another UID, or
-enables a disabled service.
+Exactly one registration may own the service label. Replacement proves the prior
+watchdog process and registration absent before changing the plist, then
+re-observes a distinct owned successor in the user domain. Missing plist bytes
+do not prove service absence. Unavailable domain observations remain errors; the
+adapter never creates a GUI session, guesses another UID, or enables a disabled
+service.
 
 The carrier is a home-relative regular file read and written through the
 existing symlink-safe owned-file boundary. Its exact label, watchdog arguments,
@@ -239,8 +239,8 @@ writes are atomic; teardown rechecks verified bytes and preserves a changed
 replacement. A file's name alone never grants ownership of its contents or a
 symbolic link's target.
 
-The same transaction projects one native user-command link and records its
-exact path in installed state. Rollback and uninstall therefore do not re-derive
+The same transaction projects one native user-command link and records its exact
+path in installed state. Rollback and uninstall therefore do not re-derive
 ownership from a later shell environment. Installation finalizes only after one
 listener proves the expected release, payload digest, manifest digest, receipt
 digest, PID, and accepting state.
@@ -251,37 +251,36 @@ after an upgrade, its sole predecessor. Installed state and the user-command
 projection remain stable control surfaces; they are not copied into a second
 rollback store. The selector's active generation owns serving and native
 supervision. The user command deterministically resolves to the newer verified
-release among the two selected generations, preserving current lifecycle
-control when serving rolls back. Future installation admission uses that same
-control release as its replay and downgrade floor. A transaction may carry a
-temporary snapshot only to bootstrap an older single-directory installation or
-recover an interrupted transition.
-The selector is committed before obsolete-generation cleanup, so interruption
-leaves either the prior selection or a recoverable new selection. Until the
-transaction closes, it alone owns recovery and rollback status.
+release among the two selected generations, preserving current lifecycle control
+when serving rolls back. Future installation admission uses that same control
+release as its replay and downgrade floor. A transaction may carry a temporary
+snapshot only to bootstrap an older single-directory installation or recover an
+interrupted transition. The selector is committed before obsolete-generation
+cleanup, so interruption leaves either the prior selection or a recoverable new
+selection. Until the transaction closes, it alone owns recovery and rollback
+status.
 
 Normal completion and interrupted recovery share one finalization owner for
 installed state, predecessor retention, pruning, and journal removal. Each
-transaction mutation must match its identity against the current journal;
-an in-memory controller alone grants no write authority. Completion consumes
-that authority: an old controller cannot overwrite or remove a later
-transaction's journal. Once an outcome requires recovery, only runtime-aware
-recovery may resolve it; ordinary rollback cannot guess whether the candidate
-is already serving.
+transaction mutation must match its identity against the current journal; an
+in-memory controller alone grants no write authority. Completion consumes that
+authority: an old controller cannot overwrite or remove a later transaction's
+journal. Once an outcome requires recovery, only runtime-aware recovery may
+resolve it; ordinary rollback cannot guess whether the candidate is already
+serving.
 
 The release that first introduces this transition must drive its own one-time
 upgrade from an older installed release: the predecessor cannot execute
-finalization semantics that did not yet exist. This is an explicit bootstrap
-at the installer boundary, not a second carrier schema or a runtime migration
-path. Once established, the installed release owns adjacent upgrades normally.
+finalization semantics that did not yet exist. This is an explicit bootstrap at
+the installer boundary, not a second carrier schema or a runtime migration path.
+Once established, the installed release owns adjacent upgrades normally.
 
 Reload is same-payload handoff. Upgrade is install. Rollback is a new reverse
-transaction from the current successor to its sole retained predecessor.
-Recover resumes or resolves an already active transaction; it is not a synonym
-for rollback. Uninstall removes native supervision first, proves owned listener
+transaction from the current successor to its sole retained predecessor. Recover
+resumes or resolves an already active transaction; it is not a synonym for
+rollback. Uninstall removes native supervision first, proves owned listener
 exit, removes only the recorded command link while it still targets the
-installed executable, then optionally removes only manifest-owned payload
-files.
+installed executable, then optionally removes only manifest-owned payload files.
 
 ## Human and machine surfaces
 

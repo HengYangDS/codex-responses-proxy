@@ -12,10 +12,10 @@ authority.
 
 The admitted native builder for each supported platform SHALL produce that
 platform's asset pair. The release owner SHALL admit those assets into exactly
-one complete release-bundle identity and sign it once. Each selected Forge
-SHALL publish and re-download the exact same files, and dual-Forge parity
-SHALL require equal complete inventories, bytes, checksum manifest, signature,
-and trust-anchor digest. Provider adapters SHALL only transport and verify the
+one complete release-bundle identity and sign it once. Each selected Forge SHALL
+publish and re-download the exact same files, and dual-Forge parity SHALL
+require equal complete inventories, bytes, checksum manifest, signature, and
+trust-anchor digest. Provider adapters SHALL only transport and verify the
 bundle.
 
 #### Scenario: Physical build execution
@@ -43,8 +43,8 @@ bundle.
 #### Scenario: Incomplete or independently signed projection
 
 - **WHEN** either Forge omits a platform, changes any file, regenerates a
-  different checksum inventory, re-signs with a different identity, or reports
-  a different trust anchor
+  different checksum inventory, re-signs with a different identity, or reports a
+  different trust anchor
 - **THEN** publication parity SHALL fail closed
 - **AND** the incomplete release SHALL NOT be installation authority.
 
@@ -85,8 +85,8 @@ CI graph.
 
 #### Scenario: Ordinary test in an untagged checkout
 
-- **WHEN** the product test suite validates repository metadata outside a
-  review or tag pipeline
+- **WHEN** the product test suite validates repository metadata outside a review
+  or tag pipeline
 - **THEN** it SHALL use ordinary provider-neutral validation
 - **AND** it SHALL NOT assume that the current release tag is absent.
 
@@ -202,12 +202,12 @@ CI graph.
 
 ### Requirement: Platform and Python proof nodes remain visible
 
-A provider projection MAY omit only a native platform whose runner capability
-is explicitly unavailable; that omission SHALL remain visible and SHALL NOT be
+A provider projection MAY omit only a native platform whose runner capability is
+explicitly unavailable; that omission SHALL remain visible and SHALL NOT be
 interpreted as product-level platform evidence. Each supported Python version
 SHALL have an independently observable test node. Independent nodes SHALL be
-schedulable in parallel and one failed version or platform SHALL be
-identifiable without inspecting a combined multi-version job.
+schedulable in parallel and one failed version or platform SHALL be identifiable
+without inspecting a combined multi-version job.
 
 #### Scenario: Platform runner is unavailable on one Forge
 
@@ -238,39 +238,48 @@ The repository SHALL own one explicit quality graph whose concerns cover every
 tracked carrier and whose commands are composed once in repository-owned Nox
 sessions. Local development, repository hooks, GitHub, and GitLab SHALL invoke
 those sessions as projections rather than duplicate their command bodies. CUE
-SHALL validate the semantic equivalence of both Forge projections while
-allowing only runner-native setup and capability-specific platform
-differences.
+SHALL validate the semantic equivalence of both Forge projections while allowing
+only runner-native setup and capability-specific platform differences.
 
 #### Scenario: A proposal revision is pushed
 
 - **WHEN** either Forge receives a new proposal commit
-- **THEN** source governance, Python quality, each supported Python runtime, and applicable platform/release checks execute for that exact commit
+- **THEN** source governance, Python quality, each supported Python runtime, and
+  applicable platform/release checks execute for that exact commit
 - **AND** a previous green commit cannot satisfy the revised proposal.
 
 #### Scenario: A maintainer advances an accepted branch
 
 - **WHEN** `dev` or `main` advances by an authorized maintainer path
-- **THEN** the same repository-owned graph executes for the resulting exact commit
+- **THEN** the same repository-owned graph executes for the resulting exact
+  commit
 - **AND** direct fast-forward authority does not bypass product proof.
 
 #### Scenario: Forge projections are compared
 
 - **WHEN** repository governance renders or validates GitHub and GitLab CI
-- **THEN** both projections contain the same named semantic gates and consume the same Nox owners
+- **THEN** both projections contain the same named semantic gates and consume
+  the same Nox owners
 - **AND** provider YAML contains no independent quality-policy implementation.
 
 #### Scenario: Python quality is evaluated
 
 - **WHEN** repository Python is admitted
-- **THEN** formatting, correctness, modernization, imports, typing, naming, exceptions, logging, subprocess safety, security-sensitive execution, pytest idioms, complexity, and performance-smell rules SHALL be evaluated
+- **THEN** formatting, correctness, modernization, imports, typing, naming,
+  exceptions, logging, subprocess safety, security-sensitive execution, pytest
+  idioms, complexity, and performance-smell rules SHALL be evaluated
 - **AND** type diagnostics and warnings SHALL fail the gate
-- **AND** source or test suppressions SHALL NOT be used to satisfy newly admitted rules.
+- **AND** source or test suppressions SHALL NOT be used to satisfy newly
+  admitted rules.
 
 #### Scenario: Non-Python carriers are evaluated
 
 - **WHEN** repository quality executes
-- **THEN** TOML, YAML, JSON/schema, Markdown, prose, links, workflow syntax, secrets, OpenSpec, generated projections, semantic names, commit subjects, decision records, dependency direction, dependency hygiene, package build, installed artifact behavior, and text-byte invariants SHALL each have an explicit owner or an explicit product-irrelevance decision
+- **THEN** TOML, YAML, JSON/schema, Markdown, prose, links, workflow syntax,
+  secrets, OpenSpec, generated projections, semantic names, commit subjects,
+  decision records, dependency direction, dependency hygiene, package build,
+  installed artifact behavior, and text-byte invariants SHALL each have an
+  explicit owner or an explicit product-irrelevance decision
 - **AND** each admitted concern SHALL run over its complete declared inventory.
 
 ### Requirement: Partial green checks do not establish complete quality
@@ -281,15 +290,20 @@ represented as complete repository quality.
 #### Scenario: A tag is evaluated
 
 - **WHEN** an annotated release tag is proposed
-- **THEN** the tag pipeline proves source identity, the complete quality graph, supported runtimes, native assets, and release metadata for the tagged commit
-- **AND** no branch result or other Forge result substitutes for the tag's own evidence.
+- **THEN** the tag pipeline proves source identity, the complete quality graph,
+  supported runtimes, native assets, and release metadata for the tagged commit
+- **AND** no branch result or other Forge result substitutes for the tag's own
+  evidence.
 
 #### Scenario: A stricter rule is proposed
 
 - **WHEN** a rule family or threshold is added or tightened
-- **THEN** its defect class, scope, false-positive cost, remediation, and review condition SHALL be declared
-- **AND** existing findings SHALL be repaired or the rule SHALL remain visibly pending
-- **AND** copying another repository's number or configuration SHALL NOT itself establish suitability.
+- **THEN** its defect class, scope, false-positive cost, remediation, and review
+  condition SHALL be declared
+- **AND** existing findings SHALL be repaired or the rule SHALL remain visibly
+  pending
+- **AND** copying another repository's number or configuration SHALL NOT itself
+  establish suitability.
 
 ### Requirement: Product semantics have one minimal implementation
 
@@ -353,9 +367,12 @@ shapes.
 
 #### Scenario: Adapter-shaped evidence reaches the evaluator
 
-- **WHEN** GitHub and GitLab adapters have validated their complete required-job sets
-- **THEN** the orchestrator passes only the canonical CI identity fields to the evaluator
-- **AND** the resulting evidence preserves the provider adapters' successful verdict
+- **WHEN** GitHub and GitLab adapters have validated their complete required-job
+  sets
+- **THEN** the orchestrator passes only the canonical CI identity fields to the
+  evaluator
+- **AND** the resulting evidence preserves the provider adapters' successful
+  verdict
 - **AND** unknown evaluator fields still fail closed.
 
 ### Requirement: GitLab publication preserves credential semantics
@@ -371,14 +388,15 @@ different credential kind.
 - **WHEN** the maintainer selects `private-token`
 - **THEN** publication reads the product-scoped private-token variable
 - **AND** every GitLab request uses `PRIVATE-TOKEN`
-- **AND** an available `CI_JOB_TOKEN` cannot silently replace the selected credential.
+- **AND** an available `CI_JOB_TOKEN` cannot silently replace the selected
+  credential.
 
 ### Requirement: Forge publication is restartable without duplicate remote state
 
-Each Forge publication adapter SHALL treat an existing immutable Release and
-its exact asset bytes as reusable state. A retry SHALL upload only missing
-assets, SHALL reject differing existing bytes or Release identity, and SHALL
-preserve bounded provider diagnostics when transport or API validation fails.
+Each Forge publication adapter SHALL treat an existing immutable Release and its
+exact asset bytes as reusable state. A retry SHALL upload only missing assets,
+SHALL reject differing existing bytes or Release identity, and SHALL preserve
+bounded provider diagnostics when transport or API validation fails.
 
 #### Scenario: Retry after complete GitLab publication
 
@@ -408,8 +426,8 @@ preserve bounded provider diagnostics when transport or API validation fails.
 
 ### Requirement: Accepted corrections advance through immutable SemVer releases
 
-Accepted source that is absent from the latest published release SHALL receive
-a new Semantic Versioning identity and immutable signed tag. `VERSION` SHALL
+Accepted source that is absent from the latest published release SHALL receive a
+new Semantic Versioning identity and immutable signed tag. `VERSION` SHALL
 remain the sole version authority, `CHANGELOG.md` SHALL record the forward
 release history, and previously published provenance SHALL NOT be rewritten.
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
 import re
 import subprocess
 import tempfile
@@ -18,6 +19,7 @@ from tests.quality.fixtures import git as _git
 from tests.quality.fixtures import repository as _test_repository
 from tools.quality import commits
 from tools.quality import governance
+from tools.quality import responsibilities
 from tools.quality.repository import __main__ as repository_audit
 from tools.quality.repository.decisions import decision_record_gaps
 from tools.quality.repository.names import semantic_name_gaps
@@ -344,7 +346,7 @@ class TestQualityPolicyContracts:
         run = mocker.patch.object(
             governance.subprocess,
             "run",
-            side_effect=[tracked, tracked, *([completed] * 15)],
+            side_effect=[tracked, tracked, *([completed] * 16)],
         )
 
         governance.audit(online_links=False)
@@ -375,6 +377,17 @@ class TestQualityPolicyContracts:
                 ".config/quality/native/taplo.toml",
                 "mise.toml",
             ),
+            (
+                "npm",
+                "exec",
+                "--offline",
+                "--",
+                "markdownlint-cli2",
+                "--config",
+                ".config/quality/native/markdownlint-cli2.yaml",
+                "--no-globs",
+                "README.md",
+            ),
             ("cue", "fmt", "--check", "--files", ".config/ci/pipeline.cue"),
             ("cue", "vet", ".config/ci/pipeline.cue"),
             (governance.sys.executable, "-m", "tools.ci.project"),
@@ -386,6 +399,7 @@ class TestQualityPolicyContracts:
                 "-m",
                 "repository_toolchain",
                 "tests/quality/test_verification.py",
+                "tests/quality/test_contract.py",
             ),
             (
                 "npm",
@@ -459,6 +473,9 @@ class TestQualityPolicyContracts:
         assert set(scopes["toml-formatted"]).isdisjoint(scopes["python"])
         assert scopes["cue-formatted"] == ["ci-model"]
         assert {"quality-tool-configuration", "toolchain"} <= set(scopes["prettier-formatted"])
+        assignments = responsibilities.audit(ROOT)["assignments"]
+        formatted = governance._commands(online_links=False)[0][10:]
+        assert {assignments[path] for path in formatted} <= set(scopes["prettier-formatted"])
 
     def test_editor_defaults_and_text_layout_policy_are_aligned(self) -> None:
         editor = (ROOT / ".editorconfig").read_text(encoding="utf-8")
@@ -994,6 +1011,147 @@ def test_formatter_defers_digest_bound_aube_bytes_to_the_native_owner() -> None:
     patterns = (ROOT / ignore).read_text(encoding="utf-8")
     assert "../../../.mise/locks/**/aube-lock.yaml" in patterns
     assert len([line for line in patterns.splitlines() if line and not line.startswith("#")]) == 1
+
+
+def test_markdown_lint_is_one_locked_native_governance_owner() -> None:
+    metadata = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    assert metadata["devDependencies"].get("markdownlint-cli2") == "0.23.3"
+    selected = [
+        command
+        for command in governance._commands(online_links=False)
+        if "markdownlint-cli2" in command
+    ]
+    assert len(selected) == 1
+    command = selected[0]
+    assert command[:6] == ("npm", "exec", "--offline", "--", "markdownlint-cli2", "--config")
+    assert command[6] == ".config/quality/native/markdownlint-cli2.yaml"
+    assert "--fix" not in command
+    assert "--no-globs" in command
+    assert "README.md" in command
+    assert "openspec/changes/terminal-product-convergence/tasks.md" in command
+    assert not any(path.startswith("openspec/changes/archive/") for path in command)
+    policy = tomllib.loads(
+        (ROOT / ".config/quality/responsibility-map.toml").read_text(encoding="utf-8")
+    )
+    concern = next(item for item in policy["concerns"] if item["id"] == "markdown-lint")
+    scope = next(item for item in policy["scopes"] if item["id"] == concern["scope"])
+    assignments = responsibilities.audit(ROOT)["assignments"]
+    assert {assignments[path] for path in command[8:]} <= set(scope["roles"])
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize(
+    ("name", "source", "valid"),
+    [
+        ("README.md", "# Fixture\n\nClear prose.\n", True),
+        ("README.md", "## Missing title\n", False),
+        (
+            "CHANGELOG.md",
+            "# Changelog\n\n## One\n\n### Fixed\n\n- First.\n\n## Two\n\n### Fixed\n\n- Second.\n",
+            True,
+        ),
+        ("README.md", "# Fixture\n\n## Same\n\n## Same\n", False),
+        ("README.md", "# Fixture\n\nFirst.\n\n\nSecond.\n", False),
+        ("README.md", "# Fixture\n\n<!-- markdownlint-disable -->\n\n## Same\n\n## Same\n", False),
+        (
+            "openspec/changes/fixture/specs/topic/spec.md",
+            "# Spec Delta\n\n## ADDED Requirements\n",
+            True,
+        ),
+        (
+            "openspec/changes/fixture/tasks.md",
+            "# Tasks\n\n## 1. Work\n\n- [ ] Complete the task.\n",
+            True,
+        ),
+        ("openspec/changes/fixture/proposal.md", "# Proposal\n\n## Why\n", True),
+        ("openspec/changes/fixture/design.md", "# Design\n\n## Context\n", True),
+        ("openspec/changes/fixture/specs/topic/spec.md", "## ADDED Requirements\n", False),
+        ("openspec/changes/fixture/proposal.md", "Missing section.\n", False),
+        ("README.md", "# Fixture\n\n" + "readable " * 12 + "prose.\n", False),
+        ("README.md", "# Fixture\n\n[Missing]()\n", False),
+        ("README.md", "# Fixture\n\n```\ncode\n```\n", False),
+        ("README.md", "# Fixture\n\n- First.\n+ Second.\n", False),
+        ("README.md", "# Fixture\n\n| One | Two |\n| --- | --- |\n| Only |\n", False),
+        ("README.md", "# Fixture\n\n" + "a" * 120 + "\n", True),
+        ("README.md", "# Fixture\n\n```python\n" + "a" * 120 + "\n```\n", True),
+        ("README.md", "# " + "a" * 120 + "\n", True),
+    ],
+)
+def test_native_markdown_rules_reject_real_invalid_carriers_without_source_writes(
+    tmp_path: Path, name: str, source: str, valid: bool
+) -> None:
+    path = tmp_path / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(source, encoding="utf-8")
+    config = tmp_path / ".markdownlint-cli2.yaml"
+    config.write_bytes((ROOT / ".config/quality/native/markdownlint-cli2.yaml").read_bytes())
+    before = {item: item.read_bytes() for item in tmp_path.rglob("*") if item.is_file()}
+    completed = subprocess.run(
+        (
+            "node",
+            str(ROOT / "node_modules/markdownlint-cli2/markdownlint-cli2-bin.mjs"),
+            "--config",
+            str(config),
+            "--no-globs",
+            str(path),
+        ),
+        cwd=tmp_path,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=20,
+        check=False,
+    )
+    assert (completed.returncode == 0) is valid, completed.stderr
+    assert {item: item.read_bytes() for item in tmp_path.rglob("*") if item.is_file()} == before
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize("valid", [True, False])
+def test_native_markdown_command_checks_the_declared_current_files(
+    valid: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    current = "openspec/changes/fixture/proposal.md"
+    archived = "openspec/changes/archive/fixture/proposal.md"
+    with _test_repository(("README.md", current, archived, ".gitignore")) as root:
+        (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
+        (root / current).write_text(
+            "# Proposal\n" if valid else "## Missing native title\n", encoding="utf-8"
+        )
+        (root / archived).write_text("Missing title.\n", encoding="utf-8")
+        (root / ".gitignore").write_text("private.md\n", encoding="utf-8")
+        (root / "private.md").write_text("Untracked invalid source.\n", encoding="utf-8")
+        config = root / ".config/quality/native/markdownlint-cli2.yaml"
+        config.parent.mkdir(parents=True)
+        config.write_bytes((ROOT / config.relative_to(root)).read_bytes())
+        _git(root, "add", "--", ".gitignore")
+        monkeypatch.setattr(governance, "ROOT", root)
+        command = next(
+            item for item in governance._commands(online_links=False) if "markdownlint-cli2" in item
+        )
+        native = (
+            "node",
+            str(ROOT / "node_modules/markdownlint-cli2/markdownlint-cli2-bin.mjs"),
+            *command[5:],
+        )
+        before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+        completed = subprocess.run(
+            native,
+            cwd=root,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=20,
+            check=False,
+        )
+        assert (completed.returncode == 0) is valid, completed.stdout + completed.stderr
+        assert "Linting: 2 files" in completed.stdout
+        assert current in command
+        assert archived not in command
+        assert "private.md" not in command
+        assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
 
 
 @pytest.mark.repository_toolchain

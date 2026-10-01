@@ -38,7 +38,7 @@ cue = "0.17.1"
 [env]
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
 VIRTUAL_ENV = false
-UV_PYTHON = { value = "{{tools.python.path}}", tools = true }
+UV_PYTHON = { value = "{% if tools.python is defined %}{{tools.python.path}}{% endif %}", tools = true }
 PYTHONHOME = false
 PYTHONPATH = false
 PYTHONNOUSERSITE = "1"
