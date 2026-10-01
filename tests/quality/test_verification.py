@@ -140,9 +140,24 @@ def _native_run(
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=30,
         check=False,
     )
+
+
+def test_native_tool_diagnostics_are_utf8_even_under_an_ambient_legacy_codec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "_text_encoding", lambda: "cp936")
+    probe = (
+        "import sys; sys.stdout.buffer.write(bytes([0xE2, 0x82, 0xAC])); "
+        "sys.stderr.buffer.write(bytes([0xE2, 0x82, 0xAC])); sys.exit(7)"
+    )
+    completed = _native_run(tmp_path, dict(os.environ), (sys.executable, "-c", probe))
+    assert completed.returncode == 7
+    assert completed.stdout == "\u20ac"
+    assert completed.stderr == "\u20ac"
 
 
 @pytest.fixture
