@@ -175,13 +175,13 @@ returns `unchanged` when the requested release is already the proven active
 installation, `unavailable` when no verified predecessor exists, and
 `rolled_back` only after the requested predecessor is the proven accepting
 installation. `recover` returns `not_required` when no transaction exists,
-`closed` when an unmutated prepared transaction is discarded, `finalized` when
-the committed candidate is already the proven live installation, `rolled_back`
-when the exact prior state is restored, and `purged` when interrupted removal
-finishes. `uninstall` and `uninstall --purge` return `not_installed` with exit
-status zero only when no owned service, listener, command, payload, or
-transaction exists. Existing but unverifiable state is never treated as absence
-and remains unchanged for diagnosis.
+`closed` when a prepared transaction that changed no payload is discarded,
+`finalized` when the committed candidate is already the proven live
+installation, `rolled_back` when the exact prior state is restored, and `purged`
+when interrupted removal finishes. `uninstall` and `uninstall --purge` return
+`not_installed` with exit status zero only when no owned service, listener,
+command, payload, or transaction exists. Existing but unverifiable state is
+never treated as absence and remains unchanged for diagnosis.
 
 Before deleting payload files, purge records their exact paths and digests in
 the existing transaction journal. An interrupted purge resumes through `recover`

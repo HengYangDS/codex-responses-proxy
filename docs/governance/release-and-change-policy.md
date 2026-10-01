@@ -143,6 +143,17 @@ retained without private exceptions; archived Change bytes are immutable. The
 existing toolchain conformance run exercises both the formatter and linter
 against real valid and invalid files, without source writes.
 
+Vale is the single English prose owner. Native spelling, repetition, product
+vocabulary, and concise-phrase rules run on the same current Markdown scope. The
+command ignores global host configuration, not current pages. Its real
+counterexamples cover quoted and tabular prose as well as ordinary paragraphs;
+code and link destinations remain literal inputs. Editing must preserve
+responsibility, modality, conditions, and evidence limits. A style result is not
+proof of semantic fidelity, factual accuracy, or installed product behavior. The
+existing Markdown parser rejects document-level Vale controls, including inline
+and nested comments, without treating literal code as a directive. Native Node
+contracts exercise that rule with the same locked parser.
+
 Statement and measured branch coverage must each be at least 95%, as defined in
 [the coverage policy](../../.config/quality/policy/coverage.toml). Warnings are
 errors. Product and development dependencies come from this repository's locked

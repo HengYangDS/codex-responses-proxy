@@ -1135,10 +1135,10 @@ authority.
   rechecking `HEAD`, tag object, tag commit, tree, object format, and immutable
   Git blobs before the one-use payload capability is minted.
 - Require exact Python `argv[1]` process identity before watchdog or listener
-  termination, re-read identity before signalling, and boundedly prove the
-  original identity exited. Uninstall now proves native-service absence before
-  payload mutation; purge removes only manifest-owned files, preserves unknown
-  content, and reports incomplete cleanup with a nonzero exit.
+  termination, re-read identity before signalling, and prove within a fixed time
+  limit that the original identity exited. Uninstall now proves native-service
+  absence before payload mutation; purge removes only manifest-owned files,
+  preserves unknown content, and reports incomplete cleanup with a nonzero exit.
 - Replace the flat split package with the single semantic `codex_dmx_proxy`
   product root and make the serving inventory and digest one release-owned
   contract.

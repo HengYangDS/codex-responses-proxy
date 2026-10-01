@@ -35,7 +35,7 @@ class GovernanceError(RuntimeError):
 def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
     """Return the single ordered governance graph for this repository."""
     link_mode = () if online_links else ("--offline",)
-    structured_text = _tracked_current((".md", ".yaml", ".yml", ".json", ".jsonc"))
+    structured_text = _tracked_current((".md", ".mjs", ".yaml", ".yml", ".json", ".jsonc"))
     markdown = tuple(path for path in structured_text if path.endswith(".md"))
     toml = _tracked_current((".toml",))
     return (
@@ -67,8 +67,15 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
             "--",
             "markdownlint-cli2",
             "--config",
-            ".config/quality/native/markdownlint-cli2.yaml",
+            ".config/quality/native/markdownlint-cli2.mjs",
             "--no-globs",
+            *markdown,
+        ),
+        (
+            "vale",
+            "--config=.config/quality/native/vale.ini",
+            "--no-global",
+            "--no-color",
             *markdown,
         ),
         ("cue", "fmt", "--check", "--files", ".config/ci/pipeline.cue"),
@@ -84,6 +91,7 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
             "tests/quality/test_verification.py",
             "tests/quality/test_contract.py",
         ),
+        ("node", "--test", "tests/quality/markdown-policy.test.mjs"),
         (
             "npm",
             "exec",

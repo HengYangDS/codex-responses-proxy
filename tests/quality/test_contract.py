@@ -346,7 +346,7 @@ class TestQualityPolicyContracts:
         run = mocker.patch.object(
             governance.subprocess,
             "run",
-            side_effect=[tracked, tracked, *([completed] * 16)],
+            side_effect=[tracked, tracked, *([completed] * 18)],
         )
 
         governance.audit(online_links=False)
@@ -384,8 +384,15 @@ class TestQualityPolicyContracts:
                 "--",
                 "markdownlint-cli2",
                 "--config",
-                ".config/quality/native/markdownlint-cli2.yaml",
+                ".config/quality/native/markdownlint-cli2.mjs",
                 "--no-globs",
+                "README.md",
+            ),
+            (
+                "vale",
+                "--config=.config/quality/native/vale.ini",
+                "--no-global",
+                "--no-color",
                 "README.md",
             ),
             ("cue", "fmt", "--check", "--files", ".config/ci/pipeline.cue"),
@@ -401,6 +408,7 @@ class TestQualityPolicyContracts:
                 "tests/quality/test_verification.py",
                 "tests/quality/test_contract.py",
             ),
+            ("node", "--test", "tests/quality/markdown-policy.test.mjs"),
             (
                 "npm",
                 "exec",
@@ -469,7 +477,7 @@ class TestQualityPolicyContracts:
         assert concerns["cue-format"]["configuration"] == [".config/ci/pipeline.cue"]
 
         scopes = {scope["id"]: scope["roles"] for scope in policy["scopes"]}
-        assert set(scopes["prettier-formatted"]).isdisjoint(scopes["python"])
+        assert set(scopes["prettier-formatted"]) & set(scopes["python"]) == {"test-code"}
         assert set(scopes["toml-formatted"]).isdisjoint(scopes["python"])
         assert scopes["cue-formatted"] == ["ci-model"]
         assert {"quality-tool-configuration", "toolchain"} <= set(scopes["prettier-formatted"])
@@ -497,7 +505,7 @@ class TestQualityPolicyContracts:
         assert policy["line_ending"] == "lf"
         assert policy["insert_final_newline"] is True
         assert policy["trim_trailing_whitespace"] is True
-        assert {".json", ".jsonc"} <= set(policy["tracked_suffixes"])
+        assert {".json", ".jsonc", ".mjs", ".txt"} <= set(policy["tracked_suffixes"])
 
     def test_git_checkout_preserves_lf_text_and_binary_bytes(self) -> None:
         attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
@@ -1024,7 +1032,7 @@ def test_markdown_lint_is_one_locked_native_governance_owner() -> None:
     assert len(selected) == 1
     command = selected[0]
     assert command[:6] == ("npm", "exec", "--offline", "--", "markdownlint-cli2", "--config")
-    assert command[6] == ".config/quality/native/markdownlint-cli2.yaml"
+    assert command[6] == ".config/quality/native/markdownlint-cli2.mjs"
     assert "--fix" not in command
     assert "--no-globs" in command
     assert "README.md" in command
@@ -1037,6 +1045,91 @@ def test_markdown_lint_is_one_locked_native_governance_owner() -> None:
     scope = next(item for item in policy["scopes"] if item["id"] == concern["scope"])
     assignments = responsibilities.audit(ROOT)["assignments"]
     assert {assignments[path] for path in command[8:]} <= set(scope["roles"])
+
+
+def test_english_quality_uses_one_native_owner_and_current_scope() -> None:
+    toolchain = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert toolchain["tools"]["aqua:vale-cli/vale"] == "3.23.0"
+    selected = [
+        command for command in governance._commands(online_links=False) if command[0] == "vale"
+    ]
+    assert len(selected) == 1
+    command = selected[0]
+    assert "--config=.config/quality/native/vale.ini" in command
+    assert "--no-global" in command
+    assert "--no-exit" not in command
+    assert "README.md" in command
+    assert "openspec/changes/terminal-product-convergence/tasks.md" in command
+    assert not any(path.startswith("openspec/changes/archive/") for path in command)
+    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    assert not any(
+        name.startswith(("textlint", "@textlint", "cspell")) for name in package["devDependencies"]
+    )
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize(
+    ("source", "valid"),
+    [
+        ("# Fixture\n\nRead the current source.\n", True),
+        ("# Fixture\n\nRead the the source.\n", False),
+        ("# Fixture\n\n> Read the the source.\n", False),
+        ("# Fixture\n\n| Rule |\n| --- |\n| Read the the source. |\n", False),
+        ("# Fixture\n\nUse Gitlab.\n", False),
+        ("# Fixture\n\n> Use Gitlab.\n", False),
+        ("# Fixture\n\n| Tool |\n| --- |\n| Gitlab |\n", False),
+        ("# Fixture\n\nUse GitLab and Nox in the worktree's namespace.\n", True),
+        ("# Fixture\n\nRead the worktreex and namespacex.\n", False),
+        ("# Fixture\n\nRead the noninteractivel output.\n", False),
+        ("# Fixture\n\nIn order to verify, read the source.\n", False),
+        ("# Fixture\n\n```text\nRead the the source in Gitlab.\n```\n", True),
+        ("# Fixture\n\nRead `the the` field.\n", True),
+        ("# Fixture\n\nRead [the source](https://example.com/veriffication).\n", True),
+        ("# Fixture\n\nRead the veriffication result.\n", False),
+        ("# Fixture\n\n> Read the veriffication result.\n", False),
+        ("# Fixture\n\n| Rule |\n| --- |\n| Read the veriffication result. |\n", False),
+        ("# Fixture\n\n```text\nveriffication\n```\n", True),
+        ("# Fixture\n\nRead the `veriffication` field.\n", True),
+    ],
+)
+def test_native_english_cli_checks_real_current_prose_without_source_writes(
+    source: str, valid: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    current = "openspec/changes/fixture/proposal.md"
+    archived = "openspec/changes/archive/fixture/proposal.md"
+    with _test_repository(("README.md", current, archived, ".gitignore")) as root:
+        (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
+        (root / current).write_text(source, encoding="utf-8")
+        (root / archived).write_text("Read the the veriffication result.\n", encoding="utf-8")
+        (root / ".gitignore").write_text("private.md\n", encoding="utf-8")
+        (root / "private.md").write_text("Read the the veriffication result.\n", encoding="utf-8")
+        monkeypatch.setattr(governance, "ROOT", root)
+        command = next(
+            item for item in governance._commands(online_links=False) if item[0] == "vale"
+        )
+        config = "--config=.config/quality/native/vale.ini"
+        native = tuple(
+            "--config=" + str(ROOT / config.removeprefix("--config="))
+            if argument == config
+            else argument
+            for argument in command
+        )
+        before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+        completed = subprocess.run(
+            native,
+            cwd=root,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=20,
+            check=False,
+        )
+        assert (completed.returncode == 0) is valid, completed.stdout + completed.stderr
+        assert current in command
+        assert archived not in command
+        assert "private.md" not in command
+        assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
 
 
 @pytest.mark.repository_toolchain
@@ -1053,6 +1146,30 @@ def test_markdown_lint_is_one_locked_native_governance_owner() -> None:
         ("README.md", "# Fixture\n\n## Same\n\n## Same\n", False),
         ("README.md", "# Fixture\n\nFirst.\n\n\nSecond.\n", False),
         ("README.md", "# Fixture\n\n<!-- markdownlint-disable -->\n\n## Same\n\n## Same\n", False),
+        ("README.md", "# Fixture\n\n<!-- vale off -->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\n<!-- v&#97;le off -->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\n<!-- vale&#32;off -->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\n<!-- vale Vale.Repetition = NO -->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\n<!-- vale styles = Plain -->\n\nClear prose.\n", False),
+        (
+            "README.md",
+            '# Fixture\n\n<!-- vale Vale.Repetition["the"] = NO -->\n\nClear prose.\n',
+            False,
+        ),
+        ("README.md", "# Fixture\n\n<!--\nvale off\n-->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\nRead the <!-- vale off -->the source.\n", False),
+        ("README.md", "# Fixture\n\n> <!-- vale off -->\n>\n> Clear prose.\n", False),
+        ("README.md", "# Fixture\n\n- <!-- vale off -->\n  Clear prose.\n", False),
+        ("README.md", "# Fixture\n\n| Rule |\n| --- |\n| <!-- vale off -->Clear prose. |\n", False),
+        ("README.md", "# Fixture\n\n<!-- ordinary -->\n<!-- vale off -->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\nRead `<!-- vale off -->` as literal code.\n", True),
+        ("README.md", "# Fixture\n\n```html\n<!-- vale off -->\n```\n", True),
+        ("README.md", "# Fixture\n\n<!-- source: current -->\n\nClear prose.\n", True),
+        (
+            "README.md",
+            "# Fixture\n\n<!-- vale is the prose checker, not policy. -->\n\nClear prose.\n",
+            True,
+        ),
         (
             "openspec/changes/fixture/specs/topic/spec.md",
             "# Spec Delta\n\n## ADDED Requirements\n",
@@ -1083,8 +1200,7 @@ def test_native_markdown_rules_reject_real_invalid_carriers_without_source_write
     path = tmp_path / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(source, encoding="utf-8")
-    config = tmp_path / ".markdownlint-cli2.yaml"
-    config.write_bytes((ROOT / ".config/quality/native/markdownlint-cli2.yaml").read_bytes())
+    config = ROOT / ".config/quality/native/markdownlint-cli2.mjs"
     before = {item: item.read_bytes() for item in tmp_path.rglob("*") if item.is_file()}
     completed = subprocess.run(
         (
@@ -1122,9 +1238,10 @@ def test_native_markdown_command_checks_the_declared_current_files(
         (root / archived).write_text("Missing title.\n", encoding="utf-8")
         (root / ".gitignore").write_text("private.md\n", encoding="utf-8")
         (root / "private.md").write_text("Untracked invalid source.\n", encoding="utf-8")
-        config = root / ".config/quality/native/markdownlint-cli2.yaml"
+        config = root / ".config/quality/native/markdownlint-cli2.mjs"
         config.parent.mkdir(parents=True)
-        config.write_bytes((ROOT / config.relative_to(root)).read_bytes())
+        native_policy = (ROOT / config.relative_to(root)).as_uri()
+        config.write_text(f'export {{ default }} from "{native_policy}";\n', encoding="utf-8")
         _git(root, "add", "--", ".gitignore")
         monkeypatch.setattr(governance, "ROOT", root)
         command = next(

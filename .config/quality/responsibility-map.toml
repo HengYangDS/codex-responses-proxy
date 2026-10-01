@@ -26,8 +26,8 @@ files = ["noxfile.py"]
 prefixes = ["tools/"]
 
 [[roles]]
-id = "test-python"
-description = "Executable product and repository contract tests."
+id = "test-code"
+description = "Executable product and repository contract tests in their native language."
 owner = "product-assurance"
 consumer = "developers, CI, and release acceptance"
 source_of_truth = "executable behavior and failure-path contracts"
@@ -209,7 +209,7 @@ id = "all-carriers"
 roles = [
   "product-python",
   "repository-python",
-  "test-python",
+  "test-code",
   "agent-guidance",
   "product-documentation",
   "release-history",
@@ -228,7 +228,7 @@ roles = [
 
 [[scopes]]
 id = "python"
-roles = ["product-python", "repository-python", "test-python"]
+roles = ["product-python", "repository-python", "test-code"]
 
 [[scopes]]
 id = "production-python"
@@ -255,6 +255,7 @@ roles = [
   "gitlab-ci",
   "quality-tool-configuration",
   "toolchain",
+  "test-code",
 ]
 
 [[scopes]]
@@ -433,12 +434,28 @@ id = "markdown-lint"
 owner = "markdownlint-cli2"
 scope = "documentation"
 session = "governance"
-configuration = [".config/quality/native/markdownlint-cli2.yaml"]
+configuration = [".config/quality/native/markdownlint-cli2.mjs"]
 risk_model = "Broken heading, link, list, code-fence, spacing, or table structure obscures requirements and raises navigation and review cost."
-measurement = "The locked native linter checks every tracked current Markdown carrier with default rules, eighty-column prose, and sibling-only heading uniqueness; official OpenSpec templates retain their native title."
+measurement = "The locked native linter checks every tracked current Markdown carrier with default rules, eighty-column prose, and sibling-only heading uniqueness; one native micromark rule rejects Vale controls in real HTML comments, not literal code. Official OpenSpec templates retain their native title."
 false_positive_cost = "Line length is a prose readability rule, not a limit on code, tables, headings, or indivisible native tokens; repeated release-section headings are valid under different parent versions."
 remediation = "Correct the Markdown structure or apply native prose wrapping; do not add inline suppression, an ignored current document, or a baseline."
 review_condition = "Reassess when the official Markdown or OpenSpec carrier contract changes; immutable archived Changes remain byte-stable."
+
+[[concerns]]
+id = "english-prose"
+owner = "vale"
+scope = "documentation"
+session = "governance"
+configuration = [
+  ".config/quality/native/vale.ini",
+  ".config/quality/native/vale/styles/config/vocabularies/Product/accept.txt",
+  ".config/quality/native/vale/styles/Plain/Concise.yml",
+]
+risk_model = "Misspellings, repeated words, inconsistent terms, and needless phrases make requirements harder to interpret and can hide an authority or evidence boundary."
+measurement = "Locked native Vale parses current Markdown paragraphs, headings, quotes, and tables; built-in spelling, repetition, vocabulary, and a native concise-phrase rule reject real defective input without source writes."
+false_positive_cost = "Technical vocabulary must have a current semantic owner; code, native identifiers and URLs are not ordinary prose. Editorial changes must retain actors, conditions, modality, and evidence limits."
+remediation = "Correct the actual prose or add the verified technical term to the native vocabulary; do not suppress a page, accept a baseline, or stack another linguistic checker."
+review_condition = "Reassess when supported writing formats or product terminology change; reconcile general policy with the accepted ETHOS owner."
 
 [[concerns]]
 id = "toml-format"

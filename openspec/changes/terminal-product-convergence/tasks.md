@@ -460,8 +460,31 @@
       contract, now reconciled without changing product dependencies. The frozen
       full graph passes 1,942 cases on each Python 3.12, 3.13, and 3.14 line
       with 97.26% coverage and all 1,221 source hashes conserved. Fifty online
-      links pass. Remaining prose, supply-chain, peer, and installed-runtime
-      acceptance stays open. Evidence:
+      links pass. Native Vale now owns English spelling, repetition, canonical
+      terms, and four concise phrases; nineteen real prose examples preserve
+      code and link destinations. Ten original control-comment examples and two
+      text-carrier omissions reproduce thirteen failures before repair. The
+      existing native Markdown parser now rejects disabling comments, including
+      inline, nested, and entity-encoded controls; twenty-eight native Node
+      cases also preserve literal code, attributes, and explanatory comments.
+      Native line, branch, and function coverage of that rule is 100%. The
+      native HTML parser replaces raw comment matching after actual attribute
+      false positives; no second Markdown or prose engine is introduced. Five
+      new transitive packages are limited to that HTML parser; existing Markdown
+      and entity libraries are promoted to explicit consumers. Registry
+      signatures pass for 142 packages and 29 attestations. All 417
+      quality/Forge sibling cases pass. The first full run passes 1,945 cases
+      per Python 3.12/3.13/3.14, with 97.26% coverage and all 1,225 hashes
+      conserved; 74 marked native cases run separately. Final review then
+      exposes a natural Vale comment falsely rejected by a broad prefix; exact
+      native control grammar replaces that prefix, and all 230 affected sibling
+      cases pass. Final frozen full graph passes 1,945 cases per Python
+      3.12/3.13/3.14 with five declared native-only skips, 97.26% coverage,
+      seventy-five marked toolchain cases, and twenty-eight native Node cases.
+      All 1,225 tracked hashes and 907 archived files remain unchanged;
+      thirty-eight prose pages and fifty online links pass. Formal distributed
+      ETHOS, mixed-language installed proof, native peers, and publication
+      remain open. Evidence:
       `build/verification/native-python-binding-089f940d/`.
 - [ ] 7.5 Close structural measurement and enforcement together: verify
       file/function ELOC, logical statements, nesting and complexity semantics;
@@ -900,8 +923,12 @@
       thirty-one unchanged-content pages; native titles and five edited guidance
       or specification carriers are intentional changes. All 907 archived files
       retain their exact hashes. Complete native governance and the full local
-      Python graph pass. Remaining prose, terminology, and peer acceptance stays
-      open; Markdown lint is not a prose-quality claim.
+      Python graph pass. Eight explicit English replacements preserve actors,
+      obligations, conditions, and evidence limits. Native Vale and actual
+      disabling-comment counterexamples now run through one governance entry;
+      current-field semantics are not inferred from a green style check. Final
+      current-source format, native prose, official OpenSpec, and full Python
+      graph pass; native peer and installed acceptance remain open.
 - [x] 11.4 Rename Decision Records to `dr-<sequence>-<subject>.md`, complete the
       decision register, and add only decisions that explain enduring product
       boundaries or rejected alternatives. All six current records have
@@ -921,36 +948,40 @@
       native workspace commit policy; coverage guidance uses the configured
       at-least comparison. Current JSON and JSONC configuration now joins the
       existing native formatter and text-byte scope; editor defaults use the
-      same indentation. Native interpreter selection now has one Mise tool-aware
-      environment owner. Direct proof, local tasks, and native CI synchronize
-      the locked environment before execution, without executable-name ambiguity
-      or no-sync false acceptance. Actual nested-path regressions cover missing
-      and stale environments plus changed locks; the governance graph and each
-      native platform execute them before dependent work. Local native
-      acceptance passed; fresh Windows service-consumer acceptance stays open.
-      The new Windows conformance exposed a locale-dependent subprocess decoder:
-      native UTF-8 diagnostics were read as GBK and lost behind thread warnings.
-      The test owner now decodes UTF-8 strictly, with a distinguishing real-byte
-      regression. The hidden native return-code cause still requires the same
-      service-consumer replay; it is not fixed by local decoding success. Actual
-      tool-subset regressions now prove Python binding only when Python is
-      selected; acquisition-only gh jobs do not require an absent interpreter.
-      Hosted CI and the remaining root-carrier audit stay open. Stable npm
-      12.2.0 uses the native Mise backend and generated AUBE graph; the old
-      repository sidecars retire through that producer. Native lock format 3
-      retains all 68 existing platform inputs and adds 11 discovered entries;
-      the minimum reader and actual host/CI Mise are 2026.9.18. Actual pipeline
-      9025 disproved recursive workflow-variable tag expansion; Linux review and
-      protected jobs now share one CUE body and use direct native scheduling
-      variables with no intermediate alias. Windows native release selection
-      uses the running interpreter ABI, not the host CPU, and native tests own
-      short disposable roots independent of checkout depth. Pipeline 9030 proves
-      direct Linux Runner assignment, source, Python matrix, and performance at
-      signed a52f66c6. Its native Mac job rejects missing gui/510; its Windows
-      job exposes deep service-account TEMP and inherited Nox TMPDIR. Native
-      child temporary variables now share the same owned root; the Runner owner
-      must provide a short isolated native TEMP input. Pipeline 9032 passes all
-      Linux nodes and 49 Windows native checks, but one mocked-launch test
+      same indentation. Native Markdown configuration is now one module, with
+      its direct native tests and vocabulary included in the same tracked UTF-8,
+      LF, final-newline, and trailing-whitespace policy. The removed YAML is not
+      retained as a fallback. Native interpreter selection now has one Mise
+      tool-aware environment owner. Direct proof, local tasks, and native CI
+      synchronize the locked environment before execution, without
+      executable-name ambiguity or no-sync false acceptance. Actual nested-path
+      regressions cover missing and stale environments plus changed locks; the
+      governance graph and each native platform execute them before dependent
+      work. Local native acceptance passed; fresh Windows service-consumer
+      acceptance stays open. The new Windows conformance exposed a
+      locale-dependent subprocess decoder: native UTF-8 diagnostics were read as
+      GBK and lost behind thread warnings. The test owner now decodes UTF-8
+      strictly, with a distinguishing real-byte regression. The hidden native
+      return-code cause still requires the same service-consumer replay; it is
+      not fixed by local decoding success. Actual tool-subset regressions now
+      prove Python binding only when Python is selected; acquisition-only gh
+      jobs do not require an absent interpreter. Hosted CI and the remaining
+      root-carrier audit stay open. Stable npm 12.2.0 uses the native Mise
+      backend and generated AUBE graph; the old repository sidecars retire
+      through that producer. Native lock format 3 retains all 68 existing
+      platform inputs and adds 11 discovered entries; the minimum reader and
+      actual host/CI Mise are 2026.9.18. Actual pipeline 9025 disproved
+      recursive workflow-variable tag expansion; Linux review and protected jobs
+      now share one CUE body and use direct native scheduling variables with no
+      intermediate alias. Windows native release selection uses the running
+      interpreter ABI, not the host CPU, and native tests own short disposable
+      roots independent of checkout depth. Pipeline 9030 proves direct Linux
+      Runner assignment, source, Python matrix, and performance at signed
+      a52f66c6. Its native Mac job rejects missing gui/510; its Windows job
+      exposes deep service-account TEMP and inherited Nox TMPDIR. Native child
+      temporary variables now share the same owned root; the Runner owner must
+      provide a short isolated native TEMP input. Pipeline 9032 passes all Linux
+      nodes and 49 Windows native checks, but one mocked-launch test
       unnecessarily prewarms a real bundle and leaves a locked module at
       cleanup. That invocation-only contract now runs in the non-native suite
       with a synthetic manifest and a bounded mock scope; its assertions remain
@@ -1048,4 +1079,4 @@
 - [ ] 13.7 Prove the final installed product and clean repository family satisfy
       every modified capability, disclose any genuinely unverified external
       fact, and retain no active Change, Work Lane, proposal branch, temporary
-      authority, or consumerless entity.
+      authority, or entity with no current consumer.

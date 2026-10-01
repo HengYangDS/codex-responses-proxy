@@ -88,6 +88,18 @@ retain their exact bytes. The same governance entry executes real formatter and
 lint counterexamples; Python-only native lifecycle jobs do not need Node for
 them.
 
+The same governance entry uses locked Vale for English spelling, repeated words,
+canonical terminology, and needless phrases. Its native parser checks headings,
+paragraphs, quotes, and tables without treating code or link destinations as
+prose. Keep technical terms in the native vocabulary and correct actual writing
+defects at their owner. A style fix must preserve the actor, obligation,
+condition, and evidence limit; a green prose check does not establish truth or
+semantic completeness. Do not suppress current pages or add another linguistic
+checker to work around a missed syntax node. The existing Markdown linter uses
+its native parser to reject Vale control comments in paragraphs, quotes, lists,
+and tables; literal code examples and ordinary comments remain valid. Native
+rule tests run from the same governance entry, not a separate command plane.
+
 Build output, verification results, temporary files, and their cleanup follow
 the
 [evidence storage policy](docs/evidence/evidence-policy.md#storage-and-retention).

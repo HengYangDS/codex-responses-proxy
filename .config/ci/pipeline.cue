@@ -45,7 +45,7 @@ import (
 	}
 	miseVersion:     "2026.9.18"
 	gitlabMiseImage: "ghcr.io/jdx/mise:\(miseVersion)-debian@sha256:33d301fd5929d6960c102f947e97f08c671ad936573b375fcf4f13a90466f710"
-	quality:         "python,uv,node,npm,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
+	quality:         "python,uv,node,npm,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee,aqua:vale-cli/vale"
 }
 
 #CommitEvent: {

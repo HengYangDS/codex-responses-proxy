@@ -78,8 +78,8 @@ dependency.
 Uninstall must prove native-service absence and exact owned-process exit before
 payload mutation. Process ownership requires the exact installed executable and
 one declared private service role; identity is re-read before signalling and
-boundedly rechecked afterwards. `--purge` trusts only a valid current payload
-manifest, preserves unknown install content, and exits nonzero when residue
-remains. Linux supervision requires a systemd user manager; installation starts
-no session-only fallback process. A failed service-manager observation is
-unknown, not evidence that a registered service is absent.
+rechecked within a fixed time limit afterwards. `--purge` trusts only a valid
+current payload manifest, preserves unknown install content, and exits nonzero
+when residue remains. Linux supervision requires a systemd user manager;
+installation starts no session-only fallback process. A failed service-manager
+observation is unknown, not evidence that a registered service is absent.

@@ -595,6 +595,7 @@ class TestVerificationContracts:
                 "gitleaks",
                 "actionlint",
                 "lychee",
+                "vale",
                 "gh",
                 "glab",
             )

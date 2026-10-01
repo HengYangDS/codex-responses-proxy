@@ -72,6 +72,26 @@ thresholds, and unexplained disabled rules SHALL fail admission.
 - **AND** formatter reflow preserves prose, code bytes, link targets, and
   immutable archived Change bytes.
 
+#### Scenario: Current English prose is defective
+
+- **WHEN** tracked current Markdown contains a misspelling, repeated word,
+  inconsistent canonical term, or a governed needless phrase
+- **THEN** one locked native prose command rejects it in paragraphs, headings,
+  quotes, and tables without rewriting source
+- **AND** code, identifiers, and link destinations retain their literal meaning
+- **AND** archived and private inputs are outside the current command scope
+
+#### Scenario: A document attempts to disable prose rules
+
+- **WHEN** current Markdown contains a Vale control comment in a block,
+  paragraph, quote, list, or table
+- **THEN** the existing Markdown linter rejects the actual parsed comment,
+  including an attempt to disable that linter rule
+- **AND** literal code, ordinary comments, and link destinations remain valid
+- **AND** native rule tests run through the normal governance command
+- **AND** editorial repair preserves actors, modality, conditions, and evidence
+  limits rather than trading semantic fidelity for a passing style check.
+
 #### Scenario: A full verification prerequisite fails
 
 - **WHEN** governance or quality fails in the ordered Nox full graph

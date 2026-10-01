@@ -34,6 +34,7 @@ cue = "0.17.1"
 "github:gitleaks/gitleaks" = "8.30.1"
 "github:rhysd/actionlint" = "1.7.12"
 "github:lycheeverse/lychee" = "lychee-v0.24.2"
+"aqua:vale-cli/vale" = "3.23.0"
 
 [env]
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
@@ -55,6 +56,7 @@ run = [
   "mise which gitleaks",
   "mise which actionlint",
   "mise which lychee",
+  "mise which vale",
   "mise which gh",
   "mise which glab",
 ]
