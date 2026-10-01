@@ -14,8 +14,11 @@ from typing import TYPE_CHECKING
 from typing import cast
 
 from codex_responses_proxy import errors
+from codex_responses_proxy.lifecycle import owned_files
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config
+from codex_responses_proxy.service import identity
+from codex_responses_proxy.service import inventory
 from codex_responses_proxy.service import runtime as service_runtime
 
 if TYPE_CHECKING:
@@ -131,29 +134,70 @@ def render_plist(ctx: runtime_spec.NativeServiceContext) -> str:
     return plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=False).decode()
 
 
-def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
-    """Return the executable declared by one valid product launch agent."""
-    try:
-        with Path(_plist_path(ctx)).open("rb") as handle:
-            payload = plistlib.load(handle)
-    except (OSError, plistlib.InvalidFileException):
+def _carrier(ctx: runtime_spec.NativeServiceContext) -> tuple[bytes, str] | None:
+    """Read only a regular launch-agent file bound to this home and installation."""
+    home = Path(ctx.user_home)
+    target = Path(_plist_path(ctx))
+    relative = target.relative_to(home).as_posix()
+    target = owned_files.regular_file(home, relative, "macOS launch-agent carrier", missing_ok=True)
+    if target is None:
         return None
+    content = owned_files.read_bytes(target, root=home, label="macOS launch-agent carrier")
+    try:
+        payload = plistlib.loads(content)
+    except plistlib.InvalidFileException as exc:
+        raise errors.InstallError("macOS launch-agent carrier is invalid") from exc
     arguments = payload.get("ProgramArguments") if isinstance(payload, dict) else None
+    environment = payload.get("EnvironmentVariables") if isinstance(payload, dict) else None
     if (
-        not isinstance(arguments, list)
+        not isinstance(payload, dict)
+        or payload.get("Label") != ctx.service_id
+        or not isinstance(arguments, list)
         or len(arguments) != 2
         or not all(isinstance(value, str) for value in arguments)
         or arguments[1] != service_runtime.WATCHDOG_MODE
+        or environment != {"HOME": ctx.user_home}
+        or payload.get("LimitLoadToSessionType", "Background") != "Background"
     ):
-        return None
+        raise errors.InstallError("macOS launch-agent carrier ownership is unproved")
     executable = arguments[0]
-    return executable if isinstance(executable, str) else None
+    if not isinstance(executable, str):
+        raise errors.InstallError("macOS launch-agent executable ownership is unproved")
+    path = Path(executable)
+    resolved = path.resolve()
+    root = Path(ctx.install_dir).resolve()
+    if (
+        not path.is_absolute()
+        or not resolved.is_relative_to(root)
+        or path.name != Path(ctx.executable).name
+        or path.parent.name != "bin"
+        or payload.get("Program", executable) != executable
+    ):
+        raise errors.InstallError("macOS launch-agent executable ownership is unproved")
+    relative = resolved.relative_to(root)
+    if relative != Path(inventory.EXECUTABLE):
+        if len(relative.parts) != 4 or relative.parts[0] != identity.PAYLOAD_GENERATIONS_DIRNAME:
+            raise errors.InstallError("macOS launch-agent executable ownership is unproved")
+        try:
+            identity.require_payload_generation_name(relative.parts[1])
+        except ValueError as exc:
+            raise errors.InstallError(
+                "macOS launch-agent generation ownership is unproved"
+            ) from exc
+    return content, executable
+
+
+def configured_executable(ctx: runtime_spec.NativeServiceContext) -> str | None:
+    """Return an owned native watchdog executable, or absence of its carrier."""
+    carrier = _carrier(ctx)
+    return carrier[1] if carrier is not None else None
 
 
 def install(ctx: runtime_spec.NativeServiceContext) -> None:
     """Replace and prove one exact launchd watchdog process generation."""
     plist = _plist_path(ctx)
-    previous_executable = configured_executable(ctx)
+    previous_carrier = _carrier(ctx)
+    previous_executable = previous_carrier[1] if previous_carrier is not None else None
     previous_domain, previous = _registered_service(ctx)
     generation = None
     if previous.pid is not None:
@@ -181,10 +225,11 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
         raise errors.InstallError(msg)
     if previous.registered and _service(ctx, previous_domain).registered:
         raise errors.InstallError("launchd watchdog remains registered after bootout")
+    if _carrier(ctx) != previous_carrier:
+        raise errors.InstallError("macOS launch-agent carrier changed before replacement")
 
     Path(ctx.log_dir).mkdir(mode=0o700, parents=True, exist_ok=True)
-    Path(plist).parent.mkdir(parents=True, exist_ok=True)
-    Path(plist).write_text(render_plist(ctx), encoding="utf-8")
+    owned_files.write_bytes(Path(plist), render_plist(ctx).encode(), root=Path(ctx.user_home))
     subprocess.run(
         [_native_tool("plutil"), "-lint", plist],
         check=True,
@@ -229,10 +274,11 @@ def install(ctx: runtime_spec.NativeServiceContext) -> None:
 def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
     """Boot out and remove only this installation's launchd service."""
     plist = _plist_path(ctx)
+    previous_carrier = _carrier(ctx)
     domain, current = _registered_service(ctx)
     generation = None
     if current.pid is not None:
-        executable = configured_executable(ctx)
+        executable = previous_carrier[1] if previous_carrier is not None else None
         if executable is None:
             msg = "registered launchd watchdog executable is unproved"
             raise errors.InstallError(msg)
@@ -258,6 +304,8 @@ def uninstall(ctx: runtime_spec.NativeServiceContext) -> None:
     if _service(ctx, domain).registered:
         msg = "launchd watchdog remains registered after bootout"
         raise errors.InstallError(msg)
+    if _carrier(ctx) != previous_carrier:
+        raise errors.InstallError("macOS launch-agent carrier changed before removal")
     Path(plist).unlink(missing_ok=True)
 
 

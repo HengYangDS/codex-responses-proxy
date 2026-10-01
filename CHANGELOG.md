@@ -20,6 +20,8 @@ publication authority.
   registrations, disabled-state overrides and launch-agent files.
 - Observe registered macOS services even when their plist is missing, and
   reject ambiguous domain observations before reporting lifecycle success.
+- Reject unowned or symbolic-link macOS launch-agent carriers before service
+  mutation; write accepted carriers atomically and preserve changed replacements.
 
 ## [4.0.5] - 2026-09-23
 

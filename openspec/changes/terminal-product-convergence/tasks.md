@@ -44,6 +44,24 @@
 
 - [ ] 5.1 Converge install, upgrade, reload, rollback, recovery, and uninstall on one transaction state machine and mutation lock; verify preconditions, durable transitions, and terminal states through failure injection, including same-controller cleanup retry and cross-process recovery after partial directory removal.
 - [ ] 5.2 Make payload generation, manifest, command projection, transaction journal, rollback snapshot, service declaration, listener, watchdog, and handoff child each have exact ownership identity and one cleanup owner.
+      The macOS carrier audit reproduces symbolic-link target overwrite and
+      acceptance of a mismatched label/executable outside this installation.
+      Safe owned-file I/O now rejects indirect or unowned carriers before
+      service mutation, persists atomically and rechecks unchanged teardown
+      bytes. Label, watchdog arguments, home, native generation and environment
+      injection have falsifying cases; legitimate filesystem aliases remain
+      owned. Permission-denied metadata cannot become false absence. Every
+      temporary supervision context now owns its platform-native paths rather
+      than borrow a foreign absolute fixture root. Focused validation passes
+      320 cases and 57 subtests. The final full source graph passes 1,866 cases
+      per Python 3.12/3.13/3.14; all 1,220 tracked file hashes remain unchanged.
+      The final native suite passes 49 cases with one Linux-only skip, including
+      authentic published 4.0.4 upgrade and rollback in its supported GUI
+      context. Canonical process generations, registrations, overrides and
+      plist hashes remain unchanged; owned native scratch is absent. This local
+      qualification is not GitLab execution. Peer admission, final hosted
+      acceptance and formally distributed ETHOS proof remain open. Evidence:
+      `build/verification/native-supply-gitlab-20261001/native-carrier-*`.
 - [ ] 5.3 Bind macOS supervision to the native user Background domain; prove
       exact legacy GUI migration, unique registration, predecessor exit and
       successor identity. Observe registered services even without a carrier;

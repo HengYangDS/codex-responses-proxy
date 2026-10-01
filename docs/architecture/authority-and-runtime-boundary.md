@@ -232,6 +232,13 @@ bytes do not prove service absence. Unavailable domain observations remain
 errors; the adapter never creates a GUI session, guesses another UID, or
 enables a disabled service.
 
+The carrier is a home-relative regular file read and written through the
+existing symlink-safe owned-file boundary. Its exact label, watchdog arguments,
+home and installed executable must agree before a native mutation. Accepted
+writes are atomic; teardown rechecks verified bytes and preserves a changed
+replacement. A file's name alone never grants ownership of its contents or a
+symbolic link's target.
+
 The same transaction projects one native user-command link and records its
 exact path in installed state. Rollback and uninstall therefore do not re-derive
 ownership from a later shell environment. Installation finalizes only after one

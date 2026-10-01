@@ -7,6 +7,7 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
+from codex_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import platform_context
 
 
@@ -21,7 +22,17 @@ def temporary_context(attribute, *, windows=False):
     with tempfile.TemporaryDirectory() as directory:
         context = platform_context(windows=windows)
         context.user_home = directory
+        context.install_dir = str(Path(directory, "payload"))
+        context.executable = str(
+            Path(context.install_dir, "bin", Path(inventory.executable_name(windows=windows)).name)
+        )
+        context.command = str(Path(directory, "command"))
+        context.log_dir = str(Path(directory, "logs"))
         setattr(context, attribute, directory)
+        if attribute == "install_dir":
+            context.executable = str(
+                Path(directory, "bin", Path(inventory.executable_name(windows=windows)).name)
+            )
         yield context
 
 
