@@ -22,6 +22,8 @@ publication authority.
   reject ambiguous domain observations before reporting lifecycle success.
 - Reject unowned or symbolic-link macOS launch-agent carriers before service
   mutation; write accepted carriers atomically and preserve changed replacements.
+- Reject reload results without distinct positive process IDs and cleanup
+  results with invalid process counts instead of reporting false success.
 
 ## [4.0.5] - 2026-09-23
 
