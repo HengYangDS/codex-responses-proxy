@@ -122,7 +122,8 @@ processes alike.
 locked governance tools, strict Python 3.12 quality and coverage owner, and the
 remaining Python compatibility runs without repeating equivalent work.
 
-Statement and measured branch coverage must each be strictly above 95%.
+Statement and measured branch coverage must each be at least 95%, as defined in
+[the coverage policy](../../.config/quality/policy/coverage.toml).
 Warnings are errors. Product and development dependencies come from this
 repository's locked environment.
 
