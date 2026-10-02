@@ -30,6 +30,35 @@ publication.
   after `Unreleased`
 - **AND** every older released section SHALL already correspond to a product tag.
 
+### Requirement: Release navigation identifies each applicable repository
+
+One Changelog SHALL serve local readers and all declared publication peers.
+Its version headings SHALL remain local document headings. Each version section
+SHALL offer the applicable peers' native history routes at their declared
+repository identities. Git transport SHALL NOT supply an inferred web scheme or
+port. Common repository-identity and reference admission SHALL be owned by ETHOS,
+not copied into a repository-local replacement.
+
+#### Scenario: Readers use different Forges
+
+- **WHEN** a reader opens the same Changelog locally or on either declared Forge
+- **THEN** its version heading SHALL remain in the document
+- **AND** the reader SHALL choose that Forge's explicit history link.
+
+#### Scenario: A reachable link targets the wrong repository
+
+- **WHEN** a project-owned history destination responds successfully but names
+  another repository or an undeclared peer
+- **THEN** the common identity admission SHALL reject that destination
+- **AND** a successful HTTP response SHALL NOT substitute for repository identity.
+
+#### Scenario: Historical tag identities differ
+
+- **WHEN** same-named peer tags have different Git objects
+- **THEN** the difference SHALL remain unqualified until the authorized product
+  repair and both peer observations establish their relation
+- **AND** equal source trees SHALL NOT be presented as proof of identity repair.
+
 ### Requirement: One CI model covers every integration path
 
 CUE SHALL own the semantic CI graph, including jobs, dependencies, triggers,

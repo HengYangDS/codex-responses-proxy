@@ -455,6 +455,18 @@ canonical change categories. Unpublished historical headings are folded into
 the later tagged release that actually carried their changes, preserving the
 user-visible account without preserving fictional releases. Published releases
 are immutable.
+
+The same Changelog serves local, GitLab, and GitHub readers. Version headings
+stay local; each section offers the declared peers' own native history routes.
+`.ethos/release.toml` declares `forge_repository` separately from its SSH or HTTP
+Git transport. Native clone configuration may supply that locator where the
+tracked declaration omits it; neither an SSH address nor a link-check HTTP
+success establishes the intended repository. ETHOS owns common identity,
+reference membership, and authorized historical repair. The local metadata
+parser retains SemVer, chronology, and tag responsibilities, not a duplicate
+peer-identity mechanism. Source navigation, installed product enforcement, and
+legacy tag reconciliation require separate acceptance.
+
 Merged proposal branches, failed unpublished intermediates, retired Work Lanes,
 old hooks, orphaned runtimes, temporary services, caches, and generated residue
 are removed once exact ownership and lack of consumers are proved. Deletion is a

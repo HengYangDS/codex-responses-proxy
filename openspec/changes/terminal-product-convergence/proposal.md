@@ -43,6 +43,9 @@ consumer, and evidence that it contributes to the terminal product.
 - Enforce SemVer, signed commits and tags, immutable assets, SBOM, provenance,
   checksums, Changelog continuity, exact installed-runtime evidence, and
   independent verification on both Forges.
+- Keep one provider-neutral Changelog with explicit history links for each
+  declared peer. Bind owned navigation to its repository identity, independently
+  of Git transport; consume ETHOS for common identity and reference admission.
 - Rebuild documentation, decisions, examples, links, configuration, and
   OpenSpec history around the current product; remove empty evidence shells,
   stale records, obsolete warnings, misleading examples, and unconsumed files.

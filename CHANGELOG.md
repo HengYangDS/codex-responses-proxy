@@ -6,9 +6,18 @@ all released, user-visible changes. GitLab and GitHub keep independent signed
 tags and Releases for the same product versions; neither Forge is the other's
 publication authority.
 
-## [Unreleased]
+## Unreleased
 
-## [4.0.5] - 2026-09-23
+History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
+
+### Fixed
+
+- Keep version headings on this page and offer each Forge's own history links;
+  bind release navigation to the declared repository rather than Git transport.
+
+## 4.0.5 - 2026-09-23
+
+History: [GitLab][4.0.5-gitlab] · [GitHub][4.0.5-github]
 
 ### Changed
 
@@ -25,7 +34,9 @@ publication authority.
 - Reject incomplete lifecycle results instead of presenting false success, and
   keep native failure diagnostics free of private host details.
 
-## [4.0.4] - 2026-09-19
+## 4.0.4 - 2026-09-19
+
+History: [GitLab][4.0.4-gitlab] · [GitHub][4.0.4-github]
 
 ### Changed
 
@@ -42,7 +53,9 @@ publication authority.
 - Verify published native release assets on macOS, Linux, and Windows through
   the shared release lifecycle contract.
 
-## [4.0.3] - 2026-09-18
+## 4.0.3 - 2026-09-18
+
+History: [GitLab][4.0.3-gitlab] · [GitHub][4.0.3-github]
 
 ### Fixed
 
@@ -52,7 +65,9 @@ publication authority.
 - Bind commit admission to the exact Forge event object and keep the commit
   policy in its declared ETHOS profile instead of a duplicate repository file.
 
-## [4.0.2] - 2026-09-16
+## 4.0.2 - 2026-09-16
+
+History: [GitLab][4.0.2-gitlab] · [GitHub][4.0.2-github]
 
 ### Fixed
 
@@ -65,7 +80,9 @@ publication authority.
   only their visible routing headers. Reject malformed ciphertext and prevent
   shrinking recovery from dropping required agent-control input.
 
-## [4.0.1] - 2026-09-15
+## 4.0.1 - 2026-09-15
+
+History: [GitLab][4.0.1-gitlab] · [GitHub][4.0.1-github]
 
 ### Fixed
 
@@ -78,7 +95,9 @@ publication authority.
 - Isolate concurrent CI dependency-cache writers and refresh stable repository
   tooling dependencies without changing the supported Python range.
 
-## [4.0.0] - 2026-09-15
+## 4.0.0 - 2026-09-15
+
+History: [GitLab][4.0.0-gitlab] · [GitHub][4.0.0-github]
 
 ### Changed
 
@@ -103,7 +122,9 @@ publication authority.
 - Validate publication, native asset and quality-policy identities strictly;
   verify product, tooling and orchestration coverage independently.
 
-## [3.1.17] - 2026-09-12
+## 3.1.17 - 2026-09-12
+
+History: [GitLab][3.1.17-gitlab] · [GitHub][3.1.17-github]
 
 ### Fixed
 
@@ -111,7 +132,9 @@ publication authority.
   replay and classified retries without changing image bytes, detail, or order.
   Image-only dialogue and paired tool results remain available to the model.
 
-## [3.1.16] - 2026-09-05
+## 3.1.16 - 2026-09-05
+
+History: [GitLab][3.1.16-gitlab] · [GitHub][3.1.16-github]
 
 ### Fixed
 
@@ -120,7 +143,9 @@ publication authority.
   `proxy_draining`; retain bounded draining only for legacy native-generation
   replacement.
 
-## [3.1.15] - 2026-09-04
+## 3.1.15 - 2026-09-04
+
+History: [GitLab][3.1.15-gitlab] · [GitHub][3.1.15-github]
 
 ### Fixed
 
@@ -128,7 +153,9 @@ publication authority.
   during replay while preserving subsequent portable history and continuing to
   reject every other empty or unproved dialogue shape.
 
-## [3.1.14] - 2026-09-02
+## 3.1.14 - 2026-09-02
+
+History: [GitLab][3.1.14-gitlab] · [GitHub][3.1.14-github]
 
 ### Fixed
 
@@ -139,7 +166,9 @@ publication authority.
   selected installation, command, immutable payload, and accepting runtime are
   unchanged, without requiring a restoration snapshot that was never needed.
 
-## [3.1.13] - 2026-09-02
+## 3.1.13 - 2026-09-02
+
+History: [GitLab][3.1.13-gitlab] · [GitHub][3.1.13-github]
 
 ### Fixed
 
@@ -147,7 +176,9 @@ publication authority.
   upstream dispatch while removing valid complete call/output pairs without
   disturbing the current dialogue.
 
-## [3.1.12] - 2026-09-01
+## 3.1.12 - 2026-09-01
+
+History: [GitLab][3.1.12-gitlab] · [GitHub][3.1.12-github]
 
 ### Changed
 
@@ -161,7 +192,9 @@ publication authority.
   dialogue continues, and report recognized unsupported items as schema drift
   rather than unknown input.
 
-## [3.1.11] - 2026-08-31
+## 3.1.11 - 2026-08-31
+
+History: [GitLab][3.1.11-gitlab] · [GitHub][3.1.11-github]
 
 ### Fixed
 
@@ -169,14 +202,18 @@ publication authority.
   instead of creating duplicate file records, and retain bounded provider
   response details when the API rejects a request.
 
-## [3.1.10] - 2026-08-31
+## 3.1.10 - 2026-08-31
+
+History: [GitLab][3.1.10-gitlab] · [GitHub][3.1.10-github]
 
 ### Fixed
 
 - Preserve the caller's active branch, HEAD, index, and worktree while
   verifying an annotated release tag against its expected commit.
 
-## [3.1.9] - 2026-08-31
+## 3.1.9 - 2026-08-31
+
+History: [GitLab][3.1.9-gitlab] · [GitHub][3.1.9-github]
 
 ### Fixed
 
@@ -184,7 +221,9 @@ publication authority.
   metadata, while keeping that metadata outside the provider-portable outbound
   pair and continuing to reject unproved output fields.
 
-## [3.1.8] - 2026-08-31
+## 3.1.8 - 2026-08-31
+
+History: [GitLab][3.1.8-gitlab] · [GitHub][3.1.8-github]
 
 ### Fixed
 
@@ -192,7 +231,9 @@ publication authority.
   provider-neutral assistant messages without inventing call identities or
   modifying conversation history.
 
-## [3.1.7] - 2026-08-30
+## 3.1.7 - 2026-08-30
+
+History: [GitLab][3.1.7-gitlab] · [GitHub][3.1.7-github]
 
 ### Changed
 
@@ -206,7 +247,9 @@ publication authority.
 - Correct macOS launchd override guidance without introducing unsafe
   domain-wide cleanup behavior.
 
-## [3.1.6] - 2026-08-29
+## 3.1.6 - 2026-08-29
+
+History: [GitLab][3.1.6-gitlab] · [GitHub][3.1.6-github]
 
 ### Changed
 
@@ -215,7 +258,9 @@ publication authority.
 - Define one strict branch-role policy for work, proposal, candidate,
   accepted, and release refs across local, GitLab, and GitHub workflows.
 
-## [3.1.5] - 2026-08-29
+## 3.1.5 - 2026-08-29
+
+History: [GitLab][3.1.5-gitlab] · [GitHub][3.1.5-github]
 
 ### Changed
 
@@ -227,7 +272,9 @@ publication authority.
 - Make published-predecessor downloads shell-independent so the same release
   compatibility path runs on macOS, Linux, and Windows.
 
-## [3.1.4] - 2026-08-28
+## 3.1.4 - 2026-08-28
+
+History: [GitLab][3.1.4-gitlab] · [GitHub][3.1.4-github]
 
 ### Fixed
 
@@ -235,7 +282,9 @@ publication authority.
   instead of claiming complete removal, and reject a later installation before
   it can create an invalid predecessor-free transaction.
 
-## [3.1.3] - 2026-08-28
+## 3.1.3 - 2026-08-28
+
+History: [GitLab][3.1.3-gitlab] · [GitHub][3.1.3-github]
 
 ### Fixed
 
@@ -243,7 +292,9 @@ publication authority.
   when the serving payload rolls back, so PATH-based status, diagnosis,
   recovery, reversal, uninstall, and future upgrade admission remain current.
 
-## [3.1.2] - 2026-08-26
+## 3.1.2 - 2026-08-26
+
+History: [GitLab][3.1.2-gitlab] · [GitHub][3.1.2-github]
 
 ### Fixed
 
@@ -253,7 +304,9 @@ publication authority.
 - Use the same portable completion proof for reload, upgrade, rollback, and
   controller-failure resolution.
 
-## [3.1.1] - 2026-08-26
+## 3.1.1 - 2026-08-26
+
+History: [GitLab][3.1.1-gitlab] · [GitHub][3.1.1-github]
 
 ### Fixed
 
@@ -261,7 +314,9 @@ publication authority.
   verified product listener before reporting success, eliminating the
   transient false-success interval while the displaced generation drains.
 
-## [3.1.0] - 2026-08-25
+## 3.1.0 - 2026-08-25
+
+History: [GitLab][3.1.0-gitlab] · [GitHub][3.1.0-github]
 
 ### Added
 
@@ -277,7 +332,9 @@ publication authority.
 - Keep rollback and recovery semantically distinct, and project retained state
   as transaction-owned while an installation transaction is active.
 
-## [3.0.5] - 2026-08-25
+## 3.0.5 - 2026-08-25
+
+History: [GitLab][3.0.5-gitlab] · [GitHub][3.0.5-github]
 
 ### Fixed
 
@@ -289,7 +346,9 @@ publication authority.
   and macOS launch-agent path, preventing test services from leaking into the
   host while preserving the installed service.
 
-## [3.0.4] - 2026-08-24
+## 3.0.4 - 2026-08-24
+
+History: [GitLab][3.0.4-gitlab] · [GitHub][3.0.4-github]
 
 ### Fixed
 
@@ -302,14 +361,18 @@ publication authority.
   registration, override, process, or plist residue while preserving the
   installed service.
 
-## [3.0.3] - 2026-08-24
+## 3.0.3 - 2026-08-24
+
+History: [GitLab][3.0.3-gitlab] · [GitHub][3.0.3-github]
 
 ### Fixed
 
 - Remove empty directory residue nested below files retired from the verified
   predecessor payload while preserving every unowned file and symlink.
 
-## [3.0.2] - 2026-08-23
+## 3.0.2 - 2026-08-23
+
+History: [GitLab][3.0.2-gitlab] · [GitHub][3.0.2-github]
 
 ### Fixed
 
@@ -322,7 +385,9 @@ publication authority.
   authority and remove the redundant runtime dependency used only for home
   directory discovery.
 
-## [3.0.1] - 2026-08-23
+## 3.0.1 - 2026-08-23
+
+History: [GitLab][3.0.1-gitlab] · [GitHub][3.0.1-github]
 
 ### Fixed
 
@@ -332,14 +397,18 @@ publication authority.
 - Document the one-time verified-successor bootstrap required when upgrading
   directly from a 2.x installer that predates the stable private protocol.
 
-## [3.0.0] - 2026-08-23
+## 3.0.0 - 2026-08-23
+
+History: [GitLab][3.0.0-gitlab] · [GitHub][3.0.0-github]
 
 ### Changed
 
 - Expose release identity through the conventional top-level `--version`
   option and remove the redundant `version` subcommand.
 
-## [2.0.58] - 2026-08-22
+## 2.0.58 - 2026-08-22
+
+History: [GitLab][2.0.58-gitlab] · [GitHub][2.0.58-github]
 
 ### Fixed
 
@@ -351,7 +420,9 @@ publication authority.
 - Resume supported upgrades from `2.0.56`; `2.0.57` is an unusable intermediate
   release and is not an upgrade predecessor.
 
-## [2.0.57] - 2026-08-22
+## 2.0.57 - 2026-08-22
+
+History: [GitLab][2.0.57-gitlab] · [GitHub][2.0.57-github]
 
 ### Changed
 
@@ -377,7 +448,9 @@ publication authority.
   native lifecycle tests cannot leave temporary background services or touch
   the installed production listener.
 
-## [2.0.56] - 2026-08-21
+## 2.0.56 - 2026-08-21
+
+History: [GitLab][2.0.56-gitlab] · [GitHub][2.0.56-github]
 
 ### Changed
 
@@ -387,7 +460,9 @@ publication authority.
 - Define native forward-upgrade support through the immediately preceding
   released runtime instead of retaining historical fallback behavior.
 
-## [2.0.55] - 2026-08-21
+## 2.0.55 - 2026-08-21
+
+History: [GitLab][2.0.55-gitlab] · [GitHub][2.0.55-github]
 
 ### Fixed
 
@@ -399,7 +474,9 @@ publication authority.
   that users actually invoke, preventing candidate-driven false-positive
   upgrade proof.
 
-## [2.0.54] - 2026-08-21
+## 2.0.54 - 2026-08-21
+
+History: [GitLab][2.0.54-gitlab] · [GitHub][2.0.54-github]
 
 ### Fixed
 
@@ -407,7 +484,9 @@ publication authority.
   native listener handoff, so a proven successor is not rolled back while
   ownership is transferring.
 
-## [2.0.53] - 2026-08-20
+## 2.0.53 - 2026-08-20
+
+History: [GitLab][2.0.53-gitlab] · [GitHub][2.0.53-github]
 
 ### Fixed
 
@@ -427,7 +506,9 @@ publication authority.
   and Windows Task Scheduler while retaining native platform registration and
   diagnostics.
 
-## [2.0.52] - 2026-08-20
+## 2.0.52 - 2026-08-20
+
+History: [GitLab][2.0.52-gitlab] · [GitHub][2.0.52-github]
 
 ### Fixed
 
@@ -436,7 +517,9 @@ publication authority.
   watchdog-owned listener children so upgrades leave no stale supervisor
   generation or zombie process.
 
-## [2.0.51] - 2026-08-20
+## 2.0.51 - 2026-08-20
+
+History: [GitLab][2.0.51-gitlab] · [GitHub][2.0.51-github]
 
 ### Fixed
 
@@ -450,7 +533,9 @@ publication authority.
 - Exercise a real signed predecessor release through fresh installation,
   concurrent request and SSE handoff, reload, purge, and transaction cleanup.
 
-## [2.0.50] - 2026-08-19
+## 2.0.50 - 2026-08-19
+
+History: [GitLab][2.0.50-gitlab] · [GitHub][2.0.50-github]
 
 ### Fixed
 
@@ -473,7 +558,9 @@ publication authority.
 - Keep human CLI output encodable by the default Windows console code page
   while retaining the same aligned, scannable result model.
 
-## [2.0.47] - 2026-08-19
+## 2.0.47 - 2026-08-19
+
+History: [GitLab][2.0.47-gitlab] · [GitHub][2.0.47-github]
 
 ### Fixed
 
@@ -481,7 +568,9 @@ publication authority.
   contract, removing the retired Forge positional token that blocked the
   `v2.0.46` tag pipeline.
 
-## [2.0.46] - 2026-08-19
+## 2.0.46 - 2026-08-19
+
+History: [GitLab][2.0.46-gitlab] · [GitHub][2.0.46-github]
 
 ### Fixed
 
@@ -489,7 +578,9 @@ publication authority.
   metadata tests instead of invoking the pre-tag preparation contract after a
   release tag already exists.
 
-## [2.0.45] - 2026-08-19
+## 2.0.45 - 2026-08-19
+
+History: [GitLab][2.0.45-gitlab] · [GitHub][2.0.45-github]
 
 ### Fixed
 
@@ -502,14 +593,18 @@ publication authority.
 - Derive native supervision identity from alternate installation roots so
   isolated validation cannot unload or replace the canonical service.
 
-## [2.0.44] - 2026-08-18
+## 2.0.44 - 2026-08-18
+
+History: [GitLab][2.0.44-gitlab] · [GitHub][2.0.44-github]
 
 ### Changed
 
 - Refresh the locked runtime and release toolchain to current stable versions.
 - Keep provider-native GitLab and GitHub publication independent.
 
-## [2.0.43] - 2026-08-17
+## 2.0.43 - 2026-08-17
+
+History: [GitLab][2.0.43-gitlab] · [GitHub][2.0.43-github]
 
 ### Changed
 
@@ -518,7 +613,9 @@ publication authority.
 - Use `origin` as the sole GitLab remote authority and remove the redundant
   release-only alias.
 
-## [2.0.42] - 2026-08-17
+## 2.0.42 - 2026-08-17
+
+History: [GitLab][2.0.42-gitlab] · [GitHub][2.0.42-github]
 
 ### Changed
 
@@ -528,7 +625,9 @@ publication authority.
 - Align documentation and decision-record names with their semantic owners,
   removing ambiguous directory indexes and redundant repository checks.
 
-## [2.0.41] - 2026-08-17
+## 2.0.41 - 2026-08-17
+
+History: [GitLab][2.0.41-gitlab] · [GitHub][2.0.41-github]
 
 ### Fixed
 
@@ -538,7 +637,9 @@ publication authority.
 - Derive audited branch roles from repository policy and fetch release tags in
   one bounded operation, removing false residue reports and avoidable latency.
 
-## [2.0.40] - 2026-08-16
+## 2.0.40 - 2026-08-16
+
+History: [GitLab][2.0.40-gitlab] · [GitHub][2.0.40-github]
 
 ### Changed
 
@@ -548,7 +649,9 @@ publication authority.
   architecture.
 - Update the locked development toolchain.
 
-## [2.0.39] - 2026-08-16
+## 2.0.39 - 2026-08-16
+
+History: [GitLab][2.0.39-gitlab] · [GitHub][2.0.39-github]
 
 ### Fixed
 
@@ -557,7 +660,9 @@ publication authority.
 - Prewarm the exact committed successor executable and honor the configured
   installation deadline during transactional handoff.
 
-## [2.0.38] - 2026-08-15
+## 2.0.38 - 2026-08-15
+
+History: [GitLab][2.0.38-gitlab] · [GitHub][2.0.38-github]
 
 ### Fixed
 
@@ -567,7 +672,9 @@ publication authority.
 - Build lifecycle status fixtures from host-native absolute paths so the
   Windows matrix tests installed-state validation instead of POSIX syntax.
 
-## [2.0.37] - 2026-08-15
+## 2.0.37 - 2026-08-15
+
+History: [GitLab][2.0.37-gitlab] · [GitHub][2.0.37-github]
 
 ### Added
 
@@ -584,7 +691,9 @@ publication authority.
 - Roll back and uninstall only the exact command link owned by the installed
   payload, including when the invoking shell's environment has changed.
 
-## [2.0.36] - 2026-08-15
+## 2.0.36 - 2026-08-15
+
+History: [GitLab][2.0.36-gitlab] · [GitHub][2.0.36-github]
 
 ### Fixed
 
@@ -594,7 +703,9 @@ publication authority.
 - Preserve GitLab and GitHub as independent publication planes; the forward
   patch does not change proxy runtime behavior or provider configuration.
 
-## [2.0.35] - 2026-08-15
+## 2.0.35 - 2026-08-15
+
+History: [GitLab][2.0.35-gitlab] · [GitHub][2.0.35-github]
 
 ### Fixed
 
@@ -603,21 +714,27 @@ publication authority.
 - Preserve the failed GitLab 2.0.34 release while GitLab and GitHub publish the
   forward patch independently.
 
-## [2.0.34] - 2026-08-14
+## 2.0.34 - 2026-08-14
+
+History: [GitLab][2.0.34-gitlab] · [GitHub][2.0.34-github]
 
 ### Fixed
 
 - Keep every GitLab post-sync command on the Python environment selected by
   uv, and cache UV-managed compatibility runtimes by target platform.
 
-## [2.0.33] - 2026-08-14
+## 2.0.33 - 2026-08-14
+
+History: [GitLab][2.0.33-gitlab] · [GitHub][2.0.33-github]
 
 ### Fixed
 
 - Restore failed native upgrades exactly by removing bundle members introduced
   only by the rejected candidate.
 
-## [2.0.32] - 2026-08-14
+## 2.0.32 - 2026-08-14
+
+History: [GitLab][2.0.32-gitlab] · [GitHub][2.0.32-github]
 
 ### Fixed
 
@@ -625,21 +742,27 @@ publication authority.
   complete signed multi-platform checksum manifest. Formal releases no longer
   fail installation merely because the manifest also contains other platforms.
 
-## [2.0.31] - 2026-08-11
+## 2.0.31 - 2026-08-11
+
+History: [GitLab][2.0.31-gitlab] · [GitHub][2.0.31-github]
 
 ### Fixed
 
 - Remove installer-local metadata before native executable freezing so common
   platform assets built independently by GitLab and GitHub are byte-identical.
 
-## [2.0.30] - 2026-08-11
+## 2.0.30 - 2026-08-11
+
+History: [GitLab][2.0.30-gitlab] · [GitHub][2.0.30-github]
 
 ### Fixed
 
 - Write the GitHub Linux asset through the container's runtime workspace path
   while the host-side upload action reads the equivalent workspace expression.
 
-## [2.0.29] - 2026-08-11
+## 2.0.29 - 2026-08-11
+
+History: [GitLab][2.0.29-gitlab] · [GitHub][2.0.29-github]
 
 ### Fixed
 
@@ -655,7 +778,9 @@ publication authority.
 - Remove checkout paths and installer timestamps from native release payloads.
 - Refresh Hatchling and Nox to their latest stable releases.
 
-## [2.0.25] - 2026-08-11
+## 2.0.25 - 2026-08-11
+
+History: [GitLab][2.0.25-gitlab] · [GitHub][2.0.25-github]
 
 ### Fixed
 
@@ -663,7 +788,9 @@ publication authority.
 - Normalize ephemeral release signing keys so GitLab file variables without a terminal newline remain valid OpenSSH inputs.
 - Preserve complete provider-owned signing-key files so Windows OpenSSH retains their secure ACLs.
 
-## [2.0.24] - 2026-08-11
+## 2.0.24 - 2026-08-11
+
+History: [GitLab][2.0.24-gitlab] · [GitHub][2.0.24-github]
 
 ### Changed
 
@@ -806,7 +933,9 @@ publication authority.
   without entering Responses replay projection, admission, cooldown, retry, or
   recovery.
 
-## [2.0.7] - 2026-08-02
+## 2.0.7 - 2026-08-02
+
+History: [GitLab][2.0.7-gitlab] · [GitHub][2.0.7-github]
 
 ### Changed
 
@@ -834,7 +963,9 @@ publication authority.
   Linux CI no longer invokes a nonexistent `sysctl` symbol through a mocked
   platform value.
 
-## [2.0.5] - 2026-08-02
+## 2.0.5 - 2026-08-02
+
+History: [GitLab][2.0.5-gitlab] · [GitHub][2.0.5-github]
 
 ### Fixed
 
@@ -855,7 +986,9 @@ publication authority.
   `uv.lock`-pinned `.venv`; both Forge projections invoke the same gate, and
   statement and branch coverage remain strictly above 95 percent.
 
-## [2.0.4] - 2026-08-02
+## 2.0.4 - 2026-08-02
+
+History: [GitLab][2.0.4-gitlab] · [GitHub][2.0.4-github]
 
 ### Fixed
 
@@ -869,7 +1002,9 @@ publication authority.
   `CODEX_RESPONSES_PROXY_PROXY_PORT` remain authoritative explicit overrides;
   production code is checked against copied 8791 or 8792 literals.
 
-## [2.0.3] - 2026-08-02
+## 2.0.3 - 2026-08-02
+
+History: [GitLab][2.0.3-gitlab] · [GitHub][2.0.3-github]
 
 ### Fixed
 
@@ -877,7 +1012,9 @@ publication authority.
   concurrent failure with a shorter delay can no longer replace a still-active
   longer deadline and reopen upstream traffic prematurely.
 
-## [2.0.2] - 2026-08-02
+## 2.0.2 - 2026-08-02
+
+History: [GitLab][2.0.2-gitlab] · [GitHub][2.0.2-github]
 
 ### Changed
 
@@ -945,7 +1082,9 @@ publication authority.
   installation, and recovery identity so runtime behavior cannot drift from
   the admitted release.
 
-## [1.0.45] - 2026-07-31
+## 1.0.45 - 2026-07-31
+
+History: [GitLab][1.0.45-gitlab] · [GitHub][1.0.45-github]
 
 ### Fixed
 
@@ -954,7 +1093,9 @@ publication authority.
   the outbound request copy, while retaining the local rejection of empty
   ordinary dialogue and every malformed or unpaired replay shape.
 
-## [1.0.44] - 2026-07-30
+## 1.0.44 - 2026-07-30
+
+History: [GitLab][1.0.44-gitlab] · [GitHub][1.0.44-github]
 
 ### Fixed
 
@@ -971,7 +1112,9 @@ publication authority.
   unscoped `/v1` URL bounded to direct-Codex compatibility, migrate schema-v2
   state only through `adopt-aigw`, and parse scoped custom ports structurally.
 
-## [1.0.43] - 2026-07-30
+## 1.0.43 - 2026-07-30
+
+History: [GitLab][1.0.43-gitlab] · [GitHub][1.0.43-github]
 
 ### Fixed
 
@@ -984,7 +1127,9 @@ publication authority.
   validate upstream overrides as credential-free HTTPS origins, and isolate
   test-only loopback upstream injection from the released runtime.
 
-## [1.0.42] - 2026-07-30
+## 1.0.42 - 2026-07-30
+
+History: [GitLab][1.0.42-gitlab] · [GitHub][1.0.42-github]
 
 ### Fixed
 
@@ -993,7 +1138,9 @@ publication authority.
 - Admit each provider signing key once per complete history projection instead
   of starting a Keychain-backed agent for every rewritten commit.
 
-## [1.0.41] - 2026-07-30
+## 1.0.41 - 2026-07-30
+
+History: [GitLab][1.0.41-gitlab] · [GitHub][1.0.41-github]
 
 ### Fixed
 
@@ -1002,7 +1149,9 @@ publication authority.
   This makes preserved cross-version transactions recoverable without weakening
   snapshot, process, or publication checks.
 
-## [1.0.40] - 2026-07-30
+## 1.0.40 - 2026-07-30
+
+History: [GitLab][1.0.40-gitlab] · [GitHub][1.0.40-github]
 
 ### Fixed
 
@@ -1011,7 +1160,9 @@ publication authority.
 - Reject different versions and misleading prefixes without weakening the
   repository-owned quality gate.
 
-## [1.0.39] - 2026-07-30
+## 1.0.39 - 2026-07-30
+
+History: [GitLab][1.0.39-gitlab] · [GitHub][1.0.39-github]
 
 ### Fixed
 
@@ -1019,7 +1170,9 @@ publication authority.
   complete Windows product matrix, so Windows does not misinterpret POSIX
   executable-bit semantics as a product failure.
 
-## [1.0.38] - 2026-07-30
+## 1.0.38 - 2026-07-30
+
+History: [GitLab][1.0.38-gitlab] · [GitHub][1.0.38-github]
 
 ### Fixed
 
@@ -1039,7 +1192,9 @@ publication authority.
   preventing an outer proof runner's virtual environment from silently
   substituting its own Ruff or ty while preserving explicit CI tool paths.
 
-## [1.0.36] - 2026-07-30
+## 1.0.36 - 2026-07-30
+
+History: [GitLab][1.0.36-gitlab] · [GitHub][1.0.36-github]
 
 ### Fixed
 
@@ -1055,7 +1210,9 @@ publication authority.
   GitLab, GitHub macOS, and GitHub Windows so green hosted jobs also prove clean
   diagnostic output.
 
-## [1.0.35] - 2026-07-29
+## 1.0.35 - 2026-07-29
+
+History: [GitLab][1.0.35-gitlab] · [GitHub][1.0.35-github]
 
 ### Fixed
 
@@ -1070,7 +1227,9 @@ publication authority.
 - Validate types with current stable `ty 0.0.65` across local and both Forge
   quality gates.
 
-## [1.0.34] - 2026-07-29
+## 1.0.34 - 2026-07-29
+
+History: [GitLab][1.0.34-gitlab] · [GitHub][1.0.34-github]
 
 ### Fixed
 
@@ -1083,14 +1242,18 @@ publication authority.
   only the explicitly supplied remote transport instead of injecting `glab` as
   an implicit credential helper.
 
-## [1.0.32] - 2026-07-29
+## 1.0.32 - 2026-07-29
+
+History: [GitLab][1.0.32-gitlab] · [GitHub][1.0.32-github]
 
 ### Fixed
 
 - Restore the exact annotated GitHub tag object after checkout and bind its
   peeled commit before tag verification or Release publication.
 
-## [1.0.31] - 2026-07-29
+## 1.0.31 - 2026-07-29
+
+History: [GitLab][1.0.31-gitlab] · [GitHub][1.0.31-github]
 
 ### Changed
 
@@ -1134,7 +1297,9 @@ publication authority.
 - Give the real rolling-handoff integration proof enough hosted-runner margin
   to observe the successor without weakening its exact identity checks.
 
-## [1.0.28] - 2026-07-29
+## 1.0.28 - 2026-07-29
+
+History: [GitLab][1.0.28-gitlab] · [GitHub][1.0.28-github]
 
 ### Changed
 
@@ -1179,7 +1344,9 @@ publication authority.
   bucket collection sizes before hashing; recovery events still report exact
   byte lengths and retained/dropped item counts without recording their values.
 
-## [1.0.26] - 2026-07-27
+## 1.0.26 - 2026-07-27
+
+History: [GitLab][1.0.26-gitlab] · [GitHub][1.0.26-github]
 
 ### Fixed
 
@@ -1199,7 +1366,9 @@ publication authority.
   uses the existing strictly shrinking, tool-pair-safe recovery path; unrelated
   `invalid_prompt` responses remain terminal and unchanged.
 
-## [1.0.25] - 2026-07-23
+## 1.0.25 - 2026-07-23
+
+History: [GitLab][1.0.25-gitlab] · [GitHub][1.0.25-github]
 
 ### Added
 
@@ -1314,7 +1483,9 @@ publication authority.
   values, remove query values from logged request paths, and retire macOS
   launchd stdout/stderr sinks that created unbounded parallel logs.
 
-## [1.0.15] - 2026-07-18
+## 1.0.15 - 2026-07-18
+
+History: [GitLab][1.0.15-gitlab] · [GitHub][1.0.15-github]
 
 ### Fixed
 
@@ -1322,7 +1493,9 @@ publication authority.
   preventing a GitHub conditional Git identity from creating unverifiable
   GitLab provenance.
 
-## [1.0.14] - 2026-07-18
+## 1.0.14 - 2026-07-18
+
+History: [GitLab][1.0.14-gitlab] · [GitHub][1.0.14-github]
 
 ### Added
 
@@ -1342,7 +1515,9 @@ publication authority.
 - Remove request-body, header, and rejected-payload capture paths so local
   diagnostics retain only bounded classifications, identifiers, and byte counts.
 
-## [1.0.13] - 2026-07-17
+## 1.0.13 - 2026-07-17
+
+History: [GitLab][1.0.13-gitlab] · [GitHub][1.0.13-github]
 
 ### Changed
 
@@ -1354,7 +1529,9 @@ publication authority.
 - Make the GitHub-native tag command use the workstation's configured SSH
   signing program rather than bypassing its Keychain-aware signing bridge.
 
-## [1.0.12] - 2026-07-17
+## 1.0.12 - 2026-07-17
+
+History: [GitLab][1.0.12-gitlab] · [GitHub][1.0.12-github]
 
 ### Changed
 
@@ -1401,7 +1578,9 @@ publication authority.
 - Preserve a compacted request during a pre-content SSE reconnect instead of
   reopening the original rejected replay body.
 
-## [1.0.8] - 2026-07-14
+## 1.0.8 - 2026-07-14
+
+History: [GitLab][1.0.8-gitlab] · [GitHub][1.0.8-github]
 
 ### Changed
 
@@ -1418,7 +1597,9 @@ publication authority.
 - Preserve a compacted request during a pre-content SSE reconnect instead of
   reopening the original rejected replay body.
 
-## [1.0.7] - 2026-07-14
+## 1.0.7 - 2026-07-14
+
+History: [GitLab][1.0.7-gitlab] · [GitHub][1.0.7-github]
 
 ### Changed
 
@@ -1435,14 +1616,18 @@ publication authority.
   from fallback requests. Ordinary client-side 400 errors
   remain non-retryable.
 
-## [1.0.6] - 2026-07-14
+## 1.0.6 - 2026-07-14
+
+History: [GitLab][1.0.6-gitlab] · [GitHub][1.0.6-github]
 
 ### Fixed
 
 - Treat upstream HTTP 524 gateway timeouts as bounded, transient failures,
   alongside 429 and 5xx responses.
 
-## [1.0.5] - 2026-07-14
+## 1.0.5 - 2026-07-14
+
+History: [GitLab][1.0.5-gitlab] · [GitHub][1.0.5-github]
 
 ### Fixed
 
@@ -1451,14 +1636,18 @@ publication authority.
 - Kept AIGW as the sole owner of marked provider configuration; the proxy owns
   only the data-plane adapter and its local process lifecycle.
 
-## [1.0.4] - 2026-07-14
+## 1.0.4 - 2026-07-14
+
+History: [GitLab][1.0.4-gitlab] · [GitHub][1.0.4-github]
 
 ### Added
 
 - Added a manifest for the installed runtime payload and a narrowly scoped
   listener reload that verifies replacement by the watchdog.
 
-## [1.0.3] - 2026-07-14
+## 1.0.3 - 2026-07-14
+
+History: [GitLab][1.0.3-gitlab] · [GitHub][1.0.3-github]
 
 ### Fixed
 
@@ -1466,7 +1655,9 @@ publication authority.
   only replayed reasoning state. This fixes rejected payloads missing the
   required `encrypted_content` field.
 
-## [1.0.2] - 2026-07-14
+## 1.0.2 - 2026-07-14
+
+History: [GitLab][1.0.2-gitlab] · [GitHub][1.0.2-github]
 
 ### Fixed
 
@@ -1475,17 +1666,212 @@ publication authority.
 - Added reversible route control, strict route-drift handling, and AIGW route
   delegation through AIGW's public CLI.
 
-## [1.0.1] - 2026-07-08
+## 1.0.1 - 2026-07-08
+
+History: [GitLab][1.0.1-gitlab] · [GitHub][1.0.1-github]
 
 ### Fixed
 
 - Allowed installation to complete on minimal Linux environments that lack a
   user systemd bus and cron; the required manual persistence step is explicit.
 
-## [1.0.0] - 2026-07-08
+## 1.0.0 - 2026-07-08
+
+History: [GitLab][1.0.0-gitlab] · [GitHub][1.0.0-github]
 
 ### Added
 
 - Introduced the portable loopback Responses compatibility adapter, watchdog,
   platform service adapters, bounded upstream retries, and SSE reconnect
   handling.
+
+[Unreleased-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.5...main
+[Unreleased-github]: https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.5...main
+[4.0.5-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v4.0.5
+[4.0.5-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v4.0.5
+[4.0.4-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v4.0.4
+[4.0.4-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v4.0.4
+[4.0.3-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v4.0.3
+[4.0.3-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v4.0.3
+[4.0.2-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v4.0.2
+[4.0.2-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v4.0.2
+[4.0.1-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v4.0.1
+[4.0.1-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v4.0.1
+[4.0.0-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v4.0.0
+[4.0.0-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v4.0.0
+[3.1.17-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.17
+[3.1.17-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.17
+[3.1.16-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.16
+[3.1.16-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.16
+[3.1.15-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.15
+[3.1.15-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.15
+[3.1.14-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.14
+[3.1.14-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.14
+[3.1.13-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.13
+[3.1.13-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.13
+[3.1.12-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.12
+[3.1.12-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.12
+[3.1.11-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.11
+[3.1.11-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.11
+[3.1.10-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.10
+[3.1.10-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.10
+[3.1.9-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.9
+[3.1.9-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.9
+[3.1.8-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.8
+[3.1.8-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.8
+[3.1.7-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.7
+[3.1.7-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.7
+[3.1.6-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.6
+[3.1.6-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.6
+[3.1.5-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.5
+[3.1.5-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.5
+[3.1.4-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.4
+[3.1.4-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.4
+[3.1.3-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.3
+[3.1.3-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.3
+[3.1.2-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.2
+[3.1.2-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.2
+[3.1.1-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.1
+[3.1.1-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.1
+[3.1.0-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.1.0
+[3.1.0-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.1.0
+[3.0.5-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.0.5
+[3.0.5-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.0.5
+[3.0.4-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.0.4
+[3.0.4-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.0.4
+[3.0.3-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.0.3
+[3.0.3-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.0.3
+[3.0.2-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.0.2
+[3.0.2-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.0.2
+[3.0.1-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.0.1
+[3.0.1-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.0.1
+[3.0.0-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v3.0.0
+[3.0.0-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v3.0.0
+[2.0.58-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.58
+[2.0.58-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.58
+[2.0.57-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.57
+[2.0.57-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.57
+[2.0.56-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.56
+[2.0.56-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.56
+[2.0.55-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.55
+[2.0.55-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.55
+[2.0.54-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.54
+[2.0.54-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.54
+[2.0.53-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.53
+[2.0.53-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.53
+[2.0.52-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.52
+[2.0.52-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.52
+[2.0.51-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.51
+[2.0.51-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.51
+[2.0.50-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.50
+[2.0.50-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.50
+[2.0.47-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.47
+[2.0.47-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.47
+[2.0.46-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.46
+[2.0.46-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.46
+[2.0.45-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.45
+[2.0.45-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.45
+[2.0.44-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.44
+[2.0.44-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.44
+[2.0.43-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.43
+[2.0.43-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.43
+[2.0.42-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.42
+[2.0.42-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.42
+[2.0.41-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.41
+[2.0.41-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.41
+[2.0.40-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.40
+[2.0.40-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.40
+[2.0.39-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.39
+[2.0.39-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.39
+[2.0.38-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.38
+[2.0.38-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.38
+[2.0.37-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.37
+[2.0.37-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.37
+[2.0.36-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.36
+[2.0.36-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.36
+[2.0.35-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.35
+[2.0.35-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.35
+[2.0.34-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.34
+[2.0.34-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.34
+[2.0.33-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.33
+[2.0.33-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.33
+[2.0.32-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.32
+[2.0.32-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.32
+[2.0.31-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.31
+[2.0.31-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.31
+[2.0.30-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.30
+[2.0.30-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.30
+[2.0.29-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.29
+[2.0.29-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.29
+[2.0.25-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.25
+[2.0.25-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.25
+[2.0.24-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.24
+[2.0.24-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.24
+[2.0.7-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.7
+[2.0.7-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.7
+[2.0.5-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.5
+[2.0.5-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.5
+[2.0.4-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.4
+[2.0.4-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.4
+[2.0.3-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.3
+[2.0.3-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.3
+[2.0.2-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v2.0.2
+[2.0.2-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v2.0.2
+[1.0.45-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.45
+[1.0.45-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.45
+[1.0.44-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.44
+[1.0.44-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.44
+[1.0.43-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.43
+[1.0.43-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.43
+[1.0.42-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.42
+[1.0.42-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.42
+[1.0.41-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.41
+[1.0.41-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.41
+[1.0.40-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.40
+[1.0.40-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.40
+[1.0.39-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.39
+[1.0.39-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.39
+[1.0.38-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.38
+[1.0.38-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.38
+[1.0.36-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.36
+[1.0.36-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.36
+[1.0.35-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.35
+[1.0.35-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.35
+[1.0.34-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.34
+[1.0.34-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.34
+[1.0.32-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.32
+[1.0.32-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.32
+[1.0.31-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.31
+[1.0.31-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.31
+[1.0.28-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.28
+[1.0.28-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.28
+[1.0.26-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.26
+[1.0.26-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.26
+[1.0.25-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.25
+[1.0.25-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.25
+[1.0.15-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.15
+[1.0.15-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.15
+[1.0.14-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.14
+[1.0.14-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.14
+[1.0.13-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.13
+[1.0.13-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.13
+[1.0.12-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.12
+[1.0.12-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.12
+[1.0.8-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.8
+[1.0.8-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.8
+[1.0.7-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.7
+[1.0.7-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.7
+[1.0.6-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.6
+[1.0.6-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.6
+[1.0.5-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.5
+[1.0.5-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.5
+[1.0.4-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.4
+[1.0.4-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.4
+[1.0.3-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.3
+[1.0.3-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.3
+[1.0.2-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.2
+[1.0.2-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.2
+[1.0.1-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.1
+[1.0.1-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.1
+[1.0.0-gitlab]: http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.0
+[1.0.0-github]: https://github.com/HengYangDS/codex-responses-proxy/releases/tag/v1.0.0

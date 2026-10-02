@@ -86,6 +86,27 @@ def test_product_release_history_is_provider_neutral(*, mocker) -> None:
         metadata.check_changelog_provenance([("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")])
 
 
+def test_changelog_headings_remain_local_with_explicit_peer_history(tmp_path: Path) -> None:
+    """Keep version navigation in the document instead of selecting one Forge."""
+    source = changelog_document(
+        "## Unreleased\n\n"
+        "History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]\n\n"
+        "## 1.0.0 - 2026-07-01\n\n"
+        "History: [GitLab][1.0.0-gitlab] · [GitHub][1.0.0-github]\n\n"
+        "### Added\n\n- Initial release.\n\n"
+        "[Unreleased-gitlab]: http://gitlab.example.test/group/project/-/compare/v1.0.0...main\n"
+        "[Unreleased-github]: https://github.example.test/owner/project/compare/v1.0.0...main\n"
+        "[1.0.0-gitlab]: http://gitlab.example.test/group/project/-/tags/v1.0.0\n"
+        "[1.0.0-github]: https://github.example.test/owner/project/releases/tag/v1.0.0\n"
+    )
+    document = tmp_path / "CHANGELOG.md"
+    document.write_text(source, encoding="utf-8")
+    assert metadata.changelog_releases(document) == [("1.0.0", "2026-07-01")]
+    document.write_text(source.replace("## 1.0.0 -", "## [1.0.0] -"), encoding="utf-8")
+    with pytest.raises(ValueError, match="release heading"):
+        metadata.changelog_releases(document)
+
+
 def test_prepare_release_rejects_only_future_dates() -> None:
     """Keep prepared metadata stable across days while rejecting impossible chronology."""
     current = date(2026, 7, 27)
@@ -171,38 +192,36 @@ def test_release_train_admission_uses_exact_local_chronology(
     ("source", "diagnostic"),
     [
         ("", "must start"),
-        ("# Changelog\n\n## [Unreleased]\n", "Keep a Changelog"),
-        (changelog_document("## [1.0.0] - 2026-07-01\n"), "must start"),
-        (changelog_document("## [Unreleased]\n## [Unreleased]\n"), "exactly one"),
-        (changelog_document("## [Unreleased]\n## [1.0.0]\n"), "must be dated"),
+        ("# Changelog\n\n## Unreleased\n", "Keep a Changelog"),
+        (changelog_document("## 1.0.0 - 2026-07-01\n"), "must start"),
+        (changelog_document("## Unreleased\n## Unreleased\n"), "exactly one"),
+        (changelog_document("## Unreleased\n## 1.0.0\n"), "must be dated"),
         (
             changelog_document(
-                "## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Fixed\n\n- Fix.\n\n"
-                "## [2.0.0] - 2026-07-02\n\n### Fixed\n\n- Fix.\n"
+                "## Unreleased\n\n## 1.0.0 - 2026-07-01\n\n### Fixed\n\n- Fix.\n\n"
+                "## 2.0.0 - 2026-07-02\n\n### Fixed\n\n- Fix.\n"
             ),
             "descending",
         ),
         (
             changelog_document(
-                "## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Quality\n\n- Improve.\n"
+                "## Unreleased\n\n## 1.0.0 - 2026-07-01\n\n### Quality\n\n- Improve.\n"
             ),
             "canonical category",
         ),
         (
             changelog_document(
-                "## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Fixed\n\n- One.\n\n"
+                "## Unreleased\n\n## 1.0.0 - 2026-07-01\n\n### Fixed\n\n- One.\n\n"
                 "### Fixed\n\n- Two.\n"
             ),
             "duplicate category",
         ),
         (
-            changelog_document(
-                "## [Unreleased]\n\n## [1.0.0] - 2026-02-30\n\n### Fixed\n\n- Fix.\n"
-            ),
+            changelog_document("## Unreleased\n\n## 1.0.0 - 2026-02-30\n\n### Fixed\n\n- Fix.\n"),
             "valid date",
         ),
         (
-            changelog_document("## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Fixed\n"),
+            changelog_document("## Unreleased\n\n## 1.0.0 - 2026-07-01\n\n### Fixed\n"),
             "change item",
         ),
     ],
@@ -218,14 +237,14 @@ def test_changelog_requires_ordered_dated_release_sections(
 
 def test_changelog_accepts_unreleased_only_and_canonical_categories(tmp_path: Path) -> None:
     initial = tmp_path / "initial.md"
-    initial.write_text(changelog_document("## [Unreleased]\n"), encoding="utf-8")
+    initial.write_text(changelog_document("## Unreleased\n"), encoding="utf-8")
     assert metadata.changelog_releases(initial) == []
 
     released = tmp_path / "released.md"
     released.write_text(
         changelog_document(
-            "## [Unreleased]\n\n### Changed\n\n- Pending.\n\n"
-            "## [1.0.0] - 2026-07-01\n\n### Added\n\n- Initial release.\n"
+            "## Unreleased\n\n### Changed\n\n- Pending.\n\n"
+            "## 1.0.0 - 2026-07-01\n\n### Added\n\n- Initial release.\n"
         ),
         encoding="utf-8",
     )
@@ -474,7 +493,7 @@ def test_current_release_metadata_chronology(
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     version = metadata.read_version()
     tag_exists = _run("git", "rev-parse", "--verify", f"refs/tags/v{version}").returncode == 0
-    prepared = f"## [{version}]" in source and not tag_exists
+    prepared = f"## {version}" in source and not tag_exists
     metadata.main(("--prepare-release",) if prepared else ())
     assert f"metadata: {version} OK" in capsys.readouterr().out
     if not prepared:
@@ -482,7 +501,7 @@ def test_current_release_metadata_chronology(
             metadata.main(("--prepare-release",))
     tagged_version = metadata.known_release_versions()[0]
     release_section = re.compile(
-        rf"(?ms)^## \[{re.escape(tagged_version)}\] - \d{{4}}-\d{{2}}-\d{{2}}\n.*?(?=^## \[|\Z)"
+        rf"(?ms)^## {re.escape(tagged_version)} - \d{{4}}-\d{{2}}-\d{{2}}\n.*?(?=^## |\Z)"
     )
     incomplete = tmp_path / "CHANGELOG.md"
     incomplete.write_text(release_section.sub("", source, count=1), encoding="utf-8")
