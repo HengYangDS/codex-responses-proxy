@@ -589,7 +589,7 @@ class TestVerificationContracts:
         assert environment["UV_PROJECT_ENVIRONMENT"] == "{{config_root}}/.venv"
         assert environment["VIRTUAL_ENV"] is False
         assert environment["UV_PYTHON"] == {
-            "value": "{% if tools.python is defined %}{{tools.python.path}}{% endif %}",
+            "value": "{% if tools.python is defined %}{{exec(command='mise which python') | trim}}{% endif %}",
             "tools": True,
         }
         assert environment["PYTHONHOME"] is False
@@ -861,9 +861,12 @@ def test_native_environment_resolves_the_locked_python_owner(
     assert selected.stderr == ""
     native = json.loads(selected.stdout)
     assert Path(native["UV_PROJECT_ENVIRONMENT"]) == root / ".venv"
-    assert Path(native.get("UV_PYTHON", "")).is_absolute(), native.get("UV_PYTHON")
-    toolchain = tomllib.loads((root / "mise.toml").read_text(encoding="utf-8"))
-    assert Path(native["UV_PYTHON"]).name == toolchain["tools"]["python"]
+    interpreter = Path(native.get("UV_PYTHON", ""))
+    assert interpreter.is_absolute(), native.get("UV_PYTHON")
+    assert interpreter.is_file(), native.get("UV_PYTHON")
+    resolved = _native_run(root, environment, ("mise", "which", "python"))
+    assert resolved.returncode == 0, resolved.stderr
+    assert interpreter.samefile(resolved.stdout.strip())
 
 
 @pytest.mark.repository_toolchain
@@ -937,3 +940,31 @@ def test_native_uv_execution_normalizes_only_its_owned_environment(
         assert actual["version"] == [int(part) for part in expected.split(".")]
         assert Path(actual["prefix"]) == local
     assert {name: (root / name).read_bytes() for name in preserved} == preserved
+
+
+@pytest.mark.repository_toolchain
+def test_native_uv_preserves_a_ready_environment_between_sequential_consumers(
+    native_python_project: tuple[Path, dict[str, str]],
+) -> None:
+    root, environment = native_python_project
+    prefix = ("mise", "exec", "--locked", "--", "uv")
+    synchronized = _native_run(
+        root, environment, (*prefix, "sync", "--locked", "--group", "quality")
+    )
+    assert synchronized.returncode == 0, synchronized.stderr
+    local = root / ".venv"
+    config = local / "pyvenv.cfg"
+    original = config.read_bytes()
+    marker = local / "owned-environment-marker"
+    marker.write_bytes(b"preserve the ready environment\n")
+    for _ in range(2):
+        observed = _native_run(
+            root,
+            environment,
+            (*prefix, "run", "--locked", "--group", "quality", "python", "-c", "print('ready')"),
+        )
+        assert observed.returncode == 0, observed.stderr
+        assert observed.stdout.strip() == "ready"
+        assert "Removed virtual environment" not in observed.stderr
+        assert config.read_bytes() == original
+        assert marker.read_bytes() == b"preserve the ready environment\n"
