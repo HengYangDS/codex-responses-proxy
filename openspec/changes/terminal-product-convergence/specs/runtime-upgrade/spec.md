@@ -75,6 +75,30 @@ SHALL wait for that completion.
 - **AND** changed files, symbolic links, unknown files, and unknown empty
   directories remain untouched and prevent a successful purge result.
 
+#### Scenario: An interrupted first installation has a starting native service
+
+- **WHEN** the original CLI has committed a candidate and submitted native
+  supervision, but recovery cannot prove an accepting runtime
+- **THEN** recovery verifies the journal-bound candidate and removes only its
+  exact native registration and owned processes before discarding payload or
+  recovery authority
+- **AND** an absent health response does not establish service absence
+- **AND** selector, rollback snapshot, and command restoration are admitted
+  before native disposal; any drift preserves supervision and recovery input
+- **AND** a missing configured executable permits cleanup only after proved
+  native absence, never after an unreadable or ambiguous registration
+- **AND** unknown cleanup or mismatched supervision preserves the journal and
+  candidate without a successful rollback result
+- **AND** a non-fresh transition preserves prior-generation supervision.
+
+#### Scenario: Windows cannot observe the exact scheduled task
+
+- **WHEN** the exact native task query fails or returns malformed task XML
+- **THEN** recovery preserves unknown service state and refuses native disposal
+- **AND** only the documented not-found HRESULT establishes task absence,
+  independent of the operating system's display language
+- **AND** a query timeout or access failure cannot produce rollback success.
+
 ### Requirement: Capable handoff preserves request admission
 
 A runtime-to-runtime handoff that advertises the admission-preserving capability
@@ -168,10 +192,25 @@ unavailable domain SHALL NOT prove convergence or service absence.
 - **AND** teardown proves its exact registration and owned process absent before
   reporting success.
 
-#### Scenario: A published predecessor requires a graphical login
+#### Scenario: Current control retains an authentic published predecessor
 
-- **WHEN** the authentic published predecessor is GUI-only
-- **THEN** its real installation, health, upgrade and rollback are qualified in
-  a supported native context with the exact candidate artifact
-- **AND** headless candidate tests do not substitute for that obligation
-- **AND** isolated journeys conserve both domains and unrelated plist bytes.
+- **WHEN** an immutable published predecessor's own installer requires a GUI
+  domain unavailable to the current native review account
+- **THEN** the current public controller installs its untouched signed asset
+  with the original external trust anchor
+- **AND** complete payload files, receipt, serving digest and actual listener
+  identify that authentic predecessor before upgrade and after rollback
+- **AND** the explicit candidate upgrades and rolls back without uninstalling,
+  resetting or substituting the retained predecessor
+- **AND** no result claims that the obsolete installer supports headless use.
+
+#### Scenario: Current recovery reads genuinely old-produced state
+
+- **WHEN** the original published old CLI leaves an interrupted journal and
+  payload projection in an isolated native target
+- **THEN** current public recovery consumes those unchanged old-produced bytes
+- **AND** proves its declared terminal result and exact owned-resource cleanup
+- **AND** preserves unrelated content, canonical processes, both domain
+  registrations, disabled overrides and plist bytes
+- **AND** a current-generated journal, rebuilt old CLI, route-modified asset or
+  old invocation with no recovery input cannot satisfy this qualification.

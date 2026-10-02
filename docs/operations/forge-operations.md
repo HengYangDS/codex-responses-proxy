@@ -180,10 +180,22 @@ an explicitly one-sided topology; neither result alone is dual-Forge parity.
 
 Current supervision uses the native user Background domain. Native qualification
 records user-domain and associated GUI-domain registrations separately, along
-with their disabled-state overrides and product plist hashes. A GUI-only
-published predecessor must still be tested in its supported login context;
-headless current-artifact success is different evidence. Neither qualification
-nor ordinary installation creates a login session or borrows a protected user.
+with their disabled-state overrides and product plist hashes. Qualification does
+not create a login session or borrow a protected user.
+
+For a GUI-only published predecessor, test the two boundaries separately. The
+current public controller installs the untouched signed old asset using its
+original external trust anchor; complete payload identity and the actual old
+listener must survive upgrade and rollback without an intervening uninstall or
+reset. Separately, the original old CLI must produce an interrupted journal and
+payload projection. Current public recovery consumes those unchanged bytes and
+proves exact cleanup and unrelated-state preservation. No recovery input means
+that journey failed, not that recovery passed.
+
+Route-controlled assets qualify concurrency and stream behavior only. They are
+not authentic artifact or old-producer evidence. These current-product criteria
+replace provisioning a GUI merely to execute the obsolete installer; they do not
+claim that installer works without a graphical login.
 
 If a launch-agent file becomes malformed, unowned or indirect, preserve it and
 inspect the exact file before repair. The product refuses to follow a symbolic
