@@ -8,3 +8,17 @@ swap:
   due to the fact that: because
   at this point in time: now
   utilize: use
+tests:
+  - name: all substitutions fire
+    input: We utilize the data in order to decide due to the fact that the report is ready at this point in time.
+    contains:
+      - "instead of 'utilize'"
+      - "instead of 'in order to'"
+      - "instead of 'due to the fact that'"
+      - "instead of 'at this point in time'"
+  - name: literal code remains syntax
+    input: Use `utilize in order to` only as a literal token.
+    want: ""
+  - name: uncertainty remains meaningful
+    input: The request may be rejected when evidence is incomplete.
+    want: ""

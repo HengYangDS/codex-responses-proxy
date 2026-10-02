@@ -202,6 +202,15 @@ code, identifiers, and link destinations untouched. Rules cannot silently remove
 an actor, obligation, qualification, or evidence limit to make prose pass. Style
 checks do not prove semantic completeness or factual correctness.
 
+Refresh Vale through the existing native Mise pin and platform lock, using
+official stable release metadata and asset digests. Keep the substitution rule's
+positive, literal-code, and uncertainty cases in that rule. Its existing
+repository-toolchain test runs native rule coverage, then replaces the cases
+with a passing no-finding example and requires refusal. This prevents a loaded
+but unexercised rule from supplying false assurance, without another command,
+test directory, tool owner, or prose implementation. Full current-document and
+configuration checks remain necessary; native coverage is not semantic proof.
+
 Vale supports document-level disabling comments; `--no-global` does not prevent
 them. Native ignore-pattern trials changed paragraph boundaries and missed a
 repeated word across an inline comment, so they are rejected. The existing

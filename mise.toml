@@ -34,7 +34,7 @@ cue = "0.17.1"
 "github:gitleaks/gitleaks" = "8.30.1"
 "github:rhysd/actionlint" = "1.7.12"
 "github:lycheeverse/lychee" = "lychee-v0.24.2"
-"aqua:vale-cli/vale" = "3.23.0"
+"aqua:vale-cli/vale" = "3.24.0"
 
 [env]
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"

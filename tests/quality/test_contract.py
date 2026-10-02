@@ -12,6 +12,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 from pytest_mock import MockerFixture
 
 from tests.quality.fixtures import ROOT
@@ -1054,7 +1055,10 @@ def test_markdown_lint_is_one_locked_native_governance_owner() -> None:
 
 def test_english_quality_uses_one_native_owner_and_current_scope() -> None:
     toolchain = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
-    assert toolchain["tools"]["aqua:vale-cli/vale"] == "3.23.0"
+    locked = tomllib.loads((ROOT / "mise.lock").read_text(encoding="utf-8"))
+    vale = locked["tools"]["aqua:vale-cli/vale"]
+    assert len(vale) == 1
+    assert vale[0]["version"] == toolchain["tools"]["aqua:vale-cli/vale"]
     selected = [
         command for command in governance._commands(online_links=False) if command[0] == "vale"
     ]
@@ -1070,6 +1074,54 @@ def test_english_quality_uses_one_native_owner_and_current_scope() -> None:
     assert not any(
         name.startswith(("textlint", "@textlint", "cspell")) for name in package["devDependencies"]
     )
+
+
+@pytest.mark.repository_toolchain
+def test_native_english_rule_tests_reject_a_rule_that_never_fires(tmp_path: Path) -> None:
+    rule = ROOT / ".config/quality/native/vale/styles/Plain/Concise.yml"
+
+    def check(directory: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            (
+                "vale",
+                "--config=" + str(ROOT / ".config/quality/native/vale.ini"),
+                "--no-global",
+                "--no-color",
+                "--output=JSON",
+                "test",
+                "--coverage",
+                str(directory),
+            ),
+            cwd=ROOT,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=20,
+            check=False,
+        )
+
+    valid = check(rule.parent)
+    assert valid.returncode == 0, valid.stdout + valid.stderr
+    report = json.loads(valid.stdout)
+    assert report["failed"] == 0
+    assert report["passed"] > 0
+    assert all(item["passed"] for item in report["results"])
+    assert not report.get("uncovered")
+    rules = tmp_path / "Plain"
+    rules.mkdir()
+    content = yaml.safe_load(rule.read_text(encoding="utf-8"))
+    content["tests"] = [
+        {
+            "name": "unchanged uncertainty",
+            "input": "The decision may change when evidence is incomplete.",
+            "want": "",
+        }
+    ]
+    (rules / rule.name).write_text(yaml.safe_dump(content), encoding="utf-8")
+    rejected = check(rules)
+    assert rejected.returncode != 0, rejected.stdout + rejected.stderr
+    assert "Plain.Concise" in json.loads(rejected.stdout)["uncovered"]
 
 
 @pytest.mark.repository_toolchain
