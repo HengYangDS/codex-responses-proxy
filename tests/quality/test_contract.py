@@ -154,6 +154,21 @@ class TestQualityPolicyContracts:
 
         assert profile["openspec"]["material_paths"] == ["**"]
 
+    def test_default_gates_bind_product_owned_native_verifiers(self) -> None:
+        profile = tomllib.loads((ROOT / ".ethos/profile.toml").read_text(encoding="utf-8"))
+        gates = {gate["id"]: gate for gate in profile["proof"]["gates"]}
+        assert profile["proof"]["code_correctness_gates"] == ["python-quality", "python-matrix"]
+        for gate_id, provider in (
+            ("python-quality", "static_report"),
+            ("python-matrix", "behavior_report"),
+        ):
+            gate = gates[gate_id]
+            assert gate["verification_providers"] == [
+                f"ethos.adapters.gates.code_quality:{provider}"
+            ]
+            assert gate["execution_mode"] == "verified-command"
+            assert gate["tool_adapter"] == "ethos"
+
     def test_publication_topology_has_only_declared_independent_peers(self) -> None:
         publication = tomllib.loads((ROOT / ".ethos/release.toml").read_text(encoding="utf-8"))[
             "publication"
@@ -164,7 +179,14 @@ class TestQualityPolicyContracts:
             "local_installation_command",
             "peers",
         }
-        assert publication["peers"] == [
+        # Exact repository locators belong to the declaration, not a second
+        # hardcoded test inventory. Retain the peer responsibility checks.
+        peers = publication["peers"]
+        assert all(isinstance(peer.get("forge_repository"), str) for peer in peers)
+        assert [
+            {key: value for key, value in peer.items() if key != "forge_repository"}
+            for peer in peers
+        ] == [
             {
                 "id": "gitlab",
                 "provider": "gitlab",
