@@ -186,6 +186,15 @@ outer install entrypoint retains the original public code and next command when
 prepared cleanup fails. Both layers use the existing shared error owner; there
 is no second cause formatter or exception vocabulary.
 
+Recovery admits the exact selector, rollback snapshot, and command restoration
+before stopping a first-install candidate. The same read-only command checks
+guard the subsequent file effects; they are not a parallel rollback model.
+Missing configured identity is usable only with independently proved native
+absence. Windows queries the exact task with `schtasks /hresult`: only the
+native file-not-found HRESULT means absent. Other errors, malformed XML, and
+timeouts preserve unknown state. Running classification uses the existing
+owned-process observation, not localized status prose.
+
 The quality system has four distinct obligations: a useful policy, a correct
 measurement, a complete execution path, and a working product. Passing one does
 not establish the others. The responsibility map assigns concerns; native tool
@@ -502,13 +511,29 @@ mutation, writes the accepted successor atomically, and teardown rechecks the
 exact prior bytes before removing the file. A symbolic link or changed carrier
 never grants permission to overwrite or delete its target.
 
-The published 4.0.4 predecessor's own installer requires a GUI domain. Its
-authentic installation, health, upgrade and rollback obligation remains a
-separate supported-context qualification; headless candidate success cannot
-replace it. Native host conservation covers both domain registrations, their
-disabled-state overrides and product plist bytes. No protected console user,
-synthetic Aqua session, source-built predecessor or skipped predecessor test may
-manufacture that evidence.
+The immutable published 4.0.4 installer requires a GUI domain. Repeating it on a
+headless account cannot qualify current supervision. Current-product acceptance
+therefore uses two complementary native journeys, replacing the earlier
+requirement to provision a GUI solely for the obsolete installer:
+
+1. The current public controller installs the untouched, signed published old
+   asset with its original external trust anchor. Complete installed files,
+   receipt, serving digest and the actual old listener must match that asset.
+   The journey upgrades to the explicit candidate and rolls back without
+   uninstalling or resetting the retained old installation.
+2. The untouched old CLI produces a genuinely interrupted journal and payload
+   projection. The current public recovery command consumes those unchanged
+   bytes and proves its declared terminal result, exact owned-resource cleanup
+   and preservation of unrelated content. A current-generated journal or an old
+   invocation that leaves no recovery input does not satisfy this journey.
+
+Route-controlled predecessor assets remain a separate concurrency and stream
+test; they cannot establish authentic artifact or old-producer compatibility.
+These criteria do not claim that the old installer works without a graphical
+login. Native host conservation covers both domain registrations, disabled-state
+overrides, product plist bytes and the canonical listener. No protected console
+user, synthetic Aqua session, rebuilt predecessor or skipped journey supplies
+proof.
 
 The transaction journal is one sibling file outside the disposable transaction
 directory. After projection and required supervisor binding finish, the
@@ -518,6 +543,14 @@ only disposal and deletes the journal last; it never replays terminal effects or
 requires an identity already discarded during cleanup. Interrupted cleanup
 continues to block a new transaction. Unrecognized journals and unowned roots
 remain protected, not inferred into a cleanup permission.
+
+Recovery of an interrupted first installation must stop candidate supervision
+and prove owned-process exit before discarding its payload. A missing health
+response cannot distinguish an absent service from a registered service still
+starting. The transaction supplies its verified candidate context to the
+existing native deployment teardown operation, shared with installation
+compensation. Mismatched or unproved supervision preserves recovery authority;
+non-fresh recovery does not remove a prior generation's shared supervisor.
 
 Controller rollback, interrupted materialization, and serving-generation
 recovery share one prior-projection restoration operation. It admits only the

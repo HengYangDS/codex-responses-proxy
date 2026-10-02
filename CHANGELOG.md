@@ -19,6 +19,13 @@ History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
 
 ### Fixed
 
+- Stop and verify an interrupted first installation's native service and
+  processes before recovery discards its payload or journal. An unavailable
+  health response no longer permits false rollback success with a service left
+  behind; uncertain cleanup preserves recovery authority.
+- Verify selector, rollback snapshot, and command ownership before stopping a
+  recovery candidate. Missing native identity permits removal only after proved
+  service absence; failed Windows task queries no longer stand for absence.
 - Refresh the official OpenSpec dependency to stable 1.14.0, retaining the
   existing Change, strict native validation, and dependency closure.
 - Refresh locked native Vale to stable 3.24.0 and test the existing prose rule

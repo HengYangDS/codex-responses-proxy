@@ -11,16 +11,21 @@ import subprocess
 import sys
 import urllib.request
 from collections.abc import Callable
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
+import psutil
 import pytest
 
 from codex_responses_proxy import product_identity
+from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import generation
+from codex_responses_proxy.lifecycle import owned_files
+from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle.supervision import native_service
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime.process_environment import native_process_environment
@@ -139,12 +144,91 @@ def run_command(
     return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
+def interrupt_native_controller(
+    controller: subprocess.Popen[bytes],
+    executable: Path,
+    identities: tuple[process.OwnedProcess, ...],
+) -> None:
+    """Interrupt only captured old-producer generations, children before parent."""
+    ordered = sorted(identities, key=lambda owned: owned.pid == controller.pid)
+    for owned in ordered:
+        if not process.owned_process_alive(owned):
+            continue
+        try:
+            native = psutil.Process(owned.pid)
+            assert native.create_time() == owned.created_at
+            reread = process.capture_executable(owned.pid, str(executable), roles={"install"})
+            if reread is None and not process.owned_process_alive(owned):
+                continue
+            assert reread == owned
+            native.kill()
+        except psutil.NoSuchProcess:
+            continue
+    controller.wait(timeout=30)
+    for owned in ordered:
+        assert process.wait_for_exit(owned, timeout_seconds=10)
+    # Inventory only after the captured producer has stopped, not in its
+    # materialized-to-activated window.
+    assert process.pids_naming_executable(str(executable), roles={"install"}) == []
+
+
+def assert_native_target_absent(
+    ctx: runtime_context.RuntimeContext,
+    generations: tuple[runtime_context.RuntimeContext, ...],
+) -> None:
+    """Prove the public operation cleaned its target before fallback teardown."""
+    service = native_service.adapter()
+    assert service.status(ctx) == "absent"
+    assert service.configured_executable(ctx) is None
+    assert process.listener_pids(ctx.port) == []
+    for owned_ctx in generations:
+        assert process.pids_naming_executable(owned_ctx.executable, roles=_SERVICE_ROLES) == []
+    assert not Path(ctx.command).exists()
+    assert not Path(ctx.command).is_symlink()
+
+
+def assert_admitted_payload_identity(
+    ctx: runtime_context.RuntimeContext,
+    admitted: artifact.VerifiedArtifact,
+    observed: Mapping[str, object] | None = None,
+) -> None:
+    """Bind the complete installed payload and any live runtime to one admitted asset."""
+    selected = generation.selected_context(ctx)
+    root = Path(selected.payload_dir)
+    assert projection.verify_payload_manifest(selected)[0]
+    assert hashlib.sha256((root / inventory.RELEASE_RECEIPT_FILENAME).read_bytes()).hexdigest() == (
+        admitted.receipt_sha256
+    )
+    expected = {blob.path for blob in admitted.peek_blobs()}
+    actual = set()
+    for path in root.rglob("*"):
+        assert not path.is_symlink()
+        if path.is_file():
+            actual.add(path.relative_to(root).as_posix())
+    assert actual == expected | set(owned_files.OWNED_PAYLOAD_METADATA)
+    for blob in admitted.peek_blobs():
+        path = root.joinpath(*Path(blob.path).parts)
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == blob.sha256
+    if observed is not None:
+        assert observed.get("state") == "running"
+        assert observed.get("release") == admitted.version
+        runtime = observed.get("runtime")
+        assert isinstance(runtime, dict)
+        assert runtime.get("release") == admitted.version
+        assert runtime.get("release_receipt_sha256") == admitted.receipt_sha256
+        assert runtime.get("serving_payload_sha256") == admitted.serving_payload_sha256
+        assert type(runtime.get("pid")) is int
+        assert runtime["pid"] > 0
+        assert runtime.get("accepting") is True
+        assert runtime.get("draining") is False
+
+
 def signed_asset(
     bundle: Path,
     output: Path,
     *,
     version: str,
-    upstream_url: str,
+    upstream_url: str | None,
     key: Path,
     trust: str,
 ) -> Path:
@@ -155,8 +239,12 @@ def signed_asset(
     files: dict[str, bytes | product_assets.ArchiveFile] = {
         f"bin/{executable_name}": product_assets.ArchiveFile(executable.read_bytes(), 0o755),
         "providers.toml": (
-            f'version = 1\n\n[providers.dmxapi]\nbase_url = "{upstream_url}"\npolicy = "dmxapi"\n'
-        ).encode(),
+            (ROOT / "src/codex_responses_proxy/providers/manifest.toml").read_bytes()
+            if upstream_url is None
+            else (
+                f'version = 1\n\n[providers.dmxapi]\nbase_url = "{upstream_url}"\npolicy = "dmxapi"\n'
+            ).encode()
+        ),
         "LICENSE": (ROOT / "LICENSE").read_bytes(),
     }
     for relative, source in release_assembly.bundle_files(bundle):

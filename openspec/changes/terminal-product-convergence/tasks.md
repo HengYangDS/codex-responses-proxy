@@ -359,7 +359,21 @@
       the unchanged GUI-only 4.0.4 installer runs on the headless account.
       Peer-local admission of supported-context predecessor evidence, exact
       installed ETHOS proof and final hosted acceptance remain open; local proof
-      is not relabeled as GitLab execution or a transferable Attestation.
+      is not relabeled as GitLab execution or a transferable Attestation. The
+      acceptance criteria now separate an untouched published old payload's
+      retained-runtime upgrade and rollback from recovery of unchanged state
+      produced by the original old CLI. The earlier installer-only journey
+      uninstalled the authentic payload before testing a route-modified fixture;
+      its current-generated recovery input also could not prove old-producer
+      compatibility. Those surrogate steps are removed. Both new native journeys
+      and their complete peer matrices remain unqualified; the immutable old
+      installer is not claimed to support headless execution. Stronger
+      pre-fallback cleanup exposed a real recovery ordering defect: rollback
+      deleted candidate and journal while submitted supervision remained.
+      Recovery now requires exact native service removal and process-exit proof
+      before fresh-candidate disposal, preserving unknown outcomes and prior
+      supervision. Transaction and public-controller regressions pass; rebuilt
+      native and complete-source acceptance remain required.
 - [x] 5.4 Prove Linux systemd behavior on a real supported user service and in
       the declared container boundary, including explicit behavior when no user
       bus exists; remove session-only fallback processes.
@@ -779,6 +793,17 @@
       official GitLab dry-run is valid with nine dev jobs and no warnings.
       Hosted platform execution and fleet admission remain open; Windows ARM64
       requires x64 Mise to select the locked x64 tool assets.
+- [ ] 9.12 Qualify the paired native journeys in 5.3: untouched published
+      predecessor payload through current-control upgrade and rollback, and
+      unchanged old-CLI-produced recovery input through current public recovery.
+      Prove complete payload identity, bounded old-controller process exit,
+      public-operation cleanup before fallback teardown and host conservation.
+      Recovery must admit selector, snapshot, command ownership, and exact
+      native identity before disposal; failed Windows queries remain unknown.
+      The frozen `2d1fdccc` review's GUI-only installer failure under headless
+      UID 510 is historical failure evidence, not a continuing requirement to
+      provision a GUI or a pass for the replacement criteria. Complete native
+      macOS and Windows matrices remain required.
 - [ ] 9.1 Define the complete CI graph in CUE—quality, Python matrix, native
       assets, platform lifecycle, release metadata, publication, and parity—with
       explicit facts proved by each job.
@@ -1060,10 +1085,10 @@
       cleanup. That invocation-only contract now runs in the non-native suite
       with a synthetic manifest and a bounded mock scope; its assertions remain
       intact. Fresh native suite acceptance remains required. The current
-      candidate's GUI-only dependency is reopened in 5.3. The published 4.0.4
-      predecessor still requires its supported GUI context; signature, package
-      acquisition or headless candidate success cannot replace that authentic
-      predecessor qualification.
+      candidate's GUI-only dependency is reopened in 5.3. The paired authentic
+      payload and old-producer criteria in 5.3 replace the obsolete installer's
+      GUI prerequisite; signatures, package acquisition or route-controlled
+      traffic alone do not qualify either journey.
 - [ ] 11.6 Remove toy examples, private workstation paths, stale versions,
       obsolete commands, WCP references, AIGW coupling, empty evidence shells,
       claims, chronicles, parity directories, and historical instructions from
