@@ -752,7 +752,20 @@
       explicit facts proved by each job.
 - [ ] 9.2 Generate GitHub Actions and GitLab CI from the CUE model, verify
       semantic parity and provider-specific deltas, and reject hand-edited
-      projection drift.
+      projection drift. The Python-only branch proof and release-asset binding
+      now select the official native Python shell at their existing CUE owner.
+      The complete workflow file passes 45 native contracts; strengthened shell
+      cases first failed on the old Bash selection. Missing or skipped jobs,
+      unknown events, absent or ambiguous archives on either side, and quoted
+      paths retain refusal or preservation. Stable actionlint 1.7.12 passes the
+      actual projections in 0.19 seconds, with a real ShellCheck SC2086
+      counterexample still rejected. The canonical full source check passes
+      governance and all three Python versions: 1,948 tests pass per
+      interpreter, with five native-asset cases reserved for the release
+      session. Statement coverage is 97.84% and branch coverage is 95.45%.
+      Independent code review found no actionable defect in the frozen six-file
+      patch. Exact-HEAD proof, installed shared-contract acceptance, and hosted
+      execution remain open.
 - [ ] 9.3 Cover proposal creation and update, review SHA, maintainer
       fast-forward, `dev`, `main`, and tag events; verify every admissible
       integration path triggers the required exact-SHA evidence. Accepted source
@@ -815,7 +828,12 @@
       bounded main/dev linear-history exception admitted the already-reviewed
       signed merge object; both complete protection snapshots were restored
       exactly. Required-status admission remains an explicit governance gap;
-      successful CI is not proof of enforced checks.
+      successful CI is not proof of enforced checks. A fresh accepted-source
+      audit also finds seven owner-confirmed historical committer aliases for
+      the same user. Correct them through ETHOS's exact committer-only history
+      repair; preserve authors, other contributors, message bytes, timestamps,
+      trees, and ordered parents. Current signing configuration does not prove
+      that historical repair or peer attribution.
 - [ ] 9.8 Ensure proposal branches are unprotected, merge automatically after
       required evidence for the maintainer policy, and are deleted on merge;
       verify no remote `work/*` or stale proposal remains.

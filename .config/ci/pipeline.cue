@@ -963,8 +963,25 @@ githubVerify: {
 				env: RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
 				run: "python -c \"import os; from pathlib import Path; Path(r'${{ runner.temp }}/release-asset-trust').write_text(os.environ['RELEASE_ASSET_TRUST'].rstrip() + '\\n', encoding='ascii')\""
 			}, {
-				name: "Bind the exact published assets"
-				run:  "python -c \"import glob, os; current = glob.glob(r'${{ runner.temp }}/current-release/codex-responses-proxy-*-${{ matrix.platform }}.tar.gz'); previous = glob.glob(r'${{ runner.temp }}/previous-release/codex-responses-proxy-*-${{ matrix.platform }}.tar.gz'); assert len(current) == len(previous) == 1, (current, previous); open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8').write('CODEX_RESPONSES_PROXY_CURRENT_RELEASE_ASSET=' + current[0] + '\\nCODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET=' + previous[0] + '\\n')\""
+				name:  "Bind the exact published assets"
+				shell: "python"
+				env: {
+					CURRENT_RELEASE_DIRECTORY:  "${{ runner.temp }}/current-release"
+					PREVIOUS_RELEASE_DIRECTORY: "${{ runner.temp }}/previous-release"
+					RELEASE_PLATFORM:           "${{ matrix.platform }}"
+				}
+				run: """
+					import os
+					from pathlib import Path
+					pattern = "codex-responses-proxy-*-" + os.environ["RELEASE_PLATFORM"] + ".tar.gz"
+					current = list(Path(os.environ["CURRENT_RELEASE_DIRECTORY"]).glob(pattern))
+					previous = list(Path(os.environ["PREVIOUS_RELEASE_DIRECTORY"]).glob(pattern))
+					if len(current) != 1 or len(previous) != 1:
+					    raise SystemExit("expected one current and one predecessor archive")
+					with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+					    output.write("CODEX_RESPONSES_PROXY_CURRENT_RELEASE_ASSET=" + str(current[0]) + "\\n")
+					    output.write("CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET=" + str(previous[0]) + "\\n")
+					"""
 			}, {
 				name: "Start the runner user systemd manager"
 				if:   "matrix.platform == 'linux-x86_64'"
@@ -987,13 +1004,13 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version-file": ".python-release"
 			}, {
-				name: "Reject missing branch proof"
+				name:  "Reject missing branch proof"
+				shell: "python"
 				env: {
 					NEEDS_JSON:         "${{ toJSON(needs) }}"
 					PRODUCT_PROOF_JOBS: strings.Join(#ProductProofJobs, " ")
 				}
 				run: """
-					python - <<'PY'
 					import json
 					import os
 					product = tuple(os.environ["PRODUCT_PROOF_JOBS"].split())
@@ -1020,7 +1037,6 @@ githubVerify: {
 					missing = [job for job in required if needs.get(job, {}).get("result") != "success"]
 					if missing:
 					    raise SystemExit("required branch proof failed: " + ", ".join(missing))
-					PY
 					"""
 			}]
 		}
