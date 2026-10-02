@@ -2,13 +2,17 @@
 
 ## Purpose
 
-Define the repository authorities, development and release boundaries, documentation structure, and portable quality surfaces that keep the proxy lean and reproducible.
+Define the repository authorities, development and release boundaries,
+documentation structure, and portable quality surfaces that keep the proxy lean
+and reproducible.
 
 ## Requirements
 
 ### Requirement: One release identity
 
-Proxy SHALL use tracked `VERSION` as the sole product release identity for package metadata, artifact names, changelog headings, tags, and installation records.
+Proxy SHALL use tracked `VERSION` as the sole product release identity for
+package metadata, artifact names, changelog headings, tags, and installation
+records.
 
 #### Scenario: Release metadata is consistent
 
@@ -64,18 +68,22 @@ documented locked command graph as a distinct developer surface.
 #### Scenario: Operator installs a release
 
 - **WHEN** an operator invokes the documented product installation command
-- **THEN** the command accepts explicit release metadata or a resolved manifest without personal paths, identities, or Forge coupling
+- **THEN** the command accepts explicit release metadata or a resolved manifest
+  without personal paths, identities, or Forge coupling
 
 #### Scenario: Contributor verifies a checkout
 
 - **WHEN** a contributor runs the documented local gate
-- **THEN** the same `uv`/`nox` graph is used by CI and ETHOS proof without a second test runner or compatibility wrapper
+- **THEN** the same `uv`/`nox` graph is used by CI and ETHOS proof without a
+  second test runner or compatibility wrapper
 
 #### Scenario: A user installs a signed release
 
 - **WHEN** installation completes from a verified asset
-- **THEN** status, lifecycle, and diagnostics are available through the product command
-- **AND** no `python -m`, source checkout, uv, Nox, or ETHOS command is required at runtime.
+- **THEN** status, lifecycle, and diagnostics are available through the product
+  command
+- **AND** no `python -m`, source checkout, uv, Nox, or ETHOS command is required
+  at runtime.
 
 ### Requirement: Semantic documentation architecture
 
@@ -84,12 +92,6 @@ tracked authority for product change intent and SHALL organize its small
 canonical documentation kernel by semantic domain. ETHOS SHALL derive a
 transient Commitment containing only `schema_version`, `id`, and `acceptance`
 from the selected OpenSpec projection when governance evaluation requires it.
-An additional tracked carrier SHALL exist only when it owns a current invariant
-that official OpenSpec artifacts and existing authorities cannot represent, has
-one named owner and current consumer, replaces rather than parallels another
-authority, and defines its retirement condition. Content document filenames
-SHALL state their subjects. Repository checks and release metadata SHALL
-consume those semantic paths directly.
 
 #### Scenario: Reader enters the documentation
 
@@ -97,32 +99,12 @@ consume those semantic paths directly.
 - **THEN** every canonical document SHALL be reachable through the domain map
 - **AND** no redirect-only local index SHALL be required.
 
-#### Scenario: A content-bearing register or policy is stored
-
-- **WHEN** a document owns Decision Record registration or evidence policy
-- **THEN** its filename SHALL identify that subject
-- **AND** no container-named compatibility copy SHALL remain.
-
-#### Scenario: Repository tooling consumes documentation paths
-
-- **WHEN** quality or release validation reads a canonical document
-- **THEN** it SHALL use the same semantic path exposed to readers
-- **AND** the documentation tree and executable contract SHALL not diverge.
-
 #### Scenario: Official OpenSpec artifacts carry the intent
 
 - **WHEN** proposal, specification, design, tasks, metadata, configuration, or
   Git history already carry all current meaning for a Change
 - **THEN** the repository SHALL retain no additional summary, scope inventory,
   capability descriptor, empty index, or equivalent parallel carrier.
-
-#### Scenario: An additional carrier is necessary
-
-- **WHEN** an invariant cannot be represented by official OpenSpec artifacts or
-  an existing authority
-- **THEN** the carrier SHALL identify its unique invariant, owner, current
-  consumer, replaced authority, and retirement condition
-- **AND** validation SHALL reject it if any fact is absent or unverifiable.
 
 #### Scenario: Governance evaluates change intent
 
@@ -138,6 +120,35 @@ consume those semantic paths directly.
   change
 - **AND** ETHOS Attestations SHALL remain the effect-evidence surface.
 
+### Requirement: Extra carriers and semantic document paths have explicit owners
+
+An additional tracked carrier SHALL exist only when it owns a current invariant
+that official OpenSpec artifacts and existing authorities cannot represent, has
+one named owner and current consumer, replaces rather than parallels another
+authority, and defines its retirement condition. Content document filenames
+SHALL state their subjects. Repository checks and release metadata SHALL consume
+those semantic paths directly.
+
+#### Scenario: A content-bearing register or policy is stored
+
+- **WHEN** a document owns Decision Record registration or evidence policy
+- **THEN** its filename SHALL identify that subject
+- **AND** no container-named compatibility copy SHALL remain.
+
+#### Scenario: Repository tooling consumes documentation paths
+
+- **WHEN** quality or release validation reads a canonical document
+- **THEN** it SHALL use the same semantic path exposed to readers
+- **AND** the documentation tree and executable contract SHALL not diverge.
+
+#### Scenario: An additional carrier is necessary
+
+- **WHEN** an invariant cannot be represented by official OpenSpec artifacts or
+  an existing authority
+- **THEN** the carrier SHALL identify its unique invariant, owner, current
+  consumer, replaced authority, and retirement condition
+- **AND** validation SHALL reject it if any fact is absent or unverifiable.
+
 ### Requirement: Portable repository quality surface
 
 Repository tooling SHALL represent Forge publication as exact projection of
@@ -148,6 +159,7 @@ publication authorities.
 #### Scenario: A maintainer traces branch publication
 
 - **WHEN** the selected Forge branch is advanced
-- **THEN** one projector verifies the local object and exact remote CAS coordinate
+- **THEN** one projector verifies the local object and exact remote CAS
+  coordinate
 - **AND** pushes that object without creating another commit
 - **AND** no history-mapping module or compatibility flag is consulted.
