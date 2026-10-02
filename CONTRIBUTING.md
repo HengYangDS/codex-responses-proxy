@@ -38,14 +38,16 @@ mise run bootstrap
 `package.json` and `package-lock.json` own OpenSpec, Prettier, Markdown lint,
 and their complete npm graph. Governance invokes Node tools through
 `npm exec --offline`, so local, GitHub, GitLab, POSIX, and Windows use the same
-repository installation. The `mise.toml` tasks pass the exact mise Python
-installation to uv and bind the project environment to this worktree's `.venv`.
-An activated environment or inherited Python override does not select the
-development interpreter. Nox owns disposable `.nox/<session>` environments and
-selects compatibility interpreters independently. Download caches may be shared;
-mutable environments are local to their worktree or Nox session. Repeat
-bootstrap after dependency locks change; editing checks do not reinstall Node
-dependencies.
+repository installation. Mise's native `mise which python` resolver supplies the
+exact locked executable to uv, not the installation directory. The `mise.toml`
+environment binds the project to this worktree's `.venv`. An activated
+environment or inherited Python override does not select the development
+interpreter. Nox owns disposable `.nox/<session>` environments and selects
+compatibility interpreters independently. Download caches may be shared; mutable
+environments are local to their worktree or Nox session. Repeated verification
+preserves an already synchronized environment; changed interpreter or lock
+inputs still require synchronization. Repeat bootstrap after dependency locks
+change; editing checks do not reinstall Node dependencies.
 
 Run the repository-owned gates:
 

@@ -122,7 +122,7 @@ contracts, and release verification on macOS, Linux, and Windows.
 
 - **WHEN** native macOS or Windows CI reconstructs its local environment
 - **THEN** the existing Mise tool-aware environment directive binds the exact
-  locked interpreter
+  locked executable returned by its native resolver, not an install directory
 - **AND** native locked synchronization restores a missing or stale generated
   environment before execution
 - **AND** an out-of-date dependency lock fails without rewriting source
@@ -132,6 +132,16 @@ contracts, and release verification on macOS, Linux, and Windows.
   constructing its candidate
 - **AND** neither an executable-name ambiguity, no-sync execution, nor warning
   suppression establishes acceptance.
+
+#### Scenario: Sequential consumers preserve a ready environment
+
+- **GIVEN** the current locked interpreter and dependencies have synchronized
+  this Work Lane's project environment
+- **WHEN** consecutive verification commands execute with unchanged inputs
+- **THEN** they reuse that environment without deleting or recreating it
+- **AND** its configuration and existing owned content remain unchanged
+- **AND** changed interpreter or lock inputs still trigger normal admission and
+  synchronization.
 
 #### Scenario: A native job selects only acquisition tools
 

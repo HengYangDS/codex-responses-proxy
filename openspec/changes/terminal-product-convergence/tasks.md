@@ -1089,31 +1089,32 @@
       executable-name ambiguity or no-sync false acceptance. Actual nested-path
       regressions cover missing and stale environments plus changed locks; the
       governance graph and each native platform execute them before dependent
-      work. Local native acceptance passed; fresh Windows service-consumer
-      acceptance stays open. The new Windows conformance exposed a
-      locale-dependent subprocess decoder: native UTF-8 diagnostics were read as
-      GBK and lost behind thread warnings. The test owner now decodes UTF-8
-      strictly, with a distinguishing real-byte regression. The hidden native
-      return-code cause still requires the same service-consumer replay; it is
-      not fixed by local decoding success. Actual tool-subset regressions now
-      prove Python binding only when Python is selected; acquisition-only gh
-      jobs do not require an absent interpreter. Hosted CI and the remaining
-      root-carrier audit stay open. Stable npm 12.2.0 uses the native Mise
-      backend and generated AUBE graph; the old repository sidecars retire
-      through that producer. Native lock format 3 retains all 68 existing
-      platform inputs and adds 11 discovered entries; the minimum reader and
-      actual host/CI Mise are 2026.9.18. Actual pipeline 9025 disproved
-      recursive workflow-variable tag expansion; Linux review and protected jobs
-      now share one CUE body and use direct native scheduling variables with no
-      intermediate alias. Windows native release selection uses the running
-      interpreter ABI, not the host CPU, and native tests own short disposable
-      roots independent of checkout depth. Pipeline 9030 proves direct Linux
-      Runner assignment, source, Python matrix, and performance at signed
-      a52f66c6. Its native Mac job rejects missing gui/510; its Windows job
-      exposes deep service-account TEMP and inherited Nox TMPDIR. Native child
-      temporary variables now share the same owned root; the Runner owner must
-      provide a short isolated native TEMP input. Pipeline 9032 passes all Linux
-      nodes and 49 Windows native checks, but one mocked-launch test
+      work. Native UTF-8 diagnostics now remain observable under a legacy
+      ambient encoding. The same-source Windows job then exposed a different
+      binding error: Mise supplied its Python installation directory, and uv
+      repeatedly recreated a ready environment before failing to remove a locked
+      directory. Mise's official resolver now supplies the executable; native
+      conformance rejects a directory binding and proves configuration and
+      owned-content preservation across consecutive consumers. Local focused
+      tests pass; fresh Windows lifecycle qualification remains open. Actual
+      tool-subset regressions now prove Python binding only when Python is
+      selected; acquisition-only gh jobs do not require an absent interpreter.
+      Hosted CI and the remaining root-carrier audit stay open. Stable npm
+      12.2.0 uses the native Mise backend and generated AUBE graph; the old
+      repository sidecars retire through that producer. Native lock format 3
+      retains all 68 existing platform inputs and adds 11 discovered entries;
+      the minimum reader and actual host/CI Mise are 2026.9.18. Actual pipeline
+      9025 disproved recursive workflow-variable tag expansion; Linux review and
+      protected jobs now share one CUE body and use direct native scheduling
+      variables with no intermediate alias. Windows native release selection
+      uses the running interpreter ABI, not the host CPU, and native tests own
+      short disposable roots independent of checkout depth. Pipeline 9030 proves
+      direct Linux Runner assignment, source, Python matrix, and performance at
+      signed a52f66c6. Its native Mac job rejects missing gui/510; its Windows
+      job exposes deep service-account TEMP and inherited Nox TMPDIR. Native
+      child temporary variables now share the same owned root; the Runner owner
+      must provide a short isolated native TEMP input. Pipeline 9032 passes all
+      Linux nodes and 49 Windows native checks, but one mocked-launch test
       unnecessarily prewarms a real bundle and leaves a locked module at
       cleanup. That invocation-only contract now runs in the non-native suite
       with a synthetic manifest and a bounded mock scope; its assertions remain
