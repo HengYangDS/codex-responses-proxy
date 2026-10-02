@@ -193,6 +193,13 @@ configuration defines their executable rules; Nox invokes them; CUE projects the
 same obligations into each Forge. No second checker, registry, or workflow may
 independently define the same rule.
 
+Official OpenSpec remains the sole Change artifact and validation owner. Refresh
+its exact npm dependency through the existing package manifest and lock; do not
+edit the installed ETHOS runtime or introduce a scope companion. Package-level
+validation establishes the repository artifacts' shape, not installed-product
+admission or task completion. Existing requirements, scenarios, and active
+Change identity remain unchanged by a native dependency refresh.
+
 English quality uses one native Vale CLI for spelling, repeated words, canonical
 terms, and concise prose. Its native configuration and vocabulary belong under
 the existing quality configuration owner. The governance graph selects all
