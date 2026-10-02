@@ -237,6 +237,19 @@ quality failure cannot start later interpreter sessions. A valid full run still
 executes every declared session. Failure diagnostics remain evidence, not a
 reason to continue dependent work or report partial acceptance.
 
+The official runner's built-in `shell: python` executes each Python-only proof
+and release-asset binding body as a native `.py` file. The previous Bash input
+block and quoted `python -c` wrapper sent those bodies through actionlint's
+ShellCheck input pipe; stable actionlint 1.7.12 wrote that finite input before
+starting its child and stalled. Select the actual language at the existing CUE
+step, pass paths through its environment, and preserve required-job and
+unique-archive refusal through real native execution. The same actionlint and
+enabled ShellCheck remain responsible for actual shell steps. This adds no
+module, wrapper, dependency, or second pipeline. Native runner behavior is
+documented in
+[the official shell contract](https://github.com/actions/runner/blob/main/docs/adrs/0277-run-action-shell-options.md).
+Local execution does not establish hosted acceptance on another platform.
+
 Cold development verification starts with a complete immutable local checkout,
 including release tags required by Changelog provenance. Native Mise config-dir
 and ceiling selection excludes ambient host and parent configuration while

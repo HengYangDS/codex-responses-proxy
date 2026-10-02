@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -147,7 +148,7 @@ _PRODUCT_PROOF_JOBS = (
     ],
 )
 def test_reusable_branch_proof_fails_if_any_required_job_is_skipped(
-    event: str, ref: str, base: str, required: tuple[str, ...]
+    event: str, ref: str, base: str, required: tuple[str, ...], tmp_path: Path
 ) -> None:
     """Reject an apparently green reusable run missing one required proof job."""
     verify = _load_yaml(ROOT / ".github/workflows/verify.yml")
@@ -162,7 +163,10 @@ def test_reusable_branch_proof_fails_if_any_required_job_is_skipped(
     }
     steps = _sequence(proof["steps"])
     step = _mapping(steps[-1])
+    assert step.get("shell") == "python", "Python proof must use the native Python shell"
     script = _string(step["run"])
+    script_file = tmp_path / "branch-proof.py"
+    script_file.write_text(script, encoding="utf-8")
     step_env = _mapping(step["env"])
     assert step_env["PRODUCT_PROOF_JOBS"] == " ".join(_PRODUCT_PROOF_JOBS)
     assert step_env["NEEDS_JSON"] == "${{ toJSON(needs) }}"
@@ -179,10 +183,12 @@ def test_reusable_branch_proof_fails_if_any_required_job_is_skipped(
 
     def run() -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            ("bash", "-e", "-c", script),
+            (sys.executable, str(script_file)),
             check=False,
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=10,
             env={**environment, "NEEDS_JSON": json.dumps(needs)},
         )
 
@@ -198,19 +204,26 @@ def test_reusable_branch_proof_fails_if_any_required_job_is_skipped(
     ("event", "ref"),
     [("workflow_call", "refs/heads/dev"), ("push", "refs/other/unexpected")],
 )
-def test_reusable_branch_proof_rejects_unknown_invocation_context(event: str, ref: str) -> None:
+def test_reusable_branch_proof_rejects_unknown_invocation_context(
+    event: str, ref: str, tmp_path: Path
+) -> None:
     """Fail if a reusable call loses the caller's branch event context."""
     jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
     assert "branch-proof" in jobs, "reusable branch proof job is missing"
     proof = _mapping(jobs["branch-proof"])
     step = _mapping(_sequence(proof["steps"])[-1])
+    assert step.get("shell") == "python", "Python proof must use the native Python shell"
     script = _string(step["run"])
+    script_file = tmp_path / "branch-proof.py"
+    script_file.write_text(script, encoding="utf-8")
     product_jobs = _string(_mapping(step["env"])["PRODUCT_PROOF_JOBS"])
     result = subprocess.run(
-        ("bash", "-e", "-c", script),
+        (sys.executable, str(script_file)),
         check=False,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=10,
         env={
             **os.environ,
             "GITHUB_EVENT_NAME": event,
@@ -614,7 +627,10 @@ def test_release_compatibility_runs_real_published_upgrade_on_each_platform() ->
     assert proof["run"] == "uv run --locked --no-sync nox -s release_compatibility"
 
 
-def test_published_release_bytes_run_the_full_native_journey_on_each_platform() -> None:
+@pytest.mark.parametrize("platform", ["macos-arm64", "windows-x86_64", "linux-x86_64"])
+def test_published_release_bytes_run_the_full_native_journey_on_each_platform(
+    tmp_path: Path, platform: str
+) -> None:
     """Re-download the released candidate before claiming platform acceptance."""
     workflow = _load_yaml(ROOT / ".github/workflows/verify.yml")
     triggers = _mapping(workflow["on"])
@@ -637,6 +653,61 @@ def test_published_release_bytes_run_the_full_native_journey_on_each_platform() 
         {"platform": "linux-x86_64", "runner": "ubuntu-24.04"},
     ]
     steps = tuple(_mapping(step) for step in _sequence(job["steps"]))
+    binding = next(step for step in steps if step.get("name") == "Bind the exact published assets")
+    assert binding.get("shell") == "python", "Asset binding must use the native Python shell"
+    binding_env = _mapping(binding["env"])
+    assert binding_env == {
+        "CURRENT_RELEASE_DIRECTORY": "${{ runner.temp }}/current-release",
+        "PREVIOUS_RELEASE_DIRECTORY": "${{ runner.temp }}/previous-release",
+        "RELEASE_PLATFORM": "${{ matrix.platform }}",
+    }
+    native_script = tmp_path / "bind-assets.py"
+    native_script.write_text(_string(binding["run"]), encoding="utf-8")
+    current = tmp_path / "current release's input"
+    previous = tmp_path / "previous release's input"
+    current.mkdir()
+    previous.mkdir()
+    selected = current / f"codex-responses-proxy-1.0.2-{platform}.tar.gz"
+    predecessor = previous / f"codex-responses-proxy-1.0.1-{platform}.tar.gz"
+    selected.write_bytes(b"current archive fixture")
+    predecessor.write_bytes(b"predecessor archive fixture")
+    output = tmp_path / "github-environment"
+    output.write_text("EXISTING=value\n", encoding="utf-8")
+    environment = {
+        **os.environ,
+        "CURRENT_RELEASE_DIRECTORY": str(current),
+        "PREVIOUS_RELEASE_DIRECTORY": str(previous),
+        "RELEASE_PLATFORM": platform,
+        "GITHUB_ENV": str(output),
+    }
+
+    def run_binding() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            (sys.executable, str(native_script)),
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=10,
+        )
+
+    assert run_binding().returncode == 0
+    expected = (
+        f"EXISTING=value\nCODEX_RESPONSES_PROXY_CURRENT_RELEASE_ASSET={selected}\n"
+        f"CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET={predecessor}\n"
+    )
+    assert output.read_text(encoding="utf-8") == expected
+    for archive in (selected, predecessor):
+        archive.unlink()
+        assert run_binding().returncode != 0
+        assert output.read_text(encoding="utf-8") == expected
+        archive.write_bytes(b"restored archive fixture")
+        duplicate = archive.with_name(f"codex-responses-proxy-9.9.9-{platform}.tar.gz")
+        duplicate.write_bytes(b"ambiguous archive")
+        assert run_binding().returncode != 0
+        assert output.read_text(encoding="utf-8") == expected
+        duplicate.unlink()
     checkout = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")
     )

@@ -19,6 +19,9 @@ History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
 
 ### Fixed
 
+- Run Python-only CI proof and release-asset binding with GitHub's native Python
+  shell, avoiding a Bash input deadlock while preserving required-job refusal
+  and exact current/predecessor selection.
 - Keep version headings on this page and offer each Forge's own history links;
   bind release navigation to the declared repository rather than Git transport.
 - Preserve the initial installation failure when native cleanup or payload
