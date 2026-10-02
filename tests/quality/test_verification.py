@@ -10,14 +10,433 @@ import subprocess
 import sys
 import tomllib
 from collections.abc import Sequence
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
+from typing import override
 
 import pytest
 import yaml
 
 from tests.quality.fixtures import ROOT
 from tools.ci import project
+from tools.quality import governance
 from tools.quality import python_matrix
+
+
+@pytest.fixture
+def peer_link_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Own exact publication roots without relying on any operator network."""
+    root = tmp_path / "link scope"
+    (root / ".ethos").mkdir(parents=True)
+    (root / ".ethos/release.toml").write_text(
+        '[[publication.peers]]\nid = "forge-a"\n'
+        'forge_repository = "https://a.example.test/team/project"\n\n'
+        '[[publication.peers]]\nid = "forge-b"\n'
+        'forge_repository = "http://b.example.test:8080/group/project+one"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(governance, "ROOT", root)
+    monkeypatch.setattr(governance, "_tracked_current", lambda _suffixes: ("README.md",))
+    return root
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize("peer", ["forge-a", "forge-b"])
+def test_online_link_scope_excludes_only_the_other_exact_declared_repository(
+    peer_link_project: Path, peer: str
+) -> None:
+    command = next(
+        command
+        for command in governance._commands(online_links=True, peer=peer)
+        if command[0] == "lychee"
+    )
+    exclusions = [
+        item.removeprefix("--exclude=") for item in command if item.startswith("--exclude=")
+    ]
+    assert len(exclusions) == 1
+    peers = tomllib.loads((peer_link_project / ".ethos/release.toml").read_text())["publication"][
+        "peers"
+    ]
+    selected = next(record["forge_repository"] for record in peers if record["id"] == peer)
+    other = next(record["forge_repository"] for record in peers if record["id"] != peer)
+    expression = re.compile(exclusions[0])
+    for suffix in ("", "/compare/v1.0.0...main", "?view=history", "#releases"):
+        assert expression.search(other + suffix)
+        assert not expression.search(selected + suffix)
+    assert not expression.search(other + "-different/compare/v1.0.0...main")
+    assert not expression.search(other.replace("project", "another-project"))
+    assert not expression.search("https://upstream.example.test/reference")
+    assert not expression.search("file:///local/source.md")
+    assert "--offline" not in command
+    assert "--accept-timeouts" not in command
+    assert "--exclude-private" not in command
+    assert "--insecure" not in command
+
+
+@pytest.mark.parametrize("peer", ["", "undeclared"])
+def test_online_link_scope_rejects_an_undeclared_peer(peer_link_project: Path, peer: str) -> None:
+    assert (peer_link_project / ".ethos/release.toml").is_file()
+    with pytest.raises(governance.GovernanceError, match="declared publication peer"):
+        governance._commands(online_links=True, peer=peer)
+
+
+def test_offline_verification_has_no_peer_dependency(peer_link_project: Path) -> None:
+    (peer_link_project / ".ethos/release.toml").unlink()
+    for online in (False, True):
+        command = next(
+            command
+            for command in governance._commands(online_links=online)
+            if command[0] == "lychee"
+        )
+        assert not any(item.startswith("--exclude") for item in command)
+        assert ("--offline" in command) is (not online)
+    with pytest.raises(governance.GovernanceError, match="requires --online-links"):
+        governance._commands(online_links=False, peer="forge-a")
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize(
+    "repository",
+    [
+        "ftp://b.example.test/group/project",
+        "https://b.example.test",
+        "https://b.example.test/",
+        "https://b.example.test/group/project?secret=input",
+        "https://b.example.test/group/project#history",
+        "https://user@b.example.test/group/project",
+        "https://b.example.test:invalid/group/project",
+        "https://b.example.test:0/group/project",
+        "https://b.example.test:65536/group/project",
+        "https://b.example.test/group/project?",
+        "https://b.example.test/group/project#",
+        "https://@b.example.test/group/project",
+        "https:///@b.example.test/group/project",
+        "https://\\@b.example.test/group/project",
+        "https://user:password@b.example.test/group/project",
+        "https://b.example.test/project/..",
+        "https://[v1.foo]/group/project",
+        "not-a-url",
+    ],
+)
+def test_online_link_scope_cannot_hide_a_malformed_repository_identity(
+    peer_link_project: Path, repository: str
+) -> None:
+    metadata = peer_link_project / ".ethos/release.toml"
+    metadata.write_text(
+        metadata.read_text().replace(
+            '"http://b.example.test:8080/group/project+one"', json.dumps(repository)
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(governance.GovernanceError, match="publication peer identity"):
+        governance._commands(online_links=True, peer="forge-a")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "",
+        "[publication]\npeers = []\n",
+        "[publication]\npeers = 1\n",
+        "[publication]\npeers = [1]\n",
+        '[[publication.peers]]\nid = ""\nforge_repository = "https://a.test/project"\n',
+        '[[publication.peers]]\nid = 1\nforge_repository = "https://a.test/project"\n',
+        '[[publication.peers]]\nid = "forge a"\nforge_repository = "https://a.test/project"\n',
+        '[[publication.peers]]\nid = "forge-a"\nforge_repository = 1\n',
+        '[[publication.peers]]\nid = "forge-a"\n',
+        '[[publication.peers]]\nid = "forge-a"\nforge_repository = "https://a.test/bad path"\n',
+        '[[publication.peers]]\nid = "forge-a"\nforge_repository = "https://a.test/project"\n'
+        '[[publication.peers]]\nid = "forge-a"\nforge_repository = "https://b.test/project"\n',
+        pytest.param(
+            '[[publication.peers]]\nid = "forge-a"\nforge_repository = "https://a.test/project/"\n'
+            '[[publication.peers]]\nid = "forge-b"\nforge_repository = "https://a.test/project"\n',
+            marks=pytest.mark.repository_toolchain,
+        ),
+        pytest.param(
+            '[[publication.peers]]\nid = "forge-a"\n'
+            'forge_repository = "https://a.test/group/project/nested"\n'
+            '[[publication.peers]]\nid = "forge-b"\n'
+            'forge_repository = "https://a.test/group/project"\n',
+            marks=pytest.mark.repository_toolchain,
+        ),
+    ],
+)
+def test_peer_link_scope_rejects_ambiguous_or_incomplete_native_declarations(
+    peer_link_project: Path, source: str
+) -> None:
+    (peer_link_project / ".ethos/release.toml").write_text(source, encoding="utf-8")
+    with pytest.raises(governance.GovernanceError, match="publication peer identity"):
+        governance._commands(online_links=True, peer="forge-a")
+
+
+def test_peer_link_scope_missing_authority_never_becomes_an_empty_filter(
+    peer_link_project: Path,
+) -> None:
+    (peer_link_project / ".ethos/release.toml").unlink()
+    with pytest.raises(governance.GovernanceError, match="publication peer identity"):
+        governance._commands(online_links=True, peer="forge-a")
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize(
+    ("selected", "other"),
+    [
+        ("https://SAME.example/team/project", "https://same.example/team/project"),
+        ("https://same.example:443/team/project", "https://same.example/team/project"),
+        ("http://same.example:80/team/project", "http://same.example/team/project"),
+        ("https://SAME.example/team/project/nested", "https://same.example:443/team/project"),
+        ("http://[0:0:0:0:0:0:0:1]/team/project", "http://[::1]/team/project"),
+        ("https://[2001:DB8:0:0:0:0:0:1]/team/project", "https://[2001:db8::1]:443/team/project"),
+        ("https://%73ame.example/team/project", "https://same.example/team/project"),
+        ("http://127.1/team/project", "http://127.0.0.1/team/project"),
+        ("http://2130706433/team/project", "http://127.0.0.1/team/project"),
+        ("http://0x7f000001/team/project", "http://127.0.0.1/team/project"),
+        ("http://0177.0.0.1/team/project", "http://127.0.0.1/team/project"),
+        ("https://faß.example/team/project", "https://xn--fa-hia.example/team/project"),
+        ("https://same.example/a/../team/project", "https://same.example/team/project"),
+        ("https://same.example/team/%2e%2e/team/project", "https://same.example/team/project"),
+        ("https://same.example/team\\project", "https://same.example/team/project"),
+        ("https://same.example/team/é", "https://same.example/team/%C3%A9"),
+        ("https://same.example/team/project", "https://same.example/team/project/nested"),
+    ],
+)
+def test_peer_link_scope_cannot_exclude_a_normalized_selected_repository(
+    peer_link_project: Path, selected: str, other: str
+) -> None:
+    (peer_link_project / ".ethos/release.toml").write_text(
+        f'[[publication.peers]]\nid = "forge-a"\nforge_repository = {json.dumps(selected)}\n'
+        f'[[publication.peers]]\nid = "forge-b"\nforge_repository = {json.dumps(other)}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(governance.GovernanceError, match="publication peer identity"):
+        governance._commands(online_links=True, peer="forge-a")
+
+
+def test_peer_link_scope_cli_rejects_unknown_selection_without_running_tools(
+    peer_link_project: Path, capsys: pytest.CaptureFixture[str], mocker
+) -> None:
+    assert (peer_link_project / ".ethos/release.toml").is_file()
+    tools = mocker.patch.object(governance.subprocess, "run")
+    with pytest.raises(SystemExit) as failure:
+        governance.main(("--online-links", "--peer", "undeclared"))
+    assert failure.value.code == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "declared publication peer" in output.err
+    assert "Traceback" not in output.err
+    tools.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        OSError("native parser unavailable"),
+        subprocess.CalledProcessError(1, ("node",)),
+        subprocess.TimeoutExpired(("node",), 10),
+        UnicodeError("native output unavailable"),
+    ],
+)
+def test_peer_link_scope_failed_native_observation_never_creates_an_exclusion(
+    peer_link_project: Path, failure: Exception, capsys: pytest.CaptureFixture[str], mocker
+) -> None:
+    assert (peer_link_project / ".ethos/release.toml").is_file()
+    tools = mocker.patch.object(governance.subprocess, "run", side_effect=failure)
+    with pytest.raises(SystemExit) as rejected:
+        governance.main(("--online-links", "--peer", "forge-a"))
+    assert rejected.value.code == 1
+    tools.assert_called_once()
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == "publication peer identity is invalid\n"
+
+
+@pytest.mark.parametrize("output", ["not-json", "{}", "[]", '["https://a.test/project"]', "[1, 2]"])
+def test_peer_link_scope_invalid_native_output_never_creates_an_exclusion(
+    peer_link_project: Path, output: str, mocker
+) -> None:
+    assert (peer_link_project / ".ethos/release.toml").is_file()
+    native = mocker.patch.object(
+        governance.subprocess,
+        "run",
+        return_value=subprocess.CompletedProcess(("node",), 0, stdout=output),
+    )
+    with pytest.raises(governance.GovernanceError, match="publication peer identity"):
+        governance._commands(online_links=True, peer="forge-a")
+    native.assert_called_once()
+
+
+def test_peer_link_parser_uses_bounded_utf8_stdin_not_declaration_arguments(mocker) -> None:
+    declarations = {"forge-a": "https://input-only.example.test/group/project"}
+    native = mocker.patch.object(
+        governance.subprocess,
+        "run",
+        return_value=subprocess.CompletedProcess(
+            ("node",), 0, stdout=json.dumps(list(declarations.values()))
+        ),
+    )
+    assert governance._canonical_repository_roots(declarations) == declarations
+    native.assert_called_once()
+    invocation = native.call_args
+    assert invocation.args[0][:3] == ("node", "--input-type=module", "--eval")
+    assert all(
+        value not in argument for value in declarations.values() for argument in invocation.args[0]
+    )
+    assert json.loads(invocation.kwargs["input"]) == list(declarations.values())
+    assert invocation.kwargs["cwd"] == governance.ROOT
+    assert invocation.kwargs["encoding"] == "utf-8"
+    assert invocation.kwargs["capture_output"] is True
+    assert invocation.kwargs["check"] is True
+    assert 0 < invocation.kwargs["timeout"] <= 10
+
+
+@pytest.mark.parametrize("peer", ["forge-a", "forge-b"])
+def test_peer_link_scope_builds_only_exact_exclusions_from_native_observation(
+    peer_link_project: Path, peer: str, capsys: pytest.CaptureFixture[str], mocker
+) -> None:
+    declarations = tomllib.loads((peer_link_project / ".ethos/release.toml").read_text())[
+        "publication"
+    ]["peers"]
+    roots = [record["forge_repository"] for record in declarations]
+    native = mocker.patch.object(
+        governance.subprocess,
+        "run",
+        return_value=subprocess.CompletedProcess(("node",), 0, stdout=json.dumps(roots)),
+    )
+    other = next(record["forge_repository"] for record in declarations if record["id"] != peer)
+    assert governance._peer_link_exclusions(peer) == (f"--exclude=^{re.escape(other)}(?:[/?#]|$)",)
+    native.assert_called_once()
+    mocker.patch.object(governance, "_commands", return_value=())
+    governance.audit(online_links=True, peer=peer)
+    assert capsys.readouterr().out == (
+        f"Online links: selected peer {peer}; other declared repositories are network-unqualified.\n"
+    )
+    native.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "roots",
+    [
+        ["https://a.test/project", "https://a.test/project"],
+        ["https://a.test/project/nested", "https://a.test/project"],
+        ["https://a.test/project", "https://a.test/project/nested"],
+    ],
+)
+def test_peer_link_scope_refuses_overlap_in_native_observation(
+    peer_link_project: Path, roots: list[str], mocker
+) -> None:
+    assert (peer_link_project / ".ethos/release.toml").is_file()
+    native = mocker.patch.object(
+        governance.subprocess,
+        "run",
+        return_value=subprocess.CompletedProcess(("node",), 0, stdout=json.dumps(roots)),
+    )
+    with pytest.raises(governance.GovernanceError, match="overlapping repositories"):
+        governance._peer_link_exclusions("forge-a")
+    native.assert_called_once()
+
+
+@pytest.mark.repository_toolchain
+def test_peer_link_cli_does_not_expose_rejected_credential_input(
+    peer_link_project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    metadata = peer_link_project / ".ethos/release.toml"
+    metadata.write_text(
+        metadata.read_text().replace(
+            "http://b.example.test:8080/group/project+one",
+            "https://canary:synthetic-input@b.example.test/group/project",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit) as rejected:
+        governance.main(("--online-links", "--peer", "forge-a"))
+    assert rejected.value.code == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == "publication peer identity is invalid\n"
+    assert "canary" not in output.err
+    assert "synthetic-input" not in output.err
+
+
+@pytest.mark.repository_toolchain
+def test_native_peer_link_scope_preserves_success_and_bad_link_refusal(
+    peer_link_project: Path,
+) -> None:
+    requests: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            requests.append(self.path)
+            self.send_response(200 if self.path == "/selected/page" else 404)
+            self.end_headers()
+
+        @override
+        def log_message(self, *_args: object, **_kwargs: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        origin = f"http://127.0.0.1:{server.server_port}"
+        (peer_link_project / ".ethos/release.toml").write_text(
+            '[[publication.peers]]\nid = "forge-a"\n'
+            f'forge_repository = "{origin}/selected"\n\n'
+            '[[publication.peers]]\nid = "forge-b"\n'
+            f'forge_repository = "{origin}/unselected"\n',
+            encoding="utf-8",
+        )
+        command = next(
+            command
+            for command in governance._commands(online_links=True, peer="forge-a")
+            if command[0] == "lychee"
+        )
+        exclusions = tuple(item for item in command if item.startswith("--exclude="))
+        document = peer_link_project / "README.md"
+        cases = (("/selected/page", 0), ("/selected/missing", 2), ("/unselected-other/missing", 2))
+        for suffix, expected in cases:
+            requests.clear()
+            document.write_text(
+                f"[Selected]({origin}{suffix})\n\n[Other peer]({origin}/unselected/missing)\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                (
+                    "mise",
+                    "exec",
+                    "--locked",
+                    "--",
+                    "lychee",
+                    "--config",
+                    str(ROOT / ".config/quality/native/lychee.toml"),
+                    "--max-retries",
+                    "0",
+                    "--timeout",
+                    "2",
+                    "--no-progress",
+                    "--require-https=false",
+                    *exclusions,
+                    "--",
+                    str(document),
+                ),
+                cwd=ROOT,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            assert result.returncode == expected, result.stdout + result.stderr
+            assert suffix in requests
+            assert "/unselected/missing" not in requests
+            if expected:
+                assert "404" in result.stdout + result.stderr
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+        assert not worker.is_alive()
 
 
 @pytest.mark.parametrize("failed", [None, "governance", "quality"])

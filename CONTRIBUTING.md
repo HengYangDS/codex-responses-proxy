@@ -88,6 +88,15 @@ retain their exact bytes. The same governance entry executes real formatter and
 lint counterexamples; Python-only native lifecycle jobs do not need Node for
 them.
 
+Online governance selects the Forge explicitly with
+`--online-links --peer gitlab` or `--online-links --peer github`. The existing
+publication table owns both repository addresses. Native Lychee excludes only
+the other exact repository's network requests; it still rejects broken
+selected-peer, public, and local links. An excluded peer is network-unqualified
+in that run, not available. Shared ETHOS repository-identity and reference
+admission remains separate. Local offline checks require neither Forge; an
+online invocation without peer selection checks both and requires both networks.
+
 Keep one blank line between distinct paragraphs, headings, lists, tables and
 fences. Peer list items remain contiguous when each contains only one paragraph,
 including wrapped tasks. Complex items may retain one blank separator; do not

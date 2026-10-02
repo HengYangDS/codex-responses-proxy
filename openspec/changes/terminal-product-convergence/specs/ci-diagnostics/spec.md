@@ -41,6 +41,41 @@ undiscoverable through the product `PATH`.
 
 ## ADDED Requirements
 
+### Requirement: Online link checks respect the selected publication plane
+
+Local verification SHALL check repository links without requiring either Forge.
+Online verification on a selected Forge SHALL check that peer and public
+references without requiring network access to another declared publication
+repository. The existing native checker SHALL derive only exact unselected
+repository exclusions from the authoritative publication table; it SHALL NOT
+exclude an entire host, private address range, source file, wrong repository, or
+unknown peer. Excluded links remain network-unqualified in that execution.
+Repository identity and reference admission SHALL remain mandatory and distinct
+from HTTP availability; the shared ETHOS contract owns that admission.
+
+Declaration roots SHALL be normalized by the locked native WHATWG URL parser
+before constructing exclusions. Duplicate or nested repository roots,
+credentials, queries, fragments, invalid roots, and failed native observations
+SHALL refuse peer-scoped verification without exposing supplied credentials.
+Parser-dependent tests SHALL run in repository governance, not add a Node
+prerequisite to the Python-only compatibility matrix.
+
+#### Scenario: Public CI cannot reach the organization's private Forge
+
+- **WHEN** GitHub runs online link verification with GitHub explicitly selected
+- **THEN** it checks local links, the declared GitHub repository, and public
+  references without contacting the exact declared GitLab repository
+- **AND** it does not report that unselected GitLab repository as available or
+  borrow its result for GitLab qualification.
+
+#### Scenario: A selected or unrelated link is broken
+
+- **WHEN** the selected peer, an undeclared repository on the other peer's host,
+  or an external reference returns an error
+- **THEN** native link verification fails
+- **AND** unknown peers or malformed declarations fail before any exclusion is
+  created; neither timeouts nor failure status codes are accepted.
+
 ### Requirement: Clean-room verification follows the locked repository environment
 
 The repository SHALL expose one cross-platform developer entrypoint that selects

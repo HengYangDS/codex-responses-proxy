@@ -82,7 +82,7 @@ jobs:
           CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |-
           uv sync --locked --all-groups
-          uv run --locked --no-sync python -m tools.quality.governance --online-links
+          uv run --locked --no-sync python -m tools.quality.governance --online-links --peer github
   python:
     name: Python ${{ matrix.python-version }}
     if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')

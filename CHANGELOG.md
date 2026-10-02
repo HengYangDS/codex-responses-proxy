@@ -19,6 +19,9 @@ History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
 
 ### Fixed
 
+- Check online references on the selected publication plane without requiring
+  access to the other declared repository. Broken selected, public, and local
+  links still fail; an excluded peer is not reported as available.
 - Stop and verify an interrupted first installation's native service and
   processes before recovery discards its payload or journal. An unavailable
   health response no longer permits false rollback success with a service left
