@@ -830,7 +830,16 @@
       source graph passes 2,032 tests on each Python line with unchanged
       coverage floors. The real GitHub-selected check has 149 valid links and 95
       explicit exclusions, not 95 accepted timeouts. Fresh hosted qualification
-      and shared identity admission remain required.
+      and shared identity admission remain required. GitHub review of signed
+      `c50b1e36` passed all applicable source, native, predecessor,
+      branch-proof, and admission jobs. GitLab source governance also passed;
+      its native release jobs stopped before compatibility because the broad
+      verification module selected Node-dependent peer-link cases despite an
+      intentional Python-only tool graph. Those exact cases now live with the
+      existing governance test owner. All 296 affected tests and 11 native
+      Python-only toolchain cases pass; every original case and floor remains.
+      Qualify the affected hosted native jobs again without adding an unrelated
+      runtime.
 - [ ] 9.2 Generate GitHub Actions and GitLab CI from the CUE model, verify
       semantic parity and provider-specific deltas, and reject hand-edited
       projection drift. The Python-only branch proof and release-asset binding

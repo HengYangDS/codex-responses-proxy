@@ -632,6 +632,13 @@ refused. Inputs travel over bounded standard input, not command arguments;
 parser failure never becomes an empty exclusion. These native-parser checks
 belong to repository governance, not the Python-only compatibility matrix.
 
+Peer-link cases live with the existing governance contract tests. Native release
+jobs select only the Python and uv tool graph and must not inherit Node or
+Lychee from a broad test-module selection. Governance executes the native
+peer-link cases; the Python matrix keeps their pure declaration and output
+contracts. Moving the cases changes neither the test inventory nor the
+acceptance floor.
+
 GitHub and GitLab are optional peer publication planes. Local source remains
 fully buildable and installable without either. The same signed local commit and
 tag object are pushed unchanged; each Forge supplies independent authentication,
