@@ -19,6 +19,8 @@ History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
 
 ### Fixed
 
+- Refresh locked native Vale to stable 3.24.0 and test the existing prose rule
+  with its native coverage check, so a rule that never fires cannot pass.
 - Run Python-only CI proof and release-asset binding with GitHub's native Python
   shell, avoiding a Bash input deadlock while preserving required-job refusal
   and exact current/predecessor selection.

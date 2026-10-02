@@ -706,7 +706,18 @@
       closure is signed at `68cbbd4b`, after a passing five-session full graph:
       1,788 tests on each supported Python with five skips and 44 declared
       deselections. Native lock bytes, Mac and Linux package-manager precedence,
-      and isolated cleanup pass; Windows hosted acceptance remains open.
+      and isolated cleanup pass; Windows hosted acceptance remains open. The
+      later official stable Vale 3.24.0 now uses the same native Mise owner. All
+      eight lock entries match official assets and digests; a second native
+      resolution is byte-clean and other tool locks are unchanged. Three cases
+      beside the rule pass native coverage, and a passing no-finding case is
+      correctly rejected as uncovered. All 59 existing-scope English and
+      Markdown contracts pass. This uses the existing governance test graph, not
+      another prose pipeline. Complete native governance passes 76 toolchain
+      contracts, and the full Python 3.12/3.13/3.14 graph passes 1,948 tests per
+      interpreter with the same five release-only skips. Independent review
+      finds no actionable defect. Installed shared quality and independent
+      hosted tool-supply acceptance remain open.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no
       duplicate version literal controls behavior. Native Mise verified seven uv

@@ -107,6 +107,10 @@ checker to work around a missed syntax node. The existing Markdown linter uses
 its native parser to reject Vale control comments in paragraphs, quotes, lists,
 and tables; literal code examples and ordinary comments remain valid. Native
 rule tests run from the same governance entry, not a separate command plane.
+Keep examples beside the rule. The existing native test suite runs Vale's
+`test --coverage` command and rejects a rule whose cases all pass without
+exercising a finding. Preserve uncertainty, literal code, and working native
+document checks; rule coverage alone does not establish useful prose.
 
 Build output, verification results, temporary files, and their cleanup follow
 the
