@@ -19,8 +19,8 @@ from codex_responses_proxy.service import runtime as service_runtime
 # repetition, not this date, drives every self-heal relaunch.
 _SELF_HEAL_START_BOUNDARY = "2020-01-01T00:00:00"
 _TASK_NAMESPACE = "http://schemas.microsoft.com/windows/2004/02/mit/task"
-# schtasks /hresult preserves HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND).
-_TASK_NOT_FOUND = 0x80070002
+# Only an exact local schtasks query may interpret these task/path absence codes.
+_TASK_NOT_FOUND = frozenset((0x80070002, 0x80070003))
 ET.register_namespace("", _TASK_NAMESPACE)
 
 
@@ -95,7 +95,7 @@ def _task_xml(ctx: runtime_spec.NativeServiceContext) -> str | None:
     except (OSError, UnicodeError, subprocess.TimeoutExpired):
         raise errors.InstallError("scheduled task state is unproved") from None
     result = completed.returncode & 0xFFFFFFFF
-    if result == _TASK_NOT_FOUND:
+    if result in _TASK_NOT_FOUND:
         return None
     if result != 0:
         raise errors.InstallError(f"scheduled task state is unproved (HRESULT {result:#010x})")

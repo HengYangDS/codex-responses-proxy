@@ -95,9 +95,20 @@ SHALL wait for that completion.
 
 - **WHEN** the exact native task query fails or returns malformed task XML
 - **THEN** recovery preserves unknown service state and refuses native disposal
-- **AND** only the documented not-found HRESULT establishes task absence,
-  independent of the operating system's display language
+- **AND** only `HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)` or
+  `HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND)` from the exact local task query
+  establishes task absence, independent of the operating system's display
+  language
 - **AND** a query timeout or access failure cannot produce rollback success.
+
+#### Scenario: A fresh Windows task name has no native registration
+
+- **WHEN** the exact local `schtasks /query /tn` operation reports that the task
+  or its task path does not exist using its native HRESULT exit format
+- **THEN** the public native status reports an absent installation without
+  creating a task, process, payload, or recovery record
+- **AND** permission, service, invalid-input, and unavailable-command failures
+  remain unproved rather than being inferred from localized error text.
 
 ### Requirement: Capable handoff preserves request admission
 
