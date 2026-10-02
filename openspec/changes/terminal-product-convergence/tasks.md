@@ -908,11 +908,17 @@
       OS-function nodes and MR-review from protected native runners, without a
       cross-trust CI cache. CUE, repository checks, and GitLab dry-run lint
       pass. The published `33a9e9ca` Linux API graph passes all seven jobs on
-      protected Runner 114; its earlier push graphs used retired Runner 35.
-      Neither proves protected push routing or the candidate's Mac/Windows
-      graph. Fresh exact-source platform and event qualification, including
-      Windows ARM64 selection of locked x64 Python/uv, remains required.
-      Owner-held evidence: the Fleet current-peer event audit of October 2.
+      protected Runner 114. Runner 35 is the current project-only Debian VM
+      review executor, not a retired runner; protected and review admission
+      remain separate. Signed source `33cadb7d` passes all eight GitLab review
+      jobs in pipeline 9283 and all nineteen applicable GitHub jobs in
+      run 37048210068. Windows Runner 118 passes twelve toolchain cases and
+      fifty-two native lifecycle cases with one Linux-only skip; macOS Runner
+      116 passes fifty-one native cases with two platform-specific skips. Linux
+      review, Python, quality, performance, native assets, and the
+      published-predecessor journeys pass in their declared contexts. Protected
+      push and final installed-product qualification remain separate. Original
+      API and trace evidence is retained in the owner-held final audit.
 - [ ] 9.7 Verify GitHub and GitLab authentication, SSH agent, author identity,
       commit signature, tag signature, protected-branch, proposal-branch, and
       automatic merge behavior without password prompts or private-key mutation.
@@ -1060,7 +1066,8 @@
       disabling-comment counterexamples now run through one governance entry;
       current-field semantics are not inferred from a green style check. Final
       current-source format, native prose, official OpenSpec, and full Python
-      graph pass; native peer and installed acceptance remain open.
+      graph pass. Both native review planes pass at signed `33cadb7d`;
+      accepted-runtime qualification and final closure remain open.
 - [x] 11.4 Rename Decision Records to `dr-<sequence>-<subject>.md`, complete the
       decision register, and add only decisions that explain enduring product
       boundaries or rejected alternatives. All six current records have
@@ -1096,33 +1103,36 @@
       directory. Mise's official resolver now supplies the executable; native
       conformance rejects a directory binding and proves configuration and
       owned-content preservation across consecutive consumers. Local focused
-      tests pass; fresh Windows lifecycle qualification remains open. Actual
-      tool-subset regressions now prove Python binding only when Python is
-      selected; acquisition-only gh jobs do not require an absent interpreter.
-      Hosted CI and the remaining root-carrier audit stay open. Stable npm
-      12.2.0 uses the native Mise backend and generated AUBE graph; the old
-      repository sidecars retire through that producer. Native lock format 3
-      retains all 68 existing platform inputs and adds 11 discovered entries;
-      the minimum reader and actual host/CI Mise are 2026.9.18. Actual pipeline
-      9025 disproved recursive workflow-variable tag expansion; Linux review and
-      protected jobs now share one CUE body and use direct native scheduling
-      variables with no intermediate alias. Windows native release selection
-      uses the running interpreter ABI, not the host CPU, and native tests own
-      short disposable roots independent of checkout depth. Pipeline 9030 proves
-      direct Linux Runner assignment, source, Python matrix, and performance at
-      signed a52f66c6. Its native Mac job rejects missing gui/510; its Windows
-      job exposes deep service-account TEMP and inherited Nox TMPDIR. Native
-      child temporary variables now share the same owned root; the Runner owner
-      must provide a short isolated native TEMP input. Pipeline 9032 passes all
-      Linux nodes and 49 Windows native checks, but one mocked-launch test
-      unnecessarily prewarms a real bundle and leaves a locked module at
-      cleanup. That invocation-only contract now runs in the non-native suite
-      with a synthetic manifest and a bounded mock scope; its assertions remain
-      intact. Fresh native suite acceptance remains required. The current
-      candidate's GUI-only dependency is reopened in 5.3. The paired authentic
-      payload and old-producer criteria in 5.3 replace the obsolete installer's
-      GUI prerequisite; signatures, package acquisition or route-controlled
-      traffic alone do not qualify either journey.
+      tests pass. The same signed repair passes the complete Windows lifecycle
+      and published-predecessor journey in GitLab job 47475, without a Runner
+      rebuild, account replacement, or synchronization bypass. This is not a
+      claim about a new ordinary-user logon. Actual tool-subset regressions now
+      prove Python binding only when Python is selected; acquisition-only gh
+      jobs do not require an absent interpreter. Both review CI planes pass; the
+      remaining root-carrier audit and shared installed quality contract stay
+      open. Stable npm 12.2.0 uses the native Mise backend and generated AUBE
+      graph; the old repository sidecars retire through that producer. Native
+      lock format 3 retains all 68 existing platform inputs and adds 11
+      discovered entries; the minimum reader and actual host/CI Mise are
+      2026.9.18. Actual pipeline 9025 disproved recursive workflow-variable tag
+      expansion; Linux review and protected jobs now share one CUE body and use
+      direct native scheduling variables with no intermediate alias. Windows
+      native release selection uses the running interpreter ABI, not the host
+      CPU, and native tests own short disposable roots independent of checkout
+      depth. Pipeline 9030 proves direct Linux Runner assignment, source, Python
+      matrix, and performance at signed a52f66c6. Its native Mac job rejects
+      missing gui/510; its Windows job exposes deep service-account TEMP and
+      inherited Nox TMPDIR. Native child temporary variables now share the same
+      owned root; the Runner owner must provide a short isolated native TEMP
+      input. Pipeline 9032 passes all Linux nodes and 49 Windows native checks,
+      but one mocked-launch test unnecessarily prewarms a real bundle and leaves
+      a locked module at cleanup. That invocation-only contract now runs in the
+      non-native suite with a synthetic manifest and a bounded mock scope; its
+      assertions remain intact. Fresh native suite acceptance remains required.
+      The current candidate's GUI-only dependency is reopened in 5.3. The paired
+      authentic payload and old-producer criteria in 5.3 replace the obsolete
+      installer's GUI prerequisite; signatures, package acquisition or
+      route-controlled traffic alone do not qualify either journey.
 - [ ] 11.6 Remove toy examples, private workstation paths, stale versions,
       obsolete commands, WCP references, AIGW coupling, empty evidence shells,
       claims, chronicles, parity directories, and historical instructions from
