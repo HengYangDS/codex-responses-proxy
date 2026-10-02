@@ -803,7 +803,19 @@
       The frozen `2d1fdccc` review's GUI-only installer failure under headless
       UID 510 is historical failure evidence, not a continuing requirement to
       provision a GUI or a pass for the replacement criteria. Complete native
-      macOS and Windows matrices remain required.
+      macOS and Windows matrices remain required. Actual frozen `59909976`
+      review pipeline 9261 reached Runner 118 and exposed `ERROR_PATH_NOT_FOUND`
+      from the exact native scheduled-task query. The file-only absence mapping
+      misclassified a fresh installation as degraded and cascaded into lifecycle
+      and teardown failures. Extend the existing exact-query boundary for both
+      documented not-found HRESULT values; preserve refusal of access, service,
+      malformed XML, and timeout results. Distinguishing unsigned and signed
+      path-not-found cases fail on the old implementation; the minimal
+      exact-query repair passes all 41 Windows supervision source tests. A
+      read-only native case records the actual task name, principal metadata,
+      and HRESULT without provisioning an identity. Fresh native acceptance and
+      current-user session applicability remain open; original pipeline failures
+      are retained.
 - [ ] 9.1 Define the complete CI graph in CUE—quality, Python matrix, native
       assets, platform lifecycle, release metadata, publication, and parity—with
       explicit facts proved by each job.

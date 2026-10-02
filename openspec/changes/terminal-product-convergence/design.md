@@ -190,10 +190,13 @@ Recovery admits the exact selector, rollback snapshot, and command restoration
 before stopping a first-install candidate. The same read-only command checks
 guard the subsequent file effects; they are not a parallel rollback model.
 Missing configured identity is usable only with independently proved native
-absence. Windows queries the exact task with `schtasks /hresult`: only the
-native file-not-found HRESULT means absent. Other errors, malformed XML, and
-timeouts preserve unknown state. Running classification uses the existing
-owned-process observation, not localized status prose.
+absence. Windows queries the exact local task with `schtasks /hresult`: only
+`HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)` and
+`HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND)` mean absent. The native query can
+report either the task or its path as missing; this does not identify which
+internal Task Scheduler lookup failed. Other errors, malformed XML, and timeouts
+preserve unknown state. Running classification uses the existing owned-process
+observation, not localized status prose.
 
 The quality system has four distinct obligations: a useful policy, a correct
 measurement, a complete execution path, and a working product. Passing one does
@@ -272,8 +275,14 @@ unique-archive refusal through real native execution. The same actionlint and
 enabled ShellCheck remain responsible for actual shell steps. This adds no
 module, wrapper, dependency, or second pipeline. Native runner behavior is
 documented in
-[the official shell contract](https://github.com/actions/runner/blob/main/docs/adrs/0277-run-action-shell-options.md).
+[the official shell contract](https://raw.githubusercontent.com/actions/runner/484ea74ed003bd3c80175cff0f69d1ff807bd8d7/docs/adrs/0277-run-action-shell-options.md).
 Local execution does not establish hosted acceptance on another platform.
+
+The reference uses the same official document at its immutable content commit,
+not a copied vendor file or private redirect. The original GitHub HTML renderer
+returned HTTP 503 while its contents API and raw document remained available;
+native link checks still require a successful response and cannot accept that
+failure as evidence.
 
 Cold development verification starts with a complete immutable local checkout,
 including release tags required by Changelog provenance. Native Mise config-dir

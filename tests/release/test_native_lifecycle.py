@@ -40,6 +40,57 @@ pytestmark = [
 class TestSignedNativeLifecycle:
     """Prove the public native lifecycle without touching the canonical service."""
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows scheduled-task boundary")
+    def test_missing_windows_task_has_native_absence_evidence(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A missing task or task path is absent, not an unreadable registration."""
+        home, install, state = (tmp_path / name for name in ("home", "payload", "state"))
+        home.mkdir()
+        port = free_port()
+        ctx = runtime_context_for(home, install, state, port)
+        observed = subprocess.run(
+            ["schtasks", "/query", "/tn", ctx.service_id, "/xml", "/hresult"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=False,
+            timeout=5.0,
+        )
+        result = observed.returncode & 0xFFFFFFFF
+        identity = subprocess.run(
+            ["whoami", "/user", "/fo", "csv", "/nh"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=True,
+            timeout=5.0,
+        )
+        with capsys.disabled():
+            print(
+                "Windows native task query:",
+                ctx.service_id,
+                "HRESULT",
+                f"{result:#010x}",
+                "token user",
+                identity.stdout.decode(errors="replace").strip(),
+                "environment",
+                os.environ.get("USERDOMAIN", ""),
+                os.environ.get("USERNAME", ""),
+                flush=True,
+            )
+        assert result in {0x80070002, 0x80070003}, f"unexpected task HRESULT {result:#010x}"
+        environment = native_process_environment(
+            user_home=home, install_root=install, state_root=state
+        )
+        executable = Path(os.environ["CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE"]).resolve(
+            strict=True
+        )
+        status = run_command(executable, environment, "status", "--port", str(port), "--json")
+        assert status["state"] == "not_installed"
+        assert status["service"] == "absent"
+        assert native_service_projection(ctx)["status"] == "absent"
+        assert not install.exists()
+        assert not state.exists()
+
     @pytest.mark.skipif(sys.platform != "linux", reason="Linux user-service boundary")
     def test_unavailable_user_bus_leaves_no_installation(self, tmp_path: Path) -> None:
         executable = Path(os.environ["CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE"]).resolve(

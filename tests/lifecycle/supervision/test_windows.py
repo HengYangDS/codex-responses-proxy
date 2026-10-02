@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class TestWindowsLifecycle:
-    @pytest.mark.parametrize("code", [0x80070002, -2147024894])
+    @pytest.mark.parametrize("code", [0x80070002, -2147024894, 0x80070003, -2147024893])
     def test_exact_missing_task_hresult_proves_absence(self, code, *, mocker):
         ctx = platform_context(windows=True)
         run = mocker.patch.object(
@@ -31,7 +31,9 @@ class TestWindowsLifecycle:
         )
         assert all(call.kwargs["timeout"] == 5.0 for call in run.call_args_list)
 
-    @pytest.mark.parametrize("code", [1, 0x80070005, -2147024891, 0x800706BA])
+    @pytest.mark.parametrize(
+        "code", [1, 0x80070005, -2147024891, 0x800706BA, 0x80070035, 0x80070057, 0x8007007B]
+    )
     @pytest.mark.parametrize("operation", ["configured_executable", "status"])
     def test_failed_task_query_cannot_prove_absence(self, code, operation, *, mocker):
         mocker.patch.object(
