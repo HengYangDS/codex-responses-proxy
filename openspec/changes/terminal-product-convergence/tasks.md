@@ -546,7 +546,15 @@
       `build/verification/b98977f7b66bb69af81b3724933a09f3f4f8560c/commit-admission/`.
 - [ ] 7.9 Run formatter, linter, type, architecture, dependency, security,
       documentation, configuration, and focused behavior gates on the migrated
-      tree; require pristine output before the full suite.
+      tree; require pristine output before the full suite. The unchanged
+      `2d1fdccc` source passes every declared local component: governance,
+      strict quality at Python 3.12, and Python 3.13/3.14 behavior. Each Python
+      executes 1,948 tests with five native-asset skips and 118 declared
+      deselections. Total branch-aware coverage is 97.27%. The single
+      `mise run check` reached its 900-second deadline; only its unfinished
+      Python 3.14 component was replayed and passed. This does not turn that
+      timed-out invocation or installed ETHOS proof green. Owner-held evidence:
+      `proxy-current-2d1-all-declared-source-components-20261002.json`.
 - [ ] 7.10 Prove control effectiveness with isolated conformance cases for
       native tool settings, scope inclusion, nonzero exits, local entrypoints
       and hooks, and every CUE event route; a missing tool, skipped required
@@ -841,10 +849,12 @@
       proof. The local GitLab projection separates Python-version nodes from
       OS-function nodes and MR-review from protected native runners, without a
       cross-trust CI cache. CUE, repository checks, and GitLab dry-run lint
-      pass, but project-453 runner execution and Windows ARM64 resolution of
-      locked x64 Python/uv tools remain unproved. The earlier GitLab Linux-only
-      result is evidence for its former graph, not acceptance of this
-      requirement.
+      pass. The published `33a9e9ca` Linux API graph passes all seven jobs on
+      protected Runner 114; its earlier push graphs used retired Runner 35.
+      Neither proves protected push routing or the candidate's Mac/Windows
+      graph. Fresh exact-source platform and event qualification, including
+      Windows ARM64 selection of locked x64 Python/uv, remains required.
+      Owner-held evidence: the Fleet current-peer event audit of October 2.
 - [ ] 9.7 Verify GitHub and GitLab authentication, SSH agent, author identity,
       commit signature, tag signature, protected-branch, proposal-branch, and
       automatic merge behavior without password prompts or private-key mutation.
