@@ -2,7 +2,7 @@
   "name": "codex-responses-proxy-repository-tools",
   "private": true,
   "devDependencies": {
-    "@fission-ai/openspec": "1.13.2",
+    "@fission-ai/openspec": "1.14.0",
     "entities": "8.1.0",
     "htmlparser2": "12.0.0",
     "markdownlint": "0.41.1",

@@ -19,6 +19,8 @@ History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
 
 ### Fixed
 
+- Refresh the official OpenSpec dependency to stable 1.14.0, retaining the
+  existing Change, strict native validation, and dependency closure.
 - Refresh locked native Vale to stable 3.24.0 and test the existing prose rule
   with its native coverage check, so a rule that never fires cannot pass.
 - Run Python-only CI proof and release-asset binding with GitHub's native Python

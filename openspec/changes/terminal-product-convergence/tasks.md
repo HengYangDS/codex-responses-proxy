@@ -717,7 +717,20 @@
       contracts, and the full Python 3.12/3.13/3.14 graph passes 1,948 tests per
       interpreter with the same five release-only skips. Independent review
       finds no actionable defect. Installed shared quality and independent
-      hosted tool-supply acceptance remain open.
+      hosted tool-supply acceptance remain open. The official OpenSpec
+      dependency is now stable 1.14.0. Native installation verifies 142 registry
+      signatures and 29 attestations with no known vulnerability. Only the root
+      and OpenSpec lock entries change; no transitive package is added or
+      removed, and repeated resolution is byte-clean. Strict official validation
+      passes all 10 items; the nine current specifications retain their exact
+      129 requirements and 316 scenarios. The full five-session graph passes in
+      329.819 seconds, with 1,948 passing tests per supported Python version and
+      the same five release-only skips. Positive and malformed-scenario fixtures
+      invoke the locked official CLI from their own working directory and assert
+      the selected item identity; the earlier supplier-root fixture calls did
+      not test those fixtures and are excluded. Source bytes are preserved by
+      the completed check. Installed-product proof, peer platform execution, and
+      final acceptance remain open.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no
       duplicate version literal controls behavior. Native Mise verified seven uv
