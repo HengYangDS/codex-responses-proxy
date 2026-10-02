@@ -22,6 +22,169 @@ def _service(pid: int) -> str:
     return f"gui/501/example = {{\n\tpid = {pid}\n}}\n"
 
 
+def _domain(*, gui: bool = False) -> str:
+    login = "\tgui asid = 42\n" if gui else ""
+    return f"user/501 = {{\n\ttype = user\n\tsession = Background\n{login}}}\n"
+
+
+class TestMacosDomains:
+    @pytest.fixture(autouse=True)
+    def _native_identity(self, *, mocker):
+        mocker.patch.object(macos.os, "getuid", return_value=501, create=True)
+        mocker.patch.object(macos, "_native_tool", side_effect=lambda name: name)
+
+    def test_current_service_targets_the_background_user_domain(self) -> None:
+        assert macos._domain_target() == "user/501"
+
+    def test_headless_install_never_observes_or_creates_a_gui_domain(self, *, mocker) -> None:
+        with _temporary_context("log_dir") as ctx:
+            generation = macos.process.OwnedProcess(73, ctx.executable, 1.0)
+            mocker.patch.object(macos.process, "wait_for_executable", return_value=generation)
+            mocker.patch.object(macos.process, "owned_process_alive", return_value=True)
+            invoked = mocker.patch.object(
+                macos.subprocess,
+                "run",
+                side_effect=[
+                    _completed(stdout=_domain()),
+                    _completed(returncode=113),
+                    _completed(),
+                    _completed(),
+                    _completed(stdout="73\n"),
+                    _completed(stdout=_service(73)),
+                ],
+            )
+
+            macos.install(ctx)
+
+            commands = [call.args[0] for call in invoked.call_args_list]
+            assert ["launchctl", "bootstrap", "user/501", macos._plist_path(ctx)] in commands
+            assert not any(str(argument).startswith("gui/") for cmd in commands for argument in cmd)
+            payload = plistlib.loads(Path(macos._plist_path(ctx)).read_bytes())
+            assert payload["LimitLoadToSessionType"] == "Background"
+
+    def test_legacy_gui_replacement_proves_exit_and_registration_before_rewriting(
+        self, *, mocker
+    ) -> None:
+        with _temporary_context("log_dir") as ctx:
+            plist = _set_file(macos._plist_path(ctx), macos.render_plist(ctx))
+            before = plist.read_bytes()
+            predecessor = macos.process.OwnedProcess(41, ctx.executable, 1.0)
+            successor = macos.process.OwnedProcess(73, ctx.executable, 2.0)
+            mocker.patch.object(macos.process, "capture_executable", return_value=predecessor)
+            exited = mocker.patch.object(macos.process, "wait_for_exit", return_value=True)
+            mocker.patch.object(macos.process, "wait_for_executable", return_value=successor)
+            mocker.patch.object(macos.process, "owned_process_alive", return_value=True)
+            results = [
+                _completed(stdout=_domain(gui=True)),
+                _completed(returncode=113),
+                _completed(stdout=_service(41)),
+                _completed(),
+                _completed(returncode=113),
+                _completed(),
+                _completed(),
+                _completed(stdout="73\n"),
+                _completed(stdout=_service(73)),
+            ]
+
+            def invoke(arguments, **_options):
+                if arguments == ["launchctl", "print", f"gui/501/{ctx.service_id}"]:
+                    assert plist.read_bytes() == before
+                if arguments[1] == "bootstrap":
+                    exited.assert_called_once_with(predecessor)
+                return results.pop(0) if results else _completed()
+
+            invoked = mocker.patch.object(macos.subprocess, "run", side_effect=invoke)
+
+            macos.install(ctx)
+
+            commands = [call.args[0] for call in invoked.call_args_list]
+            assert commands[3:5] == [
+                ["launchctl", "bootout", f"gui/501/{ctx.service_id}"],
+                ["launchctl", "print", f"gui/501/{ctx.service_id}"],
+            ]
+            assert ["launchctl", "bootstrap", "user/501", str(plist)] in commands
+
+    @pytest.mark.parametrize(
+        "gui_result", [_completed(returncode=125), _completed(stdout=_service(42))]
+    )
+    def test_conflicting_or_unobservable_gui_registration_prevents_mutation(
+        self, *, gui_result, mocker
+    ) -> None:
+        with _temporary_context("log_dir") as ctx:
+            plist = _set_file(macos._plist_path(ctx), macos.render_plist(ctx))
+            before = plist.read_bytes()
+            results = [
+                _completed(stdout=_domain(gui=True)),
+                _completed(stdout=_service(41)),
+                gui_result,
+            ]
+            invoked = mocker.patch.object(
+                macos.subprocess,
+                "run",
+                side_effect=lambda *_args, **_options: results.pop(0) if results else _completed(),
+            )
+
+            with pytest.raises(errors.InstallError):
+                macos.install(ctx)
+
+            assert plist.read_bytes() == before
+            assert all(call.args[0][1] == "print" for call in invoked.call_args_list)
+
+    def test_unavailable_user_domain_rejects_before_files_or_service_mutation(
+        self, *, mocker
+    ) -> None:
+        with _temporary_context("log_dir") as ctx:
+            invoked = mocker.patch.object(
+                macos.subprocess, "run", return_value=_completed(returncode=125)
+            )
+            with pytest.raises(errors.NativeServiceUnavailableError):
+                macos.install(ctx)
+            assert not Path(macos._plist_path(ctx)).exists()
+            assert [call.args[0] for call in invoked.call_args_list] == [
+                ["launchctl", "print", "user/501"]
+            ]
+
+    def test_status_observes_registered_watchdog_without_a_carrier(self, *, mocker) -> None:
+        with _temporary_context("log_dir") as ctx:
+            assert not Path(macos._plist_path(ctx)).exists()
+            mocker.patch.object(
+                macos.subprocess,
+                "run",
+                side_effect=[_completed(stdout=_domain()), _completed(stdout=_service(73))],
+            )
+            assert macos.status(ctx) == "running"
+
+    def test_predecessor_registration_must_be_absent_before_carrier_replacement(
+        self, *, mocker
+    ) -> None:
+        with _temporary_context("log_dir") as ctx:
+            plist = _set_file(macos._plist_path(ctx), macos.render_plist(ctx))
+            before = plist.read_bytes()
+            mocker.patch.object(
+                macos.process,
+                "capture_executable",
+                return_value=macos.process.OwnedProcess(41, ctx.executable, 1.0),
+            )
+            mocker.patch.object(macos.process, "wait_for_exit", return_value=True)
+            results = [
+                _completed(stdout=_domain()),
+                _completed(stdout=_service(41)),
+                _completed(),
+                _completed(stdout=_service(41)),
+            ]
+            invoked = mocker.patch.object(
+                macos.subprocess,
+                "run",
+                side_effect=lambda *_args, **_options: results.pop(0) if results else _completed(),
+            )
+
+            with pytest.raises(errors.InstallError):
+                macos.install(ctx)
+
+            assert plist.read_bytes() == before
+            assert not any(call.args[0][1] == "bootstrap" for call in invoked.call_args_list)
+
+
 class TestMacosLifecycle:
     @pytest.fixture(autouse=True)
     def _isolate_launch_agents(self, tmp_path, *, mocker):
@@ -34,6 +197,7 @@ class TestMacosLifecycle:
             ),
         )
         mocker.patch.object(macos.os, "getuid", return_value=501, create=True)
+        mocker.patch.object(macos, "_domains", return_value=("user/501",))
 
     def test_native_tools_resolve_from_the_host_default_path(self, *, mocker) -> None:
         resolved = mocker.patch.object(
@@ -111,7 +275,8 @@ class TestMacosLifecycle:
         self, *, configured, captured, message, mocker
     ) -> None:
         with _temporary_context("log_dir") as ctx:
-            mocker.patch.object(macos, "configured_executable", return_value=configured)
+            carrier = None if configured is None else (b"verified carrier", configured)
+            mocker.patch.object(macos, "_carrier", return_value=carrier)
             mocker.patch.object(macos, "_service", return_value=macos._Service(True, 41))
             capture = mocker.patch.object(
                 macos.process,
@@ -148,6 +313,7 @@ class TestMacosLifecycle:
                 side_effect=[
                     _completed(stdout=_service(41)),
                     _completed(),
+                    _completed(returncode=113),
                     _completed(),
                     _completed(),
                     _completed(stdout="41\n"),
@@ -258,6 +424,7 @@ class TestMacosLifecycle:
                 side_effect=[
                     _completed(stdout=_service(41)),
                     _completed(),
+                    _completed(returncode=113),
                     _completed(),
                     _completed(),
                     _completed(stdout="73\n"),
@@ -270,12 +437,13 @@ class TestMacosLifecycle:
             assert Path(ctx.log_dir).is_dir()
             assert Path(plist).read_text(encoding="utf-8") == macos.render_plist(ctx)
             assert [call.args[0] for call in invoked.call_args_list] == [
-                ["launchctl", "print", f"gui/501/{ctx.service_id}"],
-                ["launchctl", "bootout", f"gui/501/{ctx.service_id}"],
+                ["launchctl", "print", f"user/501/{ctx.service_id}"],
+                ["launchctl", "bootout", f"user/501/{ctx.service_id}"],
+                ["launchctl", "print", f"user/501/{ctx.service_id}"],
                 ["plutil", "-lint", plist],
-                ["launchctl", "bootstrap", "gui/501", plist],
-                ["launchctl", "kickstart", "-p", f"gui/501/{ctx.service_id}"],
-                ["launchctl", "print", f"gui/501/{ctx.service_id}"],
+                ["launchctl", "bootstrap", "user/501", plist],
+                ["launchctl", "kickstart", "-p", f"user/501/{ctx.service_id}"],
+                ["launchctl", "print", f"user/501/{ctx.service_id}"],
             ]
             assert capture.call_args_list == [
                 mocker.call(
@@ -296,9 +464,12 @@ class TestMacosLifecycle:
         with _temporary_context("log_dir") as ctx:
             plist = Path(macos._plist_path(ctx))
             plist.parent.mkdir(parents=True, exist_ok=True)
-            prior = macos.render_plist(ctx).replace(ctx.executable, "/previous/proxy")
+            previous_executable = str(
+                Path(ctx.install_dir, "generations", "a" * 32, "bin", Path(ctx.executable).name)
+            )
+            prior = macos.render_plist(ctx).replace(ctx.executable, previous_executable)
             plist.write_text(prior, encoding="utf-8")
-            predecessor = macos.process.OwnedProcess(41, "/previous/proxy", 1.0)
+            predecessor = macos.process.OwnedProcess(41, previous_executable, 1.0)
             mocker.patch.object(macos.process, "capture_executable", return_value=predecessor)
             mocker.patch.object(macos.process, "wait_for_exit", return_value=False)
             mocker.patch.object(
@@ -354,7 +525,8 @@ class TestMacosLifecycle:
             _set_file(plist, macos.render_plist(ctx))
             assert macos.configured_executable(ctx) == ctx.executable
             _set_file(plist, "not a plist")
-            assert macos.configured_executable(ctx) is None
+            with pytest.raises(errors.InstallError, match="carrier is invalid"):
+                macos.configured_executable(ctx)
 
     def test_rendered_plist_captures_watchdog_stderr(self):
         with _temporary_context("log_dir") as ctx:
@@ -371,11 +543,11 @@ class TestMacosLifecycle:
                 (True, _completed(returncode=113), "installed"),
                 (True, _completed(stdout=_service(73)), "running"),
             ):
-                _set_file(plist, "plist" if exists else None)
+                _set_file(plist, macos.render_plist(ctx) if exists else None)
                 mocker.patch.object(macos.subprocess, "run", return_value=result)
                 assert macos.status(ctx) == expected
             for exists in (False, True):
-                _set_file(plist, "plist" if exists else None)
+                _set_file(plist, macos.render_plist(ctx) if exists else None)
                 invoked = mocker.patch.object(
                     macos.subprocess,
                     "run",
@@ -441,14 +613,14 @@ class TestMacosLifecycle:
             macos.uninstall(ctx)
 
             assert [call.args[0] for call in invoked.call_args_list] == [
-                ["launchctl", "print", f"gui/501/{ctx.service_id}"],
-                ["launchctl", "bootout", f"gui/501/{ctx.service_id}"],
-                ["launchctl", "print", f"gui/501/{ctx.service_id}"],
+                ["launchctl", "print", f"user/501/{ctx.service_id}"],
+                ["launchctl", "bootout", f"user/501/{ctx.service_id}"],
+                ["launchctl", "print", f"user/501/{ctx.service_id}"],
             ]
 
     def test_uninstall_keeps_plist_when_launchd_remains_registered(self, *, mocker) -> None:
         with _temporary_context("log_dir") as ctx:
-            plist = _set_file(macos._plist_path(ctx), "plist")
+            plist = _set_file(macos._plist_path(ctx), macos.render_plist(ctx))
             mocker.patch.object(
                 macos.subprocess,
                 "run",

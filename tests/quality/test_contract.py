@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
 import re
 import subprocess
 import tempfile
@@ -18,6 +19,7 @@ from tests.quality.fixtures import git as _git
 from tests.quality.fixtures import repository as _test_repository
 from tools.quality import commits
 from tools.quality import governance
+from tools.quality import responsibilities
 from tools.quality.repository import __main__ as repository_audit
 from tools.quality.repository.decisions import decision_record_gaps
 from tools.quality.repository.names import semantic_name_gaps
@@ -154,20 +156,48 @@ class TestQualityPolicyContracts:
 
         assert profile["openspec"]["material_paths"] == ["**"]
 
-    def test_default_gates_bind_product_owned_native_verifiers(self) -> None:
+    def test_default_proof_gates_bind_product_verifiers(self) -> None:
         profile = tomllib.loads((ROOT / ".ethos/profile.toml").read_text(encoding="utf-8"))
-        gates = {gate["id"]: gate for gate in profile["proof"]["gates"]}
-        assert profile["proof"]["code_correctness_gates"] == ["python-quality", "python-matrix"]
-        for gate_id, provider in (
-            ("python-quality", "static_report"),
-            ("python-matrix", "behavior_report"),
-        ):
-            gate = gates[gate_id]
-            assert gate["verification_providers"] == [
-                f"ethos.adapters.gates.code_quality:{provider}"
-            ]
-            assert gate["execution_mode"] == "verified-command"
-            assert gate["tool_adapter"] == "ethos"
+        proof = profile["proof"]
+        selected = set(proof["code_correctness_gates"])
+        bindings = {
+            gate["id"]: (
+                gate.get("verification_providers"),
+                gate.get("execution_mode"),
+                gate.get("tool_adapter"),
+            )
+            for gate in proof["gates"]
+            if gate["id"] in selected
+        }
+
+        assert bindings == {
+            "python-quality": (
+                ["ethos.adapters.gates.code_quality:static_report"],
+                "verified-command",
+                "ethos",
+            ),
+            "python-matrix": (
+                ["ethos.adapters.gates.code_quality:behavior_report"],
+                "verified-command",
+                "ethos",
+            ),
+        }
+        for gate in proof["gates"]:
+            if gate["id"] in selected:
+                command = gate["command"]
+                assert command[:8] == [
+                    "mise",
+                    "exec",
+                    "--locked",
+                    "--",
+                    "uv",
+                    "run",
+                    "--locked",
+                    "--group",
+                ]
+                assert command[8] == "quality"
+                assert "--no-sync" not in command
+                assert "--python" not in command
 
     def test_publication_topology_has_only_declared_independent_peers(self) -> None:
         publication = tomllib.loads((ROOT / ".ethos/release.toml").read_text(encoding="utf-8"))[
@@ -179,8 +209,8 @@ class TestQualityPolicyContracts:
             "local_installation_command",
             "peers",
         }
-        # Exact repository locators belong to the declaration, not a second
-        # hardcoded test inventory. Retain the peer responsibility checks.
+        assert publication["local_verification_command"] == "mise run check"
+        assert publication["local_installation_command"] == "mise run native"
         peers = publication["peers"]
         assert all(isinstance(peer.get("forge_repository"), str) for peer in peers)
         assert [
@@ -226,9 +256,9 @@ class TestQualityPolicyContracts:
 
         for path in (
             ".config/quality/native/ruff.toml",
-            "pytest.ini",
+            "pytest.toml",
             ".config/quality/native/ty.toml",
-            ".config/quality/native/coverage.ini",
+            ".config/quality/native/coverage.toml",
             ".config/quality/policy/coverage.toml",
             ".config/quality/policy/architecture.toml",
             ".config/quality/policy/text.toml",
@@ -236,6 +266,8 @@ class TestQualityPolicyContracts:
             ".editorconfig",
         ):
             assert (ROOT / path).is_file(), path
+        assert not (ROOT / "pytest.ini").exists()
+        assert not (ROOT / ".config/quality/native/coverage.ini").exists()
 
         for duplicate in ("ruff", "pytest", "ty", "coverage"):
             assert duplicate not in tool
@@ -245,7 +277,7 @@ class TestQualityPolicyContracts:
         governance = (ROOT / "docs/governance/release-and-change-policy.md").read_text(
             encoding="utf-8"
         )
-        assert "`pytest.ini` therefore owns test discovery and warning policy" in governance
+        assert "`pytest.toml` therefore owns test discovery and warning policy" in governance
         assert "`.config/quality/policy/` owns quality policy" not in governance
 
         ruff = tomllib.loads(
@@ -310,12 +342,16 @@ class TestQualityPolicyContracts:
         completed = mocker.Mock(returncode=0)
         tracked = mocker.Mock(
             returncode=0,
-            stdout=b"README.md\0.gitlab-ci.yml\0mise.toml\0openspec/changes/archive/old.md\0",
+            stdout=(
+                b"README.md\0.gitlab-ci.yml\0package.json\0"
+                b".config/quality/native/prettier.json\0mise.toml\0"
+                b"openspec/changes/archive/old.md\0"
+            ),
         )
         run = mocker.patch.object(
             governance.subprocess,
             "run",
-            side_effect=[tracked, tracked, *([completed] * 14)],
+            side_effect=[tracked, tracked, *([completed] * 18)],
         )
 
         governance.audit(online_links=False)
@@ -331,8 +367,12 @@ class TestQualityPolicyContracts:
                 "--check",
                 "--config",
                 ".config/quality/native/prettier.json",
+                "--ignore-path",
+                ".config/quality/native/prettier.ignore",
                 "README.md",
                 ".gitlab-ci.yml",
+                "package.json",
+                ".config/quality/native/prettier.json",
             ),
             (
                 "taplo",
@@ -342,9 +382,38 @@ class TestQualityPolicyContracts:
                 ".config/quality/native/taplo.toml",
                 "mise.toml",
             ),
+            (
+                "npm",
+                "exec",
+                "--offline",
+                "--",
+                "markdownlint-cli2",
+                "--config",
+                ".config/quality/native/markdownlint-cli2.mjs",
+                "--no-globs",
+                "README.md",
+            ),
+            (
+                "vale",
+                "--config=.config/quality/native/vale.ini",
+                "--no-global",
+                "--no-color",
+                "README.md",
+            ),
             ("cue", "fmt", "--check", "--files", ".config/ci/pipeline.cue"),
             ("cue", "vet", ".config/ci/pipeline.cue"),
             (governance.sys.executable, "-m", "tools.ci.project"),
+            (
+                governance.sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-m",
+                "repository_toolchain",
+                "tests/quality/test_verification.py",
+                "tests/quality/test_contract.py",
+            ),
+            ("node", "--test", "tests/quality/markdown-policy.test.mjs"),
             (
                 "npm",
                 "exec",
@@ -390,17 +459,20 @@ class TestQualityPolicyContracts:
         )
         concerns = {concern["id"]: concern for concern in policy["concerns"]}
 
-        assert concerns["markdown-yaml-format"] == {
-            "id": "markdown-yaml-format",
+        assert concerns["structured-text-format"] == {
+            "id": "structured-text-format",
             "owner": "prettier",
             "scope": "prettier-formatted",
             "session": "governance",
-            "configuration": [".config/quality/native/prettier.json"],
-            "risk_model": concerns["markdown-yaml-format"]["risk_model"],
-            "measurement": concerns["markdown-yaml-format"]["measurement"],
-            "false_positive_cost": concerns["markdown-yaml-format"]["false_positive_cost"],
-            "remediation": concerns["markdown-yaml-format"]["remediation"],
-            "review_condition": concerns["markdown-yaml-format"]["review_condition"],
+            "configuration": [
+                ".config/quality/native/prettier.json",
+                ".config/quality/native/prettier.ignore",
+            ],
+            "risk_model": concerns["structured-text-format"]["risk_model"],
+            "measurement": concerns["structured-text-format"]["measurement"],
+            "false_positive_cost": concerns["structured-text-format"]["false_positive_cost"],
+            "remediation": concerns["structured-text-format"]["remediation"],
+            "review_condition": concerns["structured-text-format"]["review_condition"],
         }
         assert concerns["toml-format"]["owner"] == "taplo"
         assert concerns["toml-format"]["scope"] == "toml-formatted"
@@ -410,12 +482,19 @@ class TestQualityPolicyContracts:
         assert concerns["cue-format"]["configuration"] == [".config/ci/pipeline.cue"]
 
         scopes = {scope["id"]: scope["roles"] for scope in policy["scopes"]}
-        assert set(scopes["prettier-formatted"]).isdisjoint(scopes["python"])
+        assert set(scopes["prettier-formatted"]) & set(scopes["python"]) == {"test-code"}
         assert set(scopes["toml-formatted"]).isdisjoint(scopes["python"])
         assert scopes["cue-formatted"] == ["ci-model"]
+        assert {"quality-tool-configuration", "toolchain"} <= set(scopes["prettier-formatted"])
+        assignments = responsibilities.audit(ROOT)["assignments"]
+        formatted = governance._commands(online_links=False)[0][10:]
+        assert {assignments[path] for path in formatted} <= set(scopes["prettier-formatted"])
 
     def test_editor_defaults_and_text_layout_policy_are_aligned(self) -> None:
         editor = (ROOT / ".editorconfig").read_text(encoding="utf-8")
+        taplo = tomllib.loads(
+            (ROOT / ".config/quality/native/taplo.toml").read_text(encoding="utf-8")
+        )
         policy = tomllib.loads(
             (ROOT / ".config/quality/policy/text.toml").read_text(encoding="utf-8")
         )
@@ -424,10 +503,48 @@ class TestQualityPolicyContracts:
         assert "end_of_line = lf" in editor
         assert "insert_final_newline = true" in editor
         assert "trim_trailing_whitespace = true" in editor
+        assert "[*.toml]\nindent_size = 2\n" in editor
+        assert "[*.{json,jsonc}]\nindent_style = space\nindent_size = 2\n" in editor
+        assert taplo["formatting"]["indent_string"] == "  "
         assert policy["encoding"] == "utf-8"
         assert policy["line_ending"] == "lf"
         assert policy["insert_final_newline"] is True
         assert policy["trim_trailing_whitespace"] is True
+        assert {".json", ".jsonc", ".mjs", ".txt"} <= set(policy["tracked_suffixes"])
+
+    def test_git_checkout_preserves_lf_text_and_binary_bytes(self) -> None:
+        attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        policy = tomllib.loads(
+            (ROOT / ".config/quality/policy/text.toml").read_text(encoding="utf-8")
+        )
+        roles = tomllib.loads(
+            (ROOT / ".config/quality/responsibility-map.toml").read_text(encoding="utf-8")
+        )["roles"]
+        source_control = next(
+            role for role in roles if role["id"] == "source-control-configuration"
+        )
+        assert attributes == "* text=auto eol=lf\n"
+        assert ".gitattributes" in policy["tracked_names"]
+        assert ".gitattributes" in source_control["files"]
+
+        with _test_repository(("note.md", "payload.bin")) as root:
+            (root / ".gitattributes").write_text(attributes, encoding="utf-8")
+            (root / "note.md").write_bytes(b"one\ntwo\n")
+            binary = b"\x00one\r\ntwo\n"
+            (root / "payload.bin").write_bytes(binary)
+            _git(root, "add", "--", ".gitattributes", "note.md", "payload.bin")
+            _git(
+                root,
+                "-c",
+                "core.autocrlf=true",
+                "checkout-index",
+                "-f",
+                "--",
+                "note.md",
+                "payload.bin",
+            )
+            assert (root / "note.md").read_bytes() == b"one\ntwo\n"
+            assert (root / "payload.bin").read_bytes() == binary
 
     def test_commit_policy_is_declared_for_native_hook_enforcement(self) -> None:
         workspace = tomllib.loads((ROOT / ".ethos/workspace.toml").read_text(encoding="utf-8"))
@@ -896,3 +1013,353 @@ class TestQualityPolicyContracts:
             "relay/test_routes.py",
         )
         assert all((tests / owner).is_file() for owner in owners)
+
+
+def test_formatter_defers_digest_bound_aube_bytes_to_the_native_owner() -> None:
+    commands = governance._commands(online_links=False)
+    prettier = commands[0]
+    assert "--ignore-path" in prettier
+    ignore = prettier[prettier.index("--ignore-path") + 1]
+    assert ignore == ".config/quality/native/prettier.ignore"
+    patterns = (ROOT / ignore).read_text(encoding="utf-8")
+    assert "../../../.mise/locks/**/aube-lock.yaml" in patterns
+    assert len([line for line in patterns.splitlines() if line and not line.startswith("#")]) == 1
+
+
+def test_markdown_lint_is_one_locked_native_governance_owner() -> None:
+    metadata = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    assert metadata["devDependencies"].get("markdownlint-cli2") == "0.23.3"
+    selected = [
+        command
+        for command in governance._commands(online_links=False)
+        if "markdownlint-cli2" in command
+    ]
+    assert len(selected) == 1
+    command = selected[0]
+    assert command[:6] == ("npm", "exec", "--offline", "--", "markdownlint-cli2", "--config")
+    assert command[6] == ".config/quality/native/markdownlint-cli2.mjs"
+    assert "--fix" not in command
+    assert "--no-globs" in command
+    assert "README.md" in command
+    assert "openspec/changes/terminal-product-convergence/tasks.md" in command
+    assert not any(path.startswith("openspec/changes/archive/") for path in command)
+    policy = tomllib.loads(
+        (ROOT / ".config/quality/responsibility-map.toml").read_text(encoding="utf-8")
+    )
+    concern = next(item for item in policy["concerns"] if item["id"] == "markdown-lint")
+    scope = next(item for item in policy["scopes"] if item["id"] == concern["scope"])
+    assignments = responsibilities.audit(ROOT)["assignments"]
+    assert {assignments[path] for path in command[8:]} <= set(scope["roles"])
+
+
+def test_english_quality_uses_one_native_owner_and_current_scope() -> None:
+    toolchain = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert toolchain["tools"]["aqua:vale-cli/vale"] == "3.23.0"
+    selected = [
+        command for command in governance._commands(online_links=False) if command[0] == "vale"
+    ]
+    assert len(selected) == 1
+    command = selected[0]
+    assert "--config=.config/quality/native/vale.ini" in command
+    assert "--no-global" in command
+    assert "--no-exit" not in command
+    assert "README.md" in command
+    assert "openspec/changes/terminal-product-convergence/tasks.md" in command
+    assert not any(path.startswith("openspec/changes/archive/") for path in command)
+    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    assert not any(
+        name.startswith(("textlint", "@textlint", "cspell")) for name in package["devDependencies"]
+    )
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize(
+    ("source", "valid"),
+    [
+        ("# Fixture\n\nRead the current source.\n", True),
+        ("# Fixture\n\nRead the the source.\n", False),
+        ("# Fixture\n\n> Read the the source.\n", False),
+        ("# Fixture\n\n| Rule |\n| --- |\n| Read the the source. |\n", False),
+        ("# Fixture\n\nUse Gitlab.\n", False),
+        ("# Fixture\n\n> Use Gitlab.\n", False),
+        ("# Fixture\n\n| Tool |\n| --- |\n| Gitlab |\n", False),
+        ("# Fixture\n\nUse GitLab and Nox in the worktree's namespace.\n", True),
+        ("# Fixture\n\nRead the worktreex and namespacex.\n", False),
+        ("# Fixture\n\nRead the noninteractivel output.\n", False),
+        ("# Fixture\n\nIn order to verify, read the source.\n", False),
+        ("# Fixture\n\n```text\nRead the the source in Gitlab.\n```\n", True),
+        ("# Fixture\n\nRead `the the` field.\n", True),
+        ("# Fixture\n\nRead [the source](https://example.com/veriffication).\n", True),
+        ("# Fixture\n\nRead the veriffication result.\n", False),
+        ("# Fixture\n\n> Read the veriffication result.\n", False),
+        ("# Fixture\n\n| Rule |\n| --- |\n| Read the veriffication result. |\n", False),
+        ("# Fixture\n\n```text\nveriffication\n```\n", True),
+        ("# Fixture\n\nRead the `veriffication` field.\n", True),
+    ],
+)
+def test_native_english_cli_checks_real_current_prose_without_source_writes(
+    source: str, valid: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    current = "openspec/changes/fixture/proposal.md"
+    archived = "openspec/changes/archive/fixture/proposal.md"
+    with _test_repository(("README.md", current, archived, ".gitignore")) as root:
+        (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
+        (root / current).write_text(source, encoding="utf-8")
+        (root / archived).write_text("Read the the veriffication result.\n", encoding="utf-8")
+        (root / ".gitignore").write_text("private.md\n", encoding="utf-8")
+        (root / "private.md").write_text("Read the the veriffication result.\n", encoding="utf-8")
+        monkeypatch.setattr(governance, "ROOT", root)
+        command = next(
+            item for item in governance._commands(online_links=False) if item[0] == "vale"
+        )
+        config = "--config=.config/quality/native/vale.ini"
+        native = tuple(
+            "--config=" + str(ROOT / config.removeprefix("--config="))
+            if argument == config
+            else argument
+            for argument in command
+        )
+        before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+        completed = subprocess.run(
+            native,
+            cwd=root,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=20,
+            check=False,
+        )
+        assert (completed.returncode == 0) is valid, completed.stdout + completed.stderr
+        assert current in command
+        assert archived not in command
+        assert "private.md" not in command
+        assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize(
+    ("name", "source", "valid"),
+    [
+        ("README.md", "# Fixture\n\nClear prose.\n", True),
+        ("README.md", "## Missing title\n", False),
+        (
+            "CHANGELOG.md",
+            "# Changelog\n\n## One\n\n### Fixed\n\n- First.\n\n## Two\n\n### Fixed\n\n- Second.\n",
+            True,
+        ),
+        ("README.md", "# Fixture\n\n## Same\n\n## Same\n", False),
+        ("README.md", "# Fixture\n\nFirst.\n\n\nSecond.\n", False),
+        ("README.md", "# Fixture\n\n<!-- markdownlint-disable -->\n\n## Same\n\n## Same\n", False),
+        ("README.md", "# Fixture\n\n<!-- vale off -->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\n<!-- v&#97;le off -->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\n<!-- vale&#32;off -->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\n<!-- vale Vale.Repetition = NO -->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\n<!-- vale styles = Plain -->\n\nClear prose.\n", False),
+        (
+            "README.md",
+            '# Fixture\n\n<!-- vale Vale.Repetition["the"] = NO -->\n\nClear prose.\n',
+            False,
+        ),
+        ("README.md", "# Fixture\n\n<!--\nvale off\n-->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\nRead the <!-- vale off -->the source.\n", False),
+        ("README.md", "# Fixture\n\n> <!-- vale off -->\n>\n> Clear prose.\n", False),
+        ("README.md", "# Fixture\n\n- <!-- vale off -->\n  Clear prose.\n", False),
+        ("README.md", "# Fixture\n\n| Rule |\n| --- |\n| <!-- vale off -->Clear prose. |\n", False),
+        ("README.md", "# Fixture\n\n<!-- ordinary -->\n<!-- vale off -->\n\nClear prose.\n", False),
+        ("README.md", "# Fixture\n\nRead `<!-- vale off -->` as literal code.\n", True),
+        ("README.md", "# Fixture\n\n```html\n<!-- vale off -->\n```\n", True),
+        ("README.md", "# Fixture\n\n<!-- source: current -->\n\nClear prose.\n", True),
+        (
+            "README.md",
+            "# Fixture\n\n<!-- vale is the prose checker, not policy. -->\n\nClear prose.\n",
+            True,
+        ),
+        (
+            "openspec/changes/fixture/specs/topic/spec.md",
+            "# Spec Delta\n\n## ADDED Requirements\n",
+            True,
+        ),
+        (
+            "openspec/changes/fixture/tasks.md",
+            "# Tasks\n\n## 1. Work\n\n- [ ] Complete the task.\n",
+            True,
+        ),
+        ("openspec/changes/fixture/proposal.md", "# Proposal\n\n## Why\n", True),
+        ("openspec/changes/fixture/design.md", "# Design\n\n## Context\n", True),
+        ("openspec/changes/fixture/specs/topic/spec.md", "## ADDED Requirements\n", False),
+        ("openspec/changes/fixture/proposal.md", "Missing section.\n", False),
+        ("README.md", "# Fixture\n\n" + "readable " * 12 + "prose.\n", False),
+        ("README.md", "# Fixture\n\n[Missing]()\n", False),
+        ("README.md", "# Fixture\n\n```\ncode\n```\n", False),
+        ("README.md", "# Fixture\n\n- First.\n+ Second.\n", False),
+        ("README.md", "# Fixture\n\n| One | Two |\n| --- | --- |\n| Only |\n", False),
+        ("README.md", "# Fixture\n\n" + "a" * 120 + "\n", True),
+        ("README.md", "# Fixture\n\n```python\n" + "a" * 120 + "\n```\n", True),
+        ("README.md", "# " + "a" * 120 + "\n", True),
+    ],
+)
+def test_native_markdown_rules_reject_real_invalid_carriers_without_source_writes(
+    tmp_path: Path, name: str, source: str, valid: bool
+) -> None:
+    path = tmp_path / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(source, encoding="utf-8")
+    config = ROOT / ".config/quality/native/markdownlint-cli2.mjs"
+    before = {item: item.read_bytes() for item in tmp_path.rglob("*") if item.is_file()}
+    completed = subprocess.run(
+        (
+            "node",
+            str(ROOT / "node_modules/markdownlint-cli2/markdownlint-cli2-bin.mjs"),
+            "--config",
+            str(config),
+            "--no-globs",
+            str(path),
+        ),
+        cwd=tmp_path,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=20,
+        check=False,
+    )
+    assert (completed.returncode == 0) is valid, completed.stderr
+    assert {item: item.read_bytes() for item in tmp_path.rglob("*") if item.is_file()} == before
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize("valid", [True, False])
+def test_native_markdown_command_checks_the_declared_current_files(
+    valid: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    current = "openspec/changes/fixture/proposal.md"
+    archived = "openspec/changes/archive/fixture/proposal.md"
+    with _test_repository(("README.md", current, archived, ".gitignore")) as root:
+        (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
+        (root / current).write_text(
+            "# Proposal\n" if valid else "## Missing native title\n", encoding="utf-8"
+        )
+        (root / archived).write_text("Missing title.\n", encoding="utf-8")
+        (root / ".gitignore").write_text("private.md\n", encoding="utf-8")
+        (root / "private.md").write_text("Untracked invalid source.\n", encoding="utf-8")
+        config = root / ".config/quality/native/markdownlint-cli2.mjs"
+        config.parent.mkdir(parents=True)
+        native_policy = (ROOT / config.relative_to(root)).as_uri()
+        config.write_text(f'export {{ default }} from "{native_policy}";\n', encoding="utf-8")
+        _git(root, "add", "--", ".gitignore")
+        monkeypatch.setattr(governance, "ROOT", root)
+        command = next(
+            item for item in governance._commands(online_links=False) if "markdownlint-cli2" in item
+        )
+        native = (
+            "node",
+            str(ROOT / "node_modules/markdownlint-cli2/markdownlint-cli2-bin.mjs"),
+            *command[5:],
+        )
+        before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+        completed = subprocess.run(
+            native,
+            cwd=root,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=20,
+            check=False,
+        )
+        assert (completed.returncode == 0) is valid, completed.stdout + completed.stderr
+        assert "Linting: 2 files" in completed.stdout
+        assert current in command
+        assert archived not in command
+        assert "private.md" not in command
+        assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize("suffix", [".json", ".jsonc"])
+@pytest.mark.parametrize("state", ["formatted", "unformatted", "malformed"])
+def test_governance_formatter_checks_tracked_current_json_without_writes(
+    suffix: str, state: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    current = f".config/settings{suffix}"
+    archived = f"openspec/changes/archive/old/settings{suffix}"
+    ignored = f"private{suffix}"
+    with _test_repository(("README.md", current, archived, ".gitignore")) as root:
+        (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
+        (root / ".gitignore").write_text(f"{ignored}\n", encoding="utf-8")
+        (root / ignored).write_text("untracked invalid data\n", encoding="utf-8")
+        comma = "," if suffix == ".jsonc" else ""
+        source = {
+            "formatted": f'{{\n  "enabled": true{comma}\n}}\n',
+            "unformatted": '{"enabled":true}\n',
+            "malformed": '{"enabled":}\n',
+        }[state]
+        (root / current).write_text(source, encoding="utf-8")
+        _git(root, "add", "--", ".gitignore")
+        monkeypatch.setattr(governance, "ROOT", root)
+        command = governance._commands(online_links=False)[0]
+        config = command.index("--config") + 1
+        ignore = command.index("--ignore-path") + 1
+        native = (
+            *command[:config],
+            str(ROOT / command[config]),
+            *command[config + 1 : ignore],
+            str(ROOT / command[ignore]),
+            *(str(root / path) for path in command[ignore + 1 :]),
+        )
+        before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+        completed = subprocess.run(
+            native,
+            cwd=ROOT,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+        )
+        assert (completed.returncode == 0) is (state == "formatted"), completed.stdout
+        assert str(root / current) in native
+        assert str(root / archived) not in native
+        assert str(root / ignored) not in native
+        assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
+
+
+@pytest.mark.repository_toolchain
+def test_native_ignore_resolves_from_its_actual_configuration_directory() -> None:
+    ignored = subprocess.run(
+        [
+            "npm",
+            "exec",
+            "--offline",
+            "--",
+            "prettier",
+            "--file-info",
+            ".mise/locks/npm/12.2.0/aube-lock.yaml",
+            "--ignore-path",
+            ".config/quality/native/prettier.ignore",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert '"ignored": true' in ignored.stdout
+    authored = subprocess.run(
+        [
+            "npm",
+            "exec",
+            "--offline",
+            "--",
+            "prettier",
+            "--file-info",
+            ".gitlab-ci.yml",
+            "--ignore-path",
+            ".config/quality/native/prettier.ignore",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert '"ignored": false' in authored.stdout

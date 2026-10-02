@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -406,3 +408,78 @@ class TestPayloadValidation:
         linked_parent.symlink_to(tmp_path, target_is_directory=True)
         with pytest.raises(errors.InstallError, match="symlink ancestor"):
             owned_files._real_parent(linked_parent / "payload", real_root)
+
+    @pytest.mark.parametrize("missing", ["root", "ancestor", "leaf"])
+    def test_optional_regular_file_returns_only_proved_absence(self, tmp_path, missing) -> None:
+        root = tmp_path / "owned"
+        if missing != "root":
+            root.mkdir()
+        if missing == "leaf":
+            (root / "ancestor").mkdir()
+        assert (
+            owned_files.regular_file(root, "ancestor/payload", "fixture", missing_ok=True) is None
+        )
+
+    def test_optional_regular_file_does_not_turn_permission_failure_into_absence(
+        self, tmp_path, mocker
+    ) -> None:
+        mocker.patch.object(Path, "stat", side_effect=PermissionError("metadata unavailable"))
+        with pytest.raises(errors.InstallError, match="path is unavailable"):
+            owned_files.regular_file(tmp_path, "payload", "fixture", missing_ok=True)
+
+    @pytest.mark.parametrize("substitution", ["before-open", "after-open", "nonregular"])
+    def test_safe_read_rejects_native_file_identity_substitution(
+        self, tmp_path, substitution, mocker
+    ) -> None:
+        target = tmp_path / "payload"
+        target.write_bytes(b"owned bytes")
+        replacement = tmp_path / "replacement"
+        replacement.write_bytes(b"unowned replacement")
+        assert owned_files.read_bytes(target, root=tmp_path, label="fixture") == b"owned bytes"
+        native_open = os.open
+        native_regular = owned_files.regular_file
+        native_stat = os.fstat
+
+        def open_changed(*args, **kwargs):
+            replacement.replace(target)
+            return native_open(*args, **kwargs)
+
+        calls = 0
+
+        def path_changed(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                return replacement
+            return native_regular(*args, **kwargs)
+
+        def nonregular(descriptor):
+            metadata = native_stat(descriptor)
+            return SimpleNamespace(st_mode=0, st_dev=metadata.st_dev, st_ino=metadata.st_ino)
+
+        if substitution == "before-open":
+            mocker.patch.object(owned_files.os, "open", side_effect=open_changed)
+        elif substitution == "after-open":
+            mocker.patch.object(owned_files, "regular_file", side_effect=path_changed)
+        else:
+            mocker.patch.object(owned_files.os, "fstat", side_effect=nonregular)
+        with pytest.raises(errors.InstallError, match="identity changed"):
+            owned_files.read_bytes(target, root=tmp_path, label="fixture")
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX symbolic-link ownership")
+    def test_safe_read_never_follows_a_link_substituted_at_open(self, tmp_path, mocker) -> None:
+        target = tmp_path / "owned"
+        target.write_bytes(b"owned")
+        outside = tmp_path / "outside"
+        outside.write_bytes(b"foreign content")
+        native_open = os.open
+
+        def substituted(*args, **kwargs):
+            target.unlink()
+            target.symlink_to(outside)
+            return native_open(*args, **kwargs)
+
+        mocker.patch.object(owned_files.os, "open", side_effect=substituted)
+        with pytest.raises(errors.InstallError, match="unavailable or changed"):
+            owned_files.read_bytes(target, root=tmp_path, label="fixture")
+        assert outside.read_bytes() == b"foreign content"

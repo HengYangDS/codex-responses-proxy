@@ -46,34 +46,37 @@ flowchart LR
   canonical specifications and durable decisions absorb their surviving
   semantics. Archived changes remain historical inputs, not mutation authority.
 - Source acceptance, release delivery, and whole-Change completion are distinct.
-  Exact applicable proof and current authority admit a releasable increment.
-  A delivery-inclusive Change remains active while publication, installation, or
-  actual-use obligations consume that increment; archive follows their completion.
-  A source-only Change may archive earlier. Repair an open obligation in its
-  existing Change; a defect discovered after archive starts a successor Change.
-  Never rewrite an immutable published tag when recording later acceptance.
-- Do not preserve aliases, facades, or compatibility residue without a current requirement.
-- Do not write personal identity, local path, credential, key, fingerprint, or private Forge coordinate into product source.
+  Exact applicable proof and current authority admit a releasable increment. A
+  delivery-inclusive Change remains active while publication, installation, or
+  actual-use obligations consume that increment; archive follows their
+  completion. A source-only Change may archive earlier. Repair an open
+  obligation in its existing Change; a defect discovered after archive starts a
+  successor Change. Never rewrite an immutable published tag when recording
+  later acceptance.
+- Do not preserve aliases, facades, or compatibility residue without a current
+  requirement.
+- Do not write personal identity, local path, credential, key, fingerprint, or
+  private Forge coordinate into product source.
 
 ## Commit admission
 
 The `[commit_policy]` table in `.ethos/workspace.toml` owns the complete subject
 expression and SSH-signing requirement. Installed ETHOS hooks consume that
 policy before commit and push; the repository quality check reads the same
-expression without rebuilding a second grammar. Change the expression when a
-new semantic scope is justified, not a parallel type or scope list.
+expression without rebuilding a second grammar. Change the expression when a new
+semantic scope is justified, not a parallel type or scope list.
 
-The local quality check validates the range after an available integration
-base. When that base already equals HEAD, it still validates the tip rather
-than treating an empty range as proof. It is not a whole-history signature
-audit. Hosted audits receive exact event objects through `COMMIT_BASE` and
+The local quality check validates the range after an available integration base.
+When that base already equals HEAD, it still validates the tip rather than
+treating an empty range as proof. It is not a whole-history signature audit.
+Hosted audits receive exact event objects through `COMMIT_BASE` and
 `COMMIT_HEAD` variables under the product environment prefix. Pull requests use
-their base and head objects; branch pushes use the before and after objects;
-tag checks validate the tagged tip. Missing, malformed, unavailable or
-checkout-mismatched objects fail rather than fall back to a moving branch.
-A new branch with an all-zero before object checks its reachable history.
-These subject checks do not establish signature trust or replace native
-platform and release acceptance.
+their base and head objects; branch pushes use the before and after objects; tag
+checks validate the tagged tip. Missing, malformed, unavailable or
+checkout-mismatched objects fail rather than fall back to a moving branch. A new
+branch with an all-zero before object checks its reachable history. These
+subject checks do not establish signature trust or replace native platform and
+release acceptance.
 
 ## Decision records and names
 
@@ -81,11 +84,11 @@ platform and release acceptance.
   durable rationale. Do not duplicate specifications, task status, or incident
   narratives in a Decision Record.
 - Project-owned Decision Records use
-  `dr-<four-digit-sequence>-<concise-kebab-case-description>.md` and the matching
-  `DR-<sequence>` title.
+  `dr-<four-digit-sequence>-<concise-kebab-case-description>.md` and the
+  matching `DR-<sequence>` title.
 - Project-owned prose, scripts, modules, fixtures, and tests use concise names
-  that identify their semantic owner and responsibility. Generic buckets such
-  as `common`, `helpers`, `misc`, `shared`, or an unexplained bare sequence are
+  that identify their semantic owner and responsibility. Generic buckets such as
+  `common`, `helpers`, `misc`, `shared`, or an unexplained bare sequence are
   invalid.
 - Ecosystem protocol names remain unchanged: examples include `README.md`,
   `CHANGELOG.md`, `pyproject.toml`, `__init__.py`, and OpenSpec carrier names.
@@ -97,35 +100,70 @@ platform and release acceptance.
 
 Each tool-native configuration is the sole policy owner for its concern. Root
 placement is preferred when the tool and IDEs discover that file natively;
-`pytest.ini` therefore owns test discovery and warning policy. Explicitly
+`pytest.toml` therefore owns test discovery and warning policy. Coverage reads
+its TOML through one explicit path under `.config/quality/native/`. Explicitly
 addressed reusable policies live under `.config/quality/policy/`. Nox executes
 those owners, `.ethos/profile.toml` registers gates, and CI/hooks only project
 them.
 
+Git's root `.gitattributes` keeps tracked text at LF across hosts without
+changing binary files. `.editorconfig` agrees with the native formatters on
+indentation; neither replaces a language formatter.
+
 Required local evidence includes:
 
 ```bash
-mise exec --locked -- uv run --locked --no-sync nox -s full
-mise exec --locked -- uv run --locked --no-sync nox -s release
+mise run check
+mise run native
 ```
 
 The explicit `mise exec --locked --` boundary makes the repository-selected
 toolchain authoritative in interactive shells, agents, and other non-login
 processes alike.
 
+Mise's tool-aware environment directive binds uv to the locked interpreter only
+when Python belongs to the selected tool plane. An acquisition-only job that
+selects `gh` does not require or bind Python. The local tasks and direct proof
+commands use native locked synchronization: a missing or stale generated
+environment is reconstructed before execution, while an out-of-date dependency
+lock fails without rewriting source. The governance graph exercises those actual
+commands under nested paths containing spaces. It does not treat an interpreter
+warning or a no-sync run as acceptance.
+
 `quick` is optional feedback, not a second admission graph. `full` composes the
 locked governance tools, strict Python 3.12 quality and coverage owner, and the
 remaining Python compatibility runs without repeating equivalent work.
 
-Statement and measured branch coverage must each be strictly above 95%.
-Warnings are errors. Product and development dependencies come from this
-repository's locked environment.
+The governance graph checks all tracked current Markdown, including OpenSpec,
+with locked Prettier and Markdown lint. Native rules reject malformed structure,
+repeated blank lines, inline suppression, and over-width prose. Code, tables,
+headings, and indivisible tokens remain outside the prose-width limit. Repeated
+release headings are valid under different parents. Official OpenSpec titles are
+retained without private exceptions; archived Change bytes are immutable. The
+existing toolchain conformance run exercises both the formatter and linter
+against real valid and invalid files, without source writes.
+
+Vale is the single English prose owner. Native spelling, repetition, product
+vocabulary, and concise-phrase rules run on the same current Markdown scope. The
+command ignores global host configuration, not current pages. Its real
+counterexamples cover quoted and tabular prose as well as ordinary paragraphs;
+code and link destinations remain literal inputs. Editing must preserve
+responsibility, modality, conditions, and evidence limits. A style result is not
+proof of semantic fidelity, factual accuracy, or installed product behavior. The
+existing Markdown parser rejects document-level Vale controls, including inline
+and nested comments, without treating literal code as a directive. Native Node
+contracts exercise that rule with the same locked parser.
+
+Statement and measured branch coverage must each be at least 95%, as defined in
+[the coverage policy](../../.config/quality/policy/coverage.toml). Warnings are
+errors. Product and development dependencies come from this repository's locked
+environment.
 
 ## Local-first closure
 
 A clean accepted checkout can build, verify, install, exercise, and uninstall
-the current-platform native product without either Forge. Local success does
-not imply hosted publication.
+the current-platform native product without either Forge. Local success does not
+imply hosted publication.
 
 ## Independent Forge publication
 
@@ -152,13 +190,14 @@ re-download those exact bytes; neither Forge may build, subset, repackage, or
 re-sign the bundle.
 
 One peer may publish while the other is unavailable. That is one-sided
-publication, not dual-Forge parity. Parity requires exact commit and tag objects,
-equal complete inventories and bytes, and the same product trust-anchor digest.
+publication, not dual-Forge parity. Parity requires exact commit and tag
+objects, equal complete inventories and bytes, and the same product trust-anchor
+digest.
 
 ## Release identity
 
-`VERSION` owns the strict SemVer release identity. `CHANGELOG.md` follows Keep
-a Changelog 1.1.0 with one leading `Unreleased` section, canonical change
+`VERSION` owns the strict SemVer release identity. `CHANGELOG.md` follows Keep a
+Changelog 1.1.0 with one leading `Unreleased` section, canonical change
 categories, and released sections in descending SemVer order. Every local
 product tag appears once in the Changelog, and every released section names a
 real product tag except for the current version while its release commit is
@@ -188,8 +227,8 @@ The installer must:
 Prewarm uses one private executable role owned by the product runtime. Public
 CLI commands and options are not an installer-to-successor protocol. A
 historical installer that predates this role is crossed once by invoking the
-verified successor executable; it does not justify a public compatibility
-alias or a second installer.
+verified successor executable; it does not justify a public compatibility alias
+or a second installer.
 
 ## Runtime operations
 

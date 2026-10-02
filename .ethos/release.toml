@@ -1,6 +1,6 @@
 [publication]
-local_verification_command = "uv run --locked --no-sync nox -s full"
-local_installation_command = "uv run --locked --no-sync nox -s release"
+local_verification_command = "mise run check"
+local_installation_command = "mise run native"
 
 [[publication.peers]]
 id = "gitlab"

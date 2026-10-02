@@ -8,7 +8,8 @@
 GitLab and GitHub are separate transport, account, CI, Release, and asset
 domains. Creating different Git histories or tag objects for them destroys exact
 product identity. Making either workflow query, authenticate to, wait for, or
-publish through the other creates a common failure path and prevents local closure.
+publish through the other creates a common failure path and prevents local
+closure.
 
 ## Decision
 
@@ -19,16 +20,17 @@ platform produces that platform's exact asset pair. One product assembler
 verifies the complete platform inventory, creates one checksum manifest, and
 signs the resulting bundle once.
 
-GitLab and GitHub remain optional publication peers with the same semantic
-role. Each authenticates its own transport and verifies the same Git objects,
-but neither may build assets, subset, repackage, or re-sign the product bundle.
-A publication adapter only transfers and re-downloads the immutable bundle.
+GitLab and GitHub remain optional publication peers with the same semantic role.
+Each authenticates its own transport and verifies the same Git objects, but
+neither may build assets, subset, repackage, or re-sign the product bundle. A
+publication adapter only transfers and re-downloads the immutable bundle.
 Physical runner placement does not make either peer a source of product
 identity.
 
 Cross-Forge comparison is read-only and occurs only after both publications
-exist. It requires exact branch and tag object OIDs, the complete asset inventory,
-byte-identical checksums and signature, and the same product trust-anchor digest.
+exist. It requires exact branch and tag object OIDs, the complete asset
+inventory, byte-identical checksums and signature, and the same product
+trust-anchor digest.
 
 ## Consequences
 
@@ -43,5 +45,6 @@ or checkout path.
 ## Revisit Trigger
 
 Revisit if one publication plane is retired or an external attestation authority
-replaces local Git object signatures. Multiple organizational endorsements should
-remain detached attestations over one product SHA, not alternate Git histories.
+replaces local Git object signatures. Multiple organizational endorsements
+should remain detached attestations over one product SHA, not alternate Git
+histories.

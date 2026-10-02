@@ -9,6 +9,8 @@ import uuid
 from pathlib import Path
 from pathlib import PurePosixPath
 from pathlib import PureWindowsPath
+from typing import Literal
+from typing import overload
 
 from codex_responses_proxy import errors
 from codex_responses_proxy.json_value import JsonObject
@@ -60,11 +62,24 @@ def canonical_relative(value: object, label: str) -> str:
     return value
 
 
-def regular_file(root: Path, relative: str, label: str) -> Path:
+@overload
+def regular_file(
+    root: Path, relative: str, label: str, *, missing_ok: Literal[False] = False
+) -> Path: ...
+
+
+@overload
+def regular_file(
+    root: Path, relative: str, label: str, *, missing_ok: Literal[True]
+) -> Path | None: ...
+
+
+def regular_file(root: Path, relative: str, label: str, *, missing_ok: bool = False) -> Path | None:
     """Return one existing owned regular file without following symlinks."""
     relative = canonical_relative(relative, label)
     try:
-        if root.is_symlink() or not root.is_dir():
+        root_metadata = root.stat(follow_symlinks=False)
+        if not stat.S_ISDIR(root_metadata.st_mode):
             raise errors.InstallError(f"{label} root is not a real directory")
         current = root
         parts = PurePosixPath(relative).parts
@@ -78,6 +93,8 @@ def regular_file(root: Path, relative: str, label: str) -> Path:
         target = current / parts[-1]
         metadata = target.lstat()
     except FileNotFoundError as exc:
+        if missing_ok:
+            return None
         raise errors.InstallError(f"{label} file is unavailable: {relative}") from exc
     except OSError as exc:
         raise errors.InstallError(f"{label} path is unavailable: {relative}") from exc
@@ -86,6 +103,31 @@ def regular_file(root: Path, relative: str, label: str) -> Path:
     if not stat.S_ISREG(metadata.st_mode):
         raise errors.InstallError(f"{label} path is not a regular file: {relative}")
     return target
+
+
+def read_bytes(target: Path, *, root: Path, label: str) -> bytes:
+    """Read an unchanged regular-file identity without following a substituted link."""
+    relative = target.relative_to(root).as_posix()
+    target = regular_file(root, relative, label)
+    try:
+        expected = target.lstat()
+        descriptor = os.open(
+            target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        )
+        with os.fdopen(descriptor, "rb") as stream:
+            observed = os.fstat(stream.fileno())
+            if not stat.S_ISREG(observed.st_mode) or (observed.st_dev, observed.st_ino) != (
+                expected.st_dev,
+                expected.st_ino,
+            ):
+                raise errors.InstallError(f"{label} file identity changed")
+            content = stream.read()
+            current = regular_file(root, relative, label).lstat()
+            if (current.st_dev, current.st_ino) != (observed.st_dev, observed.st_ino):
+                raise errors.InstallError(f"{label} file identity changed")
+            return content
+    except OSError as exc:
+        raise errors.InstallError(f"{label} file is unavailable or changed") from exc
 
 
 def write_bytes(

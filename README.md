@@ -27,8 +27,8 @@ flowchart LR
 | Codex Responses Proxy | Responses normalization, replay portability, bounded recovery, and native service lifecycle |
 | Provider              | Model execution, quotas, and upstream availability                                          |
 
-The proxy does not configure or restart clients. A client control plane does
-not manage the proxy process. Each product is installed and verified independently.
+The proxy does not configure or restart clients. A client control plane does not
+manage the proxy process. Each product is installed and verified independently.
 "OpenAI-compatible" alone is not an admission contract: Chat Completions,
 Embeddings, and other OpenAI API families are outside this product's current
 scope. Another Responses client is supported only after its request, replay,
@@ -45,8 +45,17 @@ End users need only:
 Python, a source checkout, Git, and Forge credentials are not runtime
 requirements.
 
-Linux installation requires a reachable systemd user manager. A container without
-that user session is not a supported service host. Installation reports
+macOS installation requires the current user's reachable launchd user domain,
+not a graphical login. The watchdog runs in its Background session; the product
+does not create a login session or override a disabled service. Upgrading an
+existing GUI-domain watchdog verifies and removes that exact predecessor before
+binding the user-domain successor. An ambiguous or unavailable service
+observation is an error, not proof that a service is absent. The launch-agent
+file must remain a regular file owned by this installation; unrelated, malformed
+or symbolic-link replacements are preserved and rejected.
+
+Linux installation requires a reachable systemd user manager. A container
+without that user session is not a supported service host. Installation reports
 `native_service_unavailable` and rolls back its payload and command projection;
 it does not start a session-only background process or require payload recovery.
 Enable the user service environment before retrying. If the service manager is
@@ -55,7 +64,8 @@ unreachable, `status` reports the service as `unknown`, not proven absent.
 Boot-time startup and continued operation after logout depend on the host's
 [systemd user lingering policy](https://man.archlinux.org/man/loginctl.1.en).
 The host administrator owns that user-wide policy. Proxy installs only its own
-user service; it does not change lingering or request administrative credentials.
+user service; it does not change lingering or request administrative
+credentials.
 
 ## Install
 
@@ -71,8 +81,8 @@ official release plane. Keep the matching platform manifest—such as
 `codex-responses-proxy-macos-arm64.manifest.json`—in the same directory.
 `--asset` names the local archive. `--trust-anchor` names the SSH
 `allowed_signers` file distributed by the organization or release owner through
-a separate trusted channel. The installer requires the complete release set
-and verifies the signed checksum before changing the service.
+a separate trusted channel. The installer requires the complete release set and
+verifies the signed checksum before changing the service.
 
 Use `--port` only when the default listener port `8792` conflicts with another
 local service:
@@ -88,16 +98,16 @@ Installation verifies the selected native bundle, commits it inside a rollback
 transaction, and prewarms the exact installed executable before handoff. Use
 `--timeout-seconds` only when a cold native executable needs more than the
 default 30 seconds. Installation also projects `codex-responses-proxy` into the
-current user's platform command directory as a native link. It does not create
-a wrapper or edit a shell profile. The installed-state record retains that
-exact path so status, rollback, and uninstall do not depend on a later shell's
+current user's platform command directory as a native link. It does not create a
+wrapper or edit a shell profile. The installed-state record retains that exact
+path so status, rollback, and uninstall do not depend on a later shell's
 environment. Installation never downloads dependencies or reads provider
 credentials.
 
 ### Upgrade eligibility
 
-In-place upgrade and rollback use immutable payload generations selected by
-one durable selector. An installation without that selector is not an upgrade
+In-place upgrade and rollback use immutable payload generations selected by one
+durable selector. An installation without that selector is not an upgrade
 predecessor. Use its existing uninstaller to remove the service and owned
 payload, then install the verified release into a fresh target. Inspect any
 reported residue before removing it; unknown files are never migration input.
@@ -126,8 +136,8 @@ base_url = "http://127.0.0.1:8792/ucloud/v1"
 base_url = "http://127.0.0.1:8792/aihubmix/v1"
 ```
 
-The table names are illustrative; use the client's native configuration
-grammar. The proxy has no package or configuration dependency on that client.
+The table names are illustrative; use the client's native configuration grammar.
+The proxy has no package or configuration dependency on that client.
 
 ## Operate
 
@@ -160,47 +170,44 @@ codex-responses-proxy uninstall --purge
 Lifecycle JSON uses one explicit `state` discriminator. `install` returns
 `unchanged` when the signed artifact exactly matches the healthy active
 installation; it neither replaces files nor restarts the listener. The same
-version with different artifact bytes is not the same installation.
-`rollback` returns
-`unchanged` when the requested release is already the proven active
+version with different artifact bytes is not the same installation. `rollback`
+returns `unchanged` when the requested release is already the proven active
 installation, `unavailable` when no verified predecessor exists, and
 `rolled_back` only after the requested predecessor is the proven accepting
-installation. `recover` returns
-`not_required` when no transaction exists, `closed` when an unmutated prepared
-transaction is discarded, `finalized` when the committed candidate is already
-the proven live installation, `rolled_back` when the exact prior state is
-restored, and `purged` when interrupted removal finishes. `uninstall` and
-`uninstall --purge` return `not_installed` with exit
-status zero only when no owned service, listener, command, payload, or
-transaction exists. Existing but unverifiable state is never treated as
-absence and remains unchanged for diagnosis.
+installation. `recover` returns `not_required` when no transaction exists,
+`closed` when a prepared transaction that changed no payload is discarded,
+`finalized` when the committed candidate is already the proven live
+installation, `rolled_back` when the exact prior state is restored, and `purged`
+when interrupted removal finishes. `uninstall` and `uninstall --purge` return
+`not_installed` with exit status zero only when no owned service, listener,
+command, payload, or transaction exists. Existing but unverifiable state is
+never treated as absence and remains unchanged for diagnosis.
 
 Before deleting payload files, purge records their exact paths and digests in
-the existing transaction journal. An interrupted purge resumes through
-`recover` or `uninstall --purge`; it does not depend on files already removed.
-Unknown content and changed replacements are preserved and reported, including
-empty directories. Remove or relocate that content deliberately, then retry.
-During recovery, use a separate verified release executable if the installed
-command has already been removed.
+the existing transaction journal. An interrupted purge resumes through `recover`
+or `uninstall --purge`; it does not depend on files already removed. Unknown
+content and changed replacements are preserved and reported, including empty
+directories. Remove or relocate that content deliberately, then retry. During
+recovery, use a separate verified release executable if the installed command
+has already been removed.
 
-A successful upgrade retains exactly one predecessor in the immutable
-generation store. One atomic selector under the stable control root is the
-sole authority for both the active generation and that predecessor; installed
-state and the user command remain stable control surfaces outside either
-generation. The selector chooses the serving payload; the user command stays
-on the newest verified selected release, so an explicit serving rollback cannot
-downgrade `status`, `doctor`, `recover`, `rollback`, or the next installer.
-Native supervision remains bound to the serving generation. Finalization is
-idempotent across interruption, and the
-transaction owns temporary bootstrap evidence, selector reconciliation,
-cleanup, and recovery until it closes. `status` therefore reports rollback as
-`deferred` while a transaction is active instead of treating its intermediate
-state as an independent rollback authority. Upgrade and rollback use the same
-capability-qualified handoff. A runtime that advertises
-`admission-preserving-handoff` transfers listener ownership while continuing to
-admit new requests and lets already accepted requests finish. Draining is used
-only for the bounded native-generation replacement of an older runtime that
-cannot preserve admission.
+A successful upgrade retains exactly one predecessor in the immutable generation
+store. One atomic selector under the stable control root is the sole authority
+for both the active generation and that predecessor; installed state and the
+user command remain stable control surfaces outside either generation. The
+selector chooses the serving payload; the user command stays on the newest
+verified selected release, so an explicit serving rollback cannot downgrade
+`status`, `doctor`, `recover`, `rollback`, or the next installer. Native
+supervision remains bound to the serving generation. Finalization is idempotent
+across interruption, and the transaction owns temporary bootstrap evidence,
+selector reconciliation, cleanup, and recovery until it closes. `status`
+therefore reports rollback as `deferred` while a transaction is active instead
+of treating its intermediate state as an independent rollback authority. Upgrade
+and rollback use the same capability-qualified handoff. A runtime that
+advertises `admission-preserving-handoff` transfers listener ownership while
+continuing to admit new requests and lets already accepted requests finish.
+Draining is used only for the bounded native-generation replacement of an older
+runtime that cannot preserve admission.
 
 Expected failures are concise and actionable. Human mode does not emit a
 traceback, warning dump, serialized object, credential, request body, or private
@@ -277,11 +284,12 @@ mise run check
 ```
 
 The tasks in `mise.toml` select the locked Python installation and this
-worktree's `.venv`; Nox owns isolated `.nox/<session>` verification environments.
-Use `mise run quick` while editing. `check` runs repository governance, strict
-quality and Python 3.12 coverage, then Python 3.13 and 3.14 compatibility.
-`mise run release` verifies a native release asset; `mise run native` also
-exercises real host services and requires an authorized test host.
+worktree's `.venv`; Nox owns isolated `.nox/<session>` verification
+environments. Use `mise run quick` while editing. `check` runs repository
+governance, strict quality and Python 3.12 coverage, then Python 3.13 and 3.14
+compatibility. `mise run release` verifies a native release asset;
+`mise run native` also exercises real host services and requires an authorized
+test host.
 
 See [CONTRIBUTING](CONTRIBUTING.md) for source verification and release work.
 
