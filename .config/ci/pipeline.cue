@@ -152,7 +152,7 @@ gitlab: {
 			"mise exec --locked -- uv sync --locked --group quality --python python --no-python-downloads",
 		]
 		script: [
-			#GitLabCommitEvent + "mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links",
+			#GitLabCommitEvent + "mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links --peer gitlab",
 		]
 	}
 	"source-and-governance": #LinuxSource & {
@@ -445,7 +445,7 @@ githubVerify: {
 				env:  #CommitEvent
 				run: """
 					uv sync --locked --all-groups
-					uv run --locked --no-sync python -m tools.quality.governance --online-links
+					uv run --locked --no-sync python -m tools.quality.governance --online-links --peer github
 					"""
 			}]
 		}

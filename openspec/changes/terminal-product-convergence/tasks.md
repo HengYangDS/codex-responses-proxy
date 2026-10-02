@@ -818,7 +818,19 @@
       are retained.
 - [ ] 9.1 Define the complete CI graph in CUE—quality, Python matrix, native
       assets, platform lifecycle, release metadata, publication, and parity—with
-      explicit facts proved by each job.
+      explicit facts proved by each job. GitHub review of signed `2c696d81`
+      passed all declared native asset and predecessor compatibility jobs,
+      including the 52-test Windows upgrade and rollback session. Its sole root
+      failure was online link verification: all 95 timeouts targeted the
+      declared intranet GitLab repository from a public runner. The existing
+      link invocation and CUE caller now select one declared peer and exclude
+      only the other exact repository's network checks. Native URL aliases,
+      malformed declarations, and selected/public/local bad links retain
+      refusal. All 72 focused cases and 295 affected tests pass; the complete
+      source graph passes 2,032 tests on each Python line with unchanged
+      coverage floors. The real GitHub-selected check has 149 valid links and 95
+      explicit exclusions, not 95 accepted timeouts. Fresh hosted qualification
+      and shared identity admission remain required.
 - [ ] 9.2 Generate GitHub Actions and GitLab CI from the CUE model, verify
       semantic parity and provider-specific deltas, and reject hand-edited
       projection drift. The Python-only branch proof and release-asset binding

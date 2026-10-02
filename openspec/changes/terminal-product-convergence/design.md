@@ -613,6 +613,25 @@ explicitly into Verify; it never forwards the release signing key. GitLab keeps
 its native successful-pipeline admission rather than a copy of GitHub's check
 mechanism.
 
+Online link checks select their publication plane explicitly. The existing
+governance entry derives native Lychee exclusions only for the exact unselected
+repository roots in `.ethos/release.toml`, never for a host or private address
+range. Other repositories, selected-peer links, public references, and local
+links retain strict checking. This repairs the public runner's attempted access
+to an intranet Forge without accepting errors or inventing another network
+schema. Excluded remote links remain network-unqualified in that run; shared
+ETHOS identity and reference admission, peer-local availability, and dual-Forge
+qualification remain separate obligations. Local offline verification contacts
+neither peer.
+
+The locked Node runtime's WHATWG URL parser normalizes declaration roots before
+exclusion construction. Host, port, IPv4, IPv6, IDNA, and path aliases cannot
+turn a selected repository into an excluded peer. Duplicate or nested canonical
+roots, credentials, query strings, fragments, and invalid repository paths are
+refused. Inputs travel over bounded standard input, not command arguments;
+parser failure never becomes an empty exclusion. These native-parser checks
+belong to repository governance, not the Python-only compatibility matrix.
+
 GitHub and GitLab are optional peer publication planes. Local source remains
 fully buildable and installable without either. The same signed local commit and
 tag object are pushed unchanged; each Forge supplies independent authentication,
