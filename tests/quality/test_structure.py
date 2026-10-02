@@ -54,7 +54,7 @@ class TestStructuralQualityContracts:
             "    owner.choose(True)\n    owner.choose(False)\n",
             encoding="utf-8",
         )
-        config = ROOT / ".config/quality/native/coverage.ini"
+        config = ROOT / ".config/quality/native/coverage.toml"
         data_file = tmp_path / ".coverage"
         environment = {**os.environ, "COVERAGE_FILE": str(data_file)}
         subprocess.run(
@@ -265,13 +265,19 @@ class TestStructuralQualityContracts:
         assert inventory[0]["effective_lines"] == 122
 
     def test_coverage_floor_has_one_owner_and_semantic_risk_scopes(self) -> None:
-        coverage = (ROOT / ".config/quality/native/coverage.ini").read_text(encoding="utf-8")
+        coverage = tomllib.loads(
+            (ROOT / ".config/quality/native/coverage.toml").read_text(encoding="utf-8")
+        )["tool"]["coverage"]
         policy = tomllib.loads(
             (ROOT / ".config/quality/policy/coverage.toml").read_text(encoding="utf-8")
         )
-        assert "branch = True" in coverage
-        assert "source_pkgs = codex_responses_proxy" in coverage
-        assert "omit" not in coverage
+        assert coverage["run"]["branch"] is True
+        assert coverage["run"]["source_pkgs"] == ["codex_responses_proxy", "noxfile"]
+        assert coverage["run"]["source_dirs"] == ["tools"]
+        assert "omit" not in coverage["run"]
+        assert coverage["report"]["show_missing"] is True
+        assert coverage["report"]["precision"] == 2
+        assert coverage["report"]["exclude_also"] == ["if __name__ == .__main__.:"]
         assert set(policy) == {
             "minimum_percent",
             "comparison",

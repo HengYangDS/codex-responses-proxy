@@ -1,3 +1,5 @@
+# Spec Delta
+
 ## ADDED Requirements
 
 ### Requirement: Retained evidence has a current consumer and bounded lifetime
@@ -11,8 +13,10 @@ records tree, Claim family, Chronicle family, or compatibility taxonomy.
 #### Scenario: Repository evidence is inventoried
 
 - **WHEN** terminal convergence audits tracked and host-local evidence
-- **THEN** every retained carrier names its current consumer and exact source revision
-- **AND** duplicate, superseded, environment-bound, or consumerless carriers are removed.
+- **THEN** every retained carrier names its current consumer and exact source
+  revision
+- **AND** duplicate, superseded, environment-bound, or unconsumed carriers are
+  removed.
 
 #### Scenario: A transient verification completes
 
@@ -20,4 +24,5 @@ records tree, Claim family, Chronicle family, or compatibility taxonomy.
   into its authoritative Attestation or immutable release record
 - **THEN** scratch reports, parity directories, downloaded assets, logs, and
   intermediate receipts are removed
-- **AND** current acceptance remains reproducible from its authoritative sources.
+- **AND** current acceptance remains reproducible from its authoritative
+  sources.

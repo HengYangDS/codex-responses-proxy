@@ -1,3 +1,5 @@
+# Spec Delta
+
 ## ADDED Requirements
 
 ### Requirement: Responses semantics have one classification and projection authority
@@ -21,8 +23,8 @@ or fallback SHALL reinterpret it independently.
   strictly Base64-encoded PNG, JPEG, WebP, or GIF data URL
 - **THEN** the shared content projection preserves the original URL, detail,
   content order, and image-only message or paired tool output
-- **AND** repeated projection and classified retries retain those image bytes without increasing
-  the omitted-image count
+- **AND** repeated projection and classified retries retain those image bytes
+  without increasing the omitted-image count
 - **AND** transport validation performs no filesystem access, network image
   fetch, raster decoding, or image re-encoding. Local file references and
   malformed image transports retain their existing disposition.
@@ -32,8 +34,8 @@ or fallback SHALL reinterpret it independently.
 - **WHEN** a function or custom-tool call already has its initial result and
   later output items have distinct nonempty item IDs, the same call kind and
   `call_id`, and a nonempty tool name matching the original call
-- **THEN** projection keeps the original pair and emits each later result as
-  an explicitly attributed `tool_delivery` assistant commentary message at its
+- **THEN** projection keeps the original pair and emits each later result as an
+  explicitly attributed `tool_delivery` assistant commentary message at its
   original position, retaining the visible text, call identity and tool name
 - **AND** projection, diagnosis and recovery use the same relationship decision;
   a recovery suffix cannot retain a delivery after removing its original call
@@ -59,11 +61,11 @@ SHALL NOT branch on Provider names.
 
 Responses SHALL retain bounded request-local recovery for a transient upstream
 `503`. When that recovery ends in `503`, the proxy SHALL relay the upstream
-status and body and remember a bounded cooldown for that Provider only.
-During the cooldown, another Responses request for that Provider SHALL receive
-a typed local `503` with `Retry-After` before upstream I/O. The cooldown SHALL
-not block another Provider or non-Responses resource, and a request after expiry
-SHALL probe the upstream again.
+status and body and remember a bounded cooldown for that Provider only. During
+the cooldown, another Responses request for that Provider SHALL receive a typed
+local `503` with `Retry-After` before upstream I/O. The cooldown SHALL not block
+another Provider or non-Responses resource, and a request after expiry SHALL
+probe the upstream again.
 
 #### Scenario: A Provider remains unavailable across turns
 
@@ -92,7 +94,8 @@ Only the existing classified pre-content recovery may reopen a request.
 
 #### Scenario: A complete event arrives on a held-open chunked connection
 
-- **WHEN** the upstream sends a terminal event but leaves its HTTP connection open
+- **WHEN** the upstream sends a terminal event but leaves its HTTP connection
+  open
 - **THEN** the client receives that complete response without waiting for EOF
 - **AND** the upstream attempt is released without another request.
 
@@ -116,18 +119,18 @@ Before upstream I/O, the proxy SHALL derive portability only from the current
 request and the proved protocol grammar. It SHALL remove provider-bound
 continuation state, stored-item references, replayed reasoning items, and
 optional encrypted replay content. Required encrypted `agent_message` payloads
-SHALL retain their native envelope and exact ciphertext for the selected upstream;
-this is preservation, not a claim of cross-provider decryption. An upstream
-ciphertext rejection SHALL be relayed without substituting a header-only task.
-The proxy SHALL set `store=false` and remove any request for
+SHALL retain their native envelope and exact ciphertext for the selected
+upstream; this is preservation, not a claim of cross-provider decryption. An
+upstream ciphertext rejection SHALL be relayed without substituting a
+header-only task. The proxy SHALL set `store=false` and remove any request for
 `reasoning.encrypted_content` while leaving provider-neutral generation settings
 unchanged.
 
 #### Scenario: A stored conversation changes provider
 
 - **WHEN** a request contains `previous_response_id`, `conversation`,
-  `prompt_cache_key`, an `rs_*` reasoning item, optional encrypted output, or another
-  provider-owned continuation structure
+  `prompt_cache_key`, an `rs_*` reasoning item, optional encrypted output, or
+  another provider-owned continuation structure
 - **THEN** none of that provider-bound state is sent to the selected upstream
 - **AND** the upstream receives `store=false` with the remaining portable
   dialogue, complete tool history, and supported controls
@@ -174,25 +177,28 @@ unchanged.
 
 - **WHEN** a subsequent request switches among UCloud, DMXAPI, and AIHubMix
 - **THEN** the outbound request uses `store=false`
-- **AND** no optional reasoning or continuation binding crosses the provider boundary
-- **AND** portable user and plaintext agent content remains replayable; encrypted
-  delegation additionally requires an upstream capable of interpreting it.
+- **AND** no optional reasoning or continuation binding crosses the provider
+  boundary
+- **AND** portable user and plaintext agent content remains replayable;
+  encrypted delegation additionally requires an upstream capable of interpreting
+  it.
 
 ### Requirement: Portable dialogue and tool relationships are preserved
 
 The proxy SHALL preserve textual system, developer, user, and assistant
 dialogue; agent author, recipient, and phase context; complete
 function/custom-tool call-output pairs; and standalone cross-task tool delivery
-results whose portable provenance is explicit. Assistant, plaintext synthesized-agent,
-and standalone delivery history SHALL use provider-neutral Easy Input Message
-strings. System, developer, user, and paired tool-output lists SHALL use
-input-content grammar. Provider IDs, statuses, annotations, namespaces, and
-opaque metadata SHALL NOT be required by a paired output's outbound form.
+results whose portable provenance is explicit. Assistant, plaintext
+synthesized-agent, and standalone delivery history SHALL use provider-neutral
+Easy Input Message strings. System, developer, user, and paired tool-output
+lists SHALL use input-content grammar. Provider IDs, statuses, annotations,
+namespaces, and opaque metadata SHALL NOT be required by a paired output's
+outbound form.
 
 #### Scenario: Text and paired calls are replayed
 
-- **WHEN** a request contains text messages, a plaintext agent message, a function call
-  and output, and a custom-tool call and output
+- **WHEN** a request contains text messages, a plaintext agent message, a
+  function call and output, and a custom-tool call and output
 - **THEN** the upstream receives equivalent role-valid portable text and both
   complete call-output pairs
 - **AND** every paired output retains the matching `call_id` and call kind.
@@ -232,8 +238,8 @@ opaque metadata SHALL NOT be required by a paired output's outbound form.
 
 #### Scenario: An agent message carries an encrypted task
 
-- **WHEN** a valid agent message contains nonempty encrypted task content,
-  with or without a visible routing header
+- **WHEN** a valid agent message contains nonempty encrypted task content, with
+  or without a visible routing header
 - **THEN** the original message kind, author, recipient, content order and
   ciphertext remain unchanged; local bookkeeping metadata is removed
 - **AND** a missing, empty, malformed or unknown ciphertext field is rejected
@@ -242,8 +248,8 @@ opaque metadata SHALL NOT be required by a paired output's outbound form.
 
 #### Scenario: An agent or tool output has only opaque ciphertext
 
-- **WHEN** an agent or ordinary paired tool output has no plaintext beyond
-  its opaque ciphertext
+- **WHEN** an agent or ordinary paired tool output has no plaintext beyond its
+  opaque ciphertext
 - **THEN** the agent keeps its native encrypted envelope, while an ordinary
   historical tool output keeps its explicit omission marker in input grammar
 - **AND** the proxy does not claim to decrypt or reconstruct that history. This
@@ -267,8 +273,8 @@ opaque metadata SHALL NOT be required by a paired output's outbound form.
 
 #### Scenario: Replay contains an inline screenshot
 
-- **WHEN** image-capable input contains a nonempty, strictly Base64-encoded
-  PNG, JPEG, WebP, or GIF data URL
+- **WHEN** image-capable input contains a nonempty, strictly Base64-encoded PNG,
+  JPEG, WebP, or GIF data URL
 - **THEN** projection retains its original URL, detail, and order in dialogue
   and paired tool-output input, including image-only content
 - **AND** repeated projection and classified retries preserve the image bytes
@@ -302,6 +308,16 @@ and matching original call SHALL retain its explicit delivery semantics rather
 than become a second paired output. The error SHALL identify a bounded
 structural reason without returning request text, credentials, or ciphertext.
 
+#### Scenario: Standard client omits the optional message type
+
+- **WHEN** a Responses input item has a valid message `role` and `content` but
+  omits the optional root `type`
+- **THEN** the shared policy classifies it as a message and projection sends the
+  same typed portable input as its explicit `type: message` counterpart
+- **AND** diagnosis identifies a message rather than an unknown item
+- **AND** an explicit unknown or null type, invalid role, or unknown field is
+  still rejected before upstream I/O.
+
 #### Scenario: A future client introduces an unknown replay item
 
 - **WHEN** the input list contains an item not recognized by the item policy
@@ -325,8 +341,8 @@ structural reason without returning request text, credentials, or ciphertext.
 #### Scenario: Codex local shell history is provider-local
 
 - **WHEN** replay contains a `local_shell_call` with a valid closed `exec`
-  action, supported status, exactly one matching `function_call_output`, and
-  a current dialogue item
+  action, supported status, exactly one matching `function_call_output`, and a
+  current dialogue item
 - **THEN** the proxy removes the complete local shell pair before upstream I/O
 - **AND** it preserves the dialogue; unpaired calls, invalid statuses, unknown
   action fields and invalid action values remain local rejections.

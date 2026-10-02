@@ -11,12 +11,16 @@ of Codex conversation history or client configuration.
 - Documentation root: [docs/README](docs/README.md)
 - ETHOS adoption profile: [.ethos/profile.toml](.ethos/profile.toml)
 - Active specification changes: [OpenSpec](openspec/)
-- Authority and runtime boundary: [architecture](docs/architecture/authority-and-runtime-boundary.md)
-- Change and release policy: [governance](docs/governance/release-and-change-policy.md)
+- Authority and runtime boundary:
+  [architecture](docs/architecture/authority-and-runtime-boundary.md)
+- Change and release policy:
+  [governance](docs/governance/release-and-change-policy.md)
 - Decision records: [Decision register](docs/decisions/decision-register.md)
-- Durable boundary decision: [DR-0001](docs/decisions/dr-0001-control-plane-data-plane-boundary.md)
+- Durable boundary decision:
+  [DR-0001](docs/decisions/dr-0001-control-plane-data-plane-boundary.md)
 - Evidence policy: [evidence](docs/evidence/evidence-policy.md)
-- Independent forge operations: [operations](docs/operations/forge-operations.md)
+- Independent forge operations:
+  [operations](docs/operations/forge-operations.md)
 - Release history: [CHANGELOG](CHANGELOG.md)
 
 ## Authority Order
@@ -28,9 +32,9 @@ of Codex conversation history or client configuration.
 5. Logs, request captures, and host-local caches.
 
 The installed runtime is a re-creatable post-release projection, never a source
-of truth. Pre-release deployment is an invalid state.
-Do not modify Codex session JSONL, SQLite state, archives, or model metadata to
-repair a replay issue.
+of truth. Pre-release deployment is an invalid state. Do not modify Codex
+session JSONL, SQLite state, archives, or model metadata to repair a replay
+issue.
 
 ## Boundaries
 
@@ -39,8 +43,8 @@ repair a replay issue.
   selection, and client projection.
 - **This proxy** owns local outbound Responses compatibility, its released
   payload and deployment, and native supervision.
-- The proxy never reads or changes client configuration. Consumers use
-  their own control plane to select one ordinary loopback HTTP endpoint.
+- The proxy never reads or changes client configuration. Consumers use their own
+  control plane to select one ordinary loopback HTTP endpoint.
 
 ## Required Verification
 
@@ -50,13 +54,14 @@ mise run bootstrap
 mise run check
 ```
 
-`mise.toml` owns these tasks and binds uv to the exact locked Python installation
-and this worktree's `.venv`, independent of an ambient activated environment.
-Nox provisions separate `.nox/<session>` compatibility environments. Use
-`mise run quick` while editing and rerun `mise run bootstrap` after dependency
-locks change. `mise run release` verifies a native asset without registering a
-service; `mise run native` also exercises the real host service lifecycle and
-requires explicit operational authorization. See [CONTRIBUTING](CONTRIBUTING.md).
+`mise.toml` owns these tasks and binds uv to the exact locked Python
+installation and this worktree's `.venv`, independent of an ambient activated
+environment. Nox provisions separate `.nox/<session>` compatibility
+environments. Use `mise run quick` while editing and rerun `mise run bootstrap`
+after dependency locks change. `mise run release` verifies a native asset
+without registering a service; `mise run native` also exercises the real host
+service lifecycle and requires explicit operational authorization. See
+[CONTRIBUTING](CONTRIBUTING.md).
 
 Use `codex-responses-proxy status --json` for read-only runtime evidence. Reload
 and upgrade are transactional lifecycle mutations and must be communicated
@@ -65,15 +70,16 @@ current native listener; an incompatible payload must be removed explicitly.
 
 Released-source admission consumes one clean, signed release checkout and an
 external trust anchor. It checks clean state on entry and before minting. The
-final admission window binds `HEAD`, tag object, tag commit, tree, object format,
-and immutable Git blobs; any worktree or identity drift is rejected. Dual-Forge
-publication is verified independently and is not an installer dependency.
+final admission window binds `HEAD`, tag object, tag commit, tree, object
+format, and immutable Git blobs; any worktree or identity drift is rejected.
+Dual-Forge publication is verified independently and is not an installer
+dependency.
 
 Uninstall must prove native-service absence and exact owned-process exit before
 payload mutation. Process ownership requires the exact installed executable and
 one declared private service role; identity is re-read before signalling and
-boundedly rechecked afterwards. `--purge` trusts only a valid current payload
-manifest, preserves unknown install content, and exits nonzero when residue
-remains. Linux supervision requires a systemd user manager; installation starts
-no session-only fallback process. A failed service-manager observation is
-unknown, not evidence that a registered service is absent.
+rechecked within a fixed time limit afterwards. `--purge` trusts only a valid
+current payload manifest, preserves unknown install content, and exits nonzero
+when residue remains. Linux supervision requires a systemd user manager;
+installation starts no session-only fallback process. A failed service-manager
+observation is unknown, not evidence that a registered service is absent.

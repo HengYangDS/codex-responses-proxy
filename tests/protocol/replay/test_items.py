@@ -62,6 +62,39 @@ def test_unknown_or_invalid_item_has_no_policy(value: object) -> None:
     assert classify_item(value) is None
 
 
+@pytest.mark.parametrize("content", ["hello", [{"type": "input_text", "text": "hello"}]])
+def test_role_only_input_message_matches_typed_message(content: object) -> None:
+    """The standard optional item type must not change message semantics."""
+    role_only = json.dumps({"input": [{"role": "user", "content": content}]}).encode()
+    typed = json.dumps(
+        {"input": [{"type": "message", "role": "user", "content": content}]}
+    ).encode()
+
+    assert sanitize_responses_body(role_only).body == sanitize_responses_body(typed).body
+    diagnostic = diagnose(role_only)
+    assert diagnostic.first_incompatible_reason == ""
+    assert diagnostic.item_types == {"message": "1"}
+
+
+@pytest.mark.parametrize(
+    ("item", "reason"),
+    [
+        ({"role": "user", "content": "hello", "type": None}, "unknown_item_type"),
+        ({"role": "user", "content": "hello", "type": "future_item"}, "unknown_item_type"),
+        ({"content": "hello"}, "unknown_item_type"),
+        ({"role": "tool", "content": "hello"}, "invalid_message_role"),
+        ({"role": "user", "content": "hello", "future": True}, "unknown_message_field"),
+    ],
+)
+def test_optional_message_type_does_not_admit_unproved_items(
+    item: dict[str, object], reason: str
+) -> None:
+    result = sanitize_responses_body(json.dumps({"input": [item]}).encode())
+
+    assert result.body is None
+    assert result.reason == reason
+
+
 @pytest.mark.parametrize("call_type", ["function_call", "custom_tool_call"])
 @pytest.mark.parametrize(
     ("sequence", "valid"),

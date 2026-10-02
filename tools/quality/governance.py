@@ -35,8 +35,8 @@ class GovernanceError(RuntimeError):
 def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
     """Return the single ordered governance graph for this repository."""
     link_mode = () if online_links else ("--offline",)
-    markdown_yaml = _tracked_current((".md", ".yaml", ".yml"))
-    markdown = tuple(path for path in markdown_yaml if path.endswith(".md"))
+    structured_text = _tracked_current((".md", ".mjs", ".yaml", ".yml", ".json", ".jsonc"))
+    markdown = tuple(path for path in structured_text if path.endswith(".md"))
     toml = _tracked_current((".toml",))
     return (
         (
@@ -48,7 +48,9 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
             "--check",
             "--config",
             ".config/quality/native/prettier.json",
-            *markdown_yaml,
+            "--ignore-path",
+            ".config/quality/native/prettier.ignore",
+            *structured_text,
         ),
         (
             "taplo",
@@ -58,9 +60,38 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
             ".config/quality/native/taplo.toml",
             *toml,
         ),
+        (
+            "npm",
+            "exec",
+            "--offline",
+            "--",
+            "markdownlint-cli2",
+            "--config",
+            ".config/quality/native/markdownlint-cli2.mjs",
+            "--no-globs",
+            *markdown,
+        ),
+        (
+            "vale",
+            "--config=.config/quality/native/vale.ini",
+            "--no-global",
+            "--no-color",
+            *markdown,
+        ),
         ("cue", "fmt", "--check", "--files", ".config/ci/pipeline.cue"),
         ("cue", "vet", ".config/ci/pipeline.cue"),
         (sys.executable, "-m", "tools.ci.project"),
+        (
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-m",
+            "repository_toolchain",
+            "tests/quality/test_verification.py",
+            "tests/quality/test_contract.py",
+        ),
+        ("node", "--test", "tests/quality/markdown-policy.test.mjs"),
         (
             "npm",
             "exec",

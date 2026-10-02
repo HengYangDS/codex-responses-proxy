@@ -67,10 +67,11 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c
+      - uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5
         with:
           install: true
           cache: true
+          version: 2026.9.18
       - name: Install and audit locked Node repository tools
         run: |-
           npm ci --ignore-scripts
@@ -198,10 +199,11 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c
+      - uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5
         with:
           install: true
           cache: true
+          version: 2026.9.18
       - name: Install and audit locked Node repository tools
         run: |-
           npm ci --ignore-scripts
@@ -235,10 +237,11 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c
+      - uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5
         with:
           install: true
           cache: true
+          version: 2026.9.18
       - name: Verify lint, format, types, structure, docstrings, and product branch coverage
         run: uv run --locked --group quality nox -s quality
   performance:
@@ -401,6 +404,13 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
+      - env:
+          MISE_ENABLE_TOOLS: gh
+        uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5
+        with:
+          install: true
+          cache: true
+          version: 2026.9.18
       - name: Install the locked release tool environment
         run: uv sync --locked --group quality
       - name: Resolve the exact published predecessor
@@ -410,7 +420,8 @@ jobs:
       - name: Download the published predecessor release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download "${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}" --pattern "codex-responses-proxy-*-${{ matrix.platform }}.tar.gz" --pattern "codex-responses-proxy-${{ matrix.platform }}.manifest.json" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir "${{ runner.temp }}/previous-release"
+          GH_PROMPT_DISABLED: "1"
+        run: mise exec --locked -- gh release download "${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}" --pattern "codex-responses-proxy-*-${{ matrix.platform }}.tar.gz" --pattern "codex-responses-proxy-${{ matrix.platform }}.manifest.json" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir "${{ runner.temp }}/previous-release"
       - name: Materialize the release trust anchor
         env:
           RELEASE_ASSET_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}
@@ -441,10 +452,18 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
+      - env:
+          MISE_ENABLE_TOOLS: gh
+        uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5
+        with:
+          install: true
+          cache: true
+          version: 2026.9.18
       - name: Download native release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --pattern 'native-*' --dir "$RUNNER_TEMP/native"
+          GH_PROMPT_DISABLED: "1"
+        run: mise exec --locked -- gh run download "$GITHUB_RUN_ID" --pattern 'native-*' --dir "$RUNNER_TEMP/native"
       - name: Install the complete locked tool environment
         run: uv sync --locked --all-groups
       - name: Materialize the protected release signing key
@@ -491,6 +510,13 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
+      - env:
+          MISE_ENABLE_TOOLS: gh
+        uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5
+        with:
+          install: true
+          cache: true
+          version: 2026.9.18
       - name: Install the locked release tool environment
         run: uv sync --locked --group quality
       - name: Verify the selected release uses this product runtime
@@ -502,11 +528,13 @@ jobs:
       - name: Download the published current release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download "${{ github.event.release.tag_name || inputs.release_tag }}" --pattern "codex-responses-proxy-*-${{ matrix.platform }}.tar.gz" --pattern "codex-responses-proxy-${{ matrix.platform }}.manifest.json" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir "${{ runner.temp }}/current-release"
+          GH_PROMPT_DISABLED: "1"
+        run: mise exec --locked -- gh release download "${{ github.event.release.tag_name || inputs.release_tag }}" --pattern "codex-responses-proxy-*-${{ matrix.platform }}.tar.gz" --pattern "codex-responses-proxy-${{ matrix.platform }}.manifest.json" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir "${{ runner.temp }}/current-release"
       - name: Download the published predecessor release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download "${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}" --pattern "codex-responses-proxy-*-${{ matrix.platform }}.tar.gz" --pattern "codex-responses-proxy-${{ matrix.platform }}.manifest.json" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir "${{ runner.temp }}/previous-release"
+          GH_PROMPT_DISABLED: "1"
+        run: mise exec --locked -- gh release download "${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}" --pattern "codex-responses-proxy-*-${{ matrix.platform }}.tar.gz" --pattern "codex-responses-proxy-${{ matrix.platform }}.manifest.json" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir "${{ runner.temp }}/previous-release"
       - name: Materialize the release trust anchor
         env:
           RELEASE_ASSET_TRUST: ${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}

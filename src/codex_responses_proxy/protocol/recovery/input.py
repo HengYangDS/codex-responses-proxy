@@ -344,7 +344,7 @@ class _DiagnosticState:
             self.item_types[_value_kind(item)] += 1
             return
         typed_item = cast(ReadOnlyJsonObject, item)
-        raw_type = typed_item.get("type")
+        raw_type = item_policy.input_item_type(typed_item)
         self.item_types[_closed_label(raw_type, _KNOWN_ITEM_TYPES)] += 1
         self._observe_content(typed_item.get("content"))
         self.relationships.observe(

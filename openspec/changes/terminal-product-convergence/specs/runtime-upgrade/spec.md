@@ -1,11 +1,13 @@
+# Spec Delta
+
 ## ADDED Requirements
 
 ### Requirement: Supported native lifecycles are behaviorally symmetric
 
 macOS, Linux, and Windows SHALL expose the same public install, status, doctor,
-reload, rollback, recover, upgrade, and uninstall semantics while native adapters
-own only their operating-system service operations. Each platform SHALL prove
-the complete lifecycle using its own released artifact; a container, mock,
+reload, rollback, recover, upgrade, and uninstall semantics while native
+adapters own only their operating-system service operations. Each platform SHALL
+prove the complete lifecycle using its own released artifact; a container, mock,
 source execution, cross-compilation, or another operating system SHALL NOT
 substitute for native product evidence.
 
@@ -21,8 +23,8 @@ substitute for native product evidence.
 
 - **WHEN** a signed artifact exactly matches the healthy active release receipt
   and serving payload, with an idle transaction journal and verified supervisor
-- **THEN** `install` returns `unchanged` without creating a transaction, replacing
-  files, rebinding supervision, or restarting the listener
+- **THEN** `install` returns `unchanged` without creating a transaction,
+  replacing files, rebinding supervision, or restarting the listener
 - **AND** the lifecycle operation uses the same context that owns its mutation
   lock rather than reconstructing paths or authority during installation.
 
@@ -32,11 +34,11 @@ substitute for native product evidence.
   service registration or process creation
 - **THEN** it reports `native_service_unavailable` and restores payload,
   command, and transaction state without invoking native-service removal
-- **AND** the error describes the required user-service environment rather
-  than a deleted generation path or private process entrypoint
+- **AND** the error describes the required user-service environment rather than
+  a deleted generation path or private process entrypoint
 - **AND** an unreachable manager remains an unknown service observation, not
-  proof of absence; uncertain failures after service mutation still preserve
-  the transaction for recovery.
+  proof of absence; uncertain failures after service mutation still preserve the
+  transaction for recovery.
 
 #### Scenario: Linux installation preserves user-wide host policy
 
@@ -66,8 +68,8 @@ SHALL wait for that completion.
 
 - **WHEN** native supervision and owned processes have stopped and a purge
   removes only part of its verified payload
-- **THEN** the existing transaction journal retains the exact root-relative
-  file digests until disposal completes
+- **THEN** the existing transaction journal retains the exact root-relative file
+  digests until disposal completes
 - **AND** either `recover` or repeated `uninstall --purge` resumes that removal
   without requiring a deleted executable, manifest, or generation selector
 - **AND** changed files, symbolic links, unknown files, and unknown empty
@@ -100,9 +102,9 @@ current runtime cannot perform that handoff.
 
 An installed payload, journal, launcher, supervisor, manifest, command, or
 schema shape that cannot satisfy the current exact ownership and transition
-contract SHALL be rejected before mutation. After the terminal lifecycle has
-no consumer for an earlier shape, its reader, writer, fallback, migration
-bypass, and tests SHALL be deleted.
+contract SHALL be rejected before mutation. After the terminal lifecycle has no
+consumer for an earlier shape, its reader, writer, fallback, migration bypass,
+and tests SHALL be deleted.
 
 #### Scenario: A legacy carrier is encountered
 
@@ -119,3 +121,57 @@ bypass, and tests SHALL be deleted.
 - **AND** fresh installation creates only its command rollback record, while
   current-layout upgrade and rollback reuse the selected immutable generations
   without a parallel payload snapshot or layout migration.
+
+## MODIFIED Requirements
+
+### Requirement: macOS launchd replacement proves the exact watchdog PID
+
+On macOS, supervision SHALL bind the current UID's native user domain without
+requiring a graphical login. Replacement SHALL prove the exact predecessor
+process and registration absent before changing its carrier, then prove a
+distinct successor PID in that domain. A legacy GUI service is a migration
+subject, never an alternate current supervision target. Command success or an
+unavailable domain SHALL NOT prove convergence or service absence.
+
+#### Scenario: A user has no graphical login
+
+- **WHEN** the native user domain is reachable and has no associated GUI login
+- **THEN** installation binds a Background-session launch agent in that domain
+- **AND** status and teardown use its exact user-domain service target
+- **AND** no login domain, protected user, or disabled-state override changes.
+
+#### Scenario: An installed macOS watchdog is replaced during upgrade
+
+- **WHEN** candidate payload bytes have committed while an earlier watchdog
+  generation is registered and listener handoff proves terminal admission
+- **AND** that watchdog is the unique user-domain service or exact legacy GUI
+  service identified through a proved associated GUI login
+- **THEN** replacement verifies its executable and watchdog process identity
+- **AND** proves both process exit and exact registration absence before
+  rewriting the carrier and bootstrapping the canonical user-domain successor
+- **AND** a distinct PID returned by kickstart is re-observed and owned
+- **AND** the independent terminal listener keeps serving throughout.
+
+#### Scenario: Launchd cannot prove generation replacement
+
+- **WHEN** both domains register the exact label, a required observation fails,
+  or bootout, predecessor identity or exit, registration removal, bootstrap,
+  kickstart or successor PID observation fails or is ambiguous
+- **THEN** installation reports an actionable lifecycle error
+- **AND** does not guess a domain, report absence or claim convergence
+- **AND** a carrier remains unchanged until predecessor removal is proved.
+
+#### Scenario: A registered watchdog has no carrier
+
+- **WHEN** the exact service remains registered after its plist disappears
+- **THEN** status does not report it absent merely because the file is missing
+- **AND** teardown proves its exact registration and owned process absent before
+  reporting success.
+
+#### Scenario: A published predecessor requires a graphical login
+
+- **WHEN** the authentic published predecessor is GUI-only
+- **THEN** its real installation, health, upgrade and rollback are qualified in
+  a supported native context with the exact candidate artifact
+- **AND** headless candidate tests do not substitute for that obligation
+- **AND** isolated journeys conserve both domains and unrelated plist bytes.

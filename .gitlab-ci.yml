@@ -11,8 +11,8 @@ stages:
 variables:
   DEBIAN_FRONTEND: noninteractive
   CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
-  UV_PYTHON_FLOOR_IMAGE: ghcr.io/astral-sh/uv:0.12.18-python3.12-trixie-slim@sha256:38f41574703989d6e5f02be80a3d687b00f98744cce86908097bcd34bcb7eb98
-  UV_PYTHON_LATEST_IMAGE: ghcr.io/astral-sh/uv:0.12.18-python3.14-trixie-slim@sha256:00facf17b58b02b725155862c5cd637f688f906bf7eb5b5194647886d8805cf3
+  UV_PYTHON_FLOOR_IMAGE: ghcr.io/astral-sh/uv:0.12.21-python3.12-trixie-slim@sha256:5ae92e4d35b8d586d50ddf4aba6ecdd9f744237284d31c86bf45077e4e17e4bd
+  UV_PYTHON_LATEST_IMAGE: ghcr.io/astral-sh/uv:0.12.21-python3.14-trixie-slim@sha256:8f4ab6a0f2cc074290ba6a136eb016350b2b6b93a2108e07b72724901ad1914f
   UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
   UV_PYTHON_INSTALL_DIR: $CI_PROJECT_DIR/.cache/uv/python
   CODEX_RESPONSES_PROXY_CI_TARGET: linux-arm64
@@ -22,22 +22,48 @@ default:
   tags:
     - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   cache:
-    key: uv-$CODEX_RESPONSES_PROXY_CI_TARGET
+    key: uv-$CODEX_RESPONSES_PROXY_CI_TARGET-$CI_COMMIT_REF_PROTECTED
     paths:
       - .cache/uv/
 source-and-governance:
-  stage: verify
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
     - if: $CI_COMMIT_BRANCH == "dev"
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
+  stage: verify
   image:
-    name: ghcr.io/jdx/mise@sha256:f01b88463f3a8396b2273d88469bd09d097aa3cacfe343177eb5457f1d8d2a92
+    name: ghcr.io/jdx/mise:2026.9.18-debian@sha256:33d301fd5929d6960c102f947e97f08c671ad936573b375fcf4f13a90466f710
     entrypoint:
       - ""
   variables:
     GIT_DEPTH: "0"
-    MISE_ENABLE_TOOLS: python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee
+    MISE_ENABLE_TOOLS: python,uv,node,npm,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee,aqua:vale-cli/vale
   before_script:
+    - apt-get update -qq
+    - apt-get install -qq -y --no-install-recommends libatomic1
+    - mise install --locked
+    - npm ci --ignore-scripts
+    - npm audit signatures
+    - git fetch --tags --force --prune --prune-tags origin
+    - mise exec --locked -- uv sync --locked --group quality --python python --no-python-downloads
+  script:
+    - export CODEX_RESPONSES_PROXY_COMMIT_BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" CODEX_RESPONSES_PROXY_COMMIT_HEAD="$CI_COMMIT_SHA"; if [ -n "$CI_COMMIT_TAG" ]; then export CODEX_RESPONSES_PROXY_COMMIT_BASE="$CI_COMMIT_SHA"; fi; mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links
+source-and-governance-review:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
+  stage: verify
+  image:
+    name: ghcr.io/jdx/mise:2026.9.18-debian@sha256:33d301fd5929d6960c102f947e97f08c671ad936573b375fcf4f13a90466f710
+    entrypoint:
+      - ""
+  variables:
+    GIT_DEPTH: "0"
+    MISE_ENABLE_TOOLS: python,uv,node,npm,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee,aqua:vale-cli/vale
+  before_script:
+    - apt-get update -qq
+    - apt-get install -qq -y --no-install-recommends libatomic1
     - mise install --locked
     - npm ci --ignore-scripts
     - npm audit signatures
@@ -46,10 +72,11 @@ source-and-governance:
   script:
     - export CODEX_RESPONSES_PROXY_COMMIT_BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" CODEX_RESPONSES_PROXY_COMMIT_HEAD="$CI_COMMIT_SHA"; if [ -n "$CI_COMMIT_TAG" ]; then export CODEX_RESPONSES_PROXY_COMMIT_BASE="$CI_COMMIT_SHA"; fi; mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links
 verify-python:
-  stage: verify
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
     - if: $CI_COMMIT_BRANCH == "dev"
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
+  stage: verify
   parallel:
     matrix:
       - PYTHON_VERSION:
@@ -79,11 +106,168 @@ verify-python:
   script:
     - python --version
     - uv run --locked --no-sync --python python --no-python-downloads nox -s "tests-$PYTHON_VERSION"
-verify-python-quality:
-  stage: verify
+verify-python-review:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
+  stage: verify
+  parallel:
+    matrix:
+      - PYTHON_VERSION:
+          - "3.12"
+          - "3.13"
+          - "3.14"
+  variables:
+    GIT_DEPTH: "0"
+  before_script:
+    - |-
+      UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
+      UV_VERSION="$(uv --version)"
+      UV_VERSION="${UV_VERSION#uv }"
+      ACTUAL_UV_VERSION="${UV_VERSION%% *}"
+      EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"
+      if [ "$ACTUAL_UV_VERSION" != "$EXPECTED_UV_VERSION" ]; then
+        printf 'uv version mismatch: expected %s, actual %s
+      ' "$EXPECTED_UV_VERSION" "$ACTUAL_UV_VERSION" >&2
+        exit 1
+      fi
+    - apt-get update -qq
+    - apt-get install -qq -y --no-install-recommends git openssh-client
+    - apt-get install -qq -y --no-install-recommends binutils
+    - git fetch --tags --force --prune --prune-tags origin
+    - uv sync --locked --group quality --python python --no-python-downloads
+    - uv python install --no-bin $PYTHON_VERSION
+  script:
+    - python --version
+    - uv run --locked --no-sync --python python --no-python-downloads nox -s "tests-$PYTHON_VERSION"
+verify-macos-native:
+  rules:
     - if: $CI_COMMIT_BRANCH == "dev"
+  stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_MACOS_RUNNER_TAG
+  timeout: 20m
+  inherit:
+    default: false
+  variables:
+    CODEX_RESPONSES_PROXY_CI_TARGET: macos-arm64
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: $CODEX_RESPONSES_PROXY_GITLAB_MACOS_PREVIOUS_RELEASE_ASSET
+    GIT_DEPTH: "0"
+    MISE_ENABLE_TOOLS: python,uv
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: $CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR
+  before_script:
+    - mise install --locked
+    - git fetch --tags --force --prune --prune-tags origin
+    - mise exec --locked -- uv sync --locked --group quality
+  script:
+    - mise exec --locked -- uv run --locked --group quality python -c "import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())"
+    - mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py
+    - mise exec --locked -- uv run --locked --group quality nox -s release_compatibility
+verify-macos-native-review:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+  stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_MACOS_REVIEW_RUNNER_TAG
+  timeout: 20m
+  inherit:
+    default: false
+  variables:
+    CODEX_RESPONSES_PROXY_CI_TARGET: macos-arm64
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: $CODEX_RESPONSES_PROXY_GITLAB_MACOS_PREVIOUS_RELEASE_ASSET
+    GIT_DEPTH: "0"
+    MISE_ENABLE_TOOLS: python,uv
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: $CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR
+  before_script:
+    - mise install --locked
+    - git fetch --tags --force --prune --prune-tags origin
+    - mise exec --locked -- uv sync --locked --group quality
+  script:
+    - mise exec --locked -- uv run --locked --group quality python -c "import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())"
+    - mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py
+    - mise exec --locked -- uv run --locked --group quality nox -s release_compatibility
+verify-windows-native:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+  stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_RUNNER_TAG
+  timeout: 20m
+  inherit:
+    default: false
+  variables:
+    CODEX_RESPONSES_PROXY_CI_TARGET: windows-arm64
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: $CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_PREVIOUS_RELEASE_ASSET
+    GIT_DEPTH: "0"
+    MISE_ENABLE_TOOLS: python,uv
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: $CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR
+  before_script:
+    - mise install --locked
+    - git fetch --tags --force --prune --prune-tags origin
+    - mise exec --locked -- uv sync --locked --group quality
+  script:
+    - mise exec --locked -- uv run --locked --group quality python -c "import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
+    - mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py
+    - mise exec --locked -- uv run --locked --group quality nox -s release_compatibility
+verify-windows-native-review:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+  stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_REVIEW_RUNNER_TAG
+  timeout: 20m
+  inherit:
+    default: false
+  variables:
+    CODEX_RESPONSES_PROXY_CI_TARGET: windows-arm64
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: $CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_PREVIOUS_RELEASE_ASSET
+    GIT_DEPTH: "0"
+    MISE_ENABLE_TOOLS: python,uv
+    CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: $CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR
+  before_script:
+    - mise install --locked
+    - git fetch --tags --force --prune --prune-tags origin
+    - mise exec --locked -- uv sync --locked --group quality
+  script:
+    - mise exec --locked -- uv run --locked --group quality python -c "import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))"
+    - mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py
+    - mise exec --locked -- uv run --locked --group quality nox -s release_compatibility
+verify-python-quality:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
+  stage: verify
+  image:
+    name: $UV_PYTHON_FLOOR_IMAGE
+  variables:
+    GIT_DEPTH: "0"
+  before_script:
+    - |-
+      UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
+      UV_VERSION="$(uv --version)"
+      UV_VERSION="${UV_VERSION#uv }"
+      ACTUAL_UV_VERSION="${UV_VERSION%% *}"
+      EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"
+      if [ "$ACTUAL_UV_VERSION" != "$EXPECTED_UV_VERSION" ]; then
+        printf 'uv version mismatch: expected %s, actual %s
+      ' "$EXPECTED_UV_VERSION" "$ACTUAL_UV_VERSION" >&2
+        exit 1
+      fi
+    - apt-get update -qq
+    - apt-get install -qq -y --no-install-recommends git openssh-client
+    - apt-get install -qq -y --no-install-recommends binutils
+    - git fetch --tags --force --prune --prune-tags origin
+  script:
+    - uv sync --locked --group quality --python python --no-python-downloads
+    - uv run --locked --no-sync --python python --no-python-downloads nox -s quality
+verify-python-quality-review:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
+  stage: verify
   image:
     name: $UV_PYTHON_FLOOR_IMAGE
   variables:
@@ -108,10 +292,41 @@ verify-python-quality:
     - uv sync --locked --group quality --python python --no-python-downloads
     - uv run --locked --no-sync --python python --no-python-downloads nox -s quality
 verify-performance:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   stage: verify
+  variables:
+    GIT_DEPTH: "0"
+  before_script:
+    - |-
+      UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
+      UV_VERSION="$(uv --version)"
+      UV_VERSION="${UV_VERSION#uv }"
+      ACTUAL_UV_VERSION="${UV_VERSION%% *}"
+      EXPECTED_UV_VERSION="${UV_REQUIREMENT#==}"
+      if [ "$ACTUAL_UV_VERSION" != "$EXPECTED_UV_VERSION" ]; then
+        printf 'uv version mismatch: expected %s, actual %s
+      ' "$EXPECTED_UV_VERSION" "$ACTUAL_UV_VERSION" >&2
+        exit 1
+      fi
+    - apt-get update -qq
+    - apt-get install -qq -y --no-install-recommends git openssh-client
+  script:
+    - uv sync --locked --group quality --python python --no-python-downloads
+    - uv run --locked --no-sync --python python --no-python-downloads nox -s performance -- "$CI_PROJECT_DIR/.performance"
+  artifacts:
+    when: always
+    paths:
+      - .performance/latency.json
+      - .performance/memory.json
+verify-performance-review:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
-    - if: $CI_COMMIT_BRANCH == "dev"
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
+  stage: verify
   variables:
     GIT_DEPTH: "0"
   before_script:
@@ -138,6 +353,8 @@ verify-performance:
       - .performance/memory.json
 verify-accepted-source:
   stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   rules:
     - if: $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"
   variables:
@@ -163,6 +380,8 @@ verify-accepted-source:
     - export CODEX_RESPONSES_PROXY_COMMIT_BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" CODEX_RESPONSES_PROXY_COMMIT_HEAD="$CI_COMMIT_SHA"; if [ -n "$CI_COMMIT_TAG" ]; then export CODEX_RESPONSES_PROXY_COMMIT_BASE="$CI_COMMIT_SHA"; fi; uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
 verify-promotion:
   stage: verify
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == "dev" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
   variables:
@@ -189,6 +408,8 @@ verify-promotion:
     - export CODEX_RESPONSES_PROXY_COMMIT_BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}" CODEX_RESPONSES_PROXY_COMMIT_HEAD="$CI_COMMIT_SHA"; if [ -n "$CI_COMMIT_TAG" ]; then export CODEX_RESPONSES_PROXY_COMMIT_BASE="$CI_COMMIT_SHA"; fi; uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository
 verify-release-tag:
   stage: release
+  tags:
+    - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   rules:
     - if: $CI_COMMIT_TAG
   variables:

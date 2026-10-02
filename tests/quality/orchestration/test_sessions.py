@@ -6,7 +6,6 @@ import os
 import sys
 from pathlib import Path
 from types import ModuleType
-from types import SimpleNamespace
 
 import pytest
 from nox.command import CommandFailed
@@ -19,18 +18,9 @@ from tests.quality.fixtures import ROOT
 @pytest.mark.parametrize(
     "session_name", ["tests", "quality", "release_asset", "release", "performance"]
 )
-@pytest.mark.parametrize(
-    ("system", "machine", "release_platform"),
-    [
-        ("Darwin", "arm64", "macos-arm64"),
-        ("Linux", "x86_64", "linux-x86_64"),
-        ("Windows", "AMD64", "windows-x86_64"),
-    ],
-)
+@pytest.mark.parametrize("release_platform", ["macos-arm64", "linux-x86_64", "windows-x86_64"])
 def test_sessions_accept_built_artifacts_before_publication(
     session_name: str,
-    system: str,
-    machine: str,
     release_platform: str,
     tmp_path: Path,
     mocker: MockerFixture,
@@ -38,12 +28,9 @@ def test_sessions_accept_built_artifacts_before_publication(
     orchestration_session: Session,
 ) -> None:
     mocker.patch.object(
-        nox_configuration,
-        "platform",
-        SimpleNamespace(
-            system=lambda: system,
-            machine=lambda: machine,
-        ),
+        nox_configuration.product_identity,
+        "current_native_release_platform",
+        return_value=release_platform,
     )
     executable_name = nox_configuration.product_identity.executable_name(windows=os.name == "nt")
     packages = tmp_path / "site-packages"

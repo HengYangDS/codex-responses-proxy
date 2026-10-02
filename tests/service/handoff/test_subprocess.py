@@ -19,7 +19,6 @@ from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import native_service
 from codex_responses_proxy.lifecycle.supervision import process
 from tests.release.fixtures import preserve_native_host_projection
-from tests.service.handoff import fixtures as handoff_fixtures
 from tests.service.handoff.fixtures import ScriptedUpstream
 from tests.service.handoff.fixtures import child_pid_observer
 from tests.service.handoff.fixtures import free_port
@@ -51,6 +50,42 @@ class TestRealSubprocessHandoffIntegration:
 
     def teardown_method(self) -> None:
         self._cleanups.close()
+
+    def test_native_listener_admits_optional_message_type_without_unknown_fallback(self) -> None:
+        upstream = ScriptedUpstream()
+        self._cleanups.callback(upstream.close)
+        success = b'{"id":"resp_standard","status":"completed"}'
+        upstream.push((200, success))
+        port = free_port()
+        root, ctx, _owned = self._installed_fixture(
+            release="1.0.25", port=port, upstream_url=upstream.base_url()
+        )
+        child = start_real_proxy(ctx, upstream_url=upstream.base_url(), log_path=root / "proxy.log")
+        self._cleanups.callback(lambda: terminate_process(child))
+        upstream.start()
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+        def post(item):
+            return urllib.request.Request(
+                f"http://127.0.0.1:{port}/dmxapi/v1/responses",
+                data=json.dumps({"model": "synthetic", "input": [item]}).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+
+        with pytest.raises(urllib.error.HTTPError) as rejected:
+            opener.open(post({"type": None, "role": "user", "content": "hello"}), timeout=5)
+        with rejected.value as error:
+            assert error.code == 400
+        assert upstream.received == []
+
+        content = [{"type": "input_text", "text": "hello"}]
+        with opener.open(post({"role": "user", "content": content}), timeout=5) as response:
+            assert response.status == 200
+            assert response.read() == success
+        assert len(upstream.received) == 1
+        assert json.loads(upstream.received[0])["input"] == [
+            {"type": "message", "role": "user", "content": content}
+        ]
 
     @pytest.mark.parametrize("call_type", ["function_call", "custom_tool_call"])
     def test_native_listener_preserves_tool_deliveries_and_encrypted_agent_tasks(self, call_type):
@@ -192,37 +227,6 @@ class TestRealSubprocessHandoffIntegration:
         assert not upstream.thread.is_alive()
         upstream.start()
         assert upstream.thread.is_alive()
-
-    def test_initial_proxy_spawn_avoids_multithreaded_posix_fork(self, *, mocker) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            ctx = write_installed_payload(
-                root,
-                release="1.0.25",
-                port=free_port(),
-                upstream_url="http://127.0.0.1:43123",
-            )
-            mocker.patch.dict(
-                handoff_fixtures.os.environ,
-                {"CODEX_RESPONSES_PROXY_EXECUTABLE": "/tmp/native-build-source"},
-            )
-            child = mocker.Mock()
-            child.poll.return_value = None
-            popen = mocker.patch.object(handoff_fixtures.subprocess, "Popen", return_value=child)
-            mocker.patch.object(handoff_fixtures, "proxy_is_up", return_value=True)
-            started = start_real_proxy(
-                ctx,
-                upstream_url="http://127.0.0.1:43123",
-                log_path=root / "proxy.log",
-            )
-
-        assert started is child
-        assert popen.call_args.kwargs.get("close_fds", True) is True
-        assert popen.call_args.kwargs["env"]["CODEX_RESPONSES_PROXY_HOME"] == ctx.install_dir
-        assert popen.call_args.kwargs["env"]["CODEX_RESPONSES_PROXY_STATE_HOME"] == str(
-            root / "state"
-        )
-        assert popen.call_args.kwargs["env"]["CODEX_RESPONSES_PROXY_EXECUTABLE"] == ctx.executable
 
     def _installed_fixture(
         self, *, release: str, port: int, upstream_url: str

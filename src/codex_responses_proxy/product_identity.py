@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import platform
+import sysconfig
+
 PRODUCT_SLUG = "codex-responses-proxy"
 DISPLAY_NAME = "Codex Responses Proxy"
 PACKAGE_NAME = PRODUCT_SLUG
@@ -28,8 +31,14 @@ def executable_name(*, windows: bool) -> str:
     return f"{COMMAND_NAME}.exe" if windows else COMMAND_NAME
 
 
-def native_release_platform(system: str, machine: str) -> str:
-    """Return the released platform identity for one native host."""
+def native_release_platform(
+    system: str, machine: str, *, process_platform: str | None = None
+) -> str:
+    """Select the payload ABI without mistaking an emulated host for its process."""
+    if system == "Windows" and process_platform is not None:
+        if process_platform != "win-amd64":
+            raise ValueError(f"unsupported native release platform: {system}-{process_platform}")
+        machine = "AMD64"
     try:
         platform_id = _NATIVE_RELEASE_PLATFORMS[system, machine]
     except KeyError:
@@ -38,6 +47,13 @@ def native_release_platform(system: str, machine: str) -> str:
     if platform_id not in RELEASE_PLATFORMS:
         raise ValueError("native release platform is absent from the release inventory")
     return platform_id
+
+
+def current_native_release_platform() -> str:
+    """Bind the actual running interpreter to one supported native payload."""
+    return native_release_platform(
+        platform.system(), platform.machine(), process_platform=sysconfig.get_platform()
+    )
 
 
 def release_title(tag: str) -> str:
