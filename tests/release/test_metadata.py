@@ -86,6 +86,27 @@ def test_product_release_history_is_provider_neutral(*, mocker) -> None:
         metadata.check_changelog_provenance([("1.0.3", "2026-07-03"), ("1.0.1", "2026-07-01")])
 
 
+def test_changelog_headings_remain_local_with_explicit_peer_history(tmp_path: Path) -> None:
+    """Keep version navigation in the document instead of selecting one Forge."""
+    source = changelog_document(
+        "## Unreleased\n\n"
+        "History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]\n\n"
+        "## 1.0.0 - 2026-07-01\n\n"
+        "History: [GitLab][1.0.0-gitlab] · [GitHub][1.0.0-github]\n\n"
+        "### Added\n\n- Initial release.\n\n"
+        "[Unreleased-gitlab]: http://gitlab.example.test/group/project/-/compare/v1.0.0...main\n"
+        "[Unreleased-github]: https://github.example.test/owner/project/compare/v1.0.0...main\n"
+        "[1.0.0-gitlab]: http://gitlab.example.test/group/project/-/tags/v1.0.0\n"
+        "[1.0.0-github]: https://github.example.test/owner/project/commits/v1.0.0\n"
+    )
+    document = tmp_path / "CHANGELOG.md"
+    document.write_text(source, encoding="utf-8")
+    assert metadata.changelog_releases(document) == [("1.0.0", "2026-07-01")]
+    document.write_text(source.replace("## 1.0.0 -", "## [1.0.0] -"), encoding="utf-8")
+    with pytest.raises(ValueError, match="release heading"):
+        metadata.changelog_releases(document)
+
+
 def test_prepare_release_rejects_only_future_dates() -> None:
     """Keep prepared metadata stable across days while rejecting impossible chronology."""
     current = date(2026, 7, 27)
@@ -171,38 +192,36 @@ def test_release_train_admission_uses_exact_local_chronology(
     ("source", "diagnostic"),
     [
         ("", "must start"),
-        ("# Changelog\n\n## [Unreleased]\n", "Keep a Changelog"),
-        (changelog_document("## [1.0.0] - 2026-07-01\n"), "must start"),
-        (changelog_document("## [Unreleased]\n## [Unreleased]\n"), "exactly one"),
-        (changelog_document("## [Unreleased]\n## [1.0.0]\n"), "must be dated"),
+        ("# Changelog\n\n## Unreleased\n", "Keep a Changelog"),
+        (changelog_document("## 1.0.0 - 2026-07-01\n"), "must start"),
+        (changelog_document("## Unreleased\n## Unreleased\n"), "exactly one"),
+        (changelog_document("## Unreleased\n## 1.0.0\n"), "must be dated"),
         (
             changelog_document(
-                "## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Fixed\n\n- Fix.\n\n"
-                "## [2.0.0] - 2026-07-02\n\n### Fixed\n\n- Fix.\n"
+                "## Unreleased\n\n## 1.0.0 - 2026-07-01\n\n### Fixed\n\n- Fix.\n\n"
+                "## 2.0.0 - 2026-07-02\n\n### Fixed\n\n- Fix.\n"
             ),
             "descending",
         ),
         (
             changelog_document(
-                "## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Quality\n\n- Improve.\n"
+                "## Unreleased\n\n## 1.0.0 - 2026-07-01\n\n### Quality\n\n- Improve.\n"
             ),
             "canonical category",
         ),
         (
             changelog_document(
-                "## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Fixed\n\n- One.\n\n"
+                "## Unreleased\n\n## 1.0.0 - 2026-07-01\n\n### Fixed\n\n- One.\n\n"
                 "### Fixed\n\n- Two.\n"
             ),
             "duplicate category",
         ),
         (
-            changelog_document(
-                "## [Unreleased]\n\n## [1.0.0] - 2026-02-30\n\n### Fixed\n\n- Fix.\n"
-            ),
+            changelog_document("## Unreleased\n\n## 1.0.0 - 2026-02-30\n\n### Fixed\n\n- Fix.\n"),
             "valid date",
         ),
         (
-            changelog_document("## [Unreleased]\n\n## [1.0.0] - 2026-07-01\n\n### Fixed\n"),
+            changelog_document("## Unreleased\n\n## 1.0.0 - 2026-07-01\n\n### Fixed\n"),
             "change item",
         ),
     ],
@@ -218,18 +237,101 @@ def test_changelog_requires_ordered_dated_release_sections(
 
 def test_changelog_accepts_unreleased_only_and_canonical_categories(tmp_path: Path) -> None:
     initial = tmp_path / "initial.md"
-    initial.write_text(changelog_document("## [Unreleased]\n"), encoding="utf-8")
+    initial.write_text(changelog_document("## Unreleased\n"), encoding="utf-8")
     assert metadata.changelog_releases(initial) == []
 
     released = tmp_path / "released.md"
     released.write_text(
         changelog_document(
-            "## [Unreleased]\n\n### Changed\n\n- Pending.\n\n"
-            "## [1.0.0] - 2026-07-01\n\n### Added\n\n- Initial release.\n"
+            "## Unreleased\n\n### Changed\n\n- Pending.\n\n"
+            "## 1.0.0 - 2026-07-01\n\n### Added\n\n- Initial release.\n"
         ),
         encoding="utf-8",
     )
     assert metadata.changelog_releases(released) == [("1.0.0", "2026-07-01")]
+
+
+@pytest.mark.parametrize(
+    ("heading", "version"),
+    [
+        ("## 2.0.0 - 2026-07-03 [YANKED]", "2.0.0"),
+        ("## 2.0.0-rc.1 - 2026-07-03", "2.0.0-rc.1"),
+        ("## 2.0.0+build.7 - 2026-07-03", "2.0.0+build.7"),
+        ("## 2.0.0-rc.1+build.7 - 2026-07-03", "2.0.0-rc.1+build.7"),
+    ],
+)
+def test_changelog_accepts_official_release_headings(
+    tmp_path: Path, heading: str, version: str
+) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        changelog_document(f"## Unreleased\n\n{heading}\n\n### Fixed\n\n- A fix.\n"),
+        encoding="utf-8",
+    )
+    assert metadata.changelog_releases(path) == [(version, "2026-07-03")]
+
+
+def test_changelog_orders_prereleases_below_the_release(tmp_path: Path) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        changelog_document(
+            "## Unreleased\n\n"
+            "## 1.0.0-rc.1 - 2026-07-02\n\n### Fixed\n\n- Candidate.\n\n"
+            "## 1.0.0 - 2026-07-01\n\n### Added\n\n- Release.\n"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="descending SemVer"):
+        metadata.changelog_releases(path)
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "## 01.0.0 - 2026-07-01",
+        "## 1.0.0-01 - 2026-07-01",
+        "## 1.0.0+build..7 - 2026-07-01",
+    ],
+)
+def test_changelog_rejects_invalid_semver_identifiers(tmp_path: Path, heading: str) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        changelog_document(f"## Unreleased\n\n{heading}\n\n### Fixed\n\n- A fix.\n"),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="SemVer"):
+        metadata.changelog_releases(path)
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "## Unreleased - 2026-07-01",
+        "## Unreleased - 2026-07-01 [YANKED]",
+    ],
+)
+def test_changelog_unreleased_cannot_be_dated_or_yanked(tmp_path: Path, heading: str) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        changelog_document(f"{heading}\n"),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Unreleased"):
+        metadata.changelog_releases(path)
+
+
+def test_changelog_rejects_duplicate_released_version(tmp_path: Path) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        changelog_document(
+            "## Unreleased\n\n"
+            "## 1.0.0 - 2026-07-02\n\n### Fixed\n\n- First.\n\n"
+            "## 1.0.0 - 2026-07-01\n\n### Fixed\n\n- Again.\n"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate released version"):
+        metadata.changelog_releases(path)
 
 
 def test_exact_release_tag_contract(*, mocker) -> None:
@@ -464,7 +566,8 @@ def test_native_bundle_has_one_runtime_and_one_signer() -> None:
     )
     assert github.count("python -m tools.release.artifact assemble") == 1, "bundle assembled twice"
     assert github.count("--sign") == 1, "bundle signed more than once"
-    assert "nox -s release" not in gitlab, "GitLab independently rebuilds product assets"
+    assert "nox -s release_compatibility" in gitlab
+    assert "python -m tools.release.artifact assemble" not in gitlab
 
 
 def test_current_release_metadata_chronology(
@@ -474,7 +577,7 @@ def test_current_release_metadata_chronology(
     source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     version = metadata.read_version()
     tag_exists = _run("git", "rev-parse", "--verify", f"refs/tags/v{version}").returncode == 0
-    prepared = f"## [{version}]" in source and not tag_exists
+    prepared = f"## {version}" in source and not tag_exists
     metadata.main(("--prepare-release",) if prepared else ())
     assert f"metadata: {version} OK" in capsys.readouterr().out
     if not prepared:
@@ -482,7 +585,7 @@ def test_current_release_metadata_chronology(
             metadata.main(("--prepare-release",))
     tagged_version = metadata.known_release_versions()[0]
     release_section = re.compile(
-        rf"(?ms)^## \[{re.escape(tagged_version)}\] - \d{{4}}-\d{{2}}-\d{{2}}\n.*?(?=^## \[|\Z)"
+        rf"(?ms)^## {re.escape(tagged_version)} - \d{{4}}-\d{{2}}-\d{{2}}\n.*?(?=^## |\Z)"
     )
     incomplete = tmp_path / "CHANGELOG.md"
     incomplete.write_text(release_section.sub("", source, count=1), encoding="utf-8")
@@ -565,7 +668,12 @@ def test_missing_tag_is_a_release_identity_error(mocker):
             "release and governance checker",
         ),
         (".gitlab-ci.yml", "verify-release-tag:", "other-tag:", "exact trusted product tag"),
-        (".gitlab-ci.yml", "", "\npublish-gitlab-release:\n", "must not rebuild"),
+        (
+            ".gitlab-ci.yml",
+            "",
+            "\npublish-gitlab-release:\n  script:\n    - python -m tools.release.publication gitlab\n",
+            "must not sign or republish",
+        ),
         (
             "docs/operations/forge-operations.md",
             "tools.forge.audit",
@@ -606,3 +714,29 @@ def test_governance_requires_real_repository_carriers(tmp_path, mocker):
     mocker.patch.object(metadata, "ROOT", tmp_path)
     with pytest.raises(ValueError, match="missing governance documents"):
         metadata.check_governance_contract()
+
+
+@pytest.mark.parametrize(
+    ("command", "allowed"),
+    [
+        ("nox -s release_compatibility", True),
+        ("nox -s release_asset", True),
+        ("python -m tools.release.artifact assemble --sign", False),
+        ("python -m tools.release.publication gitlab", False),
+    ],
+)
+def test_gitlab_candidate_verification_does_not_grant_release_publication(command, allowed, mocker):
+    original = Path.read_text
+
+    def read(path, *args, **kwargs):
+        content = original(path, *args, **kwargs)
+        if path == ROOT / ".gitlab-ci.yml":
+            return content + f"\nprobe:\n  script:\n    - {command}\n"
+        return content
+
+    mocker.patch.object(Path, "read_text", read)
+    if allowed:
+        metadata.check_governance_contract()
+    else:
+        with pytest.raises(ValueError, match="must not sign or republish"):
+            metadata.check_governance_contract()

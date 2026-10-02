@@ -45,6 +45,10 @@ class ServiceAdapter(Protocol):
         """Return the executable configured in the native service definition."""
         ...
 
+    def status(self, ctx: runtime_context.RuntimeContext) -> str:
+        """Return the native service state for this installation."""
+        ...
+
 
 class UnknownDeploymentOutcome(errors.InstallError):
     """The deployment controller cannot prove whether the successor committed."""
@@ -143,20 +147,39 @@ def _fresh_install(
             runtime_reader=runtime_reader,
             timeout_seconds=timeout_seconds,
         )
-    except errors.NativeServiceUnavailableError:
-        payload.rollback()
-        raise
-    except BaseException:
+    except BaseException as install_error:
+        service_unavailable = isinstance(install_error, errors.NativeServiceUnavailableError)
+        if not service_unavailable:
+            try:
+                discard_runtime(
+                    candidate,
+                    adapter=adapter,
+                    timeout_seconds=timeout_seconds,
+                )
+            except UnknownDeploymentOutcome as cleanup_error:
+                detail = (
+                    f"fresh installation failed: {errors.failure_summary(install_error)}; "
+                    "candidate runtime cleanup is unconfirmed; "
+                    f"cleanup failure: {errors.failure_summary(cleanup_error.__cause__ or cleanup_error)}"
+                )
+                unknown = UnknownDeploymentOutcome(f"{detail}; transaction preserved for recovery")
+                try:
+                    payload.preserve_for_recovery(str(unknown))
+                except BaseException as recovery_error:
+                    raise UnknownDeploymentOutcome(
+                        f"{detail}; recovery record failed: {errors.failure_summary(recovery_error)}"
+                    ) from recovery_error
+                raise unknown from cleanup_error
         try:
-            _remove_candidate_runtime(
-                candidate,
-                adapter=adapter,
-                timeout_seconds=timeout_seconds,
+            payload.rollback()
+        except BaseException as rollback_error:
+            failure = (
+                errors.NativeServiceUnavailableError if service_unavailable else errors.InstallError
             )
-        except UnknownDeploymentOutcome as cleanup_error:
-            payload.preserve_for_recovery(str(cleanup_error))
-            raise
-        payload.rollback()
+            raise failure(
+                f"fresh installation failed: {errors.failure_summary(install_error)}; "
+                f"payload rollback failed: {errors.failure_summary(rollback_error)}"
+            ) from rollback_error
         raise
     payload.finalize(runtime)
     return {"state": "installed", "runtime": runtime}
@@ -219,7 +242,7 @@ def _upgrade(
             try:
                 payload.preserve_for_recovery(
                     "successor committed but native supervisor rebind failed; "
-                    f"failure: {_public_failure(upgrade_error)}"
+                    f"failure: {errors.failure_summary(upgrade_error)}"
                 )
             except errors.InstallError as preserve_error:
                 unknown = UnknownDeploymentOutcome(
@@ -244,8 +267,8 @@ def _upgrade(
             except BaseException as restore_error:
                 unknown = UnknownDeploymentOutcome(
                     "native supervisor rollback could not restore predecessor admission; "
-                    f"upgrade failure: {_public_failure(upgrade_error)}; "
-                    f"admission recovery failure: {_public_failure(restore_error)}"
+                    f"upgrade failure: {errors.failure_summary(upgrade_error)}; "
+                    f"admission recovery failure: {errors.failure_summary(restore_error)}"
                 )
                 payload.preserve_for_recovery(str(unknown))
                 raise unknown from restore_error
@@ -268,7 +291,7 @@ def _bind_control_supervisor(
         raise errors.InstallError("native supervisor did not bind the lifecycle control executable")
 
 
-def _remove_candidate_runtime(
+def discard_runtime(
     candidate: runtime_context.RuntimeContext,
     *,
     adapter: ServiceAdapter,
@@ -276,7 +299,18 @@ def _remove_candidate_runtime(
 ) -> None:
     """Remove candidate supervision and processes before payload rollback."""
     try:
-        adapter.uninstall(candidate)
+        configured = adapter.configured_executable(candidate)
+        if configured is None:
+            if adapter.status(candidate) != "absent":
+                raise errors.InstallError("candidate native supervisor identity is unproved")
+        else:
+            if runtime_spec.normalized_path(configured) != runtime_spec.normalized_path(
+                candidate.executable
+            ):
+                raise errors.InstallError("candidate native supervisor identity is unproved")
+            adapter.uninstall(candidate)
+        if adapter.status(candidate) != "absent":
+            raise errors.InstallError("candidate native supervision is not absent")
         adapter.terminate_runtime(candidate, timeout_seconds=timeout_seconds)
     except BaseException as cleanup_error:
         raise UnknownDeploymentOutcome(
@@ -404,10 +438,3 @@ def _runtime_matches(runtime: Mapping[str, object], expected: Mapping[str, objec
         and runtime.get("accepting") is True
         and runtime.get("draining") is not True
     )
-
-
-def _public_failure(error: BaseException) -> str:
-    """Describe a public product failure without exposing arbitrary exception text."""
-    if isinstance(error, errors.ProductError):
-        return str(error)
-    return error.__class__.__name__

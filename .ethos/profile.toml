@@ -13,6 +13,7 @@ static-analysis = "python-quality"
 [[proof.gates]]
 id = "python-quality"
 kind = "static"
+verification_providers = ["ethos.adapters.gates.code_quality:static_report"]
 command = [
   "mise",
   "exec",
@@ -21,24 +22,24 @@ command = [
   "uv",
   "run",
   "--locked",
-  "--no-sync",
-  "--python",
-  "python",
+  "--group",
+  "quality",
   "nox",
   "-s",
   "quality",
 ]
 dimensions = ["static-analysis", "types", "structure", "coverage"]
-execution_mode = "subprocess"
+execution_mode = "verified-command"
 evidence_class = "proof"
 trust_bearing = true
-tool_adapter = "repository-native"
+tool_adapter = "ethos"
 network_policy = "offline"
 writes_files = true
 
 [[proof.gates]]
 id = "python-matrix"
 kind = "test"
+verification_providers = ["ethos.adapters.gates.code_quality:behavior_report"]
 command = [
   "mise",
   "exec",
@@ -47,17 +48,16 @@ command = [
   "uv",
   "run",
   "--locked",
-  "--no-sync",
-  "--python",
-  "python",
+  "--group",
+  "quality",
   "nox",
   "-s",
   "tests",
 ]
 dimensions = ["behavior", "test"]
-execution_mode = "subprocess"
+execution_mode = "verified-command"
 evidence_class = "proof"
 trust_bearing = true
-tool_adapter = "repository-native"
+tool_adapter = "ethos"
 network_policy = "offline"
 writes_files = true

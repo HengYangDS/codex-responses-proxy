@@ -1,0 +1,2 @@
+# Native dependency locks are byte-owned and digest-checked by Mise/AUBE.
+../../../.mise/locks/**/aube-lock.yaml

@@ -11,16 +11,21 @@ import subprocess
 import sys
 import urllib.request
 from collections.abc import Callable
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
+import psutil
 import pytest
 
 from codex_responses_proxy import product_identity
+from codex_responses_proxy.lifecycle import artifact
 from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import generation
+from codex_responses_proxy.lifecycle import owned_files
+from codex_responses_proxy.lifecycle import projection
 from codex_responses_proxy.lifecycle.supervision import native_service
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime.process_environment import native_process_environment
@@ -43,47 +48,64 @@ _SERVICE_ROLES = frozenset(
 
 
 def _macos_service_projection() -> tuple[
-    frozenset[str], frozenset[tuple[str, str]], tuple[tuple[str, str], ...]
+    frozenset[tuple[str, str]], frozenset[tuple[str, str, str]], tuple[tuple[str, str], ...]
 ]:
     """Return every persistent launchd surface owned by this product."""
-    completed = subprocess.run(
-        ["/bin/launchctl", "list"],
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-    labels = frozenset(
-        fields[2]
-        for line in completed.stdout.splitlines()[1:]
-        if len(fields := line.split("\t")) >= 3 and fields[2].startswith(runtime_context.SERVICE_ID)
-    )
     getuid: object = getattr(os, "getuid", None)
     if not callable(getuid):
         raise TypeError("macOS user identity is unavailable")
-    disabled = subprocess.run(
-        [
-            "/bin/launchctl",
-            "print-disabled",
-            f"gui/{cast(Callable[[], int], getuid)()}",
-        ],
+    uid = cast(Callable[[], int], getuid)()
+    domain = f"user/{uid}"
+    completed = subprocess.run(
+        ["/bin/launchctl", "print", domain],
         capture_output=True,
-        check=True,
+        check=False,
         text=True,
     )
-    overrides: frozenset[tuple[str, str]] = frozenset(
-        (str(match.group("label")), str(match.group("state")))
-        for match in re.finditer(
-            rf'"(?P<label>{re.escape(runtime_context.SERVICE_ID)}(?:\.[0-9a-f]{{12}})?)"'
-            r"\s*=>\s*(?P<state>enabled|disabled)",
-            disabled.stdout,
+    if completed.returncode:
+        raise RuntimeError("launchd user-domain observation failed")
+    domains = [(domain, completed.stdout)]
+    if re.search(r"(?m)^\tgui asid = [1-9][0-9]*\s*$", completed.stdout):
+        gui = f"gui/{uid}"
+        observed = subprocess.run(
+            ["/bin/launchctl", "print", gui],
+            capture_output=True,
+            check=True,
+            text=True,
         )
-    )
+        domains.append((gui, observed.stdout))
+    labels: set[tuple[str, str]] = set()
+    overrides: set[tuple[str, str, str]] = set()
+    for domain, observation in domains:
+        services = re.search(r"(?ms)^\tservices = \{\n(.*?)^\t\}", observation)
+        if services is None:
+            raise RuntimeError("launchd domain service inventory is unproved")
+        labels.update(
+            (domain, fields[-1])
+            for line in services.group(1).splitlines()
+            if len(fields := line.split()) >= 3
+            and fields[-1].startswith(runtime_context.SERVICE_ID)
+        )
+        disabled = subprocess.run(
+            ["/bin/launchctl", "print-disabled", domain],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        overrides.update(
+            (domain, str(match.group("label")), str(match.group("state")))
+            for match in re.finditer(
+                rf'"(?P<label>{re.escape(runtime_context.SERVICE_ID)}(?:\.[0-9a-f]{{12}})?)"'
+                r"\s*=>\s*(?P<state>enabled|disabled)",
+                disabled.stdout,
+            )
+        )
     launch_agents = Path.home() / "Library" / "LaunchAgents"
     plists = tuple(
         (path.name, hashlib.sha256(path.read_bytes()).hexdigest())
         for path in sorted(launch_agents.glob(f"{runtime_context.SERVICE_ID}*.plist"))
     )
-    return labels, overrides, plists
+    return frozenset(labels), frozenset(overrides), plists
 
 
 @pytest.fixture(scope="module")
@@ -122,24 +144,107 @@ def run_command(
     return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
+def interrupt_native_controller(
+    controller: subprocess.Popen[bytes],
+    executable: Path,
+    identities: tuple[process.OwnedProcess, ...],
+) -> None:
+    """Interrupt only captured old-producer generations, children before parent."""
+    ordered = sorted(identities, key=lambda owned: owned.pid == controller.pid)
+    for owned in ordered:
+        if not process.owned_process_alive(owned):
+            continue
+        try:
+            native = psutil.Process(owned.pid)
+            assert native.create_time() == owned.created_at
+            reread = process.capture_executable(owned.pid, str(executable), roles={"install"})
+            if reread is None and not process.owned_process_alive(owned):
+                continue
+            assert reread == owned
+            native.kill()
+        except psutil.NoSuchProcess:
+            continue
+    controller.wait(timeout=30)
+    for owned in ordered:
+        assert process.wait_for_exit(owned, timeout_seconds=10)
+    # Inventory only after the captured producer has stopped, not in its
+    # materialized-to-activated window.
+    assert process.pids_naming_executable(str(executable), roles={"install"}) == []
+
+
+def assert_native_target_absent(
+    ctx: runtime_context.RuntimeContext,
+    generations: tuple[runtime_context.RuntimeContext, ...],
+) -> None:
+    """Prove the public operation cleaned its target before fallback teardown."""
+    service = native_service.adapter()
+    assert service.status(ctx) == "absent"
+    assert service.configured_executable(ctx) is None
+    assert process.listener_pids(ctx.port) == []
+    for owned_ctx in generations:
+        assert process.pids_naming_executable(owned_ctx.executable, roles=_SERVICE_ROLES) == []
+    assert not Path(ctx.command).exists()
+    assert not Path(ctx.command).is_symlink()
+
+
+def assert_admitted_payload_identity(
+    ctx: runtime_context.RuntimeContext,
+    admitted: artifact.VerifiedArtifact,
+    observed: Mapping[str, object] | None = None,
+) -> None:
+    """Bind the complete installed payload and any live runtime to one admitted asset."""
+    selected = generation.selected_context(ctx)
+    root = Path(selected.payload_dir)
+    assert projection.verify_payload_manifest(selected)[0]
+    assert hashlib.sha256((root / inventory.RELEASE_RECEIPT_FILENAME).read_bytes()).hexdigest() == (
+        admitted.receipt_sha256
+    )
+    expected = {blob.path for blob in admitted.peek_blobs()}
+    actual = set()
+    for path in root.rglob("*"):
+        assert not path.is_symlink()
+        if path.is_file():
+            actual.add(path.relative_to(root).as_posix())
+    assert actual == expected | set(owned_files.OWNED_PAYLOAD_METADATA)
+    for blob in admitted.peek_blobs():
+        path = root.joinpath(*Path(blob.path).parts)
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == blob.sha256
+    if observed is not None:
+        assert observed.get("state") == "running"
+        assert observed.get("release") == admitted.version
+        runtime = observed.get("runtime")
+        assert isinstance(runtime, dict)
+        assert runtime.get("release") == admitted.version
+        assert runtime.get("release_receipt_sha256") == admitted.receipt_sha256
+        assert runtime.get("serving_payload_sha256") == admitted.serving_payload_sha256
+        assert type(runtime.get("pid")) is int
+        assert runtime["pid"] > 0
+        assert runtime.get("accepting") is True
+        assert runtime.get("draining") is False
+
+
 def signed_asset(
     bundle: Path,
     output: Path,
     *,
     version: str,
-    upstream_url: str,
+    upstream_url: str | None,
     key: Path,
     trust: str,
 ) -> Path:
     """Build one route-controlled asset from exact native bundle bytes."""
-    platform_id = product_identity.native_release_platform(platform.system(), platform.machine())
+    platform_id = product_identity.current_native_release_platform()
     executable_name = product_identity.executable_name(windows=platform_id.startswith("windows-"))
     executable = bundle / executable_name
     files: dict[str, bytes | product_assets.ArchiveFile] = {
         f"bin/{executable_name}": product_assets.ArchiveFile(executable.read_bytes(), 0o755),
         "providers.toml": (
-            f'version = 1\n\n[providers.dmxapi]\nbase_url = "{upstream_url}"\npolicy = "dmxapi"\n'
-        ).encode(),
+            (ROOT / "src/codex_responses_proxy/providers/manifest.toml").read_bytes()
+            if upstream_url is None
+            else (
+                f'version = 1\n\n[providers.dmxapi]\nbase_url = "{upstream_url}"\npolicy = "dmxapi"\n'
+            ).encode()
+        ),
         "LICENSE": (ROOT / "LICENSE").read_bytes(),
     }
     for relative, source in release_assembly.bundle_files(bundle):

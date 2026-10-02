@@ -35,16 +35,19 @@ mise run bootstrap
 ```
 
 `mise.toml` and `mise.lock` own language runtimes and standalone executables.
-`package.json` and `package-lock.json` own OpenSpec, Prettier, and their complete
-npm graph. Governance invokes Node tools through `npm exec --offline`, so local,
-GitHub, GitLab, POSIX, and Windows use the same repository installation.
-The `mise.toml` tasks pass the exact mise Python installation to uv and bind the
-project environment to this worktree's `.venv`. An activated environment or
-inherited Python override does not select the development interpreter. Nox owns
-disposable `.nox/<session>` environments and selects compatibility interpreters
-independently. Download caches may be shared; mutable environments are local to
-their worktree or Nox session. Repeat bootstrap after dependency locks change;
-editing checks do not reinstall Node dependencies.
+`package.json` and `package-lock.json` own OpenSpec, Prettier, Markdown lint,
+and their complete npm graph. Governance invokes Node tools through
+`npm exec --offline`, so local, GitHub, GitLab, POSIX, and Windows use the same
+repository installation. Mise's native `mise which python` resolver supplies the
+exact locked executable to uv, not the installation directory. The `mise.toml`
+environment binds the project to this worktree's `.venv`. An activated
+environment or inherited Python override does not select the development
+interpreter. Nox owns disposable `.nox/<session>` environments and selects
+compatibility interpreters independently. Download caches may be shared; mutable
+environments are local to their worktree or Nox session. Repeated verification
+preserves an already synchronized environment; changed interpreter or lock
+inputs still require synchronization. Repeat bootstrap after dependency locks
+change; editing checks do not reinstall Node dependencies.
 
 Run the repository-owned gates:
 
@@ -53,9 +56,20 @@ mise run quick
 mise run check
 ```
 
-`quick` is the editing feedback loop. `check` calls Nox's `full` admission and avoids
-rerunning `quick` or the Python 3.12 behavior inventory already exercised by
-strict branch-aware coverage.
+`quick` is the editing feedback loop. `check` calls Nox's `full` admission and
+avoids rerunning `quick` or the Python 3.12 behavior inventory already exercised
+by strict branch-aware coverage.
+
+If a prerequisite fails, Nox stops before starting dependent quality or
+compatibility sessions. Fix the failed boundary before running the full graph
+again; partial output is not successful admission.
+
+Cold environment checks must include the project's configuration and complete
+release tags while excluding inherited host configuration. Mise's native
+configuration-directory and ceiling controls establish that test boundary; an
+empty scope cannot pass. Signing tests own disposable keys and a foreground
+agent with a short native socket path, independent of the operator's home or
+authentication agent.
 
 `mise run release` builds and verifies a native release asset without service
 registration. `mise run native` additionally exercises the real host service
@@ -63,11 +77,55 @@ lifecycle; run it only on an explicitly authorized test host. Neither task
 publishes a release or upgrades an installed product.
 
 Nox installs a non-editable wheel in isolated environments. Do not add
-`PYTHONPATH`, user-site fallback, or another repository's virtual environment
-to make a test pass.
+`PYTHONPATH`, user-site fallback, or another repository's virtual environment to
+make a test pass.
+
+Governance formats and lints every tracked current Markdown page, including
+OpenSpec. Prettier wraps Markdown prose at eighty columns without reflowing
+other file types. Markdown lint retains its default rules, permits repeated
+section names only under different parents, and rejects inline suppression.
+Code, tables, headings, and indivisible tokens are excluded from prose-width
+checks. Official OpenSpec templates keep their native title. Archived Changes
+retain their exact bytes. The same governance entry executes real formatter and
+lint counterexamples; Python-only native lifecycle jobs do not need Node for
+them.
+
+Online governance selects the Forge explicitly with
+`--online-links --peer gitlab` or `--online-links --peer github`. The existing
+publication table owns both repository addresses. Native Lychee excludes only
+the other exact repository's network requests; it still rejects broken
+selected-peer, public, and local links. An excluded peer is network-unqualified
+in that run, not available. Shared ETHOS repository-identity and reference
+admission remains separate. Local offline checks require neither Forge; an
+online invocation without peer selection checks both and requires both networks.
+
+Keep one blank line between distinct paragraphs, headings, lists, tables and
+fences. Peer list items remain contiguous when each contains only one paragraph,
+including wrapped tasks. Complex items may retain one blank separator; do not
+remove internal paragraph boundaries or alter literal code. Upstream rules do
+not constrain single-paragraph peer spacing, so the existing
+[Markdown policy](.config/quality/native/markdownlint-cli2.mjs) adds that narrow
+check through native list and paragraph tokens, not another parser or formatter.
+
+The same governance entry uses locked Vale for English spelling, repeated words,
+canonical terminology, and needless phrases. Its native parser checks headings,
+paragraphs, quotes, and tables without treating code or link destinations as
+prose. Keep technical terms in the native vocabulary and correct actual writing
+defects at their owner. A style fix must preserve the actor, obligation,
+condition, and evidence limit; a green prose check does not establish truth or
+semantic completeness. Do not suppress current pages or add another linguistic
+checker to work around a missed syntax node. The existing Markdown linter uses
+its native parser to reject Vale control comments in paragraphs, quotes, lists,
+and tables; literal code examples and ordinary comments remain valid. Native
+rule tests run from the same governance entry, not a separate command plane.
+Keep examples beside the rule. The existing native test suite runs Vale's
+`test --coverage` command and rejects a rule whose cases all pass without
+exercising a finding. Preserve uncertainty, literal code, and working native
+document checks; rule coverage alone does not establish useful prose.
 
 Build output, verification results, temporary files, and their cleanup follow
-the [evidence storage policy](docs/evidence/evidence-policy.md#storage-and-retention).
+the
+[evidence storage policy](docs/evidence/evidence-policy.md#storage-and-retention).
 Mutable output stays local to this worktree; ETHOS selects the shared storage
 for its own evidence and coordination.
 
@@ -83,12 +141,14 @@ flowchart LR
 
 - Add a failing regression before changing behavior.
 - Keep expected failures free of traceback and warning noise.
-- Keep statement and measured branch coverage at least 95% independently for
-  the product package, repository tools, and Nox orchestration. Native coverage
-  configuration owns those roots, including unexecuted namespace modules;
-  one root's coverage cannot compensate for another. Branchless roots require
+- Keep statement and measured branch coverage at least 95% independently for the
+  product package, repository tools, and Nox orchestration. Native coverage
+  configuration owns those roots, including unexecuted namespace modules; one
+  root's coverage cannot compensate for another. Branchless roots require
   statement evidence without inventing a branch denominator.
-- Use `type(scope): imperative subject`; `.config/quality/policy/commits.toml` is the machine-enforced grammar.
+- Use `type(scope): imperative subject`; the `[commit_policy]` table in
+  [.ethos/workspace.toml](.ethos/workspace.toml) owns the subject grammar and
+  signing requirements.
 - Preserve released history in Git, signed Forge records, the Changelog,
   completed OpenSpec lifecycle records, and admitted evidence. Keep historical
   carriers outside current mutation authority; remove only redundant current
@@ -96,8 +156,7 @@ flowchart LR
 
 ## Provider extension
 
-The provider registry is
-`src/codex_responses_proxy/providers/manifest.toml`.
+The provider registry is `src/codex_responses_proxy/providers/manifest.toml`.
 
 | Extension                                     | Required change                                         |
 | --------------------------------------------- | ------------------------------------------------------- |
@@ -131,10 +190,10 @@ compatibility aliases, and one-caller abstractions require an independently
 proved invariant; otherwise delete them.
 
 Design deep modules: a small intent-oriented interface owns the corresponding
-invariants, effects, rollback, and cleanup. Callers should not coordinate private
-steps or repeat its policy. Split at independent responsibilities, not arbitrary
-file-size targets; merge layers that only forward arguments without hiding
-meaningful complexity.
+invariants, effects, rollback, and cleanup. Callers should not coordinate
+private steps or repeat its policy. Split at independent responsibilities, not
+arbitrary file-size targets; merge layers that only forward arguments without
+hiding meaningful complexity.
 
 Before adding any file, directory, schema, carrier, helper, abstraction, state,
 or compatibility path, establish all three conditions:
@@ -171,7 +230,8 @@ the other. See [Forge operations](docs/operations/forge-operations.md).
 
 - [ ] Product and developer interfaces remain separate.
 - [ ] Human and JSON output derive from the same result model.
-- [ ] No personal identity, local path, credential, or private Forge coordinate is tracked.
+- [ ] No personal identity, local path, credential, or private Forge coordinate
+      is tracked.
 - [ ] No provider identity drives generic behavior.
 - [ ] Current docs match code, tests, CLI help, and release assets.
 - [ ] Focused tests and all affected gates pass.

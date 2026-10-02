@@ -15,6 +15,7 @@ from pathlib import Path
 from pathlib import PurePosixPath
 from pathlib import PureWindowsPath
 
+import psutil
 import pytest
 
 from codex_responses_proxy import product_identity
@@ -23,18 +24,20 @@ from codex_responses_proxy.lifecycle import command
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle import control as lifecycle_control
 from codex_responses_proxy.lifecycle import generation
-from codex_responses_proxy.lifecycle import rollback as payload_rollback
 from codex_responses_proxy.lifecycle import state as payload_state
-from codex_responses_proxy.lifecycle import transaction as payload_transaction
 from codex_responses_proxy.lifecycle.supervision import process
 from codex_responses_proxy.runtime import config as runtime_config
 from codex_responses_proxy.runtime.process_environment import native_process_environment
 from codex_responses_proxy.service.handoff import transaction as handoff_transaction
 from tests.release.fixtures import COMMAND_TIMEOUT_SECONDS
+from tests.release.fixtures import assert_admitted_payload_identity
+from tests.release.fixtures import assert_native_target_absent
 from tests.release.fixtures import cleanup_runtime
+from tests.release.fixtures import interrupt_native_controller
 from tests.release.fixtures import native_service_projection
 from tests.release.fixtures import owned_runtime_contexts
 from tests.release.fixtures import post_response
+from tests.release.fixtures import preserve_native_host_projection
 from tests.release.fixtures import run_command
 from tests.release.fixtures import runtime_context_for
 from tests.release.fixtures import signed_asset
@@ -47,6 +50,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 pytestmark = [
     pytest.mark.native_distribution,
+    pytest.mark.usefixtures(preserve_native_host_projection.__name__),
 ]
 
 
@@ -211,7 +215,7 @@ def _materialize_native_bundle(candidate: artifact.VerifiedArtifact, output: Pat
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(blob.content)
         target.chmod(0o755 if blob.mode == "100755" else 0o644)
-    platform_id = product_identity.native_release_platform(platform.system(), platform.machine())
+    platform_id = product_identity.current_native_release_platform()
     executable = output / product_identity.executable_name(
         windows=platform_id.startswith("windows-")
     )
@@ -220,9 +224,295 @@ def _materialize_native_bundle(candidate: artifact.VerifiedArtifact, output: Pat
 
 
 class TestPublishedPredecessorCompatibility:
-    """Prove one authentic published predecessor upgrades without traffic loss."""
+    """Separate authentic retained assets, old-produced state, and controlled traffic."""
 
-    def test_real_predecessor_upgrades_to_current_native_candidate(self, tmp_path: Path) -> None:
+    def test_untouched_published_payload_survives_upgrade_and_rollback(
+        self, tmp_path: Path
+    ) -> None:
+        current_executable = _required_path("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
+        current_bundle = _required_path("CODEX_RESPONSES_PROXY_NATIVE_BUNDLE")
+        previous_asset = _required_path("CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET")
+        previous_trust = _required_path("CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR")
+        predecessor = artifact.admit(previous_asset, trust_anchor=previous_trust)
+        current_version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
+        assert _version(predecessor.version) < _version(current_version)
+
+        key = tmp_path / "release-key"
+        subprocess.run(
+            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)],
+            check=True,
+            timeout=30,
+        )
+        public_key = key.with_suffix(".pub").read_text(encoding="ascii").strip()
+        trust = f'{signing.PRINCIPAL} namespaces="{signing.NAMESPACE}" {public_key}'
+        anchor = tmp_path / "allowed-signers"
+        anchor.write_text(trust + "\n", encoding="ascii")
+        candidate_asset = signed_asset(
+            current_bundle,
+            tmp_path / "candidate-assets",
+            version=current_version,
+            upstream_url=None,
+            key=key,
+            trust=trust,
+        )
+        candidate = artifact.admit(candidate_asset, trust_anchor=anchor)
+        home, install, state = tmp_path / "home", tmp_path / "payload", tmp_path / "state"
+        home.mkdir()
+        preserved = home / "unrelated.txt"
+        preserved.write_bytes(b"Unrelated operator content.\n")
+        port = free_port()
+        ctx = runtime_context_for(home, install, state, port)
+        environment = native_process_environment(
+            user_home=home, install_root=install, state_root=state
+        )
+        isolated_before = native_service_projection(ctx)
+        canonical_ctx = runtime_context.create()
+        canonical_before = native_service_projection(canonical_ctx)
+        listeners_before = process.listener_pids(runtime_config.DEFAULT_PORT)
+
+        with ExitStack() as cleanups:
+            cleanups.callback(cleanup_runtime, ctx)
+            installed = run_command(
+                current_executable,
+                environment,
+                "install",
+                "--asset",
+                str(previous_asset),
+                "--trust-anchor",
+                str(previous_trust),
+                "--port",
+                str(port),
+                "--json",
+            )
+            assert installed["state"] == "installed"
+            before = run_command(
+                current_executable, environment, "status", "--port", str(port), "--json"
+            )
+            assert_admitted_payload_identity(ctx, predecessor, before)
+            _assert_same_runtime_identity(installed, before)
+            old_runtime = before.get("runtime")
+            assert isinstance(old_runtime, dict)
+            old_pid = old_runtime.get("pid")
+            assert type(old_pid) is int
+            old_listener = process.capture_executable(
+                old_pid, generation.selected_context(ctx).executable
+            )
+            assert old_listener is not None
+
+            upgraded = run_command(
+                current_executable,
+                environment,
+                "install",
+                "--asset",
+                str(candidate_asset),
+                "--trust-anchor",
+                str(anchor),
+                "--port",
+                str(port),
+                "--json",
+            )
+            assert upgraded["state"] == "upgraded"
+            after = run_command(
+                current_executable, environment, "status", "--port", str(port), "--json"
+            )
+            assert_admitted_payload_identity(ctx, candidate, after)
+            _assert_same_runtime_identity(upgraded, after)
+            candidate_runtime = after.get("runtime")
+            assert isinstance(candidate_runtime, dict)
+            assert candidate_runtime["pid"] != old_pid
+            assert process.wait_for_exit(old_listener, timeout_seconds=10)
+            candidate_pid = candidate_runtime.get("pid")
+            assert type(candidate_pid) is int
+            candidate_listener = process.capture_executable(
+                candidate_pid, generation.selected_context(ctx).executable
+            )
+            assert candidate_listener is not None
+            assert after["payload_transaction"] is None
+
+            rolled_back = run_command(
+                current_executable,
+                environment,
+                "rollback",
+                "--to-release",
+                predecessor.version,
+                "--port",
+                str(port),
+                "--json",
+            )
+            assert rolled_back["state"] == "rolled_back"
+            restored = run_command(
+                current_executable, environment, "status", "--port", str(port), "--json"
+            )
+            assert_admitted_payload_identity(ctx, predecessor, restored)
+            _assert_same_runtime_identity(rolled_back, restored)
+            assert process.wait_for_exit(candidate_listener, timeout_seconds=10)
+            assert restored["payload_transaction"] is None
+            assert preserved.read_bytes() == b"Unrelated operator content.\n"
+            generation_contexts = owned_runtime_contexts(ctx)
+            run_command(
+                current_executable,
+                environment,
+                "uninstall",
+                "--port",
+                str(port),
+                "--purge",
+                "--json",
+            )
+            assert not install.exists()
+            assert not payload_state.transaction_root(ctx).exists()
+            assert not payload_state.journal_path(ctx).exists()
+            assert_native_target_absent(ctx, generation_contexts)
+
+        assert native_service_projection(ctx) == isolated_before
+        assert native_service_projection(canonical_ctx) == canonical_before
+        assert process.listener_pids(runtime_config.DEFAULT_PORT) == listeners_before
+        assert preserved.read_bytes() == b"Unrelated operator content.\n"
+
+    def test_current_recovery_consumes_unmodified_old_cli_projection(self, tmp_path: Path) -> None:
+        current_executable = _required_path("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
+        previous_asset = _required_path("CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET")
+        previous_trust = _required_path("CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR")
+        predecessor = artifact.admit(previous_asset, trust_anchor=previous_trust)
+        previous_bundle = _materialize_native_bundle(predecessor, tmp_path / "old-controller")
+        previous_executable = previous_bundle / product_identity.executable_name(
+            windows=platform.system() == "Windows"
+        )
+        home, install, state = tmp_path / "home", tmp_path / "payload", tmp_path / "state"
+        home.mkdir()
+        preserved = home / "unrelated.txt"
+        preserved.write_bytes(b"Unrelated operator content.\n")
+        port = free_port()
+        ctx = runtime_context_for(home, install, state, port)
+        environment = native_process_environment(
+            user_home=home, install_root=install, state_root=state
+        )
+        isolated_before = native_service_projection(ctx)
+        canonical_ctx = runtime_context.create()
+        canonical_before = native_service_projection(canonical_ctx)
+        listeners_before = process.listener_pids(runtime_config.DEFAULT_PORT)
+
+        with ExitStack() as cleanups:
+            cleanups.callback(cleanup_runtime, ctx)
+            with subprocess.Popen(
+                [
+                    str(previous_executable),
+                    "install",
+                    "--asset",
+                    str(previous_asset),
+                    "--trust-anchor",
+                    str(previous_trust),
+                    "--port",
+                    str(port),
+                    "--json",
+                ],
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            ) as controller:
+                parent = process.wait_for_executable(
+                    controller.pid, str(previous_executable), roles={"install"}, timeout_seconds=10
+                )
+                producers = []
+                if parent is not None:
+                    producers.append(parent)
+                    try:
+                        descendants = psutil.Process(parent.pid).children(recursive=True)
+                    except psutil.NoSuchProcess:
+                        descendants = []
+                    for child in descendants:
+                        owned = process.capture_executable(
+                            child.pid, str(previous_executable), roles={"install"}
+                        )
+                        if owned is not None:
+                            producers.append(owned)
+                try:
+                    assert parent is not None
+
+                    def old_projection_ready() -> bool:
+                        pending = payload_state.status(ctx)
+                        return (
+                            pending is not None
+                            and (pending.get("phase") or pending.get("state"))
+                            in {"materialized", "activated"}
+                        ) or controller.poll() is not None
+
+                    assert wait_until(old_projection_ready, timeout=COMMAND_TIMEOUT_SECONDS)
+                finally:
+                    interrupt_native_controller(controller, previous_executable, tuple(producers))
+                stdout, stderr = controller.communicate(timeout=30)
+                assert controller.returncode != 0, stdout.decode(errors="replace")
+                assert b"Traceback" not in stderr
+
+            assert process.pids_naming_executable(str(previous_executable), roles={"install"}) == []
+            journal = payload_state.read_journal(ctx)
+            assert (journal.get("phase") or journal["state"]) in {"materialized", "activated"}
+            assert journal["version"] == predecessor.version
+            assert journal["receipt_sha256"] == predecessor.receipt_sha256
+            old_ctx = generation.context(ctx, str(journal["transaction_id"]))
+            assert_admitted_payload_identity(old_ctx, predecessor)
+            journal_bytes = payload_state.journal_path(ctx).read_bytes()
+            projection_bytes = {
+                path: path.read_bytes()
+                for directory in (Path(install), payload_state.transaction_root(ctx))
+                for path in directory.rglob("*")
+                if path.is_file() and not path.is_symlink()
+            }
+            command_link = os.readlink(ctx.command) if Path(ctx.command).is_symlink() else None
+            runtime = lifecycle_control.read_runtime(ctx)
+            if runtime is not None:
+                assert runtime["release_receipt_sha256"] == predecessor.receipt_sha256
+                assert runtime["serving_payload_sha256"] == predecessor.serving_payload_sha256
+            assert payload_state.journal_path(ctx).read_bytes() == journal_bytes
+            assert all(path.read_bytes() == content for path, content in projection_bytes.items())
+            assert (
+                os.readlink(ctx.command) if Path(ctx.command).is_symlink() else None
+            ) == command_link
+
+            recovered = run_command(
+                current_executable, environment, "recover", "--port", str(port), "--json"
+            )
+            # Native supervision may complete startup after the controller exits.
+            # Bind the reported terminal outcome to its actual resulting state,
+            # not an instantaneous pre-recovery observation of an absent listener.
+            assert recovered.get("state") in {"finalized", "rolled_back"}
+            assert recovered == {
+                "state": recovered["state"],
+                "transaction_id": journal["transaction_id"],
+                "version": predecessor.version,
+            }
+            assert not payload_state.transaction_root(ctx).exists()
+            assert not payload_state.journal_path(ctx).exists()
+            if recovered["state"] == "finalized":
+                after = run_command(
+                    current_executable, environment, "status", "--port", str(port), "--json"
+                )
+                assert_admitted_payload_identity(ctx, predecessor, after)
+                generation_contexts = owned_runtime_contexts(ctx)
+                run_command(
+                    current_executable,
+                    environment,
+                    "uninstall",
+                    "--port",
+                    str(port),
+                    "--purge",
+                    "--json",
+                )
+            else:
+                generation_contexts = (old_ctx,)
+                assert not install.exists()
+                assert not Path(ctx.command).exists()
+                assert not Path(ctx.command).is_symlink()
+            assert_native_target_absent(ctx, generation_contexts)
+            assert preserved.read_bytes() == b"Unrelated operator content.\n"
+
+        assert native_service_projection(ctx) == isolated_before
+        assert native_service_projection(canonical_ctx) == canonical_before
+        assert process.listener_pids(runtime_config.DEFAULT_PORT) == listeners_before
+
+    def test_route_controlled_predecessor_preserves_concurrent_traffic(
+        self, tmp_path: Path
+    ) -> None:
         current_executable = _required_path("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
         current_bundle = _required_path("CODEX_RESPONSES_PROXY_NATIVE_BUNDLE")
         previous_asset = _required_path("CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET")
@@ -239,73 +529,6 @@ class TestPublishedPredecessorCompatibility:
             published_predecessor,
             tmp_path / "published-predecessor-bundle",
         )
-        previous_executable = previous_bundle / product_identity.executable_name(
-            windows=platform.system() == "Windows"
-        )
-
-        published_home = tmp_path / "published-home"
-        published_install = tmp_path / "published-payload"
-        published_state = tmp_path / "published-state"
-        published_home.mkdir()
-        published_port = free_port()
-        published_context = runtime_context_for(
-            published_home,
-            published_install,
-            published_state,
-            published_port,
-        )
-        published_environment = native_process_environment(
-            user_home=published_home,
-            install_root=published_install,
-            state_root=published_state,
-        )
-        with ExitStack() as published_cleanups:
-            published_cleanups.callback(cleanup_runtime, published_context)
-            installed_published = run_command(
-                previous_executable,
-                published_environment,
-                "install",
-                "--asset",
-                str(previous_asset),
-                "--trust-anchor",
-                str(previous_trust),
-                "--port",
-                str(published_port),
-                "--json",
-            )
-            assert installed_published["state"] == "installed"
-            published_status = run_command(
-                previous_executable,
-                published_environment,
-                "status",
-                "--port",
-                str(published_port),
-                "--json",
-            )
-            assert published_status["release"] == previous_version
-            assert (
-                run_command(
-                    previous_executable,
-                    published_environment,
-                    "doctor",
-                    "--port",
-                    str(published_port),
-                    "--json",
-                )["ok"]
-                is True
-            )
-            run_command(
-                previous_executable,
-                published_environment,
-                "uninstall",
-                "--port",
-                str(published_port),
-                "--purge",
-                "--json",
-            )
-            assert not published_install.exists()
-            assert not payload_state.transaction_root(published_context).exists()
-
         home, install, state = (
             tmp_path / "home",
             tmp_path / "payload",
@@ -360,7 +583,7 @@ class TestPublishedPredecessorCompatibility:
             cleanups.callback(cleanup_runtime, ctx)
 
             installed = run_command(
-                previous_executable,
+                current_executable,
                 environment,
                 "install",
                 "--asset",
@@ -525,50 +748,6 @@ class TestPublishedPredecessorCompatibility:
                 assert not install.joinpath(*PurePosixPath(relative).parts).exists()
             upstream.push((200, b'{"id":"after","status":"completed"}'))
             assert post_response(port) == b'{"id":"after","status":"completed"}'
-
-            current_selection = generation.read(ctx)
-            assert current_selection is not None
-            assert current_selection.predecessor is not None
-            installed_before_recovery = Path(payload_state.installed_path(ctx)).read_bytes()
-            command_before_recovery = Path(ctx.command).resolve(strict=True)
-            reverse = payload_transaction.begin_rollback_transaction(
-                ctx,
-                payload_rollback.load_retained(ctx),
-            )
-            reverse.commit_projection()
-            reverse.preserve_for_recovery("rollback controller outcome unknown")
-            rollback_snapshot = Path(payload_state.transaction_root(ctx), "rollback")
-            Path(rollback_snapshot, command.SNAPSHOT_FILENAME).unlink()
-            rollback_snapshot.rmdir()
-
-            recovered = run_command(
-                current_executable,
-                environment,
-                "recover",
-                "--port",
-                str(port),
-                "--json",
-            )
-            assert recovered == {
-                "transaction_id": current_selection.predecessor,
-                "version": previous_version,
-                "state": "rolled_back",
-            }
-            assert generation.read(ctx) == current_selection
-            assert Path(payload_state.installed_path(ctx)).read_bytes() == (
-                installed_before_recovery
-            )
-            assert Path(ctx.command).resolve(strict=True) == command_before_recovery
-            assert not Path(payload_state.transaction_root(ctx)).exists()
-            recovered_status = run_command(
-                current_executable,
-                environment,
-                "status",
-                "--port",
-                str(port),
-                "--json",
-            )
-            _assert_same_runtime_identity(after, recovered_status)
 
             rollback_hold_started = threading.Event()
             rollback_release = threading.Event()

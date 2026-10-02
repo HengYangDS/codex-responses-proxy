@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -147,7 +148,7 @@ _PRODUCT_PROOF_JOBS = (
     ],
 )
 def test_reusable_branch_proof_fails_if_any_required_job_is_skipped(
-    event: str, ref: str, base: str, required: tuple[str, ...]
+    event: str, ref: str, base: str, required: tuple[str, ...], tmp_path: Path
 ) -> None:
     """Reject an apparently green reusable run missing one required proof job."""
     verify = _load_yaml(ROOT / ".github/workflows/verify.yml")
@@ -155,10 +156,17 @@ def test_reusable_branch_proof_fails_if_any_required_job_is_skipped(
     assert "branch-proof" in jobs, "reusable branch proof job is missing"
     proof = _mapping(jobs["branch-proof"])
     assert proof["if"] == "always()"
-    assert set(_strings(proof["needs"])) == {*_PRODUCT_PROOF_JOBS, "accepted-source", "promotion"}
+    assert set(_strings(proof["needs"])) == {
+        *_PRODUCT_PROOF_JOBS,
+        "accepted-source",
+        "promotion",
+    }
     steps = _sequence(proof["steps"])
     step = _mapping(steps[-1])
+    assert step.get("shell") == "python", "Python proof must use the native Python shell"
     script = _string(step["run"])
+    script_file = tmp_path / "branch-proof.py"
+    script_file.write_text(script, encoding="utf-8")
     step_env = _mapping(step["env"])
     assert step_env["PRODUCT_PROOF_JOBS"] == " ".join(_PRODUCT_PROOF_JOBS)
     assert step_env["NEEDS_JSON"] == "${{ toJSON(needs) }}"
@@ -175,10 +183,12 @@ def test_reusable_branch_proof_fails_if_any_required_job_is_skipped(
 
     def run() -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            ("bash", "-e", "-c", script),
+            (sys.executable, str(script_file)),
             check=False,
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=10,
             env={**environment, "NEEDS_JSON": json.dumps(needs)},
         )
 
@@ -194,19 +204,26 @@ def test_reusable_branch_proof_fails_if_any_required_job_is_skipped(
     ("event", "ref"),
     [("workflow_call", "refs/heads/dev"), ("push", "refs/other/unexpected")],
 )
-def test_reusable_branch_proof_rejects_unknown_invocation_context(event: str, ref: str) -> None:
+def test_reusable_branch_proof_rejects_unknown_invocation_context(
+    event: str, ref: str, tmp_path: Path
+) -> None:
     """Fail if a reusable call loses the caller's branch event context."""
     jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
     assert "branch-proof" in jobs, "reusable branch proof job is missing"
     proof = _mapping(jobs["branch-proof"])
     step = _mapping(_sequence(proof["steps"])[-1])
+    assert step.get("shell") == "python", "Python proof must use the native Python shell"
     script = _string(step["run"])
+    script_file = tmp_path / "branch-proof.py"
+    script_file.write_text(script, encoding="utf-8")
     product_jobs = _string(_mapping(step["env"])["PRODUCT_PROOF_JOBS"])
     result = subprocess.run(
-        ("bash", "-e", "-c", script),
+        (sys.executable, str(script_file)),
         check=False,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=10,
         env={
             **os.environ,
             "GITHUB_EVENT_NAME": event,
@@ -249,6 +266,31 @@ def test_github_actions_consume_one_immutable_toolchain_catalog() -> None:
         if "uses" in (step := _mapping(raw_step))
     }
     assert projected == set(catalog)
+
+
+def test_gitlab_capability_tags_use_no_recursive_scheduling_alias() -> None:
+    """Native tags are direct project-variable references, not aliases."""
+    pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
+    assert "CODEX_RESPONSES_PROXY_GITLAB_LINUX_JOB_TAG" not in str(pipeline)
+    for name in (
+        "source-and-governance",
+        "verify-python",
+        "verify-python-quality",
+        "verify-performance",
+    ):
+        for suffix, variable in (("", "LINUX"), ("-review", "LINUX_REVIEW")):
+            job = _mapping(pipeline[name + suffix])
+            assert _strings(job["tags"]) == [f"$CODEX_RESPONSES_PROXY_GITLAB_{variable}_RUNNER_TAG"]
+
+
+def test_windows_native_ci_separates_host_architecture_and_python_abi() -> None:
+    pipeline = _load_yaml(ROOT / ".gitlab-ci.yml")
+    for name in ("verify-windows-native", "verify-windows-native-review"):
+        command = _strings(_mapping(pipeline[name])["script"])[0]
+        assert "sysconfig.get_platform() == 'win-amd64'" in command
+        assert "assert platform.machine() == 'AMD64'" not in command
+        assert "platform.machine()" in command
+        assert "PROCESSOR_ARCHITEW6432" in command
 
 
 def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
@@ -328,20 +370,22 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
 
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
     rules = _sequence(_mapping(gitlab["workflow"])["rules"])
-    assert {"if": '$CI_PIPELINE_SOURCE == "merge_request_event"'} in rules
-    assert {"if": '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"'} in rules
+    conditions = [_mapping(rule)["if"] for rule in rules]
+    assert '$CI_PIPELINE_SOURCE == "merge_request_event"' in conditions
+    assert '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"' in conditions
     assert {
         "if": "$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS",
         "when": "never",
     } in rules
     for job_id in ("verify-python", "verify-python-quality", "verify-performance"):
         job = _mapping(gitlab[job_id])
-        assert job["rules"] == [
-            {
-                "if": '$CI_PIPELINE_SOURCE == "merge_request_event" && '
-                '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
-            },
-            {"if": '$CI_COMMIT_BRANCH == "dev"'},
+        assert [_mapping(rule)["if"] for rule in _sequence(job["rules"])] == [
+            '$CI_COMMIT_BRANCH == "dev"',
+        ]
+        review = _mapping(gitlab[job_id + "-review"])
+        assert [_mapping(rule)["if"] for rule in _sequence(review["rules"])] == [
+            '$CI_PIPELINE_SOURCE == "merge_request_event" && '
+            '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"',
         ]
     python = _mapping(gitlab["verify-python"])
     matrix_values = _sequence(_mapping(python["parallel"])["matrix"])
@@ -368,6 +412,92 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     assert 'test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"' in tag_before_script
     assert any("tools.release.metadata --tag" in command for command in tag_script)
     assert any("tools.forge.tag_signature" in command for command in tag_script)
+
+
+def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> None:
+    """Keep Python compatibility and native lifecycle on distinct trust routes."""
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    linux = _mapping(gitlab["verify-python"])
+    expected_matrix = _mapping(_sequence(_mapping(linux["parallel"])["matrix"])[0])
+    assert expected_matrix == {"PYTHON_VERSION": ["3.12", "3.13", "3.14"]}
+    expected_python_versions = _strings(expected_matrix["PYTHON_VERSION"])
+    release_python = (ROOT / ".python-release").read_text(encoding="utf-8").strip()
+    assert release_python.startswith(expected_python_versions[-1] + ".")
+
+    for target, tag, variable in (
+        ("macos-arm64", "verify-macos-native", "MACOS"),
+        ("windows-arm64", "verify-windows-native", "WINDOWS"),
+    ):
+        for name, rules, tag_suffix in (
+            (tag, _sequence(linux["rules"]), variable),
+            (
+                f"{tag}-review",
+                _sequence(_mapping(gitlab["verify-python-review"])["rules"]),
+                f"{variable}_REVIEW",
+            ),
+        ):
+            job = _mapping(gitlab[name])
+            assert job["stage"] == "verify"
+            assert job["timeout"] == "20m"
+            assert [_mapping(rule)["if"] for rule in _sequence(job["rules"])] == [
+                _mapping(rule)["if"] for rule in rules
+            ]
+            assert "parallel" not in job
+            assert "cache" not in job
+            assert _mapping(job["inherit"]) == {"default": "false"}
+            assert _strings(job["tags"]) == [
+                f"$CODEX_RESPONSES_PROXY_GITLAB_{tag_suffix}_RUNNER_TAG"
+            ]
+            variables = _mapping(job["variables"])
+            assert variables["CODEX_RESPONSES_PROXY_CI_TARGET"] == target
+            assert variables["GIT_DEPTH"] == "0"
+            assert "PYTHON_VERSION" not in variables
+            assert variables["CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET"] == (
+                f"$CODEX_RESPONSES_PROXY_GITLAB_{variable}_PREVIOUS_RELEASE_ASSET"
+            )
+            assert variables["CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR"] == (
+                "$CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR"
+            )
+            before = "\n".join(_strings(job["before_script"]))
+            script = "\n".join(_strings(job["script"]))
+            assert "mise install --locked" in before
+            assert "uv sync --locked --group quality" in before
+            assert "uv python install" not in before
+            assert "git fetch --tags --force --prune --prune-tags origin" in before
+            assert "platform.system()" in script
+            assert "platform.machine()" in script
+            assert "assert platform.system()" in script
+            assert (
+                "assert sysconfig.get_platform()"
+                if variable == "WINDOWS"
+                else "assert platform.machine()"
+            ) in script
+            assert "nox -s release_compatibility" in script
+            assert "nox -s tests" not in script
+            assert "nox -s full" not in script
+            assert "windows-x86_64" not in script
+
+
+def test_gitlab_linux_review_and_protected_jobs_use_disjoint_capabilities() -> None:
+    """An untrusted merge request cannot choose the protected Linux runner."""
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    assert _mapping(gitlab["default"])["tags"] == ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+    assert _mapping(_mapping(gitlab["default"])["cache"])["key"] == (
+        "uv-$CODEX_RESPONSES_PROXY_CI_TARGET-$CI_COMMIT_REF_PROTECTED"
+    )
+    protected = "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
+    for name in (
+        "source-and-governance",
+        "verify-python",
+        "verify-python-quality",
+        "verify-performance",
+    ):
+        rules = _sequence(_mapping(gitlab[name])["rules"])
+        assert "variables" not in _mapping(rules[0])
+        review_rules = _sequence(_mapping(gitlab[name + "-review"])["rules"])
+        assert "variables" not in _mapping(review_rules[0])
+    for name in ("verify-accepted-source", "verify-promotion", "verify-release-tag"):
+        assert _mapping(gitlab[name])["tags"] == [protected]
 
 
 def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:
@@ -497,7 +627,10 @@ def test_release_compatibility_runs_real_published_upgrade_on_each_platform() ->
     assert proof["run"] == "uv run --locked --no-sync nox -s release_compatibility"
 
 
-def test_published_release_bytes_run_the_full_native_journey_on_each_platform() -> None:
+@pytest.mark.parametrize("platform", ["macos-arm64", "windows-x86_64", "linux-x86_64"])
+def test_published_release_bytes_run_the_full_native_journey_on_each_platform(
+    tmp_path: Path, platform: str
+) -> None:
     """Re-download the released candidate before claiming platform acceptance."""
     workflow = _load_yaml(ROOT / ".github/workflows/verify.yml")
     triggers = _mapping(workflow["on"])
@@ -520,6 +653,61 @@ def test_published_release_bytes_run_the_full_native_journey_on_each_platform() 
         {"platform": "linux-x86_64", "runner": "ubuntu-24.04"},
     ]
     steps = tuple(_mapping(step) for step in _sequence(job["steps"]))
+    binding = next(step for step in steps if step.get("name") == "Bind the exact published assets")
+    assert binding.get("shell") == "python", "Asset binding must use the native Python shell"
+    binding_env = _mapping(binding["env"])
+    assert binding_env == {
+        "CURRENT_RELEASE_DIRECTORY": "${{ runner.temp }}/current-release",
+        "PREVIOUS_RELEASE_DIRECTORY": "${{ runner.temp }}/previous-release",
+        "RELEASE_PLATFORM": "${{ matrix.platform }}",
+    }
+    native_script = tmp_path / "bind-assets.py"
+    native_script.write_text(_string(binding["run"]), encoding="utf-8")
+    current = tmp_path / "current release's input"
+    previous = tmp_path / "previous release's input"
+    current.mkdir()
+    previous.mkdir()
+    selected = current / f"codex-responses-proxy-1.0.2-{platform}.tar.gz"
+    predecessor = previous / f"codex-responses-proxy-1.0.1-{platform}.tar.gz"
+    selected.write_bytes(b"current archive fixture")
+    predecessor.write_bytes(b"predecessor archive fixture")
+    output = tmp_path / "github-environment"
+    output.write_text("EXISTING=value\n", encoding="utf-8")
+    environment = {
+        **os.environ,
+        "CURRENT_RELEASE_DIRECTORY": str(current),
+        "PREVIOUS_RELEASE_DIRECTORY": str(previous),
+        "RELEASE_PLATFORM": platform,
+        "GITHUB_ENV": str(output),
+    }
+
+    def run_binding() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            (sys.executable, str(native_script)),
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=10,
+        )
+
+    assert run_binding().returncode == 0
+    expected = (
+        f"EXISTING=value\nCODEX_RESPONSES_PROXY_CURRENT_RELEASE_ASSET={selected}\n"
+        f"CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET={predecessor}\n"
+    )
+    assert output.read_text(encoding="utf-8") == expected
+    for archive in (selected, predecessor):
+        archive.unlink()
+        assert run_binding().returncode != 0
+        assert output.read_text(encoding="utf-8") == expected
+        archive.write_bytes(b"restored archive fixture")
+        duplicate = archive.with_name(f"codex-responses-proxy-9.9.9-{platform}.tar.gz")
+        duplicate.write_bytes(b"ambiguous archive")
+        assert run_binding().returncode != 0
+        assert output.read_text(encoding="utf-8") == expected
+        duplicate.unlink()
     checkout = next(
         step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")
     )
@@ -643,7 +831,9 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     assert variables["UV_CACHE_DIR"] == "$CI_PROJECT_DIR/.cache/uv"
     assert variables["UV_PYTHON_INSTALL_DIR"] == "$CI_PROJECT_DIR/.cache/uv/python"
     assert variables["CODEX_RESPONSES_PROXY_CI_TARGET"] == "linux-arm64"
-    assert _mapping(default["cache"])["key"] == "uv-$CODEX_RESPONSES_PROXY_CI_TARGET"
+    assert _mapping(default["cache"])["key"] == (
+        "uv-$CODEX_RESPONSES_PROXY_CI_TARGET-$CI_COMMIT_REF_PROTECTED"
+    )
     assert _mapping(default["cache"])["paths"] == [".cache/uv/"]
     assert _mapping(quality["image"]) == {"name": "$UV_PYTHON_FLOOR_IMAGE"}
     assert "python -m pip install" not in text
@@ -661,16 +851,21 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
     source = _mapping(gitlab["source-and-governance"])
 
     image = _mapping(source["image"])
-    assert re.fullmatch(r"ghcr.io/jdx/mise@sha256:[0-9a-f]{64}", _string(image["name"]))
+    assert re.fullmatch(
+        r"ghcr.io/jdx/mise:[0-9]{4}\.[0-9]+\.[0-9]+-debian@sha256:[0-9a-f]{64}",
+        _string(image["name"]),
+    )
     assert image["entrypoint"] == [""]
     assert _mapping(source["variables"]) == {
         "GIT_DEPTH": "0",
         "MISE_ENABLE_TOOLS": (
-            "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,"
-            "github:rhysd/actionlint,github:lycheeverse/lychee"
+            "python,uv,node,npm,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,"
+            "github:rhysd/actionlint,github:lycheeverse/lychee,aqua:vale-cli/vale"
         ),
     }
     assert source["before_script"] == [
+        "apt-get update -qq",
+        "apt-get install -qq -y --no-install-recommends libatomic1",
         "mise install --locked",
         "npm ci --ignore-scripts",
         "npm audit signatures",
@@ -683,7 +878,7 @@ def test_gitlab_source_job_uses_one_locked_toolchain() -> None:
     (source_command,) = _strings(source["script"])
     assert source_command.endswith(
         "mise exec --locked -- uv run --locked --no-sync --python python "
-        "--no-python-downloads python -m tools.quality.governance --online-links"
+        "--no-python-downloads python -m tools.quality.governance --online-links --peer gitlab"
     )
     assert _string(_mapping(source["variables"])["MISE_ENABLE_TOOLS"]).startswith("python,uv,")
 
@@ -694,7 +889,14 @@ def test_node_repository_tools_have_one_locked_owner() -> None:
     dev_dependencies = package["packages"][""]["devDependencies"]
     manifest = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     assert dev_dependencies == manifest["devDependencies"]
-    assert set(dev_dependencies) == {"@fission-ai/openspec", "prettier"}
+    assert set(dev_dependencies) == {
+        "@fission-ai/openspec",
+        "entities",
+        "htmlparser2",
+        "markdownlint",
+        "markdownlint-cli2",
+        "prettier",
+    }
     for name, version in dev_dependencies.items():
         assert re.fullmatch(r"\d+\.\d+\.\d+", version)
         assert package["packages"][f"node_modules/{name}"]["version"] == version
@@ -727,17 +929,20 @@ def test_github_python_quality_installs_its_declared_projection_toolchain() -> N
     mise = next(step for step in steps if str(step.get("uses", "")).startswith("jdx/mise-action@"))
 
     assert re.fullmatch(r"jdx/mise-action@[0-9a-f]{40}", _string(mise["uses"]))
-    mise_actions = {
-        str(step["uses"])
+    mise_steps = tuple(
+        step
         for job in jobs.values()
         for raw_step in _sequence(_mapping(job)["steps"])
         if str((step := _mapping(raw_step)).get("uses", "")).startswith("jdx/mise-action@")
-    }
-    assert mise_actions == {mise["uses"]}
-    assert _mapping(mise["with"]) == {
-        "install": "true",
-        "cache": "true",
-    }
+    )
+    assert {str(step["uses"]) for step in mise_steps} == {mise["uses"]}
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    image = _string(_mapping(_mapping(gitlab["source-and-governance"])["image"])["name"])
+    mise_version = image.split(":", 1)[1].split("-debian@", 1)[0]
+    assert all(
+        _mapping(step["with"]) == {"install": "true", "cache": "true", "version": mise_version}
+        for step in mise_steps
+    )
 
 
 def _assert_github_required_tokens(text: str) -> None:
@@ -971,7 +1176,12 @@ def test_gitlab_pytest_invocations_preserve_repository_module_resolution() -> No
 def test_commit_event_inputs_reach_each_governance_context() -> None:
     github = _load_yaml(ROOT / ".github/workflows/verify.yml")
     jobs = _mapping(github["jobs"])
-    for name in ("source-and-governance", "accepted-source", "promotion", "tag-metadata"):
+    for name in (
+        "source-and-governance",
+        "accepted-source",
+        "promotion",
+        "tag-metadata",
+    ):
         steps = [_mapping(step) for step in _sequence(_mapping(jobs[name])["steps"])]
         checks = [
             step
@@ -1040,3 +1250,42 @@ def test_gitlab_commit_projection_executes_native_event_values(event, monkeypatc
         {"review": review, "push": base, "api": zero, "tag": head}[event],
         head,
     ]
+
+
+def test_release_downloads_use_the_locked_security_updated_github_cli() -> None:
+    metadata = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert metadata["tools"]["gh"] == "2.102.0"
+    assert "mise which gh" in metadata["tasks"]["toolchain:verify"]["run"]
+    workflow = _load_yaml(ROOT / ".github/workflows/verify.yml")
+    jobs = _mapping(workflow["jobs"])
+    consumers = 0
+    for value in jobs.values():
+        job = _mapping(value)
+        steps = [_mapping(step) for step in _sequence(job.get("steps", []))]
+        downloads = [
+            (index, step)
+            for index, step in enumerate(steps)
+            if re.search(r"\bgh (?:release|run) download\b", _string(step.get("run", "")))
+        ]
+        if not downloads:
+            continue
+        consumers += 1
+        setup = [
+            index
+            for index, step in enumerate(steps)
+            if _string(step.get("uses", "")).startswith("jdx/mise-action@")
+            and _mapping(step.get("env", {})).get("MISE_ENABLE_TOOLS") == "gh"
+        ]
+        assert len(setup) == 1
+        for index, step in downloads:
+            assert setup[0] < index
+            assert _string(step["run"]).startswith("mise exec --locked -- gh ")
+            assert _mapping(step["env"])["GH_PROMPT_DISABLED"] == "1"
+    assert consumers == 3
+
+
+def test_mise_linux_bootstrap_declares_node_atomic_runtime_before_install() -> None:
+    source = _mapping(_load_yaml(ROOT / ".gitlab-ci.yml")["source-and-governance"])
+    steps = _strings(source["before_script"])
+    dependency = "apt-get install -qq -y --no-install-recommends libatomic1"
+    assert steps.index(dependency) < steps.index("mise install --locked")

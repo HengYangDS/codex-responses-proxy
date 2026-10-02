@@ -2,7 +2,8 @@
 
 ## Purpose
 
-Define one self-contained executable UX, repository-owned DX, native distribution contract, and terminal repository-family state.
+Define one self-contained executable UX, repository-owned DX, native
+distribution contract, and terminal repository-family state.
 
 ## Requirements
 
@@ -33,8 +34,8 @@ not a wrapper, alias, shell-profile edit, or second copy.
 
 #### Scenario: A user invokes a released product
 
-- **WHEN** the user runs help, `--version`, or `status` from a pristine directory
-  with Python absent from `PATH`
+- **WHEN** the user runs help, `--version`, or `status` from a pristine
+  directory with Python absent from `PATH`
 - **THEN** the executable completes its documented behavior from the verified
   bundle
 - **AND** no module path, virtual environment, source file, or missing-Python
@@ -63,8 +64,8 @@ The installed executable SHALL expose only the end-user lifecycle commands
 `rollback` SHALL require one exact release and converge on it only when it is
 already active or is the sole verified retained predecessor. `recover` SHALL
 resolve only an interrupted or indeterminate installation transaction.
-Source-side release admission and publication SHALL remain outside the
-installed command grammar.
+Source-side release admission and publication SHALL remain outside the installed
+command grammar.
 
 #### Scenario: Public help is rendered
 
@@ -87,8 +88,8 @@ installed command grammar.
 
 Expected command failures SHALL return a concise human diagnostic or a stable
 JSON error object with a nonzero exit status. They MUST NOT emit a traceback,
-warning, usage dump unrelated to the error, success residue, credential,
-request payload, or local private path.
+warning, usage dump unrelated to the error, success residue, credential, request
+payload, or local private path.
 
 #### Scenario: Doctor finds an unavailable listener
 
@@ -100,16 +101,16 @@ request payload, or local private path.
 ### Requirement: Repository-owned development environment
 
 The repository SHALL own its supported Python versions, direct and transitive
-development dependencies, isolated environments, and verification session
-graph. Verification MUST NOT be satisfied by another repository environment,
-ambient user-site packages, PATH-selected quality tools, or mutable unpinned
-dependency resolution.
+development dependencies, isolated environments, and verification session graph.
+Verification MUST NOT be satisfied by another repository environment, ambient
+user-site packages, PATH-selected quality tools, or mutable unpinned dependency
+resolution.
 
 #### Scenario: A contributor verifies a fresh clone
 
 - **WHEN** a contributor with Git and uv runs the documented locked command
-- **THEN** repository-local environments execute the declared Python 3.12,
-  3.13, and 3.14 matrix
+- **THEN** repository-local environments execute the declared Python 3.12, 3.13,
+  and 3.14 matrix
 - **AND** local and hosted verification use the same session owners.
 
 ### Requirement: Terminal lane state
@@ -134,12 +135,7 @@ environment. They MUST NOT rebuild the native distribution. The release session
 SHALL be the sole native bundle build owner and SHALL prove every public
 command's help, valid and invalid inputs, human and JSON output, exit status,
 real handoff behavior, no-Python execution, prewarmed startup, and release-asset
-packaging. Release validation SHALL exercise the exact native executable that
-installation will serve, using an isolated installation root, native service
-identity, state root, HOME, and listener port. Native subprocess verification
-SHALL preserve the host operating-system runtime environment and override only
-the isolated paths owned by the test. A temporary copy or the canonical
-installed service SHALL NOT be treated as proof of the release candidate.
+packaging.
 
 #### Scenario: Python and native gates prove distinct facts
 
@@ -153,6 +149,15 @@ installed service SHALL NOT be treated as proof of the release candidate.
 - **AND** the complete public command matrix runs without consulting or mutating
   the canonical installation
 - **AND** both surfaces retain their complete owned behavior tests.
+
+### Requirement: Native release validation exercises the exact candidate
+
+Release validation SHALL exercise the exact native executable that installation
+will serve, using an isolated installation root, native service identity, state
+root, HOME, and listener port. Native subprocess verification SHALL preserve the
+host operating-system runtime environment and override only the isolated paths
+owned by the test. A temporary copy or the canonical installed service SHALL NOT
+be treated as proof of the release candidate.
 
 #### Scenario: Compatibility evidence uses a published predecessor
 
@@ -205,13 +210,15 @@ selected proposal. `candidate/dev` and `work/*` SHALL remain local-only.
 
 - **WHEN** each peer is selected in a separate publication operation
 - **THEN** local, GitLab, and GitHub branch tips are the same commit OID
-- **AND** each Forge retains independent authentication, CI, Release, and asset state.
+- **AND** each Forge retains independent authentication, CI, Release, and asset
+  state.
 
 #### Scenario: Source proof is complete
 
 - **WHEN** exact-HEAD repository proof passes and the Change is archived
 - **THEN** the governed landing command can atomically advance `candidate/dev`
-- **AND** the permission does not authorize direct publication or runtime mutation
+- **AND** the permission does not authorize direct publication or runtime
+  mutation
 - **AND** no alternate integration path is introduced.
 
 ### Requirement: Human and machine interfaces share one result model
@@ -221,20 +228,26 @@ default and stable JSON only when `--json` is requested. Every public command
 SHALL support both projections and SHALL preserve one semantic result and exit
 status model across them. Healthy absence, pending recovery, invalid evidence,
 degraded installation, and completed mutation SHALL be distinct outcomes.
-Human output SHALL use consistent sections, display-width alignment,
-actionable state-specific guidance, and no serialized object dump. Source
-modules, Python launch syntax, repository paths, and release-operator commands
-SHALL remain outside the end-user journey. Status SHALL report release identity
-from the verified installed-state record and command discoverability without
-consulting repository files or a second state authority. Runtime evidence SHALL
-be returned only when its PID is the sole listener owned by the selected
-installation. An installed command path SHALL be interpreted using the native
-absolute-path and link semantics of the host that recorded it. Recovery SHALL identify the exact failed carrier invariant when the
-transaction root or journal is missing, a symbolic link, the wrong filesystem
-type, malformed JSON, non-canonical JSON, an unsupported schema, or invalid
-under the current schema. It MUST preserve those bytes, retain one stable
-\`recovery_state_invalid\` error code and read-only next action, and distinguish
-that evidence failure from the health of an independently serving runtime.
+
+#### Scenario: Automation invokes any public command
+
+- **WHEN** automation invokes `install`, `status`, `doctor`, `recover`,
+  `reload`, `uninstall`, or `version` with `--json`
+- **THEN** the command emits one stable JSON value and no human decoration
+- **AND** successful lifecycle results use one `state` discriminator rather than
+  parallel boolean or mode fields
+- **AND** expected failures expose one stable error `code`, one concise
+  `message`, and one directly executable `next` command
+- **AND** expected failures remain nonzero without a traceback or warning.
+
+### Requirement: Human output and installed status remain task-oriented
+
+Human output SHALL use consistent sections, display-width alignment, actionable
+state-specific guidance, and no serialized object dump. Source modules, Python
+launch syntax, repository paths, and release-operator commands SHALL remain
+outside the end-user journey. Status SHALL report release identity from the
+verified installed-state record and command discoverability without consulting
+repository files or a second state authority.
 
 #### Scenario: An operator inspects the installed service
 
@@ -260,24 +273,29 @@ that evidence failure from the health of an independently serving runtime.
 - **AND** `doctor` recommends installation rather than reload
 - **AND** `recover` and `uninstall` return successful explicit no-op results.
 
-#### Scenario: Automation invokes any public command
+### Requirement: Runtime evidence and recovery carriers require exact identity
 
-- **WHEN** automation invokes `install`, `status`, `doctor`, `recover`, `reload`,
-  `uninstall`, or `version` with `--json`
-- **THEN** the command emits one stable JSON value and no human decoration
-- **AND** successful lifecycle results use one `state` discriminator rather
-  than parallel boolean or mode fields
-- **AND** expected failures expose one stable error `code`, one concise
-  `message`, and one directly executable `next` command
-- **AND** expected failures remain nonzero without a traceback or warning.
+Runtime evidence SHALL be returned only when its PID is the sole listener owned
+by the selected installation. An installed command path SHALL be interpreted
+using the native absolute-path and link semantics of the host that recorded it.
+Recovery SHALL identify the exact failed carrier invariant when the transaction
+root or journal is missing, a symbolic link, the wrong filesystem type,
+malformed JSON, non-canonical JSON, an unsupported schema, or invalid under the
+current schema.
 
 #### Scenario: Another listener occupies the selected port
 
-- **WHEN** loopback health responds but its PID is not the sole listener owned by
-  the selected installation
+- **WHEN** loopback health responds but its PID is not the sole listener owned
+  by the selected installation
 - **THEN** status omits untrusted runtime evidence
 - **AND** doctor reports an identity mismatch without treating that listener as
   this product.
+
+### Requirement: Invalid recovery evidence preserves bytes and one error
+
+It MUST preserve those bytes, retain one stable \`recovery_state_invalid\` error
+code and read-only next action, and distinguish that evidence failure from the
+health of an independently serving runtime.
 
 #### Scenario: Retained recovery evidence is invalid
 
@@ -285,7 +303,8 @@ that evidence failure from the health of an independently serving runtime.
   symbolic link, the wrong filesystem type, malformed JSON, non-canonical JSON,
   an unsupported schema, or invalid under the current schema
 - **THEN** recovery returns the exact invalid carrier classification
-- **AND** returns \`recovery_state_invalid\` with \`status --json\` as its next action
+- **AND** returns \`recovery_state_invalid\` with \`status --json\` as its next
+  action
 - **AND** it does not describe an independently serving runtime as unavailable
 - **AND** it does not mutate or delete the retained bytes.
 
@@ -299,7 +318,8 @@ the product dependency graph.
 
 - **WHEN** the native Linux lifecycle verifies the listener bound to its port
 - **THEN** it SHALL still discover the exact listener PID
-- **AND** it SHALL preserve the existing executable-and-private-role identity proof.
+- **AND** it SHALL preserve the existing executable-and-private-role identity
+  proof.
 
 ### Requirement: Repository automation has one portable semantic owner
 
@@ -312,7 +332,8 @@ product or repository policy.
 #### Scenario: A developer verifies the repository on a supported platform
 
 - **WHEN** the developer runs the documented repository verification command
-- **THEN** the same Python and pytest owners execute on Windows, macOS, and Linux
+- **THEN** the same Python and pytest owners execute on Windows, macOS, and
+  Linux
 - **AND** no POSIX shell installation is required on native Windows
 
 #### Scenario: A Shell owner is migrated

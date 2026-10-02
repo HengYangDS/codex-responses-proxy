@@ -9,6 +9,7 @@ import (
 // projections; product behavior stays in Nox and repository-owned Python tools.
 
 #RuntimeMatrix: python: ["3.12", "3.13", "3.14"]
+#FunctionalPython: #RuntimeMatrix.python[len(#RuntimeMatrix.python)-1]
 
 #ProductProofJobs: [
 	"source-and-governance",
@@ -38,12 +39,13 @@ import (
 		checkout: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"          // v7.0.1
 		python:   "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"      // v7.0.0
 		uv:       "astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7"        // v10.2.0
-		mise:     "jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c"           // v4.3.0
+		mise:     "jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5"           // v5.0.0
 		upload:   "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"   // v7.0.1
 		download: "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c" // v8.0.1
 	}
-	gitlabMiseImage: "ghcr.io/jdx/mise@sha256:f01b88463f3a8396b2273d88469bd09d097aa3cacfe343177eb5457f1d8d2a92"
-	quality:         "python,uv,node,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee"
+	miseVersion:     "2026.9.18"
+	gitlabMiseImage: "ghcr.io/jdx/mise:\(miseVersion)-debian@sha256:33d301fd5929d6960c102f947e97f08c671ad936573b375fcf4f13a90466f710"
+	quality:         "python,uv,node,npm,cue,aqua:tamasfe/taplo,github:gitleaks/gitleaks,github:rhysd/actionlint,github:lycheeverse/lychee,aqua:vale-cli/vale"
 }
 
 #CommitEvent: {
@@ -56,6 +58,15 @@ import (
 #UvSetup: {
 	uses: #Toolchains.githubActions.uv
 	with: "cache-suffix": "${{ github.job }}-${{ strategy.job-index }}"
+}
+
+#MiseSetup: {
+	uses: #Toolchains.githubActions.mise
+	with: {
+		install: true
+		cache:   true
+		version: #Toolchains.miseVersion
+	}
 }
 
 gitlab: {
@@ -73,8 +84,8 @@ gitlab: {
 	variables: {
 		DEBIAN_FRONTEND:                          "noninteractive"
 		CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: "origin"
-		UV_PYTHON_FLOOR_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.18-python3.12-trixie-slim@sha256:38f41574703989d6e5f02be80a3d687b00f98744cce86908097bcd34bcb7eb98"
-		UV_PYTHON_LATEST_IMAGE:                   "ghcr.io/astral-sh/uv:0.12.18-python3.14-trixie-slim@sha256:00facf17b58b02b725155862c5cd637f688f906bf7eb5b5194647886d8805cf3"
+		UV_PYTHON_FLOOR_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.21-python3.12-trixie-slim@sha256:5ae92e4d35b8d586d50ddf4aba6ecdd9f744237284d31c86bf45077e4e17e4bd"
+		UV_PYTHON_LATEST_IMAGE:                   "ghcr.io/astral-sh/uv:0.12.21-python3.14-trixie-slim@sha256:8f4ab6a0f2cc074290ba6a136eb016350b2b6b93a2108e07b72724901ad1914f"
 		UV_CACHE_DIR:                             "$CI_PROJECT_DIR/.cache/uv"
 		UV_PYTHON_INSTALL_DIR:                    "$CI_PROJECT_DIR/.cache/uv/python"
 		CODEX_RESPONSES_PROXY_CI_TARGET:          "linux-arm64"
@@ -83,16 +94,21 @@ gitlab: {
 		image: name: "$UV_PYTHON_LATEST_IMAGE"
 		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		cache: {
-			key: "uv-$CODEX_RESPONSES_PROXY_CI_TARGET"
+			key: "uv-$CODEX_RESPONSES_PROXY_CI_TARGET-$CI_COMMIT_REF_PROTECTED"
 			paths: [".cache/uv/"]
 		}
 	}
 
-	#productRules: [{
+	#productEvents: [{
 		if: "$CI_PIPELINE_SOURCE == \"merge_request_event\" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == \"dev\""
+		...
 	}, {
 		if: "$CI_COMMIT_BRANCH == \"dev\""
+		...
 	}]
+	#productRules: [#productEvents[1]]
+	#nativeReviewRules: [#productEvents[0]]
+	#nativeProtectedRules: [#productEvents[1]]
 	#uvContract: """
 		UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
 		UV_VERSION="$(uv --version)"
@@ -114,9 +130,10 @@ gitlab: {
 		"uv sync --locked --group quality --python python --no-python-downloads",
 	]])
 
-	"source-and-governance": {
+	#LinuxSource: {
+		rules: _
+		tags:  _
 		stage: "verify"
-		rules: #productRules
 		image: {
 			name: #Toolchains.gitlabMiseImage
 			entrypoint: [""]
@@ -126,6 +143,8 @@ gitlab: {
 			MISE_ENABLE_TOOLS: #Toolchains.quality
 		}
 		before_script: [
+			"apt-get update -qq",
+			"apt-get install -qq -y --no-install-recommends libatomic1",
 			"mise install --locked",
 			"npm ci --ignore-scripts",
 			"npm audit signatures",
@@ -133,12 +152,21 @@ gitlab: {
 			"mise exec --locked -- uv sync --locked --group quality --python python --no-python-downloads",
 		]
 		script: [
-			#GitLabCommitEvent + "mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links",
+			#GitLabCommitEvent + "mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links --peer gitlab",
 		]
 	}
-	"verify-python": {
-		stage: "verify"
+	"source-and-governance": #LinuxSource & {
 		rules: #productRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+	}
+	"source-and-governance-review": #LinuxSource & {
+		rules: [#productEvents[0]]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
+	}
+	#LinuxPython: {
+		rules: _
+		tags:  _
+		stage: "verify"
 		parallel: matrix: [{PYTHON_VERSION: #RuntimeMatrix.python}]
 		variables: GIT_DEPTH: "0"
 		before_script: list.Concat([#systemBootstrap, [
@@ -152,9 +180,76 @@ gitlab: {
 			"uv run --locked --no-sync --python python --no-python-downloads nox -s \"tests-$PYTHON_VERSION\"",
 		]
 	}
-	"verify-python-quality": {
-		stage: "verify"
+	"verify-python": #LinuxPython & {
 		rules: #productRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+	}
+	"verify-python-review": #LinuxPython & {
+		rules: [#productEvents[0]]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
+	}
+	#NativeBootstrap: [
+		"mise install --locked",
+		"git fetch --tags --force --prune --prune-tags origin",
+		"mise exec --locked -- uv sync --locked --group quality",
+	]
+	#nativeCommon: {
+		stage:   "verify"
+		timeout: "20m"
+		inherit: default: false
+		variables: {
+			GIT_DEPTH:                                           "0"
+			MISE_ENABLE_TOOLS:                                   "python,uv"
+			CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: "$CODEX_RESPONSES_PROXY_GITLAB_RELEASE_ASSET_TRUST_ANCHOR"
+			...
+		}
+		before_script: #NativeBootstrap
+		...
+	}
+	#macNative: #nativeCommon & {
+		variables: {
+			CODEX_RESPONSES_PROXY_CI_TARGET:              "macos-arm64"
+			CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: "$CODEX_RESPONSES_PROXY_GITLAB_MACOS_PREVIOUS_RELEASE_ASSET"
+		}
+		script: [
+			"mise exec --locked -- uv run --locked --group quality python -c \"import platform; assert platform.system() == 'Darwin'; assert platform.machine() == 'arm64'; print(platform.system(), platform.machine())\"",
+			"mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py",
+			"mise exec --locked -- uv run --locked --group quality nox -s release_compatibility",
+		]
+		...
+	}
+	#windowsNative: #nativeCommon & {
+		variables: {
+			CODEX_RESPONSES_PROXY_CI_TARGET:              "windows-arm64"
+			CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET: "$CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_PREVIOUS_RELEASE_ASSET"
+		}
+		script: [
+			"mise exec --locked -- uv run --locked --group quality python -c \"import os, platform, sysconfig; assert platform.system() == 'Windows'; assert sysconfig.get_platform() == 'win-amd64'; print(platform.system(), platform.machine(), sysconfig.get_platform(), os.environ.get('PROCESSOR_ARCHITEW6432', os.environ.get('PROCESSOR_ARCHITECTURE')))\"",
+			"mise exec --locked -- uv run --locked --group quality python -m pytest -q -m repository_toolchain tests/quality/test_verification.py",
+			"mise exec --locked -- uv run --locked --group quality nox -s release_compatibility",
+		]
+		...
+	}
+	"verify-macos-native": #macNative & {
+		rules: #nativeProtectedRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_MACOS_RUNNER_TAG"]
+	}
+	"verify-macos-native-review": #macNative & {
+		rules: #nativeReviewRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_MACOS_REVIEW_RUNNER_TAG"]
+	}
+	"verify-windows-native": #windowsNative & {
+		rules: #nativeProtectedRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_RUNNER_TAG"]
+	}
+	"verify-windows-native-review": #windowsNative & {
+		rules: #nativeReviewRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_WINDOWS_REVIEW_RUNNER_TAG"]
+	}
+	#LinuxQuality: {
+		rules: _
+		tags:  _
+		stage: "verify"
 		image: name:          "$UV_PYTHON_FLOOR_IMAGE"
 		variables: GIT_DEPTH: "0"
 		before_script: list.Concat([#systemBootstrap, [
@@ -166,9 +261,18 @@ gitlab: {
 			"uv run --locked --no-sync --python python --no-python-downloads nox -s quality",
 		]
 	}
-	"verify-performance": {
-		stage: "verify"
+	"verify-python-quality": #LinuxQuality & {
 		rules: #productRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+	}
+	"verify-python-quality-review": #LinuxQuality & {
+		rules: [#productEvents[0]]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
+	}
+	#LinuxPerformance: {
+		rules: _
+		tags:  _
+		stage: "verify"
 		variables: GIT_DEPTH: "0"
 		before_script: #systemBootstrap
 		script: [
@@ -180,8 +284,17 @@ gitlab: {
 			paths: [".performance/latency.json", ".performance/memory.json"]
 		}
 	}
+	"verify-performance": #LinuxPerformance & {
+		rules: #productRules
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+	}
+	"verify-performance-review": #LinuxPerformance & {
+		rules: [#productEvents[0]]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
+	}
 	"verify-accepted-source": {
 		stage: "verify"
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		rules: [{if: "$CI_COMMIT_BRANCH == \"dev\" || $CI_COMMIT_BRANCH == \"main\""}]
 		variables: GIT_DEPTH: "0"
 		before_script: #qualityBootstrap
@@ -192,6 +305,7 @@ gitlab: {
 	}
 	"verify-promotion": {
 		stage: "verify"
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		rules: [{
 			if: "$CI_PIPELINE_SOURCE == \"merge_request_event\" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == \"dev\" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == \"main\""
 		}]
@@ -208,6 +322,7 @@ gitlab: {
 	}
 	"verify-release-tag": {
 		stage: "release"
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		rules: [{if: "$CI_COMMIT_TAG"}]
 		variables: GIT_DEPTH: "0"
 		before_script: list.Concat([#qualityBootstrap, [
@@ -318,11 +433,7 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
-				uses: #Toolchains.githubActions.mise
-				with: {
-					install: true
-					cache:   true
-				}
+				#MiseSetup
 			}, {
 				name: "Install and audit locked Node repository tools"
 				run: """
@@ -334,7 +445,7 @@ githubVerify: {
 				env:  #CommitEvent
 				run: """
 					uv sync --locked --all-groups
-					uv run --locked --no-sync python -m tools.quality.governance --online-links
+					uv run --locked --no-sync python -m tools.quality.governance --online-links --peer github
 					"""
 			}]
 		}
@@ -466,11 +577,7 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
-				uses: #Toolchains.githubActions.mise
-				with: {
-					install: true
-					cache:   true
-				}
+				#MiseSetup
 			}, {
 				name: "Install and audit locked Node repository tools"
 				run: """
@@ -511,11 +618,7 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
-				uses: #Toolchains.githubActions.mise
-				with: {
-					install: true
-					cache:   true
-				}
+				#MiseSetup
 			}, {
 				name: "Verify lint, format, types, structure, docstrings, and product branch coverage"
 				run:  "uv run --locked --group quality nox -s quality"
@@ -714,6 +817,9 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
+				#MiseSetup
+				env: MISE_ENABLE_TOOLS: "gh"
+			}, {
 				name: "Install the locked release tool environment"
 				run:  "uv sync --locked --group quality"
 			}, {
@@ -722,8 +828,11 @@ githubVerify: {
 				run: "uv run --locked --no-sync python -m tools.release.publication predecessor --repository \"${{ github.repository }}\" --candidate-version \"$(cat VERSION)\" --github-environment \"${{ github.env }}\""
 			}, {
 				name: "Download the published predecessor release"
-				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh release download \"${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
+				env: {
+					GH_TOKEN:           "${{ github.token }}"
+					GH_PROMPT_DISABLED: "1"
+				}
+				run: "mise exec --locked -- gh release download \"${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
 			}, {
 				name: "Materialize the release trust anchor"
 				env: RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
@@ -755,9 +864,15 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
+				#MiseSetup
+				env: MISE_ENABLE_TOOLS: "gh"
+			}, {
 				name: "Download native release assets"
-				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh run download \"$GITHUB_RUN_ID\" --pattern 'native-*' --dir \"$RUNNER_TEMP/native\""
+				env: {
+					GH_TOKEN:           "${{ github.token }}"
+					GH_PROMPT_DISABLED: "1"
+				}
+				run: "mise exec --locked -- gh run download \"$GITHUB_RUN_ID\" --pattern 'native-*' --dir \"$RUNNER_TEMP/native\""
 			}, {
 				name: "Install the complete locked tool environment"
 				run:  "uv sync --locked --all-groups"
@@ -817,6 +932,9 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
+				#MiseSetup
+				env: MISE_ENABLE_TOOLS: "gh"
+			}, {
 				name: "Install the locked release tool environment"
 				run:  "uv sync --locked --group quality"
 			}, {
@@ -828,19 +946,42 @@ githubVerify: {
 				run: "uv run --locked --no-sync python -m tools.release.publication predecessor --repository \"${{ github.repository }}\" --candidate-tag \"${{ github.event.release.tag_name || inputs.release_tag }}\" --github-environment \"${{ github.env }}\""
 			}, {
 				name: "Download the published current release"
-				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh release download \"${{ github.event.release.tag_name || inputs.release_tag }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/current-release\""
+				env: {
+					GH_TOKEN:           "${{ github.token }}"
+					GH_PROMPT_DISABLED: "1"
+				}
+				run: "mise exec --locked -- gh release download \"${{ github.event.release.tag_name || inputs.release_tag }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/current-release\""
 			}, {
 				name: "Download the published predecessor release"
-				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh release download \"${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
+				env: {
+					GH_TOKEN:           "${{ github.token }}"
+					GH_PROMPT_DISABLED: "1"
+				}
+				run: "mise exec --locked -- gh release download \"${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
 			}, {
 				name: "Materialize the release trust anchor"
 				env: RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
 				run: "python -c \"import os; from pathlib import Path; Path(r'${{ runner.temp }}/release-asset-trust').write_text(os.environ['RELEASE_ASSET_TRUST'].rstrip() + '\\n', encoding='ascii')\""
 			}, {
-				name: "Bind the exact published assets"
-				run:  "python -c \"import glob, os; current = glob.glob(r'${{ runner.temp }}/current-release/codex-responses-proxy-*-${{ matrix.platform }}.tar.gz'); previous = glob.glob(r'${{ runner.temp }}/previous-release/codex-responses-proxy-*-${{ matrix.platform }}.tar.gz'); assert len(current) == len(previous) == 1, (current, previous); open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8').write('CODEX_RESPONSES_PROXY_CURRENT_RELEASE_ASSET=' + current[0] + '\\nCODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET=' + previous[0] + '\\n')\""
+				name:  "Bind the exact published assets"
+				shell: "python"
+				env: {
+					CURRENT_RELEASE_DIRECTORY:  "${{ runner.temp }}/current-release"
+					PREVIOUS_RELEASE_DIRECTORY: "${{ runner.temp }}/previous-release"
+					RELEASE_PLATFORM:           "${{ matrix.platform }}"
+				}
+				run: """
+					import os
+					from pathlib import Path
+					pattern = "codex-responses-proxy-*-" + os.environ["RELEASE_PLATFORM"] + ".tar.gz"
+					current = list(Path(os.environ["CURRENT_RELEASE_DIRECTORY"]).glob(pattern))
+					previous = list(Path(os.environ["PREVIOUS_RELEASE_DIRECTORY"]).glob(pattern))
+					if len(current) != 1 or len(previous) != 1:
+					    raise SystemExit("expected one current and one predecessor archive")
+					with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+					    output.write("CODEX_RESPONSES_PROXY_CURRENT_RELEASE_ASSET=" + str(current[0]) + "\\n")
+					    output.write("CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET=" + str(previous[0]) + "\\n")
+					"""
 			}, {
 				name: "Start the runner user systemd manager"
 				if:   "matrix.platform == 'linux-x86_64'"
@@ -863,13 +1004,13 @@ githubVerify: {
 				uses: #Toolchains.githubActions.python
 				with: "python-version-file": ".python-release"
 			}, {
-				name: "Reject missing branch proof"
+				name:  "Reject missing branch proof"
+				shell: "python"
 				env: {
 					NEEDS_JSON:         "${{ toJSON(needs) }}"
 					PRODUCT_PROOF_JOBS: strings.Join(#ProductProofJobs, " ")
 				}
 				run: """
-					python - <<'PY'
 					import json
 					import os
 					product = tuple(os.environ["PRODUCT_PROOF_JOBS"].split())
@@ -896,7 +1037,6 @@ githubVerify: {
 					missing = [job for job in required if needs.get(job, {}).get("result") != "success"]
 					if missing:
 					    raise SystemExit("required branch proof failed: " + ", ".join(missing))
-					PY
 					"""
 			}]
 		}

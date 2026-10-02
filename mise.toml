@@ -1,16 +1,28 @@
-min_version = "2026.9.11"
+min_version = "2026.9.18"
 
 [settings]
 idiomatic_version_file_enable_tools = []
+legacy_version_file = false
 locked = true
+not_found_system_fallback = false
+use_versions_host = false
+
+[tool_alias]
+# npm's package backend precedes the copy bundled with Node on every host.
+npm = "npm:npm"
 
 [tools]
 # Language runtimes
-node = "26.9.0"
+node = "26.10.0"
+npm = "12.2.0"
 python = "3.14.7"
 
 # Dependency management
-uv = "0.12.18"
+uv = "0.12.21"
+
+# Forge acquisition and security-sensitive artifact downloads
+gh = "2.102.0"
+glab = "1.120.0"
 
 # Specification and CI modeling
 cue = "0.17.1"
@@ -22,35 +34,58 @@ cue = "0.17.1"
 "github:gitleaks/gitleaks" = "8.30.1"
 "github:rhysd/actionlint" = "1.7.12"
 "github:lycheeverse/lychee" = "lychee-v0.24.2"
+"aqua:vale-cli/vale" = "3.24.0"
 
 [env]
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
 VIRTUAL_ENV = false
-UV_PYTHON = false
+UV_PYTHON = { value = "{% if tools.python is defined %}{{exec(command='mise which python') | trim}}{% endif %}", tools = true }
 PYTHONHOME = false
 PYTHONPATH = false
 PYTHONNOUSERSITE = "1"
 
+[tasks."toolchain:verify"]
+description = "Reject missing locked tools before any repository task runs"
+run = [
+  "mise which node",
+  "mise which python",
+  "mise which uv",
+  "mise which npm",
+  "mise which cue",
+  "mise which taplo",
+  "mise which gitleaks",
+  "mise which actionlint",
+  "mise which lychee",
+  "mise which vale",
+  "mise which gh",
+  "mise which glab",
+]
+
 [tasks.bootstrap]
 description = "Install the locked Python and Node development dependencies"
+depends = ["toolchain:verify"]
 run = [
-  'uv sync --locked --all-groups --python "{{tools.python.path}}"',
+  "uv sync --locked --all-groups",
   "npm ci --ignore-scripts",
   "npm audit signatures",
 ]
 
 [tasks.quick]
 description = "Run the editing feedback loop"
-run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s quick'
+depends = ["toolchain:verify"]
+run = "uv run --locked --group quality nox -s quick"
 
 [tasks.check]
 description = "Run repository governance, quality, and Python compatibility gates"
-run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s full'
+depends = ["toolchain:verify"]
+run = "uv run --locked --group quality nox -s full"
 
 [tasks.native]
 description = "Verify the native artifact and real host service lifecycle"
-run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s release'
+depends = ["toolchain:verify"]
+run = "uv run --locked --group quality nox -s release"
 
 [tasks.release]
 description = "Build and verify the native release asset without service registration"
-run = 'uv run --locked --no-sync --python "{{tools.python.path}}" nox -s release_asset'
+depends = ["toolchain:verify"]
+run = "uv run --locked --group quality nox -s release_asset"

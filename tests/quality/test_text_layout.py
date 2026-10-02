@@ -37,6 +37,16 @@ def test_missing_and_linked_files_do_not_read_foreign_content(tmp_path: Path, mo
     assert text_layout.audit(tmp_path) == ()
 
 
+@pytest.mark.parametrize("name", ["accept.txt", "native-config.mjs"])
+def test_native_text_configuration_uses_the_existing_byte_policy(name: str) -> None:
+    with repository((name,)) as root:
+        (root / name).write_bytes(b"source \r\n")
+        assert text_layout.audit(root) == (
+            f"text_line_ending_invalid:{name}",
+            f"text_trailing_whitespace:{name}:1",
+        )
+
+
 def test_cli_preserves_the_selected_policy_and_failed_exit(tmp_path: Path, mocker) -> None:
     audit = mocker.patch.object(text_layout, "audit", return_value=())
     policy = tmp_path / "policy.toml"

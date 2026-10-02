@@ -1,11 +1,13 @@
+# Proposal
+
 ## Why
 
-The repository delivers useful behavior, but its current shape is not a
-coherent terminal product. Product, release, test, quality, documentation, and
-Forge concerns have accumulated parallel owners, flat suffix-based modules,
-platform exceptions, duplicated configuration, stale residue, and proof that
-does not always match the claim it is used to support. Local repairs have
-therefore produced churn without removing the causes of recurring failures.
+The repository delivers useful behavior, but its current shape is not a coherent
+terminal product. Product, release, test, quality, documentation, and Forge
+concerns have accumulated parallel owners, flat suffix-based modules, platform
+exceptions, duplicated configuration, stale residue, and proof that does not
+always match the claim it is used to support. Local repairs have therefore
+produced churn without removing the causes of recurring failures.
 
 This Change makes the entire repository converge as one system. Existing files
 and mechanisms are inputs to evaluate, not defaults to preserve: every retained
@@ -14,10 +16,10 @@ consumer, and evidence that it contributes to the terminal product.
 
 ## What Changes
 
-- **BREAKING** Replace flat, suffix-differentiated and cross-owned source,
-  test, and tool layouts with semantic packages and one-way dependencies;
-  delete superseded entrypoints, aliases, compatibility layers, and orphaned
-  carriers rather than preserving their paths.
+- **BREAKING** Replace flat, suffix-differentiated and cross-owned source, test,
+  and tool layouts with semantic packages and one-way dependencies; delete
+  superseded entrypoints, aliases, compatibility layers, and orphaned carriers
+  rather than preserving their paths.
 - Preserve the Proxy as a narrow local Responses data plane. Client selection,
   credentials, provider choice, conversation history, and control-plane
   projection remain external; no AIGW-specific concept enters the product.
@@ -30,22 +32,25 @@ consumer, and evidence that it contributes to the terminal product.
 - Correct the native no-Python acceptance model so it preserves the host
   execution substrate, isolates all Proxy-owned state, and uses the same
   semantic owner on macOS, Linux, and Windows.
-- Replace scattered quality rules with one positively declared repository
-  model covering source, tests, tools, configuration, specifications,
-  documentation, CI projections, generated assets, and root files.
+- Replace scattered quality rules with one positively declared repository model
+  covering source, tests, tools, configuration, specifications, documentation,
+  CI projections, generated assets, and root files.
 - Use mature ecosystem tools where they reduce total complexity; retain custom
   checks only for repository-specific semantics that no upstream tool owns.
-- Make the locked development environment reproducible per Work Lane, share
-  only content-addressed caches, and upgrade every direct tool and dependency
-  to its verified current stable release without creating a second toolchain.
+- Make the locked development environment reproducible per Work Lane, share only
+  content-addressed caches, and upgrade every direct tool and dependency to its
+  verified current stable release without creating a second toolchain.
 - Make CUE the semantic owner of one CI graph and derive GitHub and GitLab
   projections with explicit trigger, reuse, runner, and platform-proof rules.
 - Enforce SemVer, signed commits and tags, immutable assets, SBOM, provenance,
   checksums, Changelog continuity, exact installed-runtime evidence, and
   independent verification on both Forges.
-- Rebuild documentation, decisions, examples, links, configuration, and
-  OpenSpec history around the current product; remove empty evidence shells,
-  stale records, obsolete warnings, misleading examples, and unconsumed files.
+- Keep one provider-neutral Changelog with explicit history links for each
+  declared peer. Bind owned navigation to its repository identity, independently
+  of Git transport; consume ETHOS for common identity and reference admission.
+- Rebuild documentation, decisions, examples, links, configuration, and OpenSpec
+  history around the current product; remove empty evidence shells, stale
+  records, obsolete warnings, misleading examples, and unconsumed files.
 - Delete merged proposal branches, retired Work Lanes, invalid hooks, orphaned
   services and processes, temporary artifacts, obsolete release assets, and
   every historical residue that has no current truth or recovery consumer.
@@ -79,11 +84,11 @@ None.
 
 ## Impact
 
-The complete tracked repository and its produced artifacts are in scope:
-`src`, `tests`, `tools`, `.config`, root configuration, OpenSpec, documentation,
-CI generation and projections, release metadata, dependency locks, native
-packages, service definitions, branch and tag lifecycle, and owned host-local
-runtime state. Public behavior may change where current behavior is ambiguous,
+The complete tracked repository and its produced artifacts are in scope: `src`,
+`tests`, `tools`, `.config`, root configuration, OpenSpec, documentation, CI
+generation and projections, release metadata, dependency locks, native packages,
+service definitions, branch and tag lifecycle, and owned host-local runtime
+state. Public behavior may change where current behavior is ambiguous,
 duplicated, misleading, unsafe, or incompatible with the terminal product.
 
 Codex transcripts, client configuration, client-selected models, external

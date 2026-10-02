@@ -26,8 +26,8 @@ files = ["noxfile.py"]
 prefixes = ["tools/"]
 
 [[roles]]
-id = "test-python"
-description = "Executable product and repository contract tests."
+id = "test-code"
+description = "Executable product and repository contract tests in their native language."
 owner = "product-assurance"
 consumer = "developers, CI, and release acceptance"
 source_of_truth = "executable behavior and failure-path contracts"
@@ -146,7 +146,7 @@ source_of_truth = "tool-native configuration projected from repository quality p
 change_condition = "tool capability or the policy it implements changes"
 dependency_direction = "configuration depends on policy and is consumed by its native tool"
 retirement_condition = "the native tool is removed or its configuration becomes unnecessary"
-files = [".gitleaks.toml", "pytest.ini"]
+files = [".gitleaks.toml", "pytest.toml"]
 prefixes = [".config/quality/native/"]
 
 [[roles]]
@@ -180,6 +180,7 @@ files = [
   "pyproject.toml",
   "uv.lock",
 ]
+prefixes = [".mise/locks/"]
 
 [[roles]]
 id = "source-control-configuration"
@@ -190,7 +191,7 @@ source_of_truth = "tracked source-control inclusion and exclusion policy"
 change_condition = "a durable generated path or tracked artifact class changes"
 dependency_direction = "source-control policy follows repository ownership and evidence retention"
 retirement_condition = "Git is no longer the repository transport or an entry has no matching artifact class"
-files = [".gitignore"]
+files = [".gitattributes", ".gitignore"]
 
 [[roles]]
 id = "product-identity"
@@ -208,7 +209,7 @@ id = "all-carriers"
 roles = [
   "product-python",
   "repository-python",
-  "test-python",
+  "test-code",
   "agent-guidance",
   "product-documentation",
   "release-history",
@@ -227,7 +228,7 @@ roles = [
 
 [[scopes]]
 id = "python"
-roles = ["product-python", "repository-python", "test-python"]
+roles = ["product-python", "repository-python", "test-code"]
 
 [[scopes]]
 id = "production-python"
@@ -235,7 +236,12 @@ roles = ["product-python", "repository-python"]
 
 [[scopes]]
 id = "documentation"
-roles = ["agent-guidance", "product-documentation", "release-history"]
+roles = [
+  "agent-guidance",
+  "product-documentation",
+  "release-history",
+  "openspec",
+]
 
 [[scopes]]
 id = "prettier-formatted"
@@ -243,9 +249,13 @@ roles = [
   "agent-guidance",
   "product-documentation",
   "release-history",
+  "openspec",
   "ci-model",
   "github-ci",
   "gitlab-ci",
+  "quality-tool-configuration",
+  "toolchain",
+  "test-code",
 ]
 
 [[scopes]]
@@ -346,7 +356,7 @@ id = "python-tests"
 owner = "pytest"
 scope = "python"
 session = "tests"
-configuration = ["pytest.ini"]
+configuration = ["pytest.toml"]
 risk_model = "Product behavior can regress without executable contracts across every supported Python runtime."
 measurement = "Warnings-as-errors pytest execution against installed artifacts on Python 3.12, 3.13, and 3.14."
 false_positive_cost = "Host-native capabilities cannot be proved by emulation and remain separate explicit evidence."
@@ -359,7 +369,7 @@ owner = "coverage.py"
 scope = "production-python"
 session = "quality"
 configuration = [
-  ".config/quality/native/coverage.ini",
+  ".config/quality/native/coverage.toml",
   ".config/quality/policy/coverage.toml",
 ]
 risk_model = "Unobserved lifecycle, protocol, release, and verification branches permit silent regressions or false acceptance."
@@ -405,16 +415,47 @@ remediation = "Format with the native owner or correct the carrier role."
 review_condition = "Reassess when a supported platform cannot preserve a declared invariant."
 
 [[concerns]]
-id = "markdown-yaml-format"
+id = "structured-text-format"
 owner = "prettier"
 scope = "prettier-formatted"
 session = "governance"
-configuration = [".config/quality/native/prettier.json"]
-risk_model = "Inconsistent Markdown and YAML structure raises review cost and can obscure semantic drift across documentation and generated Forge projections."
-measurement = "Locked Prettier checks every current Markdown and YAML authority while immutable OpenSpec archives remain byte-stable."
-false_positive_cost = "Formatting must preserve authored prose wrapping and must not rewrite immutable historical evidence."
-remediation = "Apply the locked Prettier version to current Markdown and YAML carriers through the repository governance session."
-review_condition = "Reassess when Prettier changes supported syntax or a new current Markdown or YAML role is introduced."
+configuration = [
+  ".config/quality/native/prettier.json",
+  ".config/quality/native/prettier.ignore",
+]
+risk_model = "Inconsistent Markdown YAML and JSON structure raises review cost and can obscure semantic drift across documentation configuration and generated Forge projections."
+measurement = "Locked Prettier checks every tracked current Markdown YAML JSON and JSONC carrier; digest-bound native AUBE locks and immutable OpenSpec archives retain their native bytes."
+false_positive_cost = "Native prose wrapping may change line layout but must preserve rendered text, links, code, and immutable historical evidence."
+remediation = "Apply the locked Prettier version to current structured-text carriers through the repository governance session."
+review_condition = "Reassess when Prettier changes supported syntax or a new current structured-text role is introduced."
+
+[[concerns]]
+id = "markdown-lint"
+owner = "markdownlint-cli2"
+scope = "documentation"
+session = "governance"
+configuration = [".config/quality/native/markdownlint-cli2.mjs"]
+risk_model = "Broken heading, link, list, code-fence, spacing, or table structure obscures requirements and raises navigation and review cost."
+measurement = "The locked native linter checks every tracked current Markdown carrier with default rules, eighty-column prose, and sibling-only heading uniqueness; one native micromark rule rejects Vale controls in real HTML comments, not literal code. Official OpenSpec templates retain their native title."
+false_positive_cost = "Line length is a prose readability rule, not a limit on code, tables, headings, or indivisible native tokens; repeated release-section headings are valid under different parent versions."
+remediation = "Correct the Markdown structure or apply native prose wrapping; do not add inline suppression, an ignored current document, or a baseline."
+review_condition = "Reassess when the official Markdown or OpenSpec carrier contract changes; immutable archived Changes remain byte-stable."
+
+[[concerns]]
+id = "english-prose"
+owner = "vale"
+scope = "documentation"
+session = "governance"
+configuration = [
+  ".config/quality/native/vale.ini",
+  ".config/quality/native/vale/styles/config/vocabularies/Product/accept.txt",
+  ".config/quality/native/vale/styles/Plain/Concise.yml",
+]
+risk_model = "Misspellings, repeated words, inconsistent terms, and needless phrases make requirements harder to interpret and can hide an authority or evidence boundary."
+measurement = "Locked native Vale parses current Markdown paragraphs, headings, quotes, and tables; built-in spelling, repetition, vocabulary, and a native concise-phrase rule reject real defective input without source writes."
+false_positive_cost = "Technical vocabulary must have a current semantic owner; code, native identifiers and URLs are not ordinary prose. Editorial changes must retain actors, conditions, modality, and evidence limits."
+remediation = "Correct the actual prose or add the verified technical term to the native vocabulary; do not suppress a page, accept a baseline, or stack another linguistic checker."
+review_condition = "Reassess when supported writing formats or product terminology change; reconcile general policy with the accepted ETHOS owner."
 
 [[concerns]]
 id = "toml-format"
