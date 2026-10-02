@@ -20,7 +20,7 @@ from tools.release import identity
 
 ROOT = Path(__file__).resolve().parents[2]
 CHANGELOG_HEADING = re.compile(
-    r"^## \[(?P<version>Unreleased|(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))\](?: - (?P<date>\d{4}-\d{2}-\d{2}))?$"
+    r"^## (?P<version>Unreleased|(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(?: - (?P<date>\d{4}-\d{2}-\d{2}))?$"
 )
 CHANGELOG_CATEGORIES = frozenset({"Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"})
 KEEP_A_CHANGELOG_URL = "https://keepachangelog.com/en/1.1.0/"
@@ -87,7 +87,7 @@ def changelog_releases(path: Path | None = None) -> list[tuple[str, str]]:
             raise ValueError(f"CHANGELOG.md release heading at line {line_number} must be dated")
         headings.append((line_number - 1, match.group("version"), match.group("date")))
     if not headings or headings[0][1] != "Unreleased":
-        raise ValueError("CHANGELOG.md must start its release sections with ## [Unreleased]")
+        raise ValueError("CHANGELOG.md must start its release sections with ## Unreleased")
     if sum(1 for _, version, _ in headings if version == "Unreleased") != 1:
         raise ValueError("CHANGELOG.md must contain exactly one Unreleased section")
     released = [(version, item_date) for _, version, item_date in headings[1:]]
@@ -183,7 +183,7 @@ def check_active_release_train(
     published = {released for released, _ in releases}
     if version in known:
         if version not in published:
-            raise ValueError(f"CHANGELOG.md lacks dated release heading ## [{version}]")
+            raise ValueError(f"CHANGELOG.md lacks dated release heading ## {version}")
         return
     if version in published:
         latest_heading = releases[0][0] if releases else ""
@@ -332,11 +332,11 @@ def _command(
     if prepare_release:
         if version in known_release_versions():
             raise SystemExit(f"release tag v{version} already exists; use --tag validation instead")
-        current_heading = f"## [{version}] - "
-        heading = next((f"## [{item}] - {date}" for item, date in releases if item == version), "")
+        current_heading = f"## {version} - "
+        heading = next((f"## {item} - {date}" for item, date in releases if item == version), "")
         if not heading.startswith(current_heading):
             raise SystemExit(
-                f"CHANGELOG.md lacks pending release heading ## [{version}] - YYYY-MM-DD"
+                f"CHANGELOG.md lacks pending release heading ## {version} - YYYY-MM-DD"
             )
         first_published = releases[0][0] if releases else ""
         if first_published != version:
@@ -370,7 +370,7 @@ def _command(
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
         if version not in {released for released, _ in releases}:
-            raise SystemExit(f"CHANGELOG.md lacks dated release heading ## [{version}]")
+            raise SystemExit(f"CHANGELOG.md lacks dated release heading ## {version}")
     print(f"release and governance metadata: {version} OK")
 
 
