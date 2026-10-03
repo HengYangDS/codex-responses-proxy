@@ -19,6 +19,9 @@ History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
 
 ### Fixed
 
+- Preserve the failing phase and safe native error when process exit cannot be
+  proved. Unknown exit keeps recovery authority; it is not reported as a live
+  survivor or used to discard a payload.
 - Bind every Forge Python and quality session to its declared commit range;
   standalone detached checks no longer rejudge unrelated historical subjects.
 - Bind promotion to the exact accepted source object, not an equal tree or a

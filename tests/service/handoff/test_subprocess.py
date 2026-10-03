@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from codex_responses_proxy import errors
 from codex_responses_proxy.lifecycle import context as runtime_context
 from codex_responses_proxy.lifecycle.supervision import native_service
 from codex_responses_proxy.lifecycle.supervision import process
@@ -231,7 +232,7 @@ class TestRealSubprocessHandoffIntegration:
     def _installed_fixture(
         self, *, release: str, port: int, upstream_url: str
     ) -> tuple[Path, runtime_context.RuntimeContext, dict[int, process.OwnedProcess]]:
-        temporary = tempfile.TemporaryDirectory()
+        temporary = tempfile.TemporaryDirectory(delete=False)
         root = Path(temporary.name)
         ctx = write_installed_payload(root, release=release, port=port, upstream_url=upstream_url)
         owned_processes: dict[int, process.OwnedProcess] = {}
@@ -245,34 +246,41 @@ class TestRealSubprocessHandoffIntegration:
         owned_processes: dict[int, process.OwnedProcess],
     ) -> None:
         proxy_script = ctx.executable
+        failure: Exception | None = None
         try:
-            try:
-                service = native_service.adapter()
-                service.uninstall(ctx)
-                assert service.status(ctx) == "absent"
-            finally:
-                for pid in process.pids_naming_executable(proxy_script):
-                    owned = process.capture_executable(pid, proxy_script)
-                    if owned is not None:
-                        owned_processes[pid] = owned
-                for owned in owned_processes.values():
-                    process.terminate_owned_process(owned)
-                remaining = {
-                    owned.pid
-                    for owned in owned_processes.values()
-                    if process.owned_process_alive(owned)
-                }
-                assert not remaining, f"orphaned proxy children for {proxy_script}: {remaining}"
+            service = native_service.adapter()
+            service.uninstall(ctx)
+            assert service.status(ctx) == "absent"
+        except Exception as error:
+            failure = error
         finally:
-            deadline = time.monotonic() + PAYLOAD_UNLOCK_TIMEOUT_SECONDS
-            while True:
+            for pid in process.pids_naming_executable(proxy_script):
+                owned = process.capture_executable(pid, proxy_script)
+                if owned is None:
+                    failure = failure or errors.InstallError("test process identity is unproved")
+                else:
+                    owned_processes[pid] = owned
+            for owned in owned_processes.values():
                 try:
-                    temporary.cleanup()
-                    break
-                except PermissionError:
-                    if time.monotonic() >= deadline:
-                        raise
-                    time.sleep(0.05)
+                    if not process.terminate_owned_process(owned):
+                        raise errors.InstallError("test process exit is unproved")
+                except errors.InstallError as error:
+                    failure = failure or error
+        if failure is not None:
+            raise failure
+        remaining = {
+            owned.pid for owned in owned_processes.values() if process.owned_process_alive(owned)
+        }
+        assert not remaining, f"orphaned proxy children for {proxy_script}: {remaining}"
+        deadline = time.monotonic() + PAYLOAD_UNLOCK_TIMEOUT_SECONDS
+        while True:
+            try:
+                temporary.cleanup()
+                break
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
 
     def test_fixture_cleanup_terminates_before_removing_temporary_payload(self, *, mocker) -> None:
         events = []
@@ -321,6 +329,37 @@ class TestRealSubprocessHandoffIntegration:
             "terminate",
             "cleanup",
         ]
+
+    def test_fixture_cleanup_keeps_payload_and_continues_after_unproved_exit(
+        self, *, mocker
+    ) -> None:
+        temporary = mocker.Mock()
+        ctx = runtime_context.RuntimeContext(
+            install_dir="/tmp/owned",
+            executable="/tmp/owned/proxy",
+            command="/tmp/owned/command",
+            log_dir="/tmp/owned/state",
+        )
+        first = process.OwnedProcess(123, ctx.executable, 42.0)
+        second = process.OwnedProcess(456, ctx.executable, 43.0)
+        failure = errors.InstallError(
+            "native process termination wait: access denied; exit is unproved"
+        )
+        service = mocker.Mock()
+        service.status.return_value = "absent"
+        mocker.patch.object(native_service, "adapter", return_value=service)
+        mocker.patch.object(process, "pids_naming_executable", return_value=[])
+        terminate = mocker.patch.object(
+            process, "terminate_owned_process", side_effect=[failure, True]
+        )
+        mocker.patch.object(process, "owned_process_alive", return_value=False)
+
+        with pytest.raises(errors.InstallError) as raised:
+            self._cleanup_installed_fixture(temporary, ctx, {123: first, 456: second})
+
+        assert raised.value is failure
+        assert [call.args[0] for call in terminate.call_args_list] == [first, second]
+        temporary.cleanup.assert_not_called()
 
     def test_fixture_cleanup_retries_a_transient_native_payload_lock(self, *, mocker) -> None:
         temporary = mocker.Mock()

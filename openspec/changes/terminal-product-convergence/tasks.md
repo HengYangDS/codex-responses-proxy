@@ -812,7 +812,19 @@
       items; coverage floors and source bytes remain intact. The installed
       changed plan and prospective GitLab branch/tag lint pass. These results do
       not close hosted source acceptance, Windows lifecycle, or the shared ETHOS
-      contract.
+      contract. Native failure-phase diagnostics now have distinguishing
+      regressions for capture, generation, status, signal, wait, and
+      post-timeout observation. Unknown predecessor exit preserves the
+      transaction before compensation. Failed test teardown continues
+      independent owned processes without losing the original safe error or
+      deleting the unproved payload or native root. Native acceptance and the
+      original Windows cause remain unproved. This diagnostic and cleanup repair
+      passes the frozen full graph in 522.157 seconds: Python 3.12, 3.13, and
+      3.14 each pass 2,046 tests with five release-only skips and 197
+      deselections. Governance passes 165 Python and 44 Node controls; strict
+      OpenSpec passes all ten items. Independent review and distinguishing
+      failed-exit cleanup controls pass; source bytes and coverage floors are
+      preserved. These are source results, not native Windows qualification.
 - [ ] 9.12 Qualify the paired native journeys in 5.3: untouched published
       predecessor payload through current-control upgrade and rollback, and
       unchanged old-CLI-produced recovery input through current public recovery.

@@ -561,6 +561,20 @@ existing native deployment teardown operation, shared with installation
 compensation. Mismatched or unproved supervision preserves recovery authority;
 non-fresh recovery does not remove a prior generation's shared supervisor.
 
+Process termination preserves its exact failure phase and a safe native reason.
+Capture denial, generation mismatch, unreadable status, signal failure, wait
+timeout, and unreadable timeout observation remain distinct unproved outcomes.
+They do not establish that a process survived. Deployment preserves recovery
+authority after an unknown predecessor exit; it does not roll back or dispose
+the payload on a collapsed boolean. Existing success, proven disappearance,
+zombie handling, identity refusal, and deadlines remain unchanged. Native
+execution must distinguish the actual cause before an exit acceptance change.
+Test teardown records the first safe failure while continuing independent,
+already-owned processes. Unknown exit prevents the corresponding payload and
+outer native test root from being discarded. Native roots have explicit
+successful cleanup and no automatic deletion after a failed session; exact
+absence and failure evidence govern later owner-scoped retirement.
+
 Controller rollback, interrupted materialization, and serving-generation
 recovery share one prior-projection restoration operation. It admits only the
 transaction's exact before or after selection; serving-generation recovery also

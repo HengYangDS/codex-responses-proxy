@@ -276,18 +276,19 @@ def release(session: nox.Session) -> None:
 
 
 def _run_native_tests(session: nox.Session, *paths: str, env: dict[str, str]) -> None:
-    """Own a short native temporary root and retire it after test teardown."""
-    with TemporaryDirectory(prefix="proxy-native-") as temporary:
-        session.run(
-            "python",
-            "-m",
-            "pytest",
-            "-q",
-            "--basetemp",
-            str(Path(temporary) / "tests"),
-            *paths,
-            env={**env, **dict.fromkeys(("TMPDIR", "TEMP", "TMP"), temporary)},
-        )
+    """Retire a short native root only after tests and teardown prove success."""
+    temporary = TemporaryDirectory(prefix="proxy-native-", delete=False)
+    session.run(
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "--basetemp",
+        str(Path(temporary.name) / "tests"),
+        *paths,
+        env={**env, **dict.fromkeys(("TMPDIR", "TEMP", "TMP"), temporary.name)},
+    )
+    temporary.cleanup()
 
 
 def _build_native_candidate(session: nox.Session) -> tuple[Path, Path, Path]:

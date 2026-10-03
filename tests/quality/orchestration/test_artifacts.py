@@ -457,4 +457,11 @@ def test_native_test_paths_do_not_inherit_checkout_depth(
     else:
         nox_configuration._run_native_tests(session, "tests/cli/test_interface.py", env={})
     assert len(seen) == 1
-    assert not seen[0].exists()
+    if failure:
+        try:
+            assert seen[0].is_dir()
+            assert not tuple(seen[0].iterdir())
+        finally:
+            seen[0].rmdir()
+    else:
+        assert not seen[0].exists()

@@ -181,6 +181,35 @@ def test_failed_native_acceptance_cannot_publish_an_asset(
     assert session.run.call_args.args[:4] == ("python", "-m", "pytest", "-q")
 
 
+@pytest.mark.parametrize("failed", [False, True])
+def test_native_temporary_root_is_removed_only_after_success(
+    failed: bool, mocker: MockerFixture, nox_configuration: ModuleType
+) -> None:
+    """A failed native teardown cannot be followed by unconditional root disposal."""
+    temporary = mocker.MagicMock(name="temporary")
+    temporary.name = "owned-native-root"
+    temporary.__enter__.return_value = temporary.name
+
+    def exit_context(*_args: object) -> bool:
+        temporary.cleanup()
+        return False
+
+    temporary.__exit__.side_effect = exit_context
+    creator = mocker.patch.object(nox_configuration, "TemporaryDirectory", return_value=temporary)
+    session = mocker.Mock()
+    failure = CommandFailed("native exit is unproved", return_code=1)
+    if failed:
+        session.run.side_effect = failure
+        with pytest.raises(CommandFailed) as raised:
+            nox_configuration._run_native_tests(session, "owned-native-tests", env={})
+        assert raised.value is failure
+        temporary.cleanup.assert_not_called()
+    else:
+        nox_configuration._run_native_tests(session, "owned-native-tests", env={})
+        temporary.cleanup.assert_called_once_with()
+    creator.assert_called_once_with(prefix="proxy-native-", delete=False)
+
+
 def test_governance_reuses_the_admitted_interpreter(
     mocker: MockerFixture, nox_configuration: ModuleType
 ) -> None:

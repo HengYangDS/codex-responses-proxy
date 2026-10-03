@@ -319,10 +319,20 @@ unique temporary root outside the checkout so deep Runner paths do not exhaust
 Windows path capacity. `TMPDIR`, `TEMP`, and `TMP` point to that same root, not
 Nox's checkout-local build directory. The Runner owner must configure a short,
 account-isolated native temporary parent in its deployment environment. No
-private host path belongs in repository source. The test root is removed after
-process teardown, including test failure. The supported release inventory
-remains authoritative. A Linux container has no systemd user manager and proves
-only its declared source checks; native Linux service acceptance still requires
-a separate real user-service context. Native jobs have a 20-minute deadline.
-Their lifecycle fixtures remove owned services, listeners, payloads, and
-transactions and verify that unrelated canonical resources remain unchanged.
+private host path belongs in repository source. Successful tests and teardown
+remove that root. A failed native session preserves it until exact service and
+process absence is proved; it must not erase the failed-exit evidence. The
+supported release inventory remains authoritative. A Linux container has no
+systemd user manager and proves only its declared source checks; native Linux
+service acceptance still requires a separate real user-service context. Native
+jobs have a 20-minute deadline.
+
+An unproved process exit reports its failing phase: capture, generation, status,
+signal, wait, or the observation after a deadline. Safe native error codes
+remain visible; private exception text does not. A timeout does not prove a
+surviving process. Preserve the transaction and payload when exit is unknown; do
+not extend the deadline, discard retained state, or restart the Runner to hide
+the result. Reproduce the affected native journey before changing its exit
+acceptance contract. Their lifecycle fixtures remove owned services, listeners,
+payloads, and transactions and verify that unrelated canonical resources remain
+unchanged.
