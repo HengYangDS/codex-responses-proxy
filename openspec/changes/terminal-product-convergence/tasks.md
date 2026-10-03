@@ -761,10 +761,15 @@
       closure, and the running service. Require byte-clean repeat resolutions,
       full source checks, cold development, exact-HEAD proof, and each declared
       hosted source job before claiming the updated toolchain qualified. The
-      local five-session graph and repeated native resolutions pass. Cold
-      development, committed-source proof, and hosted qualification remain open;
-      the unchanged upstream OpenSpec advisory is not waived. Native results:
-      `build/verification/bb2fa264fbd1d8bc3a2fa14da71ab41f880d2b05/stable-supply-20261004/`.
+      local five-session graph and repeated native resolutions pass. Signed
+      source `1344857` passes a fresh cold checkout's full graph and native
+      macOS asset tests; all 1,225 source hashes and modes are unchanged. The
+      detached checkout and native test scratch are retired after preserving
+      source-bound results. The old installed ETHOS pipe deadlocks are retained;
+      one authorized local signing exception leaves hooks and service unchanged.
+      Formal native proof, integration, and hosted qualification remain open;
+      the upstream OpenSpec advisory is not waived. Native results:
+      `build/verification/1344857224f8249ffa7327085786efeb393de567/stable-supply-20261004/`.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no
       duplicate version literal controls behavior. Native Mise verified seven uv
