@@ -602,6 +602,16 @@ pipelines have explicit coverage. Equivalent exact-SHA evidence may be reused
 through a revision-bound attestation; repeated jobs that prove no additional
 fact are removed.
 
+Review and accepted `dev` own product proof. An unchanged `main` promotion binds
+the event and checkout to the exact accepted `dev` OID, checks ancestry and
+metadata, and reuses only separately observed applicable proof for that object.
+Equal trees or matching branch names cannot establish that identity or proof.
+Tag verification is a different obligation: the existing GitLab tag identity and
+signature job precedes its protected macOS and Windows native jobs. Those jobs
+keep the existing lifecycle and predecessor session; `main` does not repeat
+native construction merely to mirror the accepted object. Linux metadata still
+does not prove a native Linux service lifecycle.
+
 GitHub branch admission is a generated branch-only workflow that invokes the
 shared Verify graph once. Its stable `Admission` job fails unless the reusable
 run succeeds; the graph itself rejects failed or skipped jobs required by the

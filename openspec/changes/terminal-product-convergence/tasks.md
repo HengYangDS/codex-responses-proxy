@@ -780,19 +780,22 @@
 - [ ] 9.11 Replace repeated GitLab Mac/Windows Python sessions with the existing
       native lifecycle and real-predecessor session, isolate Linux review and
       protected routes, verify generated projections and negative contracts, and
-      admit and execute the exact-source Runner jobs. Related local contracts
-      pass 166 focused tests. The final full graph passes governance and all
-      three Python versions; each executes 1,784 tests with five skips and 43
-      declared deselections. Statement and branch coverage remain 97.81% and
-      95.49%, above the unchanged independent floors. The combined macOS native
-      session passes 50 tests with one Linux-only skip, including the signed
-      published 4.0.4 predecessor-to-candidate upgrade and rollback. Its
-      isolated processes exit; canonical listener PID 2450 and watchdog remain
-      unchanged. Evidence: `build/verification/native-ci-full-final.log`,
-      `native-ci-lifecycle-final.log`, and `native-ci-gitlab-lint.json`; the
-      official GitLab dry-run is valid with nine dev jobs and no warnings.
-      Hosted platform execution and fleet admission remain open; Windows ARM64
-      requires x64 Mise to select the locked x64 tool assets.
+      admit and execute the exact-source Runner jobs. Bind unchanged `main`
+      promotion to separately observed proof of the exact accepted `dev` object;
+      reject different OIDs even with equal trees. Select protected tag native
+      jobs only after the existing exact tag identity and signature
+      prerequisite, without duplicating the product graph on `main` or replacing
+      platform evidence with metadata. Local validation passes 67 workflow
+      controls, including standard governance selection once and
+      equal-tree/different-OID rejection. Official prospective `dev`, `main`,
+      and tag checks select nine, one, and three jobs without findings; removing
+      the required tag job fails. `mise run check` passes governance with 153
+      Python and 44 Node controls, static checks and unchanged coverage floors,
+      and Python 3.12–3.14 with 2,035 tests passed, five skipped, and 183
+      deselected per version. The stale command-inventory fixture now includes
+      the selected workflow cases without removing checks. The installed changed
+      plan passes. Hosted native execution, signature trust, fleet admission,
+      and installed ETHOS proof remain open.
 - [ ] 9.12 Qualify the paired native journeys in 5.3: untouched published
       predecessor payload through current-control upgrade and rollback, and
       unchanged old-CLI-produced recovery input through current public recovery.

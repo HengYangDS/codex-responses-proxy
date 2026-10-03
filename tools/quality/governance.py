@@ -177,6 +177,7 @@ def _commands(*, online_links: bool, peer: str | None = None) -> tuple[tuple[str
             "repository_toolchain",
             "tests/quality/test_verification.py",
             "tests/quality/test_contract.py",
+            "tests/forge/test_workflow_contracts.py",
         ),
         ("node", "--test", "tests/quality/markdown-policy.test.mjs"),
         (

@@ -417,6 +417,7 @@ class TestQualityPolicyContracts:
                 "repository_toolchain",
                 "tests/quality/test_verification.py",
                 "tests/quality/test_contract.py",
+                "tests/forge/test_workflow_contracts.py",
             ),
             ("node", "--test", "tests/quality/markdown-policy.test.mjs"),
             (

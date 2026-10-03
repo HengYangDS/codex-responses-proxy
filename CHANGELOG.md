@@ -19,6 +19,9 @@ History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
 
 ### Fixed
 
+- Bind promotion to the exact accepted source object, not an equal tree or a
+  branch name. Run the declared GitLab native tag checks after tag identity and
+  signature verification without repeating native construction on `main`.
 - Check online references on the selected publication plane without requiring
   access to the other declared repository. Broken selected, public, and local
   links still fail; an excluded peer is not reported as available.

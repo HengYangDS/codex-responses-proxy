@@ -152,6 +152,12 @@ jobs:
           CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
           CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
+          git fetch origin main dev --tags --force --prune --prune-tags
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+          test "$(git rev-parse HEAD)" = "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
+          test "$(git rev-parse refs/remotes/origin/dev)" = "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
+          git merge-base --is-ancestor refs/remotes/origin/main "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
+          fi
           uv sync --locked --all-groups
           uv run --locked --no-sync python -m tools.release.metadata
           uv run --locked --no-sync python -m tools.quality.repository
@@ -178,7 +184,9 @@ jobs:
           CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |-
           git fetch origin main dev --tags --force --prune --prune-tags
-          git merge-base --is-ancestor origin/main "${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
+          test "$(git rev-parse refs/remotes/origin/dev)" = "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
+          git merge-base --is-ancestor refs/remotes/origin/main "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
           uv sync --locked --all-groups
           uv run --locked --no-sync python -m tools.release.metadata
           uv run --locked --no-sync python -m tools.quality.repository

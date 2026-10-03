@@ -267,8 +267,17 @@ access restrictions enforce the boundary even when a proposal changes its YAML.
 Only protected tag checks receive `CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST`;
 review jobs receive no release signing key or publication credential.
 
+Review and accepted `dev` own product proof. Promotion and `main` checks bind
+the event and checkout to the same accepted `dev` commit OID before reusing
+separately observed applicable proof. Equal trees, branch names, or passing
+metadata alone do not establish that proof. An unchanged `main` mirror does not
+need another native build; changed source or tool inputs require fresh evidence.
+
 macOS and Windows use `verify-macos-native` and `verify-windows-native` on
-protected `dev`; their `-review` jobs run only for merge requests to `dev`. The
+protected `dev` and tags; their `-review` jobs run only for merge requests to
+`dev`. Tag native checks depend on the existing tag identity and signature job;
+that prerequisite is required, not optional. These checks use the exact tagged
+source and do not borrow a previous branch run as release acceptance. The
 existing platform Runner-tag variables and their `_REVIEW` variants must select
 separate accounts, workspaces, caches, and credential reachability. Each job
 runs the locked release interpreter and uv, builds one candidate, and executes

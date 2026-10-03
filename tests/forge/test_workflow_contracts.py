@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 from tools.ci.project import reconcile
+from tools.quality.governance import _commands
 
 ROOT = Path(__file__).resolve().parents[2]
 GITLAB_LOCKED_PYTHON = "uv run --locked --no-sync --python python --no-python-downloads"
@@ -70,6 +71,14 @@ def test_forge_workflows_are_generated_from_one_declarative_graph() -> None:
     assert 'sys.executable, "-m", "tools.ci.project"' in governance
     assert 'MODEL = ROOT / ".config/ci/pipeline.cue"' in projector
     assert reconcile(write=False) == ()
+
+
+def test_governance_selects_toolchain_workflow_regressions() -> None:
+    """Select hosted-workflow controls once before they can become skipped proof."""
+    commands = _commands(online_links=False)
+    selected = [command for command in commands if command[1:3] == ("-m", "pytest")]
+    assert len(selected) == 1
+    assert selected[0].count("tests/forge/test_workflow_contracts.py") == 1
 
 
 @pytest.mark.repository_toolchain
@@ -428,20 +437,30 @@ def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> Non
         ("macos-arm64", "verify-macos-native", "MACOS"),
         ("windows-arm64", "verify-windows-native", "WINDOWS"),
     ):
-        for name, rules, tag_suffix in (
-            (tag, _sequence(linux["rules"]), variable),
+        for name, stage, rules, tag_suffix in (
+            (
+                tag,
+                "verify",
+                [
+                    {"if": '$CI_COMMIT_BRANCH == "dev"', "needs": []},
+                    {
+                        "if": "$CI_COMMIT_TAG",
+                        "needs": [{"job": "verify-release-tag", "artifacts": "false"}],
+                    },
+                ],
+                variable,
+            ),
             (
                 f"{tag}-review",
+                "verify",
                 _sequence(_mapping(gitlab["verify-python-review"])["rules"]),
                 f"{variable}_REVIEW",
             ),
         ):
             job = _mapping(gitlab[name])
-            assert job["stage"] == "verify"
+            assert job["stage"] == stage
             assert job["timeout"] == "20m"
-            assert [_mapping(rule)["if"] for rule in _sequence(job["rules"])] == [
-                _mapping(rule)["if"] for rule in rules
-            ]
+            assert job["rules"] == rules
             assert "parallel" not in job
             assert "cache" not in job
             assert _mapping(job["inherit"]) == {"default": "false"}
@@ -476,6 +495,130 @@ def test_gitlab_python_versions_and_native_trust_routes_are_independent() -> Non
             assert "nox -s tests" not in script
             assert "nox -s full" not in script
             assert "windows-x86_64" not in script
+
+
+def test_gitlab_tag_native_checks_require_tag_identity_first() -> None:
+    """Require tag trust without making review or main rebuild the candidate."""
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    assert _strings(gitlab["stages"]) == ["verify"]
+    tag = _mapping(gitlab["verify-release-tag"])
+    assert tag["stage"] == "verify"
+    assert tag["rules"] == [{"if": "$CI_COMMIT_TAG"}]
+    for name in ("verify-macos-native", "verify-windows-native"):
+        job = _mapping(gitlab[name])
+        assert job["stage"] == "verify"
+        rules = [_mapping(rule) for rule in _sequence(job["rules"])]
+        assert [rule["if"] for rule in rules] == [
+            '$CI_COMMIT_BRANCH == "dev"',
+            "$CI_COMMIT_TAG",
+        ]
+        assert rules[1]["needs"] == [{"job": "verify-release-tag", "artifacts": "false"}]
+        assert rules[0]["needs"] == []
+        review = _mapping(gitlab[name + "-review"])
+        assert review["stage"] == "verify"
+        assert "needs" not in _mapping(_sequence(review["rules"])[0])
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize("provider", ["gitlab", "github"])
+@pytest.mark.parametrize("route", ["promotion", "accepted-source"])
+@pytest.mark.parametrize(
+    ("case", "allowed"),
+    [
+        ("same-object", True),
+        ("same-tree-new-object", False),
+        ("changed-content", False),
+        ("wrong-checkout", False),
+        ("missing-accepted-ref", False),
+    ],
+)
+def test_promotion_reuses_only_the_exact_accepted_object(
+    provider: str, route: str, case: str, allowed: bool, tmp_path: Path
+) -> None:
+    """Run projected Git guards against distinct objects and content."""
+    source = tmp_path / "source"
+    remote = tmp_path / "remote.git"
+    source.mkdir()
+
+    def git(*arguments: str) -> str:
+        result = subprocess.run(
+            ("git", "-C", str(source), *arguments),
+            check=True,
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=10,
+        )
+        return result.stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    for name, value in (
+        ("core.hooksPath", os.devnull),
+        ("commit.gpgsign", "false"),
+        ("user.name", "Fixture Contributor"),
+        ("user.email", "contributor@example.test"),
+    ):
+        git("config", name, value)
+    document = source / "README.md"
+    document.write_text("Accepted content.\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-qm", "test(ci): accepted object")
+    accepted = git("rev-parse", "HEAD")
+    accepted_tree = git("rev-parse", "HEAD^{tree}")
+    if case == "changed-content":
+        document.write_text("Different content.\n", encoding="utf-8")
+        git("add", "README.md")
+    git("commit", "--allow-empty", "-qm", "test(ci): distinct object")
+    distinct = git("rev-parse", "HEAD")
+    if case != "changed-content":
+        assert git("rev-parse", "HEAD^{tree}") == accepted_tree
+    assert distinct != accepted
+    subprocess.run(
+        ("git", "init", "-q", "--bare", str(remote)),
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        timeout=10,
+    )
+    git("remote", "add", "origin", str(remote))
+    if case == "missing-accepted-ref":
+        git("push", "-q", "origin", f"{accepted}:refs/heads/main")
+    else:
+        git("push", "-q", "origin", f"{accepted}:refs/heads/dev", f"{accepted}:refs/heads/main")
+    checkout = accepted if case in {"same-object", "missing-accepted-ref"} else distinct
+    event_head = accepted if case == "wrong-checkout" else checkout
+    git("checkout", "-q", "--detach", checkout)
+    environment = {
+        **os.environ,
+        "CODEX_RESPONSES_PROXY_COMMIT_HEAD": event_head,
+        "CI_COMMIT_SHA": event_head,
+        "CI_COMMIT_BRANCH": "main",
+        "CI_COMMIT_BEFORE_SHA": accepted,
+        "GITHUB_REF": "refs/heads/main",
+    }
+    if provider == "gitlab":
+        name = "verify-promotion" if route == "promotion" else "verify-accepted-source"
+        job = _mapping(_load_yaml(ROOT / ".gitlab-ci.yml")[name])
+        script = "\n".join(_strings(job["script"]))
+    else:
+        jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
+        name = "promotion" if route == "promotion" else "accepted-source"
+        steps = _sequence(_mapping(jobs[name])["steps"])
+        script = _string(_mapping(steps[-1])["run"])
+        script = script.replace("${{ github.event.pull_request.head.sha }}", event_head)
+    result = subprocess.run(
+        ("bash", "-e", "-c", "uv() { return 0; }\n" + script),
+        cwd=source,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=10,
+    )
+    assert (result.returncode == 0) is allowed, result.stderr
+    assert git("rev-parse", "HEAD") == checkout
+    assert not git("status", "--porcelain")
 
 
 def test_gitlab_linux_review_and_protected_jobs_use_disjoint_capabilities() -> None:

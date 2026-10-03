@@ -55,6 +55,12 @@ import (
 
 #GitLabCommitEvent: "export CODEX_RESPONSES_PROXY_COMMIT_BASE=\"${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}\" CODEX_RESPONSES_PROXY_COMMIT_HEAD=\"$CI_COMMIT_SHA\"; if [ -n \"$CI_COMMIT_TAG\" ]; then export CODEX_RESPONSES_PROXY_COMMIT_BASE=\"$CI_COMMIT_SHA\"; fi; "
 
+#AcceptedObject: """
+	test "$(git rev-parse HEAD)" = "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
+	test "$(git rev-parse refs/remotes/origin/dev)" = "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
+	git merge-base --is-ancestor refs/remotes/origin/main "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
+	"""
+
 #UvSetup: {
 	uses: #Toolchains.githubActions.uv
 	with: "cache-suffix": "${{ github.job }}-${{ strategy.job-index }}"
@@ -80,7 +86,7 @@ gitlab: {
 		if:   "$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS"
 		when: "never"
 	}]
-	stages: ["verify", "release"]
+	stages: ["verify"]
 	variables: {
 		DEBIAN_FRONTEND:                          "noninteractive"
 		CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: "origin"
@@ -108,7 +114,10 @@ gitlab: {
 	}]
 	#productRules: [#productEvents[1]]
 	#nativeReviewRules: [#productEvents[0]]
-	#nativeProtectedRules: [#productEvents[1]]
+	#nativeProtectedRules: [#productEvents[1] & {needs: []}, {
+		if: "$CI_COMMIT_TAG"
+		needs: [{job: "verify-release-tag", artifacts: false}]
+	}]
 	#uvContract: """
 		UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
 		UV_VERSION="$(uv --version)"
@@ -299,6 +308,8 @@ gitlab: {
 		variables: GIT_DEPTH: "0"
 		before_script: #qualityBootstrap
 		script: [
+			"git fetch origin main dev --tags --force --prune --prune-tags",
+			#GitLabCommitEvent + "if [ \"$CI_COMMIT_BRANCH\" = main ]; then\n" + #AcceptedObject + "\nfi",
 			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata",
 			#GitLabCommitEvent + "uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository",
 		]
@@ -315,13 +326,13 @@ gitlab: {
 			"uv sync --locked --group quality --python python --no-python-downloads",
 		]])
 		script: [
-			"git merge-base --is-ancestor origin/main \"$CI_COMMIT_SHA\"",
+			#GitLabCommitEvent + #AcceptedObject,
 			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata",
 			#GitLabCommitEvent + "uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository",
 		]
 	}
 	"verify-release-tag": {
-		stage: "release"
+		stage: "verify"
 		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		rules: [{if: "$CI_COMMIT_TAG"}]
 		variables: GIT_DEPTH: "0"
@@ -522,7 +533,7 @@ githubVerify: {
 			}, {
 				name: "Confirm accepted source and metadata"
 				env:  #CommitEvent
-				run: """
+				run: "git fetch origin main dev --tags --force --prune --prune-tags\nif [ \"$GITHUB_REF\" = refs/heads/main ]; then\n" + #AcceptedObject + "\nfi\n" + """
 					uv sync --locked --all-groups
 					uv run --locked --no-sync python -m tools.release.metadata
 					uv run --locked --no-sync python -m tools.quality.repository
@@ -550,9 +561,7 @@ githubVerify: {
 			}, {
 				name: "Prove exact dev-to-main promotion"
 				env:  #CommitEvent
-				run: """
-					git fetch origin main dev --tags --force --prune --prune-tags
-					git merge-base --is-ancestor origin/main "${{ github.event.pull_request.head.sha }}"
+				run: "git fetch origin main dev --tags --force --prune --prune-tags\n" + #AcceptedObject + "\n" + """
 					uv sync --locked --all-groups
 					uv run --locked --no-sync python -m tools.release.metadata
 					uv run --locked --no-sync python -m tools.quality.repository

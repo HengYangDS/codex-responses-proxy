@@ -41,6 +41,53 @@ undiscoverable through the product `PATH`.
 
 ## ADDED Requirements
 
+### Requirement: Forge events bind reused proof to the exact accepted object
+
+Promotion and accepted-source checks SHALL bind the event, checkout, and
+accepted `dev` to one commit OID before reusing separately observed product
+proof. Equal trees, branch names, and metadata checks SHALL NOT substitute for
+that proof. An unchanged `main` promotion SHALL NOT repeat native construction
+merely to rename the accepted object. A changed object or required release check
+SHALL receive its own applicable verification.
+
+#### Scenario: The accepted object is promoted unchanged
+
+- **WHEN** the event, checkout, and accepted `dev` identify the same commit
+- **THEN** promotion checks exact identity, ancestry, and metadata
+- **AND** product proof may be reused only when its separately observed subject
+  is that same object and its environment and tool inputs remain applicable.
+
+#### Scenario: A different object has the same content
+
+- **WHEN** promotion or `main` verification receives a different commit OID,
+  including one with an equal tree
+- **THEN** the identity check fails before reporting accepted-source success
+- **AND** missing accepted refs or a checkout differing from the event also
+  fail.
+
+### Requirement: Protected tag verification precedes native release checks
+
+GitLab tag pipelines SHALL run the existing tag identity and signature check
+before the declared macOS and Windows native lifecycle and predecessor checks.
+These jobs SHALL use the existing protected Runner routes, exact tagged source,
+locked tools, and peer-local predecessor inputs. Review and accepted-`dev`
+verification SHALL retain their separate routes. Linux metadata SHALL NOT be
+represented as native service acceptance or replace a required platform check.
+
+#### Scenario: A product tag requires native verification
+
+- **WHEN** GitLab creates the tag pipeline
+- **THEN** macOS and Windows native jobs require successful tag verification
+- **AND** an absent, failed, or skipped tag prerequisite cannot be optional
+- **AND** each job runs the existing native lifecycle and real-predecessor
+  session rather than a second Python compatibility matrix.
+
+#### Scenario: Accepted source is mirrored to main
+
+- **WHEN** `main` receives the exact accepted object without new product inputs
+- **THEN** its identity and metadata route does not construct another candidate
+- **AND** this reuse does not exempt a later tag's required native checks.
+
 ### Requirement: Online link checks respect the selected publication plane
 
 Local verification SHALL check repository links without requiring either Forge.
