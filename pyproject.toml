@@ -11,8 +11,8 @@ requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
   "certifi==2026.7.22",
-  "cyclopts==5.1.0",
-  "filelock==4.0.7",
+  "cyclopts==5.1.1",
+  "filelock==4.0.9",
   "psutil==7.2.2",
   "rich==15.0.0",
 ]
@@ -22,7 +22,7 @@ codex-responses-proxy = "codex_responses_proxy.cli.application:main"
 
 [tool.codex-responses-proxy]
 distribution = "native-executable"
-linux-release-image = "python:3.14.7-bookworm@sha256:bfb689a7986adc6d5f16722e06c78e755efe4062e56276715fef450cbad09436"
+linux-release-image = "python:3.14.8-bookworm@sha256:b3c121f5b6b446c964c6ea924d9a099e259b29d7b56df82729e33572a31eadcc"
 
 [dependency-groups]
 quality = [
@@ -35,7 +35,7 @@ quality = [
   "pytest-mock==3.16.0",
   "pytest-subtests==0.15.0",
   "pyyaml==6.0.3",
-  "ruff==0.16.9",
+  "ruff==0.16.10",
   "semver==3.1.0",
   "ty==0.0.84",
   "vulture==2.16",
@@ -43,7 +43,7 @@ quality = [
 release = ["pyinstaller==6.22.3"]
 
 [tool.uv]
-required-version = "==0.12.21"
+required-version = "==0.12.22"
 link-mode = "copy"
 
 [tool.deptry]

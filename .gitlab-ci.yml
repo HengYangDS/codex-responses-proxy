@@ -10,8 +10,8 @@ stages:
 variables:
   DEBIAN_FRONTEND: noninteractive
   CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: origin
-  UV_PYTHON_FLOOR_IMAGE: ghcr.io/astral-sh/uv:0.12.21-python3.12-trixie-slim@sha256:5ae92e4d35b8d586d50ddf4aba6ecdd9f744237284d31c86bf45077e4e17e4bd
-  UV_PYTHON_LATEST_IMAGE: ghcr.io/astral-sh/uv:0.12.21-python3.14-trixie-slim@sha256:8f4ab6a0f2cc074290ba6a136eb016350b2b6b93a2108e07b72724901ad1914f
+  UV_PYTHON_FLOOR_IMAGE: ghcr.io/astral-sh/uv:0.12.22-python3.12-trixie-slim@sha256:1ff88987c417eb9c1ebcf6e8dc728d26b61f538d3010bf4c18f33fcc1a67c6b6
+  UV_PYTHON_LATEST_IMAGE: ghcr.io/astral-sh/uv:0.12.22-python3.14-trixie-slim@sha256:8390ef751cf17813d7a30e73bb9316d43adeab121ed3ee655bb1d344393a8046
   UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
   UV_PYTHON_INSTALL_DIR: $CI_PROJECT_DIR/.cache/uv/python
   CODEX_RESPONSES_PROXY_CI_TARGET: linux-arm64
@@ -31,7 +31,7 @@ source-and-governance:
     - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG
   stage: verify
   image:
-    name: ghcr.io/jdx/mise:2026.9.18-debian@sha256:33d301fd5929d6960c102f947e97f08c671ad936573b375fcf4f13a90466f710
+    name: ghcr.io/jdx/mise:2026.10.1-debian@sha256:3daa20e31600afa0b4182736b1d46ba87d47dccb41db55880e657d4290f47574
     entrypoint:
       - ""
   variables:
@@ -54,7 +54,7 @@ source-and-governance-review:
     - $CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG
   stage: verify
   image:
-    name: ghcr.io/jdx/mise:2026.9.18-debian@sha256:33d301fd5929d6960c102f947e97f08c671ad936573b375fcf4f13a90466f710
+    name: ghcr.io/jdx/mise:2026.10.1-debian@sha256:3daa20e31600afa0b4182736b1d46ba87d47dccb41db55880e657d4290f47574
     entrypoint:
       - ""
   variables:

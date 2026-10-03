@@ -1,4 +1,4 @@
-min_version = "2026.9.18"
+min_version = "2026.10.1"
 
 [settings]
 idiomatic_version_file_enable_tools = []
@@ -15,10 +15,10 @@ npm = "npm:npm"
 # Language runtimes
 node = "26.10.0"
 npm = "12.2.0"
-python = "3.14.7"
+python = "3.14.8"
 
 # Dependency management
-uv = "0.12.21"
+uv = "0.12.22"
 
 # Forge acquisition and security-sensitive artifact downloads
 gh = "2.102.0"

@@ -302,6 +302,19 @@ supported Python version or suppresses a mismatched-environment warning. Native
 macOS and Windows jobs execute the same conformance before constructing their
 release candidate, rather than inferring portability from local success.
 
+Refresh the existing runtime and dependency authorities to their verified stable
+patches: Python 3.14.8, uv 0.12.22, Mise 2026.10.1, Cyclopts 5.1.1, filelock
+4.0.9, Ruff 0.16.10, and `virtualenv` 21.14.5. The supported Python series
+remain unchanged. Native Mise resolves all eight existing platforms with
+checksums and GitHub artifact attestations; native uv resolves the unchanged
+package set without source builds. Each repeated lock resolution must preserve
+its bytes. CUE owns the updated CI images and generates both Forge projections.
+The process-local native Mise credential command may use an already authorized
+GitHub CLI to avoid anonymous limits; it does not export, record, or migrate a
+credential, change global configuration, or disable provenance verification.
+Source gates, cold development, exact-HEAD proof, and hosted jobs qualify the
+update separately. The running released Proxy remains untouched.
+
 Native signing fixtures retain deeply nested HOME as a real input. OpenSSH's
 default HOME-relative socket can exceed the Unix path limit; the fixture uses
 standard-library native temporary storage for an explicit short socket and owns

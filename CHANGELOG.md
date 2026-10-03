@@ -19,6 +19,9 @@ History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
 
 ### Fixed
 
+- Refresh the reproducible toolchain to Python 3.14.8, uv 0.12.22, and Mise
+  2026.10.1; update compatible CLI, locking, lint, and isolated-environment
+  packages without changing the supported Python series or running service.
 - Recheck the exact owned payload during bounded Windows delete-sharing retries.
   Replacement files stay protected, permissions stay unchanged, and persistent
   errors retain recovery authority.

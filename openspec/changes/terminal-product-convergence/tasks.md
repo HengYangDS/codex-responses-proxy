@@ -755,6 +755,16 @@
       not test those fixtures and are excluded. Source bytes are preserved by
       the completed check. Installed-product proof, peer platform execution, and
       final acceptance remain open.
+- [ ] 8.4.1 Refresh the current stable Python, uv, Mise, Cyclopts, filelock,
+      Ruff, and `virtualenv` pins through their existing authorities. Preserve
+      Python 3.12 compatibility, eight-platform artifact provenance, the npm
+      closure, and the running service. Require byte-clean repeat resolutions,
+      full source checks, cold development, exact-HEAD proof, and each declared
+      hosted source job before claiming the updated toolchain qualified. The
+      local five-session graph and repeated native resolutions pass. Cold
+      development, committed-source proof, and hosted qualification remain open;
+      the unchanged upstream OpenSpec advisory is not waived. Native results:
+      `build/verification/bb2fa264fbd1d8bc3a2fa14da71ab41f880d2b05/stable-supply-20261004/`.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no
       duplicate version literal controls behavior. Native Mise verified seven uv
