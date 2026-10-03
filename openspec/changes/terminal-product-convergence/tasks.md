@@ -841,8 +841,16 @@
       controls; strict OpenSpec passes all ten items. File and ancestor
       substitutions at the read boundary, deadline exhaustion before a retry can
       succeed, unchanged permissions and persistent-error recovery authority
-      have distinguishing controls. The Windows native handle and transactional
-      acceptance remain unproved until execution.
+      have distinguishing controls. Original GitLab review pipeline 9401 at
+      signed `865681f7` passes all eight required jobs in 438 seconds. Windows
+      job 47926 on Runner 118 selects the complete native lifecycle and
+      published-predecessor suites through `release_compatibility`: 55 tests
+      pass and one Linux-only case skips. The separate toolchain selection
+      passes twelve cases. Its unchanged quiet report does not name individual
+      test results; source selection and the native suite establish this bounded
+      qualification, not a standalone per-case report. macOS and all six Linux
+      jobs also pass. Installed proof, repaired-history contribution admission,
+      GitHub execution, and protected-source acceptance remain open.
 - [ ] 9.12 Qualify the paired native journeys in 5.3: untouched published
       predecessor payload through current-control upgrade and rollback, and
       unchanged old-CLI-produced recovery input through current public recovery.
