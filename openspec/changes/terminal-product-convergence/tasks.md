@@ -1238,7 +1238,15 @@
       and follow-up runs were removed from six exact stopped roots after
       open-file checks; raw failure/success evidence remains under the
       source-bound verification directory. Installed 4.0.1 and its canonical
-      supervisor were not modified.
+      supervisor were not modified. The source-bound native disposal receipt
+      retires the superseded Windows fixture from failed job 47913 after its
+      replacement source passes original pipeline 9401. Metadata-bound,
+      no-follow disposal removes 577 entries and records target absence; all
+      twelve sibling roots, original Runner controls, and VM isolation remain
+      preserved. No file contents or private test keys were read, and no
+      permissions were changed or processes killed. Original failure and
+      successful native qualification evidence remain. This is test aftercare,
+      not successful public recovery; the broader residue obligation stays open.
 - [ ] 13.3 Merge or discard every local and remote proposal according to
       semantic value, delete merged proposal and remote `work/*` refs, retire
       obsolete Worktrees and leases, and verify only canonical repository-family
