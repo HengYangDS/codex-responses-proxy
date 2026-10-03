@@ -559,7 +559,9 @@ class TestQualityPolicyContracts:
         assert workspace["commit_policy"]["signing_format"] == "ssh"
         assert isinstance(workspace["commit_policy"]["subject_pattern"], str)
 
-    def test_commit_subjects_validate_an_accepted_tip(self) -> None:
+    def test_commit_subjects_validate_an_accepted_tip(self, monkeypatch) -> None:
+        for suffix in ("BASE", "HEAD"):
+            monkeypatch.delenv(f"CODEX_RESPONSES_PROXY_COMMIT_{suffix}", raising=False)
         with _test_repository(("tracked.txt",)) as root:
             _git(
                 root,
@@ -705,7 +707,11 @@ class TestQualityPolicyContracts:
         assert subject.fullmatch("chore(release): prepare v2.0.22")
         assert not subject.fullmatch("chore(release): prepare v2.0.22.")
 
-    def test_commit_subjects_use_remote_main_when_candidate_is_local_only(self) -> None:
+    def test_commit_subjects_use_remote_main_when_candidate_is_local_only(
+        self, monkeypatch
+    ) -> None:
+        for suffix in ("BASE", "HEAD"):
+            monkeypatch.delenv(f"CODEX_RESPONSES_PROXY_COMMIT_{suffix}", raising=False)
         with _test_repository(("tracked.txt",)) as root:
             _git(
                 root,
@@ -738,7 +744,9 @@ class TestQualityPolicyContracts:
                 "commit_subject_invalid:invalid hosted subject"
             ]
 
-    def test_commit_subjects_validate_head_without_an_integration_ref(self) -> None:
+    def test_commit_subjects_validate_head_without_an_integration_ref(self, monkeypatch) -> None:
+        for suffix in ("BASE", "HEAD"):
+            monkeypatch.delenv(f"CODEX_RESPONSES_PROXY_COMMIT_{suffix}", raising=False)
         with _test_repository(("tracked.txt",)) as root:
             _git(
                 root,
@@ -759,7 +767,40 @@ class TestQualityPolicyContracts:
                 "commit_subject_invalid:invalid root subject"
             ]
 
-    def test_commit_subjects_skip_an_integration_ref_ahead_of_head(self) -> None:
+    @pytest.mark.parametrize(
+        ("subject", "expected"),
+        [
+            ("fix(quality): current bounded subject", []),
+            ("invalid current subject", ["commit_subject_invalid:invalid current subject"]),
+        ],
+    )
+    def test_no_integration_base_checks_only_current_subject(
+        self, subject: str, expected: list[str], monkeypatch
+    ) -> None:
+        for suffix in ("BASE", "HEAD"):
+            monkeypatch.delenv(f"CODEX_RESPONSES_PROXY_COMMIT_{suffix}", raising=False)
+        with _test_repository(("tracked.txt",)) as root:
+            for message in ("invalid historical subject", subject):
+                _git(
+                    root,
+                    "-c",
+                    "user.name=Test Author",
+                    "-c",
+                    "user.email=test@example.com",
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    message,
+                )
+            branch = _git(root, "branch", "--show-current").stdout.strip().decode()
+            _git(root, "switch", "--detach", "-q")
+            _git(root, "branch", "-D", branch)
+
+            assert commits.commit_subject_gaps(root) == expected
+
+    def test_commit_subjects_skip_an_integration_ref_ahead_of_head(self, monkeypatch) -> None:
+        for suffix in ("BASE", "HEAD"):
+            monkeypatch.delenv(f"CODEX_RESPONSES_PROXY_COMMIT_{suffix}", raising=False)
         with _test_repository(("tracked.txt",)) as root:
             _git(
                 root,

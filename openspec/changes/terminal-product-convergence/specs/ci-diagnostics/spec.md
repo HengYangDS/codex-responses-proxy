@@ -65,6 +65,39 @@ SHALL receive its own applicable verification.
 - **AND** missing accepted refs or a checkout differing from the event also
   fail.
 
+### Requirement: Python quality sessions consume the declared event range
+
+Every Forge Python compatibility and quality session SHALL receive the same
+explicit commit base and head as source governance. The checker SHALL reject
+incomplete or malformed objects, an unavailable or non-ancestor base, a checkout
+that differs from the event head, and an invalid subject anywhere in the
+introduced range. It SHALL NOT silently reinterpret an explicit range through
+movable branch names. Without an event or usable integration base, standalone
+verification SHALL check only the current commit and SHALL NOT certify the
+unknown introduced range or rejudge unrelated historical subjects. An all-zero
+event base SHALL likewise validate only the current commit and SHALL NOT
+establish acceptance of an unknown introduced range.
+
+#### Scenario: The final commit is valid but an introduced middle commit is not
+
+- **WHEN** the event range contains an invalid middle subject and a valid tip
+- **THEN** every selected Python and quality session receives that exact range
+- **AND** advancing local refs does not hide the invalid introduced commit.
+
+#### Scenario: A detached checkout has no integration base
+
+- **WHEN** standalone verification has no event objects or usable integration
+  ref
+- **THEN** it checks the actual current commit and rejects an invalid tip
+- **AND** unrelated historical subjects are not evaluated under current grammar
+- **AND** this head-only result does not establish introduced-range acceptance.
+
+#### Scenario: The event supplies an all-zero before object
+
+- **WHEN** an event supplies its actual head and an all-zero before object
+- **THEN** it validates the current subject and rejects an invalid tip
+- **AND** this result does not certify a range that the event did not identify.
+
 ### Requirement: Protected tag verification precedes native release checks
 
 GitLab tag pipelines SHALL run the existing tag identity and signature check

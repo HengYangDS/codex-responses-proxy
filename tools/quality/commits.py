@@ -88,7 +88,7 @@ def _subjects(root: Path) -> tuple[tuple[str, ...], str | None]:
         base_tip = _git(root, "rev-parse", base).stdout.strip()
         args.extend(("-1", "HEAD") if tip == base_tip else (f"{base}..HEAD",))
     else:
-        args.append("HEAD")
+        args.extend(("-1", "HEAD"))
     result = _git(root, *args)
     if result.returncode:
         detail = result.stderr.strip() or str(result.returncode)

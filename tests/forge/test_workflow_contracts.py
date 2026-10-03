@@ -1,5 +1,6 @@
 """Portable contracts for GitHub verification and release workflows."""
 
+import ast
 import importlib
 import json
 import os
@@ -79,6 +80,31 @@ def test_governance_selects_toolchain_workflow_regressions() -> None:
     selected = [command for command in commands if command[1:3] == ("-m", "pytest")]
     assert len(selected) == 1
     assert selected[0].count("tests/forge/test_workflow_contracts.py") == 1
+
+
+def test_shell_executing_workflow_controls_belong_to_governance() -> None:
+    """Keep Forge-shell execution out of Python-only compatibility sessions."""
+    module = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    shell_controls = []
+    for function in module.body:
+        if not isinstance(function, ast.FunctionDef):
+            continue
+        for call in ast.walk(function):
+            if (
+                isinstance(call, ast.Call)
+                and ast.unparse(call.func) == "subprocess.run"
+                and call.args
+                and isinstance(call.args[0], (ast.List, ast.Tuple))
+                and call.args[0].elts
+                and isinstance(call.args[0].elts[0], ast.Constant)
+                and call.args[0].elts[0].value in {"bash", "sh"}
+            ):
+                shell_controls.append(function.name)
+                assert "pytest.mark.repository_toolchain" in {
+                    ast.unparse(decorator) for decorator in function.decorator_list
+                }, function.name
+                break
+    assert shell_controls
 
 
 @pytest.mark.repository_toolchain
@@ -619,6 +645,61 @@ def test_promotion_reuses_only_the_exact_accepted_object(
     assert (result.returncode == 0) is allowed, result.stderr
     assert git("rev-parse", "HEAD") == checkout
     assert not git("status", "--porcelain")
+
+
+@pytest.mark.repository_toolchain
+@pytest.mark.parametrize(
+    "job_id",
+    [
+        "verify-python",
+        "verify-python-review",
+        "verify-python-quality",
+        "verify-python-quality-review",
+    ],
+)
+@pytest.mark.parametrize("event", ["branch", "merge-request"])
+def test_gitlab_python_sessions_receive_exact_event_objects(job_id: str, event: str) -> None:
+    """Exercise the declared command's environment before the native session starts."""
+    job = _mapping(_load_yaml(ROOT / ".gitlab-ci.yml")[job_id])
+    script = _strings(job["script"])[-1]
+    head, branch_base, review_base = "a" * 40, "b" * 40, "c" * 40
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("CODEX_RESPONSES_PROXY_COMMIT_")
+    }
+    environment.update(CI_COMMIT_SHA=head, CI_COMMIT_BEFORE_SHA=branch_base, CI_COMMIT_TAG="")
+    environment["CI_MERGE_REQUEST_DIFF_BASE_SHA"] = review_base if event == "merge-request" else ""
+    stub = 'uv() { printf \'%s\n%s\n\' "${CODEX_RESPONSES_PROXY_COMMIT_BASE-unset}" "${CODEX_RESPONSES_PROXY_COMMIT_HEAD-unset}"; }\n'
+    completed = subprocess.run(
+        ("bash", "-e", "-c", stub + script),
+        check=False,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=10,
+        env=environment,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.splitlines() == [
+        review_base if event == "merge-request" else branch_base,
+        head,
+    ]
+
+
+@pytest.mark.parametrize("job_id", ["python", "python-windows", "python-quality"])
+def test_github_python_sessions_receive_exact_event_objects(job_id: str) -> None:
+    """Every Python/quality session consumes the same immutable event contract."""
+    job = _mapping(_mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])[job_id])
+    steps = [_mapping(step) for step in _sequence(job["steps"])]
+    selected = [step for step in steps if "nox -s" in str(step.get("run", ""))]
+    assert len(selected) == 1
+    assert _mapping(selected[0].get("env")) == {
+        "CODEX_RESPONSES_PROXY_COMMIT_BASE": "${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}",
+        "CODEX_RESPONSES_PROXY_COMMIT_HEAD": "${{ github.event.pull_request.head.sha || github.sha }}",
+    }
+    checkout = _mapping(steps[0]["with"])
+    assert checkout["ref"] == "${{ github.event.pull_request.head.sha || github.sha }}"
 
 
 def test_gitlab_linux_review_and_protected_jobs_use_disjoint_capabilities() -> None:
@@ -1363,6 +1444,7 @@ def test_commit_event_inputs_reach_each_governance_context() -> None:
             assert "CI_COMMIT_TAG" in command
 
 
+@pytest.mark.repository_toolchain
 @pytest.mark.parametrize("event", ["review", "push", "api", "tag"])
 def test_gitlab_commit_projection_executes_native_event_values(event, monkeypatch) -> None:
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")

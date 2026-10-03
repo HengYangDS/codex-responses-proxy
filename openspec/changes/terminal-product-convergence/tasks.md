@@ -551,10 +551,12 @@
       middle commit and a valid tip fails before and passes after repair even
       when integration refs already equal HEAD. Missing, malformed, unavailable,
       checkout-mismatched and non-ancestor event objects fail closed; tag checks
-      select the tip and new-branch zero baselines cover reachable history.
-      Focused quality/workflow contracts and actual POSIX event-variable
-      projection pass. Hosted event-range execution and signature enforcement
-      still require acceptance. Evidence:
+      select the tip. The earlier claim that zero baselines covered reachable
+      history was incorrect: current tests establish only tip validation, not
+      acceptance of an unknown introduced range. Focused quality/workflow
+      contracts and actual POSIX event-variable projection pass. Hosted
+      event-range execution and signature enforcement still require acceptance.
+      Evidence:
       `build/verification/34ee6478d0726bb53fe5b30331213056b85c9da8/event-admission/`.
       Evidence:
       `build/verification/b98977f7b66bb69af81b3724933a09f3f4f8560c/commit-admission/`.
@@ -795,7 +797,22 @@
       deselected per version. The stale command-inventory fixture now includes
       the selected workflow cases without removing checks. The installed changed
       plan passes. Hosted native execution, signature trust, fleet admission,
-      and installed ETHOS proof remain open.
+      and installed ETHOS proof remain open. Original review delivery at signed
+      `fd5897c4` updates only the existing proposals through the authorized
+      native projector with intact hooks, exact remote leases, and verified
+      contribution conservation. GitLab 9369 passes source governance,
+      performance, and macOS native verification; Python and quality jobs expose
+      missing event inputs and historical-subject fallback. Windows native
+      verification separately fails predecessor watchdog exit and cleanup. The
+      event-binding repair passes its 277 focused controls and the frozen full
+      graph in 398.502 seconds. Python 3.12, 3.13, and 3.14 each pass 2,037
+      tests with five release-only skips and 195 deselections; governance passes
+      165 Python and 44 Node controls. Shell-executing workflow controls remain
+      in governance, not the Python-only matrix. Strict OpenSpec passes all ten
+      items; coverage floors and source bytes remain intact. The installed
+      changed plan and prospective GitLab branch/tag lint pass. These results do
+      not close hosted source acceptance, Windows lifecycle, or the shared ETHOS
+      contract.
 - [ ] 9.12 Qualify the paired native journeys in 5.3: untouched published
       predecessor payload through current-control upgrade and rollback, and
       unchanged old-CLI-produced recovery input through current public recovery.

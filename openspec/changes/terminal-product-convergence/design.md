@@ -606,11 +606,19 @@ Review and accepted `dev` own product proof. An unchanged `main` promotion binds
 the event and checkout to the exact accepted `dev` OID, checks ancestry and
 metadata, and reuses only separately observed applicable proof for that object.
 Equal trees or matching branch names cannot establish that identity or proof.
-Tag verification is a different obligation: the existing GitLab tag identity and
-signature job precedes its protected macOS and Windows native jobs. Those jobs
-keep the existing lifecycle and predecessor session; `main` does not repeat
-native construction merely to mirror the accepted object. Linux metadata still
-does not prove a native Linux service lifecycle.
+Every Forge Python compatibility and quality job receives the same immutable
+event objects as source governance. Invalid introduced subjects remain visible
+even after branch refs advance. A detached standalone check without a usable
+base checks only the current commit; it neither rejudges all history nor claims
+acceptance of an unknown range. A repaired-history event still needs the
+formally verified contribution relation; a guessed baseline cannot replace it.
+An all-zero before object also validates only the current commit, not an
+unidentified introduced range. Tag verification is a different obligation: the
+existing GitLab tag identity and signature job precedes its protected macOS and
+Windows native jobs. Those jobs keep the existing lifecycle and predecessor
+session; `main` does not repeat native construction merely to mirror the
+accepted object. Linux metadata still does not prove a native Linux service
+lifecycle.
 
 GitHub branch admission is a generated branch-only workflow that invokes the
 shared Verify graph once. Its stable `Admission` job fails unless the reusable

@@ -186,7 +186,7 @@ gitlab: {
 		]])
 		script: [
 			"python --version",
-			"uv run --locked --no-sync --python python --no-python-downloads nox -s \"tests-$PYTHON_VERSION\"",
+			#GitLabCommitEvent + "uv run --locked --no-sync --python python --no-python-downloads nox -s \"tests-$PYTHON_VERSION\"",
 		]
 	}
 	"verify-python": #LinuxPython & {
@@ -267,7 +267,7 @@ gitlab: {
 		]])
 		script: [
 			"uv sync --locked --group quality --python python --no-python-downloads",
-			"uv run --locked --no-sync --python python --no-python-downloads nox -s quality",
+			#GitLabCommitEvent + "uv run --locked --no-sync --python python --no-python-downloads nox -s quality",
 		]
 	}
 	"verify-python-quality": #LinuxQuality & {
@@ -484,6 +484,7 @@ githubVerify: {
 				#UvSetup
 			}, {
 				name: "Compile and test"
+				env:  #CommitEvent
 				run:  "uv run --locked --group quality nox -s \"tests-${{ matrix.python-version }}\""
 			}]
 		}
@@ -511,6 +512,7 @@ githubVerify: {
 				#UvSetup
 			}, {
 				name: "Compile and test"
+				env:  #CommitEvent
 				run:  "uv run --locked --group quality nox -s \"tests-${{ matrix.python-version }}\""
 			}]
 		}
@@ -630,6 +632,7 @@ githubVerify: {
 				#MiseSetup
 			}, {
 				name: "Verify lint, format, types, structure, docstrings, and product branch coverage"
+				env:  #CommitEvent
 				run:  "uv run --locked --group quality nox -s quality"
 			}]
 		}

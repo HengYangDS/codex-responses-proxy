@@ -106,6 +106,9 @@ jobs:
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Compile and test
+        env:
+          CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
+          CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"
   python-windows:
     name: Python ${{ matrix.python-version }} (Windows)
@@ -130,6 +133,9 @@ jobs:
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
       - name: Compile and test
+        env:
+          CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
+          CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: uv run --locked --group quality nox -s "tests-${{ matrix.python-version }}"
   accepted-source:
     name: Accepted source
@@ -251,6 +257,9 @@ jobs:
           cache: true
           version: 2026.9.18
       - name: Verify lint, format, types, structure, docstrings, and product branch coverage
+        env:
+          CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
+          CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: uv run --locked --group quality nox -s quality
   performance:
     name: Performance

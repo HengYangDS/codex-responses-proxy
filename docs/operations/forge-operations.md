@@ -273,6 +273,14 @@ separately observed applicable proof. Equal trees, branch names, or passing
 metadata alone do not establish that proof. An unchanged `main` mirror does not
 need another native build; changed source or tool inputs require fresh evidence.
 
+All Python compatibility and quality jobs receive the event's explicit base and
+head, as source governance does. Advancing branch refs cannot hide an invalid
+introduced middle commit. Without event objects or a usable local integration
+base, a standalone check evaluates only the current commit, not an unknown
+introduced range or the entire historical log. An event's all-zero before object
+also checks only the tip; that result cannot certify an unidentified introduced
+range.
+
 macOS and Windows use `verify-macos-native` and `verify-windows-native` on
 protected `dev` and tags; their `-review` jobs run only for merge requests to
 `dev`. Tag native checks depend on the existing tag identity and signature job;

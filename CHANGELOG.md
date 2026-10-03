@@ -19,6 +19,8 @@ History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
 
 ### Fixed
 
+- Bind every Forge Python and quality session to its declared commit range;
+  standalone detached checks no longer rejudge unrelated historical subjects.
 - Bind promotion to the exact accepted source object, not an equal tree or a
   branch name. Run the declared GitLab native tag checks after tag identity and
   signature verification without repeating native construction on `main`.
