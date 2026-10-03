@@ -72,6 +72,15 @@ thresholds, and unexplained disabled rules SHALL fail admission.
 - **AND** formatter reflow preserves prose, code bytes, link targets, and
   immutable archived Change bytes.
 
+#### Scenario: Native Markdown indentation agrees across consumers
+
+- **WHEN** a current list or numbered task contains nested items
+- **THEN** EditorConfig selects two-space Markdown indentation and both native
+  formatting and Markdown lint accept that same structure
+- **AND** a four-space nested item fails the unchanged native checks
+- **AND** the conformance test preserves input bytes and uses the actual
+  repository configuration, not a private replacement rule.
+
 #### Scenario: Single-paragraph peer items contain blank separators
 
 - **WHEN** a current list or task list inserts blank lines between peer items

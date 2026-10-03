@@ -61,6 +61,18 @@ import (
 	git merge-base --is-ancestor refs/remotes/origin/main "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
 	"""
 
+#GitHubRepositoryChecks: [{
+	name: "Install locked dependencies"
+	run:  "uv sync --locked --all-groups"
+}, {
+	name: "Verify release metadata"
+	run:  "uv run --locked --no-sync python -m tools.release.metadata"
+}, {
+	name: "Verify repository contract"
+	env:  #CommitEvent
+	run:  "uv run --locked --no-sync python -m tools.quality.repository"
+}]
+
 #UvSetup: {
 	uses: #Toolchains.githubActions.uv
 	with: "cache-suffix": "${{ github.job }}-${{ strategy.job-index }}"
@@ -521,7 +533,7 @@ githubVerify: {
 			if:                "github.event_name == 'push' && github.ref_type == 'branch'"
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 10
-			steps: [{
+			steps: list.Concat([[{
 				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
@@ -533,22 +545,21 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
-				name: "Confirm accepted source and metadata"
+				name: "Fetch accepted refs and release tags"
+				run:  "git fetch origin main dev --tags --force --prune --prune-tags"
+			}, {
+				name: "Confirm the exact accepted object"
+				if:   "github.ref == 'refs/heads/main'"
 				env:  #CommitEvent
-				run: "git fetch origin main dev --tags --force --prune --prune-tags\nif [ \"$GITHUB_REF\" = refs/heads/main ]; then\n" + #AcceptedObject + "\nfi\n" + """
-					uv sync --locked --all-groups
-					uv run --locked --no-sync python -m tools.release.metadata
-					uv run --locked --no-sync python -m tools.quality.repository
-
-					"""
-			}]
+				run:  #AcceptedObject
+			}], #GitHubRepositoryChecks])
 		}
 		promotion: {
 			name:              "Promote dev to main"
 			if:                "github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'dev'"
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 10
-			steps: [{
+			steps: list.Concat([[{
 				uses: #Toolchains.githubActions.checkout
 				with: {
 					"fetch-depth": 0
@@ -561,14 +572,13 @@ githubVerify: {
 			}, {
 				#UvSetup
 			}, {
-				name: "Prove exact dev-to-main promotion"
+				name: "Fetch accepted refs and release tags"
+				run:  "git fetch origin main dev --tags --force --prune --prune-tags"
+			}, {
+				name: "Prove the exact dev-to-main object"
 				env:  #CommitEvent
-				run: "git fetch origin main dev --tags --force --prune --prune-tags\n" + #AcceptedObject + "\n" + """
-					uv sync --locked --all-groups
-					uv run --locked --no-sync python -m tools.release.metadata
-					uv run --locked --no-sync python -m tools.quality.repository
-					"""
-			}]
+				run:  #AcceptedObject
+			}], #GitHubRepositoryChecks])
 		}
 		"tag-metadata": {
 			name:              "Tag metadata and governance"

@@ -630,7 +630,13 @@ def test_promotion_reuses_only_the_exact_accepted_object(
         jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
         name = "promotion" if route == "promotion" else "accepted-source"
         steps = _sequence(_mapping(jobs[name])["steps"])
-        script = _string(_mapping(steps[-1])["run"])
+        conditions = [step["if"] for value in steps if "if" in (step := _mapping(value))]
+        assert conditions == (
+            ["github.ref == 'refs/heads/main'"] if route == "accepted-source" else []
+        )
+        script = "\n".join(
+            _string(step["run"]) for value in steps if "run" in (step := _mapping(value))
+        )
         script = script.replace("${{ github.event.pull_request.head.sha }}", event_head)
     result = subprocess.run(
         ("bash", "-e", "-c", "uv() { return 0; }\n" + script),

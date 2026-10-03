@@ -1327,6 +1327,60 @@ def test_native_markdown_rules_reject_real_invalid_carriers_without_source_write
 
 
 @pytest.mark.repository_toolchain
+@pytest.mark.parametrize(
+    ("source", "valid"),
+    [
+        ("# Fixture\n\n- Parent.\n  - Child.\n- Next.\n", True),
+        ("# Fixture\n\n- Parent.\n    - Child.\n- Next.\n", False),
+        (
+            "# Tasks\n\n- [ ] 1.1 Parent.\n  - [ ] 1.1.1 Child.\n- [ ] 1.2 Next.\n",
+            True,
+        ),
+    ],
+)
+def test_native_markdown_formatter_and_linter_share_editor_indentation(
+    source: str, valid: bool
+) -> None:
+    files = ("README.md", ".editorconfig", ".config/quality/native/prettier.json")
+    with _test_repository(files) as root:
+        for relative in files[1:]:
+            (root / relative).write_bytes((ROOT / relative).read_bytes())
+        (root / "README.md").write_text(source, encoding="utf-8")
+        before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+        commands = (
+            (
+                "node",
+                str(ROOT / "node_modules/prettier/bin/prettier.cjs"),
+                "--check",
+                "--config",
+                ".config/quality/native/prettier.json",
+                "README.md",
+            ),
+            (
+                "node",
+                str(ROOT / "node_modules/markdownlint-cli2/markdownlint-cli2-bin.mjs"),
+                "--config",
+                str(ROOT / ".config/quality/native/markdownlint-cli2.mjs"),
+                "--no-globs",
+                "README.md",
+            ),
+        )
+        for command in commands:
+            completed = subprocess.run(
+                command,
+                cwd=root,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=20,
+                check=False,
+            )
+            assert (completed.returncode == 0) is valid, completed.stdout + completed.stderr
+        assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
+
+
+@pytest.mark.repository_toolchain
 @pytest.mark.parametrize("valid", [True, False])
 def test_native_markdown_command_checks_the_declared_current_files(
     valid: bool, monkeypatch: pytest.MonkeyPatch

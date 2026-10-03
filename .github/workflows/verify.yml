@@ -153,20 +153,26 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
-      - name: Confirm accepted source and metadata
+      - name: Fetch accepted refs and release tags
+        run: git fetch origin main dev --tags --force --prune --prune-tags
+      - name: Confirm the exact accepted object
+        if: github.ref == 'refs/heads/main'
         env:
           CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
           CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          git fetch origin main dev --tags --force --prune --prune-tags
-          if [ "$GITHUB_REF" = refs/heads/main ]; then
+        run: |-
           test "$(git rev-parse HEAD)" = "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
           test "$(git rev-parse refs/remotes/origin/dev)" = "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
           git merge-base --is-ancestor refs/remotes/origin/main "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
-          fi
-          uv sync --locked --all-groups
-          uv run --locked --no-sync python -m tools.release.metadata
-          uv run --locked --no-sync python -m tools.quality.repository
+      - name: Install locked dependencies
+        run: uv sync --locked --all-groups
+      - name: Verify release metadata
+        run: uv run --locked --no-sync python -m tools.release.metadata
+      - name: Verify repository contract
+        env:
+          CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
+          CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: uv run --locked --no-sync python -m tools.quality.repository
   promotion:
     name: Promote dev to main
     if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'dev'
@@ -184,18 +190,25 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
         with:
           cache-suffix: ${{ github.job }}-${{ strategy.job-index }}
-      - name: Prove exact dev-to-main promotion
+      - name: Fetch accepted refs and release tags
+        run: git fetch origin main dev --tags --force --prune --prune-tags
+      - name: Prove the exact dev-to-main object
         env:
           CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
           CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |-
-          git fetch origin main dev --tags --force --prune --prune-tags
           test "$(git rev-parse HEAD)" = "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
           test "$(git rev-parse refs/remotes/origin/dev)" = "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
           git merge-base --is-ancestor refs/remotes/origin/main "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"
-          uv sync --locked --all-groups
-          uv run --locked --no-sync python -m tools.release.metadata
-          uv run --locked --no-sync python -m tools.quality.repository
+      - name: Install locked dependencies
+        run: uv sync --locked --all-groups
+      - name: Verify release metadata
+        run: uv run --locked --no-sync python -m tools.release.metadata
+      - name: Verify repository contract
+        env:
+          CODEX_RESPONSES_PROXY_COMMIT_BASE: ${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}
+          CODEX_RESPONSES_PROXY_COMMIT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: uv run --locked --no-sync python -m tools.quality.repository
   tag-metadata:
     name: Tag metadata and governance
     if: github.event_name == 'push' && github.ref_type == 'tag'

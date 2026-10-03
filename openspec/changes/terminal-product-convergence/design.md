@@ -259,6 +259,23 @@ rejects malformed or unformatted JSON without rewriting source. Editor defaults
 and text-byte validation cover those carriers too. Adding a format does not add
 a second formatter, schema, executor or dependency.
 
+Markdown indentation is two spaces in EditorConfig, so native Prettier and
+Markdownlint agree on nested lists. Their existing conformance graph checks both
+commands against valid and invalid nested carriers without writing the fixture.
+Numbered child tasks belong beneath their parent, with continuations inside the
+same item. A summary stays open while a child obligation is unfinished; the
+record of already verified work is not withdrawn. Official OpenSpec reads the
+whole task inventory; this correction adds no private hierarchy checker.
+
+Accepted-source and promotion workflows separate fetching refs, exact-object
+admission, dependency installation, metadata, and repository checks into native
+steps. Both routes reuse one CUE-owned check list. Promotion regressions execute
+every projected run step; the final step alone cannot establish admission. This
+preserves all object and ancestry checks and keeps ShellCheck enabled. The
+original combined step reproduces actionlint 1.7.12's write-before-start
+deadlock on this host; the complete projected workflow now passes the unchanged
+native linter. No byte-limit policy or replacement executor is introduced.
+
 Nox's native fail-fast option stops the ordered full graph at the first failed
 prerequisite. Governance failure cannot start quality or compatibility work;
 quality failure cannot start later interpreter sessions. A valid full run still

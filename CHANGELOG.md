@@ -19,6 +19,8 @@ History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
 
 ### Fixed
 
+- Align Markdown editor indentation with native formatting and lint, so nested
+  task items have one valid layout instead of conflicting requirements.
 - Refresh the reproducible toolchain to Python 3.14.8, uv 0.12.22, and Mise
   2026.10.1; update compatible CLI, locking, lint, and isolated-environment
   packages without changing the supported Python series or running service.
@@ -1751,382 +1753,382 @@ History: [GitLab][1.0.0-gitlab] · [GitHub][1.0.0-github]
   handling.
 
 [Unreleased-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.5...main
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.5...main
 [Unreleased-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.5...main
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.5...main
 [4.0.5-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.4...v4.0.5
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.4...v4.0.5
 [4.0.5-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.4...v4.0.5
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.4...v4.0.5
 [4.0.4-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.3...v4.0.4
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.3...v4.0.4
 [4.0.4-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.3...v4.0.4
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.3...v4.0.4
 [4.0.3-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.2...v4.0.3
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.2...v4.0.3
 [4.0.3-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.2...v4.0.3
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.2...v4.0.3
 [4.0.2-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.1...v4.0.2
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.1...v4.0.2
 [4.0.2-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.1...v4.0.2
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.1...v4.0.2
 [4.0.1-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.0...v4.0.1
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v4.0.0...v4.0.1
 [4.0.1-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.0...v4.0.1
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v4.0.0...v4.0.1
 [4.0.0-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.17...v4.0.0
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.17...v4.0.0
 [4.0.0-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.17...v4.0.0
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.17...v4.0.0
 [3.1.17-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.16...v3.1.17
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.16...v3.1.17
 [3.1.17-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.16...v3.1.17
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.16...v3.1.17
 [3.1.16-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.15...v3.1.16
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.15...v3.1.16
 [3.1.16-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.15...v3.1.16
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.15...v3.1.16
 [3.1.15-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.14...v3.1.15
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.14...v3.1.15
 [3.1.15-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.14...v3.1.15
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.14...v3.1.15
 [3.1.14-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.13...v3.1.14
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.13...v3.1.14
 [3.1.14-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.13...v3.1.14
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.13...v3.1.14
 [3.1.13-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.12...v3.1.13
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.12...v3.1.13
 [3.1.13-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.12...v3.1.13
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.12...v3.1.13
 [3.1.12-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.11...v3.1.12
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.11...v3.1.12
 [3.1.12-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.11...v3.1.12
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.11...v3.1.12
 [3.1.11-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.10...v3.1.11
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.10...v3.1.11
 [3.1.11-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.10...v3.1.11
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.10...v3.1.11
 [3.1.10-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.9...v3.1.10
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.9...v3.1.10
 [3.1.10-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.9...v3.1.10
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.9...v3.1.10
 [3.1.9-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.8...v3.1.9
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.8...v3.1.9
 [3.1.9-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.8...v3.1.9
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.8...v3.1.9
 [3.1.8-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.7...v3.1.8
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.7...v3.1.8
 [3.1.8-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.7...v3.1.8
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.7...v3.1.8
 [3.1.7-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.6...v3.1.7
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.6...v3.1.7
 [3.1.7-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.6...v3.1.7
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.6...v3.1.7
 [3.1.6-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.5...v3.1.6
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.5...v3.1.6
 [3.1.6-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.5...v3.1.6
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.5...v3.1.6
 [3.1.5-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.4...v3.1.5
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.4...v3.1.5
 [3.1.5-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.4...v3.1.5
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.4...v3.1.5
 [3.1.4-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.3...v3.1.4
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.3...v3.1.4
 [3.1.4-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.3...v3.1.4
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.3...v3.1.4
 [3.1.3-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.2...v3.1.3
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.2...v3.1.3
 [3.1.3-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.2...v3.1.3
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.2...v3.1.3
 [3.1.2-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.1...v3.1.2
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.1...v3.1.2
 [3.1.2-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.1...v3.1.2
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.1...v3.1.2
 [3.1.1-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.0...v3.1.1
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.1.0...v3.1.1
 [3.1.1-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.0...v3.1.1
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.1.0...v3.1.1
 [3.1.0-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.5...v3.1.0
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.5...v3.1.0
 [3.1.0-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.5...v3.1.0
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.5...v3.1.0
 [3.0.5-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.4...v3.0.5
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.4...v3.0.5
 [3.0.5-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.4...v3.0.5
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.4...v3.0.5
 [3.0.4-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.3...v3.0.4
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.3...v3.0.4
 [3.0.4-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.3...v3.0.4
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.3...v3.0.4
 [3.0.3-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.2...v3.0.3
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.2...v3.0.3
 [3.0.3-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.2...v3.0.3
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.2...v3.0.3
 [3.0.2-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.1...v3.0.2
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.1...v3.0.2
 [3.0.2-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.1...v3.0.2
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.1...v3.0.2
 [3.0.1-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.0...v3.0.1
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v3.0.0...v3.0.1
 [3.0.1-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.0...v3.0.1
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v3.0.0...v3.0.1
 [3.0.0-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.58...v3.0.0
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.58...v3.0.0
 [3.0.0-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.58...v3.0.0
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.58...v3.0.0
 [2.0.58-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.57...v2.0.58
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.57...v2.0.58
 [2.0.58-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.57...v2.0.58
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.57...v2.0.58
 [2.0.57-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.56...v2.0.57
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.56...v2.0.57
 [2.0.57-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.56...v2.0.57
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.56...v2.0.57
 [2.0.56-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.55...v2.0.56
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.55...v2.0.56
 [2.0.56-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.55...v2.0.56
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.55...v2.0.56
 [2.0.55-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.54...v2.0.55
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.54...v2.0.55
 [2.0.55-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.54...v2.0.55
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.54...v2.0.55
 [2.0.54-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.53...v2.0.54
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.53...v2.0.54
 [2.0.54-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.53...v2.0.54
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.53...v2.0.54
 [2.0.53-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.52...v2.0.53
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.52...v2.0.53
 [2.0.53-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.52...v2.0.53
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.52...v2.0.53
 [2.0.52-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.51...v2.0.52
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.51...v2.0.52
 [2.0.52-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.51...v2.0.52
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.51...v2.0.52
 [2.0.51-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.50...v2.0.51
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.50...v2.0.51
 [2.0.51-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.50...v2.0.51
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.50...v2.0.51
 [2.0.50-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.47...v2.0.50
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.47...v2.0.50
 [2.0.50-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.47...v2.0.50
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.47...v2.0.50
 [2.0.47-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.46...v2.0.47
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.46...v2.0.47
 [2.0.47-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.46...v2.0.47
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.46...v2.0.47
 [2.0.46-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.45...v2.0.46
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.45...v2.0.46
 [2.0.46-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.45...v2.0.46
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.45...v2.0.46
 [2.0.45-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.44...v2.0.45
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.44...v2.0.45
 [2.0.45-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.44...v2.0.45
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.44...v2.0.45
 [2.0.44-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.43...v2.0.44
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.43...v2.0.44
 [2.0.44-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.43...v2.0.44
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.43...v2.0.44
 [2.0.43-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.42...v2.0.43
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.42...v2.0.43
 [2.0.43-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.42...v2.0.43
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.42...v2.0.43
 [2.0.42-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.41...v2.0.42
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.41...v2.0.42
 [2.0.42-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.41...v2.0.42
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.41...v2.0.42
 [2.0.41-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.40...v2.0.41
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.40...v2.0.41
 [2.0.41-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.40...v2.0.41
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.40...v2.0.41
 [2.0.40-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.39...v2.0.40
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.39...v2.0.40
 [2.0.40-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.39...v2.0.40
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.39...v2.0.40
 [2.0.39-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.38...v2.0.39
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.38...v2.0.39
 [2.0.39-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.38...v2.0.39
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.38...v2.0.39
 [2.0.38-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.37...v2.0.38
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.37...v2.0.38
 [2.0.38-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.37...v2.0.38
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.37...v2.0.38
 [2.0.37-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.36...v2.0.37
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.36...v2.0.37
 [2.0.37-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.36...v2.0.37
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.36...v2.0.37
 [2.0.36-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.35...v2.0.36
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.35...v2.0.36
 [2.0.36-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.35...v2.0.36
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.35...v2.0.36
 [2.0.35-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.34...v2.0.35
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.34...v2.0.35
 [2.0.35-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.34...v2.0.35
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.34...v2.0.35
 [2.0.34-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.33...v2.0.34
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.33...v2.0.34
 [2.0.34-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.33...v2.0.34
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.33...v2.0.34
 [2.0.33-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.32...v2.0.33
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.32...v2.0.33
 [2.0.33-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.32...v2.0.33
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.32...v2.0.33
 [2.0.32-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.31...v2.0.32
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.31...v2.0.32
 [2.0.32-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.31...v2.0.32
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.31...v2.0.32
 [2.0.31-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.30...v2.0.31
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.30...v2.0.31
 [2.0.31-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.30...v2.0.31
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.30...v2.0.31
 [2.0.30-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.29...v2.0.30
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.29...v2.0.30
 [2.0.30-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.29...v2.0.30
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.29...v2.0.30
 [2.0.29-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.25...v2.0.29
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.25...v2.0.29
 [2.0.29-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.25...v2.0.29
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.25...v2.0.29
 [2.0.25-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.24...v2.0.25
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.24...v2.0.25
 [2.0.25-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.24...v2.0.25
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.24...v2.0.25
 [2.0.24-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.7...v2.0.24
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.7...v2.0.24
 [2.0.24-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.7...v2.0.24
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.7...v2.0.24
 [2.0.7-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.5...v2.0.7
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.5...v2.0.7
 [2.0.7-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.5...v2.0.7
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.5...v2.0.7
 [2.0.5-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.4...v2.0.5
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.4...v2.0.5
 [2.0.5-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.4...v2.0.5
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.4...v2.0.5
 [2.0.4-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.3...v2.0.4
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.3...v2.0.4
 [2.0.4-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.3...v2.0.4
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.3...v2.0.4
 [2.0.3-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.2...v2.0.3
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v2.0.2...v2.0.3
 [2.0.3-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.2...v2.0.3
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v2.0.2...v2.0.3
 [2.0.2-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.45...v2.0.2
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.45...v2.0.2
 [2.0.2-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.45...v2.0.2
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.45...v2.0.2
 [1.0.45-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.44...v1.0.45
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.44...v1.0.45
 [1.0.45-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.44...v1.0.45
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.44...v1.0.45
 [1.0.44-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.43...v1.0.44
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.43...v1.0.44
 [1.0.44-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.43...v1.0.44
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.43...v1.0.44
 [1.0.43-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.42...v1.0.43
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.42...v1.0.43
 [1.0.43-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.42...v1.0.43
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.42...v1.0.43
 [1.0.42-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.41...v1.0.42
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.41...v1.0.42
 [1.0.42-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.41...v1.0.42
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.41...v1.0.42
 [1.0.41-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.40...v1.0.41
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.40...v1.0.41
 [1.0.41-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.40...v1.0.41
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.40...v1.0.41
 [1.0.40-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.39...v1.0.40
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.39...v1.0.40
 [1.0.40-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.39...v1.0.40
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.39...v1.0.40
 [1.0.39-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.38...v1.0.39
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.38...v1.0.39
 [1.0.39-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.38...v1.0.39
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.38...v1.0.39
 [1.0.38-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.36...v1.0.38
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.36...v1.0.38
 [1.0.38-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.36...v1.0.38
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.36...v1.0.38
 [1.0.36-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.35...v1.0.36
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.35...v1.0.36
 [1.0.36-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.35...v1.0.36
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.35...v1.0.36
 [1.0.35-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.34...v1.0.35
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.34...v1.0.35
 [1.0.35-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.34...v1.0.35
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.34...v1.0.35
 [1.0.34-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.32...v1.0.34
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.32...v1.0.34
 [1.0.34-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.32...v1.0.34
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.32...v1.0.34
 [1.0.32-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.31...v1.0.32
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.31...v1.0.32
 [1.0.32-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.31...v1.0.32
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.31...v1.0.32
 [1.0.31-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.28...v1.0.31
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.28...v1.0.31
 [1.0.31-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.28...v1.0.31
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.28...v1.0.31
 [1.0.28-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.26...v1.0.28
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.26...v1.0.28
 [1.0.28-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.26...v1.0.28
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.26...v1.0.28
 [1.0.26-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.25...v1.0.26
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.25...v1.0.26
 [1.0.26-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.25...v1.0.26
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.25...v1.0.26
 [1.0.25-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.15...v1.0.25
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.15...v1.0.25
 [1.0.25-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.15...v1.0.25
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.15...v1.0.25
 [1.0.15-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.14...v1.0.15
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.14...v1.0.15
 [1.0.15-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.14...v1.0.15
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.14...v1.0.15
 [1.0.14-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.13...v1.0.14
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.13...v1.0.14
 [1.0.14-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.13...v1.0.14
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.13...v1.0.14
 [1.0.13-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.12...v1.0.13
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.12...v1.0.13
 [1.0.13-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.12...v1.0.13
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.12...v1.0.13
 [1.0.12-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.8...v1.0.12
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.8...v1.0.12
 [1.0.12-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.8...v1.0.12
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.8...v1.0.12
 [1.0.8-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.7...v1.0.8
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.7...v1.0.8
 [1.0.8-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.7...v1.0.8
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.7...v1.0.8
 [1.0.7-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.6...v1.0.7
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.6...v1.0.7
 [1.0.7-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.6...v1.0.7
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.6...v1.0.7
 [1.0.6-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.5...v1.0.6
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.5...v1.0.6
 [1.0.6-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.5...v1.0.6
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.5...v1.0.6
 [1.0.5-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.4...v1.0.5
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.4...v1.0.5
 [1.0.5-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.4...v1.0.5
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.4...v1.0.5
 [1.0.4-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.3...v1.0.4
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.3...v1.0.4
 [1.0.4-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.3...v1.0.4
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.3...v1.0.4
 [1.0.3-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.2...v1.0.3
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.2...v1.0.3
 [1.0.3-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.2...v1.0.3
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.2...v1.0.3
 [1.0.2-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.1...v1.0.2
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.1...v1.0.2
 [1.0.2-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.1...v1.0.2
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.1...v1.0.2
 [1.0.1-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.0...v1.0.1
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/compare/v1.0.0...v1.0.1
 [1.0.1-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.0...v1.0.1
+  https://github.com/HengYangDS/codex-responses-proxy/compare/v1.0.0...v1.0.1
 [1.0.0-gitlab]:
-    http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.0
+  http://192.168.64.101:18086/dig/misc/tools/llm-third-party-api/codex-responses-proxy/-/tags/v1.0.0
 [1.0.0-github]:
-    https://github.com/HengYangDS/codex-responses-proxy/commits/v1.0.0
+  https://github.com/HengYangDS/codex-responses-proxy/commits/v1.0.0

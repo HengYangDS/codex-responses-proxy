@@ -662,7 +662,7 @@
       tasks. An empty installed-tool probe rejects `quick` before it starts;
       locked bootstrap and quick pass with installed tools. Empty-HOME,
       empty-cache, and hosted qualification remain open.
-- [x] 8.4 Online-audit every direct runtime, development, OpenSpec, Python,
+- [ ] 8.4 Online-audit every direct runtime, development, OpenSpec, Python,
       Node, mise, uv, Nox, packaging, documentation, CI Action, and release
       dependency; advance each to its latest compatible stable version in the
       existing SSOT. The 2026-09-30 official-source audit advanced uv to
@@ -755,21 +755,38 @@
       not test those fixtures and are excluded. Source bytes are preserved by
       the completed check. Installed-product proof, peer platform execution, and
       final acceptance remain open.
-- [ ] 8.4.1 Refresh the current stable Python, uv, Mise, Cyclopts, filelock,
-      Ruff, and `virtualenv` pins through their existing authorities. Preserve
-      Python 3.12 compatibility, eight-platform artifact provenance, the npm
-      closure, and the running service. Require byte-clean repeat resolutions,
-      full source checks, cold development, exact-HEAD proof, and each declared
-      hosted source job before claiming the updated toolchain qualified. The
-      local five-session graph and repeated native resolutions pass. Signed
-      source `1344857` passes a fresh cold checkout's full graph and native
-      macOS asset tests; all 1,225 source hashes and modes are unchanged. The
-      detached checkout and native test scratch are retired after preserving
-      source-bound results. The old installed ETHOS pipe deadlocks are retained;
-      one authorized local signing exception leaves hooks and service unchanged.
-      Formal native proof, integration, and hosted qualification remain open;
-      the upstream OpenSpec advisory is not waived. Native results:
-      `build/verification/1344857224f8249ffa7327085786efeb393de567/stable-supply-20261004/`.
+  - [ ] 8.4.1 Refresh the current stable Python, uv, Mise, Cyclopts, filelock,
+        Ruff, and `virtualenv` pins through their existing authorities. Preserve
+        Python 3.12 compatibility, eight-platform artifact provenance, the npm
+        closure, and the running service. Require byte-clean repeat resolutions,
+        full source checks, cold development, exact-HEAD proof, and each
+        declared hosted source job before claiming the updated toolchain
+        qualified. The local five-session graph and repeated native resolutions
+        pass. Signed source `1344857` passes a fresh cold checkout's full graph
+        and native macOS asset tests; all 1,225 source hashes and modes are
+        unchanged. The detached checkout and native test scratch are retired
+        after preserving source-bound results. The old installed ETHOS pipe
+        deadlocks are retained; one authorized local signing exception leaves
+        hooks and service unchanged. Formal native proof, integration, and
+        hosted qualification remain open; the upstream OpenSpec advisory is not
+        waived. Native results:
+        `build/verification/1344857224f8249ffa7327085786efeb393de567/stable-supply-20261004/`.
+        The task hierarchy now retains all 101 IDs under their immediate
+        parents, with unfinished child obligations keeping the summary open.
+        EditorConfig selects the same two-space Markdown indentation as the
+        native formatter and linter; three conformance cases pass after
+        reproducing the old conflict. Actionlint's combined accepted-source step
+        reproduced a write-before-start pipe deadlock. CUE now separates native
+        semantic phases and reuses the check list; unchanged actionlint and all
+        47 workflow contracts pass. Promotion cases execute every run step,
+        preserving exact object and ancestry admission. The full native graph
+        passes in 312.748 seconds: 2,061 tests on each supported Python line,
+        five declared release-only skips, 168 toolchain cases, 44 native
+        Markdown cases, and 97.35% coverage. All 1,225 source hashes and modes
+        remain unchanged. Fixed-patch Claude review identifies a missing
+        main-only step-condition assertion; the same promotion test now binds
+        that native condition and all 20 object cases pass. Final source checks
+        and committed-source proof remain separate acceptance steps.
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no
       duplicate version literal controls behavior. Native Mise verified seven uv
@@ -1029,16 +1046,16 @@
       mechanically checked identity; 25 unpublished historical headings were
       folded into the tagged releases that actually carried their changes
       without dropping a user-visible entry.
-- [ ] 10.1.1 Qualify current Changelog navigation and native peer locators after
-      absorption of the signed product-owner source. Preserve every historical
-      entry, verify neutral headings and both actual destinations, and keep
-      SemVer, YANKED, current locks and three-platform CI responsibilities
-      intact. Source checks, accepted integration and publication remain
-      separate.
-- [ ] 10.1.2 Qualify the accepted installed ETHOS identity/reference contract,
-      reject reachable wrong-repository targets, and reconcile historical peer
-      tag differences through its authorized repair contract. Verify each peer's
-      actual result without a private map or duplicate checker.
+  - [ ] 10.1.1 Qualify current Changelog navigation and native peer locators
+        after absorption of the signed product-owner source. Preserve every
+        historical entry, verify neutral headings and both actual destinations,
+        and keep SemVer, YANKED, current locks and three-platform CI
+        responsibilities intact. Source checks, accepted integration and
+        publication remain separate.
+  - [ ] 10.1.2 Qualify the accepted installed ETHOS identity/reference contract,
+        reject reachable wrong-repository targets, and reconcile historical peer
+        tag differences through its authorized repair contract. Verify each
+        peer's actual result without a private map or duplicate checker.
 - [ ] 10.2 Build reproducible macOS, Linux, and Windows native bundles from the
       locked candidate; verify contents, modes, manifests, checksums,
       signatures, SBOM, provenance, and common-platform byte identity where
@@ -1183,29 +1200,35 @@
       prove Python binding only when Python is selected; acquisition-only gh
       jobs do not require an absent interpreter. Both review CI planes pass; the
       remaining root-carrier audit and shared installed quality contract stay
-      open. Stable npm 12.2.0 uses the native Mise backend and generated AUBE
-      graph; the old repository sidecars retire through that producer. Native
-      lock format 3 retains all 68 existing platform inputs and adds 11
-      discovered entries; the minimum reader and actual host/CI Mise are
-      2026.9.18. Actual pipeline 9025 disproved recursive workflow-variable tag
-      expansion; Linux review and protected jobs now share one CUE body and use
-      direct native scheduling variables with no intermediate alias. Windows
-      native release selection uses the running interpreter ABI, not the host
-      CPU, and native tests own short disposable roots independent of checkout
-      depth. Pipeline 9030 proves direct Linux Runner assignment, source, Python
-      matrix, and performance at signed a52f66c6. Its native Mac job rejects
-      missing gui/510; its Windows job exposes deep service-account TEMP and
-      inherited Nox TMPDIR. Native child temporary variables now share the same
-      owned root; the Runner owner must provide a short isolated native TEMP
-      input. Pipeline 9032 passes all Linux nodes and 49 Windows native checks,
-      but one mocked-launch test unnecessarily prewarms a real bundle and leaves
-      a locked module at cleanup. That invocation-only contract now runs in the
-      non-native suite with a synthetic manifest and a bounded mock scope; its
-      assertions remain intact. Fresh native suite acceptance remains required.
-      The current candidate's GUI-only dependency is reopened in 5.3. The paired
-      authentic payload and old-producer criteria in 5.3 replace the obsolete
-      installer's GUI prerequisite; signatures, package acquisition or
-      route-controlled traffic alone do not qualify either journey.
+      open. The real nested-task correction exposes conflicting four-space
+      EditorConfig and two-space Markdown lint defaults. Markdown now has one
+      two-space editor policy; existing native conformance tests reproduce the
+      conflict and check both commands. Child task IDs remain unchanged beneath
+      their parents; the supply summary stays open while its current refresh is
+      unqualified. Historical successful checks remain recorded. Stable npm
+      12.2.0 uses the native Mise backend and generated AUBE graph; the old
+      repository sidecars retire through that producer. Native lock format 3
+      retains all 68 existing platform inputs and adds 11 discovered entries;
+      the minimum reader and actual host/CI Mise are 2026.9.18. Actual pipeline
+      9025 disproved recursive workflow-variable tag expansion; Linux review and
+      protected jobs now share one CUE body and use direct native scheduling
+      variables with no intermediate alias. Windows native release selection
+      uses the running interpreter ABI, not the host CPU, and native tests own
+      short disposable roots independent of checkout depth. Pipeline 9030 proves
+      direct Linux Runner assignment, source, Python matrix, and performance at
+      signed a52f66c6. Its native Mac job rejects missing gui/510; its Windows
+      job exposes deep service-account TEMP and inherited Nox TMPDIR. Native
+      child temporary variables now share the same owned root; the Runner owner
+      must provide a short isolated native TEMP input. Pipeline 9032 passes all
+      Linux nodes and 49 Windows native checks, but one mocked-launch test
+      unnecessarily prewarms a real bundle and leaves a locked module at
+      cleanup. That invocation-only contract now runs in the non-native suite
+      with a synthetic manifest and a bounded mock scope; its assertions remain
+      intact. Fresh native suite acceptance remains required. The current
+      candidate's GUI-only dependency is reopened in 5.3. The paired authentic
+      payload and old-producer criteria in 5.3 replace the obsolete installer's
+      GUI prerequisite; signatures, package acquisition or route-controlled
+      traffic alone do not qualify either journey.
 - [ ] 11.6 Remove toy examples, private workstation paths, stale versions,
       obsolete commands, WCP references, AIGW coupling, empty evidence shells,
       claims, chronicles, parity directories, and historical instructions from
