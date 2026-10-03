@@ -824,7 +824,25 @@
       deselections. Governance passes 165 Python and 44 Node controls; strict
       OpenSpec passes all ten items. Independent review and distinguishing
       failed-exit cleanup controls pass; source bytes and coverage floors are
-      preserved. These are source results, not native Windows qualification.
+      preserved. These are source results, not native Windows qualification. The
+      original repaired-source GitLab pipeline 9399 at `b92268c9` passes every
+      Linux and macOS job. Windows job 47913 instead reaches uninstall purge and
+      reports OS error 5 on one generation's `libssl-3-x64.dll`, not process
+      wait timeout. A later exact-root observation finds a writable DLL, absent
+      task and no current image or Restart Manager holder; it does not identify
+      the holder at the failed attempt. Add a bounded sharing retry at the
+      existing disposal owner with file, ancestor and digest revalidation;
+      retain persistent errors and recovery authority. Qualify both the real
+      Windows handle counterexample and the original native transactional
+      journey before closing hosted acceptance. The independently reviewed
+      disposal repair passes the frozen full source graph in 405.304 seconds:
+      Python 3.12, 3.13, and 3.14 each pass 2,061 tests with five release-only
+      skips and 198 deselections. Governance passes 165 Python and 44 Node
+      controls; strict OpenSpec passes all ten items. File and ancestor
+      substitutions at the read boundary, deadline exhaustion before a retry can
+      succeed, unchanged permissions and persistent-error recovery authority
+      have distinguishing controls. The Windows native handle and transactional
+      acceptance remain unproved until execution.
 - [ ] 9.12 Qualify the paired native journeys in 5.3: untouched published
       predecessor payload through current-control upgrade and rollback, and
       unchanged old-CLI-produced recovery input through current public recovery.

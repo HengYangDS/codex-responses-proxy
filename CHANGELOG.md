@@ -19,6 +19,9 @@ History: [GitLab][Unreleased-gitlab] · [GitHub][Unreleased-github]
 
 ### Fixed
 
+- Recheck the exact owned payload during bounded Windows delete-sharing retries.
+  Replacement files stay protected, permissions stay unchanged, and persistent
+  errors retain recovery authority.
 - Preserve the failing phase and safe native error when process exit cannot be
   proved. Unknown exit keeps recovery authority; it is not reported as a live
   survivor or used to discard a payload.

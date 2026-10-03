@@ -336,3 +336,11 @@ the result. Reproduce the affected native journey before changing its exit
 acceptance contract. Their lifecycle fixtures remove owned services, listeners,
 payloads, and transactions and verify that unrelated canonical resources remain
 unchanged.
+
+Windows may reject payload deletion while a native image or external handle is
+mapped. After service absence and owned-process exit are proved, purge allows
+native delete-access and sharing errors a shared five-second retry window. Each
+attempt rechecks the file, its ancestors, and its recorded digest. Replacement
+content remains protected; permissions stay unchanged. Persistent failure keeps
+the native error and recovery journal. A later empty holder snapshot does not
+prove what held the file at the failed attempt.

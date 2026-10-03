@@ -595,6 +595,18 @@ resolution. Public recovery and repeated purge consume this one disposal owner;
 there is no separate uninstall log, retry engine, or inferred recursive
 deletion.
 
+Windows can reject a delete while a native image or external handle is still
+mapped after the process-exit barrier. An absent holder in a later snapshot does
+not prove what held the file at the failed attempt. The same purge owner allows
+only native delete-access and sharing errors a shared five-second retry window.
+Each attempt revalidates the captured file and ancestor identities, no-follow
+regular-file access, and the journal digest. A replacement stops disposal, even
+when it has the same bytes. No `chmod`, ACL change, holder kill, background
+deletion, or error suppression is added. Persistent failure keeps the original
+native cause and terminal recovery authority. The real Windows handle
+counterexample and the failed transactional native journey both require
+qualification; mock success does not certify the original obstruction.
+
 A capability-qualified handoff transfers the listener without changing request
 admission: the predecessor stops accepting only when the successor is ready to
 serve, while already accepted handlers finish on the predecessor. Upgrade and
