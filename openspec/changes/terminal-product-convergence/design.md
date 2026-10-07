@@ -72,6 +72,13 @@ of the incumbent path, focused GREEN, and one affected gate. Heavy gates run
 only at milestone boundaries. A task is complete only when its stated evidence
 exists; file churn or an unexecuted design does not count as progress.
 
+The selected official task template owns the numbered checklist. Keep actions,
+acceptance conditions, meaningful links, and checkbox state in `tasks.md`; keep
+results and command transcripts at their original proof, CI, release, or
+recovery producer. Earlier progress narratives remain in Git history, not
+another tracked archive or status ledger. Removing those copies does not
+complete an open task or withdraw its retained evidence.
+
 ### Product ontology determines physical topology
 
 The durable product domains are request admission, portable Responses semantics,
