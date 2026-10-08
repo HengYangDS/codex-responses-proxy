@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from typing import Literal
 from typing import cast
 from typing import override
 
@@ -30,6 +31,7 @@ def serve_proxy(
     *,
     captures: list[dict[str, object]] | None = None,
     extra_provider: str | None = None,
+    agent_message_delivery: Literal["native", "plaintext"] = "native",
 ) -> tuple[int, list[bytes], Callable[[], None]]:
     """Start scripted loopback servers and return port, bodies, and cleanup."""
     scripted = list(responses)
@@ -126,7 +128,9 @@ def serve_proxy(
             test_upstream,
             cast(provider_registry.WirePolicy, dmxapi_policy),
         ),
-        "ucloud": provider_registry.Profile("ucloud", test_upstream),
+        "ucloud": provider_registry.Profile(
+            "ucloud", test_upstream, agent_message_delivery=agent_message_delivery
+        ),
         "aihubmix": provider_registry.Profile("aihubmix", test_upstream),
     }
     if extra_provider is not None:
@@ -157,11 +161,16 @@ def running_proxy(
     *,
     captures: list[dict[str, object]] | None = None,
     extra_provider: str | None = None,
+    agent_message_delivery: Literal["native", "plaintext"] = "native",
 ):
     """Yield a scripted loopback proxy and always release both servers."""
     with tempfile.TemporaryDirectory() as log_dir:
         port, received, cleanup = serve_proxy(
-            responses, log_dir, captures=captures, extra_provider=extra_provider
+            responses,
+            log_dir,
+            captures=captures,
+            extra_provider=extra_provider,
+            agent_message_delivery=agent_message_delivery,
         )
         try:
             yield port, received

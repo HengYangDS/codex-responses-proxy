@@ -129,7 +129,7 @@ sequenceDiagram
     Proxy->>Proxy: Remove provider-bound replay state
     Proxy->>Provider: store=false portable request
     Provider-->>Proxy: JSON or SSE response
-    Proxy->>Proxy: Validate integrity without changing response bytes
+    Proxy->>Proxy: Validate integrity and restore selected delivery metadata
     Proxy-->>Codex: Committed response or bounded failure
 ```
 
@@ -168,6 +168,23 @@ continuation.
 The live-response boundary preserves encrypted control content needed for the
 current turn. Empty, truncated, malformed, oversized, or non-terminal success bodies
 become a retryable local `503`; partial success bytes are not committed.
+
+`providers/manifest.toml` selects `agent_message_delivery` as `native` or
+`plaintext` per route; omission selects native delivery. The plaintext protocol
+adapter aliases the reserved collaboration namespace before generation and
+removes the encrypted annotation only from `spawn_agent`, `send_message`, and
+`followup_task` message schemas. Replayed calls and explicit tool choice use
+the same alias. The response restores `collaboration` and adds the native empty
+`encrypted_function_args` list only after complete readable arguments arrive.
+Message text, arguments and call identities remain exact. Nonempty encrypted
+metadata, cipher-shaped messages, and conflicting aliases fail closed.
+
+The signed client's native path requires the `collaboration` namespace and a
+model catalog whose agent version matches the conversation. Those inputs belong
+to its configuration owner. A stream's empty call start may precede arguments;
+validation occurs before the completed message can be delivered. Existing
+encrypted messages keep their envelope and ciphertext. Empty `additional_tools`
+lists retain their explicit current-turn meaning during native compaction.
 
 ## Recovery ownership
 

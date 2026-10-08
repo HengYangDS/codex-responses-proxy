@@ -73,6 +73,7 @@ _CALL_FIELDS = {
     )
     for item_type, argument_field in _CALL_ARGUMENT_FIELD.items()
 }
+_CALL_FIELDS["function_call"] = _CALL_FIELDS["function_call"] | {"encrypted_function_args"}
 _OUTPUT_FIELDS = frozenset(
     (
         "type",
@@ -281,6 +282,12 @@ def _project_call(
         _reject("invalid_namespace")
     if not _valid_caller(caller):
         _reject("invalid_caller")
+    encrypted_args = item.get("encrypted_function_args")
+    if "encrypted_function_args" in item and (
+        not isinstance(encrypted_args, list)
+        or any(not isinstance(value, str) or not value for value in encrypted_args)
+    ):
+        _reject("invalid_encrypted_function_args")
     projected: JsonObject = {
         "type": item_type,
         "call_id": valid_call_id,
@@ -291,6 +298,8 @@ def _project_call(
         projected["namespace"] = namespace
     if caller is not None:
         projected["caller"] = caller
+    if "encrypted_function_args" in item:
+        projected["encrypted_function_args"] = encrypted_args
     return projected, {
         "changed": int(projected != item),
         "item_ids": int("id" in item),
@@ -483,7 +492,6 @@ def _project_tool_catalog(item: JsonObject) -> tuple[JsonObject, dict[str, int]]
         not isinstance(role, str)
         or not role
         or not isinstance(tools, list)
-        or not tools
         or any(not isinstance(tool, dict) or not tool for tool in tools)
         or ("id" in item and (not isinstance(item_id, str) or not item_id))
     ):

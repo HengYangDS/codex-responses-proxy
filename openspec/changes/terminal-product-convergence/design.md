@@ -62,6 +62,26 @@ authority out of AIGW or another control plane.
 
 ## Decisions
 
+### Select readable delegation before generation
+
+One released provider profile selects native or plaintext agent delivery; the
+protocol package owns the complete request/response adaptation. The plaintext
+selection aliases the reserved collaboration namespace and its explicit tool
+choice, removes only message encryption annotations before generation, and
+restores the client's native namespace and empty encrypted-argument marker
+after readable arguments are proved. A request-local selection binds JSON,
+streaming output, and replay. It preserves arguments, call identities and old
+ciphertext; failures do not retry with missing messages. Client configuration
+remains with its existing owner and must align the namespace and model agent
+version. Native compaction's empty current-turn tool catalog is a valid control.
+
+Acceptance uses the signed client and selected route for actual child work,
+bidirectional messages, automatic completion, followup tasks, native resume,
+compaction and exact content witnesses. Source acceptance precedes release,
+native installation, scoped client selection, original-chat acceptance and
+rollback. Old ciphertext readability is a separate unproved boundary until a
+supported decode or exact source binding establishes it.
+
 ### One Change, ordered semantic closures
 
 The Change is large by design, but implementation is not a big-bang edit. Each

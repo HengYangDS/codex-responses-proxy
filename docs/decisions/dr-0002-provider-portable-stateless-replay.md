@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-07
-- Last amended: 2026-09-24
+- Last amended: 2026-10-08
 
 ## Context
 
@@ -31,6 +31,20 @@ Recovery consumes only the already-projected representation or a strictly
 smaller derivation of it. No recovery path restores an earlier provider-bound
 request, reads client conversation storage, or claims to decrypt ciphertext.
 Requests carrying encrypted agent messages cannot use shrinking recovery.
+
+A released provider profile may select plaintext agent delivery before model
+generation. Its request-local protocol adapter aliases `collaboration` to
+`collaboration_plaintext`, removes only the three message tools' encrypted
+message annotation, and remaps replayed calls and explicit tool selection. It
+restores native call namespaces and an empty `encrypted_function_args` list
+only for proved readable message arguments. This invokes the client's existing
+plaintext delivery path; it does not decrypt or relabel old ciphertext. The
+request-local selection binds both JSON and streaming response restoration.
+
+The client configuration owner must align its tool namespace and model agent
+version with the conversation. The proxy neither reads nor repairs these
+settings. Native compaction's empty `additional_tools` list is a valid explicit
+control and must remain empty rather than be removed or rejected.
 
 ## Consequences
 

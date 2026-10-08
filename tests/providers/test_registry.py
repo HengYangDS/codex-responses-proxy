@@ -146,6 +146,38 @@ class ProviderRegistryTests:
         assert loaded.profiles["new-gateway"].base_url == "https://gateway.example/v1"
         assert loaded.profiles["new-gateway"].wire_policy is None
 
+    def test_agent_delivery_policy_is_explicit_and_scoped_to_one_route(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            loaded = registry.load(
+                _manifest(
+                    Path(directory),
+                    "version = 1\n"
+                    "[providers.native]\nbase_url = 'https://native.example/v1'\n"
+                    "[providers.readable]\nbase_url = 'https://readable.example/v1'\n"
+                    "agent_message_delivery = 'plaintext'\n",
+                )
+            )
+        assert loaded.profiles["native"].agent_message_delivery == "native"
+        assert loaded.profiles["readable"].agent_message_delivery == "plaintext"
+        shipped = registry.load()
+        assert shipped.profiles["ucloud"].agent_message_delivery == "plaintext"
+        assert shipped.profiles["dmxapi"].agent_message_delivery == "native"
+
+    @pytest.mark.parametrize("value", ["'automatic'", "false"])
+    def test_unknown_agent_delivery_policy_cannot_start_a_route(self, value: str) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            pytest.raises(ValueError, match="invalid agent message delivery policy"),
+        ):
+            registry.load(
+                _manifest(
+                    Path(directory),
+                    "version = 1\n[providers.gateway]\n"
+                    "base_url = 'https://gateway.example/v1'\n"
+                    f"agent_message_delivery = {value}\n",
+                )
+            )
+
     def test_special_policy_is_one_module_plus_one_manifest_declaration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             loaded = registry.load(

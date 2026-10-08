@@ -19,6 +19,7 @@ from typing import Protocol
 from typing import TypedDict
 from typing import runtime_checkable
 
+from codex_responses_proxy.protocol import agent_delivery
 from codex_responses_proxy.protocol import response as live_response
 from codex_responses_proxy.relay import operational_log
 from codex_responses_proxy.relay import telemetry
@@ -131,6 +132,7 @@ def _read_one_stream(
     response: UpstreamResponse,
     on_first_write: Callable[[], None],
     deadline: float | None = None,
+    plaintext_agent_delivery: bool = False,
 ) -> StreamResult:
     """Relay one upstream stream while withholding retry-safe prelude events."""
     if deadline is None:
@@ -160,6 +162,7 @@ def _read_one_stream(
         nonlocal event_count, terminal_event, upstream_detail, upstream_error
         nonlocal failure_code, upstream_request_id
         try:
+            event = agent_delivery.restore_event(event, plaintext_agent_delivery)
             payload = live_response.sse_event_data(event)
         except ValueError as error:
             upstream_detail = "projection_failed"
@@ -232,6 +235,7 @@ def relay(
     request_id: int,
     reopen: Callable[[], UpstreamResponse] | None = None,
     send_headers: Callable[[], None] | None = None,
+    plaintext_agent_delivery: bool = False,
 ) -> RelayResult:
     """Relay validated SSE with retries only before downstream commitment."""
     headers_sent = False
@@ -250,7 +254,9 @@ def relay(
     attempt = 0
     for attempt in range(max_attempts):
         try:
-            result = _read_one_stream(handler, current, on_first_write, deadline)
+            result = _read_one_stream(
+                handler, current, on_first_write, deadline, plaintext_agent_delivery
+            )
         finally:
             _release_upstream(current)
         terminal = result["terminal"]

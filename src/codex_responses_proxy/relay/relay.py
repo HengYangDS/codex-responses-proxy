@@ -6,6 +6,7 @@ import http.client
 from http.server import BaseHTTPRequestHandler
 from typing import Protocol
 
+from codex_responses_proxy.protocol import agent_delivery
 from codex_responses_proxy.protocol import response as live_response
 from codex_responses_proxy.providers import registry as provider_registry
 from codex_responses_proxy.relay import operational_log
@@ -37,6 +38,7 @@ class Exchange(Protocol):
     request_id: int
     is_responses: bool
     used_input_variant_dialogue: bool
+    plaintext_agent_delivery: bool
 
     def upstream(self, body: bytes | None = None) -> UpstreamResponse:
         """Open the current upstream attempt."""
@@ -133,6 +135,7 @@ def relay_sse(exchange: Exchange, response: UpstreamResponse) -> None:
             exchange.request_id,
             reopen=None if exchange.used_input_variant_dialogue else reopen,
             send_headers=lambda: _send_stream_headers(exchange.handler, response),
+            plaintext_agent_delivery=exchange.plaintext_agent_delivery,
         )
         stream = result["result"]
         if stream is not None and stream["detail"] == "projection_failed":
@@ -252,6 +255,7 @@ def relay_responses_json(exchange: Exchange, response: UpstreamResponse) -> None
             if not chunk:
                 break
         payload = live_response.validate_json_response(b"".join(chunks))
+        payload = agent_delivery.restore_response(payload, exchange.plaintext_agent_delivery)
     except ValueError:
         _invalid_responses_success(exchange, "invalid_terminal_json")
         return
