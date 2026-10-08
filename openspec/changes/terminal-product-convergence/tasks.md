@@ -104,6 +104,19 @@
       evidence directory. Manifest 7 and host Config 6 are distinct schemas;
       this candidate accepts retained Config 6 without migration. Candidate
       reader succession and its strict quality gate remain unqualified.
+    - The native release journey now also qualifies a mixed retained subtree:
+      one root, one active child and one already archived keeper. Root archive
+      releases the exact subtree; only formerly active identities are
+      unarchived. Resuming the same root and following up the same child in
+      the original process sends both to the new endpoint with Provider
+      identity unchanged. Models, effort, archive flags, spawn edges and
+      complete history prefixes remain intact. All 17 acceptance and exact
+      cleanup checks pass with synthetic local upstreams and no credentials.
+      Evidence:
+      `build/verification/encrypted-agent-delivery/native-provider-release-subtree-20261009.json`.
+      This closes the runtime release/reload boundary only; the real UCloud
+      reader, installed AIGW projection and original subtree remain separate
+      acceptance obligations.
 - [x] 4.4 Ensure Provider-specific wire differences live only in narrow adapters selected from one manifest and policy contract; verify generic relay, lifecycle, CLI, and tests do not branch on Provider names. The product source and test control flow contain no Provider-name branch; the manifest selects the optional pure wire policy.
 - [x] 4.5 Define the low-cost Provider extension path—manifest entry, adapter, policy, contract fixtures, conformance suite, documentation, and no core modification—and prove it with one representative non-default Provider fixture. `new-gateway` passes the real loopback Responses path; manifest-only and optional-policy fixtures and `CONTRIBUTING.md` describe the same extension contract. The focused suite passes 23 tests and 57 subtests.
 - [ ] 4.6 Evaluate mature local-first gateways and protocol libraries against the exact retained differentiators; replace custom generic mechanics only where doing so reduces source, dependencies, runtime risk, and maintenance authority.
