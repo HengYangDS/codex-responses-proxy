@@ -130,16 +130,21 @@ service, temporary product directory, or generated closeout residue.
 
 Python compatibility and quality sessions SHALL build and install the project
 wheel, then exercise the complete behavior inventory through that installed
-environment. They MUST NOT rebuild the native distribution. The release session
-SHALL be the sole native bundle build owner and SHALL prove every public
-command's help, valid and invalid inputs, human and JSON output, exit status,
-real handoff behavior, no-Python execution, prewarmed startup, and release-asset
-packaging. Release validation SHALL exercise the exact native executable that
-installation will serve, using an isolated installation root, native service
-identity, state root, HOME, and listener port. Native subprocess verification
-SHALL preserve the host operating-system runtime environment and override only
-the isolated paths owned by the test. A temporary copy or the canonical
-installed service SHALL NOT be treated as proof of the release candidate.
+environment.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** They MUST NOT rebuild the native distribution. The release session
+  SHALL be the sole native bundle build owner and SHALL prove every public
+  command's help, valid and invalid inputs, human and JSON output, exit status,
+  real handoff behavior, no-Python execution, prewarmed startup, and release-asset
+  packaging. Release validation SHALL exercise the exact native executable that
+  installation will serve, using an isolated installation root, native service
+  identity, state root, HOME, and listener port. Native subprocess verification
+  SHALL preserve the host operating-system runtime environment and override only
+  the isolated paths owned by the test. A temporary copy or the canonical
+  installed service SHALL NOT be treated as proof of the release candidate.
 
 #### Scenario: Python and native gates prove distinct facts
 
@@ -217,24 +222,29 @@ selected proposal. `candidate/dev` and `work/*` SHALL remain local-only.
 ### Requirement: Human and machine interfaces share one result model
 
 The installed executable SHALL render concise, task-oriented human output by
-default and stable JSON only when `--json` is requested. Every public command
-SHALL support both projections and SHALL preserve one semantic result and exit
-status model across them. Healthy absence, pending recovery, invalid evidence,
-degraded installation, and completed mutation SHALL be distinct outcomes.
-Human output SHALL use consistent sections, display-width alignment,
-actionable state-specific guidance, and no serialized object dump. Source
-modules, Python launch syntax, repository paths, and release-operator commands
-SHALL remain outside the end-user journey. Status SHALL report release identity
-from the verified installed-state record and command discoverability without
-consulting repository files or a second state authority. Runtime evidence SHALL
-be returned only when its PID is the sole listener owned by the selected
-installation. An installed command path SHALL be interpreted using the native
-absolute-path and link semantics of the host that recorded it. Recovery SHALL identify the exact failed carrier invariant when the
-transaction root or journal is missing, a symbolic link, the wrong filesystem
-type, malformed JSON, non-canonical JSON, an unsupported schema, or invalid
-under the current schema. It MUST preserve those bytes, retain one stable
-\`recovery_state_invalid\` error code and read-only next action, and distinguish
-that evidence failure from the health of an independently serving runtime.
+default and stable JSON only when `--json` is requested.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** Every public command
+  SHALL support both projections and SHALL preserve one semantic result and exit
+  status model across them. Healthy absence, pending recovery, invalid evidence,
+  degraded installation, and completed mutation SHALL be distinct outcomes.
+  Human output SHALL use consistent sections, display-width alignment,
+  actionable state-specific guidance, and no serialized object dump. Source
+  modules, Python launch syntax, repository paths, and release-operator commands
+  SHALL remain outside the end-user journey. Status SHALL report release identity
+  from the verified installed-state record and command discoverability without
+  consulting repository files or a second state authority. Runtime evidence SHALL
+  be returned only when its PID is the sole listener owned by the selected
+  installation. An installed command path SHALL be interpreted using the native
+  absolute-path and link semantics of the host that recorded it. Recovery SHALL identify the exact failed carrier invariant when the
+  transaction root or journal is missing, a symbolic link, the wrong filesystem
+  type, malformed JSON, non-canonical JSON, an unsupported schema, or invalid
+  under the current schema. It MUST preserve those bytes, retain one stable
+  \`recovery_state_invalid\` error code and read-only next action, and distinguish
+  that evidence failure from the health of an independently serving runtime.
 
 #### Scenario: An operator inspects the installed service
 

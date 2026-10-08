@@ -11,13 +11,18 @@ authority.
 ### Requirement: Dual-Forge releases project one complete signed bundle
 
 The admitted native builder for each supported platform SHALL produce that
-platform's asset pair. The release owner SHALL admit those assets into exactly
-one complete release-bundle identity and sign it once. Each selected Forge
-SHALL publish and re-download the exact same files, and dual-Forge parity SHALL
-require equal complete inventories, bytes, checksum manifest, signature, and
-trust-anchor digest. Provider adapters SHALL only transport and verify the
-bundle. Release-source verification SHALL inspect the annotated tag and its
-target without changing the caller's symbolic ref, `HEAD`, index, or worktree.
+platform's asset pair.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** The release owner SHALL admit those assets into exactly
+  one complete release-bundle identity and sign it once. Each selected Forge
+  SHALL publish and re-download the exact same files, and dual-Forge parity SHALL
+  require equal complete inventories, bytes, checksum manifest, signature, and
+  trust-anchor digest. Provider adapters SHALL only transport and verify the
+  bundle. Release-source verification SHALL inspect the annotated tag and its
+  target without changing the caller's symbolic ref, `HEAD`, index, or worktree.
 
 #### Scenario: Physical build execution
 
@@ -73,13 +78,18 @@ target without changing the caller's symbolic ref, `HEAD`, index, or worktree.
 ### Requirement: Validation follows authorization and lifecycle state
 
 The repository SHALL expose one provider-neutral CI graph for the checks that
-GitLab and GitHub actually schedule. Developer and Maintainer authorization,
-guarded ref admission, publication, and parity SHALL remain in their existing
-repository-lifecycle owners rather than being redeclared as unconsumed CI
-fields. GitLab and GitHub SHALL project the same required proof nodes from the
-CI graph. A provider projection MAY omit only a native platform whose runner
-capability is explicitly unavailable; that omission SHALL remain visible and
-SHALL NOT be interpreted as product-level platform evidence.
+GitLab and GitHub actually schedule.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** Developer and Maintainer authorization,
+  guarded ref admission, publication, and parity SHALL remain in their existing
+  repository-lifecycle owners rather than being redeclared as unconsumed CI
+  fields. GitLab and GitHub SHALL project the same required proof nodes from the
+  CI graph. A provider projection MAY omit only a native platform whose runner
+  capability is explicitly unavailable; that omission SHALL remain visible and
+  SHALL NOT be interpreted as product-level platform evidence.
 
 Each supported Python version SHALL have an independently observable test node.
 Independent nodes SHALL be schedulable in parallel and one failed version or
@@ -226,12 +236,17 @@ verification node.
 
 The repository SHALL own one explicit quality graph whose concerns cover every
 tracked carrier and whose commands are composed once in repository-owned Nox
-sessions. Local development, repository hooks, GitHub, and GitLab SHALL invoke
-those sessions as projections rather than duplicate their command bodies. CUE
-SHALL validate the semantic equivalence of both Forge projections while allowing
-only runner-native setup and capability-specific platform differences. A green
-subset, repeated equivalent jobs, or success on one Forge SHALL NOT be
-represented as complete repository quality.
+sessions.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** Local development, repository hooks, GitHub, and GitLab SHALL invoke
+  those sessions as projections rather than duplicate their command bodies. CUE
+  SHALL validate the semantic equivalence of both Forge projections while allowing
+  only runner-native setup and capability-specific platform differences. A green
+  subset, repeated equivalent jobs, or success on one Forge SHALL NOT be
+  represented as complete repository quality.
 
 #### Scenario: A proposal revision is pushed
 

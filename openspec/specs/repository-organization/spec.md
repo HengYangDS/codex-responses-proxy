@@ -81,15 +81,20 @@ documented locked command graph as a distinct developer surface.
 
 Proxy SHALL use the resolved official OpenSpec workflow artifacts as the sole
 tracked authority for product change intent and SHALL organize its small
-canonical documentation kernel by semantic domain. ETHOS SHALL derive a
-transient Commitment containing only `schema_version`, `id`, and `acceptance`
-from the selected OpenSpec projection when governance evaluation requires it.
-An additional tracked carrier SHALL exist only when it owns a current invariant
-that official OpenSpec artifacts and existing authorities cannot represent, has
-one named owner and current consumer, replaces rather than parallels another
-authority, and defines its retirement condition. Content document filenames
-SHALL state their subjects. Repository checks and release metadata SHALL
-consume those semantic paths directly.
+canonical documentation kernel by semantic domain.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** ETHOS SHALL derive a
+  transient Commitment containing only `schema_version`, `id`, and `acceptance`
+  from the selected OpenSpec projection when governance evaluation requires it.
+  An additional tracked carrier SHALL exist only when it owns a current invariant
+  that official OpenSpec artifacts and existing authorities cannot represent, has
+  one named owner and current consumer, replaces rather than parallels another
+  authority, and defines its retirement condition. Content document filenames
+  SHALL state their subjects. Repository checks and release metadata SHALL
+  consume those semantic paths directly.
 
 #### Scenario: Reader enters the documentation
 
