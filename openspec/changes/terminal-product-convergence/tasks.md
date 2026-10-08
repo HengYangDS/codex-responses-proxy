@@ -77,6 +77,33 @@
       Final AIGW selection must therefore prove safe native release/resume of
       the original loaded root and retained children, followed by actual Proxy
       traffic. A file write or runtime refresh alone cannot establish cutover.
+    - The same signed Desktop now proves a smaller native release boundary:
+      `thread/archive`, `thread/unarchive` and `thread/resume` in the same
+      app-server process release one loaded private root and select its new
+      Provider endpoint. The original identity, `aigw`, model, `max` effort,
+      active state and complete history prefix are preserved. Actual local
+      request counts distinguish the old and new endpoint; no credential is
+      accessed. All 13 acceptance and exact cleanup checks pass. Evidence:
+      `build/verification/encrypted-agent-delivery/native-provider-release-resume-20261009.json`.
+      This does not qualify retained-child cascading or original-chat cutover.
+      The optional existing native host-config `credential_command` is prepared
+      and dry-run only: retained 0.3.1 bytes and signature match the operator's
+      published reader, but its no-UI read behavior is unproved. Do not use it
+      as an automatic fallback for the failed successor credential reader.
+    - Signed AIGW candidate `1ab36d2e` repairs the retained Account identity,
+      copied expected-present Token refusal and external-command activation.
+      Its exact native consumer still fails before Proxy traffic. Native item
+      presence is true with the actual user HOME and false with the private
+      HOME; the corrected actual-HOME, private-CODEX_HOME credential-only turn
+      also fails before any child is created. One exact projected credential
+      command, with stdout discarded, returns the safe title
+      `codex Account Token could not be read`. This proves a read failure,
+      not an HTTP status or cryptographic cause. Evidence:
+      `build/verification/encrypted-agent-delivery/aigw-native-forwarding-actual-home-20261009.json`
+      and `aigw-native-reader-classification-1ab36d2e-20261009.json` in the same
+      evidence directory. Manifest 7 and host Config 6 are distinct schemas;
+      this candidate accepts retained Config 6 without migration. Candidate
+      reader succession and its strict quality gate remain unqualified.
 - [x] 4.4 Ensure Provider-specific wire differences live only in narrow adapters selected from one manifest and policy contract; verify generic relay, lifecycle, CLI, and tests do not branch on Provider names. The product source and test control flow contain no Provider-name branch; the manifest selects the optional pure wire policy.
 - [x] 4.5 Define the low-cost Provider extension path—manifest entry, adapter, policy, contract fixtures, conformance suite, documentation, and no core modification—and prove it with one representative non-default Provider fixture. `new-gateway` passes the real loopback Responses path; manifest-only and optional-policy fixtures and `CONTRIBUTING.md` describe the same extension contract. The focused suite passes 23 tests and 57 subtests.
 - [ ] 4.6 Evaluate mature local-first gateways and protocol libraries against the exact retained differentiators; replace custom generic mechanics only where doing so reduces source, dependencies, runtime risk, and maintenance authority.
