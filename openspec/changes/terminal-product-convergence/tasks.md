@@ -157,6 +157,18 @@
       rows, rollouts, processes, servers and scratch roots are absent. Final
       original-root acceptance must preserve live work and either retain queued
       identities or prove their ordered native consumption before cold resume.
+    - A mixed-model successor of the existing private journey preserves the
+      root's Sol/max, retained child's Astra/ultra and archived keeper's
+      Sol/high choices through release, same-process resume, cold resume and
+      rollback. Actual requests retain each model and its native resolved
+      effort; the exact operator catalog resolves Ultra to xhigh, matching
+      official `ModelInfo::resolve_reasoning_effort`. All 23 checks pass in
+      31.64 seconds, including history, archive, relationship and exact cleanup
+      checks. Evidence:
+      `build/verification/encrypted-agent-delivery/native-provider-mixed-models-resolved-20261009.json`.
+      Earlier root-path and unresolved-effort classifications remain separate
+      receipts. This is credential-free synthetic acceptance, not production
+      admission for historical model names absent from the current catalog.
 - [x] 4.4 Ensure Provider-specific wire differences live only in narrow adapters selected from one manifest and policy contract; verify generic relay, lifecycle, CLI, and tests do not branch on Provider names. The product source and test control flow contain no Provider-name branch; the manifest selects the optional pure wire policy.
 - [x] 4.5 Define the low-cost Provider extension path—manifest entry, adapter, policy, contract fixtures, conformance suite, documentation, and no core modification—and prove it with one representative non-default Provider fixture. `new-gateway` passes the real loopback Responses path; manifest-only and optional-policy fixtures and `CONTRIBUTING.md` describe the same extension contract. The focused suite passes 23 tests and 57 subtests.
 - [ ] 4.6 Evaluate mature local-first gateways and protocol libraries against the exact retained differentiators; replace custom generic mechanics only where doing so reduces source, dependencies, runtime risk, and maintenance authority.
