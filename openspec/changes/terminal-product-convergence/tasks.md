@@ -117,6 +117,15 @@
       This closes the runtime release/reload boundary only; the real UCloud
       reader, installed AIGW projection and original subtree remain separate
       acceptance obligations.
+      A successor journey also reverses the same subtree to the original
+      endpoint through native configuration and release/resume. Exact private
+      configuration bytes, model and effort per identity, archive flags,
+      spawn relationships and historical prefixes are restored; the withdrawn
+      endpoint receives no further root or child request. All 20 acceptance
+      and exact cleanup checks pass. Evidence:
+      `build/verification/encrypted-agent-delivery/native-provider-release-rollback-20261009.json`.
+      No real credential, production route, installer or original chat was
+      changed by these local runtime experiments.
 - [x] 4.4 Ensure Provider-specific wire differences live only in narrow adapters selected from one manifest and policy contract; verify generic relay, lifecycle, CLI, and tests do not branch on Provider names. The product source and test control flow contain no Provider-name branch; the manifest selects the optional pure wire policy.
 - [x] 4.5 Define the low-cost Provider extension path—manifest entry, adapter, policy, contract fixtures, conformance suite, documentation, and no core modification—and prove it with one representative non-default Provider fixture. `new-gateway` passes the real loopback Responses path; manifest-only and optional-policy fixtures and `CONTRIBUTING.md` describe the same extension contract. The focused suite passes 23 tests and 57 subtests.
 - [ ] 4.6 Evaluate mature local-first gateways and protocol libraries against the exact retained differentiators; replace custom generic mechanics only where doing so reduces source, dependencies, runtime risk, and maintenance authority.
