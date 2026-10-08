@@ -91,6 +91,20 @@
       Current mise, npm, and Python registries report no outdated installed package,
       and uv's upgrade dry-run changes no lock entry. Recheck authored CI Actions,
       images, and release inputs against official sources at final freeze.
+      On 2026-10-09, npm audit reports four high findings propagated from one
+      unpatched advisory, GHSA-vfj7-8cjw-p6xm / CVE-2026-93687, through
+      `braces -> micromatch -> fast-glob -> @fission-ai/openspec`. The npm registry
+      still selects braces 3.0.3, and the official advisory has no patched version.
+      OpenSpec issue 2051 remains open. The shipped spec-driven schema uses
+      `specs/**/*.md`; that observation does not qualify arbitrary custom patterns.
+      The suggested breaking downgrade to OpenSpec 0.17.2 was not applied, and
+      Node locks remain unchanged. The repository supply-chain owner must qualify
+      the exact selected schema inputs and resolve a compatible official successor
+      or native disposition before claiming final security acceptance. Review at
+      the next final-freeze decision; this task remains open. Evidence:
+      `build/runtime/work/github-history-bridge-1a7275cc/pytest-event-existing-npm-audit.json`;
+      [official advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) and
+      [OpenSpec issue 2051](https://github.com/Fission-AI/OpenSpec/issues/2051).
 - [x] 8.5 Regenerate `mise.lock`, `uv.lock`, and `package-lock.json`
       deterministically; verify a second resolution is byte-clean and no duplicate
       version literal controls behavior. The 2026-09-24 offline uv/npm rerun preserved
