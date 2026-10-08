@@ -126,6 +126,21 @@
       `build/verification/encrypted-agent-delivery/native-provider-release-rollback-20261009.json`.
       No real credential, production route, installer or original chat was
       changed by these local runtime experiments.
+    - Exact current model-catalog precedence is now observed with the signed
+      Desktop and two private synthetic upstreams. The operator-selected
+      catalog keeps `gpt-6.1-sol` on V2 even with the private global V2 flag
+      explicitly false. The actual request advertises `collaboration` and
+      marks the three message tools encrypted. All nine acceptance and exact
+      cleanup checks pass; original catalog and configuration bytes are
+      unchanged. Evidence:
+      `build/verification/encrypted-agent-delivery/native-provider-catalog-precedence-20261009.json`.
+      Preserve the explicit false setting; it does not itself select readable
+      messages. The official stable `rust-v0.162.0`, published October 8,
+      still lacks a message-delivery config field and selects native plaintext
+      only for the `collaboration` namespace with empty encrypted-argument
+      metadata. Official PR 35845 is merged; issues 37197, 46939 and 40209
+      remain open at the October 9 readback. This supports the existing
+      generation-time Proxy policy, not old-ciphertext relabeling or removal.
 - [x] 4.4 Ensure Provider-specific wire differences live only in narrow adapters selected from one manifest and policy contract; verify generic relay, lifecycle, CLI, and tests do not branch on Provider names. The product source and test control flow contain no Provider-name branch; the manifest selects the optional pure wire policy.
 - [x] 4.5 Define the low-cost Provider extension path—manifest entry, adapter, policy, contract fixtures, conformance suite, documentation, and no core modification—and prove it with one representative non-default Provider fixture. `new-gateway` passes the real loopback Responses path; manifest-only and optional-policy fixtures and `CONTRIBUTING.md` describe the same extension contract. The focused suite passes 23 tests and 57 subtests.
 - [ ] 4.6 Evaluate mature local-first gateways and protocol libraries against the exact retained differentiators; replace custom generic mechanics only where doing so reduces source, dependencies, runtime risk, and maintenance authority.
