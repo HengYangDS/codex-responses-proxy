@@ -51,6 +51,19 @@
       AIGW, verify the original retained subtree and rollback, and clean exact
       owned state. Review date: 2026-10-09; old ciphertext readability remains
       a separate unproved obligation.
+    - Native Git ancestry now proves that the current signed source retains both
+      exact original history roots through the existing two-parent bridge.
+      Seven differing committer records across 246 paired objects remain
+      distinct; no rewrite or equality claim is needed. Evidence:
+      `build/verification/encrypted-agent-delivery/native-history-retention-20261009.json`.
+      The hosted review object is a separate sibling, so final proof, accepted
+      release ancestry and publication must bind the retained-history descendant.
+      The native land preview still requires exact-source proof. The existing
+      joined consumer now requires an explicitly changed signed candidate and a
+      fresh receipt; the failed candidate is refused before any real request.
+      Syntax and read-only dry-run pass. AIGW source `c073fd56` repairs the Account
+      identity under its original owner, but its new artifact and real consumer
+      acceptance are not yet available. No production route or credential changed.
 - [x] 4.4 Ensure Provider-specific wire differences live only in narrow adapters selected from one manifest and policy contract; verify generic relay, lifecycle, CLI, and tests do not branch on Provider names. The product source and test control flow contain no Provider-name branch; the manifest selects the optional pure wire policy.
 - [x] 4.5 Define the low-cost Provider extension path—manifest entry, adapter, policy, contract fixtures, conformance suite, documentation, and no core modification—and prove it with one representative non-default Provider fixture. `new-gateway` passes the real loopback Responses path; manifest-only and optional-policy fixtures and `CONTRIBUTING.md` describe the same extension contract. The focused suite passes 23 tests and 57 subtests.
 - [ ] 4.6 Evaluate mature local-first gateways and protocol libraries against the exact retained differentiators; replace custom generic mechanics only where doing so reduces source, dependencies, runtime risk, and maintenance authority.
