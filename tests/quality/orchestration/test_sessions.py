@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
 from types import SimpleNamespace
+from xml.etree import ElementTree as ET
 
 import pytest
 from nox.command import CommandFailed
@@ -14,6 +17,96 @@ from nox.sessions import Session
 from pytest_mock import MockerFixture
 
 from tests.quality.fixtures import ROOT
+
+
+def test_nox_console_discovers_the_repository_sessions_without_pythonpath() -> None:
+    result = subprocess.run(
+        ("nox", "--list", "--json"),
+        cwd=ROOT,
+        env={key: value for key, value in os.environ.items() if key != "PYTHONPATH"},
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    sessions = {item["session"] for item in json.loads(result.stdout)}
+    assert {"quality", "tests-3.12", "tests-3.13", "tests-3.14"} <= sessions
+
+
+def test_native_report_selection_refuses_relative_output_before_static_writes(
+    mocker: MockerFixture, nox_configuration: ModuleType
+) -> None:
+    session = mocker.Mock()
+    session.error.side_effect = ValueError("native output directory is unavailable")
+    mocker.patch.dict(os.environ, {"ETHOS_NATIVE_OUTPUT_DIR": "."})
+
+    with pytest.raises(ValueError, match="native output directory is unavailable"):
+        nox_configuration.python_quality.static(session, environment={}, minimum_python="3.12")
+
+    session.run.assert_not_called()
+
+
+def test_native_behavior_reports_share_one_actual_pytest_attempt(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    nox_configuration: ModuleType,
+) -> None:
+    """One native behavior run emits original JUnit, coverage and child identity."""
+    output = tmp_path / "reports"
+    output.mkdir()
+    work = tmp_path / "work"
+    work.mkdir()
+    (tmp_path / "sample.py").write_text("def answer():\n    return 42\n")
+    (tmp_path / "test_sample.py").write_text(
+        "from pathlib import Path\nfrom sample import answer\n\n"
+        "def test_answer():\n"
+        "    with Path('attempt-count.txt').open('a') as stream:\n"
+        "        stream.write('one\\n')\n"
+        "    assert answer() == 42\n"
+    )
+    coverage = tmp_path / ".coveragerc"
+    coverage.write_text("[run]\nbranch = True\nsource_pkgs = sample\n")
+    session = mocker.Mock()
+    session.name = f"tests-{sys.version_info.major}.{sys.version_info.minor}"
+    session.create_tmp.return_value = str(work)
+    mocker.patch.dict(os.environ, {"ETHOS_NATIVE_OUTPUT_DIR": str(output)})
+    mocker.patch.object(nox_configuration.python_quality, "ROOTS", ("sample.py", "test_sample.py"))
+    mocker.patch.object(nox_configuration.python_quality, "COVERAGE_CONFIG", coverage)
+    for name in ("_install_tools", "_build_wheel", "_install_wheel", "_assert_installed_product"):
+        mocker.patch.object(nox_configuration, name)
+    mocker.patch.object(nox_configuration, "_installed_executable", return_value=work / "proxy")
+
+    def execute(*args, env=None, **_kwargs):
+        command = (
+            (sys.executable, "-m", "coverage", *args[1:])
+            if args[0] == "coverage"
+            else (sys.executable, *args[1:])
+        )
+        environment = {**os.environ, **(env or {})}
+        return subprocess.run(
+            command,
+            cwd=tmp_path,
+            env={key: value for key, value in environment.items() if value is not None},
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=45,
+        ).stdout
+
+    session.run.side_effect = execute
+    nox_configuration.tests(session)
+
+    assert (tmp_path / "attempt-count.txt").read_text() == "one\n"
+    junit = ET.parse(output / f"{session.name}.xml")
+    assert len(tuple(junit.iter("testcase"))) == 1
+    measured = ET.parse(output / f"{session.name}-coverage.xml")
+    assert any(item.get("filename") == "sample.py" for item in measured.iter("class"))
+    runtime = json.loads((output / f"{session.name}-runtime.json").read_text())
+    assert runtime["version"] == list(sys.version_info[:3])
+    assert Path(runtime["executable"]).is_absolute()
+    behavior = [call for call in session.run.call_args_list if "pytest" in call.args]
+    assert len(behavior) == 1
+    assert behavior[0].kwargs["env"]["ETHOS_NATIVE_OUTPUT_DIR"] is None
 
 
 @pytest.mark.parametrize(
@@ -232,7 +325,7 @@ def test_static_checks_cover_the_same_source_and_configuration_scope(
 
     calls = [call.args for call in session.run.call_args_list]
     (lint,) = [call for call in calls if call[:2] == ("ruff", "check")]
-    assert lint[lint.index("--config") + 1] == str(nox_configuration.RUFF_CONFIG)
+    assert lint[lint.index("--config") + 1] == str(nox_configuration.python_quality.RUFF_CONFIG)
     (typing,) = [call for call in calls if call[:2] == ("ty", "check")]
     assert set(typing[-4:]) == {"src/codex_responses_proxy", "tools", "tests", "noxfile.py"}
     assert typing[typing.index("--python-platform") + 1] == "all"

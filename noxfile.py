@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import os
 import platform
 import re
@@ -17,13 +19,18 @@ from codex_responses_proxy import product_identity
 from codex_responses_proxy.lifecycle import artifact
 
 ROOT = Path(__file__).parent.resolve()
+_python_quality_loader = importlib.machinery.SourceFileLoader(
+    "proxy_python_quality", str(ROOT / "tools/quality/python.py")
+)
+_python_quality_spec = importlib.machinery.ModuleSpec(
+    _python_quality_loader.name, _python_quality_loader, origin=_python_quality_loader.path
+)
+_python_quality_spec.has_location = True
+python_quality = importlib.util.module_from_spec(_python_quality_spec)
+_python_quality_loader.exec_module(python_quality)
 PYTHONS = tuple((ROOT / ".python-versions").read_text(encoding="utf-8").splitlines())
 MIN_PYTHON, *_, MAX_PYTHON = PYTHONS
 RELEASE_PYTHON = (ROOT / ".python-release").read_text(encoding="utf-8").strip()
-ROOTS = ("src/codex_responses_proxy", "tools", "tests", "noxfile.py")
-RUFF_CONFIG = ROOT / ".config/quality/native/ruff.toml"
-TY_CONFIG = ROOT / ".config/quality/native/ty.toml"
-COVERAGE_CONFIG = ROOT / ".config/quality/native/coverage.ini"
 PERFORMANCE_POLICY = ROOT / ".config/quality/policy/performance.toml"
 
 nox.options.default_venv_backend = "uv"
@@ -35,7 +42,7 @@ nox.options.reuse_existing_virtualenvs = False
 def quick(session: nox.Session) -> None:
     """Run the cheapest deterministic contract and source checks."""
     _install_tools(session)
-    _static_checks(session)
+    python_quality.static(session, environment=_environment(), minimum_python=MIN_PYTHON)
     session.run(
         "python",
         "-m",
@@ -43,48 +50,6 @@ def quick(session: nox.Session) -> None:
         "-q",
         "tests/quality/test_contract.py",
         env=_environment(),
-    )
-
-
-def _static_checks(session: nox.Session) -> None:
-    """Run one policy and scope for editing feedback and full acceptance."""
-    environment = _environment()
-    session.run(
-        "ruff",
-        "check",
-        "--config",
-        str(RUFF_CONFIG),
-        "--no-cache",
-        ".",
-        env=environment,
-    )
-    session.run(
-        "ruff",
-        "format",
-        "--config",
-        str(RUFF_CONFIG),
-        "--no-cache",
-        "--check",
-        ".",
-        env=environment,
-    )
-    session.run("python", "tools/quality/text_layout.py", env=environment)
-    session.run("python", "-m", "tools.quality.responsibilities", env=environment, silent=True)
-    session.run("python", "-m", "tools.quality.hard_coding", env=environment, silent=True)
-    session.run("python", "-m", "tools.quality.repository", env=environment)
-    session.run(
-        "ty",
-        "check",
-        "--config-file",
-        str(TY_CONFIG),
-        "--python-version",
-        MIN_PYTHON,
-        "--python-platform",
-        "all",
-        "--error-on-warning",
-        "--no-progress",
-        *ROOTS,
-        env=environment,
     )
 
 
@@ -96,7 +61,7 @@ def tests(session: nox.Session) -> None:
     wheel = _build_wheel(session, work)
     _install_wheel(session, wheel)
     _assert_installed_product(session, work)
-    environment = {
+    environment: dict[str, str | None] = {
         **_environment(),
         product_identity.environment_name("EXECUTABLE"): str(_installed_executable(session)),
     }
@@ -105,17 +70,10 @@ def tests(session: nox.Session) -> None:
         "-m",
         "compileall",
         "-q",
-        *ROOTS,
+        *python_quality.ROOTS,
         env={**environment, "PYTHONPYCACHEPREFIX": str(work / "pycache")},
     )
-    session.run(
-        "python",
-        "-m",
-        "pytest",
-        "-m",
-        "not native_distribution and not repository_toolchain",
-        env=environment,
-    )
+    python_quality.behavior(session, environment=environment)
 
 
 @nox.session(python=MIN_PYTHON)
@@ -126,31 +84,12 @@ def quality(session: nox.Session) -> None:
     wheel = _build_wheel(session, work)
     _install_wheel(session, wheel)
     _assert_installed_product(session, work)
-    environment = {
+    environment: dict[str, str | None] = {
         **_environment(),
         product_identity.environment_name("EXECUTABLE"): str(_installed_executable(session)),
     }
-    _static_checks(session)
-    session.run("coverage", "erase", "--rcfile", str(COVERAGE_CONFIG), env=environment)
-    session.run(
-        "coverage",
-        "run",
-        "--rcfile",
-        str(COVERAGE_CONFIG),
-        "-m",
-        "pytest",
-        "-m",
-        "not native_distribution and not repository_toolchain",
-        env=environment,
-    )
-    session.run("coverage", "report", "--rcfile", str(COVERAGE_CONFIG), env=environment)
-    session.run(
-        "python",
-        "tools/quality/branch_coverage.py",
-        "--policy",
-        str(ROOT / ".config/quality/policy/coverage.toml"),
-        env=environment,
-    )
+    python_quality.static(session, environment=_environment(), minimum_python=MIN_PYTHON)
+    python_quality.behavior(session, environment=environment, require_coverage=True)
 
 
 @nox.session(python=RELEASE_PYTHON)
