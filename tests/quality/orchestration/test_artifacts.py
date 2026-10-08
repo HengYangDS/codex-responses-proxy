@@ -15,6 +15,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from tests.quality.fixtures import ROOT
+from tests.quality.fixtures import git
 
 
 def _select_released_host(
@@ -35,9 +36,9 @@ def _select_released_host(
     return platform_id
 
 
-@pytest.mark.parametrize("source_checkout", [False, True])
+@pytest.mark.parametrize("defect", [None, "source-checkout", "changed", "extra", "missing"])
 def test_installed_product_probe_distinguishes_environment_from_source_checkout(
-    source_checkout: bool,
+    defect: str | None,
     tmp_path: Path,
     mocker: MockerFixture,
     nox_configuration: ModuleType,
@@ -48,7 +49,7 @@ def test_installed_product_probe_distinguishes_environment_from_source_checkout(
         sysconfig.get_path("purelib", vars={"base": str(environment), "platbase": str(environment)})
     )
     checkout = tmp_path / "checkout"
-    source = checkout / "src" if source_checkout else site_packages
+    source = checkout / "src" if defect == "source-checkout" else site_packages
     package = source / "codex_responses_proxy"
     providers = package / "providers"
     providers.mkdir(parents=True)
@@ -61,8 +62,23 @@ def test_installed_product_probe_distinguishes_environment_from_source_checkout(
         encoding="utf-8",
     )
     (providers / "manifest.toml").write_text("", encoding="utf-8")
-    if source_checkout:
+    (package / "unused.py").write_text("VALUE = 42\n", encoding="utf-8")
+    source_package = checkout / "src/codex_responses_proxy"
+    for path in package.rglob("*"):
+        if path.is_file():
+            target = source_package / path.relative_to(package)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(path.read_bytes())
+    git(checkout, "init", "-q", "--initial-branch=fixture-root")
+    git(checkout, "add", "--", "src")
+    if defect == "source-checkout":
         (site_packages / "source-checkout.pth").write_text(str(source) + "\n", encoding="utf-8")
+    elif defect == "changed":
+        (package / "unused.py").write_text("VALUE = 0\n", encoding="utf-8")
+    elif defect == "extra":
+        (package / "surplus.py").write_text("VALUE = 0\n", encoding="utf-8")
+    elif defect == "missing":
+        (package / "unused.py").unlink()
     work = checkout / "build"
     work.mkdir(parents=True)
     python = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -73,7 +89,7 @@ def test_installed_product_probe_distinguishes_environment_from_source_checkout(
     )
     mocker.patch.object(nox_configuration, "ROOT", checkout)
 
-    if source_checkout:
+    if defect:
         with pytest.raises(subprocess.CalledProcessError):
             nox_configuration._assert_installed_product(session, work)
     else:

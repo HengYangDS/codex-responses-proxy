@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import json
 import os
 import platform
 import re
@@ -434,20 +435,27 @@ def _session_packages(session: nox.Session) -> Path:
 
 
 def _assert_installed_product(session: nox.Session, work: Path) -> None:
-    """Prove imports and packaged data resolve outside the source checkout."""
+    """Prove installed imports and every packaged source byte match this checkout."""
+    manifest = work / "installed-source.json"
+    manifest.write_text(json.dumps(python_quality.source_manifest(ROOT)), encoding="utf-8")
     probe = (
         "from pathlib import Path; "
-        "import sysconfig; "
+        "import hashlib,json,sys,sysconfig; "
         "import codex_responses_proxy as package; "
         "from codex_responses_proxy.providers import registry; "
         "root = Path(package.__file__).resolve(); "
         "manifest = registry.default_manifest_path().resolve(); "
         "installed = Path(sysconfig.get_path('purelib')).resolve(); "
         "assert root.is_relative_to(installed); "
-        "assert manifest.is_file() and manifest.is_relative_to(root.parent)"
+        "assert manifest.is_file() and manifest.is_relative_to(root.parent); "
+        "files = tuple(p for p in root.parent.rglob('*') if '__pycache__' not in p.parts); "
+        "assert not any(p.is_symlink() for p in files); "
+        "observed = {p.relative_to(root.parent).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() "
+        "for p in files if p.is_file()}; "
+        "assert observed == json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))"
     )
     with session.chdir(work):
-        session.run("python", "-I", "-c", probe, env=_environment())
+        session.run("python", "-I", "-c", probe, str(manifest), env=_environment())
 
 
 def _installed_executable(session: nox.Session) -> Path:

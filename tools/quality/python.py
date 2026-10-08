@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import subprocess
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -13,6 +15,27 @@ ROOTS = ("src/codex_responses_proxy", "tools", "tests", "noxfile.py")
 RUFF_CONFIG = ROOT / ".config/quality/native/ruff.toml"
 TY_CONFIG = ROOT / ".config/quality/native/ty.toml"
 COVERAGE_CONFIG = ROOT / ".config/quality/native/coverage.ini"
+
+
+def source_manifest(root: Path) -> dict[str, str]:
+    """Bind installed-package admission to every current tracked source file."""
+    source = Path(ROOTS[0])
+    result = subprocess.run(
+        ("git", "-C", str(root), "ls-files", "-z", "--", source.as_posix()),
+        check=True,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={name: value for name, value in os.environ.items() if not name.startswith("GIT_")},
+    )
+    paths = tuple(root / path for path in result.stdout.split("\0") if path)
+    if not paths or any(path.is_symlink() or not path.is_file() for path in paths):
+        raise ValueError("installed source inventory is unavailable")
+    return {
+        path.relative_to(root / source).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in paths
+    }
 
 
 def static(session: nox.Session, *, environment: Mapping[str, str], minimum_python: str) -> None:
