@@ -9,20 +9,25 @@ and supervision invariants.
 
 ### Requirement: Source-side upgrade authority
 
-Only the signed-asset installer SHALL admit a different release. The payload
-transaction SHALL verify and prewarm the exact committed successor executable
-inside the rollback domain before requesting handoff. Handoff readiness SHALL
-use the configured bounded installation deadline without an independent,
-shorter startup cap. Installed control SHALL observe, reload, recover, or remove
-the current product but SHALL NOT accept arbitrary release bytes. Forge
-availability SHALL NOT be an installation input. The payload transaction SHALL
-coordinate the selected serving payload, installed-state record, and native
-command link as one rollback domain. The selector SHALL determine the active
-serving generation and its sole predecessor. The command SHALL resolve to the
-newest verified release among those selected generations so serving rollback
-cannot downgrade lifecycle control. The command link SHALL be a symbolic link
-on POSIX and a hard link on Windows; both forms SHALL be admitted only when they
-identify that exact control executable.
+Only the signed-asset installer SHALL admit a different release.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** The payload
+  transaction SHALL verify and prewarm the exact committed successor executable
+  inside the rollback domain before requesting handoff. Handoff readiness SHALL
+  use the configured bounded installation deadline without an independent,
+  shorter startup cap. Installed control SHALL observe, reload, recover, or remove
+  the current product but SHALL NOT accept arbitrary release bytes. Forge
+  availability SHALL NOT be an installation input. The payload transaction SHALL
+  coordinate the selected serving payload, installed-state record, and native
+  command link as one rollback domain. The selector SHALL determine the active
+  serving generation and its sole predecessor. The command SHALL resolve to the
+  newest verified release among those selected generations so serving rollback
+  cannot downgrade lifecycle control. The command link SHALL be a symbolic link
+  on POSIX and a hard link on Windows; both forms SHALL be admitted only when they
+  identify that exact control executable.
 
 #### Scenario: An operator installs a release
 
@@ -69,12 +74,17 @@ identify that exact control executable.
 
 The installed payload SHALL contain one prewarmed native bundle under `bin/`,
 `providers.toml`, their complete manifest, signed-release receipt, and finalized
-state. Installation SHALL accept only an empty target or one verified current
-native listener whose native supervisor declares the canonical installed
-executable. After candidate projection, installation SHALL remove only regular
-files declared by the verified predecessor manifest and absent from the
-successor manifest. Unknown installation content SHALL remain untouched, and
-rollback SHALL restore the complete predecessor projection.
+state.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** Installation SHALL accept only an empty target or one verified current
+  native listener whose native supervisor declares the canonical installed
+  executable. After candidate projection, installation SHALL remove only regular
+  files declared by the verified predecessor manifest and absent from the
+  successor manifest. Unknown installation content SHALL remain untouched, and
+  rollback SHALL restore the complete predecessor projection.
 
 #### Scenario: An incompatible installation is present
 
@@ -107,11 +117,16 @@ rollback SHALL restore the complete predecessor projection.
 
 Recovery SHALL distinguish no transaction, an unmutated `prepared`
 transaction, a `recovery_required` payload transition, and an invalid retained
-transaction. No transaction SHALL be an idempotent successful no-op. A prepared
-transaction SHALL be closed only when its canonical journal is the sole
-transaction-root entry. Recovery of a selected mutated projection SHALL require
-one canonical journal, a fully verified current candidate bundle, the exact
-rollback command snapshot, and matching accepting runtime identity.
+transaction.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** No transaction SHALL be an idempotent successful no-op. A prepared
+  transaction SHALL be closed only when its canonical journal is the sole
+  transaction-root entry. Recovery of a selected mutated projection SHALL require
+  one canonical journal, a fully verified current candidate bundle, the exact
+  rollback command snapshot, and matching accepting runtime identity.
 
 When a materialized reverse candidate was never selected, recovery SHALL prove
 that the current generation selection is exactly the pre-transaction selection,
@@ -207,14 +222,19 @@ neither outcome may be inferred from process presence alone.
 ### Requirement: Rollback owns only current product files
 
 Rollback SHALL snapshot the complete current owned inventory or its complete
-absence. Unknown install content SHALL be preserved and SHALL never become
-implicitly owned. Candidate paths that collide with unknown content SHALL block
-mutation. When an upgrade fails after projecting candidate bytes, rollback
-SHALL restore every retained prior byte and remove every verified candidate
-file that was absent from the prior snapshot. Explicit rollback to the selected
-predecessor SHALL drain the current listener and use bounded native-generation
-replacement, because the retained predecessor is not required to implement the
-current release's hot-handoff capability.
+absence.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** Unknown install content SHALL be preserved and SHALL never become
+  implicitly owned. Candidate paths that collide with unknown content SHALL block
+  mutation. When an upgrade fails after projecting candidate bytes, rollback
+  SHALL restore every retained prior byte and remove every verified candidate
+  file that was absent from the prior snapshot. Explicit rollback to the selected
+  predecessor SHALL drain the current listener and use bounded native-generation
+  replacement, because the retained predecessor is not required to implement the
+  current release's hot-handoff capability.
 
 #### Scenario: A retained predecessor predates the current handoff capability
 
@@ -285,14 +305,19 @@ copy port, host, log, or concurrency policy.
 The released executable SHALL install and inspect its user service through the
 native macOS, Linux, or Windows adapter without an ambient Python interpreter,
 optional process utility, source path, user identity, or workstation-specific
-coordinate. The default installation SHALL retain the public service identity;
-every alternate installation root SHALL use a deterministic identity derived
-from that root. Signal paths SHALL revalidate exact process identity
-immediately before mutation. Creation, observation, and teardown of one
-native service SHALL consume the same exact runtime context. Native acceptance
-on each supported operating system MUST exercise install, status, recovery,
-and uninstall through that platform's built artifact; source tests, mocks, and
-cross-compilation MUST NOT be reported as equivalent native product evidence.
+coordinate.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** The default installation SHALL retain the public service identity;
+  every alternate installation root SHALL use a deterministic identity derived
+  from that root. Signal paths SHALL revalidate exact process identity
+  immediately before mutation. Creation, observation, and teardown of one
+  native service SHALL consume the same exact runtime context. Native acceptance
+  on each supported operating system MUST exercise install, status, recovery,
+  and uninstall through that platform's built artifact; source tests, mocks, and
+  cross-compilation MUST NOT be reported as equivalent native product evidence.
 
 #### Scenario: A supported host lacks development tools
 
@@ -525,14 +550,19 @@ host migration.
 ### Requirement: Successful upgrade retains one exact predecessor
 
 A successful upgrade SHALL retain exactly one verified predecessor generation
-after the successor has proved accepting runtime identity. One atomic selector
-under the stable control root SHALL be the sole authority naming the active
-immutable generation and its optional predecessor. Installed state and command
-projection SHALL remain stable control surfaces outside both generations. A
-transaction snapshot MAY exist only as temporary bootstrap or recovery
-evidence and SHALL NOT become another retained product store. A subsequent
-successful upgrade SHALL replace the older predecessor in the selector. Fresh
-installation SHALL select no predecessor.
+after the successor has proved accepting runtime identity.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** One atomic selector
+  under the stable control root SHALL be the sole authority naming the active
+  immutable generation and its optional predecessor. Installed state and command
+  projection SHALL remain stable control surfaces outside both generations. A
+  transaction snapshot MAY exist only as temporary bootstrap or recovery
+  evidence and SHALL NOT become another retained product store. A subsequent
+  successful upgrade SHALL replace the older predecessor in the selector. Fresh
+  installation SHALL select no predecessor.
 
 #### Scenario: Upgrade finalizes successfully
 
@@ -569,19 +599,24 @@ installation SHALL select no predecessor.
 
 ### Requirement: Explicit rollback is one reverse lifecycle transaction
 
-The rollback command SHALL require one syntactically valid target release. If
-the verified installed active release already equals that target, rollback SHALL
-succeed as an idempotent no-op without draining, starting a transaction, changing
-the generation selection, or rewriting the command. Otherwise the target SHALL
-equal the immutable predecessor bound to the current finalized successor.
-Rollback SHALL verify both selected payload identities, current installed state,
-command ownership, and their selector binding before mutation. It SHALL rebind
-the native service and complete a bounded listener handoff to the predecessor
-identity before reporting success. The returned predecessor PID SHALL be the only
-verified product listener when success is reported; finalized health alone SHALL
-NOT establish completion. Rollback SHALL not downgrade the user command or the
-minimum release admitted by the next signed-asset installation. Every other
-target SHALL be rejected before any lifecycle mutation.
+The rollback command SHALL require one syntactically valid target release.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** If
+  the verified installed active release already equals that target, rollback SHALL
+  succeed as an idempotent no-op without draining, starting a transaction, changing
+  the generation selection, or rewriting the command. Otherwise the target SHALL
+  equal the immutable predecessor bound to the current finalized successor.
+  Rollback SHALL verify both selected payload identities, current installed state,
+  command ownership, and their selector binding before mutation. It SHALL rebind
+  the native service and complete a bounded listener handoff to the predecessor
+  identity before reporting success. The returned predecessor PID SHALL be the only
+  verified product listener when success is reported; finalized health alone SHALL
+  NOT establish completion. Rollback SHALL not downgrade the user command or the
+  minimum release admitted by the next signed-asset installation. Every other
+  target SHALL be rejected before any lifecycle mutation.
 
 #### Scenario: Requested release is already active
 
@@ -668,13 +703,18 @@ target SHALL be rejected before any lifecycle mutation.
 ### Requirement: Repeated lifecycle transitions use declared runtime capability
 
 The deployment controller SHALL select one strategy from verified runtime
-identity and explicit handoff capability. Only a runtime declaring
-`selected-generation-handoff` MAY use shared-listener handoff because that
-capability proves the predecessor resolves and launches the selector-bound
-candidate payload rather than its own executable root. A complete, verified
-runtime without that capability SHALL use a bounded native process-generation
-replacement. An incomplete or inconsistent runtime SHALL be unsupported and
-SHALL NOT be mutated.
+identity and explicit handoff capability.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** Only a runtime declaring
+  `selected-generation-handoff` MAY use shared-listener handoff because that
+  capability proves the predecessor resolves and launches the selector-bound
+  candidate payload rather than its own executable root. A complete, verified
+  runtime without that capability SHALL use a bounded native process-generation
+  replacement. An incomplete or inconsistent runtime SHALL be unsupported and
+  SHALL NOT be mutated.
 
 #### Scenario: Runtime declares selected-generation handoff
 
@@ -711,15 +751,20 @@ SHALL NOT be mutated.
 
 After listener handoff proves the terminal admission owner, installation SHALL
 replace the platform-native supervisor with one running watchdog generation
-executing that exact payload. Product runtime identity SHALL be reconstructed
-from the committed, secret-free `runtime-config.json`; operating-system service
-definitions SHALL remain derived projections and SHALL NOT duplicate product
-configuration. A watchdog that starts a listener SHALL retain and poll its
-process handle so an exited child is reaped. The transaction SHALL remain the
-recovery authority until the configured and running supervisor identity is
-proved. If handoff rolls back, installation SHALL restore the predecessor
-payload and prove native supervision from that payload before closing the
-transaction.
+executing that exact payload.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** Product runtime identity SHALL be reconstructed
+  from the committed, secret-free `runtime-config.json`; operating-system service
+  definitions SHALL remain derived projections and SHALL NOT duplicate product
+  configuration. A watchdog that starts a listener SHALL retain and poll its
+  process handle so an exited child is reaped. The transaction SHALL remain the
+  recovery authority until the configured and running supervisor identity is
+  proved. If handoff rolls back, installation SHALL restore the predecessor
+  payload and prove native supervision from that payload before closing the
+  transaction.
 
 On macOS, installation SHALL bind the exact GUI-domain service, prove any
 predecessor watchdog PID has exited, bootstrap the current plist, and re-read
@@ -798,15 +843,20 @@ successful platform command alone SHALL NOT establish convergence.
 
 A running upgrade SHALL bind the health snapshot to exactly one listener owned
 by the installed executable, commit the admitted prewarmed bundle, and request
-transactional handoff before changing native supervision. A successor SHALL
-prove its PID, executable, release, manifest,
-serving aggregate, receipt, accepting state, and non-draining state. The
-handoff child SHALL own only listener transfer and runtime identity; it SHALL
-NOT mutate the platform-native supervisor. Every private service role SHALL
-activate one existing, validated `runtime-config.json` located in the installed
-executable's payload root before importing or starting product runtime behavior.
-Environment variables are a projection of that carrier, not an alternate source
-and not an input from which a missing carrier may be created.
+transactional handoff before changing native supervision.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** A successor SHALL
+  prove its PID, executable, release, manifest,
+  serving aggregate, receipt, accepting state, and non-draining state. The
+  handoff child SHALL own only listener transfer and runtime identity; it SHALL
+  NOT mutate the platform-native supervisor. Every private service role SHALL
+  activate one existing, validated `runtime-config.json` located in the installed
+  executable's payload root before importing or starting product runtime behavior.
+  Environment variables are a projection of that carrier, not an alternate source
+  and not an input from which a missing carrier may be created.
 
 #### Scenario: Every private role activates the same carrier
 

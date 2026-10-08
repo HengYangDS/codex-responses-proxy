@@ -9,3 +9,4 @@ policy = "dmxapi"
 
 [providers.ucloud]
 base_url = "https://api.modelverse.cn/v1"
+agent_message_delivery = "plaintext"

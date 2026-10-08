@@ -108,6 +108,41 @@ Only the existing classified pre-content recovery may reopen a request.
 - **THEN** the client observes a truncated response, not a second HTTP 503
 - **AND** the proxy records the failure and releases the upstream connection.
 
+### Requirement: Plaintext agent delivery is selected before generation
+
+A released provider profile SHALL select native or plaintext agent message
+delivery. Omission SHALL select native delivery. The plaintext policy SHALL
+bind one request's schema, replay and response restoration without accessing
+client configuration, credentials or conversation storage.
+
+#### Scenario: A route selects readable agent messages
+
+- **WHEN** a plaintext route receives the native `collaboration` catalog
+- **THEN** it aliases that catalog and explicit tool choice upstream and removes
+  encryption annotations only from spawn, message and followup message schemas
+- **AND** JSON and streaming responses restore the native namespace and empty
+  encrypted-argument marker only after complete readable arguments are proved
+- **AND** exact message arguments and call identities survive sender-to-recipient
+  delivery using the client's native plaintext path.
+
+#### Scenario: Old ciphertext or conflicting metadata is present
+
+- **WHEN** retained history contains encrypted native agent content, or a
+  selected output carries ciphertext or nonempty encrypted argument metadata
+- **THEN** retained history preserves its exact envelope and ciphertext
+- **AND** output cannot be relabeled as plaintext or retried with its message
+  removed; unproved selected output fails locally.
+
+#### Scenario: The client continues an admitted agent conversation
+
+- **WHEN** the client's own configuration aligns its native namespace and model
+  agent version with the conversation
+- **THEN** acceptance proves real child tool execution, bidirectional explicit
+  messages, automatic completion and followup tasks on the selected route
+- **AND** native resume and compaction retain exact content witnesses
+- **AND** source acceptance alone does not claim release, installed runtime,
+  original-chat recovery or readability of earlier ciphertext.
+
 ## MODIFIED Requirements
 
 ### Requirement: Every Responses request is projected to a provider-portable form
@@ -144,8 +179,8 @@ unchanged.
 
 #### Scenario: Codex declares tools for the current turn
 
-- **WHEN** a request contains a valid `additional_tools` control with a nonempty
-  tool catalog
+- **WHEN** a request contains a valid `additional_tools` control with a tool
+  catalog, including an explicitly empty catalog during native compaction
 - **THEN** the projection preserves that current-turn control, including its
   declared role, catalog, and client item identity, rather than deleting it as
   auxiliary replay history
@@ -188,6 +223,15 @@ and standalone delivery history SHALL use provider-neutral Easy Input Message
 strings. System, developer, user, and paired tool-output lists SHALL use
 input-content grammar. Provider IDs, statuses, annotations, namespaces, and
 opaque metadata SHALL NOT be required by a paired output's outbound form.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** Assistant, synthesized-agent,
+  and standalone delivery history SHALL use provider-neutral Easy Input Message
+  strings. System, developer, user, and paired tool-output lists SHALL use
+  input-content grammar. Provider IDs, statuses, annotations, namespaces, and
+  opaque metadata SHALL NOT be required by a paired output's outbound form.
 
 #### Scenario: Text and paired calls are replayed
 
@@ -301,6 +345,16 @@ rejected locally. A later named textual delivery with a distinct item identity
 and matching original call SHALL retain its explicit delivery semantics rather
 than become a second paired output. The error SHALL identify a bounded
 structural reason without returning request text, credentials, or ciphertext.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** Malformed JSON, invalid input containers, genuinely unknown replay
+  item types, unknown content block types, orphaned or mismatched tool outputs,
+  duplicate call/output identities, invalid required fields, and incomplete local
+  shell pairs SHALL be rejected locally. The error SHALL identify a bounded
+  structural reason without returning request text, credentials, or encrypted
+  payloads.
 
 #### Scenario: A future client introduces an unknown replay item
 

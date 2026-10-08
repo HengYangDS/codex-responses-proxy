@@ -67,7 +67,6 @@ class ProviderPortableRequestTests:
     def test_rejects_malformed_current_turn_tool_catalog(self, subtests) -> None:
         valid = {"type": "additional_tools", "role": "developer", "tools": [{"type": "namespace"}]}
         invalid = (
-            ("empty catalog", {**valid, "tools": []}, "invalid_additional_tools"),
             ("non-list catalog", {**valid, "tools": "not a list"}, "invalid_additional_tools"),
             ("non-object tool", {**valid, "tools": ["not an object"]}, "invalid_additional_tools"),
             ("invalid role", {**valid, "role": 1}, "invalid_additional_tools"),
@@ -83,6 +82,13 @@ class ProviderPortableRequestTests:
                 )
                 assert projection.body is None
                 assert projection.reason == reason
+
+    def test_empty_current_tool_catalog_preserves_native_compaction_intent(self) -> None:
+        catalog = {"type": "additional_tools", "role": "developer", "tools": []}
+        raw = _body({"input": [catalog, {"type": "compaction_trigger"}]})
+        projected = rewrite.sanitize_responses_body(raw)
+        assert projected.body is not None, projected.diagnostic()
+        assert json.loads(projected.body)["input"] == [catalog, {"type": "compaction_trigger"}]
 
     def test_reports_recognized_unimplemented_standard_item_as_schema_drift(
         self,

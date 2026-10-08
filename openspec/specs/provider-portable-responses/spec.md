@@ -65,11 +65,16 @@ unchanged.
 The proxy SHALL preserve textual system, developer, user, and assistant
 dialogue; agent author, recipient, and phase context; complete
 function/custom-tool call-output pairs; and standalone cross-task tool delivery
-results whose portable provenance is explicit. Assistant, synthesized-agent,
-and standalone delivery history SHALL use provider-neutral Easy Input Message
-strings. System, developer, user, and paired tool-output lists SHALL use
-input-content grammar. Provider IDs, statuses, annotations, namespaces, and
-opaque metadata SHALL NOT be required by a paired output's outbound form.
+results whose portable provenance is explicit.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** Assistant, synthesized-agent,
+  and standalone delivery history SHALL use provider-neutral Easy Input Message
+  strings. System, developer, user, and paired tool-output lists SHALL use
+  input-content grammar. Provider IDs, statuses, annotations, namespaces, and
+  opaque metadata SHALL NOT be required by a paired output's outbound form.
 
 #### Scenario: Text and paired calls are replayed
 
@@ -189,12 +194,17 @@ than forwarded or rejected.
 
 Before upstream I/O, the proxy SHALL classify each Responses input item through
 one authoritative item policy shared by diagnostics and provider-portable
-projection. Malformed JSON, invalid input containers, genuinely unknown replay
-item types, unknown content block types, orphaned or mismatched tool outputs,
-duplicate call/output identities, invalid required fields, and incomplete local
-shell pairs SHALL be rejected locally. The error SHALL identify a bounded
-structural reason without returning request text, credentials, or encrypted
-payloads.
+projection.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** Malformed JSON, invalid input containers, genuinely unknown replay
+  item types, unknown content block types, orphaned or mismatched tool outputs,
+  duplicate call/output identities, invalid required fields, and incomplete local
+  shell pairs SHALL be rejected locally. The error SHALL identify a bounded
+  structural reason without returning request text, credentials, or encrypted
+  payloads.
 
 #### Scenario: A future client introduces an unknown replay item
 

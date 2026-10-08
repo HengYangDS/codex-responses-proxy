@@ -216,6 +216,7 @@ leaves the loopback listener.
 | Storage                     | Sends `store=false`; continuity comes from replayed dialogue and complete tool relationships     |
 | Provider IDs                | Removes response, conversation, cache, stored-item, and provider-issued item bindings            |
 | Encrypted replay            | Removes reasoning history; preserves required native agent payloads without claiming decryption  |
+| Agent delivery              | A selected plaintext route generates readable delegation and restores the native delivery marker |
 | Tool replay                 | Keeps complete function/custom-tool call pairs; rejects unsafe structure locally                 |
 | Empty upstream response     | Returns a retryable local `503` instead of committing false success                              |
 | DMXAPI `477 empty_response` | Retries the already-projected bytes once                                                         |
@@ -225,6 +226,16 @@ leaves the loopback listener.
 | Invalid `input` union       | Uses one smaller current-dialogue fallback, then stops                                           |
 
 The proxy never rewrites conversation storage to obtain portability.
+
+The released UCloud route selects plaintext agent delivery. This requires a
+Codex client with the native plaintext-message path, the `collaboration` tool
+namespace, and a model catalog matching the conversation's agent version. The
+client's own configuration owner selects those settings. The proxy aliases the
+reserved namespace before generation, restores native call identities and the
+empty encrypted-argument list, and refuses to relabel ciphertext as plaintext.
+Existing encrypted messages remain subject to their original provider's
+decryption support. An empty current-turn tool catalog remains an explicit
+control, including during native compaction.
 
 ## Request boundary
 

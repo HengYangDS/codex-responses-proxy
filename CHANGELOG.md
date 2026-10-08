@@ -8,6 +8,18 @@ publication authority.
 
 ## [Unreleased]
 
+## [4.0.6] - 2026-10-08
+
+### Fixed
+
+- Select readable native agent delegation before generation on the UCloud
+  route, restoring exact message arguments and native delivery metadata for
+  JSON and streaming responses. Preserve earlier encrypted history and refuse
+  unproved plaintext output.
+- Preserve native encrypted-argument replay metadata and explicitly empty
+  current-turn tool catalogs, allowing native resume and compaction to retain
+  complete agent messages.
+
 ## [4.0.5] - 2026-09-23
 
 ### Changed

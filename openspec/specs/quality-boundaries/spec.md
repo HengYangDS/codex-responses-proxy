@@ -12,15 +12,20 @@ arbitrary merge vetoes.
 
 Every tracked product carrier SHALL belong to exactly one positive quality role,
 and every blocking concern SHALL have one semantic owner and a proportionate
-evidence model. The quality responsibility map SHALL cover product and tool source, tests,
-documentation, structured configuration, dependency and architecture topology,
-security, commits, CI, release construction, and supported-platform behavior.
-Each concern SHALL state its governed scope, risk model, exact measurement,
-false-positive cost, remediation path, and review condition. Files SHALL NOT be
-silently excluded, multiply owned, or admitted by a historical forbidden-item
-list. Tool-native configuration SHALL own syntax-level policy, while custom
-repository code SHALL be limited to cross-file or product-semantic constraints
-that mature tools cannot express.
+evidence model.
+
+#### Scenario: Complete requirement obligations are evaluated
+
+- **WHEN** this requirement is evaluated for implementation or acceptance
+- **THEN** The quality responsibility map SHALL cover product and tool source, tests,
+  documentation, structured configuration, dependency and architecture topology,
+  security, commits, CI, release construction, and supported-platform behavior.
+  Each concern SHALL state its governed scope, risk model, exact measurement,
+  false-positive cost, remediation path, and review condition. Files SHALL NOT be
+  silently excluded, multiply owned, or admitted by a historical forbidden-item
+  list. Tool-native configuration SHALL own syntax-level policy, while custom
+  repository code SHALL be limited to cross-file or product-semantic constraints
+  that mature tools cannot express.
 
 Aggregate coverage SHALL own the quantitative product-risk boundary. Every
 semantic package SHALL have current non-zero execution evidence and an exact

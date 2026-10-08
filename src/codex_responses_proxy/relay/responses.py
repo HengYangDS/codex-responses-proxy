@@ -5,6 +5,7 @@ from __future__ import annotations
 import urllib.error
 from http.server import BaseHTTPRequestHandler
 
+from codex_responses_proxy.protocol import agent_delivery
 from codex_responses_proxy.protocol import response as replay_response
 from codex_responses_proxy.protocol.replay import projection as replay_request
 from codex_responses_proxy.providers import registry as provider_registry
@@ -227,6 +228,22 @@ def relay(
         )
         return
     body = projection.body
+    try:
+        prepared = agent_delivery.prepare_request(body, profile.agent_message_delivery)
+    except ValueError as error:
+        downstream.send_payload(
+            handler,
+            400,
+            replay_response.error_payload(
+                "Responses delegation does not match the selected delivery policy",
+                "invalid_request_error",
+                "agent_delivery_rejected",
+                reason=str(error),
+            ),
+        )
+        telemetry.record_counter("agent_delivery_rejected")
+        return
+    body = prepared.body
     if len(body) >= 400_000:
         path = operational_log.safe_request_path(handler.path)
         operational_log.log(
@@ -249,6 +266,7 @@ def relay(
         is_responses,
         body,
         profile,
+        plaintext_agent_delivery=prepared.active,
     )
     if _cooldown_active(exchange) or not _admit(exchange):
         return

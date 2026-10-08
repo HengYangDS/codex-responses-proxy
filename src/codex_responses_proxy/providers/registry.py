@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
+from typing import Literal
 from typing import Protocol
 from typing import cast
 
@@ -55,6 +56,7 @@ class Profile:
     name: str
     base_url: str
     wire_policy: WirePolicy | None = None
+    agent_message_delivery: Literal["native", "plaintext"] = "native"
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,15 +133,19 @@ def load(path: str | Path | None = None) -> Registry:
 def _profile(name: object, raw: object) -> Profile:
     if not isinstance(name, str) or not _NAME.fullmatch(name):
         raise ValueError("provider names must be lowercase kebab-case slugs")
-    if not isinstance(raw, dict) or set(raw) - {"base_url", "policy"}:
+    if not isinstance(raw, dict) or set(raw) - {"base_url", "policy", "agent_message_delivery"}:
         raise ValueError(f"provider {name!r} has unknown or invalid fields")
     policy = raw.get("policy")
     if policy is not None and (not isinstance(policy, str) or not _NAME.fullmatch(policy)):
         raise ValueError(f"provider {name!r} references an unknown policy")
+    delivery = raw.get("agent_message_delivery", "native")
+    if delivery not in ("native", "plaintext"):
+        raise ValueError(f"provider {name!r} has an invalid agent message delivery policy")
     return Profile(
         name,
         _base_url(name, raw.get("base_url")),
         None if policy is None else _load_policy(policy),
+        cast(Literal["native", "plaintext"], delivery),
     )
 
 
