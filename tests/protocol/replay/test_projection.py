@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import cast
 
 from codex_responses_proxy.protocol.replay import projection as rewrite
@@ -659,12 +660,20 @@ class RequestSanitizationContracts:
 
     def test_request_sanitizer_fails_closed_when_mutation_cannot_be_serialized(self, *, mocker):
         raw = b'{"input":[{"type":"reasoning","encrypted_content":"opaque"},{"type":"message","role":"user","content":"continue"}]}'
-        mocker.patch.object(rewrite.json, "dumps", side_effect=TypeError("unsupported"))
+        serializer = mocker.Mock(side_effect=TypeError("unsupported"))
+        mocker.patch.object(
+            rewrite,
+            "json",
+            SimpleNamespace(
+                loads=json.loads, dumps=serializer, JSONDecodeError=json.JSONDecodeError
+            ),
+        )
         _projection = rewrite.sanitize_responses_body(raw)
         out = _projection.body
         note = _projection.diagnostic()
         assert out is None
         assert note == "rejected serialization_failed"
+        serializer.assert_called_once()
 
     def test_deep_request_fails_closed(self) -> None:
         nested = '{"x":' * 496 + "0" + "}" * 496

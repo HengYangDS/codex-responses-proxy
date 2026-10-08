@@ -106,7 +106,16 @@ def behavior(
         ),
         "-m",
         "not native_distribution and not repository_toolchain",
-        *(("--junitxml", str(output / f"{session.name}.xml")) if output is not None else ()),
+        *(
+            (
+                "--junitxml",
+                str(output / f"{session.name}.xml"),
+                "--report-log",
+                str(output / f"{session.name}-pytest.jsonl"),
+            )
+            if output is not None
+            else ()
+        ),
         env=environment,
     )
     if require_coverage:

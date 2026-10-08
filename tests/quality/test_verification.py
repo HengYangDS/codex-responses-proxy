@@ -368,6 +368,7 @@ class TestVerificationContracts:
             "pyperf",
             "pytest",
             "pytest-mock",
+            "pytest-reportlog",
             "pytest-subtests",
             "pyyaml",
             "ruff",

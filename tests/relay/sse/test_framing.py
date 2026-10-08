@@ -6,12 +6,12 @@ import http.client
 import json
 import socket
 import threading
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
 
 from codex_responses_proxy.protocol import response as response_projection
-from codex_responses_proxy.protocol.replay import projection as rewrite
 from codex_responses_proxy.relay import admission
 from codex_responses_proxy.relay import cooldown
 from codex_responses_proxy.relay import relay as downstream
@@ -196,7 +196,10 @@ class TestSseFraming(InputTransportFixture):
             b'data: {"type":"response.completed","response":{"output":['
             b'{"type":"reasoning","encrypted_content":"secret"}]}}\n\n'
         )
-        mocker.patch.object(response_projection.json, "dumps", side_effect=TypeError("unsupported"))
+        serializer = mocker.Mock(side_effect=TypeError("unsupported"))
+        mocker.patch.object(
+            response_projection, "json", SimpleNamespace(loads=json.loads, dumps=serializer)
+        )
         handler = MemoryHandler()
         result = sse.relay(
             handler,
@@ -215,6 +218,7 @@ class TestSseFraming(InputTransportFixture):
         assert handler.output().endswith(b"0\r\n\r\n")
         counters = cast("dict[str, int]", self._status_snapshot()["counters"])
         assert counters["stream_projection_failures"] == 0
+        serializer.assert_not_called()
 
     def test_live_sse_preserves_ciphertext_before_commit(self, *, mocker) -> None:
         body = request_body(stream=True)
@@ -231,22 +235,9 @@ class TestSseFraming(InputTransportFixture):
                 }
             ]
         ) as (port, _received):
-            projected = rewrite.sanitize_responses_body(body).body
-            assert projected is not None
+            serializer = mocker.Mock(side_effect=TypeError("unsupported"))
             mocker.patch.object(
-                rewrite,
-                "sanitize_responses_body",
-                return_value=rewrite.ProjectionResult(projected, "clean"),
-            )
-            real_dumps = response_projection.json.dumps
-
-            def fail_encrypted_payload(payload, *args, **kwargs):
-                if isinstance(payload, dict) and payload.get("type") == "response.completed":
-                    raise TypeError("unsupported")
-                return real_dumps(payload, *args, **kwargs)
-
-            mocker.patch.object(
-                response_projection.json, "dumps", side_effect=fail_encrypted_payload
+                response_projection, "json", SimpleNamespace(loads=json.loads, dumps=serializer)
             )
             with request(port, body) as response:
                 status = response.status
@@ -256,6 +247,7 @@ class TestSseFraming(InputTransportFixture):
         assert b"secret" in payload
         counters = cast("dict[str, int]", self._status_snapshot()["counters"])
         assert counters["stream_projection_failures"] == 0
+        serializer.assert_not_called()
 
     def test_malformed_sse_fails_before_downstream_commit(self) -> None:
         malformed = b'data: {"type":\n\n'

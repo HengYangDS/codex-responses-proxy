@@ -51,7 +51,7 @@ def test_native_behavior_reports_share_one_actual_pytest_attempt(
     mocker: MockerFixture,
     nox_configuration: ModuleType,
 ) -> None:
-    """One native behavior run emits original JUnit, coverage and child identity."""
+    """One native behavior run emits original events, JUnit, coverage and identity."""
     output = tmp_path / "reports"
     output.mkdir()
     work = tmp_path / "work"
@@ -107,6 +107,17 @@ def test_native_behavior_reports_share_one_actual_pytest_attempt(
     behavior = [call for call in session.run.call_args_list if "pytest" in call.args]
     assert len(behavior) == 1
     assert behavior[0].kwargs["env"]["ETHOS_NATIVE_OUTPUT_DIR"] is None
+    events_path = output / f"{session.name}-pytest.jsonl"
+    events = [json.loads(line) for line in events_path.read_text().splitlines()]
+    assert events[0]["$report_type"] == "SessionStart"
+    assert events[-1] == {"exitstatus": 0, "$report_type": "SessionFinish"}
+    assert [event["when"] for event in events if event["$report_type"] == "TestReport"] == [
+        "setup",
+        "call",
+        "teardown",
+    ]
+    assert behavior[0].args.count("--report-log") == 1
+    assert behavior[0].args[behavior[0].args.index("--report-log") + 1] == str(events_path)
 
 
 @pytest.mark.parametrize(
