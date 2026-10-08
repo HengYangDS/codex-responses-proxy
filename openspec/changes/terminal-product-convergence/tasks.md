@@ -169,6 +169,19 @@
       Earlier root-path and unresolved-effort classifications remain separate
       receipts. This is credential-free synthetic acceptance, not production
       admission for historical model names absent from the current catalog.
+    - A native-inheritance successor now preserves a retained `gpt-5.6-sol`
+      child after its private root changes to Sol/max, without adding a catalog
+      entry or rewriting history. Parent-native follow-up, endpoint cutover,
+      cold root resume and rollback retain the child's model/high effort,
+      identity, history prefix, archive flags and spawn edges. All 24 checks
+      pass in 46.10 seconds, including exact private cleanup and production
+      byte preservation. Evidence:
+      `build/verification/encrypted-agent-delivery/native-provider-inherited-legacy-resume-20261009.json`.
+      The preceding public child-resume override was ignored through native
+      parent ownership and remains a separate failed receipt. New-spawn
+      refusal is therefore distinct from retained-child resume. This qualifies
+      the signed Desktop's synthetic runtime path; actual upstream acceptance
+      of the historical model and original-subtree cutover remain unproved.
 - [x] 4.4 Ensure Provider-specific wire differences live only in narrow adapters selected from one manifest and policy contract; verify generic relay, lifecycle, CLI, and tests do not branch on Provider names. The product source and test control flow contain no Provider-name branch; the manifest selects the optional pure wire policy.
 - [x] 4.5 Define the low-cost Provider extension path—manifest entry, adapter, policy, contract fixtures, conformance suite, documentation, and no core modification—and prove it with one representative non-default Provider fixture. `new-gateway` passes the real loopback Responses path; manifest-only and optional-policy fixtures and `CONTRIBUTING.md` describe the same extension contract. The focused suite passes 23 tests and 57 subtests.
 - [ ] 4.6 Evaluate mature local-first gateways and protocol libraries against the exact retained differentiators; replace custom generic mechanics only where doing so reduces source, dependencies, runtime risk, and maintenance authority.
