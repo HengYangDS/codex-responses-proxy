@@ -141,6 +141,22 @@
       metadata. Official PR 35845 is merged; issues 37197, 46939 and 40209
       remain open at the October 9 readback. This supports the existing
       generation-time Proxy policy, not old-ciphertext relabeling or removal.
+    - The existing signed-Desktop private journey now qualifies the root goal
+      and two ordered queued submissions through native release, same-process
+      resume, cold resume and endpoint rollback. Same-process resume retains
+      both exact queued identities. Before shutdown, native execution consumes
+      the submissions in order and appends both original input texts to the
+      user-message history; the empty later queue is not message loss. The
+      active goal, creation identity and monotonically increasing usage survive
+      both resumes and rollback. All 25 checks pass in 32.60 seconds. Evidence:
+      `build/verification/encrypted-agent-delivery/native-provider-root-queue-durable-20261009.json`.
+      Earlier interface and classification failures remain separate receipts;
+      V2 child goals remain parent-controlled, and archived roots are inspected
+      after native unarchive/resume. No history-store write, credential access,
+      production mutation or original-chat cutover occurred. Exact private
+      rows, rollouts, processes, servers and scratch roots are absent. Final
+      original-root acceptance must preserve live work and either retain queued
+      identities or prove their ordered native consumption before cold resume.
 - [x] 4.4 Ensure Provider-specific wire differences live only in narrow adapters selected from one manifest and policy contract; verify generic relay, lifecycle, CLI, and tests do not branch on Provider names. The product source and test control flow contain no Provider-name branch; the manifest selects the optional pure wire policy.
 - [x] 4.5 Define the low-cost Provider extension path—manifest entry, adapter, policy, contract fixtures, conformance suite, documentation, and no core modification—and prove it with one representative non-default Provider fixture. `new-gateway` passes the real loopback Responses path; manifest-only and optional-policy fixtures and `CONTRIBUTING.md` describe the same extension contract. The focused suite passes 23 tests and 57 subtests.
 - [ ] 4.6 Evaluate mature local-first gateways and protocol libraries against the exact retained differentiators; replace custom generic mechanics only where doing so reduces source, dependencies, runtime risk, and maintenance authority.
