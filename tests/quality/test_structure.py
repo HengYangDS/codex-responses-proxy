@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import gc
 import io
 import json
 import os
@@ -97,6 +98,7 @@ class TestStructuralQualityContracts:
         assert set(admission["sources"]) == {"codex_responses_proxy", "tools", "noxfile"}
         assert admission["sources"]["noxfile"]["covered_branches"] == 2
         assert len(admission["gaps"]) == 4
+        gc.collect()
 
     def test_python_data_models_do_not_escape_through_any(self) -> None:
         offenders = []

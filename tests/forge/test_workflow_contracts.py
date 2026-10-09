@@ -4,6 +4,7 @@ import importlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import tomllib
 from collections.abc import Mapping
@@ -12,7 +13,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.quality.fixtures import git
 from tools.ci.project import reconcile
+from tools.git_environment import isolated_config_environment
+from tools.quality.python import source_manifest
 
 ROOT = Path(__file__).resolve().parents[2]
 GITLAB_LOCKED_PYTHON = "uv run --locked --no-sync --python python --no-python-downloads"
@@ -398,6 +402,74 @@ def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:
     )
     assert "nox -s release_asset" in _string(linux_build["run"])
     assert "nox -s release --" not in _string(linux_build["run"])
+
+
+def test_linux_release_source_preserves_tracked_package_inventory(tmp_path: Path) -> None:
+    """Materialize the selected commit with the native inventory the build consumes."""
+    jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
+    steps = _sequence(_mapping(jobs["native-linux"])["steps"])
+    materialize = next(
+        _mapping(step)
+        for step in steps
+        if _mapping(step).get("name") == "Materialize the canonical release source root"
+    )
+    retire = next(
+        _mapping(step)
+        for step in steps
+        if _mapping(step).get("name") == "Retire the canonical release source root"
+    )
+    assert retire["if"] == "always() && steps.release-source.outcome == 'success'"
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    git(checkout, "init", "-q", "--initial-branch=fixture-root")
+    package = checkout / "src/codex_responses_proxy"
+    package.mkdir(parents=True)
+    source = package / "__init__.py"
+    source.write_text('"""Selected release source."""\n', encoding="utf-8")
+    git(checkout, "add", "--", "src")
+    git(
+        checkout,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "--no-gpg-sign",
+        "-qm",
+        "Selected release source",
+    )
+    expected = source_manifest(checkout)
+    selected_head = git(checkout, "rev-parse", "HEAD").stdout
+    source.write_text('"""Uncommitted source."""\n', encoding="utf-8")
+    (package / "local.py").write_text("pass\n", encoding="utf-8")
+    destination = tmp_path / "release source"
+
+    def execute(step: Mapping[str, object]) -> None:
+        command = [
+            argument.replace("$GITHUB_WORKSPACE", str(checkout)).replace(
+                "/workspace", str(destination)
+            )
+            for argument in shlex.split(_string(step["run"]))
+        ]
+        subprocess.run(
+            command,
+            cwd=checkout,
+            env=isolated_config_environment({"GITHUB_WORKSPACE": str(checkout)}),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+
+    try:
+        execute(materialize)
+        assert source_manifest(destination) == expected
+        assert git(destination, "rev-parse", "HEAD").stdout == selected_head
+        assert not (destination / "src/codex_responses_proxy/local.py").exists()
+    finally:
+        if (destination / ".git").is_file():
+            execute(retire)
+    assert not destination.exists()
 
 
 def test_linux_asset_build_and_native_lifecycle_have_distinct_execution_hosts() -> None:

@@ -614,13 +614,18 @@ githubVerify: {
 				#UvSetup
 			}, {
 				name: "Materialize the canonical release source root"
-				run:  "install -d /workspace && git -c safe.directory=\"$GITHUB_WORKSPACE\" archive --format=tar HEAD | tar -xf - -C /workspace"
+				id:   "release-source"
+				run:  "git -c safe.directory=\"$GITHUB_WORKSPACE\" worktree add --detach /workspace HEAD"
 			}, {
 				name: "Install the locked release tool environment"
 				run:  "cd /workspace && uv sync --locked --group quality --python python --no-python-downloads"
 			}, {
 				name: "Build the native release asset"
 				run:  "cd /workspace && uv run --locked --no-sync --python python --no-python-downloads nox -s release_asset -- \"$GITHUB_WORKSPACE/.release-assets/linux-x86_64\""
+			}, {
+				name: "Retire the canonical release source root"
+				if:   "always() && steps.release-source.outcome == 'success'"
+				run:  "git -c safe.directory=\"$GITHUB_WORKSPACE\" worktree remove --force /workspace"
 			}, {
 				uses: #Toolchains.githubActions.upload
 				with: {

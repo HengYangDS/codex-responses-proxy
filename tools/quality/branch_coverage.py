@@ -228,8 +228,11 @@ def _command(
         raise AssertionError("validated coverage floor must be numeric")
     floor = float(raw_floor)
     coverage = Coverage(config_file=str(ROOT / ".config/quality/native/coverage.ini"))
-    coverage.load()
-    report = measured_report(coverage)
+    try:
+        coverage.load()
+        report = measured_report(coverage)
+    finally:
+        coverage.get_data().close(force=True)
     totals = _object_mapping(report.get("totals"), label="coverage totals")
     files = _object_mapping(report.get("files"), label="coverage files")
     sources = []

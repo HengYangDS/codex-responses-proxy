@@ -63,6 +63,22 @@
       `build/verification/encrypted-agent-delivery/native-verifier-integration-20261009/macos-native-lifecycle-7600b0dc/`.
       Formal release, production installation and original-chat cutover remain
       open.
+    - Hosted review source `b9991368` passes macOS and Windows native asset and
+      lifecycle acceptance, all three published-predecessor compatibility jobs,
+      Python 3.12 on both hosts, quality, governance and performance. Linux
+      construction fails because archive materialization discards the Git index
+      required by installed-source admission. Python 3.13 and 3.14 expose an
+      unclosed in-memory coverage database during later test collection. Both
+      failures reproduce locally without weakening warning or source policy.
+      The existing CUE owner now materializes and retires an exact detached Git
+      worktree; coverage admission closes native data after report production.
+      The focused contracts exercise selected-commit inventory, dirty-source
+      exclusion, exact native teardown and database finalization. Evidence:
+      `build/verification/encrypted-agent-delivery/native-verifier-integration-20261009/`
+      (`linux-source-index.red.stdout`, `sqlite-resource-custody.red.stdout`,
+      `hosted-ci-repair.focused-v3.terminal.json`). Successor hosted qualification,
+      accepted ETHOS runtime, frozen proof, formal publication and the original
+      chat remain open.
     - Native Git ancestry now proves that the current signed source retains both
       exact original history roots through the existing two-parent bridge.
       Seven differing committer records across 246 paired objects remain
