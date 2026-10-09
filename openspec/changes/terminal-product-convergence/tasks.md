@@ -51,6 +51,18 @@
       AIGW, verify the original retained subtree and rollback, and clean exact
       owned state. Review date: 2026-10-09; old ciphertext readability remains
       a separate unproved obligation.
+    - Current-source macOS fresh installation, repeated-install no-op, native
+      request forwarding, reload, protected-content refusal, uninstall and
+      recovery acceptance passes in 22.02 seconds against the existing exact
+      4.0.6 executable. Its product and lifecycle inputs are unchanged from
+      signed asset source `1b8a8477`. Canonical launchd projection and protected
+      Codex/AIGW configuration bytes remain unchanged. Native teardown passes;
+      all 36 temporary files (44,955,798 bytes) are removed, with evidence and
+      sibling state preserved. The initial test-collection refusal remains a
+      separate failed receipt. Evidence:
+      `build/verification/encrypted-agent-delivery/native-verifier-integration-20261009/macos-native-lifecycle-7600b0dc/`.
+      Formal release, production installation and original-chat cutover remain
+      open.
     - Native Git ancestry now proves that the current signed source retains both
       exact original history roots through the existing two-parent bridge.
       Seven differing committer records across 246 paired objects remain
