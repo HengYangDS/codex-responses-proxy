@@ -72,7 +72,7 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
             "--strict",
             "--no-interactive",
         ),
-        ("actionlint",),
+        ("mise", "run", "--timeout", "60s", "workflow-check"),
         (
             "deptry",
             "src/codex_responses_proxy",

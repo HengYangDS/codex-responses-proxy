@@ -27,6 +27,15 @@ verification tools. `.python-versions` is the compatibility-matrix authority;
 Nox reads it and uses the uv backend to provision each isolated interpreter
 session.
 
+On macOS, workflow checks require an existing Docker engine. The original stable
+Actionlint 1.7.12 Darwin binary deadlocks while sending long scripts to ShellCheck
+([upstream issue 650](https://github.com/rhysd/actionlint/issues/650)); its fix is
+merged but unreleased. The native `workflow-supply` task prepares the same stable
+official Linux image pinned in `mise.toml`. `workflow-check` mounts this checkout
+read-only, disables network access and retains ShellCheck and Pyflakes. Other
+platforms use the original mise-locked executable. Retire this platform selection
+after a stable native release fixes the exact workflow journey.
+
 Bootstrap once:
 
 ```bash

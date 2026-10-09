@@ -414,6 +414,7 @@ class TestVerificationContracts:
             'uv sync --locked --all-groups --python "{{tools.python.path}}"',
             "npm ci --ignore-scripts",
             "npm audit signatures",
+            "mise run workflow-supply",
         ]
         for relative in ("AGENTS.md", "CONTRIBUTING.md", "README.md"):
             source = (ROOT / relative).read_text(encoding="utf-8")
