@@ -332,7 +332,9 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
 
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
     rules = _sequence(_mapping(gitlab["workflow"])["rules"])
-    assert {"if": '$CI_PIPELINE_SOURCE == "merge_request_event"'} in rules
+    assert any(
+        _mapping(rule).get("if") == '$CI_PIPELINE_SOURCE == "merge_request_event"' for rule in rules
+    )
     assert {"if": '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"'} in rules
     assert {
         "if": "$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS",
@@ -372,6 +374,32 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     assert 'test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"' in tag_before_script
     assert any("tools.release.metadata --tag" in command for command in tag_script)
     assert any("tools.forge.tag_signature" in command for command in tag_script)
+
+
+@pytest.mark.parametrize("review", [True, False])
+def test_gitlab_workflow_selects_the_runner_for_its_trust_role(review: bool) -> None:
+    """Schedule review jobs independently of the protected branch runner choice."""
+    gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
+    selected = "CODEX_RESPONSES_PROXY_GITLAB_SELECTED_LINUX_RUNNER_TAG"
+    protected = "CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
+    unprotected = "CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"
+    variables = dict(_mapping(gitlab["variables"]))
+    project_choices = {protected: "protected-linux", unprotected: "review-linux"}
+    rules = _sequence(_mapping(gitlab["workflow"])["rules"])
+    if review:
+        rule = next(
+            _mapping(value)
+            for value in rules
+            if _mapping(value).get("if") == '$CI_PIPELINE_SOURCE == "merge_request_event"'
+        )
+        variables.update(_mapping(rule.get("variables")))
+    assert selected not in project_choices
+    tag = _string(variables.get(selected))
+    assert tag == "$" + (unprotected if review else protected)
+    assert _strings(_mapping(gitlab["default"])["tags"]) == ["$" + selected]
+    assert project_choices[tag.removeprefix("$")] == (
+        "review-linux" if review else "protected-linux"
+    )
 
 
 def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:

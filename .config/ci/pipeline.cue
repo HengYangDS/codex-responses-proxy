@@ -63,6 +63,7 @@ gitlab: {
 		if: "$CI_COMMIT_TAG"
 	}, {
 		if: "$CI_PIPELINE_SOURCE == \"merge_request_event\""
+		variables: CODEX_RESPONSES_PROXY_GITLAB_SELECTED_LINUX_RUNNER_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"
 	}, {
 		if: "$CI_COMMIT_BRANCH == \"dev\" || $CI_COMMIT_BRANCH == \"main\""
 	}, {
@@ -71,17 +72,18 @@ gitlab: {
 	}]
 	stages: ["verify", "release"]
 	variables: {
-		DEBIAN_FRONTEND:                          "noninteractive"
-		CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: "origin"
-		UV_PYTHON_FLOOR_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.18-python3.12-trixie-slim@sha256:38f41574703989d6e5f02be80a3d687b00f98744cce86908097bcd34bcb7eb98"
-		UV_PYTHON_LATEST_IMAGE:                   "ghcr.io/astral-sh/uv:0.12.18-python3.14-trixie-slim@sha256:00facf17b58b02b725155862c5cd637f688f906bf7eb5b5194647886d8805cf3"
-		UV_CACHE_DIR:                             "$CI_PROJECT_DIR/.cache/uv"
-		UV_PYTHON_INSTALL_DIR:                    "$CI_PROJECT_DIR/.cache/uv/python"
-		CODEX_RESPONSES_PROXY_CI_TARGET:          "linux-arm64"
+		DEBIAN_FRONTEND:                                        "noninteractive"
+		CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE:               "origin"
+		UV_PYTHON_FLOOR_IMAGE:                                  "ghcr.io/astral-sh/uv:0.12.18-python3.12-trixie-slim@sha256:38f41574703989d6e5f02be80a3d687b00f98744cce86908097bcd34bcb7eb98"
+		UV_PYTHON_LATEST_IMAGE:                                 "ghcr.io/astral-sh/uv:0.12.18-python3.14-trixie-slim@sha256:00facf17b58b02b725155862c5cd637f688f906bf7eb5b5194647886d8805cf3"
+		UV_CACHE_DIR:                                           "$CI_PROJECT_DIR/.cache/uv"
+		UV_PYTHON_INSTALL_DIR:                                  "$CI_PROJECT_DIR/.cache/uv/python"
+		CODEX_RESPONSES_PROXY_CI_TARGET:                        "linux-arm64"
+		CODEX_RESPONSES_PROXY_GITLAB_SELECTED_LINUX_RUNNER_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
 	}
 	default: {
 		image: name: "$UV_PYTHON_LATEST_IMAGE"
-		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_SELECTED_LINUX_RUNNER_TAG"]
 		cache: {
 			key: "uv-$CODEX_RESPONSES_PROXY_CI_TARGET"
 			paths: [".cache/uv/"]
