@@ -91,6 +91,18 @@ def quality(session: nox.Session) -> None:
     }
     python_quality.static(session, environment=_environment(), minimum_python=MIN_PYTHON)
     python_quality.behavior(session, environment=environment, require_coverage=True)
+    if os.environ.get("ETHOS_NATIVE_OUTPUT_DIR"):
+        session.run(
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/quality/orchestration/test_sessions.py",
+            "-k",
+            "native_behavior_reports_share_one_actual_pytest_attempt "
+            "or native_static_report_observes_one_original_ruff_launch",
+            env={**environment, "ETHOS_NATIVE_OUTPUT_DIR": None},
+        )
 
 
 @nox.session(python=RELEASE_PYTHON)
@@ -381,6 +393,7 @@ def _install_tools(session: nox.Session, *groups: str) -> None:
         "--strict",
         env={"PYTHONNOUSERSITE": "1", "UV_NO_PROGRESS": "1"},
     )
+    python_quality.install_native_helpers(session)
 
 
 def _build_wheel(session: nox.Session, work: Path) -> Path:

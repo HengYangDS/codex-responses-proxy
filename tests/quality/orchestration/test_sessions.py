@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -14,6 +15,7 @@ from xml.etree import ElementTree as ET
 import pytest
 from nox.command import CommandFailed
 from nox.sessions import Session
+from nox.virtualenv import PassthroughEnv
 from pytest_mock import MockerFixture
 
 from tests.quality.fixtures import ROOT
@@ -46,17 +48,62 @@ def test_native_report_selection_refuses_relative_output_before_static_writes(
     session.run.assert_not_called()
 
 
+@pytest.mark.parametrize("hash_location", ["fragment", "archive"])
+@pytest.mark.parametrize("changed", [False, True])
+def test_native_helper_supply_checks_exact_wheel_before_install(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    nox_configuration: ModuleType,
+    hash_location: str,
+    changed: bool,
+) -> None:
+    wheel = tmp_path / "original wheel.whl"
+    wheel.write_bytes(b"original immutable wheel fixture")
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    provenance = {"url": wheel.as_uri(), "archive_info": {}}
+    if hash_location == "fragment":
+        provenance["url"] += f"#sha256={digest}"
+    else:
+        provenance["archive_info"] = {"hashes": {"sha256": digest}}
+    if changed:
+        wheel.write_bytes(b"changed wheel fixture")
+    metadata = SimpleNamespace(read_text=lambda _name: json.dumps(provenance))
+    mocker.patch.object(
+        nox_configuration.python_quality.importlib.metadata,
+        "distribution",
+        return_value=metadata,
+    )
+    mocker.patch.dict(os.environ, {"ETHOS_NATIVE_OUTPUT_DIR": str(tmp_path)})
+    session = mocker.Mock()
+    session.error.side_effect = ValueError("native helper wheel unavailable")
+
+    if changed:
+        with pytest.raises(ValueError, match="native helper wheel unavailable"):
+            nox_configuration.python_quality.install_native_helpers(session)
+        session.install.assert_not_called()
+    else:
+        nox_configuration.python_quality.install_native_helpers(session)
+        session.install.assert_called_once_with(
+            "--no-deps",
+            f"ethos @ {wheel.as_uri()}#sha256={digest}",
+            env={"PYTHONNOUSERSITE": "1", "UV_NO_PROGRESS": "1"},
+        )
+
+
+@pytest.mark.repository_toolchain
 def test_native_behavior_reports_share_one_actual_pytest_attempt(
     tmp_path: Path,
     mocker: MockerFixture,
     nox_configuration: ModuleType,
 ) -> None:
-    """One native behavior run emits original events, JUnit, coverage and identity."""
+    """The installed ETHOS plugin binds one original pytest attempt and its config."""
     output = tmp_path / "reports"
     output.mkdir()
     work = tmp_path / "work"
     work.mkdir()
     (tmp_path / "sample.py").write_text("def answer():\n    return 42\n")
+    configuration = tmp_path / "pytest.ini"
+    configuration.write_text("[pytest]\nfilterwarnings = error\n")
     (tmp_path / "test_sample.py").write_text(
         "from pathlib import Path\nfrom sample import answer\n\n"
         "def test_answer():\n"
@@ -68,9 +115,11 @@ def test_native_behavior_reports_share_one_actual_pytest_attempt(
     coverage.write_text("[run]\nbranch = True\nsource_pkgs = sample\n")
     session = mocker.Mock()
     session.name = f"tests-{sys.version_info.major}.{sys.version_info.minor}"
+    session.python = f"{sys.version_info.major}.{sys.version_info.minor}"
     session.create_tmp.return_value = str(work)
     mocker.patch.dict(os.environ, {"ETHOS_NATIVE_OUTPUT_DIR": str(output)})
     mocker.patch.object(nox_configuration.python_quality, "ROOTS", ("sample.py", "test_sample.py"))
+    mocker.patch.object(nox_configuration.python_quality, "ROOT", tmp_path)
     mocker.patch.object(nox_configuration.python_quality, "COVERAGE_CONFIG", coverage)
     for name in ("_install_tools", "_build_wheel", "_install_wheel", "_assert_installed_product"):
         mocker.patch.object(nox_configuration, name)
@@ -104,6 +153,14 @@ def test_native_behavior_reports_share_one_actual_pytest_attempt(
     runtime = json.loads((output / f"{session.name}-runtime.json").read_text())
     assert runtime["version"] == list(sys.version_info[:3])
     assert Path(runtime["executable"]).is_absolute()
+    assert runtime["pytest"]["session"] == session.name
+    assert runtime["pytest"]["root"] == str(tmp_path)
+    assert runtime["pytest"]["configuration"] == str(configuration)
+    assert (
+        runtime["pytest"]["configuration_sha256"]
+        == hashlib.sha256(configuration.read_bytes()).hexdigest()
+    )
+    assert runtime["pytest"]["exitstatus"] == 0
     behavior = [call for call in session.run.call_args_list if "pytest" in call.args]
     assert len(behavior) == 1
     assert behavior[0].kwargs["env"]["ETHOS_NATIVE_OUTPUT_DIR"] is None
@@ -118,6 +175,45 @@ def test_native_behavior_reports_share_one_actual_pytest_attempt(
     ]
     assert behavior[0].args.count("--report-log") == 1
     assert behavior[0].args[behavior[0].args.index("--report-log") + 1] == str(events_path)
+
+
+@pytest.mark.repository_toolchain
+def test_native_static_report_observes_one_original_ruff_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: MockerFixture,
+    nox_configuration: ModuleType,
+) -> None:
+    configuration = tmp_path / "ruff.toml"
+    configuration.write_text('[lint]\nselect = ["F"]\n')
+    (tmp_path / "sample.py").write_text("def answer():\n    return 42\n")
+    output = tmp_path / "reports"
+    output.mkdir()
+    runner = mocker.Mock(
+        friendly_name="quality",
+        func=SimpleNamespace(python=f"{sys.version_info.major}.{sys.version_info.minor}"),
+        global_config=SimpleNamespace(install_only=False, error_on_external_run=True),
+        venv=PassthroughEnv(bin_paths=[str(Path(sys.executable).parent)]),
+    )
+    session = Session(runner)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(nox_configuration.python_quality, "RUFF_CONFIG", configuration)
+    nox_configuration.python_quality._static_report(
+        session,
+        ("ruff", "check", "--config", str(configuration), "--no-cache", "."),
+        output=output,
+        environment={"PYTHONDONTWRITEBYTECODE": "1"},
+    )
+
+    runtime = json.loads((output / "quality-ruff-runtime.json").read_text())
+    checker = runtime["ruff"]
+    assert checker["completed"] is True
+    assert checker["launches"] == 1
+    assert Path(checker["executable"]).parent == Path(sys.executable).parent
+    assert checker["configuration"] == str(configuration)
+    assert checker["configuration_sha256"] == hashlib.sha256(configuration.read_bytes()).hexdigest()
+    assert checker["session"] == f"quality-{sys.version_info.major}.{sys.version_info.minor}"
+    assert json.loads((output / "quality-ruff.json").read_text()) == []
 
 
 @pytest.mark.parametrize(

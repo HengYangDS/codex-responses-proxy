@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
+import importlib.metadata
+import json
 import os
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
+from urllib.parse import parse_qs
+from urllib.parse import unquote
+from urllib.parse import urlsplit
 
 import nox
 
@@ -41,25 +47,18 @@ def source_manifest(root: Path) -> dict[str, str]:
 def static(session: nox.Session, *, environment: Mapping[str, str], minimum_python: str) -> None:
     """Run one native policy and scope for editing feedback and full acceptance."""
     output = _output_directory(session)
-    session.run(
+    command = (
         "ruff",
         "check",
         "--config",
         str(RUFF_CONFIG),
         "--no-cache",
         ".",
-        *(
-            (
-                "--output-format",
-                "json",
-                "--output-file",
-                str(output / f"{session.name}-ruff.json"),
-            )
-            if output is not None
-            else ()
-        ),
-        env=environment,
     )
+    if output is None:
+        session.run(*command, env=environment)
+    else:
+        _static_report(session, command, output=output, environment=environment)
     session.run(
         "ruff",
         "format",
@@ -108,6 +107,16 @@ def behavior(
         "not native_distribution and not repository_toolchain",
         *(
             (
+                "--rootdir",
+                str(ROOT),
+                "-c",
+                str(ROOT / "pytest.ini"),
+                "-p",
+                "ethos.surface.pytest.plugin",
+                "--ethos-runtime-output",
+                str(output / f"{session.name}-runtime.json"),
+                "--ethos-native-session",
+                _native_session(session),
                 "--junitxml",
                 str(output / f"{session.name}.xml"),
                 "--report-log",
@@ -140,12 +149,24 @@ def behavior(
 
 
 def _native_output(session: nox.Session, environment: dict[str, str | None]) -> Path | None:
-    """Emit child identity into the selected runner-owned attempt without nested writes."""
+    """Select original checker output without a detached runtime record."""
     environment["ETHOS_NATIVE_OUTPUT_DIR"] = None
     output = _output_directory(session)
     if output is None:
         return None
     environment["COVERAGE_FILE"] = str(output / f".{session.name}.coverage")
+    return output
+
+
+def _static_report(
+    session: nox.Session,
+    command: tuple[str, ...],
+    *,
+    output: Path,
+    environment: Mapping[str, str],
+) -> None:
+    """Use the shipped observer for one actual same-child Ruff launch."""
+    runtime = output / f"{session.name}-ruff-runtime.json"
     session.run(
         "python",
         "-I",
@@ -153,10 +174,83 @@ def _native_output(session: nox.Session, environment: dict[str, str | None]) -> 
         "import json,sys; from pathlib import Path; "
         "Path(sys.argv[1]).write_text(json.dumps({'executable':sys.executable, "
         "'version':list(sys.version_info[:3]), 'prefix':sys.prefix}) + '\\n', encoding='utf-8')",
-        str(output / f"{session.name}-runtime.json"),
+        str(runtime),
         env=environment,
     )
-    return output
+    session.env.update(environment)
+    helper = importlib.import_module("ethos.domain.quality.nox")
+    binary = Path(session.bin) / ("ruff.exe" if os.name == "nt" else "ruff")
+    helper.run_ruff(
+        session,
+        (
+            str(binary),
+            *command[1:],
+            "--verbose",
+            "--output-format",
+            "json",
+            "--output-file",
+            str(output / f"{session.name}-ruff.json"),
+        ),
+        runtime_output=runtime,
+        identity=_native_session(session),
+        configuration=RUFF_CONFIG,
+    )
+
+
+def install_native_helpers(session: nox.Session) -> None:
+    """Supply only the same installed wheel's observers without changing dependencies."""
+    if _output_directory(session) is None:
+        return
+    try:
+        requirement = native_helper_requirement()
+    except (OSError, TypeError, ValueError, importlib.metadata.PackageNotFoundError):
+        session.error("native evidence requires the selected immutable ETHOS wheel")
+    session.install(
+        "--no-deps",
+        requirement,
+        env={"PYTHONNOUSERSITE": "1", "UV_NO_PROGRESS": "1"},
+    )
+
+
+def native_helper_requirement() -> str:
+    """Resolve native PEP 610 wheel custody before supplying another Nox child."""
+    distribution = importlib.metadata.distribution("ethos")
+    provenance = json.loads(distribution.read_text("direct_url.json") or "null")
+    if not isinstance(provenance, dict) or not isinstance(provenance.get("url"), str):
+        raise ValueError("native helper wheel provenance is unavailable")
+    selected = urlsplit(provenance["url"])
+    archive = provenance.get("archive_info", {})
+    if not isinstance(archive, dict):
+        raise ValueError("native helper wheel provenance is invalid")
+    hashes = archive.get("hashes", {})
+    if not isinstance(hashes, dict):
+        raise ValueError("native helper wheel provenance is invalid")
+    digest = hashes.get("sha256") or parse_qs(selected.fragment).get("sha256", [""])[0]
+    path = unquote(selected.path, errors="strict")
+    wheel = Path(path.removeprefix("/") if os.name == "nt" else path)
+    if (
+        selected.scheme != "file"
+        or selected.netloc not in ("", "localhost")
+        or selected.query
+        or not wheel.is_absolute()
+        or wheel.is_symlink()
+        or not wheel.is_file()
+        or wheel.suffix != ".whl"
+        or not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+        or hashlib.sha256(wheel.read_bytes()).hexdigest() != digest
+    ):
+        raise ValueError("native helper wheel identity is invalid")
+    return f"ethos @ {wheel.as_uri()}#sha256={digest}"
+
+
+def _native_session(session: nox.Session) -> str:
+    """Bind the concrete signature exposed by the original Nox session."""
+    version = session.python
+    if not isinstance(version, str):
+        session.error("native evidence requires one concrete Python session")
+    return session.name if session.name.endswith(f"-{version}") else f"{session.name}-{version}"
 
 
 def _output_directory(session: nox.Session) -> Path | None:
