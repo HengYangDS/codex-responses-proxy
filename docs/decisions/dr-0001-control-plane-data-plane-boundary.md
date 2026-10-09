@@ -1,3 +1,13 @@
+<!--
+---
+subject: codex-responses-proxy:decision-0001-control-plane-data-plane-boundary
+role: decision
+state: canonical
+relations:
+  part_of: README.md
+---
+-->
+
 # DR-0001: Keep Control Plane Separate from Proxy Data Plane
 
 - Status: amended

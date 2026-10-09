@@ -1,3 +1,13 @@
+<!--
+---
+subject: codex-responses-proxy:decision-0003-provider-scoped-recovery-and-backpressure
+role: decision
+state: canonical
+relations:
+  part_of: README.md
+---
+-->
+
 # DR-0003: Isolate Recovery and Backpressure by Provider Route
 
 - Status: accepted

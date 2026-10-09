@@ -1,3 +1,13 @@
+<!--
+---
+subject: codex-responses-proxy:forge-operations
+role: how-to
+state: canonical
+relations:
+  part_of: ../README.md
+---
+-->
+
 # Forge Operations
 
 Local Git is the product-object authority. GitLab and GitHub are independent,

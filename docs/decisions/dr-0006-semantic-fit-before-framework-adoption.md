@@ -1,3 +1,13 @@
+<!--
+---
+subject: codex-responses-proxy:decision-0006-semantic-fit-before-framework-adoption
+role: decision
+state: canonical
+relations:
+  part_of: README.md
+---
+-->
+
 # DR-0006: Require Semantic Fit Before Framework Adoption
 
 - Status: accepted

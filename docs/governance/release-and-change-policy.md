@@ -1,3 +1,13 @@
+<!--
+---
+subject: codex-responses-proxy:release-and-change-policy
+role: policy
+state: canonical
+relations:
+  part_of: ../README.md
+---
+-->
+
 # Release and Change Policy
 
 This document defines current invariants. Git, Forge records, the Changelog,

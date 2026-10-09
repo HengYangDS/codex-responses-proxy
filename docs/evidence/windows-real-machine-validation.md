@@ -1,3 +1,13 @@
+<!--
+---
+subject: codex-responses-proxy:windows-real-machine-validation-2026-07-23
+role: evidence
+state: archived
+relations:
+  part_of: README.md
+---
+-->
+
 # Windows Real-Machine Validation
 
 Status: dated proof (2026-07-23).

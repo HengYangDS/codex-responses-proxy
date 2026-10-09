@@ -1,3 +1,13 @@
+<!--
+---
+subject: codex-responses-proxy:authority-and-runtime-boundary
+role: explanation
+state: canonical
+relations:
+  part_of: ../README.md
+---
+-->
+
 # Authority and Runtime Boundary
 
 Codex Responses Proxy is a local Responses data plane. It normalizes outbound

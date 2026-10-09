@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import runpy
 import tempfile
 from pathlib import Path
 
@@ -90,6 +91,11 @@ def _installed_distribution(root: Path, provenance: str) -> Path:
 
 class BundleContracts:
     """Verify the bundle owner of native release artifacts."""
+
+    def test_native_bundle_collects_ctypes_as_source(self) -> None:
+        """Execute the shipped hook that keeps ctypes outside the PYZ archive."""
+        hook = runpy.run_path(str(ROOT / "tools" / "release" / "hooks" / "hook-ctypes.py"))
+        assert hook["module_collection_mode"] == "py"
 
     def test_bundle_rejects_installer_provenance(self, tmp_path: Path) -> None:
         """Exclude checkout paths and installer timestamps from release payloads."""

@@ -1,3 +1,13 @@
+<!--
+---
+subject: codex-responses-proxy:decision-record-conventions
+role: reference
+state: canonical
+relations:
+  part_of: README.md
+---
+-->
+
 # Decision Records
 
 Decision Records capture durable choices that constrain product design or

@@ -40,7 +40,17 @@ def test_governance_failure_stops_before_subsequent_commands(failure, mocker, ca
 
 
 @pytest.mark.parametrize(
-    "defect", ["missing-register", "duplicate-sequence", "title", "status", "date", "section"]
+    "defect",
+    [
+        "complete",
+        "metadata-navigation",
+        "missing-register",
+        "duplicate-sequence",
+        "title",
+        "status",
+        "date",
+        "section",
+    ],
 )
 def test_decision_register_requires_unique_complete_records(tmp_path, defect):
     directory = tmp_path / "docs/decisions"
@@ -57,11 +67,20 @@ def test_decision_register_requires_unique_complete_records(tmp_path, defect):
         "date": ("- Date: 2026-01-01", ""),
         "section": ("## Context", ""),
     }
+    if defect == "metadata-navigation":
+        (directory / "README.md").write_text("# Decisions\n\n[Register](decision-register.md)\n")
+        text = (
+            "<!--\n---\nsubject: decision-owner\nrole: decision\n"
+            "state: canonical\n---\n-->\n\n" + text
+        )
     if defect in replacements:
         text = text.replace(*replacements[defect])
     (directory / "dr-0001-owner.md").write_text(text)
     if defect == "duplicate-sequence":
         (directory / "dr-0001-other.md").write_text(text)
+    if defect in {"complete", "metadata-navigation"}:
+        assert decision_record_gaps(tmp_path) == []
+        return
     expected = {
         "duplicate-sequence": "sequence_duplicate",
         "title": "title_invalid",

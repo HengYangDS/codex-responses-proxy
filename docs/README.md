@@ -1,3 +1,13 @@
+<!--
+---
+subject: codex-responses-proxy:documentation
+role: index
+state: canonical
+relations:
+  part_of: ../README.md
+---
+-->
+
 # Documentation
 
 This repository uses a deliberately small documentation kernel. It separates

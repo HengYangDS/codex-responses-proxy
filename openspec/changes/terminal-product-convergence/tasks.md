@@ -224,6 +224,29 @@
       in `build/verification/encrypted-agent-delivery/synthetic-joined-producer-20261009/`.
       Operator reader authorization, formal release and original-chat acceptance
       remain open; this journey does not qualify them.
+      The October 9 proof repair now uses the exact signed ETHOS maintenance
+      package at source `1b6a0ef1`, installed through public `hook install`.
+      Native selection verifies all 11,645 runtime entries, preserves the
+      authentic predecessor, and releases the exact 13,008-entry bootstrap.
+      The existing release bundle regression executes `hook-ctypes.py` through
+      the standard-library loader while retaining the original AST invariant;
+      all 17 focused contracts pass and native coverage observes both hook lines.
+      Fifteen document carriers now have valid metadata and navigation, with
+      the 13 original bodies unchanged. Both exact patches pass native admission;
+      document health and the native formatter pass. Evidence in
+      `build/verification/encrypted-agent-delivery/native-verifier-integration-20261009/`:
+      `maintenance-1b6a-selected-runtime-inventory.json`,
+      `maintenance-1b6a-bootstrap-cleanup.acceptance.json`,
+      `native-ctypes-bundle-execution.coverage.json`, and
+      `native-docs-metadata-repair.health.json`. Final exact-source proof, formal
+      4.0.6 delivery, installed Codex forwarding and original-chat acceptance
+      remain open.
+      The original Decision Record checker now uses the existing Rich Markdown
+      parser to inspect the first visible heading and recognizes the native
+      directory navigation page. The metadata/navigation case fails before repair;
+      11 affected contracts, native static checks and full governance pass after
+      repair. Evidence: `native-decision-metadata-parser.red-v2.stdout` and
+      `native-proof-repair-governance-v2.json` in the same evidence directory.
 - [x] 4.4 Ensure Provider-specific wire differences live only in narrow adapters selected from one manifest and policy contract; verify generic relay, lifecycle, CLI, and tests do not branch on Provider names. The product source and test control flow contain no Provider-name branch; the manifest selects the optional pure wire policy.
 - [x] 4.5 Define the low-cost Provider extension path—manifest entry, adapter, policy, contract fixtures, conformance suite, documentation, and no core modification—and prove it with one representative non-default Provider fixture. `new-gateway` passes the real loopback Responses path; manifest-only and optional-policy fixtures and `CONTRIBUTING.md` describe the same extension contract. The focused suite passes 23 tests and 57 subtests.
 - [ ] 4.6 Evaluate mature local-first gateways and protocol libraries against the exact retained differentiators; replace custom generic mechanics only where doing so reduces source, dependencies, runtime risk, and maintenance authority.

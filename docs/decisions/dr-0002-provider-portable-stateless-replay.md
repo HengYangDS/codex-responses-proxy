@@ -1,3 +1,13 @@
+<!--
+---
+subject: codex-responses-proxy:decision-0002-provider-portable-stateless-replay
+role: decision
+state: canonical
+relations:
+  part_of: README.md
+---
+-->
+
 # DR-0002: Keep Responses Replay Stateless and Provider-Portable
 
 - Status: accepted

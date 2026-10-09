@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from rich.markdown import Markdown
+
 _DECISION_RECORD = re.compile(
     r"dr-(?P<sequence>[0-9]{4})-(?P<description>[a-z0-9]+(?:-[a-z0-9]+)*)\.md"
 )
@@ -21,7 +23,7 @@ def decision_record_gaps(root: Path) -> list[str]:
     gaps: list[str] = []
     records: list[tuple[int, Path]] = []
     for path in sorted(directory.glob("*.md")):
-        if path.name == _DECISION_REGISTER:
+        if path.name in {_DECISION_REGISTER, "README.md"}:
             continue
         match = _DECISION_RECORD.fullmatch(path.name)
         if match is None:
@@ -40,8 +42,14 @@ def decision_record_gaps(root: Path) -> list[str]:
     )
     for sequence, path in records:
         text = path.read_text(encoding="utf-8")
-        expected_title = f"# DR-{sequence:04d}: "
-        if not text.startswith(expected_title):
+        tokens = [token for token in Markdown(text).parsed if token.type != "html_block"]
+        expected_title = f"DR-{sequence:04d}: "
+        if (
+            len(tokens) < 2
+            or tokens[0].type != "heading_open"
+            or tokens[0].tag != "h1"
+            or not tokens[1].content.startswith(expected_title)
+        ):
             gaps.append(f"decision_record_title_invalid:{path.relative_to(root).as_posix()}")
         status = re.search(r"^- Status: ([a-z]+)$", text, re.MULTILINE)
         if status is None or status.group(1) not in _DECISION_STATUSES:
