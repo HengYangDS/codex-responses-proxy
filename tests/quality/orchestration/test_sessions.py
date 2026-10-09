@@ -90,6 +90,88 @@ def test_native_helper_supply_checks_exact_wheel_before_install(
         )
 
 
+@pytest.mark.parametrize(
+    "provenance",
+    [
+        None,
+        {"url": "file:///wheel.whl", "archive_info": []},
+        {"url": "file:///wheel.whl", "archive_info": {"hashes": []}},
+    ],
+)
+def test_native_helper_supply_refuses_incomplete_provenance_before_install(
+    provenance: object,
+    tmp_path: Path,
+    mocker: MockerFixture,
+    nox_configuration: ModuleType,
+) -> None:
+    metadata = SimpleNamespace(read_text=lambda _name: json.dumps(provenance))
+    mocker.patch.object(
+        nox_configuration.python_quality.importlib.metadata,
+        "distribution",
+        return_value=metadata,
+    )
+    mocker.patch.dict(os.environ, {"ETHOS_NATIVE_OUTPUT_DIR": str(tmp_path)})
+    session = mocker.Mock()
+    session.error.side_effect = ValueError("native helper wheel unavailable")
+
+    with pytest.raises(ValueError, match="native helper wheel unavailable"):
+        nox_configuration.python_quality.install_native_helpers(session)
+    session.install.assert_not_called()
+
+
+def test_quality_reports_bind_checkers_and_preserve_outer_attempt(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    nox_configuration: ModuleType,
+) -> None:
+    output = tmp_path / "reports"
+    output.mkdir()
+    work = tmp_path / "work"
+    work.mkdir()
+    session = mocker.Mock(python="3.12", bin=str(tmp_path))
+    session.name = "quality"
+    session.env = {}
+    session.create_tmp.return_value = str(work)
+    mocker.patch.dict(os.environ, {"ETHOS_NATIVE_OUTPUT_DIR": str(output)})
+    for name in ("_install_tools", "_build_wheel", "_install_wheel", "_assert_installed_product"):
+        mocker.patch.object(nox_configuration, name)
+    observer = mocker.Mock()
+    mocker.patch.object(
+        nox_configuration.python_quality.importlib, "import_module", return_value=observer
+    )
+
+    nox_configuration.quality(session)
+
+    observer.run_ruff.assert_called_once()
+    checker = observer.run_ruff.call_args
+    assert checker.args[0] is session
+    assert checker.kwargs["identity"] == "quality-3.12"
+    assert checker.kwargs["configuration"] == nox_configuration.python_quality.RUFF_CONFIG
+    assert checker.kwargs["runtime_output"] == output / "quality-ruff-runtime.json"
+    behavior, nested = [call for call in session.run.call_args_list if "pytest" in call.args]
+    assert behavior.args[behavior.args.index("--ethos-native-session") + 1] == "quality-3.12"
+    assert behavior.args[behavior.args.index("--ethos-runtime-output") + 1] == str(
+        output / "quality-runtime.json"
+    )
+    assert behavior.kwargs["env"]["ETHOS_NATIVE_OUTPUT_DIR"] is None
+    assert nested.kwargs["env"]["ETHOS_NATIVE_OUTPUT_DIR"] is None
+    assert "--ethos-runtime-output" not in nested.args
+    assert any(
+        call.args[:2] == ("coverage", "xml")
+        and call.args[-1] == str(output / "quality-coverage.xml")
+        for call in session.run.call_args_list
+    )
+
+
+def test_native_report_refuses_session_without_concrete_python(
+    mocker: MockerFixture, nox_configuration: ModuleType
+) -> None:
+    session = mocker.Mock(python=False)
+    session.error.side_effect = ValueError("concrete Python is required")
+    with pytest.raises(ValueError, match="concrete Python is required"):
+        nox_configuration.python_quality._native_session(session)
+
+
 @pytest.mark.repository_toolchain
 def test_native_behavior_reports_share_one_actual_pytest_attempt(
     tmp_path: Path,
