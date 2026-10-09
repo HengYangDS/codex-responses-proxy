@@ -182,6 +182,20 @@
       refusal is therefore distinct from retained-child resume. This qualifies
       the signed Desktop's synthetic runtime path; actual upstream acceptance
       of the historical model and original-subtree cutover remain unproved.
+    - The prepared joined journey now passes 33 checks in 53.30 seconds with
+      the original signed AIGW candidate, packaged Proxy and signed Desktop.
+      Native preview, selection, synchronization, retained-child message and
+      automatic result delivery, cold resume, compaction and rollback preserve
+      complete model-visible records, identity, history, model effort and edges.
+      Evidence:
+      `build/verification/encrypted-agent-delivery/aigw-native-forwarding-synthetic-20261009.json`.
+      Only the test upstream and native environment credential fixture differ
+      from operator inputs; the shipped plaintext policy and product bytes are
+      unchanged. Three private native deletions and exact process, server and
+      scratch cleanup pass. Producer preimages and input identities are retained
+      in `build/verification/encrypted-agent-delivery/synthetic-joined-producer-20261009/`.
+      Operator reader authorization, formal release and original-chat acceptance
+      remain open; this journey does not qualify them.
 - [x] 4.4 Ensure Provider-specific wire differences live only in narrow adapters selected from one manifest and policy contract; verify generic relay, lifecycle, CLI, and tests do not branch on Provider names. The product source and test control flow contain no Provider-name branch; the manifest selects the optional pure wire policy.
 - [x] 4.5 Define the low-cost Provider extension path—manifest entry, adapter, policy, contract fixtures, conformance suite, documentation, and no core modification—and prove it with one representative non-default Provider fixture. `new-gateway` passes the real loopback Responses path; manifest-only and optional-policy fixtures and `CONTRIBUTING.md` describe the same extension contract. The focused suite passes 23 tests and 57 subtests.
 - [ ] 4.6 Evaluate mature local-first gateways and protocol libraries against the exact retained differentiators; replace custom generic mechanics only where doing so reduces source, dependencies, runtime risk, and maintenance authority.
