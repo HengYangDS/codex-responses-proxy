@@ -159,7 +159,11 @@ def test_reusable_branch_proof_fails_if_any_required_job_is_skipped(
     assert "branch-proof" in jobs, "reusable branch proof job is missing"
     proof = _mapping(jobs["branch-proof"])
     assert proof["if"] == "always()"
-    assert set(_strings(proof["needs"])) == {*_PRODUCT_PROOF_JOBS, "accepted-source", "promotion"}
+    assert set(_strings(proof["needs"])) == {
+        *_PRODUCT_PROOF_JOBS,
+        "accepted-source",
+        "promotion",
+    }
     steps = _sequence(proof["steps"])
     step = _mapping(steps[-1])
     script = _string(step["run"])
@@ -347,8 +351,9 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
                 "if": '$CI_PIPELINE_SOURCE == "merge_request_event" && '
                 '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
             },
-            {"if": '$CI_COMMIT_BRANCH == "dev"'},
         ]
+        accepted = _mapping(gitlab[job_id + "-accepted"])
+        assert accepted["rules"] == [{"if": '$CI_COMMIT_BRANCH == "dev"'}]
     python = _mapping(gitlab["verify-python"])
     matrix_values = _sequence(_mapping(python["parallel"])["matrix"])
     matrix = _mapping(matrix_values[0])
@@ -380,26 +385,30 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
 def test_gitlab_workflow_selects_the_runner_for_its_trust_role(review: bool) -> None:
     """Schedule review jobs independently of the protected branch runner choice."""
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
-    selected = "CODEX_RESPONSES_PROXY_GITLAB_SELECTED_LINUX_RUNNER_TAG"
     protected = "CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
     unprotected = "CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"
-    variables = dict(_mapping(gitlab["variables"]))
     project_choices = {protected: "protected-linux", unprotected: "review-linux"}
-    rules = _sequence(_mapping(gitlab["workflow"])["rules"])
-    if review:
-        rule = next(
-            _mapping(value)
-            for value in rules
-            if _mapping(value).get("if") == '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    variables = {**_mapping(gitlab["variables"]), **project_choices}
+    suffix = "" if review else "-accepted"
+    for name in (
+        "source-and-governance",
+        "verify-python",
+        "verify-python-quality",
+        "verify-performance",
+    ):
+        job = _mapping(gitlab[name + suffix])
+        tags = _strings(job.get("tags", _mapping(gitlab["default"])["tags"]))
+        expanded = [
+            re.sub(r"\$([A-Z_]+)", lambda match: _string(variables[match[1]]), tag) for tag in tags
+        ]
+        assert expanded == ["review-linux" if review else "protected-linux"]
+        expected_rule = (
+            '$CI_PIPELINE_SOURCE == "merge_request_event" && '
+            '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
+            if review
+            else '$CI_COMMIT_BRANCH == "dev"'
         )
-        variables.update(_mapping(rule.get("variables")))
-    assert selected not in project_choices
-    tag = _string(variables.get(selected))
-    assert tag == "$" + (unprotected if review else protected)
-    assert _strings(_mapping(gitlab["default"])["tags"]) == ["$" + selected]
-    assert project_choices[tag.removeprefix("$")] == (
-        "review-linux" if review else "protected-linux"
-    )
+        assert job["rules"] == [{"if": expected_rule}]
 
 
 def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:
@@ -432,7 +441,9 @@ def test_native_asset_jobs_install_the_product_before_loading_noxfile() -> None:
     assert "nox -s release --" not in _string(linux_build["run"])
 
 
-def test_linux_release_source_preserves_tracked_package_inventory(tmp_path: Path) -> None:
+def test_linux_release_source_preserves_tracked_package_inventory(
+    tmp_path: Path,
+) -> None:
     """Materialize the selected commit with the native inventory the build consumes."""
     jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
     steps = _sequence(_mapping(jobs["native-linux"])["steps"])
@@ -1071,7 +1082,12 @@ def test_gitlab_pytest_invocations_preserve_repository_module_resolution() -> No
 def test_commit_event_inputs_reach_each_governance_context() -> None:
     github = _load_yaml(ROOT / ".github/workflows/verify.yml")
     jobs = _mapping(github["jobs"])
-    for name in ("source-and-governance", "accepted-source", "promotion", "tag-metadata"):
+    for name in (
+        "source-and-governance",
+        "accepted-source",
+        "promotion",
+        "tag-metadata",
+    ):
         steps = [_mapping(step) for step in _sequence(_mapping(jobs[name])["steps"])]
         checks = [
             step

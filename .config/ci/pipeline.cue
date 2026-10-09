@@ -63,7 +63,6 @@ gitlab: {
 		if: "$CI_COMMIT_TAG"
 	}, {
 		if: "$CI_PIPELINE_SOURCE == \"merge_request_event\""
-		variables: CODEX_RESPONSES_PROXY_GITLAB_SELECTED_LINUX_RUNNER_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"
 	}, {
 		if: "$CI_COMMIT_BRANCH == \"dev\" || $CI_COMMIT_BRANCH == \"main\""
 	}, {
@@ -72,28 +71,31 @@ gitlab: {
 	}]
 	stages: ["verify", "release"]
 	variables: {
-		DEBIAN_FRONTEND:                                        "noninteractive"
-		CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE:               "origin"
-		UV_PYTHON_FLOOR_IMAGE:                                  "ghcr.io/astral-sh/uv:0.12.18-python3.12-trixie-slim@sha256:38f41574703989d6e5f02be80a3d687b00f98744cce86908097bcd34bcb7eb98"
-		UV_PYTHON_LATEST_IMAGE:                                 "ghcr.io/astral-sh/uv:0.12.18-python3.14-trixie-slim@sha256:00facf17b58b02b725155862c5cd637f688f906bf7eb5b5194647886d8805cf3"
-		UV_CACHE_DIR:                                           "$CI_PROJECT_DIR/.cache/uv"
-		UV_PYTHON_INSTALL_DIR:                                  "$CI_PROJECT_DIR/.cache/uv/python"
-		CODEX_RESPONSES_PROXY_CI_TARGET:                        "linux-arm64"
-		CODEX_RESPONSES_PROXY_GITLAB_SELECTED_LINUX_RUNNER_TAG: "$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
+		DEBIAN_FRONTEND:                          "noninteractive"
+		CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: "origin"
+		UV_PYTHON_FLOOR_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.18-python3.12-trixie-slim@sha256:38f41574703989d6e5f02be80a3d687b00f98744cce86908097bcd34bcb7eb98"
+		UV_PYTHON_LATEST_IMAGE:                   "ghcr.io/astral-sh/uv:0.12.18-python3.14-trixie-slim@sha256:00facf17b58b02b725155862c5cd637f688f906bf7eb5b5194647886d8805cf3"
+		UV_CACHE_DIR:                             "$CI_PROJECT_DIR/.cache/uv"
+		UV_PYTHON_INSTALL_DIR:                    "$CI_PROJECT_DIR/.cache/uv/python"
+		CODEX_RESPONSES_PROXY_CI_TARGET:          "linux-arm64"
 	}
 	default: {
 		image: name: "$UV_PYTHON_LATEST_IMAGE"
-		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_SELECTED_LINUX_RUNNER_TAG"]
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		cache: {
 			key: "uv-$CODEX_RESPONSES_PROXY_CI_TARGET"
 			paths: [".cache/uv/"]
 		}
 	}
 
-	#productRules: [{
-		if: "$CI_PIPELINE_SOURCE == \"merge_request_event\" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == \"dev\""
+	#productRoles: [{
+		suffix: ""
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
+		rules: [{if: "$CI_PIPELINE_SOURCE == \"merge_request_event\" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == \"dev\""}]
 	}, {
-		if: "$CI_COMMIT_BRANCH == \"dev\""
+		suffix: "-accepted"
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+		rules: [{if: "$CI_COMMIT_BRANCH == \"dev\""}]
 	}]
 	#uvContract: """
 		UV_REQUIREMENT="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["required-version"])')"
@@ -116,70 +118,76 @@ gitlab: {
 		"uv sync --locked --group quality --python python --no-python-downloads",
 	]])
 
-	"source-and-governance": {
-		stage: "verify"
-		rules: #productRules
-		image: {
-			name: #Toolchains.gitlabMiseImage
-			entrypoint: [""]
+	#productJobs: {
+		"source-and-governance": {
+			stage: "verify"
+			image: {
+				name: #Toolchains.gitlabMiseImage
+				entrypoint: [""]
+			}
+			variables: {
+				GIT_DEPTH:         "0"
+				MISE_ENABLE_TOOLS: #Toolchains.quality
+			}
+			before_script: [
+				"mise install --locked",
+				"npm ci --ignore-scripts",
+				"npm audit signatures",
+				"git fetch --tags --force --prune --prune-tags origin",
+				"mise exec --locked -- uv sync --locked --group quality --python python --no-python-downloads",
+			]
+			script: [
+				#GitLabCommitEvent + "mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links",
+			]
 		}
-		variables: {
-			GIT_DEPTH:         "0"
-			MISE_ENABLE_TOOLS: #Toolchains.quality
+		"verify-python": {
+			stage: "verify"
+			parallel: matrix: [{PYTHON_VERSION: #RuntimeMatrix.python}]
+			variables: GIT_DEPTH: "0"
+			before_script: list.Concat([#systemBootstrap, [
+				"apt-get install -qq -y --no-install-recommends binutils",
+				"git fetch --tags --force --prune --prune-tags origin",
+				"uv sync --locked --group quality --python python --no-python-downloads",
+				"uv python install --no-bin $PYTHON_VERSION",
+			]])
+			script: [
+				"python --version",
+				"uv run --locked --no-sync --python python --no-python-downloads nox -s \"tests-$PYTHON_VERSION\"",
+			]
 		}
-		before_script: [
-			"mise install --locked",
-			"npm ci --ignore-scripts",
-			"npm audit signatures",
-			"git fetch --tags --force --prune --prune-tags origin",
-			"mise exec --locked -- uv sync --locked --group quality --python python --no-python-downloads",
-		]
-		script: [
-			#GitLabCommitEvent + "mise exec --locked -- uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.governance --online-links",
-		]
+		"verify-python-quality": {
+			stage: "verify"
+			image: name:          "$UV_PYTHON_FLOOR_IMAGE"
+			variables: GIT_DEPTH: "0"
+			before_script: list.Concat([#systemBootstrap, [
+				"apt-get install -qq -y --no-install-recommends binutils",
+				"git fetch --tags --force --prune --prune-tags origin",
+			]])
+			script: [
+				"uv sync --locked --group quality --python python --no-python-downloads",
+				"uv run --locked --no-sync --python python --no-python-downloads nox -s quality",
+			]
+		}
+		"verify-performance": {
+			stage: "verify"
+			variables: GIT_DEPTH: "0"
+			before_script: #systemBootstrap
+			script: [
+				"uv sync --locked --group quality --python python --no-python-downloads",
+				"uv run --locked --no-sync --python python --no-python-downloads nox -s performance -- \"$CI_PROJECT_DIR/.performance\"",
+			]
+			artifacts: {
+				when: "always"
+				paths: [".performance/latency.json", ".performance/memory.json"]
+			}
+		}
 	}
-	"verify-python": {
-		stage: "verify"
-		rules: #productRules
-		parallel: matrix: [{PYTHON_VERSION: #RuntimeMatrix.python}]
-		variables: GIT_DEPTH: "0"
-		before_script: list.Concat([#systemBootstrap, [
-			"apt-get install -qq -y --no-install-recommends binutils",
-			"git fetch --tags --force --prune --prune-tags origin",
-			"uv sync --locked --group quality --python python --no-python-downloads",
-			"uv python install --no-bin $PYTHON_VERSION",
-		]])
-		script: [
-			"python --version",
-			"uv run --locked --no-sync --python python --no-python-downloads nox -s \"tests-$PYTHON_VERSION\"",
-		]
-	}
-	"verify-python-quality": {
-		stage: "verify"
-		rules: #productRules
-		image: name:          "$UV_PYTHON_FLOOR_IMAGE"
-		variables: GIT_DEPTH: "0"
-		before_script: list.Concat([#systemBootstrap, [
-			"apt-get install -qq -y --no-install-recommends binutils",
-			"git fetch --tags --force --prune --prune-tags origin",
-		]])
-		script: [
-			"uv sync --locked --group quality --python python --no-python-downloads",
-			"uv run --locked --no-sync --python python --no-python-downloads nox -s quality",
-		]
-	}
-	"verify-performance": {
-		stage: "verify"
-		rules: #productRules
-		variables: GIT_DEPTH: "0"
-		before_script: #systemBootstrap
-		script: [
-			"uv sync --locked --group quality --python python --no-python-downloads",
-			"uv run --locked --no-sync --python python --no-python-downloads nox -s performance -- \"$CI_PROJECT_DIR/.performance\"",
-		]
-		artifacts: {
-			when: "always"
-			paths: [".performance/latency.json", ".performance/memory.json"]
+	for role in #productRoles {
+		for id, job in #productJobs {
+			"\(id)\(role.suffix)": job & {
+				tags:  role.tags
+				rules: role.rules
+			}
 		}
 	}
 	"verify-accepted-source": {
@@ -194,6 +202,7 @@ gitlab: {
 	}
 	"verify-promotion": {
 		stage: "verify"
+		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
 		rules: [{
 			if: "$CI_PIPELINE_SOURCE == \"merge_request_event\" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == \"dev\" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == \"main\""
 		}]
