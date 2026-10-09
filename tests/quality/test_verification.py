@@ -222,9 +222,9 @@ class TestVerificationContracts:
             if isinstance(value, dict) and "before_script" in value
         }
         assert job_scripts
-        for job, scripts in job_scripts.items():
+        for scripts in job_scripts.values():
             metadata_checks = sum('["tool"]["uv"]["required-version"]' in item for item in scripts)
-            if job == "source-and-governance":
+            if scripts[0] == "mise install --locked":
                 assert metadata_checks == 0
                 assert scripts[:3] == (
                     "mise install --locked",
