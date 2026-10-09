@@ -83,18 +83,24 @@ finish that response's stream; subsequent bytes SHALL NOT reopen or extend it.
 This single-response HTTP contract SHALL NOT be applied to a persistent
 WebSocket that can carry successive responses and steering events.
 
-Every upstream attempt SHALL release its connection after success, rejection,
-exception or downstream disconnect. Before downstream commitment, a malformed
-event SHALL yield one structured HTTP failure. After commitment, malformed or
-unterminated output SHALL close the existing response without a second status
-line, a successful chunk terminator, fabricated completion or request replay.
-Only the existing classified pre-content recovery may reopen a request.
-
 #### Scenario: A complete event arrives on a held-open chunked connection
 
 - **WHEN** the upstream sends a terminal event but leaves its HTTP connection open
 - **THEN** the client receives that complete response without waiting for EOF
 - **AND** the upstream attempt is released without another request.
+
+### Requirement: Upstream connection release and failure commitment are bounded
+
+Every upstream attempt SHALL release its connection after success, rejection,
+exception or downstream disconnect. Before downstream commitment, a malformed
+event SHALL yield one structured HTTP failure.
+
+#### Scenario: Output is malformed after downstream commitment
+
+- **WHEN** output is malformed or unterminated after downstream commitment
+- **THEN** the existing response closes without a second status line, a successful
+  chunk terminator, fabricated completion or request replay
+- **AND** only the existing classified pre-content recovery may reopen a request.
 
 #### Scenario: The client disconnects during a write
 

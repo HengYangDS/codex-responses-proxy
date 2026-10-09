@@ -25,14 +25,20 @@ admission without a historical forbidden-name list.
 
 ### Requirement: Quality rules are complete, rational, and singly owned
 
-Every applicable formatting, import, correctness, modernization, naming,
-documentation, typing, exception, logging, security, dependency, architecture,
-dead-code, test, prose, configuration, link, workflow, secret, license,
-vulnerability, coverage, complexity, performance, commit, and release concern
-SHALL have one mature tool or product-semantic owner. Each blocking policy SHALL
-state scope, protected risk, measurement, false-positive cost, remediation, and
-review condition. Warnings, blanket ignores, permanent baselines, duplicate
-thresholds, and unexplained disabled rules SHALL fail admission.
+Every applicable engineering concern SHALL have one mature tool or
+product-semantic owner. Each blocking policy SHALL state scope, protected risk,
+measurement, false-positive cost, remediation, and review condition. Warnings,
+blanket ignores, permanent baselines, duplicate thresholds, and unexplained
+disabled rules SHALL fail admission.
+
+#### Scenario: The responsibility map is checked for completeness
+
+- **WHEN** maintainers assess the applicable engineering concerns
+- **THEN** the map covers formatting, import, correctness, modernization, naming,
+  documentation, typing, exception, logging, security, dependency, architecture,
+  dead-code, test, prose, configuration, link, workflow, secret, license,
+  vulnerability, coverage, complexity, performance, commit, and release
+- **AND** each concern has exactly one mature tool or product-semantic owner.
 
 #### Scenario: A quality rule is reviewed
 
