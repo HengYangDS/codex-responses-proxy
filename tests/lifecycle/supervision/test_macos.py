@@ -69,6 +69,7 @@ class TestMacosBackgroundContract:
 
     def test_carrier_changed_during_bootout_is_preserved(self, *, mocker) -> None:
         mocker.patch.object(macos, "_domains", return_value=("user/501",))
+        mocker.patch.object(macos, "_native_tool", side_effect=lambda name: name)
         with _temporary_context("log_dir") as ctx:
             carrier = _set_file(macos._plist_path(ctx), macos.render_plist(ctx))
             changed = b"new external carrier content"

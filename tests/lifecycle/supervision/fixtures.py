@@ -7,7 +7,8 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
-from tests.lifecycle.fixtures import platform_context
+from openai_responses_proxy.service import inventory
+from tests.lifecycle.fixtures import install_context
 
 
 def completed(cmd=(), returncode=0, stdout="", stderr=""):
@@ -19,9 +20,10 @@ def completed(cmd=(), returncode=0, stdout="", stderr=""):
 def temporary_context(attribute, *, windows=False):
     """Yield a service context whose host-owned paths share one temporary root."""
     with tempfile.TemporaryDirectory() as directory:
-        context = platform_context(windows=windows)
-        context.user_home = directory
+        context = install_context(Path(directory), windows=windows)
         setattr(context, attribute, directory)
+        if attribute == "install_dir":
+            context.executable = inventory.installed_executable(directory, windows=windows)
         yield context
 
 
