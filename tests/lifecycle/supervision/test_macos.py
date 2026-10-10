@@ -112,6 +112,25 @@ class TestMacosBackgroundContract:
             assert not Path(macos._plist_path(ctx)).exists()
             assert macos.status(ctx) == "running"
 
+    def test_pristine_status_preserves_an_absent_home(self, tmp_path, *, mocker) -> None:
+        home = tmp_path / "home"
+        mocker.patch.object(macos, "_domains", return_value=("user/501",))
+        mocker.patch.object(macos, "_native_tool", side_effect=lambda name: name)
+        invoked = mocker.patch.object(
+            macos.subprocess, "run", return_value=_completed(returncode=113)
+        )
+        with _temporary_context("log_dir") as ctx:
+            ctx.user_home = str(home)
+            assert macos.status(ctx) == "absent"
+            assert macos.configured_executable(ctx) is None
+            invoked.assert_called_once_with(
+                ["launchctl", "print", f"user/501/{ctx.service_id}"],
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+        assert not home.exists()
+
     def test_install_preserves_a_foreign_launch_agent(self, *, mocker) -> None:
         with _temporary_context("log_dir") as ctx:
             payload = plistlib.loads(macos.render_plist(ctx).encode())

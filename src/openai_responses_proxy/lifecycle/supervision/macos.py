@@ -142,7 +142,7 @@ def _carrier(ctx: runtime_spec.NativeServiceContext) -> tuple[bytes, str] | None
     except FileNotFoundError:
         if (
             home.is_symlink()
-            or not home.is_dir()
+            or (home.exists() and not home.is_dir())
             or any(
                 parent.is_symlink() or (parent.exists() and not parent.is_dir())
                 for parent in target.parents
