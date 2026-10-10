@@ -8,6 +8,20 @@ publication authority.
 
 ## [Unreleased]
 
+## [5.0.1] - 2026-10-10
+
+### Fixed
+
+- Run the macOS watchdog in the user's launchd Background domain, migrating an
+  owned legacy GUI registration only after exact process exit and service removal.
+- Preserve launch-agent carrier ownership and preimages during installation
+  and removal, and observe registered services even when their carrier is missing.
+
+### Changed
+
+- Describe qualified readable collaboration, streaming, replay, bounded recovery
+  and native lifecycle consistently in the product overview and package metadata.
+
 ## [5.0.0] - 2026-10-10
 
 ### Changed

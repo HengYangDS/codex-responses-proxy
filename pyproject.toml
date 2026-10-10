@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "openai-responses-proxy"
 dynamic = ["version"]
-description = "Local compatibility proxy for third-party OpenAI Responses APIs."
+description = "Local compatibility proxy for third-party OpenAI Responses APIs, preserving tool calls and readable collaboration on qualified routes, with streaming adaptation, portable replay, bounded recovery and native service lifecycle."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"

@@ -11,10 +11,8 @@ import subprocess
 import sys
 import tarfile
 import urllib.request
-from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -22,6 +20,7 @@ from openai_responses_proxy import product_identity
 from openai_responses_proxy.lifecycle import command
 from openai_responses_proxy.lifecycle import context as runtime_context
 from openai_responses_proxy.lifecycle import generation
+from openai_responses_proxy.lifecycle.supervision import macos
 from openai_responses_proxy.lifecycle.supervision import native_service
 from openai_responses_proxy.lifecycle.supervision import process
 from openai_responses_proxy.runtime.process_environment import native_process_environment
@@ -47,44 +46,43 @@ def _macos_service_projection() -> tuple[
     frozenset[str], frozenset[tuple[str, str]], tuple[tuple[str, str], ...]
 ]:
     """Return every persistent launchd surface owned by this product."""
-    completed = subprocess.run(
-        ["/bin/launchctl", "list"],
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-    labels = frozenset(
-        fields[2]
-        for line in completed.stdout.splitlines()[1:]
-        if len(fields := line.split("\t")) >= 3 and fields[2].startswith(runtime_context.SERVICE_ID)
-    )
-    getuid: object = getattr(os, "getuid", None)
-    if not callable(getuid):
-        raise TypeError("macOS user identity is unavailable")
-    disabled = subprocess.run(
-        [
-            "/bin/launchctl",
-            "print-disabled",
-            f"gui/{cast(Callable[[], int], getuid)()}",
-        ],
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-    overrides: frozenset[tuple[str, str]] = frozenset(
-        (str(match.group("label")), str(match.group("state")))
-        for match in re.finditer(
-            rf'"(?P<label>{re.escape(runtime_context.SERVICE_ID)}(?:\.[0-9a-f]{{12}})?)"'
-            r"\s*=>\s*(?P<state>enabled|disabled)",
-            disabled.stdout,
+    labels: set[str] = set()
+    overrides: set[tuple[str, str]] = set()
+    for domain in macos._domains():
+        completed = subprocess.run(
+            ["/bin/launchctl", "print", domain],
+            capture_output=True,
+            check=True,
+            text=True,
         )
-    )
+        labels.update(
+            f"{domain}/{match.group('label')}"
+            for match in re.finditer(
+                rf"(?m)^\s*[0-9]+\s+\S+\s+(?P<label>"
+                rf"{re.escape(runtime_context.SERVICE_ID)}(?:\.[0-9a-f]{{12}})?)\s*$",
+                completed.stdout,
+            )
+        )
+        disabled = subprocess.run(
+            ["/bin/launchctl", "print-disabled", domain],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        overrides.update(
+            (f"{domain}/{match.group('label')}", str(match.group("state")))
+            for match in re.finditer(
+                rf'"(?P<label>{re.escape(runtime_context.SERVICE_ID)}(?:\.[0-9a-f]{{12}})?)"'
+                r"\s*=>\s*(?P<state>enabled|disabled|true|false)",
+                disabled.stdout,
+            )
+        )
     launch_agents = Path.home() / "Library" / "LaunchAgents"
     plists = tuple(
         (path.name, hashlib.sha256(path.read_bytes()).hexdigest())
         for path in sorted(launch_agents.glob(f"{runtime_context.SERVICE_ID}*.plist"))
     )
-    return labels, overrides, plists
+    return frozenset(labels), frozenset(overrides), plists
 
 
 @pytest.fixture(scope="module")

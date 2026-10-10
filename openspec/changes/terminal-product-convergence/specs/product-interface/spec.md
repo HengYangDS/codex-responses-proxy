@@ -48,3 +48,48 @@ command.
 - **THEN** the command names the failed boundary and one actionable next step
 - **AND** emits no traceback, warning, internal type, private path, credential,
   request content, or unrelated usage dump.
+
+### Requirement: The macOS watchdog belongs to the user Background domain
+
+The macOS supervisor SHALL install one watchdog in the current user's reachable
+launchd domain with a Background session, without requiring a GUI login.
+Legacy GUI migration SHALL prove carrier ownership, exact predecessor exit,
+service absence and successor identity before reporting completion.
+
+#### Scenario: A reachable user domain has no GUI login
+
+- **WHEN** the operator invokes the native supervisor with a reachable user domain
+- **THEN** installation uses that user domain and a Background session
+- **AND** no GUI domain, new login session or administrator credential is required.
+
+#### Scenario: An owned legacy GUI watchdog is replaced
+
+- **WHEN** the exact selected installation has one verified legacy GUI watchdog
+- **THEN** the predecessor exits before its carrier is replaced
+- **AND** the successor is re-observed in the user domain with its exact process identity.
+
+### Requirement: macOS carrier mutations preserve ownership and preimages
+
+The launch-agent carrier SHALL be a regular file bound to the selected home,
+service and installed executable or canonical generation. Replacement and removal
+SHALL recheck its preimage after service termination. Unknown ownership, symlinks,
+competing registrations and failed native observations SHALL preserve state and
+return a bounded product error.
+
+#### Scenario: The carrier or registration is not owned by the selected installation
+
+- **WHEN** an operation observes unknown carrier ownership or competing registrations
+- **THEN** it refuses service and carrier mutation
+- **AND** the original file bytes and foreign processes remain preserved.
+
+### Requirement: macOS status observes the service independently of its carrier
+
+Status SHALL observe applicable native service domains even when the carrier is
+missing. A registered or running service SHALL retain that classification until
+native service evidence proves absence.
+
+#### Scenario: The carrier is missing while the watchdog remains registered
+
+- **WHEN** the operator requests status after the carrier has been removed
+- **THEN** the registered or running watchdog is reported from native service evidence
+- **AND** the missing file alone is not evidence of service absence.

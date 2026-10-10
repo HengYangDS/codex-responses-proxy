@@ -1,8 +1,10 @@
 # OpenAI Responses Proxy
 
-A local compatibility proxy for third-party OpenAI Responses APIs, with
-streaming normalization, portable replay, and bounded recovery. Clients are
-qualified by their actual Responses journeys and native runtime contract.
+A local compatibility proxy for third-party OpenAI Responses APIs. It preserves
+tool calls and readable Codex collaboration messages on qualified routes, adapts
+streaming and replay for continued agent work, and owns its native service
+lifecycle. Clients are qualified by actual Responses journeys and their native
+runtime contract.
 
 Licensed under [MIT](LICENSE). Forge coordinates and publication actors are
 deployment context, not product identity.
@@ -56,6 +58,11 @@ Boot-time startup and continued operation after logout depend on the host's
 [systemd user lingering policy](https://man.archlinux.org/man/loginctl.1.en).
 The host administrator owns that user-wide policy. Proxy installs only its own
 user service; it does not change lingering or request administrative credentials.
+
+On macOS, the watchdog uses the current user's launchd domain with a Background
+session. Installation requires a reachable user domain and does not create a
+login session. An owned legacy GUI registration is migrated only after the exact
+watchdog generation exits; unknown or competing registrations are preserved.
 
 ## Install
 
