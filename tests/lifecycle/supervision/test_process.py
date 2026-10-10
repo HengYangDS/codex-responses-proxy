@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import subprocess
 import sys
@@ -98,6 +99,31 @@ class TestProcessIdentity:
             ],
         )
         assert process.pids_naming_path("/installed/watchdog.py") == [8]
+
+    def test_argv_denial_reported_as_system_error_is_unreadable(self, *, mocker):
+        readable = mocker.Mock(pid=7)
+        readable.cmdline.return_value = ["python", "/installed/proxy.py"]
+        denied = mocker.Mock(pid=8)
+        denial = SystemError(
+            "<built-in function proc_cmdline> returned a result with an exception set"
+        )
+        denial.__cause__ = denial.__context__ = PermissionError(
+            errno.EACCES,
+            "force permission denied (originated from sysctl(KERN_PROCARGS2) -> errno 0)",
+        )
+        denied.cmdline.side_effect = denial
+        mocker.patch.object(process.psutil, "process_iter", return_value=[readable, denied])
+        mocker.patch.object(process.psutil, "Process", return_value=denied)
+
+        assert process._process_inventory() == [(7, ["python", "/installed/proxy.py"])]
+        assert process.process_argv(8) == []
+        assert process.capture_executable(8, "/installed/proxy.py") is None
+
+        unrelated = mocker.Mock(pid=9)
+        unrelated.cmdline.side_effect = SystemError("unrelated interpreter failure")
+        mocker.patch.object(process.psutil, "Process", return_value=unrelated)
+        with pytest.raises(SystemError, match="unrelated interpreter failure"):
+            process.process_argv(9)
 
     def test_native_and_foreign_script_identity_are_distinct(self, subtests, *, mocker):
         ctx = platform_context()

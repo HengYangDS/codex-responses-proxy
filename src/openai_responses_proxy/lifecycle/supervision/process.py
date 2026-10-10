@@ -281,7 +281,14 @@ def _is_running(candidate: psutil.Process) -> bool:
 
 def _argv(candidate: psutil.Process) -> list[str]:
     """Narrow psutil's process-argument value at its boundary."""
-    value: object = candidate.cmdline()
+    try:
+        value: object = candidate.cmdline()
+    except SystemError as error:
+        # psutil 7.2.2 on macOS raises its errno-0 argv denial as SystemError.
+        # Remove after the lock includes https://github.com/giampaolo/psutil/pull/2854.
+        if isinstance(error.__cause__, PermissionError):
+            raise psutil.AccessDenied(candidate.pid) from error
+        raise
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise TypeError("psutil process argv must be a string list")
     return [item for item in value if isinstance(item, str)]
