@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 import nox
 
 ROOT = Path(__file__).resolve().parents[2]
-ROOTS = ("src/codex_responses_proxy", "tools", "tests", "noxfile.py")
+ROOTS = ("src/openai_responses_proxy", "tools", "tests", "noxfile.py")
 RUFF_CONFIG = ROOT / ".config/quality/native/ruff.toml"
 TY_CONFIG = ROOT / ".config/quality/native/ty.toml"
 COVERAGE_CONFIG = ROOT / ".config/quality/native/coverage.ini"

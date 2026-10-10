@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:authority-and-runtime-boundary
+subject: openai-responses-proxy:authority-and-runtime-boundary
 role: explanation
 state: canonical
 relations:
@@ -10,7 +10,7 @@ relations:
 
 # Authority and Runtime Boundary
 
-Codex Responses Proxy is a local Responses data plane. It normalizes outbound
+OpenAI Responses Proxy is a local Responses data plane. It normalizes outbound
 traffic and owns its native service lifecycle. It does not own client state or
 provider selection.
 
@@ -30,7 +30,7 @@ provider-portable Responses traffic.
 
 ```mermaid
 flowchart LR
-    C["Codex"] --> P["Loopback proxy"]
+    C["Responses client"] --> P["Loopback proxy"]
     P --> R["Provider-scoped route"]
     R --> U["Third-party Responses API"]
     S["Client control plane"] -. configures .-> C
@@ -41,7 +41,7 @@ flowchart LR
 
 | Owner                    | Authoritative state                                                    |
 | ------------------------ | ---------------------------------------------------------------------- |
-| Codex                    | Conversations, tool state, JSONL, SQLite, stored items, model metadata |
+| Client                   | Conversations, tool state, JSONL, SQLite, stored items, model metadata |
 | Client control plane     | Credentials, provider selection, and client endpoint configuration     |
 | Proxy source and release | Provider manifest, protocol policy, native bundle, lifecycle contract  |
 | Installed proxy          | Manifest-owned payload and native service projection                   |
@@ -89,6 +89,9 @@ The released manifest is the sole provider registry.
 - Unscoped, encoded, ambiguous, or unrelated paths fail before remote I/O.
 - Headers, bodies, and query parameters cannot select an upstream host.
 - Adding an ordinary provider changes one manifest table.
+- One explicit ordinary upstream is selected through the existing native
+  runtime carrier. It adds `/upstream/v1` without another catalog, credential
+  owner, implicit fallback, or a provider-specific policy.
 
 ## Provider admission
 

@@ -9,7 +9,7 @@ import tarfile
 
 import pytest
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 from tests.release.artifact.fixtures import release_bundle
 from tools.release.artifact import format as assets
 
@@ -44,7 +44,7 @@ class FormatContracts:
 
     def test_platform_archive_is_reproducible_and_manifest_bound(self) -> None:
         files = {
-            "bin/codex-responses-proxy": assets.ArchiveFile(b"native-executable", 0o755),
+            "bin/openai-responses-proxy": assets.ArchiveFile(b"native-executable", 0o755),
             "providers.toml": b"version = 1\n",
             "LICENSE": b"MIT\n",
         }
@@ -71,7 +71,7 @@ class FormatContracts:
 
     def test_checksum_manifest_round_trips_and_rejects_drift(self, subtests) -> None:
         platform = "linux-x86_64"
-        files = {"bin/codex-responses-proxy": assets.ArchiveFile(b"native", 0o755)}
+        files = {"bin/openai-responses-proxy": assets.ArchiveFile(b"native", 0o755)}
         archive_name = assets.archive_name("1.2.3", platform)
         archive = assets.archive_bytes(files, "1.2.3", platform)
         payload = {

@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:decision-0001-control-plane-data-plane-boundary
+subject: openai-responses-proxy:decision-0001-control-plane-data-plane-boundary
 role: decision
 state: canonical
 relations:
@@ -24,7 +24,7 @@ recovery, and ambiguous rollback responsibility.
 ## Decision
 
 The client control plane owns provider blocks, credentials, endpoint selection,
-and configuration projection. Codex Responses Proxy owns outbound protocol
+and configuration projection. OpenAI Responses Proxy owns outbound protocol
 normalization, its executable payload, and its native service lifecycle. The
 installed proxy is generated from source and verified with a manifest. It never
 writes client configuration or invokes a particular control-plane product.

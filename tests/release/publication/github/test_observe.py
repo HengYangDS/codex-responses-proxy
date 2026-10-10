@@ -44,7 +44,7 @@ class GitHubObservationContracts:
         release: dict[str, object] = {
             "id": 3,
             "tag_name": "v1.2.3",
-            "name": "Codex Responses Proxy v1.2.3",
+            "name": "OpenAI Responses Proxy v1.2.3",
             "draft": False,
             "prerelease": False,
             "published_at": "2026-07-29T00:00:00Z",
@@ -166,7 +166,7 @@ class GitHubObservationContracts:
             {
                 "id": 3,
                 "tag_name": "v1.2.3",
-                "name": "Codex Responses Proxy v1.2.3",
+                "name": "OpenAI Responses Proxy v1.2.3",
                 "draft": False,
                 "prerelease": False,
                 "published_at": "2026-07-29T00:00:00Z",

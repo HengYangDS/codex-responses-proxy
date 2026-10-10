@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Final
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 from tools.release import identity
 from tools.release.artifact import format as release_assets
 from tools.release.publication import hosted

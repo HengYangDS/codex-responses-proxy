@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 
 NAMESPACE = product_identity.RELEASE_NAMESPACE
 PRINCIPAL = product_identity.RELEASE_PRINCIPAL

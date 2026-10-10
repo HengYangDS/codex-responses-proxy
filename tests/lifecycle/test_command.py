@@ -9,8 +9,8 @@ from pathlib import PureWindowsPath
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import command
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle import command
 from tests.lifecycle.fixtures import install_context
 
 
@@ -21,10 +21,10 @@ def test_posix_command_path_uses_absolute_xdg_bin_home_or_user_local_bin(
     explicit = tmp_path / "commands"
 
     assert command.path(str(home), {"XDG_BIN_HOME": str(explicit)}, windows=False) == (
-        explicit / "codex-responses-proxy"
+        explicit / "openai-responses-proxy"
     )
     assert command.path(str(home), {}, windows=False) == (
-        home / ".local" / "bin" / "codex-responses-proxy"
+        home / ".local" / "bin" / "openai-responses-proxy"
     )
     with pytest.raises(errors.InstallError, match="XDG_BIN_HOME must be absolute"):
         command.path(str(home), {"XDG_BIN_HOME": "relative/bin"}, windows=False)
@@ -40,7 +40,7 @@ def test_windows_command_path_uses_the_user_application_alias_directory() -> Non
     )
 
     assert PureWindowsPath(projected) == (
-        home / "AppData" / "Local" / "Microsoft" / "WindowsApps" / "codex-responses-proxy.cmd"
+        home / "AppData" / "Local" / "Microsoft" / "WindowsApps" / "openai-responses-proxy.cmd"
     )
 
 
@@ -59,7 +59,7 @@ def test_projection_replaces_only_absent_or_exact_owned_link(tmp_path: Path) -> 
     target = Path(ctx.executable)
     target.parent.mkdir(parents=True)
     target.write_text("runtime", encoding="utf-8")
-    command_path = tmp_path / "commands" / "codex-responses-proxy"
+    command_path = tmp_path / "commands" / "openai-responses-proxy"
 
     command.project(command_path, target)
     assert_native_projection(command_path, target)
@@ -94,10 +94,10 @@ def test_projection_preserves_an_already_owned_link(tmp_path: Path, *, mocker) -
 def test_restore_and_remove_preserve_a_path_that_changed_ownership(
     tmp_path: Path,
 ) -> None:
-    target = tmp_path / "payload" / "codex-responses-proxy"
+    target = tmp_path / "payload" / "openai-responses-proxy"
     target.parent.mkdir(parents=True)
     target.write_text("runtime", encoding="utf-8")
-    command_path = tmp_path / "commands" / "codex-responses-proxy"
+    command_path = tmp_path / "commands" / "openai-responses-proxy"
     snapshot = command.snapshot(command_path, target)
     command.project(command_path, target)
 
@@ -114,10 +114,10 @@ def test_restore_and_remove_preserve_a_path_that_changed_ownership(
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX symlink behavior")
 def test_status_reports_exact_owned_link(tmp_path: Path) -> None:
-    target = tmp_path / "payload" / "codex-responses-proxy"
+    target = tmp_path / "payload" / "openai-responses-proxy"
     target.parent.mkdir(parents=True)
     target.write_text("runtime", encoding="utf-8")
-    command_path = tmp_path / "commands" / "codex-responses-proxy"
+    command_path = tmp_path / "commands" / "openai-responses-proxy"
     command.project(command_path, target)
 
     assert command.status(command_path, target) == {

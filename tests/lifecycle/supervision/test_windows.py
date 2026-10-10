@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle.supervision import windows
-from codex_responses_proxy.service import runtime as service_runtime
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle.supervision import windows
+from openai_responses_proxy.service import runtime as service_runtime
 from tests.lifecycle.fixtures import platform_context
 from tests.lifecycle.supervision.fixtures import completed as _completed
 from tests.lifecycle.supervision.fixtures import temporary_context as _temporary_context
@@ -125,7 +125,7 @@ class TestWindowsLifecycle:
 
     def test_install_replaces_only_a_proved_predecessor_generation(self, *, mocker) -> None:
         ctx = platform_context(windows=True)
-        previous_executable = "C:/previous/codex-responses-proxy.exe"
+        previous_executable = "C:/previous/openai-responses-proxy.exe"
         predecessor = windows.process.OwnedProcess(41, previous_executable, 1.0)
         mocker.patch.object(windows, "configured_executable", return_value=previous_executable)
         mocker.patch.object(windows.process, "pids_naming_executable", return_value=[41])

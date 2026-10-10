@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import control
-from codex_responses_proxy.lifecycle import generation
-from codex_responses_proxy.lifecycle import install
-from codex_responses_proxy.lifecycle import state as payload_state
-from codex_responses_proxy.lifecycle import uninstall
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle import control
+from openai_responses_proxy.lifecycle import generation
+from openai_responses_proxy.lifecycle import install
+from openai_responses_proxy.lifecycle import state as payload_state
+from openai_responses_proxy.lifecycle import uninstall
 from tests.lifecycle.fixtures import begin_transaction
 from tests.lifecycle.fixtures import install_context
 from tests.lifecycle.fixtures import install_payload
@@ -269,8 +269,8 @@ def test_uninstall_refuses_any_retained_transaction_before_mutation(
 
 def test_status_and_uninstall_use_the_finalized_command_path(tmp_path: Path, *, mocker):
     ctx = install_context(tmp_path)
-    installed_command = tmp_path / "original-bin" / "codex-responses-proxy"
-    changed_environment_command = tmp_path / "changed-bin" / "codex-responses-proxy"
+    installed_command = tmp_path / "original-bin" / "openai-responses-proxy"
+    changed_environment_command = tmp_path / "changed-bin" / "openai-responses-proxy"
     ctx = replace(ctx, command=str(changed_environment_command))
     installed_state = {
         "schema_version": payload_state.INSTALLED_RELEASE_STATE_SCHEMA,
@@ -320,7 +320,7 @@ def test_install_and_uninstall_adapters_preserve_bounded_errors(
         install.transaction, "begin_transaction", return_value=payload_transaction
     )
     mocker.patch(
-        "codex_responses_proxy.lifecycle.supervision.native_service.adapter",
+        "openai_responses_proxy.lifecycle.supervision.native_service.adapter",
         return_value=service,
     )
     applied = mocker.patch.object(install.apply, "install", return_value={"release": "2.0.15"})

@@ -11,13 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.lifecycle.supervision import process
+from openai_responses_proxy.lifecycle.supervision import process
 from tests.lifecycle.fixtures import platform_context
 
 
 class TestProcessIdentity:
     def test_bounded_capture_waits_for_the_exact_native_role(self, *, mocker) -> None:
-        expected = process.OwnedProcess(73, "/installed/codex-responses-proxy", 42.0)
+        expected = process.OwnedProcess(73, "/installed/openai-responses-proxy", 42.0)
         capture = mocker.patch.object(
             process,
             "capture_executable",
@@ -28,7 +28,7 @@ class TestProcessIdentity:
         assert (
             process.wait_for_executable(
                 73,
-                "/installed/codex-responses-proxy",
+                "/installed/openai-responses-proxy",
                 roles={"--internal-watchdog"},
                 timeout_seconds=1.0,
             )
@@ -136,7 +136,7 @@ class TestProcessIdentity:
         assert process.verified_listener_pids(ctx.port, foreign) == [7]
 
     def test_native_identity_survives_a_retired_launcher_argv(self, *, mocker):
-        expected = os.path.abspath("/installed/codex-responses-proxy")
+        expected = os.path.abspath("/installed/openai-responses-proxy")
         candidate = mocker.Mock()
         candidate.exe.return_value = expected
         candidate.cmdline.return_value = [
@@ -152,7 +152,7 @@ class TestProcessIdentity:
         )
 
     def test_identity_helpers_cover_empty_roles_and_python_suffixes(self, subtests, *, mocker):
-        executable = os.path.abspath("/installed/codex-responses-proxy")
+        executable = os.path.abspath("/installed/openai-responses-proxy")
         for argv, roles, expected in (
             ([], None, False),
             ([executable], None, True),
@@ -206,21 +206,21 @@ class TestTermination:
         candidate.create_time.return_value = 42.0
         candidate.status.return_value = process.psutil.STATUS_RUNNING
         candidate.cmdline.side_effect = [
-            ["/installed/codex-responses-proxy", "--internal-handoff-child"],
+            ["/installed/openai-responses-proxy", "--internal-handoff-child"],
             process.psutil.AccessDenied(123),
         ]
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
 
         owned = process.capture_executable(
             123,
-            "/installed/codex-responses-proxy",
+            "/installed/openai-responses-proxy",
             roles={"--internal-handoff-child"},
         )
 
         assert owned is not None
         assert astuple(owned) == (
             123,
-            os.path.normcase(os.path.realpath("/installed/codex-responses-proxy")),
+            os.path.normcase(os.path.realpath("/installed/openai-responses-proxy")),
             42.0,
         )
         assert process.terminate_owned_process(owned, timeout_seconds=1.0)
@@ -233,12 +233,12 @@ class TestTermination:
         candidate.cmdline.side_effect = process.psutil.AccessDenied(123)
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
 
-        owned = process.capture_generation(123, "/installed/codex-responses-proxy")
+        owned = process.capture_generation(123, "/installed/openai-responses-proxy")
 
         assert owned is not None
         assert astuple(owned) == (
             123,
-            os.path.normcase(os.path.realpath("/installed/codex-responses-proxy")),
+            os.path.normcase(os.path.realpath("/installed/openai-responses-proxy")),
             42.0,
         )
 
@@ -260,13 +260,13 @@ class TestTermination:
         assert (
             process.capture_executable(
                 123,
-                "/installed/codex-responses-proxy",
+                "/installed/openai-responses-proxy",
                 roles={"--internal-handoff-child"},
             )
             is None
         )
         assert process.terminate_owned_process(
-            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+            process.OwnedProcess(123, "/installed/openai-responses-proxy", 42.0)
         )
         assert constructor.call_count == 2
 
@@ -277,13 +277,13 @@ class TestTermination:
         candidate = mocker.Mock()
         candidate.create_time.return_value = 43.0
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
-        owned = process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+        owned = process.OwnedProcess(123, "/installed/openai-responses-proxy", 42.0)
 
         assert not process.terminate_owned_process(owned, timeout_seconds=1.0)
         candidate.terminate.assert_not_called()
 
     def test_captured_native_identity_observation_is_fail_closed(self, subtests, *, mocker):
-        owned = process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+        owned = process.OwnedProcess(123, "/installed/openai-responses-proxy", 42.0)
         for case, failure in (
             ("capture", process.psutil.AccessDenied(123)),
             ("alive", process.psutil.NoSuchProcess(123)),
@@ -292,7 +292,7 @@ class TestTermination:
             with subtests.test(case=case):
                 candidate = mocker.Mock()
                 candidate.cmdline.return_value = [
-                    "/installed/codex-responses-proxy",
+                    "/installed/openai-responses-proxy",
                     "--internal-handoff-child",
                 ]
                 candidate.create_time.return_value = 42.0
@@ -307,7 +307,7 @@ class TestTermination:
 
                 if case == "capture":
                     assert (
-                        process.capture_executable(123, "/installed/codex-responses-proxy") is None
+                        process.capture_executable(123, "/installed/openai-responses-proxy") is None
                     )
                 elif case == "alive":
                     assert not process.owned_process_alive(owned)
@@ -325,7 +325,7 @@ class TestTermination:
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
 
         assert process.owned_process_alive(
-            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+            process.OwnedProcess(123, "/installed/openai-responses-proxy", 42.0)
         )
 
     def test_captured_native_identity_treats_a_zombie_as_exited(self, *, mocker):
@@ -336,7 +336,7 @@ class TestTermination:
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
 
         assert not process.owned_process_alive(
-            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+            process.OwnedProcess(123, "/installed/openai-responses-proxy", 42.0)
         )
 
     def test_bounded_termination_accepts_an_adopted_zombie_tombstone(self, *, mocker):
@@ -350,7 +350,7 @@ class TestTermination:
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
 
         assert process.terminate_owned_process(
-            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0),
+            process.OwnedProcess(123, "/installed/openai-responses-proxy", 42.0),
             timeout_seconds=1.0,
         )
         candidate.terminate.assert_called_once_with()
@@ -362,7 +362,7 @@ class TestTermination:
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
 
         assert process.terminate_owned_process(
-            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0)
+            process.OwnedProcess(123, "/installed/openai-responses-proxy", 42.0)
         )
         candidate.terminate.assert_not_called()
 
@@ -374,7 +374,7 @@ class TestTermination:
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
 
         assert process.terminate_owned_process(
-            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0),
+            process.OwnedProcess(123, "/installed/openai-responses-proxy", 42.0),
             timeout_seconds=1.0,
         )
 
@@ -389,7 +389,7 @@ class TestTermination:
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
 
         assert not process.terminate_owned_process(
-            process.OwnedProcess(123, "/installed/codex-responses-proxy", 42.0),
+            process.OwnedProcess(123, "/installed/openai-responses-proxy", 42.0),
             timeout_seconds=1.0,
         )
 
@@ -434,7 +434,7 @@ class TestTermination:
 
         assert process.terminate_executable(
             123,
-            "/installed/codex-responses-proxy",
+            "/installed/openai-responses-proxy",
             roles=roles,
             timeout_seconds=1.0,
         )
@@ -451,7 +451,7 @@ class TestTermination:
         candidate.wait.side_effect = process.psutil.NoSuchProcess(123)
         mocker.patch.object(process.psutil, "Process", return_value=candidate)
 
-        assert process.terminate_executable(123, "/installed/codex-responses-proxy")
+        assert process.terminate_executable(123, "/installed/openai-responses-proxy")
 
     def test_native_termination_fails_closed(self, subtests, *, mocker):
         for case, identities, constructor_failure, wait_failure in (
@@ -475,7 +475,7 @@ class TestTermination:
                 )
                 assert not process.terminate_executable(
                     123,
-                    "/installed/codex-responses-proxy",
+                    "/installed/openai-responses-proxy",
                     timeout_seconds=1.0,
                 )
                 if case == "initial identity":

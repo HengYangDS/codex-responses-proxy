@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 from tools.release.artifact import format as assets
 from tools.release.artifact import signing
 

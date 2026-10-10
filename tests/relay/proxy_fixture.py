@@ -17,10 +17,10 @@ from typing import Literal
 from typing import cast
 from typing import override
 
-from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.providers.policies import dmxapi as dmxapi_policy
-from codex_responses_proxy.relay import operational_log
-from codex_responses_proxy.service import entrypoint as proxy
+from openai_responses_proxy.providers import registry as provider_registry
+from openai_responses_proxy.providers.policies import dmxapi as dmxapi_policy
+from openai_responses_proxy.relay import operational_log
+from openai_responses_proxy.service import entrypoint as proxy
 
 ScriptedResponse = tuple[int, bytes] | Mapping[str, object]
 

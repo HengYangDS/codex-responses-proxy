@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy import product_identity as identity
+from openai_responses_proxy import product_identity as identity
 from tools.quality import hard_coding as checker
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,10 +17,10 @@ class TestHardCodingResponsibility:
     """Require controlled values to have one owner and explicit projections."""
 
     def test_product_identity_is_one_runtime_owner(self) -> None:
-        assert identity.PRODUCT_SLUG == "codex-responses-proxy"
-        assert identity.DISPLAY_NAME == "Codex Responses Proxy"
+        assert identity.PRODUCT_SLUG == "openai-responses-proxy"
+        assert identity.DISPLAY_NAME == "OpenAI Responses Proxy"
         assert identity.COMMAND_NAME == identity.PRODUCT_SLUG
-        assert identity.ENVIRONMENT_PREFIX == "CODEX_RESPONSES_PROXY"
+        assert identity.ENVIRONMENT_PREFIX == "OPENAI_RESPONSES_PROXY"
         assert identity.SERVICE_ID == f"{identity.PRODUCT_SLUG}.watchdog"
         assert identity.RELEASE_NAMESPACE == f"{identity.PRODUCT_SLUG}-release"
 
@@ -92,13 +92,13 @@ class TestHardCodingResponsibility:
         policy = tmp_path / ".config/quality/policy/hard-coding.toml"
         policy.parent.mkdir(parents=True)
         shutil.copy2(ROOT / ".config/quality/policy/hard-coding.toml", policy)
-        owner = tmp_path / "src/codex_responses_proxy/product_identity.py"
+        owner = tmp_path / "src/openai_responses_proxy/product_identity.py"
         owner.parent.mkdir(parents=True)
-        shutil.copy2(ROOT / "src/codex_responses_proxy/product_identity.py", owner)
+        shutil.copy2(ROOT / "src/openai_responses_proxy/product_identity.py", owner)
         pyproject = tmp_path / "pyproject.toml"
         source = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         pyproject.write_text(
-            source.replace('name = "codex-responses-proxy"', 'name = "drifted-product"', 1),
+            source.replace('name = "openai-responses-proxy"', 'name = "drifted-product"', 1),
             encoding="utf-8",
         )
 

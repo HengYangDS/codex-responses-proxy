@@ -17,7 +17,7 @@ def test_sign_and_verify_uses_one_external_trust_boundary(tmp_path: Path) -> Non
     (assets / "SHA256SUMS").write_text("abc\n", encoding="ascii")
     subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
     public = key.with_suffix(".pub").read_text().strip()
-    trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+    trust = f'openai-responses-proxy-release namespaces="openai-responses-proxy-release" {public}'
 
     signing.sign_and_verify(assets=assets, key=key, trust=trust)
 
@@ -31,7 +31,7 @@ def test_sign_and_verify_preserves_complete_provider_key_path(tmp_path: Path, mo
     (assets / "SHA256SUMS").write_text("abc\n", encoding="ascii")
     subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
     public = key.with_suffix(".pub").read_text().strip()
-    trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+    trust = f'openai-responses-proxy-release namespaces="openai-responses-proxy-release" {public}'
     temporary = mocker.spy(signing.tempfile, "TemporaryDirectory")
 
     signing.sign_and_verify(assets=assets, key=key, trust=trust)
@@ -48,7 +48,7 @@ def test_sign_and_verify_accepts_posix_file_variable_key_without_final_newline(
     (assets / "SHA256SUMS").write_text("abc\n", encoding="ascii")
     subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
     public = key.with_suffix(".pub").read_text().strip()
-    trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+    trust = f'openai-responses-proxy-release namespaces="openai-responses-proxy-release" {public}'
     key.write_bytes(key.read_bytes().rstrip(b"\n"))
 
     signing.sign_and_verify(assets=assets, key=key, trust=trust)
@@ -116,7 +116,7 @@ def test_verify_uses_external_trust_without_mutating_assets(tmp_path: Path) -> N
     (assets / "SHA256SUMS").write_text("abc\n", encoding="ascii")
     subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
     public = key.with_suffix(".pub").read_text().strip()
-    trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+    trust = f'openai-responses-proxy-release namespaces="openai-responses-proxy-release" {public}'
     signing.sign_and_verify(assets=assets, key=key, trust=trust)
     before = {path.name: path.read_bytes() for path in assets.iterdir()}
 

@@ -15,7 +15,7 @@ from typing import Annotated
 from cyclopts import App
 from cyclopts import Parameter
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 from tools.release import identity
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -355,7 +355,7 @@ def _command(
         )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    proxy = (ROOT / "src" / "codex_responses_proxy" / "service" / "entrypoint.py").read_text(
+    proxy = (ROOT / "src" / "openai_responses_proxy" / "service" / "entrypoint.py").read_text(
         encoding="utf-8"
     )
     if "release_version()" not in proxy:

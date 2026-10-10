@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:decision-0005-single-native-payload-lifecycle
+subject: openai-responses-proxy:decision-0005-single-native-payload-lifecycle
 role: decision
 state: canonical
 relations:

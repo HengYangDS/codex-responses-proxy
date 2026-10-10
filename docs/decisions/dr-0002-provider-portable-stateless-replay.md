@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:decision-0002-provider-portable-stateless-replay
+subject: openai-responses-proxy:decision-0002-provider-portable-stateless-replay
 role: decision
 state: canonical
 relations:

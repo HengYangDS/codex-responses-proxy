@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 from tools.forge import tag_signature
 from tools.release import identity
 from tools.release.artifact import assembly

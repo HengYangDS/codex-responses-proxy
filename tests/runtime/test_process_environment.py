@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from codex_responses_proxy import product_identity
-from codex_responses_proxy.runtime.process_environment import native_process_environment
+from openai_responses_proxy import product_identity
+from openai_responses_proxy.runtime.process_environment import native_process_environment
 
 
 def test_isolation_preserves_the_host_execution_substrate(tmp_path: Path) -> None:

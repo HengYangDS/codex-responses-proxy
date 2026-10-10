@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.runtime import bounded_log
+from openai_responses_proxy.runtime import bounded_log
 from tests.lifecycle.fixtures import assert_private_log_mode
 
 

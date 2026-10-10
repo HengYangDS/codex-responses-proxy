@@ -6,7 +6,7 @@ import csv
 import os
 from pathlib import Path
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 from tools.release.artifact import format as assets
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -15,7 +15,7 @@ INSTALLER_PROVENANCE = frozenset({"direct_url.json", "uv_cache.json"})
 
 def normalize(packages: Path) -> None:
     """Remove installer-local product metadata before executable freezing."""
-    metadata = tuple(packages.glob("codex_responses_proxy-*.dist-info"))
+    metadata = tuple(packages.glob("openai_responses_proxy-*.dist-info"))
     if len(metadata) != 1 or not metadata[0].is_dir() or metadata[0].is_symlink():
         raise RuntimeError("installed product distribution metadata is ambiguous")
     record = metadata[0] / "RECORD"
@@ -89,7 +89,9 @@ def pack(*, bundle: Path, platform: str, output: Path) -> None:
         raise SystemExit("native bundle executable is unavailable")
     files: dict[str, bytes | assets.ArchiveFile] = {
         f"bin/{executable_name}": assets.ArchiveFile(executable.read_bytes(), 0o755),
-        "providers.toml": (ROOT / "src/codex_responses_proxy/providers/manifest.toml").read_bytes(),
+        "providers.toml": (
+            ROOT / "src/openai_responses_proxy/providers/manifest.toml"
+        ).read_bytes(),
         "LICENSE": (ROOT / "LICENSE").read_bytes(),
     }
     for relative, source in bundle_files(bundle):

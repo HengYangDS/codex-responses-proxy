@@ -9,6 +9,7 @@ import platform
 import re
 import subprocess
 import sys
+import tarfile
 import urllib.request
 from collections.abc import Callable
 from dataclasses import replace
@@ -17,15 +18,15 @@ from typing import cast
 
 import pytest
 
-from codex_responses_proxy import product_identity
-from codex_responses_proxy.lifecycle import command
-from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import generation
-from codex_responses_proxy.lifecycle.supervision import native_service
-from codex_responses_proxy.lifecycle.supervision import process
-from codex_responses_proxy.runtime.process_environment import native_process_environment
-from codex_responses_proxy.service import inventory
-from codex_responses_proxy.service import runtime as service_runtime
+from openai_responses_proxy import product_identity
+from openai_responses_proxy.lifecycle import command
+from openai_responses_proxy.lifecycle import context as runtime_context
+from openai_responses_proxy.lifecycle import generation
+from openai_responses_proxy.lifecycle.supervision import native_service
+from openai_responses_proxy.lifecycle.supervision import process
+from openai_responses_proxy.runtime.process_environment import native_process_environment
+from openai_responses_proxy.service import inventory
+from openai_responses_proxy.service import runtime as service_runtime
 from tools.release.artifact import bundle as release_assembly
 from tools.release.artifact import format as product_assets
 from tools.release.artifact import signing
@@ -89,7 +90,7 @@ def _macos_service_projection() -> tuple[
 @pytest.fixture(scope="module")
 def preserve_native_host_projection():
     """Prove one native test module leaves the host projection unchanged."""
-    if sys.platform != "darwin" or "CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE" not in os.environ:
+    if sys.platform != "darwin" or "OPENAI_RESPONSES_PROXY_NATIVE_EXECUTABLE" not in os.environ:
         yield
         return
     before = _macos_service_projection()
@@ -130,6 +131,7 @@ def signed_asset(
     upstream_url: str,
     key: Path,
     trust: str,
+    preserve_manifest: bool = False,
 ) -> Path:
     """Build one route-controlled asset from exact native bundle bytes."""
     platform_id = product_identity.native_release_platform(platform.system(), platform.machine())
@@ -138,8 +140,12 @@ def signed_asset(
     files: dict[str, bytes | product_assets.ArchiveFile] = {
         f"bin/{executable_name}": product_assets.ArchiveFile(executable.read_bytes(), 0o755),
         "providers.toml": (
-            f'version = 1\n\n[providers.dmxapi]\nbase_url = "{upstream_url}"\npolicy = "dmxapi"\n'
-        ).encode(),
+            (ROOT / "src/openai_responses_proxy/providers/manifest.toml").read_bytes()
+            if preserve_manifest
+            else (
+                f'version = 1\n\n[providers.dmxapi]\nbase_url = "{upstream_url}"\npolicy = "dmxapi"\n'
+            ).encode()
+        ),
         "LICENSE": (ROOT / "LICENSE").read_bytes(),
     }
     for relative, source in release_assembly.bundle_files(bundle):
@@ -167,11 +173,13 @@ def signed_asset(
     return output / archive_name
 
 
-def post_response(port: int, *, stream: bool = False, timeout: float = 15) -> bytes:
+def post_response(
+    port: int, *, stream: bool = False, timeout: float = 15, route: str = "dmxapi"
+) -> bytes:
     """Send one unproxied Responses request to an isolated listener."""
     body = b'{"stream": true, "input": []}' if stream else b'{"stream": false, "input": []}'
     request = urllib.request.Request(
-        f"http://127.0.0.1:{port}/dmxapi/v1/responses",
+        f"http://127.0.0.1:{port}/{route}/v1/responses",
         data=body,
         method="POST",
         headers={"Content-Type": "application/json"},
@@ -181,6 +189,59 @@ def post_response(port: int, *, stream: bool = False, timeout: float = 15) -> by
         content: object = response.read()
         assert isinstance(content, bytes)
         return content
+
+
+def legacy_published_bundle(asset: Path, anchor: Path, work: Path) -> tuple[Path, str]:
+    """Admit historical assets with their exact immutable original source."""
+    archive = work / "predecessor-source.tar"
+    source = work / "predecessor-source"
+    source.mkdir()
+    subprocess.run(
+        [
+            "git",
+            "archive",
+            "refs/tags/v4.0.6",
+            "src/codex_responses_proxy",
+            "--output",
+            str(archive),
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
+    with tarfile.open(archive) as snapshot:
+        snapshot.extractall(source, filter="data")
+    bundle = work / "predecessor-native"
+    probe = (
+        "import sys; from pathlib import Path; "
+        "sys.path.insert(0, sys.argv[1]); "
+        "from codex_responses_proxy.lifecycle import artifact; "
+        "item=artifact.admit(Path(sys.argv[2]), trust_anchor=Path(sys.argv[3])); "
+        "root=Path(sys.argv[4]); root.mkdir(); "
+        "[(p.parent.mkdir(parents=True, exist_ok=True), p.write_bytes(b.content), "
+        "p.chmod(0o755 if b.mode=='100755' else 0o644)) "
+        "for b in item.peek_blobs() if b.path.startswith('bin/') "
+        "for p in [root / b.path.removeprefix('bin/')]]; print(item.version)"
+    )
+    admitted = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            probe,
+            str(source / "src"),
+            str(asset),
+            str(anchor),
+            str(bundle),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    archive.unlink()
+    return bundle, admitted.stdout.strip()
 
 
 def runtime_context_for(

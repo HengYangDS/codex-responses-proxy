@@ -13,7 +13,7 @@ from typing import Annotated
 from cyclopts import App
 from cyclopts import Parameter
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 from tools.git_environment import isolated_config_environment
 
 ROOT = Path(__file__).resolve().parents[2]

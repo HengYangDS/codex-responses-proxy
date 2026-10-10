@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:decision-0006-semantic-fit-before-framework-adoption
+subject: openai-responses-proxy:decision-0006-semantic-fit-before-framework-adoption
 role: decision
 state: canonical
 relations:

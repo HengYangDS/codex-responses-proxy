@@ -42,11 +42,11 @@ def forge_evidence(*, items: list[dict[str, object]] | None = None) -> dict[str,
         "tree_oid": "c" * 40,
         "assets": {
             **{
-                f"codex-responses-proxy-1.2.3-{platform}.tar.gz": "1" * 64
+                f"openai-responses-proxy-1.2.3-{platform}.tar.gz": "1" * 64
                 for platform in ("linux-x86_64", "macos-arm64", "windows-x86_64")
             },
             **{
-                f"codex-responses-proxy-{platform}.manifest.json": "2" * 64
+                f"openai-responses-proxy-{platform}.manifest.json": "2" * 64
                 for platform in ("linux-x86_64", "macos-arm64", "windows-x86_64")
             },
             "SHA256SUMS": "3" * 64,
@@ -95,7 +95,7 @@ def verified_evidence(evidence: Mapping[str, object], *, mocker) -> Mapping[str,
                 "id": 99,
                 "tag": evidence["tag"],
                 "commit_oid": commit,
-                "name": "Codex Responses Proxy v1.2.3",
+                "name": "OpenAI Responses Proxy v1.2.3",
                 "draft": False,
                 "prerelease": False,
             },

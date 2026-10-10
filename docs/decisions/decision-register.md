@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:decision-record-conventions
+subject: openai-responses-proxy:decision-record-conventions
 role: reference
 state: canonical
 relations:

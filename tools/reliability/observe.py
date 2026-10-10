@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Evaluate one secret-free Codex Responses Proxy runtime observation.
+"""Evaluate one secret-free OpenAI Responses Proxy runtime observation.
 
-This tool consumes the JSON produced by ``codex-responses-proxy status --json``.
+This tool consumes the JSON produced by ``openai-responses-proxy status --json``.
 It does not contact a listener, read configuration, retain request data, or
 change the proxy lifecycle. A caller may opt into a small local baseline with
 ``--state`` to compute deltas across comparable observations.

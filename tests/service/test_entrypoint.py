@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.service import entrypoint
-from codex_responses_proxy.service import identity
+from openai_responses_proxy.providers import registry as provider_registry
+from openai_responses_proxy.service import entrypoint
+from openai_responses_proxy.service import identity
 
 
 class TestListenerEntrypoint:
@@ -19,7 +19,7 @@ class TestListenerEntrypoint:
     def test_bootstrap_loads_routes_between_two_identical_identity_checks(self, *, mocker) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            executable = root / "bin/codex-responses-proxy"
+            executable = root / "bin/openai-responses-proxy"
             loaded = identity.LoadedPayloadIdentity("2.0.8", "a" * 64, "b" * 64, "c" * 64, root)
             providers = provider_registry.Registry(
                 {"fixture": provider_registry.Profile("fixture", "http://127.0.0.1:43123/v1")}
@@ -43,7 +43,7 @@ class TestListenerEntrypoint:
     def test_bootstrap_rejects_missing_and_changed_payload_identity(
         self, subtests, *, mocker
     ) -> None:
-        executable = Path("/installed/bin/codex-responses-proxy")
+        executable = Path("/installed/bin/openai-responses-proxy")
         loaded = identity.LoadedPayloadIdentity(
             "2.0.8", "a" * 64, "b" * 64, "c" * 64, executable.parents[1]
         )
@@ -76,7 +76,7 @@ class TestListenerEntrypoint:
             entrypoint,
             "bootstrap",
             return_value=entrypoint.Bootstrap(
-                Path("/installed/bin/codex-responses-proxy"), loaded, providers
+                Path("/installed/bin/openai-responses-proxy"), loaded, providers
             ),
         )
 
@@ -90,7 +90,7 @@ class TestListenerEntrypoint:
         )
         providers = mocker.sentinel.providers
         entrypoint._BOOTSTRAP = entrypoint.Bootstrap(
-            Path("/installed/bin/codex-responses-proxy"), loaded, providers
+            Path("/installed/bin/openai-responses-proxy"), loaded, providers
         )
         assert entrypoint.runtime_providers() is providers
 
@@ -99,7 +99,7 @@ class TestListenerEntrypoint:
         self._admit_run(mocker)
         entrypoint._BOOTSTRAP = entrypoint.bootstrap()
         selected = Path(
-            "/installed/generations/11111111111111111111111111111111/bin/codex-responses-proxy"
+            "/installed/generations/11111111111111111111111111111111/bin/openai-responses-proxy"
         )
         resolve = mocker.patch.object(
             entrypoint.identity,

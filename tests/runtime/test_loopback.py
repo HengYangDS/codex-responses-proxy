@@ -8,8 +8,8 @@ from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
 from typing import override
 
-from codex_responses_proxy.lifecycle import control
-from codex_responses_proxy.runtime import loopback
+from openai_responses_proxy.lifecycle import control
+from openai_responses_proxy.runtime import loopback
 
 
 def test_loopback_transport_does_not_initialize_https(*, mocker) -> None:

@@ -50,7 +50,7 @@ def test_installed_product_probe_distinguishes_environment_from_source_checkout(
     )
     checkout = tmp_path / "checkout"
     source = checkout / "src" if defect == "source-checkout" else site_packages
-    package = source / "codex_responses_proxy"
+    package = source / "openai_responses_proxy"
     providers = package / "providers"
     providers.mkdir(parents=True)
     (package / "__init__.py").write_text("", encoding="utf-8")
@@ -63,7 +63,7 @@ def test_installed_product_probe_distinguishes_environment_from_source_checkout(
     )
     (providers / "manifest.toml").write_text("", encoding="utf-8")
     (package / "unused.py").write_text("VALUE = 42\n", encoding="utf-8")
-    source_package = checkout / "src/codex_responses_proxy"
+    source_package = checkout / "src/openai_responses_proxy"
     for path in package.rglob("*"):
         if path.is_file():
             target = source_package / path.relative_to(package)
@@ -247,10 +247,11 @@ def test_published_release_compatibility_uses_supplied_release_bytes(
         ("CURRENT_RELEASE_ASSET", current),
         ("PREVIOUS_RELEASE_ASSET", previous),
         ("PREVIOUS_RELEASE_TRUST_ANCHOR", trust),
+        ("CURRENT_RELEASE_TRUST_ANCHOR", trust),
     ):
         path.touch()
         monkeypatch.setenv(nox_configuration.product_identity.environment_name(suffix), str(path))
-    executable = tmp_path / "bundle" / "codex-responses-proxy"
+    executable = tmp_path / "bundle" / "openai-responses-proxy"
     materialize = mocker.patch.object(
         nox_configuration,
         "_materialize_published_bundle",

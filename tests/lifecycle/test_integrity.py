@@ -10,16 +10,16 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy import product_identity
-from codex_responses_proxy.lifecycle import artifact
-from codex_responses_proxy.lifecycle import candidate as payload_candidate
-from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import owned_files
-from codex_responses_proxy.lifecycle import projection as payload_projection
-from codex_responses_proxy.lifecycle import state as payload_state
-from codex_responses_proxy.service import digest as payload_digest
-from codex_responses_proxy.service import inventory
+from openai_responses_proxy import errors
+from openai_responses_proxy import product_identity
+from openai_responses_proxy.lifecycle import artifact
+from openai_responses_proxy.lifecycle import candidate as payload_candidate
+from openai_responses_proxy.lifecycle import context as runtime_context
+from openai_responses_proxy.lifecycle import owned_files
+from openai_responses_proxy.lifecycle import projection as payload_projection
+from openai_responses_proxy.lifecycle import state as payload_state
+from openai_responses_proxy.service import digest as payload_digest
+from openai_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import begin_transaction
 from tests.lifecycle.fixtures import executable_relative
 from tests.lifecycle.fixtures import install_context
@@ -261,7 +261,7 @@ class TestPayloadValidation:
         Path(ctx.executable).unlink()
         ok, detail = payload_projection.verify_payload_manifest(ctx)
         assert not ok
-        assert detail == "installed payload file is unavailable: bin/codex-responses-proxy"
+        assert detail == "installed payload file is unavailable: bin/openai-responses-proxy"
 
         ctx, _, _ = installed()
         invalid_aggregate = mocker.patch.object(
@@ -282,7 +282,7 @@ class TestPayloadValidation:
         )
         ok, detail = payload_projection.verify_payload_manifest(ctx)
         assert not ok
-        assert detail == "installed payload file is unavailable: bin/codex-responses-proxy"
+        assert detail == "installed payload file is unavailable: bin/openai-responses-proxy"
         mocker.stop(unavailable_digest)
 
         ctx, _, _ = installed()

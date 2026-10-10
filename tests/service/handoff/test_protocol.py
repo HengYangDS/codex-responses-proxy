@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.lifecycle.deployment import handoff
-from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.service.handoff import protocol as handoff_protocol_module
+from openai_responses_proxy.lifecycle.deployment import handoff
+from openai_responses_proxy.providers import registry as provider_registry
+from openai_responses_proxy.service.handoff import protocol as handoff_protocol_module
 from tests.service.handoff.fixtures import entrypoint_module
 from tests.service.handoff.fixtures import expected_metadata
 from tests.service.handoff.fixtures import handoff_module

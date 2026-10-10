@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import control
-from codex_responses_proxy.lifecycle import generation
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle import control
+from openai_responses_proxy.lifecycle import generation
 from tests.lifecycle.fixtures import install_context
 
 

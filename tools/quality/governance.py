@@ -75,14 +75,14 @@ def _commands(*, online_links: bool) -> tuple[tuple[str, ...], ...]:
         ("mise", "run", "--timeout", "60s", "workflow-check"),
         (
             "deptry",
-            "src/codex_responses_proxy",
+            "src/openai_responses_proxy",
             "--config",
             "pyproject.toml",
             "--no-ansi",
         ),
         (
             "vulture",
-            "src/codex_responses_proxy",
+            "src/openai_responses_proxy",
             "tools",
             "--config",
             ".config/quality/native/vulture.toml",

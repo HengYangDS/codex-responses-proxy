@@ -11,8 +11,8 @@ from typing import Annotated
 from cyclopts import App
 from cyclopts import Parameter
 
-from codex_responses_proxy import json_value
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import json_value
+from openai_responses_proxy import product_identity
 from tools.release import identity
 from tools.release.publication import verification
 from tools.release.publication.github import observe as github_observer
@@ -177,6 +177,14 @@ def _predecessor(
     tag = github_observer.published_predecessor(repository=repository, version=version)
     with github_environment.open("a", encoding="utf-8", newline="\n") as environment:
         environment.write(f"{product_identity.environment_name('PREVIOUS_RELEASE_TAG')}={tag}\n")
+        predecessor_product = (
+            "codex-responses-proxy"
+            if int(identity.version_from_tag(tag).split(".")[0]) < 5
+            else product_identity.PRODUCT_SLUG
+        )
+        environment.write(
+            f"{product_identity.environment_name('PREVIOUS_RELEASE_PRODUCT')}={predecessor_product}\n"
+        )
     print(tag)
 
 

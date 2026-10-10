@@ -381,7 +381,7 @@ def test_exact_local_object_forge_publication_contract() -> None:
 
 def test_prune_tags_removes_deleted_remote_tag() -> None:
     """Reproduce the reused-runner stale-tag failure without network access."""
-    with tempfile.TemporaryDirectory(prefix="codex-responses-proxy-prune-tags-") as temp:
+    with tempfile.TemporaryDirectory(prefix="openai-responses-proxy-prune-tags-") as temp:
         temp_root = Path(temp)
         remote = temp_root / "remote.git"
         publisher = temp_root / "publisher"
@@ -446,7 +446,7 @@ def test_github_tag_metadata_fetches_complete_provider_tags() -> None:
 def test_native_bundle_has_one_runtime_and_one_signer() -> None:
     """Build every platform once and sign only the complete assembled bundle."""
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    image = metadata["tool"]["codex-responses-proxy"]["linux-release-image"]
+    image = metadata["tool"]["openai-responses-proxy"]["linux-release-image"]
     github = (ROOT / ".github" / "workflows" / "verify.yml").read_text(encoding="utf-8")
     gitlab = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     assert "@sha256:" in image, "Linux release runtime must be immutable"
@@ -557,7 +557,7 @@ def test_missing_tag_is_a_release_identity_error(mocker):
 @pytest.mark.parametrize(
     ("carrier", "before", "after", "diagnostic"),
     [
-        ("README.md", "# Codex Responses Proxy", "# Other", "formal Project Name"),
+        ("README.md", "# OpenAI Responses Proxy", "# Other", "formal Project Name"),
         (
             ".gitlab-ci.yml",
             "python -m tools.release.metadata",

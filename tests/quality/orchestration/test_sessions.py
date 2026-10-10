@@ -516,7 +516,7 @@ def test_static_checks_cover_the_same_source_and_configuration_scope(
     (lint,) = [call for call in calls if call[:2] == ("ruff", "check")]
     assert lint[lint.index("--config") + 1] == str(nox_configuration.python_quality.RUFF_CONFIG)
     (typing,) = [call for call in calls if call[:2] == ("ty", "check")]
-    assert set(typing[-4:]) == {"src/codex_responses_proxy", "tools", "tests", "noxfile.py"}
+    assert set(typing[-4:]) == {"src/openai_responses_proxy", "tools", "tests", "noxfile.py"}
     assert typing[typing.index("--python-platform") + 1] == "all"
     assert typing[typing.index("--python-version") + 1] == nox_configuration.MIN_PYTHON
     for module in ("tools.quality.responsibilities", "tools.quality.hard_coding"):

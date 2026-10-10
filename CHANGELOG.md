@@ -8,6 +8,25 @@ publication authority.
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-10-10
+
+### Changed
+
+- Rename the product, Python package, command, environment namespace, native
+  service, repository family, and release assets to OpenAI Responses Proxy.
+  Existing installations migrate through explicit native uninstall and fresh
+  installation; published predecessor assets retain their original identities.
+- Keep account selection, credentials, client configuration, and model selection
+  with their existing client control planes.
+
+### Added
+
+- Select one ordinary Responses upstream during native installation with
+  `--upstream-base-url`; the isolated `/upstream/v1` route retains its selection
+  across reload and recovery without altering the released provider routes.
+- Qualify ordinary Responses clients independently of Codex through actual
+  tool calls, replay, streaming, errors, and native lifecycle acceptance.
+
 ## [4.0.6] - 2026-10-08
 
 ### Fixed

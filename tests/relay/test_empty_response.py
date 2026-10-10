@@ -17,12 +17,12 @@ from typing import cast
 
 import pytest
 
-from codex_responses_proxy.protocol.replay import projection as rewrite
-from codex_responses_proxy.providers.policies import dmxapi as policy
-from codex_responses_proxy.relay import admission
-from codex_responses_proxy.relay import cooldown
-from codex_responses_proxy.relay import telemetry
-from codex_responses_proxy.service import entrypoint as proxy
+from openai_responses_proxy.protocol.replay import projection as rewrite
+from openai_responses_proxy.providers.policies import dmxapi as policy
+from openai_responses_proxy.relay import admission
+from openai_responses_proxy.relay import cooldown
+from openai_responses_proxy.relay import telemetry
+from openai_responses_proxy.service import entrypoint as proxy
 from tests.relay.empty_response_fixture import EMPTY_RESPONSE
 from tests.relay.empty_response_fixture import SUCCESS
 from tests.relay.empty_response_fixture import UNKNOWN_477

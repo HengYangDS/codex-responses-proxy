@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle.supervision import linux
-from codex_responses_proxy.service import runtime as service_runtime
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle.supervision import linux
+from openai_responses_proxy.service import runtime as service_runtime
 from tests.lifecycle.fixtures import platform_context
 from tests.lifecycle.supervision.fixtures import completed as _completed
 from tests.lifecycle.supervision.fixtures import set_file as _set_file
@@ -82,7 +82,7 @@ class TestLinuxLifecycle:
             ) as rejection:
                 linux.install(ctx)
             assert rejection.value.code == "native_service_unavailable"
-            assert rejection.value.next_command == "codex-responses-proxy install --help"
+            assert rejection.value.next_command == "openai-responses-proxy install --help"
             assert str(rejection.value) == (
                 "a reachable systemd user manager is required for Linux installation; "
                 "enable a systemd user session and retry installation"
@@ -115,14 +115,14 @@ class TestLinuxLifecycle:
     def test_systemd_unit_quotes_path_values_and_specifier_tokens(self):
         ctx = platform_context()
         ctx.install_dir = '/tmp/product path/%i/"payload"'
-        ctx.executable = f"{ctx.install_dir}/bin/codex-responses-proxy"
+        ctx.executable = f"{ctx.install_dir}/bin/openai-responses-proxy"
         ctx.log_dir = '/tmp/state path/%h/"logs"'
         ctx.user_home = '/tmp/home path/%u/"user"'
 
         unit = linux.render_unit(ctx)
 
         assert (
-            'ExecStart="/tmp/product path/%%i/\\"payload\\"/bin/codex-responses-proxy" '
+            'ExecStart="/tmp/product path/%%i/\\"payload\\"/bin/openai-responses-proxy" '
             "--internal-watchdog"
         ) in unit
 
@@ -133,7 +133,7 @@ class TestLinuxLifecycle:
 
     def test_systemd_unit_rejects_control_characters(self):
         ctx = platform_context()
-        ctx.executable = "/tmp/bin/codex-responses-proxy\nother"
+        ctx.executable = "/tmp/bin/openai-responses-proxy\nother"
 
         with pytest.raises(errors.InstallError, match="control character"):
             linux.render_unit(ctx)

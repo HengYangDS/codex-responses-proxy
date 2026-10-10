@@ -35,7 +35,7 @@ class TestStructuralQualityContracts:
     def test_native_coverage_measures_product_tools_and_orchestration(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        package = tmp_path / "codex_responses_proxy"
+        package = tmp_path / "openai_responses_proxy"
         package.mkdir()
         (package / "__init__.py").write_text("", encoding="utf-8")
         observed = package / "observed.py"
@@ -49,7 +49,7 @@ class TestStructuralQualityContracts:
         (tmp_path / "noxfile.py").write_text(behavior, encoding="utf-8")
         driver = tmp_path / "probe.py"
         driver.write_text(
-            "from codex_responses_proxy import observed as product\n"
+            "from openai_responses_proxy import observed as product\n"
             "from tools.quality import observed as tooling\nimport noxfile\n"
             "for owner in (product, tooling, noxfile):\n"
             "    owner.choose(True)\n    owner.choose(False)\n",
@@ -78,15 +78,15 @@ class TestStructuralQualityContracts:
         assert set(files) == {
             Path(name)
             for name in (
-                "codex_responses_proxy/__init__.py",
-                "codex_responses_proxy/observed.py",
-                "codex_responses_proxy/unexecuted.py",
+                "openai_responses_proxy/__init__.py",
+                "openai_responses_proxy/observed.py",
+                "openai_responses_proxy/unexecuted.py",
                 "tools/quality/observed.py",
                 "tools/quality/unexecuted.py",
                 "noxfile.py",
             )
         }
-        for name in ("codex_responses_proxy/unexecuted.py", "tools/quality/unexecuted.py"):
+        for name in ("openai_responses_proxy/unexecuted.py", "tools/quality/unexecuted.py"):
             assert files[Path(name)]["summary"]["num_statements"] == 4
             assert files[Path(name)]["summary"]["covered_lines"] == 0
         monkeypatch.setenv("COVERAGE_FILE", str(data_file))
@@ -95,7 +95,7 @@ class TestStructuralQualityContracts:
             branch_coverage.main(("--policy", str(ROOT / ".config/quality/policy/coverage.toml")))
         assert failure.value.code == 1
         admission = json.loads(capsys.readouterr().out)
-        assert set(admission["sources"]) == {"codex_responses_proxy", "tools", "noxfile"}
+        assert set(admission["sources"]) == {"openai_responses_proxy", "tools", "noxfile"}
         assert admission["sources"]["noxfile"]["covered_branches"] == 2
         assert len(admission["gaps"]) == 4
         gc.collect()
@@ -146,14 +146,14 @@ class TestStructuralQualityContracts:
             root = Path(directory)
             files = {
                 "control.py": "def main():\n    return 0\n",
-                "src/codex_responses_proxy/__init__.py": "from .runtime import state\n",
-                "src/codex_responses_proxy/common/value.py": "VALUE = 1\n",
-                "src/codex_responses_proxy/service/__init__.py": "",
-                "src/codex_responses_proxy/extra/state.py": (
-                    "from codex_responses_proxy.relay import relay\n"
+                "src/openai_responses_proxy/__init__.py": "from .runtime import state\n",
+                "src/openai_responses_proxy/common/value.py": "VALUE = 1\n",
+                "src/openai_responses_proxy/service/__init__.py": "",
+                "src/openai_responses_proxy/extra/state.py": (
+                    "from openai_responses_proxy.relay import relay\n"
                 ),
-                "src/codex_responses_proxy/relay/relay.py": (
-                    "from codex_responses_proxy.runtime import state\n"
+                "src/openai_responses_proxy/relay/relay.py": (
+                    "from openai_responses_proxy.runtime import state\n"
                 ),
             }
             for relative, source in files.items():
@@ -164,10 +164,10 @@ class TestStructuralQualityContracts:
             gaps = architecture_gaps(root)
 
         assert "architecture_root_implementation:control.py" in gaps
-        assert "architecture_init_behavior:src/codex_responses_proxy/__init__.py" in gaps
+        assert "architecture_init_behavior:src/openai_responses_proxy/__init__.py" in gaps
         assert "architecture_undeclared_package:common" in gaps
         assert (
-            "architecture_package_declaration_missing:src/codex_responses_proxy/service/__init__.py"
+            "architecture_package_declaration_missing:src/openai_responses_proxy/service/__init__.py"
             in gaps
         )
         assert "architecture_undeclared_package:extra" in gaps
@@ -177,12 +177,12 @@ class TestStructuralQualityContracts:
     def test_architecture_gate_rejects_semantic_package_cycles(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            package = root / "src" / "codex_responses_proxy"
+            package = root / "src" / "openai_responses_proxy"
             for owner, target in (("relay", "runtime"), ("runtime", "relay")):
                 module = package / owner / "owner.py"
                 module.parent.mkdir(parents=True)
                 module.write_text(
-                    f"from codex_responses_proxy.{target} import owner\n",
+                    f"from openai_responses_proxy.{target} import owner\n",
                     encoding="utf-8",
                 )
             policy = {
@@ -192,15 +192,15 @@ class TestStructuralQualityContracts:
                 "false_positive_cost": "a legitimate cycle requires architecture review",
                 "remediation": "restore one-way ownership",
                 "review_condition": "reassess when the product topology changes",
-                "source_roots": ["src/codex_responses_proxy"],
+                "source_roots": ["src/openai_responses_proxy"],
                 "test_roots": ["tests"],
-                "package_root": "src/codex_responses_proxy",
+                "package_root": "src/openai_responses_proxy",
                 "package_root_modules": [],
                 "root_configuration_modules": [],
                 "package_initializers": "ordinary-modules",
                 "product_concepts": {
-                    "relay": "src/codex_responses_proxy/relay/owner.py",
-                    "runtime": "src/codex_responses_proxy/runtime/owner.py",
+                    "relay": "src/openai_responses_proxy/relay/owner.py",
+                    "runtime": "src/openai_responses_proxy/runtime/owner.py",
                 },
                 "external_responsibilities": {"credentials": "client-control-plane"},
                 "allowed_package_edges": {
@@ -272,7 +272,7 @@ class TestStructuralQualityContracts:
             (ROOT / ".config/quality/policy/coverage.toml").read_text(encoding="utf-8")
         )
         assert "branch = True" in coverage
-        assert "source_pkgs = codex_responses_proxy" in coverage
+        assert "source_pkgs = openai_responses_proxy" in coverage
         assert "omit" not in coverage
         assert set(policy) == {
             "minimum_percent",
@@ -295,7 +295,7 @@ class TestStructuralQualityContracts:
 
     def test_coverage_admission_keeps_each_configured_source_root_independent(self) -> None:
         files: dict[str, object] = {
-            "codex_responses_proxy/relay/exchange.py": {
+            "openai_responses_proxy/relay/exchange.py": {
                 "summary": {
                     "num_statements": 1000,
                     "covered_lines": 1000,
@@ -322,7 +322,7 @@ class TestStructuralQualityContracts:
         }
 
         gaps, sources = branch_coverage.source_gaps(
-            files, ("codex_responses_proxy", "noxfile", "tools"), 95.0
+            files, ("openai_responses_proxy", "noxfile", "tools"), 95.0
         )
 
         assert gaps == [
@@ -353,21 +353,21 @@ class TestStructuralQualityContracts:
         policy = tomllib.loads(
             (ROOT / ".config/quality/policy/architecture.toml").read_text(encoding="utf-8")
         )
-        assert policy["source_roots"] == ["src/codex_responses_proxy", "tools"]
+        assert policy["source_roots"] == ["src/openai_responses_proxy", "tools"]
         assert policy["test_roots"] == ["tests"]
-        assert policy["package_root"] == "src/codex_responses_proxy"
+        assert policy["package_root"] == "src/openai_responses_proxy"
         assert policy["product_concepts"] == {
-            "cli-presentation": "src/codex_responses_proxy/cli/presentation.py",
-            "lifecycle-transactions": "src/codex_responses_proxy/lifecycle/transaction.py",
+            "cli-presentation": "src/openai_responses_proxy/cli/presentation.py",
+            "lifecycle-transactions": "src/openai_responses_proxy/lifecycle/transaction.py",
             "native-supervision": (
-                "src/codex_responses_proxy/lifecycle/supervision/native_service.py"
+                "src/openai_responses_proxy/lifecycle/supervision/native_service.py"
             ),
-            "payload-generations": "src/codex_responses_proxy/lifecycle/generation.py",
-            "portable-responses": "src/codex_responses_proxy/protocol/replay/projection.py",
-            "provider-adaptation": "src/codex_responses_proxy/providers/registry.py",
-            "relay-transport": "src/codex_responses_proxy/relay/exchange.py",
-            "request-admission": "src/codex_responses_proxy/relay/admission.py",
-            "runtime-configuration": "src/codex_responses_proxy/runtime/config.py",
+            "payload-generations": "src/openai_responses_proxy/lifecycle/generation.py",
+            "portable-responses": "src/openai_responses_proxy/protocol/replay/projection.py",
+            "provider-adaptation": "src/openai_responses_proxy/providers/registry.py",
+            "relay-transport": "src/openai_responses_proxy/relay/exchange.py",
+            "request-admission": "src/openai_responses_proxy/relay/admission.py",
+            "runtime-configuration": "src/openai_responses_proxy/runtime/config.py",
         }
         assert policy["external_responsibilities"] == {
             "client-configuration": "client-control-plane",
@@ -443,7 +443,7 @@ class TestStructuralQualityContracts:
     def test_package_initializer_contract_is_explicit_and_configurable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            package = root / "src" / "codex_responses_proxy"
+            package = root / "src" / "openai_responses_proxy"
             (package / "service").mkdir(parents=True)
             (package / "service" / "__init__.py").write_text(
                 '"""Service package."""\nVALUE = 1\n', encoding="utf-8"
@@ -455,14 +455,14 @@ class TestStructuralQualityContracts:
                 "false_positive_cost": "a deliberate initializer requires policy review",
                 "remediation": "move runtime behavior to a semantic module",
                 "review_condition": "reassess when initializer behavior is required",
-                "source_roots": ["src/codex_responses_proxy"],
+                "source_roots": ["src/openai_responses_proxy"],
                 "test_roots": ["tests"],
-                "package_root": "src/codex_responses_proxy",
+                "package_root": "src/openai_responses_proxy",
                 "package_root_modules": [],
                 "root_configuration_modules": [],
                 "package_initializers": "declarations-only",
                 "product_concepts": {
-                    "native-supervision": "src/codex_responses_proxy/service/native.py"
+                    "native-supervision": "src/openai_responses_proxy/service/native.py"
                 },
                 "external_responsibilities": {"credentials": "client-control-plane"},
                 "allowed_package_edges": {"service": []},
@@ -470,7 +470,7 @@ class TestStructuralQualityContracts:
             gaps = architecture_gaps(root, policy)
             policy["package_initializers"] = "ordinary-modules"
             relaxed = architecture_gaps(root, policy)
-        expected = "architecture_init_behavior:src/codex_responses_proxy/service/__init__.py"
+        expected = "architecture_init_behavior:src/openai_responses_proxy/service/__init__.py"
         assert expected in gaps
         assert expected not in relaxed
 
@@ -486,11 +486,12 @@ class TestStructuralQualityContracts:
         missing = dict(policy)
         missing["product_concepts"] = dict(policy["product_concepts"])
         missing["product_concepts"]["relay-transport"] = (
-            "src/codex_responses_proxy/relay/missing.py"
+            "src/openai_responses_proxy/relay/missing.py"
         )
 
-        assert "architecture_concept_owner_reused:src/codex_responses_proxy/relay/admission.py" in (
-            architecture_gaps(ROOT, duplicate)
+        assert (
+            "architecture_concept_owner_reused:src/openai_responses_proxy/relay/admission.py"
+            in (architecture_gaps(ROOT, duplicate))
         )
         assert "architecture_concept_owner_missing:relay-transport" in architecture_gaps(
             ROOT, missing
@@ -501,17 +502,17 @@ class TestStructuralQualityContracts:
     ) -> None:
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         project = metadata["project"]
-        assert project["name"] == "codex-responses-proxy"
+        assert project["name"] == "openai-responses-proxy"
         assert project["requires-python"] == ">=3.12"
         assert project["dynamic"] == ["version"]
         assert project["scripts"] == {
-            "codex-responses-proxy": "codex_responses_proxy.cli.application:main"
+            "openai-responses-proxy": "openai_responses_proxy.cli.application:main"
         }
         assert metadata["build-system"]["build-backend"] == "hatchling.build"
         assert metadata["tool"]["hatch"]["version"]["path"] == "VERSION"
         assert "setuptools" not in metadata["tool"]
-        assert "requires-python" not in metadata["tool"]["codex-responses-proxy"]
-        assert "version-source" not in metadata["tool"]["codex-responses-proxy"]
+        assert "requires-python" not in metadata["tool"]["openai-responses-proxy"]
+        assert "version-source" not in metadata["tool"]["openai-responses-proxy"]
 
     def test_quality_inventory_uses_index_ownership_with_staged_add_and_delete(
         self,
@@ -686,7 +687,7 @@ class TestStructuralQualityContracts:
 
     def test_each_semantic_package_must_have_execution_evidence(self) -> None:
         files = {
-            "/site-packages/codex_responses_proxy/cli/application.py": {
+            "/site-packages/openai_responses_proxy/cli/application.py": {
                 "summary": {
                     "num_statements": 60,
                     "covered_lines": 58,
@@ -694,7 +695,7 @@ class TestStructuralQualityContracts:
                     "covered_branches": 19,
                 }
             },
-            "/site-packages/codex_responses_proxy/relay/exchange.py": {
+            "/site-packages/openai_responses_proxy/relay/exchange.py": {
                 "summary": {
                     "num_statements": 100,
                     "covered_lines": 99,
@@ -705,14 +706,14 @@ class TestStructuralQualityContracts:
         }
         assert (
             branch_coverage.package_gaps(
-                branch_coverage.package_totals(files, "codex_responses_proxy")
+                branch_coverage.package_totals(files, "openai_responses_proxy")
             )
             == []
         )
 
     def test_branchless_root_package_is_governed_by_statement_coverage(self) -> None:
         files = {
-            "/site-packages/codex_responses_proxy/cli/__main__.py": {
+            "/site-packages/openai_responses_proxy/cli/__main__.py": {
                 "summary": {
                     "num_statements": 3,
                     "covered_lines": 3,
@@ -723,14 +724,14 @@ class TestStructuralQualityContracts:
         }
         assert (
             branch_coverage.package_gaps(
-                branch_coverage.package_totals(files, "codex_responses_proxy")
+                branch_coverage.package_totals(files, "openai_responses_proxy")
             )
             == []
         )
 
     def test_files_combine_into_their_semantic_package_before_admission(self) -> None:
         files = {
-            "/site-packages/codex_responses_proxy/relay/first.py": {
+            "/site-packages/openai_responses_proxy/relay/first.py": {
                 "summary": {
                     "num_statements": 1,
                     "covered_lines": 0,
@@ -738,7 +739,7 @@ class TestStructuralQualityContracts:
                     "covered_branches": 0,
                 }
             },
-            "/site-packages/codex_responses_proxy/relay/second.py": {
+            "/site-packages/openai_responses_proxy/relay/second.py": {
                 "summary": {
                     "num_statements": 99,
                     "covered_lines": 96,
@@ -749,14 +750,14 @@ class TestStructuralQualityContracts:
         }
         assert (
             branch_coverage.package_gaps(
-                branch_coverage.package_totals(files, "codex_responses_proxy")
+                branch_coverage.package_totals(files, "openai_responses_proxy")
             )
             == []
         )
 
     def test_semantic_package_observation_rejects_wholly_unexecuted_owner(self) -> None:
         files = {
-            "/site-packages/codex_responses_proxy/relay/exchange.py": {
+            "/site-packages/openai_responses_proxy/relay/exchange.py": {
                 "summary": {
                     "num_statements": 4,
                     "covered_lines": 0,
@@ -765,7 +766,7 @@ class TestStructuralQualityContracts:
                 }
             }
         }
-        totals = branch_coverage.package_totals(files, "codex_responses_proxy")
+        totals = branch_coverage.package_totals(files, "openai_responses_proxy")
         assert branch_coverage.package_gaps(totals) == [
             "package_statement_coverage_unobserved:relay",
             "package_branch_coverage_unobserved:relay",

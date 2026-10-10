@@ -8,15 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.cli import application
-from codex_responses_proxy.lifecycle import control
-from codex_responses_proxy.lifecycle import generation
-from codex_responses_proxy.lifecycle import rollback as payload_rollback
-from codex_responses_proxy.lifecycle import state as payload_state
-from codex_responses_proxy.lifecycle.supervision import process
-from codex_responses_proxy.service import digest as payload_digest
-from codex_responses_proxy.service import identity
-from codex_responses_proxy.service import runtime as service_runtime
+from openai_responses_proxy.cli import application
+from openai_responses_proxy.lifecycle import control
+from openai_responses_proxy.lifecycle import generation
+from openai_responses_proxy.lifecycle import rollback as payload_rollback
+from openai_responses_proxy.lifecycle import state as payload_state
+from openai_responses_proxy.lifecycle.supervision import process
+from openai_responses_proxy.service import digest as payload_digest
+from openai_responses_proxy.service import identity
+from openai_responses_proxy.service import runtime as service_runtime
 from tests.lifecycle.fixtures import begin_transaction
 from tests.lifecycle.fixtures import healthy_status_dependencies
 from tests.lifecycle.fixtures import install_context
@@ -163,7 +163,7 @@ def test_status_reports_retained_rollback_availability_and_corruption(
         "to_release": "1.2.2",
     }
 
-    Path(retained.root, "bin", "codex-responses-proxy").write_bytes(b"invalid")
+    Path(retained.root, "bin", "openai-responses-proxy").write_bytes(b"invalid")
 
     invalid = control.status(ctx)
 

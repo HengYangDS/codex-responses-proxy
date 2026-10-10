@@ -442,7 +442,7 @@ class TestVerificationContracts:
         ("relative", "source", "expected"),
         [
             (
-                "src/codex_responses_proxy/probe.py",
+                "src/openai_responses_proxy/probe.py",
                 "def answer():\n    return 42\n",
                 {"D100", "D103"},
             ),

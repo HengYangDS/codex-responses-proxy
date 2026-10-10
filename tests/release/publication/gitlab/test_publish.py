@@ -51,7 +51,7 @@ def test_publication_creates_and_accepts_only_exact_existing_release(
     _assets(assets, "1.2.3")
     subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
     public = key.with_suffix(".pub").read_text().strip()
-    trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+    trust = f'openai-responses-proxy-release namespaces="openai-responses-proxy-release" {public}'
     signing.sign_and_verify(assets=assets, key=key, trust=trust)
     expected = {path.name: path.read_bytes() for path in assets.iterdir()}
     store: dict[str, list[bytes]] = {}
@@ -136,7 +136,7 @@ def test_publication_reuses_exact_partial_package_and_uploads_only_missing_asset
     _assets(assets, "1.2.3")
     subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
     public = key.with_suffix(".pub").read_text().strip()
-    trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+    trust = f'openai-responses-proxy-release namespaces="openai-responses-proxy-release" {public}'
     signing.sign_and_verify(assets=assets, key=key, trust=trust)
     names = sorted(path.name for path in assets.iterdir())
     present = names[0]
@@ -192,7 +192,7 @@ def test_publication_rejects_different_existing_package_bytes(tmp_path: Path, mo
     _assets(assets, "1.2.3")
     subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
     public = key.with_suffix(".pub").read_text().strip()
-    trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+    trust = f'openai-responses-proxy-release namespaces="openai-responses-proxy-release" {public}'
     signing.sign_and_verify(assets=assets, key=key, trust=trust)
     conflicting = min(path.name for path in assets.iterdir())
 

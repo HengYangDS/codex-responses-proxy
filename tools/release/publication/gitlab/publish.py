@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 from tools.release import identity
 from tools.release.artifact import assembly
 

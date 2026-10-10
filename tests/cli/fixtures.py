@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 
-from codex_responses_proxy.cli import application
+from openai_responses_proxy.cli import application
 
 
 def invoke(*arguments: str) -> tuple[int, str, str]:

@@ -6,7 +6,7 @@ import tempfile
 import urllib.error
 from pathlib import Path
 
-from codex_responses_proxy.relay import operational_log
+from openai_responses_proxy.relay import operational_log
 from tests.lifecycle.fixtures import assert_private_log_mode
 
 ROOT = Path(__file__).resolve().parents[2]

@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:windows-real-machine-validation-2026-07-23
+subject: openai-responses-proxy:windows-real-machine-validation-2026-07-23
 role: evidence
 state: archived
 relations:

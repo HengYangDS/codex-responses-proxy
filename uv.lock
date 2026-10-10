@@ -52,7 +52,7 @@ wheels = [
 ]
 
 [[package]]
-name = "codex-responses-proxy"
+name = "openai-responses-proxy"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },

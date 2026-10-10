@@ -1,8 +1,8 @@
-# Codex Responses Proxy
+# OpenAI Responses Proxy
 
-A local OpenAI Responses compatibility data plane for declared third-party
-Responses providers. Codex is its first qualified client, not a required client
-identity.
+A local compatibility proxy for third-party OpenAI Responses APIs, with
+streaming normalization, portable replay, and bounded recovery. Clients are
+qualified by their actual Responses journeys and native runtime contract.
 
 Licensed under [MIT](LICENSE). Forge coordinates and publication actors are
 deployment context, not product identity.
@@ -12,7 +12,7 @@ SQLite state, history, stored items, or model metadata.
 
 ```mermaid
 flowchart LR
-    C["Codex CLI / Desktop"] --> P["Codex Responses Proxy"]
+    C["Codex / Hermes / Responses SDK"] --> P["OpenAI Responses Proxy"]
     P --> U["UCloud"]
     P --> D["DMXAPI"]
     P --> A["AIHubMix"]
@@ -20,12 +20,12 @@ flowchart LR
 
 ## Product boundary
 
-| Owner                 | Responsibility                                                                              |
-| --------------------- | ------------------------------------------------------------------------------------------- |
-| Codex                 | Conversations, tools, and per-conversation model selection                                  |
-| Client control plane  | Credentials, provider selection, and client configuration                                   |
-| Codex Responses Proxy | Responses normalization, replay portability, bounded recovery, and native service lifecycle |
-| Provider              | Model execution, quotas, and upstream availability                                          |
+| Owner                  | Responsibility                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| Client                 | Conversations, tools, and per-conversation model selection                                  |
+| Client control plane   | Credentials, provider selection, and client configuration                                   |
+| OpenAI Responses Proxy | Responses normalization, replay portability, bounded recovery, and native service lifecycle |
+| Provider               | Model execution, quotas, and upstream availability                                          |
 
 The proxy does not configure or restart clients. A client control plane does
 not manage the proxy process. Each product is installed and verified independently.
@@ -60,15 +60,15 @@ user service; it does not change lingering or request administrative credentials
 ## Install
 
 ```bash
-codex-responses-proxy install \
-  --asset "$HOME/Downloads/codex-responses-proxy-<version>-macos-arm64.tar.gz" \
-  --trust-anchor ~/Downloads/codex-responses-proxy-allowed-signers
+openai-responses-proxy install \
+  --asset "$HOME/Downloads/openai-responses-proxy-<version>-macos-arm64.tar.gz" \
+  --trust-anchor ~/Downloads/openai-responses-proxy-allowed-signers
 ```
 
 Replace `<version>` with the release version you downloaded. Download that
 platform archive together with `SHA256SUMS` and `SHA256SUMS.sig` from either
 official release plane. Keep the matching platform manifest—such as
-`codex-responses-proxy-macos-arm64.manifest.json`—in the same directory.
+`openai-responses-proxy-macos-arm64.manifest.json`—in the same directory.
 `--asset` names the local archive. `--trust-anchor` names the SSH
 `allowed_signers` file distributed by the organization or release owner through
 a separate trusted channel. The installer requires the complete release set
@@ -78,16 +78,16 @@ Use `--port` only when the default listener port `8792` conflicts with another
 local service:
 
 ```bash
-codex-responses-proxy install \
-  --asset "$HOME/Downloads/codex-responses-proxy-<version>-macos-arm64.tar.gz" \
-  --trust-anchor ~/Downloads/codex-responses-proxy-allowed-signers \
+openai-responses-proxy install \
+  --asset "$HOME/Downloads/openai-responses-proxy-<version>-macos-arm64.tar.gz" \
+  --trust-anchor ~/Downloads/openai-responses-proxy-allowed-signers \
   --port 8801
 ```
 
 Installation verifies the selected native bundle, commits it inside a rollback
 transaction, and prewarms the exact installed executable before handoff. Use
 `--timeout-seconds` only when a cold native executable needs more than the
-default 30 seconds. Installation also projects `codex-responses-proxy` into the
+default 30 seconds. Installation also projects `openai-responses-proxy` into the
 current user's platform command directory as a native link. It does not create
 a wrapper or edit a shell profile. The installed-state record retains that
 exact path so status, rollback, and uninstall do not depend on a later shell's
@@ -129,32 +129,62 @@ base_url = "http://127.0.0.1:8792/aihubmix/v1"
 The table names are illustrative; use the client's native configuration
 grammar. The proxy has no package or configuration dependency on that client.
 
+For another Responses endpoint, select its origin once during installation:
+
+```bash
+openai-responses-proxy install \
+  --asset "$HOME/Downloads/openai-responses-proxy-<version>-macos-arm64.tar.gz" \
+  --trust-anchor ~/Downloads/openai-responses-proxy-allowed-signers \
+  --upstream-base-url https://api.openai.com/v1
+```
+
+Point an ordinary Responses SDK at `http://127.0.0.1:8792/upstream/v1` and
+supply the endpoint's credential through that client's existing credential
+owner. The proxy persists only the selected secret-free URL in its native
+runtime configuration. Released provider routes keep their own policies.
+
+## Migrate from 4.x
+
+Version 5 uses a new command, service, package, environment namespace, and
+native data directory. Retain the verified 4.x asset and its original external
+trust anchor outside the installed directory. At an idle boundary, remove the
+old installation with `codex-responses-proxy uninstall --purge`, then install
+the verified 5.x asset using `openai-responses-proxy install`. Preserve the
+listener port and client URLs. The proxy changes no client credentials or
+conversation history.
+
+Cross-name recovery reverses those native operations: uninstall 5.x and
+reinstall the retained signed 4.x asset with its original trust anchor. The
+ordinary `rollback --to-release` command remains bound to one product's
+retained generation chain. Published 4.x assets and their signing namespace
+keep their original identities.
+
 ## Operate
 
 ```bash
 # Human-readable state
-codex-responses-proxy status
+openai-responses-proxy status
 
 # Stable machine contract
-codex-responses-proxy status --json
+openai-responses-proxy status --json
 
 # Read-only diagnosis
-codex-responses-proxy doctor
+openai-responses-proxy doctor
 
 # Transactional same-payload handoff
-codex-responses-proxy reload
+openai-responses-proxy reload
 
 # Converge on the exact active release or verified retained predecessor
-codex-responses-proxy rollback --to-release <exact-version>
+openai-responses-proxy rollback --to-release <exact-version>
 
 # Resolve an interrupted payload transaction; idle recovery is a successful no-op
-codex-responses-proxy recover
+openai-responses-proxy recover
 
 # Remove native supervision; preserve the verified payload
-codex-responses-proxy uninstall
+openai-responses-proxy uninstall
 
 # Remove supervision and manifest-owned payload files
-codex-responses-proxy uninstall --purge
+openai-responses-proxy uninstall --purge
 ```
 
 Lifecycle JSON uses one explicit `state` discriminator. `install` returns
@@ -250,8 +280,8 @@ Responses requests receive portable projection and bounded recovery. Model
 catalog reads are relayed once without Responses-specific transformations.
 Encoded path material, dot segments, duplicate separators, absolute targets,
 fragments, and unrelated endpoints are rejected before remote I/O. Provider
-origins come from the product manifest; headers, bodies, and query parameters
-cannot select another host.
+origins come from the product manifest or the explicit installed upstream;
+headers, bodies, and query parameters cannot select another host.
 
 ## Runtime evidence
 
@@ -270,9 +300,9 @@ or conversation content.
 
 | Symptom                            | First action                                   | Interpretation                                                                |
 | ---------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------- |
-| Replay or encrypted-item rejection | `codex-responses-proxy doctor`                 | Confirm local payload and listener integrity before changing the client route |
+| Replay or encrypted-item rejection | `openai-responses-proxy doctor`                | Confirm local payload and listener integrity before changing the client route |
 | Error after provider switch        | Check the client control plane                 | A direct provider URL bypasses proxy portability                              |
-| Local `503`                        | `codex-responses-proxy status --json`          | Distinguish empty/truncated upstream output from local lifecycle failure      |
+| Local `503`                        | `openai-responses-proxy status --json`         | Distinguish empty/truncated upstream output from local lifecycle failure      |
 | Local or upstream `429`            | Inspect `Retry-After` and provider state       | Cooldown is provider-scoped; the proxy does not impose a global request queue |
 | Route change not observed          | Reload the client through its normal lifecycle | The proxy does not restart or mutate clients                                  |
 

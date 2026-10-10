@@ -16,7 +16,7 @@ from tests.quality.fixtures import ROOT
 @pytest.mark.parametrize(
     "path",
     [
-        "src/codex_responses_proxy/relay/probe.py",
+        "src/openai_responses_proxy/relay/probe.py",
         "tools/probe.py",
         "tests/test_probe.py",
         "noxfile.py",

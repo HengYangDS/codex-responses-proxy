@@ -8,7 +8,7 @@ from typing import cast
 
 import pytest
 
-from codex_responses_proxy.lifecycle import artifact
+from openai_responses_proxy.lifecycle import artifact
 from tests.release.publication.fixtures import VERIFY_ARGUMENTS
 from tests.release.publication.fixtures import VerifyArguments
 from tests.release.publication.fixtures import forge_evidence
@@ -37,11 +37,11 @@ def _forge(
         "signature_verified": True,
         "assets": {
             **{
-                f"codex-responses-proxy-1.2.3-{platform}.tar.gz": "1" * 64
+                f"openai-responses-proxy-1.2.3-{platform}.tar.gz": "1" * 64
                 for platform in ("linux-x86_64", "macos-arm64", "windows-x86_64")
             },
             **{
-                f"codex-responses-proxy-{platform}.manifest.json": "2" * 64
+                f"openai-responses-proxy-{platform}.manifest.json": "2" * 64
                 for platform in ("linux-x86_64", "macos-arm64", "windows-x86_64")
             },
             "SHA256SUMS": "3" * 64,
@@ -56,7 +56,7 @@ def _forge(
             "id": 99,
             "tag": "v1.2.3",
             "commit_oid": commit_oid,
-            "name": "Codex Responses Proxy v1.2.3",
+            "name": "OpenAI Responses Proxy v1.2.3",
             "draft": False,
             "prerelease": False,
         },
@@ -136,7 +136,7 @@ class PublicationProofContracts:
     def test_rejects_cross_forge_asset_mismatch(self) -> None:
         github = _github_forge()
         cast(dict[str, str], github["assets"])[
-            "codex-responses-proxy-1.2.3-linux-x86_64.tar.gz"
+            "openai-responses-proxy-1.2.3-linux-x86_64.tar.gz"
         ] = "9" * 64
         result = evaluator.evaluate("v1.2.3", _gitlab_forge(), github)
         assert not result["verified"]
@@ -147,8 +147,8 @@ class PublicationProofContracts:
         gitlab = _gitlab_forge()
         assets = cast(dict[str, str], gitlab["assets"])
         for platform in ("macos-arm64", "windows-x86_64"):
-            assets.pop(f"codex-responses-proxy-1.2.3-{platform}.tar.gz")
-            assets.pop(f"codex-responses-proxy-{platform}.manifest.json")
+            assets.pop(f"openai-responses-proxy-1.2.3-{platform}.tar.gz")
+            assets.pop(f"openai-responses-proxy-{platform}.manifest.json")
 
         result = evaluator.evaluate("v1.2.3", gitlab, _github_forge())
 
@@ -289,7 +289,7 @@ class PublicationEvidenceContracts:
                     "id": 99,
                     "tag": "v1.2.3",
                     "commit_oid": commit,
-                    "name": "Codex Responses Proxy v1.2.3",
+                    "name": "OpenAI Responses Proxy v1.2.3",
                     "draft": False,
                     "prerelease": False,
                 },

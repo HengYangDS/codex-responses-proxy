@@ -8,7 +8,7 @@ from pathlib import Path
 from tools.quality.repository.topology import architecture_gaps
 
 ROOT = Path(__file__).resolve().parents[2]
-PACKAGE_ROOT = ROOT / "src" / "codex_responses_proxy"
+PACKAGE_ROOT = ROOT / "src" / "openai_responses_proxy"
 TERMINAL = {"cli", "protocol", "providers", "relay", "runtime", "service", "lifecycle"}
 
 
@@ -20,7 +20,7 @@ class TerminalPackageContracts:
             "recovery": ("input", "execution"),
         }
         for package, modules in concerns.items():
-            name = f"codex_responses_proxy.protocol.{package}"
+            name = f"openai_responses_proxy.protocol.{package}"
             owner = importlib.util.find_spec(name)
             assert owner is not None
             assert owner.submodule_search_locations is not None

@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle.supervision import macos
-from codex_responses_proxy.runtime import config as runtime_config
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle.supervision import macos
+from openai_responses_proxy.runtime import config as runtime_config
 from tests.lifecycle.supervision.fixtures import completed as _completed
 from tests.lifecycle.supervision.fixtures import set_file as _set_file
 from tests.lifecycle.supervision.fixtures import temporary_context as _temporary_context
@@ -59,16 +59,19 @@ class TestMacosLifecycle:
         owned_home = tmp_path / "owned-home"
         ambient_home = tmp_path / "ambient-home"
         context = SimpleNamespace(
-            executable="/payload/bin/codex-responses-proxy",
+            executable="/payload/bin/openai-responses-proxy",
             install_dir="/payload",
             log_dir="/state",
-            service_id="codex-responses-proxy.watchdog.fixture",
+            service_id="openai-responses-proxy.watchdog.fixture",
             user_home=str(owned_home),
         )
         mocker.patch.object(macos.config, "home_dir", return_value=str(ambient_home))
 
         assert macos._plist_path(context) == str(
-            owned_home / "Library" / "LaunchAgents" / "codex-responses-proxy.watchdog.fixture.plist"
+            owned_home
+            / "Library"
+            / "LaunchAgents"
+            / "openai-responses-proxy.watchdog.fixture.plist"
         )
         payload = plistlib.loads(macos.render_plist(context).encode())
         assert payload["EnvironmentVariables"] == {"HOME": str(owned_home)}
@@ -390,7 +393,7 @@ class TestMacosLifecycle:
 
     def test_uninstall_keeps_plist_when_launchd_removal_is_unproven(self, *, mocker):
         with _temporary_context("log_dir") as ctx:
-            configured = f"{ctx.install_dir}/generations/{'a' * 32}/bin/codex-responses-proxy"
+            configured = f"{ctx.install_dir}/generations/{'a' * 32}/bin/openai-responses-proxy"
             configured_context = SimpleNamespace(
                 executable=configured,
                 install_dir=ctx.install_dir,

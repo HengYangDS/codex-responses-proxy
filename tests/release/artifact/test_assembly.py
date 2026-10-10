@@ -33,7 +33,9 @@ class AssemblyContracts:
         key = tmp_path / "signing"
         subprocess.run(("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)), check=True)
         public = key.with_suffix(".pub").read_text().strip()
-        trust = f'codex-responses-proxy-release namespaces="codex-responses-proxy-release" {public}'
+        trust = (
+            f'openai-responses-proxy-release namespaces="openai-responses-proxy-release" {public}'
+        )
 
         digests = assembly.assemble_sign_verify(
             inputs=tuple(inputs), output=tmp_path / "release", key=key, trust=trust

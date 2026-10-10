@@ -1,4 +1,4 @@
-title = "Codex Responses Proxy secret scanning"
+title = "OpenAI Responses Proxy secret scanning"
 
 [extend]
 useDefault = true

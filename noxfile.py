@@ -16,8 +16,8 @@ from tempfile import TemporaryDirectory
 
 import nox
 
-from codex_responses_proxy import product_identity
-from codex_responses_proxy.lifecycle import artifact
+from openai_responses_proxy import product_identity
+from openai_responses_proxy.lifecycle import artifact
 
 ROOT = Path(__file__).parent.resolve()
 _python_quality_loader = importlib.machinery.SourceFileLoader(
@@ -294,8 +294,12 @@ def published_release_compatibility(session: nox.Session) -> None:
         "published predecessor asset",
     )
     trust = _required_file(
-        product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR"),
+        product_identity.environment_name("CURRENT_RELEASE_TRUST_ANCHOR"),
         "published release trust anchor",
+    )
+    previous_trust = _required_file(
+        product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR"),
+        "published predecessor trust anchor",
     )
     _install_tools(session, "quality")
     _assert_release_runtime(session)
@@ -321,7 +325,7 @@ def published_release_compatibility(session: nox.Session) -> None:
             product_identity.environment_name("NATIVE_EXECUTABLE"): str(executable),
             product_identity.environment_name("NATIVE_BUNDLE"): str(bundle),
             product_identity.environment_name("PREVIOUS_RELEASE_ASSET"): str(previous_asset),
-            product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR"): str(trust),
+            product_identity.environment_name("PREVIOUS_RELEASE_TRUST_ANCHOR"): str(previous_trust),
         },
     )
 
@@ -454,8 +458,8 @@ def _assert_installed_product(session: nox.Session, work: Path) -> None:
     probe = (
         "from pathlib import Path; "
         "import hashlib,json,sys,sysconfig; "
-        "import codex_responses_proxy as package; "
-        "from codex_responses_proxy.providers import registry; "
+        "import openai_responses_proxy as package; "
+        "from openai_responses_proxy.providers import registry; "
         "root = Path(package.__file__).resolve(); "
         "manifest = registry.default_manifest_path().resolve(); "
         "installed = Path(sysconfig.get_path('purelib')).resolve(); "
@@ -505,12 +509,12 @@ def _build_executable(session: nox.Session, work: Path) -> tuple[Path, Path]:
         f"{ROOT / 'VERSION'}{os.pathsep}.",
         "--add-data",
         (
-            f"{ROOT / 'src/codex_responses_proxy/providers/manifest.toml'}"
-            f"{os.pathsep}codex_responses_proxy/providers"
+            f"{ROOT / 'src/openai_responses_proxy/providers/manifest.toml'}"
+            f"{os.pathsep}openai_responses_proxy/providers"
         ),
         "--collect-submodules",
-        "codex_responses_proxy.providers.policies",
-        str(ROOT / "src/codex_responses_proxy/cli/__main__.py"),
+        "openai_responses_proxy.providers.policies",
+        str(ROOT / "src/openai_responses_proxy/cli/__main__.py"),
     )
     session.run(*command, env=_environment())
     bundle = dist / product_identity.PRODUCT_SLUG

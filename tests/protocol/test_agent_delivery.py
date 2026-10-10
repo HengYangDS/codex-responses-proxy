@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from codex_responses_proxy.protocol import agent_delivery
-from codex_responses_proxy.protocol.replay.projection import sanitize_responses_body
+from openai_responses_proxy.protocol import agent_delivery
+from openai_responses_proxy.protocol.replay.projection import sanitize_responses_body
 
 
 def _wire(value: object) -> bytes:

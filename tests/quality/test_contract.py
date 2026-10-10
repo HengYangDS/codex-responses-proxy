@@ -128,7 +128,7 @@ class TestQualityPolicyContracts:
             "--exclude-standard",
             "--",
             "*.py",
-            "codex_responses_proxy",
+            "openai_responses_proxy",
             "watchdog",
             "tools",
             "tests",
@@ -146,7 +146,7 @@ class TestQualityPolicyContracts:
                 "--deleted",
                 "--",
                 "*.py",
-                "codex_responses_proxy",
+                "openai_responses_proxy",
                 "watchdog",
                 "tools",
                 "tests",
@@ -161,8 +161,8 @@ class TestQualityPolicyContracts:
         assert len(report["files"]) > 20
         inventoried = {entry["path"] for entry in report["files"]}
         for path in (
-            "src/codex_responses_proxy/lifecycle/control.py",
-            "src/codex_responses_proxy/lifecycle/supervision/watchdog.py",
+            "src/openai_responses_proxy/lifecycle/control.py",
+            "src/openai_responses_proxy/lifecycle/supervision/watchdog.py",
             "tools/release/metadata.py",
             "tests/governance/test_repository.py",
         ):
@@ -236,7 +236,7 @@ class TestQualityPolicyContracts:
 
         for duplicate in ("ruff", "pytest", "ty", "coverage"):
             assert duplicate not in tool
-        repository = tool.get("codex-responses-proxy", {})
+        repository = tool.get("openai-responses-proxy", {})
         assert "quality" not in repository
 
         governance = (ROOT / "docs/governance/release-and-change-policy.md").read_text(
@@ -280,7 +280,7 @@ class TestQualityPolicyContracts:
             "deptry"
         ]
         assert dependency == {
-            "known_first_party": ["codex_responses_proxy"],
+            "known_first_party": ["openai_responses_proxy"],
             "package_module_name_map": {"pyinstaller": ["PyInstaller"]},
         }
 
@@ -356,14 +356,14 @@ class TestQualityPolicyContracts:
             ("mise", "run", "--timeout", "60s", "workflow-check"),
             (
                 "deptry",
-                "src/codex_responses_proxy",
+                "src/openai_responses_proxy",
                 "--config",
                 "pyproject.toml",
                 "--no-ansi",
             ),
             (
                 "vulture",
-                "src/codex_responses_proxy",
+                "src/openai_responses_proxy",
                 "tools",
                 "--config",
                 ".config/quality/native/vulture.toml",
@@ -474,8 +474,8 @@ class TestQualityPolicyContracts:
                 )
                 revisions.append(_git(root, "rev-parse", "HEAD").stdout.strip().decode())
             _git(root, "update-ref", "refs/heads/candidate/dev", revisions[-1])
-            monkeypatch.setenv("CODEX_RESPONSES_PROXY_COMMIT_BASE", revisions[0])
-            monkeypatch.setenv("CODEX_RESPONSES_PROXY_COMMIT_HEAD", revisions[-1])
+            monkeypatch.setenv("OPENAI_RESPONSES_PROXY_COMMIT_BASE", revisions[0])
+            monkeypatch.setenv("OPENAI_RESPONSES_PROXY_COMMIT_HEAD", revisions[-1])
 
             assert commits.commit_subject_gaps(root) == [
                 "commit_subject_invalid:invalid middle subject"
@@ -499,16 +499,16 @@ class TestQualityPolicyContracts:
                     subject,
                 )
             head = _git(root, "rev-parse", "HEAD").stdout.strip().decode()
-            monkeypatch.setenv("CODEX_RESPONSES_PROXY_COMMIT_BASE", "0" * len(head))
-            monkeypatch.setenv("CODEX_RESPONSES_PROXY_COMMIT_HEAD", head)
+            monkeypatch.setenv("OPENAI_RESPONSES_PROXY_COMMIT_BASE", "0" * len(head))
+            monkeypatch.setenv("OPENAI_RESPONSES_PROXY_COMMIT_HEAD", head)
 
             assert commits.commit_subject_gaps(root) == []
 
     def test_commit_checker_derives_event_namespace_without_product_import(self, monkeypatch):
         source = (ROOT / "tools/quality/commits.py").read_text(encoding="utf-8")
-        assert "from codex_responses_proxy" not in source
+        assert "from openai_responses_proxy" not in source
         monkeypatch.setattr(commits, "PROJECT", ROOT / "pyproject.toml")
-        assert commits._environment_name("COMMIT_HEAD") == ("CODEX_RESPONSES_PROXY_COMMIT_HEAD")
+        assert commits._environment_name("COMMIT_HEAD") == ("OPENAI_RESPONSES_PROXY_COMMIT_HEAD")
 
     @pytest.mark.parametrize(
         ("base", "head", "expected"),
@@ -551,7 +551,7 @@ class TestQualityPolicyContracts:
                 base = _git(root, "rev-parse", "HEAD").stdout.strip().decode()
                 _git(root, "checkout", "--detach", tip)
             for suffix, value in (("BASE", base), ("HEAD", head)):
-                name = f"CODEX_RESPONSES_PROXY_COMMIT_{suffix}"
+                name = f"OPENAI_RESPONSES_PROXY_COMMIT_{suffix}"
                 if value is None:
                     monkeypatch.delenv(name, raising=False)
                 else:
@@ -671,17 +671,17 @@ class TestQualityPolicyContracts:
     def test_readme_install_path_matches_product_contract(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-        assert "$CODEX_RESPONSES_PROXY_RELEASE_ASSET" not in readme
-        assert "$CODEX_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR" not in readme
-        assert "codex-responses-proxy-<version>-macos-arm64.tar.gz" in readme
-        assert re.search(r"codex-responses-proxy-\d+\.\d+\.\d+-", readme) is None
+        assert "$OPENAI_RESPONSES_PROXY_RELEASE_ASSET" not in readme
+        assert "$OPENAI_RESPONSES_PROXY_RELEASE_TRUST_ANCHOR" not in readme
+        assert "openai-responses-proxy-<version>-macos-arm64.tar.gz" in readme
+        assert re.search(r"openai-responses-proxy-\d+\.\d+\.\d+-", readme) is None
         assert "Replace `<version>` with the release version you downloaded." in readme
-        assert "codex-responses-proxy-macos-arm64.manifest.json" in readme
+        assert "openai-responses-proxy-macos-arm64.manifest.json" in readme
         assert "SHA256SUMS.sig" in readme
         assert "SSH" in readme
         assert "`allowed_signers` file" in readme
         assert "--port 8801" in readme
-        assert "CODEX_RESPONSES_PROXY_PROXY_PORT" not in readme
+        assert "OPENAI_RESPONSES_PROXY_PROXY_PORT" not in readme
 
     def test_python_command_surfaces_use_one_modern_parser(self) -> None:
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -824,7 +824,7 @@ class TestQualityPolicyContracts:
         assert gaps == []
 
     def test_cli_is_the_only_production_command_composition_root(self) -> None:
-        package = ROOT / "src/codex_responses_proxy"
+        package = ROOT / "src/openai_responses_proxy"
         argparse_owners = []
         module_entrypoints = []
         shebangs = []

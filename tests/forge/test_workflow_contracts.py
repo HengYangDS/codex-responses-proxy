@@ -96,7 +96,9 @@ def test_branch_admission_rejects_any_incomplete_reusable_verification(
     caller = _mapping(jobs["verify"])
     assert caller["uses"] == "./.github/workflows/verify.yml"
     trust = "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST"
-    assert _mapping(caller["secrets"]) == {trust: "${{ secrets." + trust + " }}"}
+    assert _mapping(caller["secrets"]) == {
+        trust: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
+    }
     admission = _mapping(jobs["admission"])
     assert admission["name"] == "Admission"
     assert admission["needs"] == "verify"
@@ -376,7 +378,7 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
     tag_before_script = _strings(tag["before_script"])
     tag_script = _strings(tag["script"])
     assert "git fetch --tags --force --prune --prune-tags origin" in tag_before_script
-    assert 'test -f "${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"' in tag_before_script
+    assert 'test -f "${OPENAI_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}"' in tag_before_script
     assert any("tools.release.metadata --tag" in command for command in tag_script)
     assert any("tools.forge.tag_signature" in command for command in tag_script)
 
@@ -385,8 +387,8 @@ def test_forge_workflows_partition_review_accepted_and_release_proof() -> None:
 def test_gitlab_workflow_selects_the_runner_for_its_trust_role(review: bool) -> None:
     """Schedule review jobs independently of the protected branch runner choice."""
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
-    protected = "CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
-    unprotected = "CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"
+    protected = "OPENAI_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"
+    unprotected = "OPENAI_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"
     project_choices = {protected: "protected-linux", unprotected: "review-linux"}
     variables = {**_mapping(gitlab["variables"]), **project_choices}
     suffix = "" if review else "-accepted"
@@ -461,7 +463,7 @@ def test_linux_release_source_preserves_tracked_package_inventory(
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     git(checkout, "init", "-q", "--initial-branch=fixture-root")
-    package = checkout / "src/codex_responses_proxy"
+    package = checkout / "src/openai_responses_proxy"
     package.mkdir(parents=True)
     source = package / "__init__.py"
     source.write_text('"""Selected release source."""\n', encoding="utf-8")
@@ -504,7 +506,7 @@ def test_linux_release_source_preserves_tracked_package_inventory(
         execute(materialize)
         assert source_manifest(destination) == expected
         assert git(destination, "rev-parse", "HEAD").stdout == selected_head
-        assert not (destination / "src/codex_responses_proxy/local.py").exists()
+        assert not (destination / "src/openai_responses_proxy/local.py").exists()
     finally:
         if (destination / ".git").is_file():
             execute(retire)
@@ -541,10 +543,10 @@ def test_linux_asset_build_and_native_lifecycle_have_distinct_execution_hosts() 
         for step in lifecycle_steps
         if _mapping(step).get("name") == "Prove the native Linux service lifecycle"
     )
-    assert _mapping(lifecycle_command["env"])["CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE"] == (
-        "${{ runner.temp }}/native-linux/runtime/bin/codex-responses-proxy"
+    assert _mapping(lifecycle_command["env"])["OPENAI_RESPONSES_PROXY_NATIVE_EXECUTABLE"] == (
+        "${{ runner.temp }}/native-linux/runtime/bin/openai-responses-proxy"
     )
-    assert _mapping(lifecycle_command["env"])["CODEX_RESPONSES_PROXY_NATIVE_BUNDLE"] == (
+    assert _mapping(lifecycle_command["env"])["OPENAI_RESPONSES_PROXY_NATIVE_BUNDLE"] == (
         "${{ runner.temp }}/native-linux/runtime/bin"
     )
 
@@ -575,10 +577,11 @@ def test_release_compatibility_runs_real_published_upgrade_on_each_platform() ->
         step for step in steps if step.get("name") == "Download the published predecessor release"
     )
     assert _mapping(download["env"])["GH_TOKEN"] == "${{ github.token }}"
-    assert 'gh release download "${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}"' in _string(
-        download["run"]
+    assert (
+        'gh release download "${{ env.OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}"'
+        in _string(download["run"])
     )
-    assert '"$CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG"' not in _string(download["run"])
+    assert '"$OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG"' not in _string(download["run"])
     assert "--pattern" in _string(download["run"])
     assert "--repo" not in _string(download["run"])
     predecessor = next(
@@ -593,17 +596,18 @@ def test_release_compatibility_runs_real_published_upgrade_on_each_platform() ->
     trust = next(
         step for step in steps if step.get("name") == "Materialize the release trust anchor"
     )
-    assert _mapping(trust["env"])["RELEASE_ASSET_TRUST"] == (
-        "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
-    )
+    assert _mapping(trust["env"]) == {
+        "PREVIOUS_RELEASE_ASSET_TRUST": "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}",
+        "RELEASE_ASSET_TRUST": "${{ vars.OPENAI_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}",
+    }
     proof = next(
         step
         for step in steps
         if step.get("name") == "Prove published predecessor upgrade and rollback"
     )
     assert (
-        _mapping(proof["env"])["CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR"]
-        == "${{ runner.temp }}/release-asset-trust"
+        _mapping(proof["env"])["OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR"]
+        == "${{ runner.temp }}/previous-release-asset-trust"
     )
     assert proof["run"] == "uv run --locked --no-sync nox -s release_compatibility"
 
@@ -640,9 +644,9 @@ def test_published_release_bytes_run_the_full_native_journey_on_each_platform() 
     commands = "\n".join(_string(step.get("run", "")) for step in steps)
     for token in (
         'git diff --exit-code "${{ github.event.release.tag_name || inputs.release_tag }}^{commit}" HEAD -- '
-        "VERSION pyproject.toml uv.lock src/codex_responses_proxy",
+        "VERSION pyproject.toml uv.lock src/openai_responses_proxy",
         'gh release download "${{ github.event.release.tag_name || inputs.release_tag }}"',
-        "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET",
+        "OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET",
         'nox -s published_release_compatibility -- --basetemp="${{ runner.temp }}/proxy-test"',
     ):
         assert token in commands
@@ -662,8 +666,8 @@ def test_python_matrix_output_comes_from_the_repository_ssot(tmp_path: Path) -> 
     release = tmp_path / ".python-release"
     release.write_text("3.14.7\n", encoding="ascii")
     metadata.write_text(
-        '[project]\nname = "codex-responses-proxy"\n'
-        '[tool.codex-responses-proxy]\nlinux-release-image = "python:3.14.7-bookworm@sha256:'
+        '[project]\nname = "openai-responses-proxy"\n'
+        '[tool.openai-responses-proxy]\nlinux-release-image = "python:3.14.7-bookworm@sha256:'
         + "a" * 64
         + '"\n',
         encoding="ascii",
@@ -699,8 +703,8 @@ def test_python_matrix_rejects_invalid_or_mismatched_release_runtime(
     versions.write_text("3.12\n3.13\n3.14\n", encoding="ascii")
     release.write_text(f"{release_value}\n", encoding="ascii")
     metadata.write_text(
-        '[project]\nname = "codex-responses-proxy"\n'
-        '[tool.codex-responses-proxy]\nlinux-release-image = "python:'
+        '[project]\nname = "openai-responses-proxy"\n'
+        '[tool.openai-responses-proxy]\nlinux-release-image = "python:'
         f"{image_version}-bookworm@sha256:{'a' * 64}"
         '"\n',
         encoding="ascii",
@@ -718,7 +722,7 @@ def test_python_matrix_rejects_invalid_or_mismatched_release_runtime(
 def test_native_release_runtime_is_exact_and_platform_independent() -> None:
     native_runtime = (ROOT / ".python-release").read_text(encoding="ascii").strip()
     image = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
-        "codex-responses-proxy"
+        "openai-responses-proxy"
     ]["linux-release-image"]
     image_version = re.search(r"python:(\d+\.\d+\.\d+)-", image)
     nox_source = (ROOT / "noxfile.py").read_text(encoding="utf-8")
@@ -736,6 +740,14 @@ def test_native_release_runtime_is_exact_and_platform_independent() -> None:
 def test_native_bundle_is_built_and_signed_once_in_release_graph() -> None:
     """Keep native construction and product signing in one authoritative workflow."""
     verify = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
+    jobs = _mapping(_load_yaml(ROOT / ".github/workflows/verify.yml")["jobs"])
+    assert set(_strings(_mapping(jobs["release-assets"])["needs"])) == {
+        "python-matrix",
+        "tag-metadata",
+        "native-assets",
+        "native-linux",
+        "native-linux-lifecycle",
+    }
     assert verify.count("uv run --locked --no-sync python -m tools.release.artifact assemble") == 1
     assert verify.count("--sign") == 1
     assert "container: ${{ needs.python-matrix.outputs.linux-release-image }}" in verify
@@ -753,8 +765,8 @@ def test_gitlab_verification_bootstrap_is_bounded_and_cached() -> None:
     variables = _mapping(gitlab["variables"])
     assert variables["UV_CACHE_DIR"] == "$CI_PROJECT_DIR/.cache/uv"
     assert variables["UV_PYTHON_INSTALL_DIR"] == "$CI_PROJECT_DIR/.cache/uv/python"
-    assert variables["CODEX_RESPONSES_PROXY_CI_TARGET"] == "linux-arm64"
-    assert _mapping(default["cache"])["key"] == "uv-$CODEX_RESPONSES_PROXY_CI_TARGET"
+    assert variables["OPENAI_RESPONSES_PROXY_CI_TARGET"] == "linux-arm64"
+    assert _mapping(default["cache"])["key"] == "uv-$OPENAI_RESPONSES_PROXY_CI_TARGET"
     assert _mapping(default["cache"])["paths"] == [".cache/uv/"]
     assert _mapping(quality["image"]) == {"name": "$UV_PYTHON_FLOOR_IMAGE"}
     assert "python -m pip install" not in text
@@ -896,7 +908,7 @@ def _assert_github_required_tokens(text: str) -> None:
         """--dir "$RUNNER_TEMP/native" """.rstrip(),
         "uv run --locked --no-sync python -m tools.release.artifact assemble",
         "CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY",
-        "CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
+        "OPENAI_RESPONSES_PROXY_RELEASE_ASSET_TRUST",
         'install -m 600 /dev/null "$RUNNER_TEMP/release-asset-signing-key"',
         'printf \'%s\\n\' "$RELEASE_ASSET_SIGNING_KEY_TEXT" > "$RUNNER_TEMP/release-asset-signing-key"',
         "RELEASE_ASSET_SIGNING_KEY_PATH: ${{ runner.temp }}/release-asset-signing-key",
@@ -929,7 +941,7 @@ def _assert_github_matrix_contract(text: str) -> None:
         )
     if (
         "RELEASE_ASSET_SIGNING_KEY_PATH: "
-        "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY }}"
+        "${{ secrets.OPENAI_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY }}"
     ) in text:
         raise AssertionError("the product signer must receive a key path, not secret text")
     if "pull_request_target:" in text:
@@ -1034,9 +1046,9 @@ def _assert_github_native_and_forbidden_contract(text: str) -> None:
         )
     for forbidden in (
         "self-hosted",
-        "codex-responses-proxy-github-macos-arm64",
+        "openai-responses-proxy-github-macos-arm64",
         "/opt/homebrew",
-        "refs/codex-responses-proxy/runner-checkout-retained",
+        "refs/openai-responses-proxy/runner-checkout-retained",
         "git update-ref",
     ):
         if forbidden in text:
@@ -1098,10 +1110,10 @@ def test_commit_event_inputs_reach_each_governance_context() -> None:
         assert checks, name
         for step in checks:
             environment = _mapping(step["env"])
-            assert environment["CODEX_RESPONSES_PROXY_COMMIT_HEAD"] == (
+            assert environment["OPENAI_RESPONSES_PROXY_COMMIT_HEAD"] == (
                 "${{ github.event.pull_request.head.sha || github.sha }}"
             )
-            assert environment["CODEX_RESPONSES_PROXY_COMMIT_BASE"] == (
+            assert environment["OPENAI_RESPONSES_PROXY_COMMIT_BASE"] == (
                 "${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}"
             )
     gitlab = _load_yaml(ROOT / ".gitlab-ci.yml")
@@ -1119,8 +1131,8 @@ def test_commit_event_inputs_reach_each_governance_context() -> None:
         ]
         assert checks, name
         for command in checks:
-            assert "CODEX_RESPONSES_PROXY_COMMIT_HEAD" in command
-            assert "CODEX_RESPONSES_PROXY_COMMIT_BASE" in command
+            assert "OPENAI_RESPONSES_PROXY_COMMIT_HEAD" in command
+            assert "OPENAI_RESPONSES_PROXY_COMMIT_BASE" in command
             assert "CI_MERGE_REQUEST_DIFF_BASE_SHA" in command
             assert "CI_COMMIT_BEFORE_SHA" in command
             assert "CI_COMMIT_TAG" in command
@@ -1146,7 +1158,7 @@ def test_gitlab_commit_projection_executes_native_event_values(event, monkeypatc
             "sh",
             "-c",
             prefix
-            + 'printf "%s\\n%s\\n" "$CODEX_RESPONSES_PROXY_COMMIT_BASE" "$CODEX_RESPONSES_PROXY_COMMIT_HEAD"',
+            + 'printf "%s\\n%s\\n" "$OPENAI_RESPONSES_PROXY_COMMIT_BASE" "$OPENAI_RESPONSES_PROXY_COMMIT_HEAD"',
         ],
         capture_output=True,
         text=True,

@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from codex_responses_proxy.cli import application
-from codex_responses_proxy.lifecycle import state as payload_state
-from codex_responses_proxy.lifecycle.supervision import process
+from openai_responses_proxy.cli import application
+from openai_responses_proxy.lifecycle import state as payload_state
+from openai_responses_proxy.lifecycle.supervision import process
 from tests.cli.fixtures import invoke
 from tests.lifecycle.fixtures import install_context
 from tests.lifecycle.fixtures import install_payload
@@ -280,12 +280,12 @@ def test_recover_projects_one_precise_invalid_state_contract(
             "error": {
                 "code": "recovery_state_invalid",
                 "message": "payload transaction journal is malformed JSON",
-                "next": "codex-responses-proxy status --json",
+                "next": "openai-responses-proxy status --json",
             }
         }
     else:
         assert "payload transaction journal is malformed JSON" in stderr
-        assert "codex-responses-proxy status --json" in stderr
+        assert "openai-responses-proxy status --json" in stderr
     assert journal.read_bytes() == before
 
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
-from codex_responses_proxy.protocol.recovery import execution as execution_recovery
-from codex_responses_proxy.runtime import config as runtime_config
+from openai_responses_proxy.protocol.recovery import execution as execution_recovery
+from openai_responses_proxy.runtime import config as runtime_config
 
 COMPACTION_BUDGET = runtime_config.DEFAULT_RESPONSE_FAILED_COMPACTION_BUDGET
 

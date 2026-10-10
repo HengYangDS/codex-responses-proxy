@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.relay import admission
-from codex_responses_proxy.relay import cooldown
-from codex_responses_proxy.relay import telemetry
+from openai_responses_proxy.relay import admission
+from openai_responses_proxy.relay import cooldown
+from openai_responses_proxy.relay import telemetry
 from tests.relay.proxy_fixture import raw_exchange
 from tests.relay.proxy_fixture import request
 from tests.relay.proxy_fixture import running_proxy
@@ -160,7 +160,7 @@ class ProviderRouteTests:
             ("/ucloud/v1/../admin", valid, 404),
             ("/ucloud/v1/%2e%2e/admin", valid, 404),
         )
-        log = mocker.patch("codex_responses_proxy.relay.operational_log.log")
+        log = mocker.patch("openai_responses_proxy.relay.operational_log.log")
         with running_proxy([]) as (port, received):
             for path, body, status in cases:
                 with (

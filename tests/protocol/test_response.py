@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from codex_responses_proxy.protocol import response
+from openai_responses_proxy.protocol import response
 
 
 def _json(value: object) -> bytes:

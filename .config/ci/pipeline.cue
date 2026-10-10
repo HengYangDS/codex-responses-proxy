@@ -47,11 +47,11 @@ import (
 }
 
 #CommitEvent: {
-	CODEX_RESPONSES_PROXY_COMMIT_BASE: "${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}"
-	CODEX_RESPONSES_PROXY_COMMIT_HEAD: #Conditions.productSHA
+	OPENAI_RESPONSES_PROXY_COMMIT_BASE: "${{ github.ref_type == 'tag' && github.sha || github.event.pull_request.base.sha || github.event.before }}"
+	OPENAI_RESPONSES_PROXY_COMMIT_HEAD: #Conditions.productSHA
 }
 
-#GitLabCommitEvent: "export CODEX_RESPONSES_PROXY_COMMIT_BASE=\"${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}\" CODEX_RESPONSES_PROXY_COMMIT_HEAD=\"$CI_COMMIT_SHA\"; if [ -n \"$CI_COMMIT_TAG\" ]; then export CODEX_RESPONSES_PROXY_COMMIT_BASE=\"$CI_COMMIT_SHA\"; fi; "
+#GitLabCommitEvent: "export OPENAI_RESPONSES_PROXY_COMMIT_BASE=\"${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}\" OPENAI_RESPONSES_PROXY_COMMIT_HEAD=\"$CI_COMMIT_SHA\"; if [ -n \"$CI_COMMIT_TAG\" ]; then export OPENAI_RESPONSES_PROXY_COMMIT_BASE=\"$CI_COMMIT_SHA\"; fi; "
 
 #UvSetup: {
 	uses: #Toolchains.githubActions.uv
@@ -71,30 +71,30 @@ gitlab: {
 	}]
 	stages: ["verify", "release"]
 	variables: {
-		DEBIAN_FRONTEND:                          "noninteractive"
-		CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: "origin"
-		UV_PYTHON_FLOOR_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.18-python3.12-trixie-slim@sha256:38f41574703989d6e5f02be80a3d687b00f98744cce86908097bcd34bcb7eb98"
-		UV_PYTHON_LATEST_IMAGE:                   "ghcr.io/astral-sh/uv:0.12.18-python3.14-trixie-slim@sha256:00facf17b58b02b725155862c5cd637f688f906bf7eb5b5194647886d8805cf3"
-		UV_CACHE_DIR:                             "$CI_PROJECT_DIR/.cache/uv"
-		UV_PYTHON_INSTALL_DIR:                    "$CI_PROJECT_DIR/.cache/uv/python"
-		CODEX_RESPONSES_PROXY_CI_TARGET:          "linux-arm64"
+		DEBIAN_FRONTEND:                           "noninteractive"
+		OPENAI_RESPONSES_PROXY_RELEASE_TAG_REMOTE: "origin"
+		UV_PYTHON_FLOOR_IMAGE:                     "ghcr.io/astral-sh/uv:0.12.18-python3.12-trixie-slim@sha256:38f41574703989d6e5f02be80a3d687b00f98744cce86908097bcd34bcb7eb98"
+		UV_PYTHON_LATEST_IMAGE:                    "ghcr.io/astral-sh/uv:0.12.18-python3.14-trixie-slim@sha256:00facf17b58b02b725155862c5cd637f688f906bf7eb5b5194647886d8805cf3"
+		UV_CACHE_DIR:                              "$CI_PROJECT_DIR/.cache/uv"
+		UV_PYTHON_INSTALL_DIR:                     "$CI_PROJECT_DIR/.cache/uv/python"
+		OPENAI_RESPONSES_PROXY_CI_TARGET:          "linux-arm64"
 	}
 	default: {
 		image: name: "$UV_PYTHON_LATEST_IMAGE"
-		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+		tags: ["$OPENAI_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		cache: {
-			key: "uv-$CODEX_RESPONSES_PROXY_CI_TARGET"
+			key: "uv-$OPENAI_RESPONSES_PROXY_CI_TARGET"
 			paths: [".cache/uv/"]
 		}
 	}
 
 	#productRoles: [{
 		suffix: ""
-		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
+		tags: ["$OPENAI_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
 		rules: [{if: "$CI_PIPELINE_SOURCE == \"merge_request_event\" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == \"dev\""}]
 	}, {
 		suffix: "-accepted"
-		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
+		tags: ["$OPENAI_RESPONSES_PROXY_GITLAB_LINUX_RUNNER_TAG"]
 		rules: [{if: "$CI_COMMIT_BRANCH == \"dev\""}]
 	}]
 	#uvContract: """
@@ -202,7 +202,7 @@ gitlab: {
 	}
 	"verify-promotion": {
 		stage: "verify"
-		tags: ["$CODEX_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
+		tags: ["$OPENAI_RESPONSES_PROXY_GITLAB_LINUX_REVIEW_RUNNER_TAG"]
 		rules: [{
 			if: "$CI_PIPELINE_SOURCE == \"merge_request_event\" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == \"dev\" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == \"main\""
 		}]
@@ -222,11 +222,11 @@ gitlab: {
 		rules: [{if: "$CI_COMMIT_TAG"}]
 		variables: GIT_DEPTH: "0"
 		before_script: list.Concat([#qualityBootstrap, [
-			"test -f \"${CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}\"",
+			"test -f \"${OPENAI_RESPONSES_PROXY_GITLAB_TAG_TRUST:-}\"",
 		]])
 		script: [
 			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.release.metadata --tag \"$CI_COMMIT_TAG\"",
-			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.forge.tag_signature . \"$CI_COMMIT_TAG\" \"$CODEX_RESPONSES_PROXY_GITLAB_TAG_TRUST\"",
+			"uv run --locked --no-sync --python python --no-python-downloads python -m tools.forge.tag_signature . \"$CI_COMMIT_TAG\" \"$OPENAI_RESPONSES_PROXY_GITLAB_TAG_TRUST\"",
 			#GitLabCommitEvent + "uv run --locked --no-sync --python python --no-python-downloads python -m tools.quality.repository",
 		]
 	}
@@ -276,10 +276,10 @@ githubVerify: {
 	}
 	permissions: contents: "read"
 	env: {
-		CODEX_RESPONSES_PROXY_RELEASE_TAG_REMOTE: "origin"
-		GIT_CONFIG_COUNT:                         "1"
-		GIT_CONFIG_KEY_0:                         "init.defaultBranch"
-		GIT_CONFIG_VALUE_0:                       "main"
+		OPENAI_RESPONSES_PROXY_RELEASE_TAG_REMOTE: "origin"
+		GIT_CONFIG_COUNT:                          "1"
+		GIT_CONFIG_KEY_0:                          "init.defaultBranch"
+		GIT_CONFIG_VALUE_0:                        "main"
 	}
 	concurrency: {
 		group:                "verify-${{ github.workflow }}-${{ github.ref }}"
@@ -673,7 +673,7 @@ githubVerify: {
 				}
 			}, {
 				name: "Materialize the Linux executable"
-				run:  "install -d \"$RUNNER_TEMP/native-linux/runtime\" && tar -xzf \"$RUNNER_TEMP/native-linux/codex-responses-proxy-$(cat VERSION)-linux-x86_64.tar.gz\" --strip-components=1 -C \"$RUNNER_TEMP/native-linux/runtime\""
+				run:  "install -d \"$RUNNER_TEMP/native-linux/runtime\" && tar -xzf \"$RUNNER_TEMP/native-linux/openai-responses-proxy-$(cat VERSION)-linux-x86_64.tar.gz\" --strip-components=1 -C \"$RUNNER_TEMP/native-linux/runtime\""
 			}, {
 				name: "Install the locked release tool environment"
 				run:  "uv sync --locked --group quality"
@@ -692,8 +692,8 @@ githubVerify: {
 			}, {
 				name: "Prove the native Linux service lifecycle"
 				env: {
-					CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE: "${{ runner.temp }}/native-linux/runtime/bin/codex-responses-proxy"
-					CODEX_RESPONSES_PROXY_NATIVE_BUNDLE:     "${{ runner.temp }}/native-linux/runtime/bin"
+					OPENAI_RESPONSES_PROXY_NATIVE_EXECUTABLE: "${{ runner.temp }}/native-linux/runtime/bin/openai-responses-proxy"
+					OPENAI_RESPONSES_PROXY_NATIVE_BUNDLE:     "${{ runner.temp }}/native-linux/runtime/bin"
 				}
 				run: "uv run --locked --no-sync python -m pytest -q tests/release/test_native_lifecycle.py"
 			}]
@@ -739,28 +739,34 @@ githubVerify: {
 			}, {
 				name: "Download the published predecessor release"
 				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh release download \"${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
+				run: "gh release download \"${{ env.OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"${{ env.OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_PRODUCT }}-*-${{ matrix.platform }}.tar.gz\" --pattern \"${{ env.OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_PRODUCT }}-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
 			}, {
 				name: "Materialize the release trust anchor"
-				env: RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
-				run: "python -c \"import os; from pathlib import Path; Path(r'${{ runner.temp }}/release-asset-trust').write_text(os.environ['RELEASE_ASSET_TRUST'].rstrip() + '\\n', encoding='ascii')\""
+				env: {
+					PREVIOUS_RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
+					RELEASE_ASSET_TRUST:          "${{ vars.OPENAI_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
+				}
+				run: "python -c \"import os; from pathlib import Path; current = os.environ['RELEASE_ASSET_TRUST'].rstrip(); previous = os.environ['PREVIOUS_RELEASE_ASSET_TRUST'].rstrip() if os.environ['OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_PRODUCT'] == 'codex-responses-proxy' else current; assert current and previous, 'release trust is unavailable'; Path(r'${{ runner.temp }}/previous-release-asset-trust').write_text(previous + '\\n', encoding='ascii'); Path(r'${{ runner.temp }}/release-asset-trust').write_text(current + '\\n', encoding='ascii')\""
 			}, {
 				name: "Bind the exact predecessor asset"
-				run:  "python -c \"import glob, os; matches = glob.glob(r'${{ runner.temp }}/previous-release/codex-responses-proxy-*-${{ matrix.platform }}.tar.gz'); assert len(matches) == 1, matches; open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8').write('CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET=' + matches[0] + '\\n')\""
+				run:  "python -c \"import glob, os; matches = glob.glob(r'${{ runner.temp }}/previous-release/${{ env.OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_PRODUCT }}-*-${{ matrix.platform }}.tar.gz'); assert len(matches) == 1, matches; open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8').write('OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET=' + matches[0] + '\\n')\""
 			}, {
 				name: "Start the runner user systemd manager"
 				if:   "matrix.platform == 'linux-x86_64'"
 				run:  "user_id=$(id -u); runtime_dir=\"/run/user/${user_id}\"; sudo systemctl start \"user@${user_id}.service\"; printf '%s\\n' \"XDG_RUNTIME_DIR=${runtime_dir}\" \"DBUS_SESSION_BUS_ADDRESS=unix:path=${runtime_dir}/bus\" >> \"${GITHUB_ENV}\""
 			}, {
 				name: "Prove published predecessor upgrade and rollback"
-				env: CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: "${{ runner.temp }}/release-asset-trust"
+				env: {
+					OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: "${{ runner.temp }}/previous-release-asset-trust"
+					OPENAI_RESPONSES_PROXY_CURRENT_RELEASE_TRUST_ANCHOR:  "${{ runner.temp }}/release-asset-trust"
+				}
 				run: "uv run --locked --no-sync nox -s release_compatibility"
 			}]
 		}
 		"release-assets": {
 			name: "Release assets"
 			if:   #Conditions.tagPush
-			needs: ["python-matrix", "native-assets", "native-linux"]
+			needs: ["python-matrix", "tag-metadata", "native-assets", "native-linux", "native-linux-lifecycle"]
 			"runs-on":         "ubuntu-24.04"
 			"timeout-minutes": 10
 			steps: [{
@@ -789,7 +795,7 @@ githubVerify: {
 				name: "Assemble, sign, and verify the release set"
 				env: {
 					RELEASE_ASSET_SIGNING_KEY_PATH: "${{ runner.temp }}/release-asset-signing-key"
-					RELEASE_ASSET_TRUST:            "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
+					RELEASE_ASSET_TRUST:            "${{ vars.OPENAI_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
 				}
 				run: "uv run --locked --no-sync python -m tools.release.artifact assemble --input \"$RUNNER_TEMP/native/native-linux-x86_64\" --input \"$RUNNER_TEMP/native/native-macos-arm64\" --input \"$RUNNER_TEMP/native/native-windows-x86_64\" --output \"$RUNNER_TEMP/release-assets\" --sign"
 			}, {
@@ -837,7 +843,7 @@ githubVerify: {
 				run:  "uv sync --locked --group quality"
 			}, {
 				name: "Verify the selected release uses this product runtime"
-				run:  "git diff --exit-code \"${{ github.event.release.tag_name || inputs.release_tag }}^{commit}\" HEAD -- VERSION pyproject.toml uv.lock src/codex_responses_proxy"
+				run:  "git diff --exit-code \"${{ github.event.release.tag_name || inputs.release_tag }}^{commit}\" HEAD -- VERSION pyproject.toml uv.lock src/openai_responses_proxy"
 			}, {
 				name: "Resolve the exact published predecessor"
 				env: GH_TOKEN: "${{ github.token }}"
@@ -845,25 +851,31 @@ githubVerify: {
 			}, {
 				name: "Download the published current release"
 				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh release download \"${{ github.event.release.tag_name || inputs.release_tag }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/current-release\""
+				run: "gh release download \"${{ github.event.release.tag_name || inputs.release_tag }}\" --pattern \"openai-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"openai-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/current-release\""
 			}, {
 				name: "Download the published predecessor release"
 				env: GH_TOKEN: "${{ github.token }}"
-				run: "gh release download \"${{ env.CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"codex-responses-proxy-*-${{ matrix.platform }}.tar.gz\" --pattern \"codex-responses-proxy-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
+				run: "gh release download \"${{ env.OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG }}\" --pattern \"${{ env.OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_PRODUCT }}-*-${{ matrix.platform }}.tar.gz\" --pattern \"${{ env.OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_PRODUCT }}-${{ matrix.platform }}.manifest.json\" --pattern SHA256SUMS --pattern SHA256SUMS.sig --dir \"${{ runner.temp }}/previous-release\""
 			}, {
 				name: "Materialize the release trust anchor"
-				env: RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
-				run: "python -c \"import os; from pathlib import Path; Path(r'${{ runner.temp }}/release-asset-trust').write_text(os.environ['RELEASE_ASSET_TRUST'].rstrip() + '\\n', encoding='ascii')\""
+				env: {
+					PREVIOUS_RELEASE_ASSET_TRUST: "${{ secrets.CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
+					RELEASE_ASSET_TRUST:          "${{ vars.OPENAI_RESPONSES_PROXY_RELEASE_ASSET_TRUST }}"
+				}
+				run: "python -c \"import os; from pathlib import Path; current = os.environ['RELEASE_ASSET_TRUST'].rstrip(); previous = os.environ['PREVIOUS_RELEASE_ASSET_TRUST'].rstrip() if os.environ['OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_PRODUCT'] == 'codex-responses-proxy' else current; assert current and previous, 'release trust is unavailable'; Path(r'${{ runner.temp }}/previous-release-asset-trust').write_text(previous + '\\n', encoding='ascii'); Path(r'${{ runner.temp }}/release-asset-trust').write_text(current + '\\n', encoding='ascii')\""
 			}, {
 				name: "Bind the exact published assets"
-				run:  "python -c \"import glob, os; current = glob.glob(r'${{ runner.temp }}/current-release/codex-responses-proxy-*-${{ matrix.platform }}.tar.gz'); previous = glob.glob(r'${{ runner.temp }}/previous-release/codex-responses-proxy-*-${{ matrix.platform }}.tar.gz'); assert len(current) == len(previous) == 1, (current, previous); open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8').write('CODEX_RESPONSES_PROXY_CURRENT_RELEASE_ASSET=' + current[0] + '\\nCODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET=' + previous[0] + '\\n')\""
+				run:  "python -c \"import glob, os; current = glob.glob(r'${{ runner.temp }}/current-release/openai-responses-proxy-*-${{ matrix.platform }}.tar.gz'); previous = glob.glob(r'${{ runner.temp }}/previous-release/${{ env.OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_PRODUCT }}-*-${{ matrix.platform }}.tar.gz'); assert len(current) == len(previous) == 1, (current, previous); open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8').write('OPENAI_RESPONSES_PROXY_CURRENT_RELEASE_ASSET=' + current[0] + '\\nOPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET=' + previous[0] + '\\n')\""
 			}, {
 				name: "Start the runner user systemd manager"
 				if:   "matrix.platform == 'linux-x86_64'"
 				run:  "user_id=$(id -u); runtime_dir=\"/run/user/${user_id}\"; sudo systemctl start \"user@${user_id}.service\"; printf '%s\\n' \"XDG_RUNTIME_DIR=${runtime_dir}\" \"DBUS_SESSION_BUS_ADDRESS=unix:path=${runtime_dir}/bus\" >> \"${GITHUB_ENV}\""
 			}, {
 				name: "Prove the published release lifecycle"
-				env: CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: "${{ runner.temp }}/release-asset-trust"
+				env: {
+					OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR: "${{ runner.temp }}/previous-release-asset-trust"
+					OPENAI_RESPONSES_PROXY_CURRENT_RELEASE_TRUST_ANCHOR:  "${{ runner.temp }}/release-asset-trust"
+				}
 				run: "uv run --locked --no-sync nox -s published_release_compatibility -- --basetemp=\"${{ runner.temp }}/proxy-test\""
 			}]
 		}

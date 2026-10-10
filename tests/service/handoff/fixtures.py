@@ -22,16 +22,16 @@ from pathlib import Path
 from typing import cast
 from typing import override
 
-from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import generation
-from codex_responses_proxy.lifecycle import projection
-from codex_responses_proxy.lifecycle import runtime_spec
-from codex_responses_proxy.lifecycle.supervision import process
-from codex_responses_proxy.relay import admission as runtime_state_module
-from codex_responses_proxy.service import entrypoint as entrypoint_module
-from codex_responses_proxy.service import inventory
-from codex_responses_proxy.service import runtime as service_runtime
-from codex_responses_proxy.service.handoff import transaction as handoff_module
+from openai_responses_proxy.lifecycle import context as runtime_context
+from openai_responses_proxy.lifecycle import generation
+from openai_responses_proxy.lifecycle import projection
+from openai_responses_proxy.lifecycle import runtime_spec
+from openai_responses_proxy.lifecycle.supervision import process
+from openai_responses_proxy.relay import admission as runtime_state_module
+from openai_responses_proxy.service import entrypoint as entrypoint_module
+from openai_responses_proxy.service import inventory
+from openai_responses_proxy.service import runtime as service_runtime
+from openai_responses_proxy.service.handoff import transaction as handoff_module
 from tests.lifecycle.fixtures import install_context
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -393,7 +393,7 @@ def write_installed_payload(
     control = install_context(root, windows=os.name == "nt")
     ctx = generation.context(control, "0" * 32)
     install_dir = Path(ctx.payload_dir)
-    source = Path(os.environ["CODEX_RESPONSES_PROXY_EXECUTABLE"])
+    source = Path(os.environ["OPENAI_RESPONSES_PROXY_EXECUTABLE"])
     target = Path(ctx.executable)
     # Preserve executable modes, not host-local extended metadata. On macOS,
     # copy2 propagates provenance attributes to every frozen-runtime file and
@@ -419,7 +419,7 @@ def write_installed_payload(
     # frozen macOS payload can incur its one-time trust-cache startup before
     # any application log exists; paying that bounded cost here keeps the
     # handoff tests focused on listener transfer rather than host assessment.
-    from codex_responses_proxy.lifecycle import candidate as payload_candidate
+    from openai_responses_proxy.lifecycle import candidate as payload_candidate
 
     payload_candidate.prewarm(ctx)
     return ctx
@@ -475,15 +475,15 @@ def start_real_proxy(
     if provider_manifest.read_text(encoding="utf-8") != expected_manifest:
         raise ValueError("installed provider manifest does not match the owned test upstream")
     env = dict(os.environ)
-    env["CODEX_RESPONSES_PROXY_PROXY_HOST"] = "127.0.0.1"
-    env["CODEX_RESPONSES_PROXY_PROXY_PORT"] = str(ctx.port)
-    env["CODEX_RESPONSES_PROXY_PROXY_LOG"] = str(log_path)
+    env["OPENAI_RESPONSES_PROXY_PROXY_HOST"] = "127.0.0.1"
+    env["OPENAI_RESPONSES_PROXY_PROXY_PORT"] = str(ctx.port)
+    env["OPENAI_RESPONSES_PROXY_PROXY_LOG"] = str(log_path)
     # The temporary payload must not inherit a live test host's product state.
     # Without this boundary, a listener can resume a stale handoff transaction
     # from the operator's installed runtime instead of serving the fixture.
-    env["CODEX_RESPONSES_PROXY_HOME"] = ctx.install_dir
-    env["CODEX_RESPONSES_PROXY_STATE_HOME"] = str(log_path.parent / "state")
-    env["CODEX_RESPONSES_PROXY_EXECUTABLE"] = ctx.executable
+    env["OPENAI_RESPONSES_PROXY_HOME"] = ctx.install_dir
+    env["OPENAI_RESPONSES_PROXY_STATE_HOME"] = str(log_path.parent / "state")
+    env["OPENAI_RESPONSES_PROXY_EXECUTABLE"] = ctx.executable
     env.pop("PYTHONPATH", None)
     if extra_env:
         env.update(extra_env)

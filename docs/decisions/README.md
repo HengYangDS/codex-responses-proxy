@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:decisions
+subject: openai-responses-proxy:decisions
 role: index
 state: canonical
 relations:

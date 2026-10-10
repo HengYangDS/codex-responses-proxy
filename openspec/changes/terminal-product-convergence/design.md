@@ -24,13 +24,51 @@ policy rather than the common Responses grammar. Other clients require their
 own real request, replay, stream, error, and installed-client acceptance before
 the product claims support.
 
-The target public name is **Responses Proxy**, not `openai-proxy`. Change the
-package, command, service, and release identity together at a major release
-only after a non-Codex Responses client passes that bar; remove the old identity
-in the same transition rather than maintain aliases. Until then, retain the
-truthful shipped name **Codex Responses Proxy**. Naming does not expand the
-protocol surface or move Account, credential, model, or client-projection
-authority out of AIGW or another control plane.
+The operator-approved target public name is **OpenAI Responses Proxy**, with
+the product, command, package, repository and release slug
+`openai-responses-proxy`. OpenAI identifies the Responses protocol; it does not
+claim upstream affiliation or assign every failure to the official service.
+Change the package, command, service, release identity, local repository family
+and both existing remote repository names together at a major release only
+after a non-Codex Responses client passes that bar. Preserve remote repository
+IDs, history, permissions, Issues, proposals and published releases. Remove the
+old active identity in the accepted transition rather than maintain aliases.
+Until then, retain the truthful shipped name **OpenAI Responses Proxy**. Naming
+does not expand the protocol surface or move Account, credential, model, or
+client-projection authority out of AIGW or another control plane.
+
+### Bounded compatibility delivery
+
+The approved delivery increment covers the existing compatibility, independent
+operation, relevant lifecycle, naming and installed-consumer obligations. It
+does not make unrelated repository-wide quality, topology or dependency work a
+prerequisite. The existing tasks remain the only progress authority; section 14
+binds this increment to those obligations without marking broader tasks done.
+
+First reconcile the AIGW maintenance obligations and recorded upstream failures
+with their actual evidence. Then refine the existing route/client compatibility
+intersection under AIGW and the protocol decisions under Proxy in parallel.
+Client requirements, provider wire facts and Proxy transformations retain their
+owning implementations; no new control plane or compatibility registry is
+introduced. Preserve indispensable encrypted state, and qualify its issuer and
+model boundaries rather than treat opaque content as disposable corruption.
+
+Qualify Codex on its selected UCloud route, installed Hermes on its selected
+DMXAPI route, and an ordinary installed OpenAI-SDK Responses client. Their real
+journeys cover tool execution and output replay, continuation, terminal stream
+integrity, structured errors and native compaction where supported. Prove the
+Proxy also operates with an ordinary explicit upstream without AIGW, client or
+Forge installation dependencies. Source tests and runtime counters cannot
+replace those consumer results.
+
+Only then release the complete name migration through the native owners. Bind
+the same signed stable source and selected-platform assets to both Forges,
+verify local and remote repository identities, native installation, upgrade,
+rollback and restored serving, and migrate every active reference. Preserve
+credentials, user models, sessions, historical evidence and foreign work.
+Perform exact owned cleanup after each bounded operation. Two undecodable
+historical ciphertext messages remain preserved and outside plaintext recovery
+acceptance; universal client/provider immunity is outside this increment.
 
 ## Goals / Non-Goals
 
@@ -350,7 +388,7 @@ admission and session execution have separate test owners under
 
 ### One native process environment contract
 
-`src/codex_responses_proxy/runtime/process_environment.py` owns derivation of
+`src/openai_responses_proxy/runtime/process_environment.py` owns derivation of
 native child-process environments for product runtime and black-box acceptance. It preserves
 the supported host execution substrate, removes inherited Proxy and Python
 injection state, redirects all product-owned roots to test-owned locations, and

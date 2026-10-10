@@ -62,13 +62,13 @@ def test_pack_rejects_invalid_roots_before_writing(tmp_path, defect):
 
 def _installed_distribution(root: Path, provenance: str) -> Path:
     """Create one installed product distribution with local installer metadata."""
-    metadata = root / "codex_responses_proxy-2.0.30.dist-info"
-    package = root / "codex_responses_proxy"
+    metadata = root / "openai_responses_proxy-2.0.30.dist-info"
+    package = root / "openai_responses_proxy"
     metadata.mkdir(parents=True)
     package.mkdir()
     (package / "__init__.py").write_text('__version__ = "2.0.30"\n', encoding="utf-8")
     (metadata / "METADATA").write_text(
-        "Metadata-Version: 2.4\nName: codex-responses-proxy\nVersion: 2.0.30\n",
+        "Metadata-Version: 2.4\nName: openai-responses-proxy\nVersion: 2.0.30\n",
         encoding="utf-8",
     )
     (metadata / "direct_url.json").write_text(
@@ -79,11 +79,11 @@ def _installed_distribution(root: Path, provenance: str) -> Path:
         encoding="utf-8",
     )
     rows = [
-        "codex_responses_proxy/__init__.py,,",
-        "codex_responses_proxy-2.0.30.dist-info/METADATA,,",
-        "codex_responses_proxy-2.0.30.dist-info/direct_url.json,,",
-        "codex_responses_proxy-2.0.30.dist-info/uv_cache.json,,",
-        "codex_responses_proxy-2.0.30.dist-info/RECORD,,",
+        "openai_responses_proxy/__init__.py,,",
+        "openai_responses_proxy-2.0.30.dist-info/METADATA,,",
+        "openai_responses_proxy-2.0.30.dist-info/direct_url.json,,",
+        "openai_responses_proxy-2.0.30.dist-info/uv_cache.json,,",
+        "openai_responses_proxy-2.0.30.dist-info/RECORD,,",
     ]
     (metadata / "RECORD").write_text("\n".join(rows) + "\n", encoding="utf-8")
     return root
@@ -99,10 +99,10 @@ class BundleContracts:
 
     def test_bundle_rejects_installer_provenance(self, tmp_path: Path) -> None:
         """Exclude checkout paths and installer timestamps from release payloads."""
-        bundle = tmp_path / "codex-responses-proxy"
-        metadata = bundle / "_internal" / "codex_responses_proxy-2.0.25.dist-info"
+        bundle = tmp_path / "openai-responses-proxy"
+        metadata = bundle / "_internal" / "openai_responses_proxy-2.0.25.dist-info"
         metadata.mkdir(parents=True)
-        (bundle / "codex-responses-proxy").write_bytes(b"native")
+        (bundle / "openai-responses-proxy").write_bytes(b"native")
         (metadata / "direct_url.json").write_text(
             '{"url":"file:///private/build/checkout/product.whl"}', encoding="utf-8"
         )
@@ -118,11 +118,11 @@ class BundleContracts:
         """Prove checkout-local installer provenance cannot perturb release bytes."""
         archives = []
         for index, checkout in enumerate(("gitlab-build", "github-runner")):
-            bundle = tmp_path / checkout / "codex-responses-proxy"
-            metadata = bundle / "_internal" / "codex_responses_proxy-2.0.26.dist-info"
+            bundle = tmp_path / checkout / "openai-responses-proxy"
+            metadata = bundle / "_internal" / "openai_responses_proxy-2.0.26.dist-info"
             metadata.mkdir(parents=True)
-            (bundle / "codex-responses-proxy").write_bytes(b"native")
-            (metadata / "METADATA").write_bytes(b"Name: codex-responses-proxy\n")
+            (bundle / "openai-responses-proxy").write_bytes(b"native")
+            (metadata / "METADATA").write_bytes(b"Name: openai-responses-proxy\n")
             (metadata / "direct_url.json").write_text(
                 f'{{"url":"file://{bundle}/wheelhouse/product.whl"}}', encoding="utf-8"
             )
@@ -160,8 +160,8 @@ class BundleContracts:
     def test_asset_command_packages_only_native_runtime_inputs(self, *, mocker) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            bundle = root / "codex-responses-proxy"
-            executable = bundle / "codex-responses-proxy"
+            bundle = root / "openai-responses-proxy"
+            executable = bundle / "openai-responses-proxy"
             dependency = bundle / "_internal" / "runtime.dat"
             dependency.parent.mkdir(parents=True)
             executable.write_bytes(b"native-executable")
@@ -197,7 +197,7 @@ class BundleContracts:
             assert set(manifest["files"]) == {
                 "LICENSE",
                 "bin/_internal/runtime.dat",
-                "bin/codex-responses-proxy",
+                "bin/openai-responses-proxy",
                 "providers.toml",
             }
             assets.release_digests(
@@ -209,10 +209,10 @@ class BundleContracts:
 
     @pytest.mark.skipif(os.name == "nt", reason="models POSIX bundle symlink semantics")
     def test_asset_command_materializes_safe_bundle_symlinks(self, tmp_path: Path, mocker) -> None:
-        bundle = tmp_path / "codex-responses-proxy"
+        bundle = tmp_path / "openai-responses-proxy"
         framework = bundle / "_internal" / "Python.framework" / "Versions" / "3.14"
         framework.mkdir(parents=True)
-        executable = bundle / "codex-responses-proxy"
+        executable = bundle / "openai-responses-proxy"
         executable.write_bytes(b"native-executable")
         runtime = framework / "Python"
         runtime.write_bytes(b"python-runtime")
@@ -257,9 +257,9 @@ class BundleContracts:
     def test_asset_command_rejects_bundle_symlinks_outside_the_bundle(
         self, tmp_path: Path, mocker
     ) -> None:
-        bundle = tmp_path / "codex-responses-proxy"
+        bundle = tmp_path / "openai-responses-proxy"
         bundle.mkdir()
-        (bundle / "codex-responses-proxy").write_bytes(b"native-executable")
+        (bundle / "openai-responses-proxy").write_bytes(b"native-executable")
         outside = tmp_path / "outside"
         outside.write_bytes(b"private")
         (bundle / "escape").symlink_to(outside)

@@ -12,9 +12,9 @@ from typing import cast
 
 import pytest
 
-from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import runtime_spec
-from codex_responses_proxy.runtime import config as runtime_config
+from openai_responses_proxy.lifecycle import context as runtime_context
+from openai_responses_proxy.lifecycle import runtime_spec
+from openai_responses_proxy.runtime import config as runtime_config
 from tools.git_environment import isolated_config_environment
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,21 +28,21 @@ class TestInstallationInputValidation:
     def test_product_roots_are_portable_and_explicitly_overridable(self, subtests, *, mocker):
         cases = (
             (
-                {"CODEX_RESPONSES_PROXY_HOME": "~/payload"},
+                {"OPENAI_RESPONSES_PROXY_HOME": "~/payload"},
                 {"os.name": "posix", "sys.platform": "linux"},
-                ("payload", ".local/state/codex-responses-proxy"),
+                ("payload", ".local/state/openai-responses-proxy"),
             ),
             (
-                {"CODEX_RESPONSES_PROXY_STATE_HOME": "~/state"},
+                {"OPENAI_RESPONSES_PROXY_STATE_HOME": "~/state"},
                 {"os.name": "posix", "sys.platform": "darwin"},
-                ("Library/Application Support/codex-responses-proxy", "state"),
+                ("Library/Application Support/openai-responses-proxy", "state"),
             ),
             (
                 {"LOCALAPPDATA": "/portable/local"},
                 {"os.name": "nt", "sys.platform": "win32"},
                 (
-                    "/portable/local/codex-responses-proxy",
-                    "/portable/local/codex-responses-proxy/state",
+                    "/portable/local/openai-responses-proxy",
+                    "/portable/local/openai-responses-proxy/state",
                 ),
             ),
             (
@@ -52,8 +52,8 @@ class TestInstallationInputValidation:
                 },
                 {"os.name": "posix", "sys.platform": "linux"},
                 (
-                    "/portable/data/codex-responses-proxy",
-                    "/portable/state/codex-responses-proxy",
+                    "/portable/data/openai-responses-proxy",
+                    "/portable/state/openai-responses-proxy",
                 ),
             ),
         )
@@ -75,7 +75,7 @@ class TestInstallationInputValidation:
         mocker.patch.object(runtime_config, "home_dir", return_value=home)
 
         assert runtime_config.state_dir() == runtime_config.path_join(
-            home, "Library", "Logs", "codex-responses-proxy"
+            home, "Library", "Logs", "openai-responses-proxy"
         )
 
     def test_runtime_configuration_is_loopback_only_and_rejects_invalid_ports(self, subtests):
@@ -114,11 +114,11 @@ class TestInstallationInputValidation:
 
     def test_service_projection_is_derived_from_one_runtime_contract(self, tmp_path):
         install_dir = tmp_path / "proxy"
-        executable = install_dir / "bin" / "codex-responses-proxy"
+        executable = install_dir / "bin" / "openai-responses-proxy"
         context = runtime_context.RuntimeContext(
             install_dir=str(install_dir),
             executable=str(executable),
-            command="/fixture/user-root/.local/bin/codex-responses-proxy",
+            command="/fixture/user-root/.local/bin/openai-responses-proxy",
             log_dir="/var/state/proxy",
             port=8808,
             upstream_timeout=45.0,
@@ -136,6 +136,7 @@ class TestInstallationInputValidation:
             runtime_config.WATCHDOG_LOG_BACKUP_COUNT_ENV,
             runtime_config.UPSTREAM_TIMEOUT_ENV,
             runtime_config.UPSTREAM_READ_TIMEOUT_ENV,
+            runtime_config.UPSTREAM_BASE_URL_ENV,
             runtime_config.WATCHDOG_INTERVAL_ENV,
             runtime_config.WATCHDOG_MAX_BACKOFF_ENV,
             runtime_config.RESPONSE_FAILED_COMPACTION_BUDGET_ENV,
@@ -216,13 +217,13 @@ class TestGovernanceMetadata:
     def test_product_module_names_do_not_shadow_the_standard_library(self):
         collisions = sorted(
             path.relative_to(ROOT).as_posix()
-            for path in (ROOT / "src" / "codex_responses_proxy").rglob("*.py")
+            for path in (ROOT / "src" / "openai_responses_proxy").rglob("*.py")
             if path.stem != "__init__" and path.stem in sys.stdlib_module_names
         )
         assert collisions == []
 
     def test_listener_port_literals_have_one_production_owner(self):
-        production = ROOT / "src" / "codex_responses_proxy"
+        production = ROOT / "src" / "openai_responses_proxy"
         owner = production / "runtime" / "config.py"
         owner_text = owner.read_text(encoding="utf-8")
         assert owner_text.count("8792") == 1
@@ -281,7 +282,7 @@ class TestGovernanceMetadata:
         assert "anchor" in sources[1]
 
     def test_semantic_packages_are_declarative_and_facade_free(self):
-        package_root = ROOT / "src/codex_responses_proxy"
+        package_root = ROOT / "src/openai_responses_proxy"
         packages = {
             path.name
             for path in package_root.iterdir()
@@ -301,10 +302,10 @@ class TestGovernanceMetadata:
             assert "import " not in source, package
 
     def test_runtime_context_has_one_semantic_owner(self):
-        assert (ROOT / "src/codex_responses_proxy/lifecycle/context.py").is_file()
+        assert (ROOT / "src/openai_responses_proxy/lifecycle/context.py").is_file()
 
     def test_provider_specific_wire_policies_have_a_semantic_owner(self):
-        assert (ROOT / "src/codex_responses_proxy/providers/policies/dmxapi.py").is_file()
+        assert (ROOT / "src/openai_responses_proxy/providers/policies/dmxapi.py").is_file()
 
     def test_publication_has_importable_command_and_peer_owners(self):
         for owner in ("__main__", "verification", "github.publish", "gitlab.publish"):
@@ -328,8 +329,8 @@ class TestGovernanceMetadata:
         text = "\n".join(
             Path(ROOT, relative).read_text(encoding="utf-8").lower()
             for relative in (
-                "src/codex_responses_proxy/lifecycle/install.py",
-                "src/codex_responses_proxy/lifecycle/uninstall.py",
+                "src/openai_responses_proxy/lifecycle/install.py",
+                "src/openai_responses_proxy/lifecycle/uninstall.py",
             )
         )
         assert "fully " + "quit & reopen" not in text
@@ -342,28 +343,28 @@ class TestReleaseMetadata:
     def test_control_and_data_planes_keep_explicit_privacy_boundaries(self, subtests):
         cases = (
             (
-                ("src/codex_responses_proxy/lifecycle/control.py",),
+                ("src/openai_responses_proxy/lifecycle/control.py",),
                 ("def status",),
                 ("AIGW", "ChatGPT", "JetBrains"),
             ),
             (
-                ("src/codex_responses_proxy/service/entrypoint.py",),
+                ("src/openai_responses_proxy/service/entrypoint.py",),
                 (),
                 (
-                    "CODEX_RESPONSES_PROXY_DUMP_BODIES",
-                    "CODEX_RESPONSES_PROXY_DUMP_HEADERS",
+                    "OPENAI_RESPONSES_PROXY_DUMP_BODIES",
+                    "OPENAI_RESPONSES_PROXY_DUMP_HEADERS",
                     "reject-",
                 ),
             ),
             (
-                ("src/codex_responses_proxy/runtime/config.py",),
+                ("src/openai_responses_proxy/runtime/config.py",),
                 (
                     'product_identity.environment_name("PROXY_LOG_MAX_BYTES")',
                     'product_identity.environment_name("PROXY_LOG_BACKUP_COUNT")',
                     'product_identity.environment_name("WATCHDOG_LOG_MAX_BYTES")',
                     'product_identity.environment_name("WATCHDOG_LOG_BACKUP_COUNT")',
                 ),
-                ("CODEX_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES",),
+                ("OPENAI_RESPONSES_PROXY_PROXY_LOG_MAX_BYTES",),
             ),
         )
         for paths, required, forbidden in cases:

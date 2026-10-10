@@ -19,7 +19,7 @@ def test_github_command_dispatches_verified_inputs_without_secret_arguments(
     mocker.patch.dict(
         commands.os.environ,
         {
-            "CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST": "tag trust",
+            "OPENAI_RESPONSES_PROXY_GITHUB_TAG_TRUST": "tag trust",
             "RELEASE_ASSET_TRUST": "asset trust",
         },
         clear=True,
@@ -61,7 +61,7 @@ def test_github_command_dispatches_verified_inputs_without_secret_arguments(
         (gitlab.CredentialKind.JOB_TOKEN, "CI_JOB_TOKEN", "job token"),
         (
             gitlab.CredentialKind.PRIVATE_TOKEN,
-            "CODEX_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN",
+            "OPENAI_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN",
             "private token",
         ),
     ],
@@ -74,7 +74,7 @@ def test_gitlab_command_reads_only_the_declared_credential(
         commands.os.environ,
         {
             "CI_JOB_TOKEN": "unused job token",
-            "CODEX_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN": "unused private token",
+            "OPENAI_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN": "unused private token",
             variable: token,
             "RELEASE_ASSET_TRUST": "asset trust",
         },
@@ -219,7 +219,8 @@ def test_github_predecessor_cli_projects_the_exact_tag_to_github_environment(
     resolve.assert_called_once_with(repository="owner/repo", version="3.1.2")
     assert capsys.readouterr().out == "v3.1.0\n"
     assert environment.read_text(encoding="utf-8") == (
-        "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG=v3.1.0\n"
+        "OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG=v3.1.0\n"
+        "OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_PRODUCT=codex-responses-proxy\n"
     )
 
 
@@ -245,5 +246,6 @@ def test_github_predecessor_cli_accepts_the_release_tag_as_identity(
     resolve.assert_called_once_with(repository="owner/repo", version="3.1.2")
     assert capsys.readouterr().out == "v3.1.0\n"
     assert environment.read_text(encoding="utf-8") == (
-        "CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG=v3.1.0\n"
+        "OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_TAG=v3.1.0\n"
+        "OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_PRODUCT=codex-responses-proxy\n"
     )

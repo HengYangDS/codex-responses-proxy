@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from codex_responses_proxy.service import control
-from codex_responses_proxy.service.handoff import protocol as handoff_protocol_module
+from openai_responses_proxy.service import control
+from openai_responses_proxy.service.handoff import protocol as handoff_protocol_module
 from tests.service.handoff.fixtures import entrypoint_module
 from tests.service.handoff.fixtures import expected_metadata
 from tests.service.handoff.fixtures import fake_handler
@@ -92,7 +92,7 @@ class TestHandoffControlHandler:
         )
 
         local = fake_handler({}, mocker=mocker)
-        local.headers["X-Codex-Responses-Proxy-Drain-Lease-Seconds"] = "41"
+        local.headers["X-OpenAI-Responses-Proxy-Drain-Lease-Seconds"] = "41"
         set_draining = mocker.patch.object(
             runtime_state_module,
             "set_draining",

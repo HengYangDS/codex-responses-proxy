@@ -55,7 +55,7 @@ exact-head guarded, and independent of both Forge publication planes.
 
 ### Requirement: Portable product and repository UX
 
-Users SHALL operate the installed `codex-responses-proxy` command for status,
+Users SHALL operate the installed `openai-responses-proxy` command for status,
 lifecycle, and diagnostics. It SHALL not require Python, module execution, a
 source checkout, uv, Nox, ETHOS, repository-specific shell variables, personal
 paths, identities, or Forge coupling. Repository verification SHALL expose one

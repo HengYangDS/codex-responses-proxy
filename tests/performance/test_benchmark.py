@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.relay import operational_log
+from openai_responses_proxy.relay import operational_log
 from tools.performance import benchmark
 
 

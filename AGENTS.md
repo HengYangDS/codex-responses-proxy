@@ -1,6 +1,6 @@
 # Agent Entry Points
 
-This repository is **Codex Responses Proxy**. It provides a local data-plane
+This repository is **OpenAI Responses Proxy**. It provides a local data-plane
 compatibility adapter for third-party Responses endpoints; it is not the owner
 of Codex conversation history or client configuration.
 
@@ -58,16 +58,18 @@ locks change. `mise run release` verifies a native asset without registering a
 service; `mise run native` also exercises the real host service lifecycle and
 requires explicit operational authorization. See [CONTRIBUTING](CONTRIBUTING.md).
 
-Use `codex-responses-proxy status --json` for read-only runtime evidence. Reload
+Use `openai-responses-proxy status --json` for read-only runtime evidence. Reload
 and upgrade are transactional lifecycle mutations and must be communicated
 before execution. Installation accepts only a fresh target or one verified
 current native listener; an incompatible payload must be removed explicitly.
 
-Released-source admission consumes one clean, signed release checkout and an
-external trust anchor. It checks clean state on entry and before minting. The
-final admission window binds `HEAD`, tag object, tag commit, tree, object format,
-and immutable Git blobs; any worktree or identity drift is rejected. Dual-Forge
-publication is verified independently and is not an installer dependency.
+Release preparation requires a clean accepted release checkout. Native builders
+produce each platform asset from that frozen source; tag creation binds the
+release commit and verifies its signature against external trust. One assembled
+bundle is signed and published independently to each selected Forge. Installation
+admits that archive through its signed checksum inventory, exact platform and
+payload manifest. Dual-Forge publication is verified separately and is not an
+installer dependency.
 
 Uninstall must prove native-service absence and exact owned-process exit before
 payload mutation. Process ownership requires the exact installed executable and

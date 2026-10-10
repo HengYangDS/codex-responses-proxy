@@ -9,7 +9,7 @@ from pathlib import Path
 
 from cyclopts import App
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 from tools.forge import context
 from tools.forge import tag_signature
 from tools.git_environment import isolated_config_environment

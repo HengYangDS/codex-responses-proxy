@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.lifecycle import artifact
-from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import generation
-from codex_responses_proxy.lifecycle import state as payload_state
-from codex_responses_proxy.lifecycle import transaction as payload_transaction
-from codex_responses_proxy.lifecycle.supervision import process
-from codex_responses_proxy.runtime import config as runtime_config
-from codex_responses_proxy.runtime.process_environment import native_process_environment
+from openai_responses_proxy.lifecycle import artifact
+from openai_responses_proxy.lifecycle import context as runtime_context
+from openai_responses_proxy.lifecycle import generation
+from openai_responses_proxy.lifecycle import state as payload_state
+from openai_responses_proxy.lifecycle import transaction as payload_transaction
+from openai_responses_proxy.lifecycle.supervision import process
+from openai_responses_proxy.runtime import config as runtime_config
+from openai_responses_proxy.runtime.process_environment import native_process_environment
 from tests.release import fixtures as release_fixtures
 from tests.release.fixtures import cleanup_runtime
 from tests.release.fixtures import native_service_projection
@@ -42,7 +42,7 @@ class TestSignedNativeLifecycle:
 
     @pytest.mark.skipif(sys.platform != "linux", reason="Linux user-service boundary")
     def test_unavailable_user_bus_leaves_no_installation(self, tmp_path: Path) -> None:
-        executable = Path(os.environ["CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE"]).resolve(
+        executable = Path(os.environ["OPENAI_RESPONSES_PROXY_NATIVE_EXECUTABLE"]).resolve(
             strict=True
         )
         home, install, state = (tmp_path / name for name in ("home", "payload", "state"))
@@ -82,6 +82,7 @@ class TestSignedNativeLifecycle:
             upstream_url="http://127.0.0.1:1",
             key=key,
             trust=trust,
+            preserve_manifest=True,
         )
 
         result = run_command(
@@ -104,7 +105,7 @@ class TestSignedNativeLifecycle:
                     "a reachable systemd user manager is required for Linux installation; "
                     "enable a systemd user session and retry installation"
                 ),
-                "next": "codex-responses-proxy install --help",
+                "next": "openai-responses-proxy install --help",
             }
         }
         observed = run_command(executable, environment, "status", "--port", str(port), "--json")
@@ -118,7 +119,7 @@ class TestSignedNativeLifecycle:
         assert not any(path.is_file() or path.is_symlink() for path in home.rglob("*"))
 
     def test_signed_fresh_lifecycle_is_transactional(self, tmp_path: Path) -> None:
-        executable_value = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
+        executable_value = os.environ.get("OPENAI_RESPONSES_PROXY_NATIVE_EXECUTABLE")
         assert executable_value is not None, "native executable must be supplied by release session"
         executable = Path(executable_value).resolve(strict=True)
         bundle = executable.parent
@@ -168,6 +169,7 @@ class TestSignedNativeLifecycle:
             upstream_url=upstream_url,
             key=key,
             trust=trust,
+            preserve_manifest=True,
         )
 
         with ExitStack() as cleanups:
@@ -184,6 +186,8 @@ class TestSignedNativeLifecycle:
                 str(anchor),
                 "--port",
                 str(port),
+                "--upstream-base-url",
+                upstream_url,
                 "--json",
             )
             assert installed["state"] == "installed"
@@ -220,12 +224,16 @@ class TestSignedNativeLifecycle:
                 is True
             )
             upstream.push((200, b'{"id":"ok","status":"completed"}'))
-            assert post_response(port) == b'{"id":"ok","status":"completed"}'
+            assert post_response(port, route="upstream") == b'{"id":"ok","status":"completed"}'
             assert (
                 run_command(executable, environment, "reload", "--port", str(port), "--json")[
                     "new_pid"
                 ]
                 != installed_pid
+            )
+            upstream.push((200, b'{"id":"after-reload","status":"completed"}'))
+            assert post_response(port, route="upstream") == (
+                b'{"id":"after-reload","status":"completed"}'
             )
             residue = install / "operator-note.txt"
             residue.write_text("preserve\n", encoding="utf-8")
@@ -242,7 +250,7 @@ class TestSignedNativeLifecycle:
             assert refused_purge["error"] == {
                 "code": "lifecycle_error",
                 "message": "unknown install content remains: operator-note.txt",
-                "next": "codex-responses-proxy doctor",
+                "next": "openai-responses-proxy doctor",
             }
             assert residue.read_text(encoding="utf-8") == "preserve\n"
             assert not payload_state.transaction_root(ctx).exists()
@@ -267,7 +275,7 @@ class TestSignedNativeLifecycle:
                     "installed payload root contains unverified content; "
                     "remove it explicitly before installing"
                 ),
-                "next": "codex-responses-proxy doctor",
+                "next": "openai-responses-proxy doctor",
             }
             assert not payload_state.transaction_root(ctx).exists()
             residue.unlink()
@@ -344,7 +352,7 @@ class TestSignedNativeLifecycle:
         interruption: type[BaseException],
     ) -> None:
         """Leave no native service behind when a test aborts after installation."""
-        executable_value = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
+        executable_value = os.environ.get("OPENAI_RESPONSES_PROXY_NATIVE_EXECUTABLE")
         assert executable_value is not None, "native executable must be supplied by release session"
         executable = Path(executable_value).resolve(strict=True)
         home, install, state = (

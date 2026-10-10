@@ -8,22 +8,22 @@ from pathlib import Path
 from pathlib import PurePosixPath
 from pathlib import PureWindowsPath
 
-from codex_responses_proxy.lifecycle import artifact
-from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import control
-from codex_responses_proxy.lifecycle import generation
-from codex_responses_proxy.lifecycle import projection
-from codex_responses_proxy.lifecycle import transaction as payload_transaction
-from codex_responses_proxy.service import digest as payload_digest
-from codex_responses_proxy.service import identity
-from codex_responses_proxy.service import inventory
+from openai_responses_proxy.lifecycle import artifact
+from openai_responses_proxy.lifecycle import context as runtime_context
+from openai_responses_proxy.lifecycle import control
+from openai_responses_proxy.lifecycle import generation
+from openai_responses_proxy.lifecycle import projection
+from openai_responses_proxy.lifecycle import transaction as payload_transaction
+from openai_responses_proxy.service import digest as payload_digest
+from openai_responses_proxy.service import identity
+from openai_responses_proxy.service import inventory
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def install_context(root: Path, *, windows: bool = False) -> runtime_context.RuntimeContext:
     """Build an isolated install context for one explicitly modeled platform."""
-    install_dir = root / "data" / "codex-responses-proxy"
+    install_dir = root / "data" / "openai-responses-proxy"
     executable = inventory.installed_executable(str(install_dir), windows=windows)
     return runtime_context.RuntimeContext(
         user_home=str(root),
@@ -32,9 +32,9 @@ def install_context(root: Path, *, windows: bool = False) -> runtime_context.Run
         command=str(
             root
             / "commands"
-            / ("codex-responses-proxy.cmd" if windows else "codex-responses-proxy")
+            / ("openai-responses-proxy.cmd" if windows else "openai-responses-proxy")
         ),
-        log_dir=str(root / "state" / "codex-responses-proxy"),
+        log_dir=str(root / "state" / "openai-responses-proxy"),
         port=8791,
     )
 
@@ -43,20 +43,27 @@ def platform_context(port: int = 8791, *, windows: bool = False) -> runtime_cont
     """Build a deterministic service-definition fixture for one modeled platform."""
     if windows:
         home = PureWindowsPath("C:/fixture-home")
-        install_dir = home / "AppData" / "Local" / "codex-responses-proxy"
-        log_dir = home / "AppData" / "Local" / "codex-responses-proxy" / "state"
+        install_dir = home / "AppData" / "Local" / "openai-responses-proxy"
+        log_dir = home / "AppData" / "Local" / "openai-responses-proxy" / "state"
     else:
         home = PurePosixPath("/fixture-home")
-        install_dir = home / ".local" / "share" / "codex-responses-proxy"
-        log_dir = home / ".local" / "state" / "codex-responses-proxy"
+        install_dir = home / ".local" / "share" / "openai-responses-proxy"
+        log_dir = home / ".local" / "state" / "openai-responses-proxy"
     return runtime_context.RuntimeContext(
         user_home=str(home),
         install_dir=str(install_dir),
         executable=inventory.installed_executable(str(install_dir), windows=windows),
         command=str(
-            (home / "AppData" / "Local" / "Microsoft" / "WindowsApps" / "codex-responses-proxy.cmd")
+            (
+                home
+                / "AppData"
+                / "Local"
+                / "Microsoft"
+                / "WindowsApps"
+                / "openai-responses-proxy.cmd"
+            )
             if windows
-            else (home / ".local" / "bin" / "codex-responses-proxy")
+            else (home / ".local" / "bin" / "openai-responses-proxy")
         ),
         log_dir=str(log_dir),
         port=port,
@@ -93,7 +100,7 @@ def released_artifact(
         content = (
             executable_content
             if relative in {inventory.EXECUTABLE, inventory.WINDOWS_EXECUTABLE}
-            else (ROOT / "src/codex_responses_proxy/providers/manifest.toml").read_bytes()
+            else (ROOT / "src/openai_responses_proxy/providers/manifest.toml").read_bytes()
         )
         return artifact.ArtifactFile(
             path=relative,

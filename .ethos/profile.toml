@@ -1,4 +1,4 @@
-profile_id = "codex-responses-proxy"
+profile_id = "openai-responses-proxy"
 
 [openspec]
 material_paths = ["**"]

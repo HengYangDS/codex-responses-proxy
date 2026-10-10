@@ -17,21 +17,22 @@ from pathlib import PureWindowsPath
 
 import pytest
 
-from codex_responses_proxy import product_identity
-from codex_responses_proxy.lifecycle import artifact
-from codex_responses_proxy.lifecycle import command
-from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle import control as lifecycle_control
-from codex_responses_proxy.lifecycle import generation
-from codex_responses_proxy.lifecycle import rollback as payload_rollback
-from codex_responses_proxy.lifecycle import state as payload_state
-from codex_responses_proxy.lifecycle import transaction as payload_transaction
-from codex_responses_proxy.lifecycle.supervision import process
-from codex_responses_proxy.runtime import config as runtime_config
-from codex_responses_proxy.runtime.process_environment import native_process_environment
-from codex_responses_proxy.service.handoff import transaction as handoff_transaction
+from openai_responses_proxy import product_identity
+from openai_responses_proxy.lifecycle import artifact
+from openai_responses_proxy.lifecycle import command
+from openai_responses_proxy.lifecycle import context as runtime_context
+from openai_responses_proxy.lifecycle import control as lifecycle_control
+from openai_responses_proxy.lifecycle import generation
+from openai_responses_proxy.lifecycle import rollback as payload_rollback
+from openai_responses_proxy.lifecycle import state as payload_state
+from openai_responses_proxy.lifecycle import transaction as payload_transaction
+from openai_responses_proxy.lifecycle.supervision import process
+from openai_responses_proxy.runtime import config as runtime_config
+from openai_responses_proxy.runtime.process_environment import native_process_environment
+from openai_responses_proxy.service.handoff import transaction as handoff_transaction
 from tests.release.fixtures import COMMAND_TIMEOUT_SECONDS
 from tests.release.fixtures import cleanup_runtime
+from tests.release.fixtures import legacy_published_bundle
 from tests.release.fixtures import native_service_projection
 from tests.release.fixtures import owned_runtime_contexts
 from tests.release.fixtures import post_response
@@ -192,10 +193,10 @@ def test_runtime_context_uses_the_native_command_projection(tmp_path: Path, *, m
     ctx = runtime_context_for(home, install, tmp_path / "state", 43210)
 
     assert PureWindowsPath(ctx.executable) == PureWindowsPath(
-        install / "bin" / "codex-responses-proxy.exe"
+        install / "bin" / "openai-responses-proxy.exe"
     )
     assert PureWindowsPath(ctx.command) == PureWindowsPath(
-        home / "AppData" / "Local" / "Microsoft" / "WindowsApps" / "codex-responses-proxy.cmd"
+        home / "AppData" / "Local" / "Microsoft" / "WindowsApps" / "openai-responses-proxy.cmd"
     )
 
 
@@ -223,10 +224,19 @@ class TestPublishedPredecessorCompatibility:
     """Prove one authentic published predecessor upgrades without traffic loss."""
 
     def test_real_predecessor_upgrades_to_current_native_candidate(self, tmp_path: Path) -> None:
-        current_executable = _required_path("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
-        current_bundle = _required_path("CODEX_RESPONSES_PROXY_NATIVE_BUNDLE")
-        previous_asset = _required_path("CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET")
-        previous_trust = _required_path("CODEX_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR")
+        current_executable = _required_path("OPENAI_RESPONSES_PROXY_NATIVE_EXECUTABLE")
+        current_bundle = _required_path("OPENAI_RESPONSES_PROXY_NATIVE_BUNDLE")
+        previous_asset = _required_path("OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_ASSET")
+        previous_trust = _required_path("OPENAI_RESPONSES_PROXY_PREVIOUS_RELEASE_TRUST_ANCHOR")
+        if previous_asset.name.startswith("codex-responses-proxy-"):
+            self._renamed_product_lifecycle(
+                tmp_path,
+                current_executable=current_executable,
+                current_bundle=current_bundle,
+                previous_asset=previous_asset,
+                previous_trust=previous_trust,
+            )
+            return
 
         published_predecessor = artifact.admit(
             previous_asset,
@@ -789,3 +799,152 @@ class TestPublishedPredecessorCompatibility:
             assert not payload_state.transaction_root(ctx).exists()
             assert process.listener_pids(port) == []
             assert process.listener_pids(runtime_config.DEFAULT_PORT) == canonical_before
+
+    def _renamed_product_lifecycle(
+        self,
+        tmp_path: Path,
+        *,
+        current_executable: Path,
+        current_bundle: Path,
+        previous_asset: Path,
+        previous_trust: Path,
+    ) -> None:
+        """Cross the public identity change and its native reverse path."""
+        previous_bundle, previous_version = legacy_published_bundle(
+            previous_asset, previous_trust, tmp_path
+        )
+        old_name = "codex-responses-proxy" + (".exe" if os.name == "nt" else "")
+        previous_executable = previous_bundle / old_name
+        home = tmp_path / "home"
+        home.mkdir()
+        install = tmp_path / "old-payload"
+        state = tmp_path / "old-state"
+        successor_install = tmp_path / "payload"
+        successor_state = tmp_path / "state"
+        port = free_port()
+        environment = native_process_environment(
+            user_home=home, install_root=successor_install, state_root=successor_state
+        )
+        old_environment = {
+            name: value for name, value in environment.items() if not name.startswith("OPENAI_")
+        }
+        old_environment.update(
+            CODEX_RESPONSES_PROXY_HOME=str(install),
+            CODEX_RESPONSES_PROXY_STATE_HOME=str(state),
+        )
+        ctx = runtime_context_for(home, successor_install, successor_state, port)
+        canonical = process.listener_pids(runtime_config.DEFAULT_PORT)
+        original_projection = native_service_projection(runtime_context.create())
+        key = tmp_path / "key"
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)], check=True)
+        trust = (
+            f'{signing.PRINCIPAL} namespaces="{signing.NAMESPACE}" '
+            + key.with_suffix(".pub").read_text(encoding="ascii").strip()
+        )
+        anchor = tmp_path / "trust"
+        anchor.write_text(trust + "\n", encoding="ascii")
+        upstream = ScriptedUpstream()
+        upstream.start()
+        asset = signed_asset(
+            current_bundle,
+            tmp_path / "candidate-assets",
+            version=(ROOT / "VERSION").read_text(encoding="ascii").strip(),
+            upstream_url=upstream.base_url(),
+            key=key,
+            trust=trust,
+            preserve_manifest=True,
+        )
+        old_present = False
+        try:
+            for cycle in range(2):
+                previous = run_command(
+                    previous_executable,
+                    old_environment,
+                    "install",
+                    "--asset",
+                    str(previous_asset),
+                    "--trust-anchor",
+                    str(previous_trust),
+                    "--port",
+                    str(port),
+                    "--json",
+                )
+                old_present = True
+                assert previous["state"] == "installed"
+                status = run_command(
+                    previous_executable, old_environment, "status", "--port", str(port), "--json"
+                )
+                assert status["state"] == "running"
+                assert status["release"] == previous_version
+                assert status["payload_transaction"] is None
+                removed = run_command(
+                    previous_executable,
+                    old_environment,
+                    "uninstall",
+                    "--port",
+                    str(port),
+                    "--purge",
+                    "--json",
+                )
+                assert removed["state"] == "purged"
+                old_present = False
+                assert not install.exists()
+                assert process.listener_pids(port) == []
+                if cycle == 1:
+                    break
+                installed = run_command(
+                    current_executable,
+                    environment,
+                    "install",
+                    "--asset",
+                    str(asset),
+                    "--trust-anchor",
+                    str(anchor),
+                    "--upstream-base-url",
+                    upstream.base_url(),
+                    "--port",
+                    str(port),
+                    "--json",
+                )
+                assert installed["state"] == "installed"
+                upstream.push((200, b'{"id":"renamed","status":"completed"}'))
+                assert post_response(port, route="upstream") == (
+                    b'{"id":"renamed","status":"completed"}'
+                )
+                assert (
+                    run_command(
+                        current_executable, environment, "reload", "--port", str(port), "--json"
+                    )["state"]
+                    == "reloaded"
+                )
+                assert run_command(
+                    current_executable, environment, "recover", "--port", str(port), "--json"
+                ) == {"state": "not_required"}
+                removed = run_command(
+                    current_executable,
+                    environment,
+                    "uninstall",
+                    "--port",
+                    str(port),
+                    "--purge",
+                    "--json",
+                )
+                assert removed["state"] == "purged"
+                assert not successor_install.exists()
+                assert native_service_projection(ctx)["status"] == "absent"
+                assert process.listener_pids(port) == []
+        finally:
+            if old_present:
+                run_command(
+                    previous_executable,
+                    old_environment,
+                    "uninstall",
+                    "--port",
+                    str(port),
+                    "--purge",
+                    "--json",
+                )
+            cleanup_runtime(ctx)
+            upstream.close()
+        assert process.listener_pids(runtime_config.DEFAULT_PORT) == canonical
+        assert native_service_projection(runtime_context.create()) == original_projection

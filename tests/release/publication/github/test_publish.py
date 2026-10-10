@@ -53,7 +53,7 @@ def test_release_record_selection_is_exact_and_fail_closed(subtests) -> None:
     matching = {
         "id": 7,
         "tag_name": "v1.2.3",
-        "name": "Codex Responses Proxy v1.2.3",
+        "name": "OpenAI Responses Proxy v1.2.3",
         "draft": False,
         "prerelease": False,
         "published_at": "2026-08-09T00:00:00Z",
@@ -115,7 +115,7 @@ def test_publish_owns_download_validation_creation_and_byte_parity(
     existing = {
         "id": 7,
         "tag_name": "v1.2.3",
-        "name": "Codex Responses Proxy v1.2.3",
+        "name": "OpenAI Responses Proxy v1.2.3",
         "draft": False,
         "prerelease": False,
         "published_at": "2026-08-09T00:00:00Z",

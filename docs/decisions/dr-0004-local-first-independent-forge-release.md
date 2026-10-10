@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:decision-0004-local-first-independent-forge-release
+subject: openai-responses-proxy:decision-0004-local-first-independent-forge-release
 role: decision
 state: canonical
 relations:

@@ -7,7 +7,7 @@ from datetime import datetime
 from email.message import Message
 from pathlib import Path
 
-from codex_responses_proxy.relay import cooldown
+from openai_responses_proxy.relay import cooldown
 
 ROOT = Path(__file__).resolve().parents[2]
 

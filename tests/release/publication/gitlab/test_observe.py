@@ -61,7 +61,7 @@ class GitLabObservationContracts:
         ]
         release: dict[str, object] = {
             "tag_name": "v1.2.3",
-            "name": "Codex Responses Proxy v1.2.3",
+            "name": "OpenAI Responses Proxy v1.2.3",
             "commit": {"id": commit},
             "upcoming_release": False,
             "description": "Provider-native source release. See CHANGELOG.md for user-relevant changes.",

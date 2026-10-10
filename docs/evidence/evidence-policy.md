@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:evidence-policy
+subject: openai-responses-proxy:evidence-policy
 role: policy
 state: canonical
 relations:
@@ -23,7 +23,7 @@ or Git history; Chronicle is not a separate evidence primitive.
 
 - **Source evidence:** unit tests, compile checks, metadata checker, and CI.
 - **Runtime evidence:** installed payload manifest,
-  `codex-responses-proxy status --json`, verified listener identity, bounded
+  `openai-responses-proxy status --json`, verified listener identity, bounded
   runtime counters, and a bounded reload receipt when requested.
 - **User-visible evidence:** a successful response in the original failing
   conversation is distinct from transport health.
@@ -42,7 +42,7 @@ Do not treat a green local process, a new clean conversation, or a generic log
 grep as proof that an historical conversation recovered. Keep transient 429,
 477, and upstream SSE failures separately classified from payload-schema fixes.
 
-Use `codex-responses-proxy status --json` for current loopback diagnostics. Logs
+Use `openai-responses-proxy status --json` for current loopback diagnostics. Logs
 are bounded secondary material and must not preserve request bodies, prompts,
 credentials, headers, tokens, query strings, or raw upstream errors. Process
 counters reset with the listener and prove neither an earlier conversation nor

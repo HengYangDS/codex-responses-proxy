@@ -7,7 +7,7 @@ import urllib.error
 
 import pytest
 
-from codex_responses_proxy.protocol.agent_delivery import PLAINTEXT_NAMESPACE
+from openai_responses_proxy.protocol.agent_delivery import PLAINTEXT_NAMESPACE
 from tests.protocol.test_agent_delivery import _call
 from tests.protocol.test_agent_delivery import _tools
 from tests.relay.proxy_fixture import request

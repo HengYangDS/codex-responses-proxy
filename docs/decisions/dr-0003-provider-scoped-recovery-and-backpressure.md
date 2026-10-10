@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:decision-0003-provider-scoped-recovery-and-backpressure
+subject: openai-responses-proxy:decision-0003-provider-scoped-recovery-and-backpressure
 role: decision
 state: canonical
 relations:

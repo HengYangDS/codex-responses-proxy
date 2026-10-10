@@ -4,23 +4,23 @@ measurement = "parse the declared product package, imports, root modules, packag
 false_positive_cost = "a legitimate new semantic owner or dependency requires an intentional policy update reviewed with the implementation"
 remediation = "move behavior to an existing owner or declare the new owner and dependency here with focused contract tests"
 review_condition = "reassess when the product topology changes or two legitimate changes in one release train are blocked by the same contract"
-source_roots = ["src/codex_responses_proxy", "tools"]
+source_roots = ["src/openai_responses_proxy", "tools"]
 test_roots = ["tests"]
-package_root = "src/codex_responses_proxy"
+package_root = "src/openai_responses_proxy"
 root_configuration_modules = ["noxfile.py"]
 package_root_modules = ["errors", "json_value", "product_identity"]
 package_initializers = "declarations-only"
 
 [product_concepts]
-request-admission = "src/codex_responses_proxy/relay/admission.py"
-portable-responses = "src/codex_responses_proxy/protocol/replay/projection.py"
-provider-adaptation = "src/codex_responses_proxy/providers/registry.py"
-relay-transport = "src/codex_responses_proxy/relay/exchange.py"
-runtime-configuration = "src/codex_responses_proxy/runtime/config.py"
-payload-generations = "src/codex_responses_proxy/lifecycle/generation.py"
-lifecycle-transactions = "src/codex_responses_proxy/lifecycle/transaction.py"
-native-supervision = "src/codex_responses_proxy/lifecycle/supervision/native_service.py"
-cli-presentation = "src/codex_responses_proxy/cli/presentation.py"
+request-admission = "src/openai_responses_proxy/relay/admission.py"
+portable-responses = "src/openai_responses_proxy/protocol/replay/projection.py"
+provider-adaptation = "src/openai_responses_proxy/providers/registry.py"
+relay-transport = "src/openai_responses_proxy/relay/exchange.py"
+runtime-configuration = "src/openai_responses_proxy/runtime/config.py"
+payload-generations = "src/openai_responses_proxy/lifecycle/generation.py"
+lifecycle-transactions = "src/openai_responses_proxy/lifecycle/transaction.py"
+native-supervision = "src/openai_responses_proxy/lifecycle/supervision/native_service.py"
+cli-presentation = "src/openai_responses_proxy/cli/presentation.py"
 
 [external_responsibilities]
 provider-selection = "client-control-plane"

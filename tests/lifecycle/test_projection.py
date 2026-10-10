@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import projection as payload_projection
-from codex_responses_proxy.service import digest as payload_digest
-from codex_responses_proxy.service import inventory
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle import projection as payload_projection
+from openai_responses_proxy.service import digest as payload_digest
+from openai_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import install_context
 from tests.lifecycle.fixtures import install_payload
 from tests.lifecycle.fixtures import released_artifact

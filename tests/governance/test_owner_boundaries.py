@@ -13,20 +13,20 @@ from types import ModuleType
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import runtime_spec
-from codex_responses_proxy.lifecycle.supervision import native_service
-from codex_responses_proxy.protocol.replay import projection as replay_request
-from codex_responses_proxy.relay import responses
-from codex_responses_proxy.relay import sse
-from codex_responses_proxy.service import control
-from codex_responses_proxy.service import digest
-from codex_responses_proxy.service import identity
-from codex_responses_proxy.service import inventory
-from codex_responses_proxy.service import server
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle import runtime_spec
+from openai_responses_proxy.lifecycle.supervision import native_service
+from openai_responses_proxy.protocol.replay import projection as replay_request
+from openai_responses_proxy.relay import responses
+from openai_responses_proxy.relay import sse
+from openai_responses_proxy.service import control
+from openai_responses_proxy.service import digest
+from openai_responses_proxy.service import identity
+from openai_responses_proxy.service import inventory
+from openai_responses_proxy.service import server
 
 ROOT = Path(__file__).resolve().parents[2]
-PACKAGE = ROOT / "src" / "codex_responses_proxy"
+PACKAGE = ROOT / "src" / "openai_responses_proxy"
 
 
 class _NativeModuleFixture(ModuleType):
@@ -55,7 +55,7 @@ class ProxyOwnerBoundaryContracts:
                 alias.asname or alias.name
                 for node in tree.body
                 if isinstance(node, ast.ImportFrom)
-                and node.module == "codex_responses_proxy.lifecycle"
+                and node.module == "openai_responses_proxy.lifecycle"
                 for alias in node.names
             }
             violations.extend(
@@ -85,7 +85,7 @@ class ProxyOwnerBoundaryContracts:
                 alias.asname or alias.name
                 for node in tree.body
                 if isinstance(node, ast.ImportFrom)
-                and node.module == "codex_responses_proxy.lifecycle"
+                and node.module == "openai_responses_proxy.lifecycle"
                 for alias in node.names
             }
             for node in tree.body:
@@ -135,7 +135,7 @@ class ProxyOwnerBoundaryContracts:
                 if isinstance(node, ast.Import)
                 for alias in node.names
             }
-            assert "codex_responses_proxy.service.entrypoint" not in imports, relative
+            assert "openai_responses_proxy.service.entrypoint" not in imports, relative
 
     def test_response_transport_has_no_listener_facade(self) -> None:
         assert not (PACKAGE / "service" / "responses.py").exists()
@@ -181,7 +181,7 @@ class ProxyOwnerBoundaryContracts:
             if path.name == "__init__.py":
                 continue
             source = path.read_text(encoding="utf-8")
-            if "codex_responses_proxy.runtime import state" in source:
+            if "openai_responses_proxy.runtime import state" in source:
                 offenders.append(path.relative_to(PACKAGE).as_posix())
         assert offenders == []
 
@@ -435,7 +435,7 @@ class ProxyOwnerBoundaryContracts:
         assert live == set()
 
     def test_native_runtime_owns_exact_private_product_processes(self, subtests, *, mocker) -> None:
-        ctx = mocker.Mock(executable="/installed/codex-responses-proxy")
+        ctx = mocker.Mock(executable="/installed/openai-responses-proxy")
         implementation = _NativeModuleFixture("fixture.native")
         runtime = native_service._NativeRuntime(implementation)
         mocker.patch.object(

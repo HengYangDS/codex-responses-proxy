@@ -6,7 +6,7 @@ import json
 from types import SimpleNamespace
 from typing import cast
 
-from codex_responses_proxy.protocol.replay import projection as rewrite
+from openai_responses_proxy.protocol.replay import projection as rewrite
 from tests.protocol.replay.fixtures import body as _body
 
 

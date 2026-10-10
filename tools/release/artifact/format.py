@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from pathlib import PureWindowsPath
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 from tools.release import identity
 
 ARCHIVE_NAME = f"{product_identity.PRODUCT_SLUG}-{{version}}-{{platform}}.tar.gz"

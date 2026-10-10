@@ -8,7 +8,7 @@ Define one self-contained executable UX, repository-owned DX, native distributio
 
 ### Requirement: One self-contained product executable
 
-Codex Responses Proxy SHALL expose one `codex-responses-proxy` executable in a
+OpenAI Responses Proxy SHALL expose one `openai-responses-proxy` executable in a
 manifest-bound native bundle that contains the selected native supervision
 adapter and runs without an installed Python interpreter, package environment,
 source checkout, or repository script. Installation SHALL project that
@@ -43,7 +43,7 @@ not a wrapper, alias, shell-profile edit, or second copy.
 #### Scenario: A verified release is installed
 
 - **WHEN** installation finalizes a verified native payload
-- **THEN** `codex-responses-proxy` is discoverable through the user's platform
+- **THEN** `openai-responses-proxy` is discoverable through the user's platform
   command directory
 - **AND** it resolves to the exact installed executable
 - **AND** no Python interpreter, source checkout, wrapper, or shell-profile
@@ -68,7 +68,7 @@ installed command grammar.
 
 #### Scenario: Public help is rendered
 
-- **WHEN** the operator runs `codex-responses-proxy --help`
+- **WHEN** the operator runs `openai-responses-proxy --help`
 - **THEN** exactly the supported lifecycle commands are presented
 - **AND** rollback and recovery are separately discoverable
 - **AND** their descriptions distinguish explicit release selection from
@@ -248,7 +248,7 @@ default and stable JSON only when `--json` is requested.
 
 #### Scenario: An operator inspects the installed service
 
-- **WHEN** the operator runs `codex-responses-proxy status`
+- **WHEN** the operator runs `openai-responses-proxy status`
 - **THEN** the command presents release, payload, command, service, listener,
   and transaction state in a scannable layout
 - **AND** `status --json` exposes the same semantics

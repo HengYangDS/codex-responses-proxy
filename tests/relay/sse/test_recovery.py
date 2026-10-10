@@ -10,11 +10,11 @@ from typing import cast
 
 import pytest
 
-from codex_responses_proxy.relay import admission
-from codex_responses_proxy.relay import cooldown
-from codex_responses_proxy.relay import operational_log
-from codex_responses_proxy.relay import sse
-from codex_responses_proxy.relay import telemetry
+from openai_responses_proxy.relay import admission
+from openai_responses_proxy.relay import cooldown
+from openai_responses_proxy.relay import operational_log
+from openai_responses_proxy.relay import sse
+from openai_responses_proxy.relay import telemetry
 from tests.relay.exchange_fixture import EXACT_ERROR
 from tests.relay.exchange_fixture import DirectResponse
 from tests.relay.exchange_fixture import InputTransportFixture

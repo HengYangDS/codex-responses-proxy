@@ -8,7 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from codex_responses_proxy.lifecycle.supervision import watchdog
+from openai_responses_proxy.lifecycle.supervision import watchdog
 from tests.lifecycle.fixtures import assert_private_log_mode
 
 
@@ -25,7 +25,7 @@ class TestWatchdogEntrypoint:
                     sys.executable,
                     "-I",
                     "-c",
-                    "import codex_responses_proxy.lifecycle.supervision.watchdog",
+                    "import openai_responses_proxy.lifecycle.supervision.watchdog",
                 ],
                 cwd=directory,
                 capture_output=True,
@@ -64,7 +64,7 @@ class TestWatchdogLogging:
         assert not watchdog.is_proxy_up()
 
         with tempfile.TemporaryDirectory() as directory:
-            executable = Path(directory) / "codex-responses-proxy"
+            executable = Path(directory) / "openai-responses-proxy"
             executable.write_text("native fixture\n", encoding="utf-8")
             mocker.patch.object(watchdog, "EXECUTABLE", str(executable))
             mocker.patch.object(watchdog.os, "name", "posix")

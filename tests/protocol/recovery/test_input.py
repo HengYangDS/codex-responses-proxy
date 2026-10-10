@@ -9,8 +9,8 @@ from typing import cast
 
 import pytest
 
-from codex_responses_proxy.protocol.recovery import input as input_recovery
-from codex_responses_proxy.protocol.replay.projection import sanitize_responses_body
+from openai_responses_proxy.protocol.recovery import input as input_recovery
+from openai_responses_proxy.protocol.replay.projection import sanitize_responses_body
 
 EXACT_ERROR = {
     "error": {

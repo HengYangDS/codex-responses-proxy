@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:evidence
+subject: openai-responses-proxy:evidence
 role: index
 state: canonical
 relations:

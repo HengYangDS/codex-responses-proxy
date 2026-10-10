@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.cli import application
-from codex_responses_proxy.runtime.process_environment import native_process_environment
-from codex_responses_proxy.service import runtime as service_runtime
+from openai_responses_proxy import errors
+from openai_responses_proxy.cli import application
+from openai_responses_proxy.runtime.process_environment import native_process_environment
+from openai_responses_proxy.service import runtime as service_runtime
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -45,7 +45,7 @@ class ProductInterfaceContracts:
         ):
             code, stdout, stderr = self.invoke(*arguments)
             assert code == 0
-            assert "Usage: codex-responses-proxy" in stdout
+            assert "Usage: openai-responses-proxy" in stdout
             assert stderr == ""
 
     def test_top_level_version_flag_is_the_only_version_surface(self) -> None:
@@ -142,7 +142,7 @@ class ProductInterfaceContracts:
             if as_json:
                 error = json.loads(stderr)["error"]
                 assert error["message"]
-                assert error["next"] == "codex-responses-proxy --help"
+                assert error["next"] == "openai-responses-proxy --help"
             else:
                 assert "Action required" in stderr
                 assert "Problem" in stderr
@@ -155,15 +155,15 @@ class ProductInterfaceContracts:
 
         assert code == 2
         assert stdout == ""
-        assert "codex-responses-proxy install --help" in stderr
-        assert "codex-responses-proxy doctor" not in stderr
+        assert "openai-responses-proxy install --help" in stderr
+        assert "openai-responses-proxy doctor" not in stderr
 
         code, stdout, stderr = self.invoke("unknown")
 
         assert code == 2
         assert stdout == ""
-        assert "codex-responses-proxy --help" in stderr
-        assert "codex-responses-proxy doctor" not in stderr
+        assert "openai-responses-proxy --help" in stderr
+        assert "openai-responses-proxy doctor" not in stderr
 
     def test_help_explains_lifecycle_inputs_without_boolean_noise(self) -> None:
         code, install_help, stderr = self.invoke("install", "--help")
@@ -216,12 +216,12 @@ class ProductInterfaceContracts:
             assert stdout == ""
             assert "native release archive is unavailable" in stderr
             assert "[Errno" not in stderr
-            assert "codex-responses-proxy install --help" in stderr
-            assert "codex-responses-proxy doctor" not in stderr
+            assert "openai-responses-proxy install --help" in stderr
+            assert "openai-responses-proxy doctor" not in stderr
             assert "Traceback" not in stderr
             assert "Warning" not in stderr
 
-        asset = tmp_path / "codex-responses-proxy-2.0.48-macos-arm64.tar.gz"
+        asset = tmp_path / "openai-responses-proxy-2.0.48-macos-arm64.tar.gz"
         asset.write_bytes(b"not-admitted")
         code, stdout, stderr = self.invoke(
             "install",
@@ -236,7 +236,7 @@ class ProductInterfaceContracts:
         assert stdout == ""
         assert "release trust anchor is unavailable" in stderr
         assert "[Errno" not in stderr
-        assert "codex-responses-proxy install --help" in stderr
+        assert "openai-responses-proxy install --help" in stderr
 
     def test_ports_and_deadlines_are_rejected_at_the_command_boundary(self) -> None:
         cases = (
@@ -249,21 +249,21 @@ class ProductInterfaceContracts:
             code, stdout, stderr = self.invoke(*arguments)
             assert code == 2
             assert stdout == ""
-            assert f"codex-responses-proxy {arguments[0]} --help" in stderr
-            assert "codex-responses-proxy doctor" not in stderr
+            assert f"openai-responses-proxy {arguments[0]} --help" in stderr
+            assert "openai-responses-proxy doctor" not in stderr
             assert "Traceback" not in stderr
             assert "Warning" not in stderr
 
     def test_module_boundary_delegates_exit_status(self, *, mocker) -> None:
         main = mocker.patch.object(application, "main", return_value=7)
         with pytest.raises(SystemExit, match="7"):
-            runpy.run_module("codex_responses_proxy.cli.__main__", run_name="__main__")
+            runpy.run_module("openai_responses_proxy.cli.__main__", run_name="__main__")
         main.assert_called_once_with()
 
     def test_version_flag_uses_installed_distribution_metadata_without_a_checkout_file(
         self, *, mocker
     ) -> None:
-        expected = importlib.metadata.version("codex-responses-proxy")
+        expected = importlib.metadata.version("openai-responses-proxy")
         mocker.patch.object(application, "_source_version", return_value=None)
         code, stdout, stderr = self.invoke("--version")
         assert code == 0
@@ -276,7 +276,7 @@ class ProductInterfaceContracts:
             "dispatch",
             side_effect=errors.InstallError(
                 "invalid value",
-                next_command="codex-responses-proxy status",
+                next_command="openai-responses-proxy status",
             ),
         )
         code, stdout, stderr = self.invoke("doctor", "--json")
@@ -285,7 +285,7 @@ class ProductInterfaceContracts:
         payload = json.loads(stderr)
         assert payload["error"]["code"] == "lifecycle_error"
         assert payload["error"]["message"] == "invalid value"
-        assert payload["error"]["next"] == "codex-responses-proxy status"
+        assert payload["error"]["next"] == "openai-responses-proxy status"
         assert "Traceback" not in stderr
         assert "Warning" not in stderr
 
@@ -312,7 +312,7 @@ class ProductInterfaceContracts:
         assert "Problem" in stderr
         assert "listener unavailable" in stderr
         assert "Next" in stderr
-        assert "codex-responses-proxy doctor" in stderr
+        assert "openai-responses-proxy doctor" in stderr
         assert "python -m" not in stderr
         assert "Traceback" not in stderr
 
@@ -337,7 +337,7 @@ class ProductInterfaceContracts:
         assert stdout == ""
         assert "product installation is incomplete" in stderr
         assert "reinstall the verified release" in stderr
-        assert "codex_responses_proxy" not in stderr
+        assert "openai_responses_proxy" not in stderr
         assert "Traceback" not in stderr
         assert "Warning" not in stderr
 
@@ -346,7 +346,7 @@ class ProductInterfaceContracts:
         self, tmp_path: Path, relative_roots: bool, *, monkeypatch
     ) -> None:
         """Require a real absent-installation report, not an accepted error exit."""
-        executable = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
+        executable = os.environ.get("OPENAI_RESPONSES_PROXY_NATIVE_EXECUTABLE")
         if executable is None:
             pytest.skip("native executable supplied by release session")
         monkeypatch.chdir(tmp_path)
@@ -377,7 +377,7 @@ class ProductInterfaceContracts:
 
     @pytest.mark.parametrize("argument", ["--version", service_runtime.PREWARM_MODE])
     def test_built_executable_runs_without_python_on_path(self, argument: str) -> None:
-        executable = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
+        executable = os.environ.get("OPENAI_RESPONSES_PROXY_NATIVE_EXECUTABLE")
         if executable is None:
             pytest.skip("native executable supplied by release session")
         with tempfile.TemporaryDirectory() as empty_path:
@@ -401,7 +401,7 @@ class ProductInterfaceContracts:
         assert result.stderr == ""
 
     def test_built_executable_exercises_every_public_command_contract(self) -> None:
-        executable = os.environ.get("CODEX_RESPONSES_PROXY_NATIVE_EXECUTABLE")
+        executable = os.environ.get("OPENAI_RESPONSES_PROXY_NATIVE_EXECUTABLE")
         if executable is None:
             pytest.skip("native executable supplied by release session")
         with tempfile.TemporaryDirectory() as home:

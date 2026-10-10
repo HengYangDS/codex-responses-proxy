@@ -11,13 +11,13 @@ from typing import cast
 
 import pytest
 
-from codex_responses_proxy.protocol.replay import projection as rewrite
-from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.relay import admission
-from codex_responses_proxy.relay import cooldown
-from codex_responses_proxy.relay import exchange as upstream_exchange
-from codex_responses_proxy.relay import operational_log
-from codex_responses_proxy.relay import telemetry
+from openai_responses_proxy.protocol.replay import projection as rewrite
+from openai_responses_proxy.providers import registry as provider_registry
+from openai_responses_proxy.relay import admission
+from openai_responses_proxy.relay import cooldown
+from openai_responses_proxy.relay import exchange as upstream_exchange
+from openai_responses_proxy.relay import operational_log
+from openai_responses_proxy.relay import telemetry
 from tests.relay.exchange_fixture import EXACT_ERROR
 from tests.relay.exchange_fixture import InputTransportFixture
 from tests.relay.exchange_fixture import request_body

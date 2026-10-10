@@ -15,9 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.lifecycle import context as runtime_context
-from codex_responses_proxy.lifecycle.supervision import native_service
-from codex_responses_proxy.lifecycle.supervision import process
+from openai_responses_proxy.lifecycle import context as runtime_context
+from openai_responses_proxy.lifecycle.supervision import native_service
+from openai_responses_proxy.lifecycle.supervision import process
 from tests.release.fixtures import preserve_native_host_projection
 from tests.service.handoff import fixtures as handoff_fixtures
 from tests.service.handoff.fixtures import ScriptedUpstream
@@ -204,7 +204,7 @@ class TestRealSubprocessHandoffIntegration:
             )
             mocker.patch.dict(
                 handoff_fixtures.os.environ,
-                {"CODEX_RESPONSES_PROXY_EXECUTABLE": "/tmp/native-build-source"},
+                {"OPENAI_RESPONSES_PROXY_EXECUTABLE": "/tmp/native-build-source"},
             )
             child = mocker.Mock()
             child.poll.return_value = None
@@ -218,11 +218,11 @@ class TestRealSubprocessHandoffIntegration:
 
         assert started is child
         assert popen.call_args.kwargs.get("close_fds", True) is True
-        assert popen.call_args.kwargs["env"]["CODEX_RESPONSES_PROXY_HOME"] == ctx.install_dir
-        assert popen.call_args.kwargs["env"]["CODEX_RESPONSES_PROXY_STATE_HOME"] == str(
+        assert popen.call_args.kwargs["env"]["OPENAI_RESPONSES_PROXY_HOME"] == ctx.install_dir
+        assert popen.call_args.kwargs["env"]["OPENAI_RESPONSES_PROXY_STATE_HOME"] == str(
             root / "state"
         )
-        assert popen.call_args.kwargs["env"]["CODEX_RESPONSES_PROXY_EXECUTABLE"] == ctx.executable
+        assert popen.call_args.kwargs["env"]["OPENAI_RESPONSES_PROXY_EXECUTABLE"] == ctx.executable
 
     def _installed_fixture(
         self, *, release: str, port: int, upstream_url: str

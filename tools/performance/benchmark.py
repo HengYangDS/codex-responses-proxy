@@ -14,11 +14,11 @@ from typing import override
 
 import pyperf
 
-from codex_responses_proxy.protocol.replay.projection import sanitize_responses_body
-from codex_responses_proxy.providers import registry as provider_registry
-from codex_responses_proxy.service import entrypoint
-from codex_responses_proxy.service.handoff.protocol import read_control_message
-from codex_responses_proxy.service.handoff.protocol import write_control_message
+from openai_responses_proxy.protocol.replay.projection import sanitize_responses_body
+from openai_responses_proxy.providers import registry as provider_registry
+from openai_responses_proxy.service import entrypoint
+from openai_responses_proxy.service.handoff.protocol import read_control_message
+from openai_responses_proxy.service.handoff.protocol import write_control_message
 
 _SMALL_RESPONSE = b'{"id":"response","status":"completed"}'
 _STREAM_RESPONSE = b'data: {"type":"response.completed"}\n\n'

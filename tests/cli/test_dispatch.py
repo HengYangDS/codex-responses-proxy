@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.cli import application
+from openai_responses_proxy.cli import application
 from tests.cli.fixtures import invoke
 
 
@@ -66,7 +66,7 @@ def test_subcommand_help_and_parse_errors_are_bounded() -> None:
 
 
 def test_no_command_uses_sys_argv_and_renders_public_help(*, mocker) -> None:
-    mocker.patch.object(application.sys, "argv", ["codex-responses-proxy"])
+    mocker.patch.object(application.sys, "argv", ["openai-responses-proxy"])
     stdout, stderr = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
         code = application.main()
@@ -81,20 +81,20 @@ def test_internal_roles_are_exact_and_never_public_commands(*, mocker) -> None:
     executable = mocker.patch.object(
         application.service_runtime,
         "current_executable",
-        return_value="/opt/proxy/bin/codex-responses-proxy",
+        return_value="/opt/proxy/bin/openai-responses-proxy",
     )
-    entrypoint = mocker.patch("codex_responses_proxy.service.entrypoint.run", return_value=7)
+    entrypoint = mocker.patch("openai_responses_proxy.service.entrypoint.run", return_value=7)
     assert application.main([application.service_runtime.LISTENER_MODE]) == 7
     entrypoint.assert_called_once_with()
     mocker.stop(entrypoint)
 
-    handoff = mocker.patch("codex_responses_proxy.service.entrypoint.run", return_value=8)
+    handoff = mocker.patch("openai_responses_proxy.service.entrypoint.run", return_value=8)
     assert application.main([application.service_runtime.HANDOFF_CHILD_MODE]) == 8
     handoff.assert_called_once_with(handoff_child=True)
     mocker.stop(handoff)
 
     watchdog = mocker.patch(
-        "codex_responses_proxy.lifecycle.supervision.watchdog.run",
+        "openai_responses_proxy.lifecycle.supervision.watchdog.run",
         return_value=None,
     )
     assert application.main([application.service_runtime.WATCHDOG_MODE]) == 0
@@ -109,9 +109,9 @@ def test_internal_roles_are_exact_and_never_public_commands(*, mocker) -> None:
 
     assert activate.call_count == 3
     assert activate.call_args_list == [
-        mocker.call("/opt/proxy/bin/codex-responses-proxy"),
-        mocker.call("/opt/proxy/bin/codex-responses-proxy"),
-        mocker.call("/opt/proxy/bin/codex-responses-proxy"),
+        mocker.call("/opt/proxy/bin/openai-responses-proxy"),
+        mocker.call("/opt/proxy/bin/openai-responses-proxy"),
+        mocker.call("/opt/proxy/bin/openai-responses-proxy"),
     ]
     assert executable.call_count == 3
 

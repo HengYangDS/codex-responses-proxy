@@ -9,14 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import command
-from codex_responses_proxy.lifecycle import generation as payload_generation
-from codex_responses_proxy.lifecycle import rollback as payload_rollback
-from codex_responses_proxy.lifecycle import state as payload_state
-from codex_responses_proxy.lifecycle import transaction as payload_transaction
-from codex_responses_proxy.service import digest as payload_digest
-from codex_responses_proxy.service import identity as listener_identity
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle import command
+from openai_responses_proxy.lifecycle import generation as payload_generation
+from openai_responses_proxy.lifecycle import rollback as payload_rollback
+from openai_responses_proxy.lifecycle import state as payload_state
+from openai_responses_proxy.lifecycle import transaction as payload_transaction
+from openai_responses_proxy.service import digest as payload_digest
+from openai_responses_proxy.service import identity as listener_identity
 from tests.lifecycle.fixtures import begin_transaction
 from tests.lifecycle.fixtures import executable_relative
 from tests.lifecycle.fixtures import install_context

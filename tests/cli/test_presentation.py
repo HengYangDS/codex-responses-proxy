@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.cli import application
+from openai_responses_proxy import errors
+from openai_responses_proxy.cli import application
 from tests.cli.fixtures import invoke
 from tests.lifecycle.fixtures import install_context
 
@@ -128,7 +128,7 @@ def test_doctor_rejects_mistyped_check_status() -> None:
             {
                 "state": "degraded",
                 "ok": False,
-                "next": "codex-responses-proxy status --json",
+                "next": "openai-responses-proxy status --json",
                 "checks": {"payload": {"status": ["failed"], "detail": "invalid"}},
             },
         )
@@ -257,7 +257,7 @@ def test_status_human_output_is_aligned_and_not_serialized_json(*, mocker) -> No
         "runtime": {"pid": 321, "accepting": True},
         "payload_transaction": None,
         "command": {
-            "path": "/commands/codex-responses-proxy",
+            "path": "/commands/openai-responses-proxy",
             "state": "owned",
             "kind": "symlink",
         },
@@ -268,7 +268,7 @@ def test_status_human_output_is_aligned_and_not_serialized_json(*, mocker) -> No
 
     assert code == 0
     assert stderr == ""
-    assert "Codex Responses Proxy  Status" in stdout
+    assert "OpenAI Responses Proxy  Status" in stdout
     assert "Release" in stdout
     assert "2.0.8" in stdout
     assert "Payload" in stdout
@@ -322,9 +322,9 @@ def test_status_human_next_action_follows_the_lifecycle_state() -> None:
         },
     )
 
-    assert "codex-responses-proxy status --json" in invalid
-    assert "codex-responses-proxy recover" not in invalid
-    assert "codex-responses-proxy recover" in recoverable
+    assert "openai-responses-proxy status --json" in invalid
+    assert "openai-responses-proxy recover" not in invalid
+    assert "openai-responses-proxy recover" in recoverable
 
 
 def test_human_projection_covers_degraded_and_complete_command_results() -> None:
@@ -339,12 +339,12 @@ def test_human_projection_covers_degraded_and_complete_command_results() -> None
     )
     assert "Not installed" in degraded
     assert "Action required" in degraded
-    assert "codex-responses-proxy doctor" in degraded
+    assert "openai-responses-proxy doctor" in degraded
 
     doctor = application.presentation.render(
         "doctor",
         {
-            "next": "codex-responses-proxy reload",
+            "next": "openai-responses-proxy reload",
             "checks": {
                 "payload": {"status": "passed"},
                 "listener": {
@@ -358,7 +358,7 @@ def test_human_projection_covers_degraded_and_complete_command_results() -> None
     assert "Passed" in doctor
     assert "Listener" in doctor
     assert "Action required" in doctor
-    assert "codex-responses-proxy reload" in doctor
+    assert "openai-responses-proxy reload" in doctor
 
     installed = application.presentation.render("install", {"runtime": {"release": "2.0.11"}})
     assert "Installed" in installed
@@ -447,7 +447,7 @@ def test_expected_lifecycle_failures_are_rendered_once(*, mocker) -> None:
         "create",
         side_effect=errors.InstallError(
             "bad port",
-            next_command="codex-responses-proxy status --help",
+            next_command="openai-responses-proxy status --help",
         ),
     )
     code, stdout, stderr = invoke("status", "--json")
@@ -457,7 +457,7 @@ def test_expected_lifecycle_failures_are_rendered_once(*, mocker) -> None:
         "error": {
             "code": "lifecycle_error",
             "message": "bad port",
-            "next": "codex-responses-proxy status --help",
+            "next": "openai-responses-proxy status --help",
         }
     }
 

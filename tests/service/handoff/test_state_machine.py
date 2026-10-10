@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy.service.handoff import protocol as handoff_protocol_module
+from openai_responses_proxy.service.handoff import protocol as handoff_protocol_module
 from tests.service.handoff.fixtures import HandoffFixture
 from tests.service.handoff.fixtures import child_message
 from tests.service.handoff.fixtures import entrypoint_module

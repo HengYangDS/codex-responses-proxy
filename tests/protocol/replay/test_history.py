@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from codex_responses_proxy.protocol.replay import content as portable_content
-from codex_responses_proxy.protocol.replay import projection as rewrite
+from openai_responses_proxy.protocol.replay import content as portable_content
+from openai_responses_proxy.protocol.replay import projection as rewrite
 from tests.protocol.replay.fixtures import HISTORY_PAYLOAD
 from tests.protocol.replay.fixtures import body as _body
 

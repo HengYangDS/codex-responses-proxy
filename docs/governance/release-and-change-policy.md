@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:release-and-change-policy
+subject: openai-responses-proxy:release-and-change-policy
 role: policy
 state: canonical
 relations:

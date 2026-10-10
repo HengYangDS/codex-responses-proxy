@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from xml.dom import minidom
 
-from codex_responses_proxy.lifecycle.supervision import linux
-from codex_responses_proxy.lifecycle.supervision import macos
-from codex_responses_proxy.lifecycle.supervision import windows
+from openai_responses_proxy.lifecycle.supervision import linux
+from openai_responses_proxy.lifecycle.supervision import macos
+from openai_responses_proxy.lifecycle.supervision import windows
 from tests.lifecycle.fixtures import platform_context
 from tests.lifecycle.supervision.fixtures import assert_fragments as _assert_fragments
 
@@ -18,7 +18,7 @@ MACOS_CONTAINS = f"""<key>KeepAlive</key>
 <true/>
 {EXECUTABLE}
 --internal-watchdog
-codex-responses-proxy.watchdog
+openai-responses-proxy.watchdog
 <string>/dev/null</string>""".splitlines()
 LINUX_CONTAINS = f"""Restart=always
 RestartSec=3
@@ -81,4 +81,4 @@ class TestServiceDefinitions:
         )
         for definition in definitions:
             with subtests.test(definition=definition[:40]):
-                assert "CODEX_RESPONSES_PROXY_" not in definition
+                assert "OPENAI_RESPONSES_PROXY_" not in definition

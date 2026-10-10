@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from filelock import FileLock
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.cli import application
+from openai_responses_proxy import errors
+from openai_responses_proxy.cli import application
 from tests.cli.fixtures import invoke
 from tests.lifecycle.fixtures import install_context
 
@@ -94,7 +94,7 @@ def test_unavailable_lifecycle_lock_is_a_bounded_public_error(
         "error": {
             "code": "lifecycle_error",
             "message": "lifecycle mutation lock is unavailable",
-            "next": "codex-responses-proxy doctor",
+            "next": "openai-responses-proxy doctor",
         }
     }
     assert "private host detail" not in stderr

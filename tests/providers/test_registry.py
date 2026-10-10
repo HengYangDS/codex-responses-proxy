@@ -14,7 +14,7 @@ from types import ModuleType
 
 import pytest
 
-from codex_responses_proxy.providers import registry
+from openai_responses_proxy.providers import registry
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -32,7 +32,7 @@ def _policy_source(version: str) -> str:
 
 
 def _manifest(root: Path, text: str) -> Path:
-    path = root / "codex_responses_proxy/providers/manifest.toml"
+    path = root / "openai_responses_proxy/providers/manifest.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path
@@ -195,7 +195,7 @@ class ProviderRegistryTests:
         assert not hasattr(policy, "build_fallback")
         assert not hasattr(policy, "recover_dialogue")
         assert registry.policy_module_names(loaded) == (
-            "codex_responses_proxy.providers.policies.dmxapi",
+            "openai_responses_proxy.providers.policies.dmxapi",
         )
 
     def test_policy_loader_rejects_path_missing_and_incomplete_extensions(
@@ -252,7 +252,7 @@ class ProviderRegistryTests:
                 {"shared": _policy_source("second")},
                 mocker=mocker,
             ):
-                second = registry.load(root / "codex_responses_proxy/providers/manifest.toml")
+                second = registry.load(root / "openai_responses_proxy/providers/manifest.toml")
         first_policy = first.profiles["gateway"].wire_policy
         second_policy = second.profiles["gateway"].wire_policy
         assert first_policy is not None
@@ -324,9 +324,9 @@ class ProviderRegistryTests:
     def test_frozen_policy_module_uses_import_identity_without_a_filesystem_path(
         self, *, mocker
     ) -> None:
-        fake = ModuleType("codex_responses_proxy.providers.policies.frozen")
+        fake = ModuleType("openai_responses_proxy.providers.policies.frozen")
         fake.__file__ = None
-        fake.__package__ = "codex_responses_proxy.providers.policies"
+        fake.__package__ = "openai_responses_proxy.providers.policies"
         fake.__spec__ = importlib.machinery.ModuleSpec(fake.__name__, loader=None)
         fake.__dict__.update(
             EXHAUSTED_CODE="retry_exhausted",
@@ -414,3 +414,20 @@ class ProviderRegistryTests:
         ):
             with subtests.test(path=path):
                 assert routes.resolve(path) is None
+
+    def test_explicit_upstream_is_an_ordinary_isolated_responses_route(self) -> None:
+        released = registry.Registry(
+            {"gateway": registry.Profile("gateway", "https://gateway.example/v1")}
+        )
+        configured = released.with_upstream("https://api.openai.com/v1/")
+
+        assert set(released.profiles) == {"gateway"}
+        assert configured.resolve("/upstream/v1/responses") == (
+            configured.profiles["upstream"],
+            "responses",
+            "https://api.openai.com/v1/responses",
+        )
+        assert configured.profiles["upstream"].agent_message_delivery == "native"
+        assert configured.profiles["upstream"].wire_policy is None
+        assert configured.resolve("/gateway/v1/models") == released.resolve("/gateway/v1/models")
+        assert released.with_upstream("") is released

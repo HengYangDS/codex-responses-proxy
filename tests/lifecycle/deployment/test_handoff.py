@@ -13,14 +13,14 @@ from pathlib import Path
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import control
-from codex_responses_proxy.lifecycle import projection as payload_projection
-from codex_responses_proxy.lifecycle.deployment import handoff
-from codex_responses_proxy.lifecycle.supervision import process
-from codex_responses_proxy.service import inventory
-from codex_responses_proxy.service import runtime as service_runtime
-from codex_responses_proxy.service.handoff import transaction as handoff_transaction
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle import control
+from openai_responses_proxy.lifecycle import projection as payload_projection
+from openai_responses_proxy.lifecycle.deployment import handoff
+from openai_responses_proxy.lifecycle.supervision import process
+from openai_responses_proxy.service import inventory
+from openai_responses_proxy.service import runtime as service_runtime
+from openai_responses_proxy.service.handoff import transaction as handoff_transaction
 from tests.lifecycle.fixtures import install_context
 from tests.service.handoff.fixtures import Response
 from tests.service.handoff.fixtures import expected_metadata
@@ -428,7 +428,7 @@ class TestControllerHandoffWiring:
         request = opened.call_args.args[0]
         assert request.full_url.endswith("/control/drain")
         assert request.method == "POST"
-        assert request.headers["X-codex-responses-proxy-drain-lease-seconds"] == "2"
+        assert request.headers["X-openai-responses-proxy-drain-lease-seconds"] == "2"
         assert runtime_reader.call_count == 4
 
     def test_failed_native_replacement_reopens_the_captured_predecessor(self, *, mocker) -> None:

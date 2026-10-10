@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from codex_responses_proxy.providers.policies import dmxapi
+from openai_responses_proxy.providers.policies import dmxapi
 
 
 class DmxapiPolicyContracts:

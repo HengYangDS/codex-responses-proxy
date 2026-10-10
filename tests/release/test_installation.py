@@ -9,18 +9,18 @@ from typing import override
 
 import pytest
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import control
-from codex_responses_proxy.lifecycle import generation
-from codex_responses_proxy.lifecycle import install
-from codex_responses_proxy.lifecycle import rollback as payload_rollback
-from codex_responses_proxy.lifecycle import state as payload_state
-from codex_responses_proxy.lifecycle import transaction
-from codex_responses_proxy.lifecycle.deployment import apply
-from codex_responses_proxy.lifecycle.supervision import process
-from codex_responses_proxy.service import identity
-from codex_responses_proxy.service import runtime as service_runtime
-from codex_responses_proxy.service.handoff import transaction as handoff_transaction
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle import control
+from openai_responses_proxy.lifecycle import generation
+from openai_responses_proxy.lifecycle import install
+from openai_responses_proxy.lifecycle import rollback as payload_rollback
+from openai_responses_proxy.lifecycle import state as payload_state
+from openai_responses_proxy.lifecycle import transaction
+from openai_responses_proxy.lifecycle.deployment import apply
+from openai_responses_proxy.lifecycle.supervision import process
+from openai_responses_proxy.service import identity
+from openai_responses_proxy.service import runtime as service_runtime
+from openai_responses_proxy.service.handoff import transaction as handoff_transaction
 from tests.lifecycle.fixtures import install_context
 from tests.lifecycle.fixtures import install_payload
 from tests.lifecycle.fixtures import released_artifact
@@ -1067,7 +1067,7 @@ def test_install_of_exact_active_artifact_preserves_every_projection(
         "supervisor_replaced": str(tmp_path / "unrelated-executable"),
     }.get(evidence, ctx.executable)
     mocker.patch(
-        "codex_responses_proxy.lifecycle.supervision.native_service.adapter", return_value=native
+        "openai_responses_proxy.lifecycle.supervision.native_service.adapter", return_value=native
     )
     mocker.patch.object(
         control,

@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from codex_responses_proxy.cli import application
-from codex_responses_proxy.lifecycle import projection
-from codex_responses_proxy.lifecycle import state as payload_state
-from codex_responses_proxy.lifecycle.supervision import process
+from openai_responses_proxy.cli import application
+from openai_responses_proxy.lifecycle import projection
+from openai_responses_proxy.lifecycle import state as payload_state
+from openai_responses_proxy.lifecycle.supervision import process
 from tests.cli.fixtures import invoke
 
 
@@ -23,7 +23,7 @@ def test_status_uses_the_read_only_lifecycle_owner(*, mocker) -> None:
         "runtime": {"pid": 321},
         "payload_transaction": None,
         "command": {
-            "path": "/commands/codex-responses-proxy",
+            "path": "/commands/openai-responses-proxy",
             "state": "owned",
             "kind": "symlink",
         },
@@ -54,7 +54,7 @@ def test_status_returns_bounded_current_runtime_evidence(*, mocker) -> None:
         "command": {
             "state": "owned",
             "kind": "symlink",
-            "path": "/commands/codex-responses-proxy",
+            "path": "/commands/openai-responses-proxy",
         },
     }
     mocker.patch.object(application.control, "status", return_value=evidence)
@@ -69,8 +69,8 @@ def test_status_binds_listener_identity_to_the_installed_executable(*, mocker) -
     context = mocker.Mock(
         port=8792,
         install_dir=str(Path(fixture_root, "product")),
-        executable=str(Path(fixture_root, "product", "codex-responses-proxy")),
-        command=str(Path(fixture_root, "commands", "codex-responses-proxy")),
+        executable=str(Path(fixture_root, "product", "openai-responses-proxy")),
+        command=str(Path(fixture_root, "commands", "openai-responses-proxy")),
     )
     mocker.patch.object(
         projection,
@@ -126,7 +126,7 @@ def test_doctor_classifies_an_unavailable_listener_without_false_success(*, mock
     assert stderr == ""
     assert not report["ok"]
     assert report["checks"]["listener"]["status"] == "failed"
-    assert report["next"] == "codex-responses-proxy reload"
+    assert report["next"] == "openai-responses-proxy reload"
     assert "Traceback" not in stdout
     assert "Warning" not in stdout
 
@@ -151,7 +151,7 @@ def test_doctor_classifies_a_pristine_host_without_false_failures() -> None:
     assert report == {
         "ok": False,
         "state": "not_installed",
-        "next": "codex-responses-proxy install --help",
+        "next": "openai-responses-proxy install --help",
         "checks": {
             "installation": {
                 "status": "failed",
@@ -191,8 +191,8 @@ def test_doctor_uses_one_state_level_next_action() -> None:
         }
     )
 
-    assert recovery["next"] == "codex-responses-proxy recover"
-    assert invalid["next"] == "codex-responses-proxy status --json"
+    assert recovery["next"] == "openai-responses-proxy recover"
+    assert invalid["next"] == "openai-responses-proxy status --json"
     assert all("next" not in check for check in recovery["checks"].values())
 
     invalid_rollback = application._doctor(
@@ -227,7 +227,7 @@ def test_doctor_requires_integrity_service_and_exact_listener_identity(subtests)
         "payload_transaction": None,
         "rollback": {"state": "available"},
         "command": {
-            "path": "/commands/codex-responses-proxy",
+            "path": "/commands/openai-responses-proxy",
             "state": "owned",
             "kind": "symlink",
         },
@@ -256,7 +256,7 @@ def test_doctor_requires_integrity_service_and_exact_listener_identity(subtests)
             {
                 **healthy,
                 "command": {
-                    "path": "/commands/codex-responses-proxy",
+                    "path": "/commands/openai-responses-proxy",
                     "state": "foreign",
                     "kind": "symlink",
                 },
@@ -289,7 +289,7 @@ def test_doctor_reuses_status_listener_proof_when_process_inventory_lags() -> No
         "runtime": {"pid": 321, "accepting": True},
         "payload_transaction": None,
         "command": {
-            "path": "/commands/codex-responses-proxy",
+            "path": "/commands/openai-responses-proxy",
             "state": "owned",
             "kind": "symlink",
         },

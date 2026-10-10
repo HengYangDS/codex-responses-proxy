@@ -73,7 +73,7 @@ class GitPublicationContracts:
                 "-a",
                 "v1.2.3",
                 "-m",
-                "Codex Responses Proxy v1.2.3",
+                "OpenAI Responses Proxy v1.2.3",
             ],
             check=True,
         )

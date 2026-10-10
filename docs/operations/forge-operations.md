@@ -1,6 +1,6 @@
 <!--
 ---
-subject: codex-responses-proxy:forge-operations
+subject: openai-responses-proxy:forge-operations
 role: how-to
 state: canonical
 relations:
@@ -176,14 +176,25 @@ mise exec --locked -- uv run --locked --no-sync python -m tools.release.publicat
   --gitlab-credential-kind job-token
 ```
 
-`CODEX_RESPONSES_PROXY_GITHUB_TAG_TRUST` and `RELEASE_ASSET_TRUST` are protected
+`OPENAI_RESPONSES_PROXY_GITHUB_TAG_TRUST` and `RELEASE_ASSET_TRUST` are protected
 execution inputs. `--gitlab-credential-kind job-token` reads `CI_JOB_TOKEN` and
 sends `JOB-TOKEN`; `--gitlab-credential-kind private-token` reads
-`CODEX_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN` and sends `PRIVATE-TOKEN`. The
+`OPENAI_RESPONSES_PROXY_GITLAB_PRIVATE_TOKEN` and sends `PRIVATE-TOKEN`. The
 selected kind never falls through to the other variable or header. The command attempts both peers,
 reports every failure, and returns nonzero unless both provider-local
 publications complete. The provider-specific subcommands support an explicitly
 one-sided topology; neither result alone is dual-Forge parity.
+
+The GitHub deployment retains the existing protected secret inputs
+`CODEX_RESPONSES_PROXY_RELEASE_ASSET_SIGNING_KEY` and
+`CODEX_RESPONSES_PROXY_RELEASE_ASSET_TRUST` in their original credential owner.
+The first remains the signing key; the second authenticates historical releases
+before version 5. The public variable
+`OPENAI_RESPONSES_PROXY_RELEASE_ASSET_TRUST` selects the same public key with the
+current product principal and namespace. Predecessors from version 5 onward use
+that current trust. These deployment inputs are not runtime command aliases;
+the historical trust input can retire after supported predecessor acceptance no
+longer consumes a release before version 5.
 
 ## Historical macOS override records
 

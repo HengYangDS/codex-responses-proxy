@@ -16,26 +16,26 @@ from typing import Literal
 import pytest
 from pytest_mock import MockerFixture
 
-from codex_responses_proxy import errors
-from codex_responses_proxy.lifecycle import artifact
-from codex_responses_proxy.service import digest
-from codex_responses_proxy.service import inventory
+from openai_responses_proxy import errors
+from openai_responses_proxy.lifecycle import artifact
+from openai_responses_proxy.service import digest
+from openai_responses_proxy.service import inventory
 from tests.lifecycle.fixtures import released_artifact
 from tests.lifecycle.fixtures import runtime_files
 from tools.release.artifact import format as product_assets
 
 VERSION = "1.2.3"
 PLATFORM = "linux-x86_64"
-NAMESPACE = "codex-responses-proxy-release"
+NAMESPACE = "openai-responses-proxy-release"
 
 
 def _release_files(
     platform: str = PLATFORM,
 ) -> dict[str, product_assets.ArchiveFile | bytes]:
     executable = (
-        "bin/codex-responses-proxy.exe"
+        "bin/openai-responses-proxy.exe"
         if platform.startswith("windows-")
-        else "bin/codex-responses-proxy"
+        else "bin/openai-responses-proxy"
     )
     return {
         executable: product_assets.ArchiveFile(b"native-executable", 0o755),
@@ -242,7 +242,7 @@ def _tar_bytes(
 def _members(
     platform: str = PLATFORM,
 ) -> tuple[tuple[str, bytes, int, bytes | None], ...]:
-    prefix = f"codex-responses-proxy-{VERSION}-{platform}/"
+    prefix = f"openai-responses-proxy-{VERSION}-{platform}/"
     files = _release_files(platform)
     return tuple(
         (
@@ -366,8 +366,8 @@ def test_admission_accepts_selected_assets_from_complete_signed_release(
 ) -> None:
     paths = _write_asset_set(tmp_path)
     extra = {
-        "codex-responses-proxy-1.2.3-macos-arm64.tar.gz": b"macos archive",
-        "codex-responses-proxy-macos-arm64.manifest.json": b"macos manifest",
+        "openai-responses-proxy-1.2.3-macos-arm64.tar.gz": b"macos archive",
+        "openai-responses-proxy-macos-arm64.manifest.json": b"macos manifest",
     }
     paths["checksums"].write_bytes(
         product_assets.checksums(
@@ -519,7 +519,7 @@ def test_archive_rejects_incomplete_duplicate_and_unexpected_members(
     with pytest.raises(errors.InstallError, match=r"invalid member|inventory"):
         artifact._archive_blobs(_tar_bytes(duplicate), document)
 
-    prefix = f"codex-responses-proxy-{VERSION}-{PLATFORM}/"
+    prefix = f"openai-responses-proxy-{VERSION}-{PLATFORM}/"
     unexpected = (members[0], members[1], (f"{prefix}other", b"MIT\n", 0o644, None))
     with pytest.raises(errors.InstallError, match="invalid member"):
         artifact._archive_blobs(_tar_bytes(unexpected), document)

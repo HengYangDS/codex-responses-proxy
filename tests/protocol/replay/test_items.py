@@ -6,14 +6,14 @@ import json
 
 import pytest
 
-from codex_responses_proxy.protocol.recovery.execution import tool_pair_boundary_is_safe
-from codex_responses_proxy.protocol.recovery.input import diagnose
-from codex_responses_proxy.protocol.replay.items import ITEM_POLICIES
-from codex_responses_proxy.protocol.replay.items import ProjectionStrategy
-from codex_responses_proxy.protocol.replay.items import ToolRelationships
-from codex_responses_proxy.protocol.replay.items import classify_item
-from codex_responses_proxy.protocol.replay.items import item_types
-from codex_responses_proxy.protocol.replay.projection import sanitize_responses_body
+from openai_responses_proxy.protocol.recovery.execution import tool_pair_boundary_is_safe
+from openai_responses_proxy.protocol.recovery.input import diagnose
+from openai_responses_proxy.protocol.replay.items import ITEM_POLICIES
+from openai_responses_proxy.protocol.replay.items import ProjectionStrategy
+from openai_responses_proxy.protocol.replay.items import ToolRelationships
+from openai_responses_proxy.protocol.replay.items import classify_item
+from openai_responses_proxy.protocol.replay.items import item_types
+from openai_responses_proxy.protocol.replay.projection import sanitize_responses_body
 
 
 @pytest.mark.parametrize("item_type", item_types())

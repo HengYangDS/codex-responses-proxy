@@ -1,4 +1,4 @@
-# Contributing to Codex Responses Proxy
+# Contributing to OpenAI Responses Proxy
 
 This guide is for repository development. Product use belongs in the
 [README](README.md).
@@ -106,7 +106,7 @@ flowchart LR
 ## Provider extension
 
 The provider registry is
-`src/codex_responses_proxy/providers/manifest.toml`.
+`src/openai_responses_proxy/providers/manifest.toml`.
 
 | Extension                                     | Required change                                         |
 | --------------------------------------------- | ------------------------------------------------------- |
@@ -167,8 +167,10 @@ GitLab and GitHub are independent publication planes:
 
 ```mermaid
 flowchart TD
-    S["Accepted source tree"] --> G["GitLab build and release"]
-    S --> H["GitHub build and release"]
+    S["Accepted source tree"] --> B["Native platform builders"]
+    B --> R["One assembled and signed bundle"]
+    R --> G["GitLab publication"]
+    R --> H["GitHub publication"]
     G --> A["Read-only parity audit"]
     H --> A
 ```

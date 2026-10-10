@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from typing import Final
 from typing import cast
 
-from codex_responses_proxy import product_identity
+from openai_responses_proxy import product_identity
 from tools.release import identity
 from tools.release.artifact import format as product_assets
 

@@ -1,5 +1,5 @@
 {
-  "name": "codex-responses-proxy-repository-tools",
+  "name": "openai-responses-proxy-repository-tools",
   "private": true,
   "devDependencies": {
     "@fission-ai/openspec": "1.13.2",
