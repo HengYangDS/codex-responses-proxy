@@ -523,7 +523,7 @@ def _project_input(items: list[object]) -> tuple[list[object], dict[str, int]]:
         if not isinstance(raw_item, dict):
             _reject("invalid_item")
         item = cast(JsonObject, raw_item)
-        item_type = item.get("type")
+        item_type = item.get("type", "message")
         policy = item_policy.classify_item(item_type)
         if policy is None:
             _reject("unknown_item_type")

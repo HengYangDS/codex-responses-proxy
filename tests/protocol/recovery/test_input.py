@@ -71,8 +71,8 @@ class TestInputDiagnostic:
             pytest.param({"input": "current"}, True, id="string-input"),
             pytest.param(
                 {"input": [{"role": "user", "content": "current"}]},
-                False,
-                id="missing-message-type",
+                True,
+                id="optional-message-type",
             ),
             pytest.param(
                 {

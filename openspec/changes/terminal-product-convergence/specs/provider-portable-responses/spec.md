@@ -15,6 +15,15 @@ or fallback SHALL reinterpret it independently.
 - **AND** no duplicate classifier, silent deletion, invented history, or
   unknown-item fall-through changes its meaning.
 
+#### Scenario: An ordinary Responses message omits its optional type
+
+- **WHEN** a standard input message supplies its role and content without the
+  optional `type` discriminator
+- **THEN** admission projects it through the same message owner as an explicit
+  `type: message`, preserving role, content order and supported phase
+- **AND** invalid roles, content and unknown fields retain their declared
+  rejection; a present invalid discriminator is not treated as omission.
+
 #### Scenario: Replay contains an inline screenshot
 
 - **WHEN** image-capable input contains an HTTP(S) image URL or a nonempty,

@@ -23,6 +23,27 @@ def test_every_policy_item_is_diagnosed_as_recognized(item_type: str) -> None:
     assert diagnostic.first_incompatible_reason != "unknown_item_type"
 
 
+@pytest.mark.parametrize("role", ["user", "assistant", "developer", "system"])
+@pytest.mark.parametrize("structured", [False, True])
+def test_easy_input_message_uses_the_standard_optional_discriminator(
+    role: str, structured: bool
+) -> None:
+    content = (
+        [{"type": "output_text" if role == "assistant" else "input_text", "text": "value"}]
+        if structured
+        else "value"
+    )
+    message = {"role": role, "content": content}
+    raw = json.dumps({"input": [message]}).encode()
+    explicit = json.dumps({"input": [{"type": "message", **message}]}).encode()
+
+    projected = sanitize_responses_body(raw)
+
+    assert projected.body is not None
+    assert projected.body == sanitize_responses_body(explicit).body
+    assert diagnose(raw).first_incompatible_reason == ""
+
+
 def test_recognized_unimplemented_standard_item_is_schema_drift() -> None:
     policy = classify_item("shell_call")
 
